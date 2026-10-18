@@ -809,7 +809,7 @@ defmodule Apiary.Dispatches do
     do: RunEnd.released(dispatch_run_id, now)
 
   # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
-  # outcome or its exit, or is lost: 1200 for `explore`.
+  # outcome or its exit, or is lost: 1200 for `explore` and 2100 for `prebuild`.
   @doc false
   @spec backstop_seconds(String.t() | nil) :: pos_integer
   def backstop_seconds(step), do: RunEnd.backstop_seconds(step)

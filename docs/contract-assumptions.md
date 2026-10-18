@@ -410,10 +410,15 @@ to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
 `dev.qory.run.exited` once folded, end it `run_ended`; its starter's release after the
 handover, or its `prebuilt`, ends it `released`; and the lost-run check ends it `lost` when
 its gateway never attached it by its `attach_by`, or when it has neither an outcome nor an
-exit by its backstop, 1200 seconds after its attach for the step `explore` (Liveness). Its
-dispatch ends with it, with the same end cause, a stale dispatch of it with `run_ended`, and
-the slot the dispatch took at its claim is freed once (`dispatches.slot_freed_at`, set only where
-it is empty). An end after the first changes none of them. A release after the handover records
+exit by its backstop, 1200 seconds after its attach for the step `explore` and 2100 for
+`prebuild` (Liveness). A prebuild the check ends so records that end as its last build's
+failure on the environment record of its collection and of the pool that claimed it, `lost`
+at its `attach_by` and `timed_out` at its backstop, with no reason; the record keeps its last
+good build, nothing is queued, and the check holds that record before the run of the queue,
+as a release does. Its dispatch ends with it, with the same end cause, a stale dispatch of
+it with `run_ended`, and the slot the dispatch took at its claim is freed once
+(`dispatches.slot_freed_at`, set only where it is empty). An end after the first changes
+none of them. A release after the handover records
 the registered run cancelled with the reason `released` (`runs.released_at`), which the fold
 applies after every pass and over its exit, and records no outcome: no `end` is sent for
 it, an end following only the starter's outcome, and its gateway's attach is `410` from
@@ -906,7 +911,7 @@ when the workspace first heard of it, its registration for a run that registered
 through a gateway that is never attached is lost at its `attach_by`, and not before; until
 then it holds its node's instance. A run a workspace's queue handed over is also lost at
 its backstop, which its attach sets to the attach and its step's limit, 1200 seconds for
-`explore` (`runs.backstop_at`), should it have neither an outcome nor an exit by then,
+`explore` and 2100 for `prebuild` (`runs.backstop_at`), should it have neither an outcome nor an exit by then,
 however recently it beat; no heartbeat or start that arrives after that brings it back,
 and only its exit or its starter's outcome changes its state. A heartbeat
 counts by the `time` it carries, corrected by the run's clock offset (the smallest arrival less
