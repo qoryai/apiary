@@ -55,7 +55,7 @@ defmodule ApiaryWeb.TargetComponents do
   target_label/3 is a target's name in words, as titles, headings, breadcrumbs, labels and
   toasts write it: its path alone, `acme/shop`, and its system before the path only where
   the path is `shared` by another target of the workspace,
-  `gitlab.com/acme/shop`. A nil system writes the path alone. The exported policy file
+  `git.example/acme/shop`. A nil system writes the path alone. The exported policy file
   keeps the full name.
   """
   @spec target_label(String.t() | nil, String.t(), shared | nil) :: String.t()

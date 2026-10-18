@@ -748,7 +748,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   What a run is about in one line of a list, as text: its kind, then its first two
-  subjects, each its type and ref as given ("pull request #412"), then how many more there
+  subjects, each its type and ref as given ("incident INC-5"), then how many more there
   are, joined by " · "; nil when it gave neither a kind nor a subject. `limit` is how many
   subjects are named.
   """
@@ -775,7 +775,7 @@ defmodule ApiaryWeb.RunComponents do
   defp part_text(text), do: text
 
   @doc """
-  A subject in words, as text: its type and ref as given, "pull request #412", for a
+  A subject in words, as text: its type and ref as given, "incident INC-5", for a
   tooltip. Qory Apiary knows no subject types, so neither is mapped or translated.
   `subject_name/1` is the same words as markup.
   """
