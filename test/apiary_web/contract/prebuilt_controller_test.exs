@@ -62,10 +62,11 @@ defmodule ApiaryWeb.Contract.PrebuiltControllerTest do
     Map.put(handover_place_fixture(scope), :scope, scope)
   end
 
-  # The clock's time, a second earlier for each request a test sends, so no two of its
-  # requests are one signature: the same one again is a replay.
+  # The clock's time, two seconds earlier for each request a test sends, so no two of its
+  # requests are one signature, even where the clock ticks between them: the same one
+  # again is a replay.
   defp now_time do
-    (SignedRequest.now() - rem(System.unique_integer([:positive, :monotonic]), 250))
+    (SignedRequest.now() - 2 * rem(System.unique_integer([:positive, :monotonic]), 125))
     |> DateTime.from_unix!()
     |> DateTime.to_iso8601()
   end
