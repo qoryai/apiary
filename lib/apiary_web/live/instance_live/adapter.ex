@@ -209,7 +209,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
          socket
          |> put_flash(
            :error,
-           gettext("Turn it off where Qory Apiary is installed before you remove it.")
+           gettext("Turn it off in the AWS stack or the Compose file before you remove it.")
          )
          |> push_patch(to: paths.settings)}
 
@@ -348,7 +348,9 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           </li>
           <li>{gettext("Qory Apiary tells the adapter nothing.")}</li>
           <li :if={@adapter.installed_as} id="adapter-remove-installed">
-            {gettext("Whatever it kept where Qory Apiary is installed is not touched.")}
+            {gettext(
+              "Whatever it kept in the AWS stack or the Compose file that installs Qory Apiary is not touched."
+            )}
           </li>
           <li>{gettext("Its name is free again. This cannot be undone.")}</li>
         </ul>
@@ -489,7 +491,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
         {gettext("Until it is set up, organisations can't install it.")}
       </p>
       <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <AdapterComponents.setup_form id="adapter-setup" adapter={@adapter} />
+        <AdapterComponents.setup_form id="adapter-setup" adapter={@adapter} variant="primary" />
         <span id="adapter-setup-opens" class="text-[12.5px]/[18px] text-muted">
           <.rich text={
             rich_gettext("Opens %{address}",

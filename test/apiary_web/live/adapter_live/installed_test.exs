@@ -140,6 +140,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       assert render(form) =~ ~s(method="post")
       assert render(form) =~ ~s(name="_csrf_token")
       refute render(form) =~ ~s(name="back")
+      assert has_element?(lv, "#adapter-setup-box #adapter-setup-button.btn-primary")
 
       # Above the rows, which hold no Set-up row and no hint of the adapter deployed
       # apart.
@@ -212,7 +213,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/keys"))
 
       assert words(lv, "#adapter-connect-intro") ==
-               "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
+               "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. No command is run."
 
       refute has_element?(lv, "#adapter-way")
       refute has_element?(lv, "#code-new-button")
@@ -332,7 +333,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       {:ok, lv, html} = live(conn, page_path(adapter, "/keys"))
 
       assert words(lv, "#adapter-add") ==
-               "Add a key Turn it on again where Qory Apiary is installed to give it a new key."
+               "Add a key Turn it on again in the AWS stack or the Compose file to give it a new key."
 
       assert has_element?(lv, "#adapter-keys-installed")
       refute has_element?(lv, "#adapter-keys-revoking")
@@ -344,7 +345,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       {:ok, lv, html} = live(conn, page_path(adapter, "/keys/#{key.key_id}/revoke"))
 
       assert words(lv, "#key-#{key.key_id}-last") ==
-               "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
+               "It is the adapter's only key. The adapter is turned off in the AWS stack or the Compose file, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
 
       refute html =~ "gives the adapter a new code at once"
     end
@@ -356,7 +357,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       html = render(lv)
 
       assert html =~
-               "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+               "This adapter is turned off in the AWS stack or the Compose file; it gets no new code until it is turned on again."
 
       refute html =~ "Qory Apiary gives this adapter its codes itself."
 
@@ -444,7 +445,10 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
       lv |> element("#adapter-remove-button") |> render_click()
       assert_patch(lv, page_path(adapter, "/settings"))
-      assert render(lv) =~ "Turn it off where Qory Apiary is installed before you remove it."
+
+      assert render(lv) =~
+               "Turn it off in the AWS stack or the Compose file before you remove it."
+
       assert Apiary.Repo.reload!(adapter).deleted_at == nil
     end
 
@@ -460,7 +464,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
       {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
 
       assert words(lv, "#adapter-remove-installed") ==
-               "Whatever it kept where Qory Apiary is installed is not touched."
+               "Whatever it kept in the AWS stack or the Compose file that installs Qory Apiary is not touched."
 
       lv |> element("#adapter-remove-button") |> render_click()
       assert_redirect(lv, "/instance/adapters")
@@ -498,6 +502,7 @@ defmodule ApiaryWeb.AdapterLive.InstalledTest do
     assert has_element?(lv, "#adapter-overview-setup #adapter-setup")
     assert has_element?(lv, "#adapter-setup-hint")
     refute has_element?(lv, "#adapter-setup-box")
+    refute has_element?(lv, "#adapter-setup-button.btn-primary")
   end
 
   test "anyone but an instance admin meets Not Found on its pages",

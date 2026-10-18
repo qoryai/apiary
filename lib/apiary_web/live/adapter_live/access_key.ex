@@ -348,7 +348,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   defp installed_refusal(false),
     do:
       gettext(
-        "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+        "This adapter is turned off in the AWS stack or the Compose file; it gets no new code until it is turned on again."
       )
 
   defp to_tab(socket, kind, words) do
@@ -534,7 +534,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
           >
             <p :if={@listed} id="adapter-connect-intro" class="text-[13px]/5 text-muted">
               {gettext(
-                "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
+                "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. No command is run."
               )}
             </p>
             <p
@@ -644,7 +644,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
                       </span>
                       <span :if={Adapters.installed?(@adapter) and !@listed}>
                         {gettext(
-                          "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
+                          "It is the adapter's only key. The adapter is turned off in the AWS stack or the Compose file, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
                         )}
                       </span>
                       <span :if={!@adapter.installed_as}>
@@ -679,7 +679,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
             title={gettext("Add a key")}
           >
             <p id="adapter-add-intro" class="text-[13px]/5 text-muted">
-              {gettext("Turn it on again where Qory Apiary is installed to give it a new key.")}
+              {gettext("Turn it on again in the AWS stack or the Compose file to give it a new key.")}
             </p>
           </SettingsComponents.part>
           <SettingsComponents.part

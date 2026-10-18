@@ -7743,7 +7743,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "It is the adapter's only key. The adapter is turned off where Qory Apiary is installed, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
+msgid "It is the adapter's only key. The adapter is turned off in the AWS stack or the Compose file, so it gets no new code: until it is turned on again, nothing it sends reaches any organisation."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -14765,12 +14765,12 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. You don't run a command."
+msgid "This adapter is installed with Qory Apiary. While it has no key, Qory Apiary gives it a one-time code by itself, and it makes its key with it. No command is run."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "This adapter is turned off where Qory Apiary is installed; it gets no new code until it is turned on again."
+msgid "This adapter is turned off in the AWS stack or the Compose file; it gets no new code until it is turned on again."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -15246,12 +15246,12 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "Turn it off where Qory Apiary is installed before you remove it."
+msgid "Turn it off in the AWS stack or the Compose file before you remove it."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Turn it on again where Qory Apiary is installed to give it a new key."
+msgid "Turn it on again in the AWS stack or the Compose file to give it a new key."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -15861,7 +15861,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "Whatever it kept where Qory Apiary is installed is not touched."
+msgid "Whatever it kept in the AWS stack or the Compose file that installs Qory Apiary is not touched."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex

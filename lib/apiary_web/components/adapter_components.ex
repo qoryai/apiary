@@ -71,11 +71,13 @@ defmodule ApiaryWeb.AdapterComponents do
   attr :id, :string, required: true
   attr :adapter, Node, required: true
   attr :back, :string, default: nil, doc: "`list` on the list, so a refusal comes back there"
+  attr :variant, :string, default: "default", values: ~w(default primary)
 
   @doc false
   # Set up for `adapter`: a form that posts to its set-up's path, `paths/1`'s `setup`,
   # with the session's CSRF token, and the instance admin is sent on to the adapter
-  # (`ApiaryWeb.AdapterSetupController`).
+  # (`ApiaryWeb.AdapterSetupController`). Its button is core's default one, or, with
+  # `variant` "primary", core's primary one.
   def setup_form(assigns) do
     ~H"""
     <.form
@@ -87,7 +89,7 @@ defmodule ApiaryWeb.AdapterComponents do
       class="contents"
     >
       <input :if={@back} type="hidden" name="back" value={@back} />
-      <.button id={"#{@id}-button"} type="submit" size="xs">
+      <.button id={"#{@id}-button"} type="submit" variant={@variant} size="xs">
         <.icon name="hero-arrow-top-right-on-square-micro" class="size-4" />{gettext("Set up")}
       </.button>
     </.form>
