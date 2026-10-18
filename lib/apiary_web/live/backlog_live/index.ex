@@ -6,12 +6,12 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # a work item." The count is of the live repositories assigned to the workspace,
   # whatever their Backlog switch. It and what follows it link to the integration's page
   # in Organisation settings › Integrations, by its adapter's public id, when one
-  # integration connects the organisation (`Apiary.Sources.Backlog.backlog_facts/1`);
-  # with several, the words are not a link.
+  # integration that brings items connects the organisation
+  # (`Apiary.Sources.Backlog.backlog_facts/1`); with several, the words are not a link.
   #
   # **The list.** The views as tabs, each with its count (Open, Taken in, Declined,
   # Closed), with a line under them on Closed, and on Declined where one integration
-  # connects the organisation, that says which tickets it holds, Search,
+  # that brings items connects the organisation, that says which tickets it holds, Search,
   # one Filter menu (Repository, Filed by, its bots each with a neutral tile, Label,
   # Updated), Sort (Recently updated, Newest, Most comments), the filters in force as
   # tokens under the bar, each with its ×, then Clear and how many tickets match, a page
@@ -353,7 +353,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   end
 
   # The facts the head speaks from, and the integration its line links: the one that
-  # connects the organisation, or nil where none or several do.
+  # brings items and connects the organisation, or nil where none or several do.
   defp load_facts(socket) do
     facts = Backlog.backlog_facts(socket.assigns.current_scope)
 
@@ -588,7 +588,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
       )
 
   # "41 repositories assigned to Main": a link to the integration's page in Organisation
-  # settings › Integrations where one integration connects the organisation, else words.
+  # settings › Integrations where one integration that brings items connects the
+  # organisation, else words.
   defp assigned(%{integration: nil} = assigns),
     do: assigned_words(assigns.current_scope, assigns.facts, assigns.collection_noun)
 

@@ -263,6 +263,21 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
       refute has_element?(view, "#page-header-description a")
     end
+
+    test "beside an integration without items, link to the one with items", ctx do
+      plain = ticket_connection_fixture(ctx.scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^plain.adapter_id), set: [items: false])
+
+      ticket(ctx.shop)
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+
+      assert has_element?(
+               view,
+               ~s(#page-header-description a#backlog-integration[href="/#{ctx.scope.organisation.slug}/settings/integrations/#{ctx.adapter.public_id}"])
+             )
+    end
   end
 
   describe "the views" do
@@ -823,6 +838,22 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
       assert rows(view) |> length() == 1
       refute has_element?(view, "#backlog-view-line")
+    end
+
+    test "is said beside an integration without items, naming the one with items", ctx do
+      work_item(ctx.scope, ticket(ctx.shop), :declined)
+      plain = ticket_connection_fixture(ctx.scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^plain.adapter_id), set: [items: false])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      view |> element("#backlog-view-declined") |> render_click()
+
+      assert words(view, "#backlog-view-line") ==
+               "Tickets whose work item a member declined after Explore. They stay open on " <>
+                 "#{ctx.adapter.name}, and Open leaves them out. Take in again brings back " <>
+                 "the same work item."
     end
   end
 
