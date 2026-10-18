@@ -454,8 +454,10 @@ defmodule Apiary.Runs.Projector do
   # has what it gave stored on the queue's run, once its passes and its end committed, in
   # a separate transaction (`Apiary.Dispatches.Settle.settle/1`): a result that came
   # after its outcome, or after it settled, counts so. The work item is told. A failure is
-  # logged, and the sweep of the lost-run check settles it at its next tick, once the run
-  # is settled.
+  # logged, and what the queue's run holds is cleared (`Apiary.Dispatches.Settle.clear/1`),
+  # so the sweep of the lost-run check stores it at a tick after, once the run is settled;
+  # a clear that fails too is logged, and what was stored stays until the run's next
+  # settle.
   defp settle_dispatched(%Run{id: id, dispatch_run_id: dispatch_run_id} = run, first, last)
        when is_binary(dispatch_run_id) do
     settling? =
@@ -470,10 +472,18 @@ defmodule Apiary.Runs.Projector do
 
     :ok
   rescue
-    error -> log_failure(run, {:settle, error.__struct__})
+    error ->
+      log_failure(run, {:settle, error.__struct__})
+      clear_settled(run)
   end
 
   defp settle_dispatched(_run, _first, _last), do: :ok
+
+  defp clear_settled(%Run{dispatch_run_id: dispatch_run_id} = run) do
+    dispatch_run_id |> Apiary.Dispatches.Settle.clear() |> Apiary.Dispatches.broadcast()
+  rescue
+    error -> log_failure(run, {:settle_clear, error.__struct__})
+  end
 
   defp log_touch_failure(%Run{id: id}, what) do
     Logger.error("key heartbeat not recorded run=#{id} error=#{inspect(what)}")

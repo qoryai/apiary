@@ -19,8 +19,9 @@ defmodule Apiary.Dispatches.SettleTest do
 
   alias Apiary.{Dispatches, WorkItems}
   alias Apiary.Dispatches.{DispatchRun, Settle}
+  alias Apiary.Explore.Result
   alias Apiary.Runs.{Event, Liveness, Projector, Run}
-  alias Apiary.WorkItems.{Confirmation, WorkItem}
+  alias Apiary.WorkItems.{Confirmation, Explore, WorkItem}
 
   @moduletag needs: :factory
 
@@ -263,6 +264,180 @@ defmodule Apiary.Dispatches.SettleTest do
       result_event!(handed.run, 12, %{"is_error" => true})
       project!(handed)
       assert stored(handed) == {:error, nil}
+    end
+  end
+
+  describe "a stored proposal, then the run settles" do
+    # What the row holds, where the page and Explore.status/2 put the run, the status in
+    # SQL, and what the rule of the latest result event gives
+    # (`Apiary.Explore.Result.given/3`), at `at`.
+    defp reads(ctx, handed, at) do
+      work_item = work_item!(handed)
+      page = WorkItems.explore(ctx.scope, work_item, at)
+
+      latest =
+        Repo.one(
+          from e in Event,
+            where: e.run_id == ^handed.run.id and e.type == "dev.qory.session.result",
+            order_by: [desc: e.sequence],
+            limit: 1
+        )
+
+      rule =
+        case Result.given(run!(handed), latest, at) do
+          {verdict, %{}} -> verdict
+          other -> other
+        end
+
+      %{
+        stored: stored(handed),
+        status: Explore.current(work_item, at).status,
+        page: {page.status, page.run.place, page.run.outcome},
+        sql: Map.fetch!(Explore.statuses([work_item.id]), work_item.id),
+        rule: rule
+      }
+    end
+
+    test "a later result without a verdict, no exit: running, then at 600 s what it gave",
+         ctx do
+      for {data, outcome} <- [
+            {%{"is_error" => true, "result" => "{}"}, :error},
+            {%{"is_error" => false}, :none},
+            {%{"is_error" => false, "result" => "not json"}, :refused}
+          ] do
+        handed = handed_over!(ctx)
+        %Run{outcome_received_at: received_at} = outcome!(ctx, handed)
+        at = &DateTime.add(received_at, &1, :second)
+
+        result!(handed, 8, understood_result())
+        project!(handed)
+
+        assert %{
+                 stored: {:proposal, %{}},
+                 status: :confirm,
+                 page: {:confirm, :proposal, :proposal},
+                 sql: :confirm,
+                 rule: :proposal
+               } = reads(ctx, handed, at.(60))
+
+        # The run withdraws it before it settles: what was stored is cleared, and told.
+        subscribe!(ctx)
+        result_event!(handed.run, 9, data)
+        project!(handed)
+        public_id = work_item!(handed).public_id
+        assert_receive {:work_items_changed, [^public_id]}
+
+        assert reads(ctx, handed, at.(599)) == %{
+                 stored: {nil, nil},
+                 status: :running,
+                 page: {:running, :running, nil},
+                 sql: :running,
+                 rule: :unsettled
+               }
+
+        assert Settle.sweep(at.(599)) == []
+        Liveness.check(at.(600))
+
+        assert reads(ctx, handed, at.(600)) == %{
+                 stored: {outcome, nil},
+                 status: :no_result,
+                 page: {:no_result, :no_result, outcome},
+                 sql: :no_result,
+                 rule: outcome
+               }
+      end
+    end
+
+    test "the run lost after a proposal: the proposal stands, as its result decides", ctx do
+      handed = handed_over!(ctx)
+      outcome!(ctx, handed)
+      result!(handed, 8, understood_result())
+      project!(handed)
+
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "lost", lost_at: DateTime.utc_now()]
+      )
+
+      now = Dispatches.now()
+      Liveness.check(now)
+
+      assert %{
+               stored: {:proposal, %{}},
+               status: :confirm,
+               page: {:confirm, :proposal, :proposal},
+               sql: :confirm,
+               rule: :proposal
+             } = reads(ctx, handed, now)
+    end
+
+    test "the run lost after a proposal it withdrew: lost, what the latest result gave stored",
+         ctx do
+      handed = handed_over!(ctx)
+      outcome!(ctx, handed)
+      result!(handed, 8, understood_result())
+      project!(handed)
+      assert {:proposal, %{}} = stored(handed)
+      result_event!(handed.run, 9, %{"is_error" => true})
+      project!(handed)
+      assert stored(handed) == {nil, nil}
+
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "lost", lost_at: DateTime.utc_now()]
+      )
+
+      now = Dispatches.now()
+      Liveness.check(now)
+
+      assert reads(ctx, handed, now) == %{
+               stored: {:error, nil},
+               status: :lost,
+               page: {:lost, :lost, nil},
+               sql: :lost,
+               rule: :error
+             }
+    end
+
+    test "a run lost by the check before its outcome, its proposal folded: lost, nothing stored",
+         ctx do
+      handed = handed_over!(ctx)
+      result!(handed, 8, understood_result())
+      project!(handed)
+      at = DateTime.add(handed.run.backstop_at, 1, :second)
+      Liveness.check(at)
+
+      assert %DispatchRun{end_cause: :lost} = queue_run!(handed)
+
+      assert %{stored: {nil, nil}, status: :lost, page: {:lost, :lost, nil}, sql: :lost} =
+               reads(ctx, handed, at)
+    end
+  end
+
+  describe "clear/1, for a settle that failed" do
+    test "clears what the row holds, and the sweep stores it again with the latest result",
+         ctx do
+      handed = handed_over!(ctx)
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:none, nil}
+
+      # A late result whose settle failed: the event is stored, the row still says none.
+      result!(handed, 10, understood_result())
+      subscribe!(ctx)
+      assert [{:work_item, _, public_id}] = Settle.clear(handed.dispatch_run.id)
+      assert public_id == work_item!(handed).public_id
+      assert stored(handed) == {nil, nil}
+      assert Settle.clear(handed.dispatch_run.id) == []
+
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
+    end
+
+    test "leaves a run its handover could not form as it is", ctx do
+      %{dispatch_run: dispatch_run} =
+        explore_run_fixture(work_item_fixture(ctx.scope), end_cause: :ticket_gone)
+
+      assert Settle.clear(dispatch_run.id) == []
+      assert %DispatchRun{result_outcome: :error} = Repo.get!(DispatchRun, dispatch_run.id)
     end
   end
 

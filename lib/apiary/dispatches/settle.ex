@@ -9,7 +9,10 @@ defmodule Apiary.Dispatches.Settle do
   # is `Apiary.Explore.Result.given/3`, from the run registered for it and its result
   # event with the highest sequence: a proposal or questions as soon as its result says
   # so, with the result; `none`, `error` or `refused` once the run is settled
-  # (`Apiary.Explore.Result.settled?/2`); nothing while it is not. A run whose handover
+  # (`Apiary.Explore.Result.settled?/2`); nothing while it is not. So the row holds what
+  # Explore reads from the event: a run not settled whose latest result event gives no
+  # verdict, after one that did, has what was stored cleared again, and reads as running
+  # until it settles, when the sweep stores what that event gave. A run whose handover
   # could not form it ends `error` in the same write as its end
   # (`Apiary.Dispatches.Handover`), and no other run has an outcome.
   #
@@ -23,9 +26,14 @@ defmodule Apiary.Dispatches.Settle do
   #   `Apiary.Runs.Projector`), in a separate transaction once its passes committed: a run
   #   whose outcome came first, and a result that comes after the run was settled, which
   #   replaces what was stored;
-  # - the sweep (`sweep/1`, from `Apiary.Runs.Liveness`): a run settled by the 10 minutes
-  #   after its outcome, by its loss or by the pruning of its events, at most
-  #   `@batch` a tick, read through the partial index `dispatch_runs_unsettled_index`.
+  # - the sweep (`sweep/1`, from `Apiary.Runs.Liveness`): a run with no outcome stored
+  #   that has no registered run, or whose registered run has no outcome, or is settled
+  #   since by its exit, by the 10 minutes after its outcome, by its loss or by the
+  #   pruning of its events; at most `@batch` a tick, read through the partial index
+  #   `dispatch_runs_unsettled_index`, the rest at the ticks after.
+  #
+  # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
+  # stores it again once the run is settled.
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the registered
@@ -70,7 +78,7 @@ defmodule Apiary.Dispatches.Settle do
       do: raise(ArgumentError, "a run of the queue settles inside the caller's transaction")
 
     case Result.given(run, run && latest_event(run.id), now) do
-      :unsettled -> []
+      :unsettled -> write(dispatch_run, nil, nil)
       {outcome, result} -> write(dispatch_run, outcome, result)
       outcome -> write(dispatch_run, outcome, nil)
     end
@@ -78,8 +86,8 @@ defmodule Apiary.Dispatches.Settle do
 
   def settle_locked(%DispatchRun{}, _run, %DateTime{}), do: []
 
-  # settle/1 stores what the run of the queue `dispatch_run_id` gave, in a transaction of
-  # its own: the run of the queue locked `FOR UPDATE`, then its registered run and its
+  # settle/1 stores what the run of the queue `dispatch_run_id` gave, in a separate
+  # transaction: the run of the queue locked `FOR UPDATE`, then its registered run and its
   # result event read with no lock. The work item to tell once it committed, when it
   # wrote; none otherwise.
   @doc false
@@ -100,8 +108,8 @@ defmodule Apiary.Dispatches.Settle do
   end
 
   # sweep/1 settles, at `now`, the runs of the queue ended `run_ended` with no outcome yet
-  # whose registered run is settled, or that have none: at most `@batch`, each in a
-  # transaction of its own (`settle/1`). One that raises is logged by its id and the
+  # whose registered run is settled, or that have none: at most `@batch`, in a
+  # transaction for each (`settle/1`). One that raises is logged by its id and the
   # exception's module, and the rest are still settled. The work items to tell once each
   # committed.
   @doc false
@@ -126,6 +134,26 @@ defmodule Apiary.Dispatches.Settle do
     )
     |> Repo.all()
     |> Enum.flat_map(&settle_guarded(&1, now))
+  end
+
+  # clear/1 clears what the run of the queue `dispatch_run_id`, ended `run_ended` and not
+  # a prebuild, holds, both columns, in one statement that locks its row alone: for a
+  # settle that failed, so the sweep reads it again. The work item to tell when it
+  # cleared something; none otherwise.
+  @doc false
+  @spec clear(Ecto.UUID.t()) :: [told]
+  def clear(dispatch_run_id) when is_binary(dispatch_run_id) do
+    from(d in DispatchRun,
+      where: d.id == ^dispatch_run_id and not is_nil(d.result_outcome),
+      where: fragment("? = 'run_ended'", d.end_cause),
+      where: fragment("? <> 'prebuild'", d.step),
+      select: d.work_item_id
+    )
+    |> Repo.update_all(set: [result_outcome: nil, result: nil])
+    |> case do
+      {1, [work_item_id]} -> told(work_item_id)
+      {0, []} -> []
+    end
   end
 
   defp settle_guarded(id, now) do
