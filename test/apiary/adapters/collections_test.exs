@@ -395,6 +395,24 @@ defmodule Apiary.Adapters.CollectionsTest do
              ]
     end
 
+    test "a moved ref's new collection is assigned to the organisation's only workspace, as any new one",
+         ctx do
+      {:ok, :accepted} = post(ctx, ["TRK"])
+      old = collection(ctx.connection, "TRK")
+
+      # Another organisation, with one workspace.
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["TRK"]))
+
+      assert Repo.get!(Collection, old.id).ended_reason == :disconnected
+      assert %Collection{workspace_id: workspace_id} = collection(theirs, "TRK")
+      assert workspace_id == other.workspace.id
+
+      # Linked as it is made, with its `linked` entry; the old one was not linked.
+      assert unlinked_entries(ctx.adapter) == [%{"collection_ref" => "TRK", "status" => "linked"}]
+    end
+
     test "a ref live under another connection that a newer listing named stays with it",
          ctx do
       %{scope: other} = sign_up_fixture()

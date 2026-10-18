@@ -674,7 +674,9 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     # The middle collection held. The part's transaction holds none of the three, and
     # commits; its move ends `A`, alone in a transaction, then waits on `B`. A switch
     # holding them by id, `C` first, waits on `B` too, behind the move; once `B` is let
-    # go neither waits on the other in turn, since the move holds one row at a time.
+    # go neither waits on the other in turn, since the move holds one row at a time. The
+    # move takes `B` first and ends it, so the switch, which read `A` ended already,
+    # holds and turns off `C` alone, then the move ends `C`.
     {held, held_pid} = hold(lock_row(rows.b))
     listed = start(safely(targeted(ctx, "mine", @started)))
     await_blocked(listed.backend, held_pid)
@@ -685,7 +687,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     commit(held)
 
     assert Task.await(listed.task) == {:ok, :accepted}
-    assert {:ok, _count} = Task.await(switched.task)
+    assert Task.await(switched.task) == {:ok, 1}
     assert_moved(ctx, theirs, rows)
   end
 
@@ -738,7 +740,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   defp switch_one(side, id, on),
     do: fn -> Collections.set_collection_backlog(side.scope, side.connection, id, on) end
 
-  test "a switch of a collection held, then a part of another connection and a part of its own naming its ref: none deadlocks, and the ref ends live once, under the newer listing's connection",
+  test "a switch of a collection held, then a part of another connection and a part of that collection's connection naming its ref: none deadlocks, and the ref ends live once, under the newer listing's connection",
        ctx do
     theirs = other_side(ctx)
     z = linked_z(theirs)
@@ -806,6 +808,36 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     assert live(ctx.connection) == ["Z"]
     assert live(theirs.connection) == []
     assert moves(theirs) == [z]
+  end
+
+  test "a move whose second step is refused, the part's connection ended after the first: the collection ends, none is made, and the part is accepted",
+       ctx do
+    theirs = other_side(ctx)
+    z = linked_z(theirs)
+
+    # The move's first step waits on `Z`, held; the part's transaction has committed.
+    {held, held_pid} = hold(lock_row(z))
+    listed = start(safely(listing(ctx, ["Z"], "mine", DateTime.add(@started, 60))))
+    await_blocked(listed.backend, held_pid)
+
+    # The part's connection ends meanwhile; then the first step goes on.
+    {:ok, %Connection{state: :ended}} =
+      Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+
+    commit(held)
+
+    assert Task.await(listed.task) == {:ok, :accepted}
+    assert Repo.get!(Collection, z).ended_reason == :disconnected
+    assert moves(theirs) == [z]
+
+    # The second step is refused for the ended connection: the ref is live nowhere.
+    assert Repo.all(
+             from c in Collection,
+               where: c.adapter_id == ^ctx.adapter.id and c.external_ref == "Z",
+               where: is_nil(c.ended_at)
+           ) == []
+
+    assert Repo.all(from c in Collection, where: c.connection_id == ^ctx.connection.id) == []
   end
 
   test "two connections' parts naming one ref and a switch of the live one, let go at once, again and again: none deadlocks, and the ref is live once",

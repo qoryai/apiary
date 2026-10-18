@@ -79,7 +79,7 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
              %{text: "Shop board", mono: true, href: nil}
   end
 
-  test "an entry that names no title or adapter says no sentence of its own" do
+  test "an entry that names no title or adapter: the core gives no sentence for it" do
     entry = %Entry{action: "collection.move", actor_kind: :instance, details: %{}}
     assert Core.sentence(:"collection.move", entry, %{}) == nil
   end
