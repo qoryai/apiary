@@ -1613,6 +1613,30 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(ctx.scope).integrations == [alpha, zulu]
       assert Backlog.backlog_facts(elsewhere).integrations == [theirs]
     end
+
+    test "name the integrations with items alone; connected and listed count every one" do
+      %{scope: scope} = sign_up_fixture()
+
+      # An adapter without items, connected and listed, alone.
+      plain = ticket_connection_fixture(scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^plain.adapter_id), set: [items: false])
+
+      plain |> Ecto.Changeset.change(listed_at: DateTime.utc_now()) |> Repo.update!()
+
+      assert %{connected?: true, integrations: [], listed?: true} = Backlog.backlog_facts(scope)
+
+      # An adapter with items beside it, connected and not listed.
+      tracker = ticket_connection_fixture(scope)
+      adapter = Repo.get!(Node, tracker.adapter_id)
+
+      assert %{
+               connected?: true,
+               integrations: [%{name: adapter.name, id: adapter.public_id}],
+               listed?: true
+             } == Map.take(Backlog.backlog_facts(scope), [:connected?, :integrations, :listed?])
+    end
   end
 
   describe "a collection's open tickets" do

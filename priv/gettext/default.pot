@@ -131,6 +131,11 @@ msgid_plural "%{attempt} of %{of} runs used"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{collection} left this organisation's Backlog: %{integration} now lists it under another connection."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} chosen workspace"
@@ -1200,6 +1205,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} %{collection} is unassigned. Its %{items} reach no backlog until you assign it to a workspace."
 msgid_plural "%{number} %{collections} are unassigned. Their %{items} reach no backlog until you assign each to a workspace."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection} that %{integration} no longer reaches isn't shown."
+msgid_plural "%{number} %{collections} that %{integration} no longer reaches aren't shown."
 msgstr[0] ""
 msgstr[1] ""
 
