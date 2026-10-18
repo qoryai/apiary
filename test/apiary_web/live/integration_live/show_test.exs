@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.IntegrationLive.ShowTest do
   use ApiaryWeb.ConnCase, async: true
 
+  import Phoenix.Component, only: [sigil_H: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.ConnectionsFixtures
@@ -72,6 +73,21 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
                "#breadcrumb a[href='#{ipath(scope, runtime)}'][data-phx-link=patch]"
              )
     end
+  end
+
+  test "a name an external system gave, or one saved before the rules, is shown isolated and without its invisible characters" do
+    connection = %Connection{kind: "service", name: "Sentry#{<<0x202E::utf8>>} EU\e"}
+    names = ApiaryWeb.IntegrationLive.Common.names(connection)
+    assert names == {"Sentry EU\u{FFFD}", nil}
+    assert ApiaryWeb.IntegrationLive.Common.label(connection) == "Sentry EU\u{FFFD}"
+
+    assigns = %{names: names}
+
+    html =
+      ~H"<ApiaryWeb.IntegrationLive.Common.name names={@names} />"
+      |> rendered_to_string()
+
+    assert html =~ ~r|<bdi[^>]*>Sentry EU\x{FFFD}</bdi>|u
   end
 
   describe "Overview" do

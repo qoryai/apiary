@@ -125,9 +125,11 @@ defmodule Apiary.Sources.Body do
   # `"markdown"`, and `{:as_written, text}` for any other format, nil included, and for a Markdown text
   # `render/3` does not format: longer than `max_length/0`, asking for more table cells
   # than `max_cells/0`, nesting deeper than `max_depth/0`, or not valid UTF-8. An empty or
-  # nil text is `{:as_written, ""}`: there is nothing to format. The text as written is
-  # the text unchanged where it is valid UTF-8; otherwise its invalid bytes are replaced
-  # with U+FFFD, so a page can send it.
+  # nil text is `{:as_written, ""}`: there is nothing to format. Formatted or as written,
+  # the text is shown as an external system's text of several lines is
+  # (`Apiary.ExternalText.lines/1`): its invisible characters dropped, and its control
+  # characters but the tab and the line breaks, and its bytes that are not UTF-8, shown as
+  # U+FFFD.
   @doc false
   @spec render(String.t() | nil, String.t() | nil, String.t()) ::
           Phoenix.HTML.safe() | {:as_written, String.t()}
@@ -137,7 +139,7 @@ defmodule Apiary.Sources.Body do
 
   def render(body, "markdown", item) when is_binary(body) and is_binary(item) do
     with true <- formattable?(body),
-         {:ok, html} <- markdown(body, item) do
+         {:ok, html} <- markdown(Apiary.ExternalText.lines(body), item) do
       Phoenix.HTML.raw(html)
     else
       _ -> as_written(body)
@@ -147,11 +149,7 @@ defmodule Apiary.Sources.Body do
   def render(body, _format, item) when is_binary(body) and is_binary(item),
     do: as_written(body)
 
-  defp as_written(body) do
-    if String.valid?(body),
-      do: {:as_written, body},
-      else: {:as_written, String.replace_invalid(body)}
-  end
+  defp as_written(body), do: {:as_written, Apiary.ExternalText.lines(body)}
 
   # A code point is at most four bytes, so a longer text is not counted.
   defp formattable?(body) do

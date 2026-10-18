@@ -260,7 +260,7 @@ defmodule ApiaryWeb.JumpController do
 
     case ApiaryWeb.RunComponents.given_title(run) do
       nil -> short_id
-      title -> "#{short_id} · #{title}"
+      title -> "#{short_id} · #{Apiary.ExternalText.line(title)}"
     end
   end
 

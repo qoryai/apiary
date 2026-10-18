@@ -445,6 +445,21 @@ defmodule Apiary.Sources.BodyTest do
       end
     end
 
+    test "drops an invisible format character and shows a control character as U+FFFD, keeping the lines" do
+      text = "Steps:\r\n\t1. Log in#{<<0x202E::utf8>>}#{<<0x200B::utf8>>}\n2. Esc\e[2J"
+
+      for format <- ["text", nil] do
+        assert Body.render(text, format, "ticket") ==
+                 {:as_written, "Steps:\r\n\t1. Log in\n2. Esc\u{FFFD}[2J"}
+      end
+
+      html = Body.render(text, "markdown", "ticket") |> Phoenix.HTML.safe_to_string()
+      refute html =~ <<0x202E::utf8>>
+      refute html =~ <<0x200B::utf8>>
+      refute html =~ "\e"
+      assert html =~ "Esc\u{FFFD}[2J"
+    end
+
     test "an empty or nil text is the empty text, as written" do
       for format <- ["markdown", "text", nil] do
         assert Body.render(nil, format, "ticket") == {:as_written, ""}

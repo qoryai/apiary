@@ -379,7 +379,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <%= for secret <- @secrets do %>
           <dt class="q-mono">{secret.id}</dt>
           <dd>
-            {secret.title}
+            <.external_text text={secret.title} />
             <span :if={secret.variable} class="q-mono text-muted">· {secret.variable}</span>
           </dd>
         <% end %>
@@ -405,7 +405,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5"
       >
         <%= for setting <- @plain do %>
-          <dt>{setting.title}</dt>
+          <dt><.external_text text={setting.title} /></dt>
           <dd :if={Map.has_key?(@settings, setting.name)} class="q-mono">
             {Common.setting_value(@settings[setting.name])}
           </dd>
@@ -557,7 +557,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
               id={"connection-setting-#{setting.name}"}
               name={"connection[settings][#{setting.name}]"}
               type="checkbox"
-              label={setting.title}
+              label={Apiary.ExternalText.line(setting.title)}
               value={@form.params["settings"][setting.name]}
               aria-describedby={setting.description && "connection-setting-#{setting.name}-hint"}
             />
@@ -573,7 +573,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             :if={setting.type != :boolean}
             id={"connection-setting-#{setting.name}"}
             name={"connection[settings][#{setting.name}]"}
-            label={setting.title}
+            label={Apiary.ExternalText.line(setting.title)}
             hint={setting.description}
             value={@form.params["settings"][setting.name]}
             optional

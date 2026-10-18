@@ -145,14 +145,15 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   defp found(assigns) do
     ~H"""
     <p :if={@description.about} id="release-about" class="max-w-[72ch] text-[13.5px]/5">
-      {@description.about}
+      <.external_text text={@description.about} />
     </p>
 
     <SettingsComponents.part id="release-found" title={gettext("Found in its description.json")}>
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
         <dt class="text-faint">{gettext("Name")}</dt>
         <dd>
-          {@description.title} <span class="q-mono text-muted">({@description.name})</span>
+          <.external_text text={@description.title} />
+          <span class="q-mono text-muted">(<.external_text text={@description.name} />)</span>
         </dd>
         <dt class="text-faint">{gettext("Version")}</dt>
         <dd class="q-mono">{@description.program_version}</dd>
@@ -166,7 +167,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <dd :if={@description.secrets != []}>
           <span :for={secret <- @description.secrets} class="block">
             <span class="q-mono">{secret.name}</span>
-            <span class="text-muted">· {secret.title}</span>
+            <span class="text-muted">· <.external_text text={secret.title} /></span>
           </span>
         </dd>
         <dd :if={@description.secrets == []} class="text-muted">{gettext("None")}</dd>
@@ -250,7 +251,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
                 id={"release-setting-#{setting.name}"}
                 name={"integration[settings][#{setting.name}]"}
                 type="checkbox"
-                label={setting.title}
+                label={Apiary.ExternalText.line(setting.title)}
                 value={@form.params["settings"][setting.name]}
                 aria-describedby={setting.description && "release-setting-#{setting.name}-hint"}
               />
@@ -266,7 +267,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               :if={setting.type != :boolean}
               id={"release-setting-#{setting.name}"}
               name={"integration[settings][#{setting.name}]"}
-              label={setting.title}
+              label={Apiary.ExternalText.line(setting.title)}
               hint={setting.description}
               value={@form.params["settings"][setting.name]}
               optional
@@ -298,7 +299,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             cancel_by="navigate"
           >
             <.button type="submit" variant="primary" loading_text={gettext("Adding")}>
-              {gettext("Add %{title}", title: @description.title)}
+              {gettext("Add %{title}", title: Apiary.ExternalText.line(@description.title))}
             </.button>
             <:note :if={@description.secrets != []}>
               {gettext("Qory Apiary links no stored secret to it.")}
@@ -310,7 +311,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
     """
   end
 
-  defp title(%{state: "ready"}, %{title: title}), do: title
+  defp title(%{state: "ready"}, %{title: title}), do: Apiary.ExternalText.line(title)
   defp title(release, _description), do: release.source
 
   defp fetching, do: gettext("Fetching the release's description.json and checksums.txt…")

@@ -32,6 +32,8 @@ defmodule ApiaryWeb.OverviewComponents do
       steps: 1
     ]
 
+  import ApiaryWeb.ExternalText, only: [external_text: 1]
+
   import ApiaryWeb.RunComponents,
     only: [
       beat: 1,
@@ -437,7 +439,7 @@ defmodule ApiaryWeb.OverviewComponents do
       class="q-ar-t"
       title={row_title(@item.run)}
     >
-      <bdi :if={given_title(@item.run)}>{given_title(@item.run)}</bdi>
+      <.external_text text={given_title(@item.run)} />
       {if !given_title(@item.run), do: row_title(@item.run)}
     </.link>
     <span class="q-ar-id">{short_id(@item.run.public_id)}</span>
@@ -1080,9 +1082,10 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
-  else its short id: what a row calls it.
+  else its short id: what a row calls it, as plain text for a tooltip or a label, shown as
+  a text Forager sent is (`Apiary.ExternalText.line/1`).
   """
-  def row_title(run), do: given_title(run) || command_title(run)
+  def row_title(run), do: Apiary.ExternalText.line(given_title(run) || command_title(run))
 
   defp command_title(%{command: command, args: args}) when is_binary(command) do
     line = Enum.join([command | args || []], " ")
