@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.TargetLive.EnvironmentWithoutFactoryTest do
   # An instance without the feature a target's environment belongs to: the target's page
-  # has no Environment card and no Rebuild, and a Rebuild, an owner's included, is not
-  # found and queues nothing. Not async: the features are the whole node's.
+  # has no Environment card and no Rebuild, and a Rebuild, an owner's included, of a target
+  # whose collection names an environment, is not found and queues nothing. Not async: the
+  # features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query
@@ -18,9 +19,22 @@ defmodule ApiaryWeb.TargetLive.EnvironmentWithoutFactoryTest do
 
   setup %{scope: scope} do
     started_run(scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
-    # A node pool serves the workspace; no adapter, and so no collection, is made where
-    # the feature is off.
+    # A node pool serves the workspace, and a collection assigned there with the target
+    # names an environment: made with every feature, as an instance had them before it
+    # was launched without one, since no adapter is made where the feature is off.
     pool_fixture(scope)
+    previous = Application.get_env(:apiary, :features)
+    Application.put_env(:apiary, :features, Apiary.Features.all())
+
+    try do
+      collection_fixture(scope,
+        target_system: "code.example.com",
+        target_path: "acme/shop",
+        environment_ref: "env-1"
+      )
+    after
+      Application.put_env(:apiary, :features, previous)
+    end
 
     %{shop: Targets.get(scope, "code.example.com", "acme/shop")}
   end
