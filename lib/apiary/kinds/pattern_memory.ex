@@ -402,8 +402,7 @@ defmodule Apiary.Kinds.PatternMemory do
   defp reference(ref, state, _whole) when ref in ["#", "#/"], do: Map.fetch!(state.costs, [])
 
   # Each segment read as JSV reads it: "~1", then "~0", then percent-decoding. A segment
-  # URI.decode/1 raises on, as an earlier Elixir may on a malformed "%", counts the whole
-  # schema.
+  # URI.decode/1 raises on counts the whole schema.
   defp reference("#/" <> pointer, state, whole) do
     path =
       pointer
