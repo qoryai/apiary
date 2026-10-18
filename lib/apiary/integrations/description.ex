@@ -24,10 +24,10 @@ defmodule Apiary.Integrations.Description do
   Of the `source` role, four members are read out (`item_noun/1`, `items?/1`,
   `collection_noun/1`, `access/1`): its words for one item and for many, `item_noun`, `one`
   and `other`, each 1 to 32 characters: lower-case letters in words joined by single
-  spaces or hyphens, never work item or work items, with a space or a hyphen; `items`,
+  spaces or hyphens, never a noun the schema keeps out (the `not` of `$defs.noun`); `items`,
   which, when there, is `false`: the source reports collections and no items, and names no
   words for them; its words for one collection and for many, `collection_noun`, `one` and
-  `other`, the same shape as `item_noun`'s, never work item or work items either, beside
+  `other`, the same shape as `item_noun`'s, never such a noun either, beside
   `items: false` too; and `access`, a prose line of 1 to 300 characters with no control
   characters, on how to change, at the source, which collections the adapter reaches.
   The schema holds all four to that.

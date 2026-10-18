@@ -1,8 +1,9 @@
 defmodule Apiary.ExternalText do
   @moduledoc """
-  A text an external system sent, through an adapter or an integration, as a page shows it:
-  a collection's or an item's title, a name, an author, a release's name, a ticket's or a
-  comment's body. What is stored, and what a run is given, stays as it was sent.
+  A text an external system sent, through an adapter or an integration, or a run's report,
+  as a page shows it: a collection's or an item's title, a name, an author, a release's
+  name, an item's body, what a run says it is about, the signal a run's program ended
+  on. What is stored, and what a run is given, stays as it was sent.
 
     * The invisible characters are dropped: every format character (Unicode's Cf), such
       as the bidirectional embeddings, overrides and isolates, the marks LRM, RLM and ALM,
@@ -27,6 +28,9 @@ defmodule Apiary.ExternalText do
   them), so a page treats it as no text at all. `present_lines/1` is the same for a text
   of several lines, whose tabs and line breaks are whitespace too.
   """
+
+  # With the `factory` feature, which the documentation leaves out, the bodies include a
+  # ticket's and a comment's.
 
   # Wider than the set an explore result's text refuses (Apiary.WorkItems.WorkItem,
   # Apiary.Dispatches.Inputs): a page drops more than a text that is stored or given to a

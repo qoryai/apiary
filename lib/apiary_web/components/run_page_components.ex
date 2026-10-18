@@ -18,6 +18,7 @@ defmodule ApiaryWeb.RunPageComponents do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.RichText
+  import ApiaryWeb.ExternalText, only: [external_text: 1]
 
   import ApiaryWeb.CoreComponents,
     only: [
@@ -41,6 +42,7 @@ defmodule ApiaryWeb.RunPageComponents do
       subject_tip: 1
     ]
 
+  alias Apiary.ExternalText
   alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
 
@@ -911,22 +913,28 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # The end of a session: the reason the runtime gave, a text the run's report sent, shown
+  # as one (`Apiary.ExternalText.present/1`); one with nothing left to show, or only
+  # whitespace, is no reason, and the item says nothing after its kind, as without one.
   defp item_body(%{item: %{kind: :session_ended}} = assigns) do
+    assigns = assign(assigns, :reason, ExternalText.present(assigns.item.reason))
+
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Session ended")}>
-      {@item.reason}
+      <.external_text text={@reason} />
     </.head>
     """
   end
 
   # Every end of a run: why it ended, in words, else the program's exit, then how long it ran.
   defp item_body(%{item: %{kind: :run_exited}} = assigns) do
-    assigns = assign(assigns, :words, end_words(assigns.item))
+    {words, signal} = end_words(assigns.item)
+    assigns = assign(assigns, words: words, signal: signal, said: not is_nil(words || signal))
 
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run ended")}>
-      {@words}
-      <span :if={@item.duration_ms}><span :if={@words}> · </span><.duration ms={@item.duration_ms} /></span>
+      {@words}<.external_text text={@signal} />
+      <span :if={@item.duration_ms}><span :if={@said}> · </span><.duration ms={@item.duration_ms} /></span>
     </.head>
     """
   end
@@ -961,7 +969,18 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # A run of allowed connections to one destination, folded. The summary's host and tool
+  # are texts Forager sent, shown as such (`Apiary.ExternalText.present/1`): one with
+  # nothing left to show, or only whitespace, is none. A host that is none reads n/a, as
+  # for a connection that sent none (`Apiary.Runs.Record.Timeline`); a tool that is none
+  # reads as no tool, so the summary leads with the host and counts connections.
   defp item_body(%{item: %{kind: :connection_group}} = assigns) do
+    assigns =
+      assign(assigns,
+        host: ExternalText.present(assigns.item.host) || gettext("n/a"),
+        tool: ExternalText.present(assigns.item.tool)
+      )
+
     ~H"""
     <details
       id={"#{@id}-group"}
@@ -970,15 +989,15 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <summary class="q-cx-sum">
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-        <span :if={@item.tool} class="q-dest q-dest-tool">
-          <.tool_mark name={@item.tool} />
-          <span class="q-on"><bdi>{@item.host}</bdi>:{@item.port}</span>
+        <span :if={@tool} class="q-dest q-dest-tool">
+          <.tool_mark name={@tool} />
+          <span class="q-on"><bdi>{@host}</bdi>:{@item.port}</span>
         </span>
-        <span :if={!@item.tool} class="q-dest">
-          <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span>
+        <span :if={!@tool} class="q-dest">
+          <bdi>{@host}</bdi><span class="q-port">:{@item.port}</span>
         </span>
         <span class="text-muted">
-          · {if @item.tool,
+          · {if @tool,
             do:
               ngettext(
                 "%{number} allowed request",
@@ -1277,13 +1296,23 @@ defmodule ApiaryWeb.RunPageComponents do
   @doc "The source of a policy in words, for Details too."
   def policy_source_words(source), do: policy_source(source)
 
-  # How the run ended: why, in words (`RunComponents.reason_words/1`), else the program's
-  # signal or exit code. `-1` with no signal is the gateway's placeholder for an exit it
-  # wrote, not the program's, and an exit with neither has none: nothing is said of either,
-  # and the item says how long the run ran alone.
-  defp end_words(item), do: RunComponents.reason_words(item) || exit_code_words(item)
+  # How the run ended, as `{words, signal}`, at most one of them set: why, in words
+  # (`RunComponents.reason_words/1`), else the program's signal, else its exit code. The
+  # signal is a text the run's report sent, shown as one (`Apiary.ExternalText.present/1`):
+  # one with nothing left to show, or only whitespace, is no signal. `-1` with no signal is
+  # the gateway's placeholder for an exit it wrote, not the program's, and an exit with
+  # neither has none: nothing is said of either, and the item says how long the run ran
+  # alone.
+  defp end_words(item) do
+    words = RunComponents.reason_words(item)
+    signal = if is_nil(words), do: ExternalText.present(Map.get(item, :signal))
 
-  defp exit_code_words(%{signal: signal}) when is_binary(signal), do: signal
+    cond do
+      words -> {words, nil}
+      signal -> {nil, signal}
+      true -> {exit_code_words(item), nil}
+    end
+  end
 
   defp exit_code_words(%{exit_code: code}) when is_integer(code) and code != -1,
     do: gettext("exit %{code}", code: code)
@@ -1620,8 +1649,11 @@ defmodule ApiaryWeb.RunPageComponents do
   ## About
 
   # What the run said it is about (`about` of its `run.started`, as `Apiary.Runs.Fold`
-  # kept it). A subject is its type and ref as given, "pull request #412": Apiary knows no
-  # subject types. Its url is a link out only when it may be one (`external_link/1`).
+  # kept it). A subject is its type and ref as given, "ticket 412": Qory knows no
+  # subject types. Its url is a link out only when it may be one (`external_link/1`). The
+  # kind, a subject's type, ref and title, and the details' keys and values are texts the
+  # run's report sent, shown as such (`Apiary.ExternalText`): a kind or a title with nothing
+  # left to show, or only whitespace, is none, and what shows it is left out.
 
   @header_subjects 3
 
@@ -1633,17 +1665,18 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :run, :map, required: true
 
   def about_header(assigns) do
-    subjects = assigns.run.about_subjects || []
+    subjects = shown_subjects(assigns.run.about_subjects)
 
     assigns =
       assign(assigns,
+        kind: ExternalText.present(assigns.run.about_kind),
         subjects: Enum.take(subjects, @header_subjects),
         more: max(length(subjects) - @header_subjects, 0)
       )
 
     ~H"""
-    <p :if={@run.about_kind || @subjects != []} id="run-about" class="q-run-about">
-      <span :if={@run.about_kind} id="run-about-kind"><bdi>{@run.about_kind}</bdi></span>
+    <p :if={@kind || @subjects != []} id="run-about" class="q-run-about">
+      <span :if={@kind} id="run-about-kind"><.external_text text={@kind} /></span>
       <span :for={subject <- @subjects}>
         <.external_link href={subject["url"]} title={subject_tip(subject)}>
           <.subject_name subject={subject} />
@@ -1667,28 +1700,29 @@ defmodule ApiaryWeb.RunPageComponents do
   def about_section(assigns) do
     assigns =
       assign(assigns,
-        subjects: assigns.run.about_subjects || [],
+        kind: ExternalText.present(assigns.run.about_kind),
+        subjects: shown_subjects(assigns.run.about_subjects),
         details: about_details(assigns.run.about_details)
       )
 
     ~H"""
     <section
-      :if={@run.about_kind || @subjects != [] || @details != []}
+      :if={@kind || @subjects != [] || @details != []}
       id="run-about-section"
       class="q-rail-sec"
       aria-labelledby="rail-about"
     >
       <h3 id="rail-about">{gettext("About")}</h3>
-      <dl :if={@run.about_kind || @subjects != []} id="run-about-facts" class="q-rail-kv q-rail-about">
-        <dt :if={@run.about_kind}>{gettext("Kind")}</dt>
-        <dd :if={@run.about_kind}><bdi>{@run.about_kind}</bdi></dd>
+      <dl :if={@kind || @subjects != []} id="run-about-facts" class="q-rail-kv q-rail-about">
+        <dt :if={@kind}>{gettext("Kind")}</dt>
+        <dd :if={@kind}><.external_text text={@kind} /></dd>
         <dt :if={@subjects != []}>{gettext("Subjects")}</dt>
         <dd :for={subject <- @subjects} class="q-rail-subj">
           <.external_link href={subject["url"]} title={subject_tip(subject)}>
             <.subject_name subject={subject} />
           </.external_link>
           <span :if={subject["title"]} class="q-rail-sub" title={subject["title"]}>
-            <bdi>{subject["title"]}</bdi>
+            <.external_text text={subject["title"]} />
           </span>
         </dd>
       </dl>
@@ -1701,7 +1735,7 @@ defmodule ApiaryWeb.RunPageComponents do
           <%!-- A dotted key may break before each of its dots. A value wraps, never cut:
                text at its spaces, compact JSON anywhere. --%>
           <dt phx-no-format><%= for {part, index} <- Enum.with_index(String.split(key, ".")) do %><wbr :if={index > 0} />{if index > 0, do: "."}{part}<% end %></dt>
-          <dd class={form == :json && "q-rail-json"}>{value}</dd>
+          <dd class={form == :json && "q-rail-json"}><.external_text text={value} /></dd>
         <% end %>
       </dl>
     </section>
@@ -1714,7 +1748,8 @@ defmodule ApiaryWeb.RunPageComponents do
   key has at most two segments. A value is shown as given when it is a string (`:text`),
   and as compact JSON otherwise (`:json`): a number, true, false, null, an array, and an
   object one level below that, or an empty one. An object nested deeper stays one JSON
-  value, never more rows.
+  value, never more rows. A key and a value, JSON included, are shown as a text the run's
+  report sent is (`Apiary.ExternalText.line/1`).
   """
   def about_details(%{} = details) do
     details
@@ -1734,7 +1769,21 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp row(key, value) do
     {shown, form} = detail(value)
-    {key, shown, form}
+    {ExternalText.line(key), ExternalText.line(shown), form}
+  end
+
+  # The subjects as a page shows them: a type and a ref as a line each, and a title as a
+  # line, or none where it has nothing left to show (`Apiary.ExternalText`). The url stays
+  # as given: it is a link's address, not a text shown, and only a url that may be a link
+  # out is one (`external_link/1`).
+  defp shown_subjects(subjects) do
+    for subject <- subjects || [] do
+      Map.merge(subject, %{
+        "type" => ExternalText.line(subject["type"]),
+        "ref" => ExternalText.line(subject["ref"]),
+        "title" => ExternalText.present(subject["title"])
+      })
+    end
   end
 
   defp detail(value) when is_binary(value), do: {value, :text}

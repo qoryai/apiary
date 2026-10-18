@@ -5,8 +5,11 @@ defmodule Apiary.PublicId do
   `ak_0123456789abcdef`. Crockford's alphabet leaves out `i`, `l`, `o` and `u`, so an id
   read aloud or copied by hand is not mistaken. The prefix says what the id names:
   `ak` an access key, `sec` a stored secret, `nd` a node, `np` a node pool, `rn` a run,
-  `tg` a target, `ws` a workspace and `cm` a comment on a work item.
+  `tg` a target and `ws` a workspace.
   """
+
+  # `cm` names a comment on a work item (`Apiary.WorkItems.Comment`), a part of Qory the
+  # documentation leaves out.
 
   # Crockford base32 without the ambiguous letters i, l, o, u.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"

@@ -5,7 +5,7 @@ defmodule ApiaryWeb.ExternalText do
   direction runs into nothing around it, with its invisible characters dropped and its
   control characters shown as U+FFFD (`Apiary.ExternalText.line/1`).
 
-      <.external_text text={@ticket.title} />
+      <.external_text text={@item.title} />
 
   Where markup cannot go, in an attribute, a page title or a toast, the text is
   `Apiary.ExternalText.line/1`.

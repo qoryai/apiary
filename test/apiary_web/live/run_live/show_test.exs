@@ -2150,6 +2150,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
          %{conn: conn, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"
       escaped = "evil\u202Elpmaxe.&lt;script&gt;"
+      # A group's summary drops the override (`Apiary.ExternalText.present/1`).
+      shown = "evillpmaxe.<script>"
+      shown_escaped = "evillpmaxe.&lt;script&gt;"
 
       run =
         projected(scope, [
@@ -2170,10 +2173,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       # Two allowed connections to the host read as one group, the denied one as a row.
-      assert has_element?(lv, "#e-2-group .q-cx-sum .q-dest > bdi", host)
+      assert has_element?(lv, "#e-2-group .q-cx-sum .q-dest > bdi", shown)
       assert has_element?(lv, "#e-2-cx-3 .q-dest > bdi", host)
       assert has_element?(lv, "#e-4 .q-dest > bdi", host)
-      assert html =~ "<bdi>#{escaped}</bdi><span class=\"q-port\">:443</span>"
+      assert html =~ "<bdi>#{shown_escaped}</bdi><span class=\"q-port\">:443</span>"
       refute html =~ "elpmaxe.<script>"
 
       {:ok, lv, html} =

@@ -1149,10 +1149,12 @@ defmodule ApiaryWeb.RunComponents do
   `<id>-more`.
 
   `tile` is an optional mark before each option's words where the options have no
-  `groups`, such as a filer's tile on the Backlog: it is given the option, `{label, value,
+  `groups`, such as a mark beside a name: it is given the option, `{label, value,
   count}`, and may draw nothing for it. Without it, an option is its box, its words and
   its count alone.
   """
+  # The Backlog's Filed by filter marks a bot's name with its tile
+  # (`ApiaryWeb.BacklogLive.Index`), a page the documentation leaves out.
   attr :id, :string, required: true
   attr :name, :string, required: true
   attr :label, :string, required: true
