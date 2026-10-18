@@ -192,11 +192,13 @@ defmodule ApiaryWeb.RunPageComponentsTest do
   end
 
   describe "the timeline's group of connections" do
-    # Two allowed connections to `host`, which the timeline folds into one group.
-    defp group_html(host) do
+    # Two allowed connections to `host`, calls to `tool` where one is given, which the
+    # timeline folds into one group.
+    defp group_html(host, tool \\ nil) do
       events =
         for seq <- [1, 2] do
           data = %{"host" => host, "port" => 443, "decision" => "allowed", "rule" => ""}
+          data = if tool, do: Map.put(data, "tool", tool), else: data
           %{sequence: seq, type: "dev.qory.run.egress", time: @t0, data: data}
         end
 
@@ -223,6 +225,25 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     test "says n/a in its summary for a blank host, as for none" do
       for blank <- @blanks do
         assert texts(group_html(blank), ".q-cx-sum .q-dest > bdi") == ["n/a"]
+      end
+    end
+
+    test "names the tool in its summary cleaned" do
+      html = group_html("api.example.com", dirty("files"))
+
+      assert texts(html, ".q-cx-sum .q-dest-tool .q-tool-name") == [clean("files")]
+      assert texts(html, ".q-cx-sum .q-dest-tool .q-on > bdi") == ["api.example.com"]
+      assert LazyHTML.text(query(html, ".q-cx-sum")) =~ "2 allowed requests"
+      refute_dirty(html |> query(".q-cx-sum") |> LazyHTML.to_html())
+    end
+
+    test "reads a blank tool as none: the summary leads with the host and counts connections" do
+      none = group_html("api.example.com")
+
+      for html <- [none | Enum.map(@blanks, &group_html("api.example.com", &1))] do
+        assert query(html, ".q-cx-sum .q-dest-tool") |> Enum.count() == 0
+        assert texts(html, ".q-cx-sum .q-dest > bdi") == ["api.example.com"]
+        assert LazyHTML.text(query(html, ".q-cx-sum")) =~ "2 allowed connections"
       end
     end
   end

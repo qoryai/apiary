@@ -969,13 +969,17 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # A run of allowed connections to one destination, folded: the summary names the host,
-  # a text Forager sent, shown as one (`Apiary.ExternalText.present/1`), as a connection's
-  # row shows it (`ApiaryWeb.RunComponents.connection_row/1`); one with nothing left to show, or
-  # only whitespace, is none, and the summary says n/a, as for a connection that sent none
-  # (`Apiary.Runs.Record.Timeline`).
+  # A run of allowed connections to one destination, folded. The summary's host and tool
+  # are texts Forager sent, shown as such (`Apiary.ExternalText.present/1`): one with
+  # nothing left to show, or only whitespace, is none. A host that is none reads n/a, as
+  # for a connection that sent none (`Apiary.Runs.Record.Timeline`); a tool that is none
+  # reads as no tool, so the summary leads with the host and counts connections.
   defp item_body(%{item: %{kind: :connection_group}} = assigns) do
-    assigns = assign(assigns, :host, ExternalText.present(assigns.item.host) || gettext("n/a"))
+    assigns =
+      assign(assigns,
+        host: ExternalText.present(assigns.item.host) || gettext("n/a"),
+        tool: ExternalText.present(assigns.item.tool)
+      )
 
     ~H"""
     <details
@@ -985,15 +989,15 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <summary class="q-cx-sum">
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-        <span :if={@item.tool} class="q-dest q-dest-tool">
-          <.tool_mark name={@item.tool} />
+        <span :if={@tool} class="q-dest q-dest-tool">
+          <.tool_mark name={@tool} />
           <span class="q-on"><bdi>{@host}</bdi>:{@item.port}</span>
         </span>
-        <span :if={!@item.tool} class="q-dest">
+        <span :if={!@tool} class="q-dest">
           <bdi>{@host}</bdi><span class="q-port">:{@item.port}</span>
         </span>
         <span class="text-muted">
-          · {if @item.tool,
+          · {if @tool,
             do:
               ngettext(
                 "%{number} allowed request",
