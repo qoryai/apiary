@@ -52,6 +52,8 @@ defmodule Apiary.AccessKeys do
   require Logger
 
   alias Apiary.{Access, Adapters, Audit, Features, Repo}
+  alias Apiary.Adapters.Installed
+  alias Apiary.Adapters.Installed.CodeFile
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Contract.{Ed25519, Enrolment}
@@ -87,7 +89,17 @@ defmodule Apiary.AccessKeys do
           retire(recorder, node, current, :"access_key.revoke", :revoked)
       end
     end)
+    |> tap(&nudge_installed/1)
   end
+
+  # An adapter's key revoked, once that committed: the installer passes at once, so an
+  # installed adapter that lost its last key gets a code without waiting
+  # (`Apiary.Adapters.Installed.nudge/0`). A node's key, which has an organisation, says
+  # nothing.
+  defp nudge_installed({:ok, %AccessKey{organisation_id: nil, workspace_id: nil}}),
+    do: Installed.nudge()
+
+  defp nudge_installed(_result), do: :ok
 
   @doc """
   The key behind a key id, for request verification, with its workspace, read in the same
@@ -378,11 +390,12 @@ defmodule Apiary.AccessKeys do
   """
   @spec create_enrolment_code(Scope.t(), Node.t(), map) ::
           {:ok, EnrolmentCode.t(), String.t()}
-          | {:error, Ecto.Changeset.t() | Access.reason() | :sudo}
+          | {:error, Ecto.Changeset.t() | Access.reason() | :sudo | :installed}
   def create_enrolment_code(%Scope{} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
       with {:ok, place, recorder} <- ask(scope, :"access_key.create_code", node, sudo: true),
-           {:ok, node} <- lock_node(scope, node.id, place) do
+           {:ok, node} <- lock_node(scope, node.id, place),
+           :ok <- not_installed(node) do
         code = EnrolmentCode.generate(node.kind)
         now = DateTime.utc_now()
 
@@ -456,6 +469,14 @@ defmodule Apiary.AccessKeys do
 
   defp read_place(_scope, %Node{workspace_id: workspace_id}), do: workspace_id
 
+  # An adapter installed with Qory Apiary gets its codes from the instance alone
+  # (`issue_installed_code/2`): a person's code for it is `{:error, :installed}`, under the
+  # adapter's lock, so the answer holds while the code would be made.
+  defp not_installed(%Node{kind: :adapter, installed_as: name}) when is_binary(name),
+    do: {:error, :installed}
+
+  defp not_installed(%Node{}), do: :ok
+
   # An adapter's key never has stored secrets, whatever the code was asked for: the code,
   # and the key it brings, are made with the flag off.
   defp without_secrets(changeset, %Node{kind: :adapter}),
@@ -516,6 +537,242 @@ defmodule Apiary.AccessKeys do
       else
         %EnrolmentCode{} -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
+      end
+    end)
+  end
+
+  ## The codes of an adapter installed with Qory Apiary
+  #
+  # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) gets its codes from
+  # the instance, by itself, in the installer's pass (`Apiary.Adapters.Installer`): a code
+  # that names no maker (`created_by_id` nil), written to the adapter's file, `code` in a
+  # folder per adapter, which only that adapter mounts (`Apiary.Adapters.Installed.CodeFile`),
+  # and nowhere else. The code in clear is never returned, kept in a process's state,
+  # logged, or put in an audit entry.
+  #
+  # **Locks.** As for every change of a node's keys and codes: the adapter's row
+  # `FOR UPDATE` first, then its codes `FOR UPDATE`. An enrolment takes the same row, then
+  # the code, so a pass and an enrolment come one after the other. Nothing here holds a
+  # connection's row: the lock order of `Apiary.Adapters` is the adapter's row, then its
+  # connections, and these take the adapter's row alone.
+
+  # A code renewed when it has this many seconds left, or fewer.
+  @renew_within 300
+
+  @doc false
+  # Gives the adapter installed with Qory Apiary `adapter` a code while it needs one: the
+  # instance's (`scope`, `Apiary.Accounts.Scope.for_instance/2` in the instance's
+  # organisation, which `adapter.install` is asked of), in one transaction with the
+  # adapter's row held `FOR UPDATE`, then its outstanding codes.
+  #
+  # - The adapter holds a key not revoked: its outstanding codes that name no maker are
+  #   cancelled, each with its entry of `access_key.cancel_code` by the instance, and, once
+  #   that commits, its file is deleted. `{:ok, :enrolled}`.
+  # - Its newest outstanding code has more than 300 seconds left and the file
+  #   is there: kept, nothing written. `{:ok, :kept}`.
+  # - Otherwise a new code, valid for `code_ttl_minutes/0`, naming no maker, without stored
+  #   secrets, is made and written to the file (`Apiary.Adapters.Installed.CodeFile.write/2`),
+  #   as the adapter sends it (`Apiary.Contract.Enrolment.issued_code/2`), before the
+  #   transaction commits: a write that fails undoes the code, `{:error, {:code_file,
+  #   reason}}`, and the next pass tries again. The codes made before stay valid until they
+  #   expire, so an adapter that read the old file still enrols with it. `{:ok, :issued}`.
+  #
+  # **The trail.** A new code leaves the entry `access_key.create_code` by the instance,
+  # with `installed: true` in its details, only when no code of the adapter that names no
+  # maker is outstanding (neither used, nor cancelled, nor expired) and made after the
+  # adapter's latest revoked key, if it had one: the first code it ever gets, and the first
+  # once its key is lost or the codes it had were cancelled or ran out. A renewal, made
+  # while such a code is still outstanding, leaves none.
+  #
+  # `{:error, :not_found}` for an adapter deleted, not installed, or a feature that is off;
+  # `{:error, :forbidden}` for a scope that is not the instance's.
+  @spec issue_installed_code(Scope.t(), Node.t()) ::
+          {:ok, :enrolled | :kept | :issued}
+          | {:error, {:code_file, atom} | Ecto.Changeset.t() | Access.reason()}
+  def issue_installed_code(%Scope{} = scope, %Node{kind: :adapter, id: id}) do
+    Repo.transact(fn ->
+      with :ok <- installing(scope),
+           {:ok, adapter} <- lock_installed(id) do
+        now = DateTime.utc_now()
+
+        if held(adapter) > 0 do
+          with {:ok, cancelled} <- cancel_installed(scope, adapter, now),
+               do: {:ok, {:enrolled, adapter, cancelled}}
+        else
+          issue_or_keep(scope, adapter, now)
+        end
+      end
+    end)
+    |> case do
+      {:ok, {:enrolled, adapter, cancelled}} ->
+        Enum.each(cancelled, &broadcast_cancelled/1)
+        _ = CodeFile.delete(adapter.installed_as)
+        {:ok, :enrolled}
+
+      {:ok, state} when state in [:kept, :issued] ->
+        {:ok, state}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc false
+  # Cancels the outstanding codes that name no maker of `adapter`, an adapter installed
+  # with Qory Apiary whose name the setting no longer lists, by the instance (`scope`, as
+  # `issue_installed_code/2` takes it), each with its entry of `access_key.cancel_code`,
+  # under the adapter's row `FOR UPDATE`; once that commits, each is announced on the
+  # adapter's topic and its file is deleted. The adapter, its keys and its connections stay
+  # as they are. `{:ok, count}`, `{:error, :not_found}` or `{:error, :forbidden}`.
+  @spec cancel_installed_codes(Scope.t(), Node.t()) ::
+          {:ok, non_neg_integer} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def cancel_installed_codes(%Scope{} = scope, %Node{kind: :adapter, id: id}) do
+    Repo.transact(fn ->
+      with :ok <- installing(scope),
+           {:ok, adapter} <- lock_installed(id),
+           {:ok, cancelled} <- cancel_installed(scope, adapter, DateTime.utc_now()),
+           do: {:ok, {adapter, cancelled}}
+    end)
+    |> case do
+      {:ok, {adapter, cancelled}} ->
+        Enum.each(cancelled, &broadcast_cancelled/1)
+        _ = CodeFile.delete(adapter.installed_as)
+        {:ok, length(cancelled)}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  # The instance, in the instance's organisation, which `adapter.install` is asked of
+  # (`Apiary.Adapters.authorize_install/1`).
+  defp installing(scope), do: Adapters.authorize_install(scope)
+
+  # The adapter installed with Qory Apiary, in use, locked `FOR UPDATE`.
+  defp lock_installed(id) do
+    query =
+      from n in Node,
+        where: n.id == ^id and n.kind == :adapter and is_nil(n.deleted_at),
+        where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
+        where: not is_nil(n.installed_as),
+        lock: "FOR UPDATE"
+
+    case Repo.one(query) do
+      %Node{} = adapter -> {:ok, adapter}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  # The adapter's outstanding codes that name no maker, newest first, locked after it.
+  defp installed_codes(%Node{id: node_id}, now) do
+    Repo.all(
+      from c in EnrolmentCode,
+        where: c.node_id == ^node_id and is_nil(c.created_by_id),
+        where: is_nil(c.organisation_id) and is_nil(c.workspace_id),
+        where: is_nil(c.used_at) and is_nil(c.cancelled_at) and c.expires_at > ^now,
+        order_by: [desc: c.expires_at, desc: c.inserted_at, desc: c.id],
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp issue_or_keep(scope, adapter, now) do
+    codes = installed_codes(adapter, now)
+
+    case codes do
+      [newest | _older] ->
+        if DateTime.diff(newest.expires_at, now) > @renew_within and
+             CodeFile.exists?(adapter.installed_as),
+           do: {:ok, :kept},
+           else: issue(scope, adapter, now, first?(adapter, codes))
+
+      [] ->
+        issue(scope, adapter, now, true)
+    end
+  end
+
+  # Whether a new code is the first since the adapter last had none outstanding: none of
+  # `codes`, its outstanding ones, was made after its latest revoked key.
+  defp first?(%Node{id: node_id}, codes) do
+    lost =
+      Repo.one(
+        from k in AccessKey,
+          where: k.node_id == ^node_id and not is_nil(k.revoked_at),
+          select: max(k.revoked_at)
+      )
+
+    lost != nil and not Enum.any?(codes, &DateTime.after?(&1.inserted_at, lost))
+  end
+
+  defp issue(scope, adapter, now, first?) do
+    code = EnrolmentCode.generate(:adapter)
+
+    changeset =
+      %EnrolmentCode{
+        id: Ecto.UUID.generate(),
+        organisation_id: nil,
+        workspace_id: nil,
+        node_id: adapter.id,
+        created_by_id: nil,
+        code_sha256: EnrolmentCode.hash(code),
+        allow_secrets: false,
+        expires_at: DateTime.add(now, code_ttl_minutes(), :minute)
+      }
+      |> Ecto.Changeset.change()
+      |> EnrolmentCode.put_integrity()
+
+    with {:ok, row} <- Repo.insert(changeset),
+         :ok <- record_installed(scope, adapter, row, first?),
+         :ok <- write_code(adapter, code) do
+      {:ok, :issued}
+    end
+  end
+
+  defp record_installed(_scope, _adapter, _row, false), do: :ok
+
+  defp record_installed(scope, adapter, row, true) do
+    with {:ok, _entry} <-
+           Audit.record(Repo, scope, :"access_key.create_code", adapter, %{
+             after: %{
+               code_id: row.id,
+               allow_secrets: row.allow_secrets,
+               label_hint: row.label_hint,
+               expires_at: row.expires_at
+             },
+             details: %{installed: true}
+           }),
+         do: :ok
+  end
+
+  # The code, as the adapter sends it, in its file; a write that fails undoes the code.
+  defp write_code(%Node{installed_as: name}, code) do
+    issued = Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
+
+    case CodeFile.write(name, issued) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:code_file, reason}}
+    end
+  end
+
+  # Cancels the adapter's outstanding codes that name no maker, each with its entry by the
+  # instance: the codes cancelled.
+  defp cancel_installed(scope, adapter, now) do
+    adapter
+    |> installed_codes(now)
+    |> Enum.reduce_while({:ok, []}, fn code, {:ok, cancelled} ->
+      with {:ok, row} <-
+             code
+             |> Ecto.Changeset.change(cancelled_at: now)
+             |> EnrolmentCode.put_integrity()
+             |> Repo.update(),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, :"access_key.cancel_code", adapter, %{
+               before: %{cancelled_at: nil},
+               after: %{cancelled_at: row.cancelled_at},
+               details: %{code_id: row.id}
+             }) do
+        {:cont, {:ok, [row | cancelled]}}
+      else
+        {:error, _reason} = error -> {:halt, error}
       end
     end)
   end
@@ -699,6 +956,10 @@ defmodule Apiary.AccessKeys do
       # Announced once the transaction has committed, never from inside it, and only for a
       # key made now: a repeat changes nothing, so it says nothing new.
       if made == :new, do: broadcast_enrolled(key)
+      # The code of an adapter installed with Qory Apiary is spent once its key is live:
+      # its file goes, once the key committed. The installer deletes it too, should this
+      # fail (`issue_installed_code/2`).
+      if made == :new, do: delete_installed_file(key.node)
       {:ok, key}
     end
   end
@@ -760,6 +1021,13 @@ defmodule Apiary.AccessKeys do
   @spec unsubscribe(Scope.t(), Node.t()) :: :ok
   def unsubscribe(%Scope{}, %Node{id: node_id} = node),
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(place_id(node), node_id))
+
+  defp delete_installed_file(%Node{kind: :adapter, installed_as: name}) when is_binary(name) do
+    _ = CodeFile.delete(name)
+    :ok
+  end
+
+  defp delete_installed_file(_node), do: :ok
 
   defp broadcast_cancelled(%EnrolmentCode{} = code) do
     Phoenix.PubSub.broadcast(
@@ -863,6 +1131,29 @@ defmodule Apiary.AccessKeys do
     else
       _refused -> {:error, :unauthorized}
     end
+  end
+
+  # A code that names no maker is the instance's, made for an adapter installed with Qory
+  # Apiary (`issue_installed_code/2`): it approves the key it brings only while its node is
+  # an adapter in use installed as a name the setting still lists
+  # (`Apiary.Adapters.Installed.listed?/1`). The name is fixed once the adapter is made, so
+  # the read needs no lock; the node is locked next, as for every code.
+  defp maker_may_enrol(%EnrolmentCode{
+         organisation_id: nil,
+         workspace_id: nil,
+         created_by_id: nil,
+         node_id: node_id
+       })
+       when is_binary(node_id) do
+    installed_as =
+      Repo.one(
+        from n in Node,
+          where: n.id == ^node_id and n.kind == :adapter and is_nil(n.deleted_at),
+          where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
+          select: n.installed_as
+      )
+
+    if Installed.listed?(installed_as), do: :ok, else: {:error, :unauthorized}
   end
 
   defp maker_may_enrol(%EnrolmentCode{}), do: {:error, :unauthorized}
@@ -1291,16 +1582,22 @@ defmodule Apiary.AccessKeys do
   end
 
   # A key made in a browser or an enrolment is refused while the node holds two keys not
-  # revoked.
-  defp within_limit(%Node{id: node_id}) do
-    held =
-      Repo.one(
-        from k in AccessKey,
-          where: k.node_id == ^node_id and is_nil(k.revoked_at),
-          select: count(k.id)
-      )
+  # revoked, or one, for an adapter installed with Qory Apiary, which is replaced by
+  # revoking its key, never beside it.
+  defp within_limit(%Node{} = node) do
+    if held(node) >= node_key_limit(node), do: {:error, :key_limit}, else: :ok
+  end
 
-    if held >= @key_limit, do: {:error, :key_limit}, else: :ok
+  defp node_key_limit(%Node{kind: :adapter, installed_as: name}) when is_binary(name), do: 1
+  defp node_key_limit(%Node{}), do: @key_limit
+
+  # The keys `node` holds, not revoked: read under its lock by whoever holds it.
+  defp held(%Node{id: node_id}) do
+    Repo.one(
+      from k in AccessKey,
+        where: k.node_id == ^node_id and is_nil(k.revoked_at),
+        select: count(k.id)
+    )
   end
 
   defp in_workspace(queryable, %Scope{

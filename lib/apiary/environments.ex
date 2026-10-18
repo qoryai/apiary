@@ -14,7 +14,7 @@ defmodule Apiary.Environments do
   # held for that pool) when the collection is live, assigned to the pool's workspace, has a
   # target and an `environment_ref`, and the pool's record of it is missing, was queued
   # for another `environment_ref` or another target, or was retired after it was last
-  # queued: the trigger is keyed on the target and the `environment_ref` (V-714). Queuing
+  # queued: the trigger is keyed on the target and the `environment_ref`. Queuing
   # sets the record's `queued_ref`, `queued_at` and queued target (`queued_target_system`,
   # `queued_target_path`), making the record when there was none. So the same
   # `environment_ref` named again for the same target queues nothing, and a target that
@@ -103,7 +103,8 @@ defmodule Apiary.Environments do
   # `newer_build?(record, dispatch_run)` is whether the image `record` keeps was made by a
   # prebuild that took its `environment_ref` after `dispatch_run` took its
   # (`built_queued_at` later than the run's `environment_ref_at`), asked under the record's
-  # lock (V-804): the run's ref is older than the image's. Then neither a `prebuilt` nor a
+  # lock: the run's ref is older than the image's, and an older build never replaces a
+  # newer one. Then neither a `prebuilt` nor a
   # failure of `dispatch_run` is written on the record: the image and the last build's
   # failure stay as they are, and the run ends as it would otherwise. A record that is
   # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and

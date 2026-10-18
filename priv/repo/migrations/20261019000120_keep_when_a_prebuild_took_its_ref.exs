@@ -8,7 +8,7 @@ defmodule Apiary.Repo.Migrations.KeepWhenAPrebuildTookItsRef do
   # again that takes its environment record's `queued_ref` (`Apiary.Dispatches.Slots`).
   # `queued_at`, which orders the queue, stays as it was then, so it does not say how new
   # the ref is. An environment record keeps the one of the prebuild that made its image
-  # (`built_queued_at`) to compare (V-804).
+  # (`built_queued_at`) to compare, so an older build never replaces a newer one.
   #
   # A run with an `environment_ref` has one, and a run without has none. Up gives every
   # prebuild its `queued_at`. Down drops the column.

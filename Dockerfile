@@ -112,6 +112,15 @@ RUN mkdir -p /var/lib/apiary/keys \
   && chown nobody /var/lib/apiary/keys
 ENV APIARY_KEYS_DIR=/var/lib/apiary/keys
 
+# The one-time codes of the adapters installed with Qory Apiary, in QORY_ENROLMENT_DIR
+# (`Apiary.Adapters.Installed`). The directory belongs to nobody, mode 0755, so the release
+# makes a folder in it per adapter where it is missing and writes each code there; each
+# adapter mounts only its folder.
+RUN mkdir -p /run/qory/enrolment \
+  && chown nobody /run/qory/enrolment \
+  && chmod 0755 /run/qory/enrolment
+ENV QORY_ENROLMENT_DIR=/run/qory/enrolment
+
 WORKDIR "/app"
 RUN chown nobody /app
 

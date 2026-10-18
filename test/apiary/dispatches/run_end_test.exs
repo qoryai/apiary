@@ -426,14 +426,107 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ended
     end
 
-    test "ended by its starter's outcome, or released, records no failure here", ctx do
+    # Its fetch's exit, stored and folded onto the registered run.
+    defp exited!(ctx) do
+      event_fixture(ctx.handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+
+      assert {:ok, %Run{state: "completed", exited_at: %DateTime{}}} =
+               Projector.project(ctx.handed.run)
+    end
+
+    test "ended by its starter's outcome alone records the build failed, lost, and queues nothing",
+         ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
       assert_ended(ctx.handed, :run_ended)
 
-      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
-      assert record!(ctx.record) == ctx.record
+      assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: %DateTime{}} =
+               failed = record!(ctx.record)
+
+      assert_build_kept(ctx)
       assert_nothing_queued(ctx)
+
+      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
+      assert record!(ctx.record) == failed
+    end
+
+    test "its exit folds onto the registered run and ends nothing of the queue; its prebuilt then records the build",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx)
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == ctx.record
+
+      # The lost-run check before its backstop leaves it.
+      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second)) == []
+      assert_live(ctx.handed)
+
+      exited = run!(ctx.handed.run)
+      assert %Record{commit: "b2", failure_cause: nil} = prebuilt!(ctx, ctx.handed)
+      assert_ended(ctx.handed, :prebuilt)
+      assert run!(ctx.handed.run) == exited
+      assert Slots.held(ctx.place.pool.id) == 0
+    end
+
+    test "after its exit, its release records the build failed, given back", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx)
+
+      assert :ok =
+               Dispatches.release(ctx.place.key, ctx.handed.dispatch.public_id, %{
+                 revision: 2,
+                 reason: "The build failed.",
+                 retry: false
+               })
+
+      assert_ended(ctx.handed, :released)
+
+      assert %Record{failure_cause: :released, failure_reason: "The build failed."} =
+               record!(ctx.record)
+
+      assert_build_kept(ctx)
+    end
+
+    test "after its exit, its starter's outcome alone records the build failed, lost",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx)
+
+      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
+      assert_ended(ctx.handed, :run_ended)
+      assert %Record{failure_cause: :lost, failure_reason: nil} = record!(ctx.record)
+      assert_build_kept(ctx)
+    end
+
+    test "after its exit, nothing by its backstop: the lost-run check ends it lost, timed_out",
+         ctx do
+      assert {:ok, %{run: run}} = ctx.attach.()
+      exited!(ctx)
+
+      assert Liveness.check(run.backstop_at) == []
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == ctx.record
+
+      after_it = DateTime.add(run.backstop_at, 1, :microsecond)
+      Liveness.check(after_it)
+      assert_ended(ctx.handed, :lost)
+
+      assert %Record{failure_cause: :timed_out, failure_reason: nil, failed_at: ^after_it} =
+               record!(ctx.record)
+
+      # The registered run keeps its exit's fold.
+      assert %Run{state: "completed"} = run!(ctx.handed.run)
+      assert_build_kept(ctx)
+    end
+
+    test "after its exit and its prebuilt, a failed outcome records no failure", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx)
+      recorded = prebuilt!(ctx, ctx.handed)
+
+      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
+      assert_ended(ctx.handed, :prebuilt)
+      assert record!(ctx.record) == recorded
     end
 
     # A second prebuild of the collection for the pool, queued for `env-2` after the one
@@ -475,7 +568,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       record!(ctx.record)
     end
 
-    test "lost at its attach_by after a newer prebuild's build was recorded records no failure, and ends lost (V-804)",
+    test "lost at its attach_by after a newer prebuild's build was recorded records no failure, and ends lost",
          ctx do
       newer = newer!(ctx)
       recorded = prebuilt!(ctx, newer)
@@ -489,7 +582,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == recorded
     end
 
-    test "lost at its attach_by before a newer prebuild's build records the failure, which the build then clears (V-804)",
+    test "lost at its attach_by before a newer prebuild's build records the failure, which the build then clears",
          ctx do
       # The newer one attached, so its attach_by, of the same second, does not lose it.
       newer = newer!(ctx)
@@ -506,7 +599,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert %Record{commit: "b2", failure_cause: nil, failed_at: nil} = prebuilt!(ctx, newer)
     end
 
-    test "past its backstop after a newer prebuild's build was recorded records no failure, and ends lost (V-804)",
+    test "past its backstop after a newer prebuild's build was recorded records no failure, and ends lost",
          ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
       newer = newer!(ctx)
@@ -517,7 +610,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == recorded
     end
 
-    test "past its backstop before a newer prebuild's build records the failure, which the build then clears (V-804)",
+    test "past its backstop before a newer prebuild's build records the failure, which the build then clears",
          ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
       newer = newer!(ctx)

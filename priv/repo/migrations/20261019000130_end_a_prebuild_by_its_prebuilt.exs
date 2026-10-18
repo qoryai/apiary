@@ -4,7 +4,7 @@ defmodule Apiary.Repo.Migrations.EndAPrebuildByItsPrebuilt do
   # The end cause `prebuilt` of a run of the queue, and of its dispatch: a prebuild whose
   # starter reported the image it built (`Apiary.Dispatches.Prebuilt`). The run of the
   # queue and its dispatch end, and the slot is freed; the registered run is left to its
-  # starter's outcome, which the contract has follow the prebuilt.
+  # starter's outcome, which decides its state as any outcome does.
   #
   # Rolled back, the causes are as before, and the roll back refuses while a run of the
   # queue or a dispatch has this one.

@@ -31,12 +31,12 @@ defmodule Apiary.AccessRows do
   an instance admin's too, as `Apiary.ProductName.rename/2` asks, nor for changing the
   instance's settings, an instance admin's after a recent sign-in, as
   `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
-  the instance, an instance admin's, as `Apiary.Adapters` asks. Creating an organisation
-  is a sign-up's, which asks nothing, in the core; an edition may let a signed-in person
-  create one. Creating, deleting and restoring a workspace are asked of the organisation:
-  an owner creates one, an owner or an admin deletes any workspace of it; purging is the
-  instance's, once a deletion's grace period is over. The actions over people are asked of
-  the workspace, as a page asks whether to show them.
+  the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks.
+  Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
+  let a signed-in person create one. Creating, deleting and restoring a workspace are
+  asked of the organisation: an owner creates one, an owner or an admin deletes any
+  workspace of it; purging is the instance's, once a deletion's grace period is over. The
+  actions over people are asked of the workspace, as a page asks whether to show them.
   """
 
   import Apiary.AccessKeysFixtures
@@ -124,6 +124,8 @@ defmodule Apiary.AccessRows do
       {:"adapter.edit", yes: []},
       {:"adapter.set_interval", yes: []},
       {:"adapter.delete", yes: []},
+      {:"adapter.install", yes: [:instance, :hidden]},
+      {:"adapter.setup", yes: []},
       {:"adapter.connect", yes: @owners ++ [:admin]},
       {:"collection.assign", yes: @owners ++ [:admin]},
       {:"collection.set_backlog", yes: @owners ++ [:admin]},

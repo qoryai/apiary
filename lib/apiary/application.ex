@@ -38,6 +38,13 @@ defmodule Apiary.Application do
     # First, so a wrong QORY_FEATURES, or an edition's features that do not add up, stops
     # the boot before anything is started.
     Apiary.Features.boot!()
+    # Then the adapters installed with Qory Apiary, which need the features: a malformed
+    # QORY_INSTALLED_ADAPTERS, one that names adapters without their feature, or a
+    # QORY_ENROLMENT_DIR that is not an absolute path, stops the boot too. The folder of
+    # each adapter listed is made now, so that the adapter that mounts it finds it before
+    # the instance is set up; a folder that cannot be made is said and stops nothing.
+    Apiary.Adapters.Installed.boot!()
+    :ok = Apiary.Adapters.Installed.make_folders()
     # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY,
     # TRUSTED_PROXIES, APIARY_SIGNING_SECRET or integration setting stops the boot too, and
     # so does an edition's table or subject the core has already, or a page whose feature
@@ -108,6 +115,7 @@ defmodule Apiary.Application do
       ] ++
       liveness() ++
       retention() ++
+      installer() ++
       Apiary.Edition.children() ++
       setup() ++
       [
@@ -188,6 +196,13 @@ defmodule Apiary.Application do
   # Off in test, where the tests call `Apiary.Runs.Liveness.check/1` themselves.
   defp liveness do
     if Apiary.Runs.Liveness.enabled?(), do: [Apiary.Runs.Liveness], else: []
+  end
+
+  # The installer of the adapters installed with Qory Apiary, after the migrator and the
+  # job queue, so the tables it writes exist. It waits until the instance is set up. Off in
+  # test, where the tests call `Apiary.Adapters.Installer.pass/0` themselves.
+  defp installer do
+    if Apiary.Adapters.Installer.enabled?(), do: [Apiary.Adapters.Installer], else: []
   end
 
   # The daily retention job, after the migrator like the lost-run check. Off in test,

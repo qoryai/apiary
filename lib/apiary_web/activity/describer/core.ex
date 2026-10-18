@@ -73,6 +73,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
   def label(:"dispatch.release"), do: gettext("Runs given back")
   def label(:"dispatch.prebuilt"), do: gettext("Images recorded")
+  def label(:"adapter.install"), do: gettext("Adapter installed")
+  def label(:"adapter.setup"), do: gettext("Adapter set-up started")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -96,9 +98,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
   # work items (a take in, its undo, a decline, a close and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the handover of a claimed
-  # run, its release, the image a prebuild built and the choosing of what a target's runs
-  # also read have labels yet, so the filter offers those alone, where the reader is shown
-  # the feature (the page asks it); the others' entries show as any change.
+  # run, its release, the image a prebuild built, the choosing of what a target's runs also
+  # read, the installing of an adapter and the start of its set-up have labels yet, so the
+  # filter offers those alone, where the reader is shown the feature (the page asks it);
+  # the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -115,7 +118,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"dispatch.handover",
           :"dispatch.release",
           :"dispatch.prebuilt",
-          :"target.set_further_repositories"
+          :"target.set_further_repositories",
+          :"adapter.install",
+          :"adapter.setup"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -265,11 +270,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"workspace.purge", _details, _actor),
     do: gettext("Purged a deleted workspace and everything in it")
 
+  # An adapter installed with Qory Apiary: the instance gives it its first code, and the
+  # first once it has none, and cancels the codes it no longer needs.
+  defp said(:"access_key.create_code", %{"installed" => true}, _actor),
+    do: gettext("Gave an installed adapter a new one-time code")
+
   defp said(:"access_key.create_code", _details, _actor),
     do: gettext("Made a command to connect a node")
 
+  defp said(:"access_key.cancel_code", _details, :instance),
+    do: gettext("Cancelled an adapter's code it no longer needs")
+
   defp said(:"access_key.cancel_code", _details, _actor),
     do: gettext("Cancelled a command to connect a node")
+
+  defp said(:"adapter.install", _details, _actor),
+    do: gettext("Added an adapter installed with Qory Apiary")
+
+  defp said(:"adapter.setup", _details, _actor), do: gettext("Started setting up an adapter")
 
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
 

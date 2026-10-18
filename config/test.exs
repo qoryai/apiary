@@ -115,6 +115,10 @@ config :apiary, Apiary.KeyCheck, enabled: false
 # of Apiary.Setup call it themselves.
 config :apiary, Apiary.Setup, enabled: false
 
+# The installer of the adapters installed with Qory Apiary would write outside any test's
+# sandbox; the tests of Apiary.Adapters.Installer call its pass themselves.
+config :apiary, Apiary.Adapters.Installer, enabled: false
+
 # Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
 # queue, peer or plugin starts.
 config :apiary, Oban, testing: :manual

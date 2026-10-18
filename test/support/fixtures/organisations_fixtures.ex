@@ -115,6 +115,15 @@ defmodule Apiary.OrganisationsFixtures do
     |> Organisations.load_scope()
   end
 
+  @doc """
+  The scope of the instance acting by itself in the instance's organisation
+  (`Apiary.Accounts.Scope.for_instance/2`): the installer's of the adapters installed with
+  Qory Apiary (`Apiary.Adapters.Installer`).
+  """
+  def instance_scope do
+    ensure_instance_organisation!() |> Scope.for_instance()
+  end
+
   @doc "A pending invitation into the scope's workspace, with the URL token its link carries."
   def invitation_fixture(%Scope{} = scope, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{"email" => AccountsFixtures.unique_user_email()})

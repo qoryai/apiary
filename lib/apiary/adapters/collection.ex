@@ -1,7 +1,7 @@
 defmodule Apiary.Adapters.Collection do
   # A collection an adapter's listing names through a connection (`Apiary.Adapters.Connection`):
   # a place at the source that items are listed from, such as a project or a board. The
-  # table and its rules are `20261017170300_keep_an_adapter_s_collections`'s.
+  # table and its rules are `20261017141000_keep_an_adapter_s_collections`'s.
   #
   # `external_ref` is the adapter's ref for it, which the core compares and stores and
   # never reads meaning into; `url`, `title` and the target (`target_system`,
