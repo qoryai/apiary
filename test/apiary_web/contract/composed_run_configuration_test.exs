@@ -462,6 +462,28 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
         refute Map.has_key?(Jason.decode!(reloaded.resp_body), "security_policy")
       end)
     end
+
+    test "never loosens a run given no policy at its attach that took one on a reload",
+         ctx do
+      recorded!(ctx, @shop)
+      {run_id, run_key} = explore!(ctx)
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      refute Map.has_key?(Jason.decode!(attached.resp_body), "security_policy")
+
+      # The policy made mid-run reaches the run on a reload.
+      policy = managed!(ctx)
+      reloaded = reload(ctx, run_id)
+      assert reloaded.status == 200
+
+      assert Jason.decode!(reloaded.resp_body)["security_policy"] ==
+               Jason.decode!(policy.document)["security_policy"]
+
+      # The policy no longer served, the run keeps it: not found, never the image alone.
+      without_security(fn ->
+        assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
+      end)
+    end
   end
 
   describe "a run answered as before" do

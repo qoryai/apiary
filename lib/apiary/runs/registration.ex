@@ -98,7 +98,8 @@ defmodule Apiary.Runs.Registration do
   the configuration in force now composed the same way, under the composed document's
   digest, so every reload names the image the run started in; a workspace that serves no
   configuration gives `{"version":1,"image":…}` to such a run that was given no policy at
-  its attach, and not found to every other. A policy that
+  its attach, while the workspace has never stored a run configuration, and not found to
+  every other. A policy that
   names an image since such a run's attach is composed without its `image`, beside the
   run's: the rest of the policy applies at once, and its image from the next attach.
 
@@ -922,8 +923,9 @@ defmodule Apiary.Runs.Registration do
   take the policy in force off a run that started under it: a policy removed mid-run
   never loosens a run already started, one given an image included. Only a run given an
   image where the workspace served no run configuration at its attach, whose attach
-  answer was `{"version":1,"image":…}`, is given that again there, since it started
-  under no policy of the workspace.
+  answer was `{"version":1,"image":…}`, is given that again there, and only while the
+  workspace has never stored a run configuration: such a run started under no policy of
+  the workspace and cannot have taken one on a reload since.
   `{:error, :workspace_not_served}` for a run through a gateway that may no longer serve
   the run's workspace (`Apiary.Runs.Sender.serves?/2`).
   `{:error, :unavailable}` when the configuration cannot be read.
@@ -967,12 +969,16 @@ defmodule Apiary.Runs.Registration do
     _exception -> {:error, :unavailable}
   end
 
-  # Whether the run was given no policy at its attach: its attach answer was a document
-  # composed from none, its image alone. Only such a run is reloaded from no policy; a
-  # run given a policy is reloaded with none, `not_found`, as any other, so a workspace
-  # that stops serving its policy mid-run never loosens it.
+  # Whether the run can never have been given a policy: its attach answer was a document
+  # composed from none, its image alone, and the workspace has never stored a run
+  # configuration since, so no reload can have given the run one either. Only such a run
+  # is reloaded from no policy; any other is reloaded with none, `not_found`, so a
+  # workspace that stops serving its policy mid-run never loosens a run, one that took
+  # the policy on a reload included.
   defp given_no_policy?(%Run{workspace_id: workspace_id, attach_answer_digest: digest}),
-    do: ComposedConfiguration.from_no_policy?(workspace_id, digest)
+    do:
+      ComposedConfiguration.from_no_policy?(workspace_id, digest) and
+        not Apiary.Policy.managed_workspace?(workspace_id)
 
   # A reload's bytes: the stored or composed document, with the run variables Qory set for
   # the run, as its attach was given them (`Apiary.Runs.Attach.answer_body/4`). The digest

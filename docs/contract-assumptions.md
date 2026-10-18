@@ -693,8 +693,10 @@ is composed without its `image` (The image, above), under a digest that maps bac
 policy's, so the run is not shown behind it. A reload on a workspace with no policy, or a
 policy removed mid-run, answers `404`, a run given an image included; only a run whose
 attach was answered `{"version":1,"image":"…"}`, its image where the workspace served no
-run configuration, is answered that again there. A policy removed mid-run never loosens a run that has
-already started, and the next run gets the new state when it registers. When the
+run configuration, is answered that again there, and only while the workspace has never
+stored a run configuration: once the workspace has a policy, a run may have taken it on a
+reload, so a reload that finds it no longer served answers `404` for that run too. A policy
+removed mid-run never loosens a run that has already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,
 any answer but `200` is a reload that failed: the policy in force stays, and it is tried
 again on the next answer.
