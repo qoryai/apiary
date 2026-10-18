@@ -69,7 +69,8 @@ defmodule Apiary.Environments do
   # `lock_record/2` before its run of the queue: `lost` when the prebuild's gateway never
   # attached it by its run key's `attach_by`, `timed_out` when it had neither an outcome
   # nor an exit by its backstop, with `now` and no reason. The last good build is left as
-  # it was, and nothing is queued.
+  # it was, and nothing is queued. A prebuild queued before the one that made the image
+  # records nothing (`newer_build?/2`).
   #
   # ## A run's image: `image_for/2`
   #

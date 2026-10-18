@@ -4,7 +4,8 @@ defmodule Apiary.Dispatches.RunEndTest do
   # lost-run check, at its gateway's `attach_by` or at its backstop. Each ends the run of
   # the queue and its dispatch once and frees the slot once; the first end decides the
   # cause, and the registered run still takes its starter's later outcome. Runs that were
-  # not handed over keep the lost-run check as it was.
+  # not handed over keep the lost-run check as it was. A prebuild lost after a newer
+  # prebuild's build was recorded records no failure.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -433,6 +434,101 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
       assert record!(ctx.record) == ctx.record
       assert_nothing_queued(ctx)
+    end
+
+    # A second prebuild of the collection for the pool, queued for `env-2` after the one
+    # handed over, claimed, said started and handed over: its registered run, and its
+    # attach.
+    defp newer!(ctx) do
+      {:ok, queued} =
+        Repo.transact(fn ->
+          Dispatches.queue_prebuild(ctx.collection, ctx.place.pool, "env-2")
+        end)
+
+      %{dispatch: dispatch} = dispatched!(ctx.place.key, 2)
+      assert dispatch.dispatch_run_id == queued.id
+
+      {:ok, %{run: run, run_key: run_key}} =
+        Dispatches.handover(ctx.place.key, dispatch.public_id, %{revision: 2, body: @body})
+
+      {gateway_key, _seed} = ctx.place.gateway_key
+      {:ok, body} = Attach.parse(attach_body(run_key))
+
+      %{
+        dispatch_run: queue_run!(queued),
+        dispatch: dispatch!(dispatch),
+        run: run,
+        attach: fn ->
+          Attach.attach(gateway_key, queued.run_id, body, %{instance_id: instance_id()})
+        end
+      }
+    end
+
+    defp prebuilt!(ctx, %{dispatch: dispatch, dispatch_run: dispatch_run}) do
+      assert :ok =
+               Dispatches.prebuilt(
+                 ctx.place.key,
+                 dispatch.public_id,
+                 prebuilt_meta(dispatch_run, commit: "b2")
+               )
+
+      record!(ctx.record)
+    end
+
+    test "lost at its attach_by after a newer prebuild's build was recorded records no failure, and ends lost (V-804)",
+         ctx do
+      newer = newer!(ctx)
+      recorded = prebuilt!(ctx, newer)
+      assert %Record{commit: "b2", failure_cause: nil} = recorded
+
+      assert [%Run{state: "lost"}] =
+               Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
+
+      assert_ended(ctx.handed, :lost)
+      assert record!(ctx.record) == recorded
+    end
+
+    test "lost at its attach_by before a newer prebuild's build records the failure, which the build then clears (V-804)",
+         ctx do
+      # The newer one attached, so its attach_by, of the same second, does not lose it.
+      newer = newer!(ctx)
+      assert {:ok, %{run: _newer_run}} = newer.attach.()
+      after_it = DateTime.add(ctx.handed.run.attach_by, 1, :microsecond)
+
+      # The newer one, silent since its attach, may read as lost by the liveness rules; its
+      # run of the queue waits for its backstop.
+      Liveness.check(after_it)
+      assert_ended(ctx.handed, :lost)
+      assert_live(newer)
+      assert %Record{failure_cause: :lost, failed_at: ^after_it} = record!(ctx.record)
+
+      assert %Record{commit: "b2", failure_cause: nil, failed_at: nil} = prebuilt!(ctx, newer)
+    end
+
+    test "past its backstop after a newer prebuild's build was recorded records no failure, and ends lost (V-804)",
+         ctx do
+      assert {:ok, %{run: run}} = ctx.attach.()
+      newer = newer!(ctx)
+      recorded = prebuilt!(ctx, newer)
+
+      Liveness.check(DateTime.add(run.backstop_at, 1, :microsecond))
+      assert_ended(ctx.handed, :lost)
+      assert record!(ctx.record) == recorded
+    end
+
+    test "past its backstop before a newer prebuild's build records the failure, which the build then clears (V-804)",
+         ctx do
+      assert {:ok, %{run: run}} = ctx.attach.()
+      newer = newer!(ctx)
+      assert {:ok, %{run: _newer_run}} = newer.attach.()
+      after_it = DateTime.add(run.backstop_at, 1, :microsecond)
+
+      Liveness.check(after_it)
+      assert_ended(ctx.handed, :lost)
+      assert_live(newer)
+      assert %Record{failure_cause: :timed_out, failed_at: ^after_it} = record!(ctx.record)
+
+      assert %Record{commit: "b2", failure_cause: nil, failed_at: nil} = prebuilt!(ctx, newer)
     end
 
     test "a record that is not there is not made", ctx do
