@@ -211,7 +211,7 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
                WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
     end
 
-    test "for a ticket closed at its source, with no target, or an owner not in the workspace",
+    test "for a ticket closed at its source, with no target or one a run's variables refuse, or an owner not in the workspace",
          ctx do
       declined!(ctx)
       %{user: stranger} = sign_up_fixture()
@@ -224,6 +224,16 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
       |> Repo.update!()
 
       assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) == {:error, :no_target}
+
+      for {system, path} <- [{"forge.example.com.", "acme/shop"}, {"forge.example.com", "acme"}] do
+        Repo.get!(Collection, ctx.ticket.collection_id)
+        |> Ecto.Changeset.change(target_system: system, target_path: path)
+        |> Repo.update!()
+
+        assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) ==
+                 {:error, :target_invalid},
+               inspect({system, path})
+      end
 
       ctx.ticket |> Ecto.Changeset.change(state: :closed) |> Repo.update!()
       assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) == {:error, :ticket_closed}

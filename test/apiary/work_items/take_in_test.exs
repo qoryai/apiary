@@ -232,6 +232,27 @@ defmodule Apiary.WorkItems.TakeInTest do
       no_work_item!()
     end
 
+    test "with a target a run's variables refuse", ctx do
+      for {system, path} <- [
+            {"forge.example.com.", "acme/shop"},
+            {"forge.example.com", "acme"},
+            {"forge.example.com", "acme/shop/basket"},
+            {"forge.example.com", "acme/.git"},
+            {"forge.example.com", "acme/shop basket"}
+          ] do
+        ticket =
+          backlog_ticket_fixture(ctx.scope,
+            connection: ctx.connection,
+            collection: %{target_system: system, target_path: path}
+          )
+
+        assert WorkItems.take_in(ctx.scope, ticket.public_id) == {:error, :target_invalid},
+               inspect({system, path})
+      end
+
+      no_work_item!()
+    end
+
     test "for an owner who does not act in the workspace", ctx do
       %{user: stranger} = sign_up_fixture()
 

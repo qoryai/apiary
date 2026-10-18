@@ -21,7 +21,8 @@ defmodule Apiary.WorkItems.Moves do
   # `:not_found`. A collection assigned there that is not linked, its Backlog switch off or
   # with no items, it or its adapter (`Apiary.Adapters.Collection.linked?/1`), is
   # `:not_linked`. A ticket closed at its source is `:ticket_closed`. The work item's
-  # target is the ticket's target, else its collection's; with neither, `:no_target`. Its
+  # target is the ticket's target, else its collection's; with neither, `:no_target`; one
+  # a run's variables refuse (`Apiary.Runs.RunVariables`), `:target_invalid`. Its
   # owner is the person the page names, the one taking it in unless named, who must act
   # in the workspace (`Apiary.Organisations.list_workspace_members/1`), else `:owner`.
   # Its first instruction is the one the page gives, empty for none, within the bounds of
@@ -108,6 +109,7 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.RunVariables
   alias Apiary.Sources.{Item, Topic}
   alias Apiary.WorkItems.{Number, State, WorkItem, WorkItemEvent}
 
@@ -118,6 +120,7 @@ defmodule Apiary.WorkItems.Moves do
           | :not_linked
           | :ticket_closed
           | :no_target
+          | :target_invalid
           | :owner
           | :not_taken
           | {:taken, WorkItem.t()}
@@ -630,9 +633,15 @@ defmodule Apiary.WorkItems.Moves do
     with :ok <- check_target(target), do: {:ok, target}
   end
 
-  # Whether a run can be given the target. A later change also asks the run's variables of it.
-  defp check_target(%{system: system, path: path}) when is_binary(system) and is_binary(path),
-    do: :ok
+  # Whether a run can be given the target: one there is, which its run's variables hold
+  # (`Apiary.Runs.RunVariables.for_target/2`, as a handover asks it).
+  defp check_target(%{system: system, path: path} = target)
+       when is_binary(system) and is_binary(path) do
+    case RunVariables.for_target(target) do
+      {:ok, _variables} -> :ok
+      {:error, _invalid} -> {:error, :target_invalid}
+    end
+  end
 
   defp check_target(_none), do: {:error, :no_target}
 

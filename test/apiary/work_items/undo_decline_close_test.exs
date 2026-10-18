@@ -15,7 +15,7 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
   alias Apiary.{Dispatches, Repo, WorkItems}
   alias Apiary.Adapters.Feed
   alias Apiary.Audit.Entry
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
@@ -81,6 +81,31 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
       pool = pool_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       {:ok, %{dispatch: _dispatch}} = Dispatches.claim(key, Dispatches.now())
+
+      assert WorkItems.undo(ctx.scope, ctx.work_item) == {:error, :claimed}
+      assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
+      assert statuses(ctx.ticket) == ["taken_in"]
+    end
+
+    test "once a run of its take in was handed over, refused, after that run ended too", ctx do
+      pool = pool_fixture(ctx.scope)
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
+      at = DateTime.add(dispatch.claimed_at, 1, :second)
+      ended_at = DateTime.add(at, 1, :second)
+
+      # As the run's end after its handover leaves them.
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [
+          dispatched_at: at,
+          handed_over_at: at,
+          ended_at: ended_at,
+          end_cause: :run_ended,
+          slot_freed_at: ended_at
+        ]
+      )
+
+      end_runs!(ctx.work_item)
 
       assert WorkItems.undo(ctx.scope, ctx.work_item) == {:error, :claimed}
       assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
