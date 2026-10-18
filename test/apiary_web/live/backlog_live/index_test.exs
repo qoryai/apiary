@@ -220,6 +220,19 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
                "1 repository assigned to #{ctx.scope.workspace.name}"
     end
 
+    test "counts a repository with its Backlog off; not another workspace's", ctx do
+      ticket(ctx.shop)
+      ctx.api |> Ecto.Changeset.change(backlog: false) |> Repo.update!()
+      platform = workspace_fixture(ctx.scope.organisation, "Platform")
+      there = workspace_scope(ctx.scope.user, platform)
+      source_collection_fixture(there, ctx.connection, %{title: "acme/web"})
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+
+      assert words(view, "#page-header-description") ==
+               "Tickets from the 2 repositories assigned to #{ctx.scope.workspace.name}. " <>
+                 "Take one in to make it a work item."
+    end
+
     test "in the source's words for its items and its collections", ctx do
       {1, _} =
         Repo.update_all(from(n in Node, where: n.id == ^ctx.adapter.id),

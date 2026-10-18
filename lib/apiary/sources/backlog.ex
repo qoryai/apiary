@@ -103,11 +103,11 @@ defmodule Apiary.Sources.Backlog do
 
   @typedoc """
   A ticket's work item, as a row shows it: its number in the workspace, its state, its
-  page in the workspace, and, when declined, who declined it, as `ApiaryWeb.People.short/1`
-  names an account: the local part of the email address of an account in use, priya of
-  priya@example.com, "Former member" for a deleted one, nil where no person declined it.
-  `declined_by` is nil for a work item that is not declined. One of another workspace has
-  its state alone.
+  page in the workspace, and, when declined, who declined it, as
+  `ApiaryWeb.People.short/1` names an account: the local part of the email address of an
+  account in use, priya of priya@example.com, "Former member" for a deleted one, nil
+  where no person declined it. `declined_by` is nil for a work item that is not
+  declined. One of another workspace has its state alone.
   """
   @type work_item :: %{
           number: pos_integer | nil,
@@ -204,6 +204,7 @@ defmodule Apiary.Sources.Backlog do
   @type facts :: %{
           connected?: boolean,
           integrations: [integration],
+          assigned_collections: non_neg_integer,
           linked_collections: non_neg_integer,
           listed?: boolean,
           open_tickets: non_neg_integer
@@ -1019,12 +1020,14 @@ defmodule Apiary.Sources.Backlog do
   # the page's title, speak from, to a person who may read its work items: whether the
   # organisation has a connection that is connected (`connected?`); the integrations of
   # those connections, each by its adapter's name and public id, by name
-  # (`integrations`, `t:integration/0`); how many live collections of such a connection
-  # are linked to the workspace, with their Backlog on and with items
+  # (`integrations`, `t:integration/0`); how many live collections of such a connection,
+  # through an adapter with items, are assigned to the workspace, whatever their Backlog
+  # switch and their items (`assigned_collections`, the count the line under the title
+  # says), and how many of them are linked, with their Backlog on and with items
   # (`linked_collections`); whether an adapter's listing has named such a connection
   # (`listed?`, its `listed_at`); and how many tickets the Backlog holds open at their
   # source (`open_tickets`), whatever their work item. Nothing connected, no integration,
-  # nothing linked, nothing listed and none open to anyone else.
+  # nothing assigned, nothing linked, nothing listed and none open to anyone else.
   @spec backlog_facts(Scope.t()) :: facts
   def backlog_facts(%Scope{} = scope) do
     case workspace(scope) do
@@ -1043,7 +1046,8 @@ defmodule Apiary.Sources.Backlog do
               select: {%{name: n.name, id: n.public_id}, count(k.listed_at)}
           )
 
-        linked =
+        # The assigned collections, and among them the linked ones, in one count.
+        {assigned, linked} =
           Repo.one(
             from c in Collection,
               join: k in Connection,
@@ -1052,9 +1056,9 @@ defmodule Apiary.Sources.Backlog do
               on: n.id == c.adapter_id,
               where:
                 c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
-                  c.backlog and c.items and n.items and is_nil(c.ended_at) and
-                  k.state == :connected and is_nil(k.ended_at),
-              select: count(c.id)
+                  n.items and is_nil(c.ended_at) and k.state == :connected and
+                  is_nil(k.ended_at),
+              select: {count(c.id), filter(count(c.id), c.backlog and c.items)}
           )
 
         open =
@@ -1067,6 +1071,7 @@ defmodule Apiary.Sources.Backlog do
         %{
           connected?: connections != [],
           integrations: Enum.map(connections, &elem(&1, 0)),
+          assigned_collections: assigned,
           linked_collections: linked,
           listed?: Enum.any?(connections, fn {_integration, listed} -> listed > 0 end),
           open_tickets: open
@@ -1076,6 +1081,7 @@ defmodule Apiary.Sources.Backlog do
         %{
           connected?: false,
           integrations: [],
+          assigned_collections: 0,
           linked_collections: 0,
           listed?: false,
           open_tickets: 0

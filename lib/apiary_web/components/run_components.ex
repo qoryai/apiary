@@ -1145,7 +1145,8 @@ defmodule ApiaryWeb.RunComponents do
   `always_find` (`narrow` is its event), the options as a form of checkboxes or radios
   (and dates), which sends `event` on a change with the filter's name in `_filter`, and
   "Show more" (`more`, its event, with the name as `name`) while the values outnumber the
-  options. The ids start with `id`: `<id>-form`, `<id>-narrow`, `<id>-search`, `<id>-more`.
+  options. The ids start with `id`: `<id>-form`, `<id>-narrow`, `<id>-search`,
+  `<id>-more`.
 
   `tile` is an optional mark before each option's words where the options have no
   `groups`, such as a filer's tile on the Backlog: it is given the option, `{label, value,

@@ -3,8 +3,9 @@ defmodule ApiaryWeb.BacklogLive.Index do
   #
   # **The head.** Under the title, while the page lists tickets, a line says where they
   # come from: "Tickets from the 41 repositories assigned to Main. Take one in to make it
-  # a work item." The count and what follows it link to the integration's page in
-  # Organisation settings › Integrations, by its adapter's public id, when one
+  # a work item." The count is of the live repositories assigned to the workspace,
+  # whatever their Backlog switch. It and what follows it link to the integration's page
+  # in Organisation settings › Integrations, by its adapter's public id, when one
   # integration connects the organisation (`Apiary.Sources.Backlog.backlog_facts/1`);
   # with several, the words are not a link.
   #
@@ -606,7 +607,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   # "41 repositories assigned to Main", in the source's words for its collections.
   defp assigned_words(scope, facts, collection_noun) do
-    n = facts.linked_collections
+    n = facts.assigned_collections
 
     ngettext(
       "%{number} %{collection} assigned to %{workspace}",

@@ -257,7 +257,8 @@ defmodule Apiary.Sources.BacklogTest do
       assert row.updated_at == ctx.declined.source_updated_at
       assert number == declined_item.number
       assert declined_path == path <> Integer.to_string(number)
-      # Who declined it by the local part of their address, as the policy pages name people.
+      # Who declined it by the local part of their address, as the policy pages name
+      # people.
       [local, "example.com"] = String.split(scope.user.email, "@")
       assert row.work_item.declined_by == local
       refute Map.has_key?(row, :body)
@@ -1223,6 +1224,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(ctx.scope) == %{
                connected?: false,
                integrations: [],
+               assigned_collections: 0,
                linked_collections: 0,
                listed?: false,
                open_tickets: 0
@@ -1240,7 +1242,9 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert ids(list(ctx.scope, view: :all)) == [kept.public_id]
       assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
-      assert Backlog.backlog_facts(ctx.scope).linked_collections == 1
+
+      assert %{assigned_collections: 1, linked_collections: 1} =
+               Backlog.backlog_facts(ctx.scope)
     end
 
     test "the tickets of a collection with its Backlog off, in every read; its work item stays",
@@ -1264,6 +1268,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert %{
                connected?: true,
                integrations: [_integration],
+               assigned_collections: 2,
                linked_collections: 1,
                listed?: false,
                open_tickets: 1
@@ -1311,6 +1316,7 @@ defmodule Apiary.Sources.BacklogTest do
       no_facts = %{
         connected?: false,
         integrations: [],
+        assigned_collections: 0,
         linked_collections: 0,
         listed?: false,
         open_tickets: 0
@@ -1504,6 +1510,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(scope) == %{
                connected?: false,
                integrations: [],
+               assigned_collections: 0,
                linked_collections: 0,
                listed?: false,
                open_tickets: 0
@@ -1516,6 +1523,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(scope) == %{
                connected?: true,
                integrations: integrations,
+               assigned_collections: 0,
                linked_collections: 0,
                listed?: false,
                open_tickets: 0
@@ -1528,6 +1536,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(scope) == %{
                connected?: true,
                integrations: integrations,
+               assigned_collections: 1,
                linked_collections: 1,
                listed?: true,
                open_tickets: 0
@@ -1539,10 +1548,44 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(scope) == %{
                connected?: true,
                integrations: integrations,
+               assigned_collections: 1,
                linked_collections: 1,
                listed?: true,
                open_tickets: 1
              }
+    end
+
+    test "count the live collections assigned to the workspace, whatever their Backlog",
+         ctx do
+      # Assigned and linked; assigned with its Backlog off; assigned without items.
+      off = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/api"})
+      off |> Ecto.Changeset.change(backlog: false) |> Repo.update!()
+      bare = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/web"})
+      bare |> Ecto.Changeset.change(items: false) |> Repo.update!()
+
+      # Not counted: an ended one, an unassigned one, another workspace's, one through an
+      # adapter without items, and another organisation's.
+      end_collection(source_collection_fixture(ctx.scope, ctx.connection))
+      source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+      workspace = workspace_fixture(ctx.scope.organisation, "Platform")
+      there = workspace_scope(ctx.scope.user, workspace)
+      source_collection_fixture(there, ctx.connection)
+      plain = ticket_connection_fixture(ctx.scope)
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^plain.adapter_id), set: [items: false])
+
+      source_collection_fixture(ctx.scope, plain)
+      %{scope: elsewhere} = sign_up_fixture()
+      source_collection_fixture(elsewhere, ticket_connection_fixture(elsewhere))
+
+      assert %{assigned_collections: 3, linked_collections: 1} =
+               Backlog.backlog_facts(ctx.scope)
+
+      assert %{assigned_collections: 1, linked_collections: 1} = Backlog.backlog_facts(there)
+
+      assert %{assigned_collections: 1, linked_collections: 1} =
+               Backlog.backlog_facts(elsewhere)
     end
 
     test "name each integration the organisation is connected through, by name", ctx do
