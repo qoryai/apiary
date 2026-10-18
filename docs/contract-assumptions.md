@@ -381,18 +381,20 @@ The handover registers the run. The starter first says it started the job for th
 dispatch (`dispatched.schema.json`), then asks for the handover, and Qory Apiary registers
 the run in the handover's transaction, with the run of the queue and its dispatch held,
 through the gateway the pool's choice resolves to: the run's `run_id` is the one the run of
-the queue was given, and so is its instance id; its labels, what it is about and its run
-variables come from the work item's target, or the prebuild's collection's, never from the
-request, whose body is `version` and `time` alone; its run key names the gateway and the
-pool, with an attach window of 600 seconds, and is given once, in the signed `200`, with
-`Cache-Control: no-store`. The refusals come in the contract's order: `403` `forbidden` for
+the queue was given, and so is its instance id; its labels and its run variables come from
+the target, the work item's or the prebuild's collection's, and what it is about from the
+step and the work item, never from the request, whose body is `version` and `time` alone;
+its run key names the gateway and the pool, with an attach window of 600 seconds, and is
+given once, in the signed `200`, with `Cache-Control: no-store`. The refusals come in the contract's order: `403` `forbidden` for
 an unknown dispatch, another pool's, or a key the action is refused to, one answer; `404`
 `not_found` for a prebuild's dispatch at revision 1; `410` `gone` for a dispatch that ended;
 `409` `handed_over`, `lease_expired`, `not_dispatched` and `no_gateway`; and `503`
 `unavailable` last, after which nothing was written. A lease that lapsed unswept is freed
-first, and that is committed, so the run waits in its queue again. When what the run is made
-from can no longer be formed, Qory Apiary ends the run of the queue and its dispatch in the
-handover's transaction and answers `410` `gone`, so the starter stops the job it started: a
+first, and that is committed: the run waits in its queue again, or a prebuild ends
+`superseded` while another prebuild of its collection and pool waits, and is answered `410`
+`gone`. When what the run is made from can no longer be formed, Qory Apiary ends the run of
+the queue and its dispatch in the handover's transaction and answers `410` `gone`, so the
+starter stops the job it started: a
 prebuild's collection ended, moved to another workspace, unassigned or left without a target
 (`collection_ended`), run variables that break their rules for the target
 (`variables_invalid`), a work item whose ticket is no longer kept (`ticket_gone`), or an
