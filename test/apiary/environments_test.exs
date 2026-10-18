@@ -6,8 +6,9 @@ defmodule Apiary.EnvironmentsTest do
   # organisation, the purges of a workspace and of an organisation, the trigger that
   # queues a prebuild per node pool from a listing, an assign and a new pool, keyed on the
   # target and the `environment_ref`, one waiting per collection and pool, a build
-  # recorded with the target it was built for and when it was queued, whether a prebuild
-  # took its ref before the recorded build took its, and a run's image: which record gives it.
+  # recorded with the target it was built for and when its run took its ref, whether a
+  # prebuild took its ref before the recorded build took its, and a run's image: which
+  # record gives it.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
