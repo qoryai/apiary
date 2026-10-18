@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.AdapterLive.ShowTest do
   # An integration's page in Organisation settings › Integrations
   # (`ApiaryWeb.AdapterLive.Show`): where the organisation's connection to it stands, not
-  # installed, pending, its pass expired, or installed; while not installed, the install
+  # installed, pending, its pass expired, ended on the integration, or installed; while
+  # not installed, the install
   # block to an owner or an admin; installed, the wait for the first listing and, a minute
   # on, the line to install again; the return's flash; behind the feature, for members.
   use ApiaryWeb.ConnCase, async: true
@@ -142,6 +143,60 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     {:ok, lv, _html} = live(conn, page(scope, adapter))
     assert words(lv, "#integration-status") == "Not installed."
+  end
+
+  test "ended on the integration: when, and that its tickets left every backlog", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+    ended_at = ~U[2026-03-14 09:00:00.000000Z]
+    set(connection, state: :ended, ended_at: ended_at, ended_reason: :adapter_reported)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#integration-status") ==
+             "Not installed. The installation ended on #{ApiaryWeb.Format.day(ended_at)}, when Acme tracker reported it gone. The tickets Acme tracker brought in left every backlog; work items already taken in stay."
+
+    assert has_element?(lv, "#integration-install")
+    refute has_element?(lv, "#collections")
+  end
+
+  test "ended on the integration, in the adapter's words for its items, or with none", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter
+  } do
+    adapter = describe_source(adapter, "example-tracker.json")
+    {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+    ended_at = DateTime.utc_now()
+    set(connection, state: :ended, ended_at: ended_at, ended_reason: :adapter_reported)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#integration-status") =~
+             "The issues Acme tracker brought in left every backlog;"
+
+    describe_source(adapter, "example-projects.json")
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#integration-status") ==
+             "Not installed. The installation ended on #{ApiaryWeb.Format.day(ended_at)}, when Acme tracker reported it gone."
+  end
+
+  test "an end for another reason, or a connection after it, says no end", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    set(connection, state: :ended, ended_at: DateTime.utc_now(), ended_reason: :replaced)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert words(lv, "#integration-status") == "Not installed."
+
+    set(connection, ended_reason: :adapter_reported)
+    connection_fixture(scope, adapter, :pending)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert words(lv, "#integration-status") =~ "started an install today"
   end
 
   test "installed and not yet listed: who installed it today, and the wait for its collections",

@@ -11,6 +11,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   #
   #   * not installed: no connection, a pending one whose latest pass came back refused
   #     or cancelled, which the return's flash says why, or one started before today;
+  #   * ended: with no connection, the latest one ended because the integration reported
+  #     the installation gone: on which day, and, for an adapter with items, that the
+  #     items it brought in left every backlog while the work items taken in stay, in the
+  #     adapter's words for its items;
   #   * pending, started today, its pass still good: who started the install and when,
   #     and that it may be finished on the integration or started again; with the pass
   #     expired, that it expired;
@@ -35,7 +39,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   alias Apiary.{Access, Adapters}
   alias Apiary.Adapters.{Collections, Connection, Connections}
-  alias ApiaryWeb.{IntegrationComponents, People, SettingsComponents}
+  alias ApiaryWeb.{IntegrationComponents, People, SettingsComponents, SourceComponents}
 
   # How long the page waits for the first listing before it says to install again.
   @late_after :timer.minutes(1)
@@ -66,14 +70,15 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp load(socket) do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     connection = Map.get(Connections.live_by_adapter(scope), adapter.id)
-    state = state(connection)
+    ended = if is_nil(connection), do: Connections.latest_ended(scope, adapter)
+    state = if reported_gone?(ended), do: :ended, else: state(connection)
 
     person =
       connection &&
         People.member(People.accounts([connection.created_by_id]), connection.created_by_id)
 
     socket
-    |> assign(connection: connection, state: state, person: person)
+    |> assign(connection: connection, ended: ended, state: state, person: person)
     |> assign(:ready, IntegrationComponents.ready?(adapter))
     |> wait()
   end
@@ -90,6 +95,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   defp wait(socket), do: socket
+
+  # The organisation's latest connection to the adapter ended because the adapter said
+  # the installation was gone.
+  defp reported_gone?(%Connection{ended_reason: :adapter_reported}), do: true
+  defp reported_gone?(_ended), do: false
 
   defp state(nil), do: :not_installed
 
@@ -114,7 +124,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   def handle_event("install", _params, socket) do
     %{connects: connects, ready: ready, state: state, late: late} = socket.assigns
 
-    if connects and ready and (state in [:not_installed, :pending, :expired] or late),
+    if connects and ready and (state in [:not_installed, :pending, :expired, :ended] or late),
       do: {:noreply, assign(socket, :sending, true)},
       else: {:noreply, socket}
   end
@@ -172,7 +182,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         </:subtitle>
 
         <IntegrationComponents.install_block
-          :if={@connects && @state in [:not_installed, :pending, :expired]}
+          :if={@connects && @state in [:not_installed, :pending, :expired, :ended]}
           id="integration-install"
           adapter={@adapter}
           organisation={@current_scope.organisation}
@@ -248,6 +258,27 @@ defmodule ApiaryWeb.AdapterLive.Show do
       person: assigns.person,
       time: Format.time(assigns.connection.updated_at)
     )
+  end
+
+  defp status(%{state: :ended, ended: ended, adapter: adapter}) do
+    gone =
+      gettext(
+        "Not installed. The installation ended on %{date}, when %{integration} reported it gone.",
+        date: Format.day(ended.ended_at),
+        integration: adapter.name
+      )
+
+    if Adapters.items?(adapter) do
+      gone <>
+        " " <>
+        gettext(
+          "The %{items} %{integration} brought in left every backlog; work items already taken in stay.",
+          items: SourceComponents.items(Adapters.item_noun(adapter)),
+          integration: adapter.name
+        )
+    else
+      gone
+    end
   end
 
   defp status(%{state: :not_installed}), do: gettext("Not installed.")
