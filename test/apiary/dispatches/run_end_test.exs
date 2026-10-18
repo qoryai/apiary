@@ -856,8 +856,9 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert run!(handed.run) == folded
       assert_live(handed)
 
-      # The end the projection writes next is the exit's, and frees the slot once.
-      assert [_workspace_id] = RunEnd.run_ended(folded)
+      # The end the projection writes next is the exit's, and frees the slot once; the run,
+      # settled by its exit, has what it gave stored, and its work item is told.
+      assert [_workspace_id, {:work_item, _, _}] = RunEnd.run_ended(folded)
       assert_ended(handed, :run_ended)
       freed = dispatch!(handed.dispatch).slot_freed_at
 

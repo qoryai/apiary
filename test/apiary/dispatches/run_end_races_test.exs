@@ -13,7 +13,10 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   # is freed once, by the first end, and none of them deadlocks. For a prebuild handed
   # over, the lost-run check holds its environment record before the run of the queue, as
   # a release and a trigger of its collection hold it: so the check takes turns with them
-  # at the record, the record keeps the end that decided, and none deadlocks.
+  # at the record, the record keeps the end that decided, and none deadlocks. What a run
+  # gave is stored by its end or by a settle (`Apiary.Dispatches.Settle`), which locks the
+  # run of the queue alone: it takes turns with an outcome, a projection and the lost-run
+  # check there, and what is stored is the same whichever comes first.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -21,16 +24,18 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
   import Apiary.Races
+  import Apiary.RunEventsFixtures, only: [event_fixture: 4]
+  import Apiary.WorkItemsFixtures, only: [result_event!: 3, understood_result: 0]
 
   alias Apiary.{Dispatches, Edition, Environments, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Audit.Entry
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Settle, Slots}
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.{Liveness, Run}
+  alias Apiary.Runs.{Liveness, Projector, Run}
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
@@ -491,6 +496,106 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
             {:ok, Dispatches.end_waiting_prebuilds([handed.collection.id], Dispatches.now())}
           end)
       end
+    end
+  end
+
+  describe "what a run gave, settled as it ends" do
+    # The settle locks the run of the queue first and nothing after it, so it takes turns
+    # with an end there: the end stores what the run gave when it is decided, a settle
+    # after it finds it stored and writes nothing, and none deadlocks.
+    defp stored(handed) do
+      %DispatchRun{result_outcome: outcome, result: result} =
+        Repo.get!(DispatchRun, handed.dispatch_run.id)
+
+      {outcome, result}
+    end
+
+    defp result!(handed, sequence) do
+      result_event!(handed.run, sequence, %{
+        "is_error" => false,
+        "result" => Jason.encode!(understood_result())
+      })
+    end
+
+    test "a settle and an outcome at once, its result folded: the outcome's end stores it",
+         ctx do
+      for _round <- 1..4 do
+        handed = handed_over!(ctx)
+        result!(handed, 8)
+        {:ok, _run} = Projector.project(handed.run)
+
+        [settled, outcome] =
+          together([
+            fn -> Settle.settle(handed.dispatch_run.id) end,
+            fn -> give_outcome(ctx.key, handed.run, "succeeded") end
+          ])
+
+        assert settled == []
+        assert {:ok, %{repeated: false}} = outcome
+        assert {:run_ended, _run} = ended!(ctx, handed)
+        assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
+      end
+    end
+
+    test "a projection of the result and the exit, and an outcome at once: one end, stored",
+         ctx do
+      for _round <- 1..4 do
+        handed = handed_over!(ctx)
+        result!(handed, 8)
+
+        event_fixture(handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+
+        [projected, outcome] =
+          together([
+            fn -> Projector.project(handed.run) end,
+            fn -> give_outcome(ctx.key, handed.run, "succeeded") end
+          ])
+
+        assert {:ok, %Run{}} = projected
+        assert {:ok, %{repeated: false}} = outcome
+        assert {:run_ended, _run} = ended!(ctx, handed)
+        assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
+      end
+    end
+
+    test "the lost-run check ending a run whose exit came, a settle and a sweep at once",
+         ctx do
+      for _round <- 1..4 do
+        handed = handed_over!(ctx)
+
+        # The projection folded the exit and stopped before its end.
+        Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+          set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+        )
+
+        now = Dispatches.now()
+
+        together([
+          fn -> RunEnd.lose(now) end,
+          fn -> Settle.settle(handed.dispatch_run.id) end,
+          fn -> Settle.sweep(now) end
+        ])
+
+        assert {:run_ended, _run} = ended!(ctx, handed)
+        assert stored(handed) == {:none, nil}
+      end
+    end
+
+    test "the outcome first: a settle waits on the run of the queue, and finds it stored",
+         ctx do
+      handed = handed_over!(ctx)
+      result!(handed, 8)
+      {:ok, _run} = Projector.project(handed.run)
+
+      {first, first_pid} = hold(fn -> give_outcome(ctx.key, handed.run, "succeeded") end)
+      assert {:ok, %{repeated: false}} = first.result
+
+      second = start(fn -> Settle.settle(handed.dispatch_run.id) end)
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == []
+      assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
     end
   end
 

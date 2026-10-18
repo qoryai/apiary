@@ -62,6 +62,9 @@ defmodule Apiary.Runs.Projector do
 
   @pass_size 1000
   @heartbeat "dev.qory.run.heartbeat"
+  # The events whose fold may decide what a run of a workspace's queue gave: its exit and
+  # its result.
+  @settling ["dev.qory.run.exited", "dev.qory.session.result"]
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,
@@ -76,6 +79,7 @@ defmodule Apiary.Runs.Projector do
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
         end_handed_over(run)
+        settle_dispatched(run, first, last)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
 
@@ -445,6 +449,31 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp end_handed_over(_run), do: :ok
+
+  # A run a workspace's queue handed over whose passes folded an exit or a result event
+  # has what it gave stored on the queue's run, once its passes and its end committed, in
+  # a separate transaction (`Apiary.Dispatches.Settle.settle/1`): a result that came
+  # after its outcome, or after it settled, counts so. The work item is told. A failure is
+  # logged, and the sweep of the lost-run check settles it at its next tick, once the run
+  # is settled.
+  defp settle_dispatched(%Run{id: id, dispatch_run_id: dispatch_run_id} = run, first, last)
+       when is_binary(dispatch_run_id) do
+    settling? =
+      Repo.exists?(
+        from e in Event,
+          where: e.run_id == ^id and e.sequence >= ^first and e.sequence <= ^last,
+          where: e.type in ^@settling
+      )
+
+    if settling?,
+      do: dispatch_run_id |> Apiary.Dispatches.Settle.settle() |> Apiary.Dispatches.broadcast()
+
+    :ok
+  rescue
+    error -> log_failure(run, {:settle, error.__struct__})
+  end
+
+  defp settle_dispatched(_run, _first, _last), do: :ok
 
   defp log_touch_failure(%Run{id: id}, what) do
     Logger.error("key heartbeat not recorded run=#{id} error=#{inspect(what)}")
