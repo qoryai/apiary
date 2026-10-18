@@ -47,9 +47,9 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   use ApiaryWeb.Features, :factory
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.{Dispatches, WorkItems}
+  alias Apiary.Dispatches
   alias Apiary.Dispatches.Wire
-  alias ApiaryWeb.Contract.AdapterRequest
+  alias ApiaryWeb.Contract.{AdapterRequest, DispatchAnswer}
 
   @hold 25_000
   @poll 1_000
@@ -187,10 +187,10 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
             {"dispatch_id", dispatch.public_id},
             {"run_id", run.run_id},
             {"pool_id", pool.public_id},
-            {"lease_until", time(dispatch.lease_until)},
+            {"lease_until", DispatchAnswer.time(dispatch.lease_until)},
             {"step", run.step},
-            {"access", access(run.step)}
-          ] ++ what_for(claimed)
+            {"access", DispatchAnswer.access(run.step)}
+          ] ++ DispatchAnswer.what_for(claimed)
         )
       )
 
@@ -198,31 +198,6 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
     |> put_resp_content_type("application/json")
     |> send_resp(200, body)
   end
-
-  # The target and the work item of an explore run; a prebuild's collection's target,
-  # with no work item.
-  defp what_for(%{work_item: nil, collection: collection}),
-    do: [{"target", target(collection.target_system, collection.target_path)}]
-
-  defp what_for(%{work_item: work_item}) do
-    [
-      {"target", target(work_item.target_system, work_item.target_path)},
-      {"work_item",
-       Jason.OrderedObject.new([
-         {"id", work_item.public_id},
-         {"url", WorkItems.stable_url(work_item)},
-         {"title", work_item.title}
-       ])}
-    ]
-  end
-
-  defp target(system, path), do: Jason.OrderedObject.new([{"system", system}, {"path", path}])
-
-  # What a run of a step may do on its target: an explore run and a prebuild read.
-  defp access("explore"), do: "read"
-  defp access("prebuild"), do: "read"
-
-  defp time(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
   defp refuse(conn, status, code), do: conn |> put_status(status) |> json(%{error: code})
 end

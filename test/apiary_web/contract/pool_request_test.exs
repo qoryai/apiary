@@ -4,9 +4,10 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   # pool's access key, the refusals in their order, the time's window, the replay rule,
   # every other kind of key refused as an unknown key is, the answers signed but a 401, and
   # the routes where the feature is off. A claim accepted, with an empty queue and no
-  # wait, is answered `204`, signed; the other actions are not served yet, and an accepted
-  # request of one is answered `404` `not_found`, signed. Not async: the features are the
-  # whole node's.
+  # wait, is answered `204`, signed; a `dispatched` or a handover accepted, of a dispatch
+  # no pool has, `403` `forbidden`, signed; a release is not served yet, and an accepted
+  # one is answered `404` `not_found`, signed. Not async: the features are the whole
+  # node's.
   use ApiaryWeb.ConnCase, async: false
 
   import ExUnit.CaptureLog
@@ -32,6 +33,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   ]
   @unauthorized %{"error" => "unauthorized"}
   @not_found %{"error" => "not_found"}
+  @forbidden %{"error" => "forbidden"}
   @invalid %{"error" => "invalid_request"}
   @bad_request %{"error" => "bad_request"}
   @unsupported %{"error" => "unsupported_contract_version"}
@@ -81,9 +83,15 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   defp used_at(key), do: Repo.get!(AccessKey, key.id).last_used_at
 
   # An accepted request's answer: a claim of an empty queue with no wait, `204` with no
-  # body; any other route's, `404` `not_found`, as its action is not built yet.
+  # body; a `dispatched` or a handover of `@dispatch`, which no pool has, `403`
+  # `forbidden`; a release, `404` `not_found`, as its action is not built yet.
   defp accepted?(conn, @claim), do: conn.status == 204 and conn.resp_body == ""
-  defp accepted?(conn, _target), do: json_response(conn, 404) == @not_found
+
+  defp accepted?(conn, target) do
+    if String.ends_with?(target, "/release"),
+      do: json_response(conn, 404) == @not_found,
+      else: json_response(conn, 403) == @forbidden
+  end
   defp seen_count, do: Repo.aggregate("adapter_seen_requests", :count)
 
   # The answer as it goes out, but the headers whose value differs from one answer to the
@@ -105,7 +113,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   end
 
   describe "a verified request" do
-    test "on each route is accepted: a claim of an empty queue 204, the others 404 not_found, as their actions are not built yet, signed",
+    test "on each route is accepted: a claim of an empty queue 204, a dispatched or a handover of a dispatch no pool has 403 forbidden, a release 404 not_found, as it is not built yet, signed",
          ctx do
       for target <- @targets do
         conn = signed(ctx, target, body(target))
