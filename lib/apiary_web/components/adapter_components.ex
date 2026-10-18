@@ -9,6 +9,9 @@ defmodule ApiaryWeb.AdapterComponents do
   # `ApiaryWeb.AdapterLive.AccessKey` (Access key), so both draw the same header and tabs
   # from here.
   #
+  # An adapter installed with Qory Apiary (`Apiary.Adapters.Installed`) says so in place of
+  # who added it.
+  #
   # An adapter's state is "No key yet" while it holds no active key, with the dot of a
   # state that needs someone. Once it holds one, it is a node's: when it was last seen,
   # the latest use of one of its keys (`Apiary.Adapters.last_seen/2`), or "Never seen"
@@ -66,11 +69,15 @@ defmodule ApiaryWeb.AdapterComponents do
   attr :adapter, Node, required: true, doc: "the adapter, with the account that added it"
 
   @doc false
-  # The line under an adapter's name: who added it and when, then its public id.
+  # The line under an adapter's name: who added it and when, or, for an adapter installed
+  # with Qory Apiary, that it was and when; then its public id.
   def adapter_meta(assigns) do
     ~H"""
     <span id="adapter-meta" class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      <span id="adapter-added">
+      <span :if={@adapter.installed_as} id="adapter-added">
+        {gettext("Installed with Qory Apiary, %{date}", date: Format.date(@adapter.inserted_at))}
+      </span>
+      <span :if={!@adapter.installed_as} id="adapter-added">
         {gettext("Added by %{person}, %{date}",
           person: People.email(@adapter.created_by) || People.former_member(),
           date: Format.date(@adapter.inserted_at)
