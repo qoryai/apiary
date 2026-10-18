@@ -54,6 +54,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   16 KiB, 64 levels of nesting) or when an object in it repeats a member. An integration's
   settings are checked within a time and memory limit, and schemas no longer create atoms
   or apply casts.
+- An integration's settings check counts large text toward its memory limit.
 <!-- /feature -->
 
 ### Migrations

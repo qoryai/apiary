@@ -43,7 +43,15 @@ defmodule Apiary.Integrations.Description do
 
   require Logger
 
-  alias Apiary.Kinds.{Budget, CanonicalJSON, Pattern, RegexFormat, Schema, SettingsResolver}
+  alias Apiary.Kinds.{
+    Bounds,
+    Budget,
+    CanonicalJSON,
+    Pattern,
+    RegexFormat,
+    Schema,
+    SettingsResolver
+  }
 
   @enforce_keys [:name, :title, :program_version, :document]
   defstruct name: nil,
@@ -94,10 +102,13 @@ defmodule Apiary.Integrations.Description do
   # 64-bit machine), and 10 s, a bound only on a check that runs away while it counts few
   # reductions. The reductions and the heap decide, and neither depends on the machine:
   # the same check does the same reductions on any machine running the same OTP release.
-  # Measured: settings at the limits above do 1518186 reductions, 3.3 times fewer than
-  # the budget, with 271839 words of heap; 1000 settings of 1000 properties 650000
-  # reductions and 439685 words, the most heap of any measured; the settings of the
-  # fixtures under 7000 reductions. The slowest, the settings at the limits, took 527 ms
+  # Measured, the binaries the process refers to counted with its heap: settings at the
+  # limits above do 1486055 reductions, 3.4 times fewer than the budget, and pass within
+  # 199216 words of heap; 1000 settings of 1000 properties, each against a pattern, 696940
+  # reductions within 523394 words, 4 times fewer than the budget; 1000 settings of a
+  # description of 257138 bytes, whose 1000 properties are each described in a string of
+  # 215 bytes, 643064 reductions within 362281 words; the settings of the fixtures under
+  # 7000 reductions. The slowest, the settings at the limits, took 527 ms
   # with 32 checks at once on one scheduler that a busy process shared. Every measured
   # attack passed the reductions or the heap within 320 ms. The budget is not larger:
   # backtracking patterns count about 17 million reductions a second where the rest of
@@ -275,17 +286,20 @@ defmodule Apiary.Integrations.Description do
       server never sends;
     * their canonical JSON is at most 65536 bytes, `integration_settings_too_large`;
     * each setting must be valid against its property's schema in the description's
-      `settings`, `integration_settings_invalid`; before that schema is applied, settings
-      that hold a list of more than 1024 entries, an object of more than 1024 members,
-      more than 4096 values in all or more than 64 lists and objects nested in one
-      another are refused so, with `%{valid: false, limits: limits}`: the schema comes
-      from the description and need bound none of them. For the same reason the schema is
-      built and the settings validated in another process (`Apiary.Kinds.Budget`), within
-      5000000 reductions, the runtime's count of its work, and 2097152 words of heap
-      (16 MiB on a 64-bit machine): a schema of a few references can make the work grow
-      exponentially with their nesting. Settings whose check goes over that budget are
-      refused as `integration_settings_invalid` with `%{valid: false, budget: :exceeded}`,
-      and settings whose check fails with `%{valid: false, crashed: true}`.
+      `settings`, else `integration_settings_invalid` with `%{valid: false}`, as for a
+      schema that JSV cannot build: JSV's errors are not returned. Before that schema is
+      applied, settings that hold a list of more than 1024 entries, an object of more
+      than 1024 members, more than 4096 values in all or more than 64 lists and objects
+      nested in one another are refused so, with `%{valid: false, limits: limits}`: the
+      schema comes from the description and need bound none of them. For the same reason
+      the schema is built and the settings validated in another process
+      (`Apiary.Kinds.Budget`), within 5000000 reductions, the runtime's count of its
+      work, and 2097152 words of heap (16 MiB on a 64-bit machine), the binaries the
+      process refers to counted in it: a schema of a few references can make the work
+      grow exponentially with their nesting. Settings whose check goes over that budget
+      are refused as `integration_settings_invalid` with
+      `%{valid: false, budget: :exceeded}`, and settings whose check fails with
+      `%{valid: false, crashed: true}`.
 
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
@@ -301,7 +315,15 @@ defmodule Apiary.Integrations.Description do
         {:error, {:integration_settings_too_large, @settings_max}}
 
       true ->
-        plain_schema(description, settings)
+        # The process is given copies of the schema it builds and of the settings, never
+        # the description: a string of the description can be a part of its bytes, which
+        # the budget would count in full for each such string (`Apiary.Kinds.Budget`).
+        # The copies are linear in the schema, a part of the description, and so bounded
+        # by the bytes a release's description may have (`Apiary.Integrations`), and in
+        # the settings, at most 65536 bytes as canonical JSON.
+        schema = copy(plain_schema(description, settings))
+        settings = copy(settings)
+        within_budget(description, fn -> check(schema, settings) end)
     end
   end
 
@@ -316,28 +338,54 @@ defmodule Apiary.Integrations.Description do
   defp plain_schema(description, settings) do
     document = description.document["settings"]
 
-    schema =
-      document
-      |> Map.take(["$schema", "$id", "$defs", "definitions"])
-      |> Map.merge(%{
-        "type" => "object",
-        "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
-      })
+    document
+    |> Map.take(["$schema", "$id", "$defs", "definitions"])
+    |> Map.merge(%{
+      "type" => "object",
+      "properties" => Map.take(document["properties"] || %{}, Map.keys(settings))
+    })
+  end
 
-    check = fn ->
-      with {:ok, root} <-
-             schema
-             |> without_casts()
-             |> Schema.build(resolver: SettingsResolver, formats: RegexFormat.formats()),
-           do: Schema.validate(settings, root, @settings_limits)
+  # `term` with every binary in it, the keys of its maps too, copied, so that none is a
+  # part of a larger binary.
+  defp copy(map) when is_map(map),
+    do: Map.new(map, fn {key, value} -> {copy(key), copy(value)} end)
+
+  defp copy(list) when is_list(list), do: Enum.map(list, &copy/1)
+  defp copy(binary) when is_binary(binary), do: :binary.copy(binary)
+  defp copy(other), do: other
+
+  # The settings check, in the budget's process. The answer leaves that process, so a
+  # refusal by the schema, or of a schema JSV cannot build, is `%{valid: false}` alone:
+  # JSV's errors stay in the process and end with it. They refer to the settings and the
+  # schema, and the message of an error about a pattern, which `Schema.valid?/2` does
+  # not make, would copy that pattern. Settings over the limits are never given to JSV.
+  defp check(schema, settings) do
+    case schema
+         |> without_casts()
+         |> Schema.build(resolver: SettingsResolver, formats: RegexFormat.formats()) do
+      {:ok, root} ->
+        cond do
+          not Bounds.within?(settings, @settings_limits) ->
+            {:error,
+             {:integration_settings_invalid, %{valid: false, limits: Map.new(@settings_limits)}}}
+
+          Schema.valid?(settings, root) ->
+            :ok
+
+          true ->
+            {:error, {:integration_settings_invalid, %{valid: false}}}
+        end
+
+      {:error, _reason} ->
+        {:error, {:integration_settings_invalid, %{valid: false}}}
     end
+  end
 
+  defp within_budget(description, check) do
     case Budget.run(check, @settings_budget) do
-      {:ok, :ok} ->
-        :ok
-
-      {:ok, {:error, errors}} ->
-        {:error, {:integration_settings_invalid, errors}}
+      {:ok, result} ->
+        result
 
       {:error, reason} ->
         Logger.warning(

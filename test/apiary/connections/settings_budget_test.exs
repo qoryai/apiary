@@ -151,4 +151,22 @@ defmodule Apiary.Connections.SettingsBudgetTest do
 
     assert Repo.get!(Connection, connection.id).release_id == first.id
   end
+
+  test "create_integration takes valid settings of a release whose description holds many long strings",
+       %{scope: scope} do
+    # 1000 definitions, each described in a string of 200 bytes: once the description is
+    # read, each string is a part of its bytes, which the check's budget would count in
+    # full for each string it were given.
+    defs =
+      Map.new(1..1000, fn i ->
+        text = String.slice("t#{i}-" <> String.duplicate("x", 200), 0, 200)
+        {"t#{i}", %{"type" => "string", "description" => text}}
+      end)
+
+    release = release!(scope, %{"type" => "string"}, defs)
+    assert byte_size(release.description) in 240_000..262_144
+
+    assert {:ok, _connection} =
+             Connections.create_integration(scope, release.id, %{"settings" => %{"url" => "s"}})
+  end
 end

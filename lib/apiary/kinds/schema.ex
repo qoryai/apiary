@@ -82,6 +82,15 @@ defmodule Apiary.Kinds.Schema do
     end
   end
 
+  @doc """
+  valid?/2 is whether the decoded JSON `value` is valid against `root`, validated by JSV
+  with `cast: false` as `validate/3` validates it, with JSV's errors neither summed up
+  nor returned. A value is given to JSV whatever its size: the caller bounds it
+  first (`Apiary.Kinds.Bounds.within?/2`).
+  """
+  @spec valid?(term, JSV.Root.t()) :: boolean
+  def valid?(value, root), do: match?({:ok, _value}, JSV.validate(value, root, cast: false))
+
   @summarised 8
 
   @doc """
