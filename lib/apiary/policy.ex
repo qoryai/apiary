@@ -88,7 +88,8 @@ defmodule Apiary.Policy do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Audit.Entry
   alias Apiary.Organisations.{Workspace, Organisation}
-  alias Apiary.Policy.{Above, Activity, Change, Effective, Error, Export, Grammar}
+  alias Apiary.Policy.{Above, Activity, Change, ComposedConfiguration, Effective, Error}
+  alias Apiary.Policy.{Export, Grammar}
   alias Apiary.Policy.{Render, Resolution}
   alias Apiary.Policy.{Rule, RunConfiguration, Schema, Suggestions}
   alias Apiary.Repo
@@ -847,6 +848,11 @@ defmodule Apiary.Policy do
   yet, and false when it reported none: such a run holds no fetched configuration. A run
   of another workspace is a refusal, `{:error, %Apiary.Policy.Error{reason: :not_found}}`,
   not a map.
+
+  `reported` and `applied` are the policy part of what the run holds: a digest of a
+  document composed for the run (`Apiary.Policy.ComposedConfiguration`) is given as the
+  digest of the configuration it was composed from, so a run given an image is compared
+  by its policy alone and never shows drift for the image.
   """
   @spec digests(Scope.t(), Run.t()) ::
           %{
@@ -866,18 +872,45 @@ defmodule Apiary.Policy do
         {:error, _error} -> nil
       end
 
-    reported = run.reported_run_configuration_digest
+    composed =
+      ComposedConfiguration.policy_digests(workspace_id, [
+        run.reported_run_configuration_digest,
+        run.run_configuration_digest
+      ])
+
+    reported = policy_part(composed, run.reported_run_configuration_digest)
 
     %{
       in_force: in_force,
       reported: reported,
-      applied: run.run_configuration_digest,
+      applied: policy_part(composed, run.run_configuration_digest),
       drift: is_binary(reported) and is_binary(in_force) and reported != in_force
     }
   end
 
   def digests(%Scope{}, %Run{}),
     do: {:error, not_found(gettext("This workspace has no such run."))}
+
+  # A digest of a document composed for a run, as the configuration it was composed from.
+  defp policy_part(composed, digest), do: Map.get(composed, digest, digest)
+
+  @doc """
+  `digest`, as a run reported it, as the run configuration it stands for: the digest of
+  the configuration a document composed for a run was composed from
+  (`Apiary.Policy.ComposedConfiguration.policy_digest/2`), any other as it is. nil for nil.
+  """
+  @spec policy_digest(Scope.t(), String.t() | nil) :: String.t() | nil
+  def policy_digest(%Scope{workspace: %Workspace{id: workspace_id}}, digest),
+    do: ComposedConfiguration.policy_digest(workspace_id, digest)
+
+  @doc """
+  Each of `digests` that is a document's composed for a run in the scope's workspace, with
+  the digest of the configuration it was composed from: one read
+  (`Apiary.Policy.ComposedConfiguration.policy_digests/2`).
+  """
+  @spec policy_digests(Scope.t(), [String.t() | nil]) :: %{String.t() => String.t()}
+  def policy_digests(%Scope{workspace: %Workspace{id: workspace_id}}, digests),
+    do: ComposedConfiguration.policy_digests(workspace_id, digests)
 
   ## Bulk reads, for a page that lists
 

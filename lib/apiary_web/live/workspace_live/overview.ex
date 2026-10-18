@@ -513,18 +513,21 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       versions = Policy.newest_versions(scope, [nil | holders])
       targets = Map.new(holders, &{&1, holder_of(scope, &1)})
 
+      # A run given a composed document reports its digest: it is compared by the
+      # configuration it was composed from.
+      composed =
+        Policy.policy_digests(scope, Enum.map(reported, & &1.reported_run_configuration_digest))
+
       for run <- reported,
           in_force = versions[run.target_id] || versions[nil],
-          in_force.digest != run.reported_run_configuration_digest,
+          digest = run.reported_run_configuration_digest,
+          digest = Map.get(composed, digest, digest),
+          in_force.digest != digest,
           into: %{} do
         holder = run.target_id && targets[run.target_id]
 
         reported_version =
-          case Policy.configuration_for_digest(
-                 scope,
-                 holder,
-                 run.reported_run_configuration_digest
-               ) do
+          case Policy.configuration_for_digest(scope, holder, digest) do
             {:ok, configuration} -> version_map(scope, configuration, holder)
             _ -> nil
           end
