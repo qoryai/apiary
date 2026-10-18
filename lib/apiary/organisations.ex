@@ -2995,6 +2995,10 @@ defmodule Apiary.Organisations do
       else: changeset
   end
 
+  # An address the changeset refuses is not looked up: Postgres refuses a NUL in text.
+  defp refuse_existing_member(%Ecto.Changeset{valid?: false} = changeset, _organisation),
+    do: changeset
+
   defp refuse_existing_member(changeset, %Organisation{id: organisation_id}) do
     case Ecto.Changeset.get_field(changeset, :email) do
       nil ->
