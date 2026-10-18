@@ -124,15 +124,18 @@ defmodule Apiary.Environments do
   # for the pool, changed or not, and writes the record's `queued_ref`, `queued_at` and
   # queued target as the trigger does, making the record when there was none. A pool whose
   # prebuild of the collection waits unclaimed is left as it is: that prebuild builds the
-  # collection's `environment_ref` already. It reads the collections, then locks their
-  # records `FOR UPDATE`, by collection and then pool, as `trigger/2` does, in one statement
-  # before anything else, then reads the collections again and keeps those of both reads: a
-  # listing that changes an `environment_ref` meanwhile is either read here, or its trigger
-  # waits for the records and queues the change after the Rebuild. A collection the second
-  # read alone finds, named, assigned or given the target meanwhile, is left out, its
-  # records never written without their lock: the trigger of that change queues its
-  # prebuilds. One audit entry about the target, with how many prebuilds it queued, and none
-  # when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
+  # collection's `environment_ref` already. It locks the collections `FOR SHARE`, by id, as
+  # its first read, then their records `FOR UPDATE`, by collection and then pool, as
+  # `trigger/2` does, in one statement, then writes the records and queues the prebuilds:
+  # the order of `Apiary.Dispatches.Slots`, collections before records before runs, so a
+  # listing's part or an assign, which holds a collection `FOR UPDATE` before its trigger
+  # locks the records, and a Rebuild take turns. A part or an assign that changes a
+  # collection's `environment_ref` either commits first, and the Rebuild reads the
+  # collection as it left it, or waits for the Rebuild to commit, and its trigger then
+  # queues the change. A collection that a change not committed when the Rebuild reads
+  # names, assigns or gives the target is not read: the trigger of that change queues its
+  # prebuilds. One audit entry about the target, with how many prebuilds it queued, and
+  # none when it queued none. It answers `{:ok, count}`, `Apiary.Access`'s refusal, or
   # `{:error, :not_found}` for a target that names no environment in its workspace, or
   # whose workspace has no node pool.
   #
@@ -386,9 +389,9 @@ defmodule Apiary.Environments do
   def rebuild(%Scope{} = scope, %Target{} = target) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"target.rebuild_environment", target),
-           [_ | _] = seen <- Repo.all(named_collections(target)),
-           :ok <- lock_records(seen),
-           [_ | _] = collections <- held(Repo.all(named_collections(target)), seen),
+           [_ | _] = collections <-
+             Repo.all(from c in named_collections(target), lock: "FOR SHARE"),
+           :ok <- lock_records(collections),
            [_ | _] = pools <- Map.get(pools([target.workspace_id]), target.workspace_id, []) do
         now = DateTime.utc_now()
         queued = for collection <- collections, run <- requeue(collection, pools, now), do: run
@@ -399,12 +402,6 @@ defmodule Apiary.Environments do
         {:error, _reason} = refused -> refused
       end
     end)
-  end
-
-  # Those of `collections` the first read found too, whose records are held.
-  defp held(collections, seen) do
-    ids = MapSet.new(seen, & &1.id)
-    Enum.filter(collections, &MapSet.member?(ids, &1.id))
   end
 
   # The live collections assigned to the workspace of `target` with its system and path,

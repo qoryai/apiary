@@ -44,7 +44,8 @@ defmodule Apiary.Dispatches.Slots do
   #
   #   1. the collections (a listing's part, by ref, or an assign, by id;
   #      `Apiary.Adapters.Collections`, whose lock order names what each holds before
-  #      them, and the targets each makes after them and before the environment records);
+  #      them, and the targets each makes after them and before the environment records;
+  #      a Rebuild holds them `FOR SHARE`, by id, `Apiary.Environments.rebuild/2`);
   #   2. a node pool's row: a claim takes it `FOR NO KEY UPDATE` (`Apiary.Dispatches`), so
   #      a registration on the pool, which takes it `FOR UPDATE`
   #      (`Apiary.Nodes.check_instance_limit/3`), and another claim take turns with it,
