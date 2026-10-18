@@ -667,6 +667,11 @@ msgstr ""
 msgid "%{integration} is no longer connected, so nothing changes on the %{item}. The work item stays in Qory Apiary, declined."
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} is still sending its %{collections}…"
+msgstr ""
+
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{integration} then brings you back here."
@@ -1142,6 +1147,13 @@ msgstr "%{name}'s rules come first and hold in every workspace and repository; %
 #, elixir-autogen, elixir-format
 msgid "%{node} has no key yet."
 msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} %{collection}"
+msgid_plural "%{number} %{collections}"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
@@ -1796,6 +1808,13 @@ msgid_plural "%{number} selected"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} so far"
+msgid_plural "%{number} so far"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} start was refused at the instance limit; the last"
@@ -2008,6 +2027,11 @@ msgstr ""
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} can have one installation of %{integration}."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s backlog."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -3343,6 +3367,7 @@ msgstr ""
 msgid "Add your machines as nodes, connect each with a separate key, and every run they make lands here."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/show.ex
@@ -3925,6 +3950,11 @@ msgid "Assigned %{count} collection to a workspace"
 msgid_plural "Assigned %{count} collections to a workspace"
 msgstr[0] "Assigned %{count} repository to a workspace"
 msgstr[1] "Assigned %{count} repositories to a workspace"
+
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change."
+msgstr "Assigning a %{collection} here doesn't change a workspace's Repositories, which list what its runs change."
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/live/user_live/settings.ex
@@ -8919,6 +8949,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -10286,6 +10317,11 @@ msgstr ""
 msgid "Open %{integration}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{items}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open %{name}'s policy"
@@ -10828,6 +10864,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -14334,6 +14371,11 @@ msgstr ""
 msgid "There is no version %{version}"
 msgstr ""
 
+#: lib/apiary_web/live/adapter_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "These %{collections} are each assigned to one workspace."
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "They can no longer open %{organisation} or act in it, until an owner activates them again. Nothing of theirs is removed: their level, their workspaces and what they made stay."
@@ -14762,6 +14804,7 @@ msgstr ""
 msgid "To review"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
@@ -14878,6 +14921,7 @@ msgid "URL"
 msgstr ""
 
 #: lib/apiary/runs.ex
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
@@ -15564,6 +15608,7 @@ msgstr[1] ""
 msgid "Works once, until %{time} (%{validity}). It is shown only now."
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/settings_components.ex
@@ -16404,6 +16449,7 @@ msgid "cancelled %{when}"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
+#: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "source collection, when its adapter names none"
 msgid "collection"

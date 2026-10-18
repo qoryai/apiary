@@ -5,6 +5,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   # pending or expired install not installed to a member; while not installed, the install
   # block to an owner or an admin; installed, the wait for the first listing and, a minute
   # on, the line to install again; the return's flash; behind the feature, for members.
+  # Once listed, the collections: still arriving, then complete, live, a page at a time,
+  # with the lead for one workspace, or for an adapter with no items.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -12,8 +14,9 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Edition, EditionStubs, Repo}
-  alias Apiary.Adapters.Connection
+  alias Apiary.{AccessKeys, Edition, EditionStubs, Repo}
+  alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Collections, Connection}
   alias ApiaryWeb.ConnectSession
 
   @moduletag needs: :factory
@@ -21,8 +24,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   setup :register_and_log_in_user
 
   setup do
-    %{adapter: adapter, pair: pair} = connectable_adapter_fixture(%{name: "Acme tracker"})
-    %{adapter: adapter, pair: pair}
+    %{adapter: adapter, pair: pair, access_key: key} =
+      connectable_adapter_fixture(%{name: "Acme tracker"})
+
+    %{adapter: adapter, pair: pair, key: key}
   end
 
   defp page(scope, adapter),
@@ -49,6 +54,41 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   end
 
   defp time(at), do: ApiaryWeb.Format.time(at)
+
+  # One part of a listing of `connection`, as the adapter of `key` sends it: a collection
+  # per title, with no target.
+  defp post(key, connection, titles, part, complete, started_at \\ ~U[2026-10-01 09:00:00Z]) do
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(key), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections:
+          for title <- titles do
+            %{ref: title, url: "https://forge.example.com/" <> title, title: title, target: nil}
+          end,
+        listing: %{id: "first", part: part, started_at: started_at, complete: complete}
+      })
+
+    :ok
+  end
+
+  defp titles(range), do: for(n <- range, do: "acme/repo-" <> String.pad_leading("#{n}", 3, "0"))
+
+  defp rows(lv) do
+    lv
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#collections-table tr")
+    |> Enum.map(fn row ->
+      row
+      |> LazyHTML.query("th, td")
+      |> Enum.map_join(" ", &LazyHTML.text/1)
+      |> String.split()
+      |> Enum.join(" ")
+    end)
+  end
 
   test "with no connection: not installed, and the install block with Install",
        %{conn: conn, scope: scope, adapter: adapter} do
@@ -291,6 +331,211 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(recycle(conn), page(scope, adapter))
     assert words(lv, "#flash-info") =~ "Acme tracker is connected."
     assert has_element?(lv, "#collections-waiting")
+  end
+
+  test "listed, one workspace: the lead, how many, and a row per collection", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/shop", "acme/api"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-heading") == "Repositories 2"
+    refute has_element?(lv, "#collections-waiting")
+    refute has_element?(lv, "#collections-filling")
+
+    assert words(lv, "#collections-lead") ==
+             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s backlog."
+
+    assert words(lv, "#collections-count") == "2 repositories"
+    assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
+
+    assert rows(lv) == [
+             "Repository Workspace Open tickets Added",
+             "acme/api #{scope.workspace.name} — Today",
+             "acme/shop #{scope.workspace.name} — Today"
+           ]
+
+    assert words(lv, "#collections-targets") ==
+             "Assigning a repository here doesn't change a workspace's Repositories, which list what its runs change."
+
+    refute has_element?(lv, "#collections-pager")
+  end
+
+  test "a collection's open items, and the day it was added", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/shop"], 1, true)
+    collection = Repo.get_by!(Apiary.Adapters.Collection, connection_id: connection.id)
+    earlier = ~U[2026-03-04 10:00:00Z]
+
+    {1, _} =
+      Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^collection.id),
+        set: [inserted_at: earlier]
+      )
+
+    for n <- 1..3 do
+      Apiary.WorkItemsFixtures.source_item_fixture(scope,
+        collection: collection,
+        external_ref: "acme/shop##{n}",
+        key: "##{n}"
+      )
+    end
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert rows(lv) == [
+             "Repository Workspace Open tickets Added",
+             "acme/shop #{scope.workspace.name} 3 #{ApiaryWeb.Format.day(earlier)}"
+           ]
+  end
+
+  test "in the adapter's words: its collections and its items", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    adapter = describe_source(adapter, "example-tracker.json")
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["Support"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-heading") == "Projects 1"
+    assert words(lv, "#collections-lead") =~ "so every project is assigned to it, and its issues"
+    assert words(lv, "#collections-count") == "1 project"
+    assert hd(rows(lv)) == "Project Workspace Open issues Added"
+    assert words(lv, "#collections-targets") =~ "Assigning a project here"
+  end
+
+  test "an adapter with no items: the lead says only that each is assigned, and no open column",
+       %{conn: conn, scope: scope, adapter: adapter, key: key} do
+    adapter = describe_source(adapter, "example-projects.json")
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["Support"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-lead") == "These projects are each assigned to one workspace."
+    assert rows(lv) == ["Project Workspace Added", "Support #{scope.workspace.name} Today"]
+  end
+
+  test "the lead and the foot note show while the page waits for the first listing", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter
+  } do
+    connection_fixture(scope, adapter, :connected)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert has_element?(lv, "#collections-waiting")
+    assert words(lv, "#collections-lead") =~ "has one workspace, #{scope.workspace.name}"
+    assert has_element?(lv, "#collections-targets")
+    refute has_element?(lv, "#collections-table")
+    refute has_element?(lv, "#collections-count")
+  end
+
+  test "the page fills in live: waiting, still sending with how many so far, then complete", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert has_element?(lv, "#collections-waiting")
+
+    post(key, connection, titles(1..60), 1, false)
+
+    assert words(lv, "#collections-filling") ==
+             "Acme tracker is still sending its repositories…"
+
+    assert has_element?(lv, ~s{#collections-filling[role="status"]})
+    refute has_element?(lv, "#collections-waiting")
+    assert words(lv, "#collections-heading") == "Repositories"
+    assert words(lv, "#collections-count") == "60 so far"
+    assert length(rows(lv)) == 51
+    assert words(lv, "#collections-pager-footer") == "1–50 of 60"
+
+    post(key, connection, titles(61..70), 2, true)
+
+    refute has_element?(lv, "#collections-filling")
+    assert words(lv, "#collections-heading") == "Repositories 70"
+    assert words(lv, "#collections-count") == "70 repositories"
+    assert words(lv, "#collections-pager-footer") == "1–50 of 70"
+  end
+
+  test "past a page, the pager walks the pages", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, titles(1..120), 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#collections-pager-footer") == "1–50 of 120"
+    assert has_element?(lv, "#collections-pager-previous[disabled]")
+    assert Enum.at(rows(lv), 1) =~ "acme/repo-001"
+
+    lv |> element("#collections-pager-next") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?page=2")
+    assert words(lv, "#collections-pager-footer") == "51–100 of 120"
+    assert Enum.at(rows(lv), 1) =~ "acme/repo-051"
+
+    lv |> element("#collections-pager-next") |> render_click()
+    assert words(lv, "#collections-pager-footer") == "101–120 of 120"
+    assert has_element?(lv, "#collections-pager-next[disabled]")
+    assert length(rows(lv)) == 21
+
+    lv |> element("#collections-pager-previous") |> render_click()
+    assert_patch(lv, page(scope, adapter) <> "?page=2")
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?page=9")
+    assert words(lv, "#collections-pager-footer") == "101–120 of 120"
+  end
+
+  test "a collection the latest complete listing left out is not shown", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api", "acme/shop"], 1, true)
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    assert length(rows(lv)) == 3
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(key), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections: [
+          %{
+            ref: "acme/api",
+            url: "https://forge.example.com/acme/api",
+            title: "acme/api",
+            target: nil
+          }
+        ],
+        listing: %{id: "second", part: 1, started_at: ~U[2026-10-02 09:00:00Z], complete: true}
+      })
+
+    assert rows(lv) == [
+             "Repository Workspace Open tickets Added",
+             "acme/api #{scope.workspace.name} — Today"
+           ]
+
+    assert words(lv, "#collections-count") == "1 repository"
   end
 
   test "a member reads where it stands, with no install block and no Install", %{

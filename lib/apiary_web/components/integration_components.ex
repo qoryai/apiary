@@ -8,6 +8,10 @@ defmodule ApiaryWeb.IntegrationComponents do
   #
   # The mark is a neutral glyph, the same for every integration: never a vendor's logo.
   #
+  # The collections an installed integration reaches are a table
+  # (`collections_table/1`): each one's name, its workspace or Unassigned, its open
+  # items, for an adapter with items, and the day it was added.
+  #
   # The install block says that the integration brings the person back to the
   # organisation's page, that the collections it reaches are listed there, and that the
   # organisation has one installation of it, then offers Install (`install_form/1`),
@@ -176,4 +180,69 @@ defmodule ApiaryWeb.IntegrationComponents do
   @spec ready?(Node.t()) :: boolean
   def ready?(%Node{connect_url: url} = adapter),
     do: is_binary(url) and Apiary.AccessKeys.active_key?(adapter)
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true, doc: "the table's accessible name, the heading's words"
+  attr :rows, :list, required: true, doc: "`Apiary.Adapters.Collections.list_collections/3`'s"
+  attr :column, :string, required: true, doc: "the first column's head: the word for one"
+
+  attr :open, :any,
+    default: nil,
+    doc: "the open items column's head; no such column without one"
+
+  @doc false
+  # The collections of a page, a row each: the name, the workspace it is assigned to or
+  # Unassigned behind a warning mark, how many of its items are open (a faint dash for
+  # none), and the day it was added. The open items and the day show from 600 px of the
+  # table's width.
+  def collections_table(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-tbl q-int-pick overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+      tabindex="0"
+      role="region"
+      aria-label={@label}
+    >
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">{@column}</th>
+            <th scope="col">{gettext("Workspace")}</th>
+            <th :if={@open} scope="col" class="q-num q-from-sm">{@open}</th>
+            <th scope="col" class="q-from-sm">{gettext("Added")}</th>
+          </tr>
+        </thead>
+        <tbody id={"#{@id}-rows"}>
+          <tr :for={row <- @rows} id={"collection-#{row.public_id}"}>
+            <td class="q-td-title">
+              <span class="q-title-mono block truncate" title={row.name}>{row.name}</span>
+            </td>
+            <td>
+              <span :if={row.workspace}>{row.workspace.name}</span>
+              <span :if={!row.workspace} class="q-int-un">
+                <.icon name="hero-exclamation-triangle-micro" class="size-3.5" /><span>{gettext(
+                  "Unassigned"
+                )}</span>
+              </span>
+            </td>
+            <td :if={@open} class="q-num q-from-sm">
+              <span :if={row.open_tickets == 0} class="q-faint">—</span>
+              <span :if={row.open_tickets > 0}>{Format.number(row.open_tickets)}</span>
+            </td>
+            <td class="q-faint q-from-sm whitespace-nowrap">{added(row.added_at)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  # The day a collection was added: today, or the date, its year left out in the current
+  # one.
+  defp added(at) do
+    if Format.days_back(at, DateTime.utc_now()) == 0,
+      do: gettext("Today"),
+      else: Format.day(at)
+  end
 end

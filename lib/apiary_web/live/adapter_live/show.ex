@@ -24,6 +24,18 @@ defmodule ApiaryWeb.AdapterLive.Show do
   #     line says the page waits for the integration to send them; a minute after the page
   #     opened so, it says to install again if nothing appears, beside Install.
   #
+  # Once a listing names the connection, its collections are a table, a page of them at a
+  # time (`Apiary.Adapters.Collections.list_collections/3`), by title: each one's
+  # workspace, or Unassigned, its open items, for an adapter with items, and when it was
+  # added. Until a listing of the connection is complete, a line says the integration is
+  # still sending them, with how many so far; then the heading says how many there are.
+  # A lead says what being assigned means, in the adapter's words for its collections
+  # and its items: with one workspace, that every one is assigned to it; for an adapter
+  # with no items, only that each is assigned to one workspace. The lead and the foot note
+  # show while the page waits too. Past a page, the pager walks the pages, from the first,
+  # as the list pages by the row before (`?page=`). Ended collections are not shown: the
+  # counts leave them out too.
+  #
   # While it is not installed, the install block follows
   # (`ApiaryWeb.IntegrationComponents`), to whoever may connect one (`adapter.connect`,
   # owners and admins), whose Install posts to the Install path, as the line to install
@@ -40,7 +52,15 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   alias Apiary.{Access, Adapters}
   alias Apiary.Adapters.{Collections, Connection, Connections}
-  alias ApiaryWeb.{IntegrationComponents, People, SettingsComponents, SourceComponents}
+  alias Apiary.Organisations
+
+  alias ApiaryWeb.{
+    IntegrationComponents,
+    People,
+    RunComponents,
+    SettingsComponents,
+    SourceComponents
+  }
 
   # How long the page waits for the first listing before it says to install again.
   @late_after :timer.minutes(1)
@@ -62,10 +82,27 @@ defmodule ApiaryWeb.AdapterLive.Show do
        connects: Access.can?(scope, :"adapter.connect", scope.organisation),
        late: false,
        timer: false,
-       sending: false
+       sending: false,
+       query: %{page: 1},
+       lead: nil
      )
      |> load()}
   end
+
+  # The page of the collections the address asks for (`?page=`, from 1).
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply, socket |> assign(:query, %{page: page_param(params["page"])}) |> listing()}
+  end
+
+  defp page_param(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {page, ""} when page > 1 -> page
+      _other -> 1
+    end
+  end
+
+  defp page_param(_value), do: 1
 
   # The connection as it stands, the state it puts the page in, and who started it.
   defp load(socket) do
@@ -155,8 +192,58 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     case Adapters.get_adapter(scope, adapter.public_id) do
       nil -> push_navigate(socket, to: paths.list)
-      adapter -> socket |> assign(:adapter, adapter) |> load()
+      adapter -> socket |> assign(:adapter, adapter) |> load() |> listing()
     end
+  end
+
+  # The organisation's workspaces, while installed, for what the lead says; once a listing
+  # names the connection, the counts, whether a listing is complete, and the page of rows
+  # the query asks for.
+  defp listing(%{assigns: %{state: state}} = socket) when state in [:waiting, :listed] do
+    %{current_scope: scope, adapter: adapter} = socket.assigns
+    workspaces = Organisations.list_workspaces(scope)
+    socket = assign(socket, workspaces: workspaces, lead: lead(scope, adapter, workspaces))
+    if state == :listed, do: rows(socket), else: socket
+  end
+
+  defp listing(socket), do: assign(socket, :lead, nil)
+
+  defp rows(socket) do
+    %{current_scope: scope, connection: connection, query: query} = socket.assigns
+    counts = Collections.counts(scope, connection)
+    total = counts.total
+    {page, rows, before} = walk(scope, connection, [], query.page)
+
+    assign(socket,
+      counts: counts,
+      complete: Collections.listing_complete?(connection),
+      rows: rows,
+      pager: %{
+        page: page,
+        first: before + 1,
+        last: before + length(rows),
+        total: total,
+        previous: page > 1,
+        next: before + length(rows) < total
+      }
+    )
+  end
+
+  # The page `page` of the connection's live collections `opts` asks for, walked to a page
+  # at a time from the first, as the list pages by the row before; the last page there is,
+  # if `page` is past it. `{page, its live rows, how many live rows the pages before it
+  # hold}`.
+  defp walk(scope, connection, opts, page) do
+    size = Collections.page_size()
+
+    Enum.reduce_while(1..page//1, {nil, 0}, fn n, {after_id, before} ->
+      raw = Collections.list_collections(scope, connection, [after: after_id] ++ opts)
+      rows = Enum.filter(raw, &is_nil(&1.ended_at))
+
+      if n == page or length(raw) < size,
+        do: {:halt, {n, rows, before}},
+        else: {:cont, {List.last(raw).public_id, before + length(rows)}}
+    end)
   end
 
   @impl true
@@ -194,14 +281,30 @@ defmodule ApiaryWeb.AdapterLive.Show do
           sending={@sending}
         />
 
-        <section :if={@state == :waiting} id="collections" aria-labelledby="collections-heading">
+        <section
+          :if={@state in [:waiting, :listed]}
+          id="collections"
+          aria-labelledby="collections-heading"
+        >
           <h2
             id="collections-heading"
             class="mt-2 mb-1.5 flex items-baseline gap-2 text-sm/5 font-semibold"
           >
             {collection_label(@adapter)}
+            <span
+              :if={@state == :listed && @complete}
+              id="collections-total"
+              class="text-xs font-medium text-faint tabular-nums"
+            >
+              {Format.number(@counts.total)}
+            </span>
           </h2>
-          <p id="collections-waiting" role="status" class="mb-3 text-[13.5px]/5">
+          <p
+            :if={@state == :waiting}
+            id="collections-waiting"
+            role="status"
+            class="mb-3 text-[13.5px]/5"
+          >
             <span class="q-sdot q-sdot-running">
               <i aria-hidden="true"></i><span>{gettext(
                 "Waiting for %{integration} to send its %{collections}…",
@@ -211,7 +314,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             </span>
           </p>
           <div
-            :if={@late && @connects}
+            :if={@state == :waiting && @late && @connects}
             id="collections-late"
             class="mb-3 flex flex-wrap items-center gap-2.5 text-[13.5px] text-muted"
           >
@@ -225,6 +328,64 @@ defmodule ApiaryWeb.AdapterLive.Show do
               variant="default"
               size="xs"
             />
+          </div>
+          <p
+            :if={@state == :listed && !@complete}
+            id="collections-filling"
+            role="status"
+            class="mb-3 text-[13.5px]/5"
+          >
+            <span class="q-sdot q-sdot-running">
+              <i aria-hidden="true"></i><span>{gettext(
+                "%{integration} is still sending its %{collections}…",
+                integration: @adapter.name,
+                collections: collection_word(@adapter, :other)
+              )}</span>
+            </span>
+          </p>
+          <p :if={@lead} id="collections-lead" class="mb-3 max-w-[80ch] text-[13.5px]/5 text-muted">
+            {@lead}
+          </p>
+
+          <div :if={@state == :listed} id="collections-bar" class="q-bar mb-3">
+            <span class="q-grow"></span>
+            <span id="collections-count" class="q-int-count">
+              {count_words(@adapter, @complete, @counts.total)}
+            </span>
+          </div>
+
+          <IntegrationComponents.collections_table
+            :if={@state == :listed}
+            id="collections-table"
+            label={collection_label(@adapter)}
+            rows={@rows}
+            column={collection_label(@adapter, 1)}
+            open={
+              Adapters.items?(@adapter) &&
+                gettext("Open %{items}", items: SourceComponents.items(Adapters.item_noun(@adapter)))
+            }
+          />
+
+          <RunComponents.pager
+            :if={@state == :listed && (@pager.previous || @pager.next)}
+            id="collections-pager"
+            prefix="collections-pager"
+            first={@pager.first}
+            last={@pager.last}
+            total={@pager.total}
+            previous={@pager.previous && page_path(@paths.show, %{@query | page: @pager.page - 1})}
+            next={@pager.next && page_path(@paths.show, %{@query | page: @pager.page + 1})}
+            previous_label={gettext("Previous")}
+            next_label={gettext("Next")}
+          />
+
+          <div class="mt-3 grid gap-1.5">
+            <p id="collections-targets" class="q-foot-note">
+              {gettext(
+                "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change.",
+                collection: collection_word(@adapter, 1)
+              )}
+            </p>
           </div>
         </section>
       </.settings_page>
@@ -288,19 +449,68 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp status(%{state: :not_installed}), do: gettext("Not installed.")
 
-  # The section's heading: the word for many of the adapter's collections, its first
-  # letter in upper case.
-  defp collection_label(adapter) do
-    {first, rest} = adapter |> collection_word(:other) |> String.split_at(1)
+  # What being assigned means, above the table: for an adapter with no items, that each
+  # collection is assigned to one workspace; with one workspace, that every one is
+  # assigned to it, and its items come into that workspace's backlog.
+  defp lead(scope, adapter, workspaces) do
+    cond do
+      not Adapters.items?(adapter) ->
+        gettext("These %{collections} are each assigned to one workspace.",
+          collections: collection_word(adapter, :other)
+        )
+
+      match?([_one], workspaces) ->
+        [workspace] = workspaces
+
+        gettext(
+          "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s backlog.",
+          organisation: scope.organisation.name,
+          workspace: workspace.name,
+          collection: collection_word(adapter, 1),
+          items: SourceComponents.items(Adapters.item_noun(adapter))
+        )
+
+      true ->
+        nil
+    end
+  end
+
+  # The count beside the table: while a listing is still to complete, how many so far;
+  # then how many the connection reaches.
+  defp count_words(_adapter, false, total),
+    do: ngettext("%{number} so far", "%{number} so far", total, number: Format.number(total))
+
+  defp count_words(adapter, true, total) do
+    ngettext("%{number} %{collection}", "%{number} %{collections}", total,
+      number: Format.number(total),
+      collection: collection_word(adapter, 1),
+      collections: collection_word(adapter, :other)
+    )
+  end
+
+  # The path of the integration's page with `query`, its defaults left out.
+  defp page_path(show, query) do
+    case for({key, value} <- query, value not in [nil, 1], do: {key, value}) do
+      [] -> show
+      params -> show <> "?" <> URI.encode_query(params)
+    end
+  end
+
+  # The word for many of the adapter's collections (`:other`), or for one (1), its first
+  # letter in upper case: the section's heading and the table's, and the column's.
+  defp collection_label(adapter, n \\ :other) do
+    {first, rest} = adapter |> collection_word(n) |> String.split_at(1)
     String.upcase(first) <> rest
   end
 
-  # The word for many of the adapter's collections: what it calls them
-  # (`Apiary.Adapters.collection_noun/1`), else the domain's word.
-  defp collection_word(adapter, :other) do
-    case Adapters.collection_noun(adapter) do
-      %{other: other} -> other
-      nil -> pgettext("source collection, when its adapter names none", "collections")
+  # The word for many of the adapter's collections (`:other`), or for one (1): what it
+  # calls them (`Apiary.Adapters.collection_noun/1`), else the domain's word.
+  defp collection_word(adapter, n) do
+    case {Adapters.collection_noun(adapter), n} do
+      {%{one: one}, 1} -> one
+      {%{other: other}, _n} -> other
+      {nil, 1} -> pgettext("source collection, when its adapter names none", "collection")
+      {nil, _n} -> pgettext("source collection, when its adapter names none", "collections")
     end
   end
 end
