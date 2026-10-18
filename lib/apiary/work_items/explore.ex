@@ -17,24 +17,31 @@ defmodule Apiary.WorkItems.Explore do
   #   * ended before its handover because the handover could not form what the run is
   #     made from (`variables_invalid`, `ticket_gone`, `inputs_invalid`): `:no_result`
   #     with the outcome `:error`, and no registered run;
-  #   * ended by its outcome or its exit (`run_ended`): the run's result decides. The
-  #     result event is the run's `dev.qory.session.result` with the highest sequence: a
-  #     result whose verdict is `understood` is `:proposal`, one whose verdict is
+  #   * ended by its outcome or its exit (`run_ended`): what the run gave decides. Once
+  #     Qory reads it as decided it is kept on the run of the queue
+  #     (`Apiary.Dispatches.Settle`: `result_outcome`, and the run's result for a proposal
+  #     or questions), and read from there; until then it is read from the run's
+  #     `dev.qory.session.result` with the highest sequence (`Apiary.Explore.Result.given/3`).
+  #     A result whose verdict is `understood` is `:proposal`, one whose verdict is
   #     `not_understood` is `:questions`. Without a result the run is `:cancelled` when the
   #     registered run reads as cancelled, `:lost` when it reads as lost, and otherwise
   #     `:no_result`, with the outcome `:none` for no result event, or one whose `is_error`
   #     is `false` and that carries no result, `:error` for a result event whose `is_error`
   #     is anything else, and `:refused` for a result that fails the check of
-  #     `Apiary.Explore.Result`.
+  #     `Apiary.Explore.Result`. A proposal or questions whose kept result retention
+  #     cleared (`Apiary.Retention`) reads as a run whose events were pruned: no result
+  #     event.
   #
   # **A stated limit: the window before a run's result.** A run's starter may give its
   # outcome, which ends the run, before the gateway has delivered the run's events, its
   # result among them. So a run ended by its outcome, with no result yet, reads as
-  # `:running` until its exit is folded (every event before the exit is then stored, as
-  # the projector folds them in order), it is lost, its events are pruned, or 10 minutes
-  # have passed since its outcome arrived (`@settle_seconds`); only then does it read as a
-  # run without a result, which a member may run again. A result that arrives after those
-  # 10 minutes still counts, and the run then reads as its result says.
+  # `:running` until it is settled (`Apiary.Explore.Result.settled?/2`): its exit is
+  # folded (every event before the exit is then stored, as the projector folds them in
+  # order), it is lost, its events are pruned, or 10 minutes have passed since its
+  # outcome arrived; only then does it read as a run without a result, which a member
+  # may run again. What it gave is stored on the run of the queue when it settles, or
+  # when its result comes. A result that arrives after those 10 minutes still counts: it
+  # replaces what was stored, and the run then reads as its result says.
   #
   # ## A take in
   #
@@ -58,9 +65,6 @@ defmodule Apiary.WorkItems.Explore do
   alias Apiary.Runs.{Event, Run}
   alias Apiary.WorkItems.{Answer, Confirmation, WorkItem, WorkItemEvent}
 
-  @result_event "dev.qory.session.result"
-  # How long after its outcome arrived a run with no result yet reads as running.
-  @settle_seconds 600
   @run_states %{
     "pending" => :pending,
     "running" => :running,
@@ -86,7 +90,7 @@ defmodule Apiary.WorkItems.Explore do
           | :shape
 
   @typedoc "What a run gave: its result's verdict, or why it has none."
-  @type outcome :: :proposal | :questions | :error | :none | :refused | nil
+  @type outcome :: Result.outcome() | nil
 
   @typedoc """
   One run of a take in: the run of the queue, the run registered for it (nil before its
@@ -107,7 +111,7 @@ defmodule Apiary.WorkItems.Explore do
   # as running.
   @doc false
   @spec settle_seconds() :: pos_integer
-  def settle_seconds, do: @settle_seconds
+  def settle_seconds, do: Result.settle_seconds()
 
   ## A run
 
@@ -143,19 +147,19 @@ defmodule Apiary.WorkItems.Explore do
        when cause in [:released, :closed, :undone],
        do: {:cancelled, nil, nil}
 
-  defp place(%DispatchRun{state: :ended, end_cause: :run_ended}, run, event, now) do
-    case read(event) do
-      {:ok, %{"verdict" => "understood"} = result} ->
+  defp place(%DispatchRun{state: :ended, end_cause: :run_ended} = dispatch_run, run, event, now) do
+    case given(dispatch_run, run, event, now) do
+      {:proposal, result} ->
         {:proposal, :proposal, result}
 
-      {:ok, %{"verdict" => "not_understood"} = result} ->
+      {:questions, result} ->
         {:questions, :questions, result}
+
+      :unsettled ->
+        {:running, nil, nil}
 
       outcome ->
         cond do
-          not settled?(run, now) ->
-            {:running, nil, nil}
-
           match?(%Run{}, run) and Run.current_state(run.state) == "cancelled" ->
             {:cancelled, nil, nil}
 
@@ -170,33 +174,21 @@ defmodule Apiary.WorkItems.Explore do
 
   defp place(%DispatchRun{state: :ended}, _run, _event, _now), do: {:no_result, :error, nil}
 
-  # The result of a result event: `{:ok, result}` through `Apiary.Explore.Result`, or why
-  # there is none.
-  defp read(nil), do: :none
+  # What a run ended by its outcome or its exit gave: what the run of the queue keeps once
+  # stored, a proposal or questions whose result was cleared as no result event, else
+  # what its result event gives (`Apiary.Explore.Result.given/3`).
+  defp given(%DispatchRun{result_outcome: nil}, run, event, now),
+    do: Result.given(run, event, now)
 
-  defp read(%{data: %{"is_error" => false, "result" => text}} = event) when is_binary(text) do
-    case Result.from_events([event]) do
-      {:ok, result} -> {:ok, result}
-      :none -> :refused
-    end
-  end
+  defp given(%DispatchRun{result_outcome: outcome, result: %{} = result}, _run, _event, _now)
+       when outcome in [:proposal, :questions],
+       do: {outcome, result}
 
-  defp read(%{data: %{"is_error" => false}}), do: :none
-  defp read(_event), do: :error
+  defp given(%DispatchRun{result_outcome: outcome}, _run, _event, _now)
+       when outcome in [:proposal, :questions],
+       do: :none
 
-  # Whether a run ended by its outcome or its exit has all its events that will count
-  # (the moduledoc's stated limit).
-  defp settled?(nil, _now), do: true
-
-  defp settled?(%Run{} = run, now) do
-    cond do
-      is_binary(run.exit_state) -> true
-      not is_nil(run.lost_at) or Run.current_state(run.state) == "lost" -> true
-      not is_nil(run.events_pruned_at) -> true
-      is_nil(run.outcome_received_at) -> true
-      true -> DateTime.diff(now, run.outcome_received_at, :second) >= @settle_seconds
-    end
-  end
+  defp given(%DispatchRun{result_outcome: outcome}, _run, _event, _now), do: outcome
 
   ## A take in
 
@@ -233,8 +225,8 @@ defmodule Apiary.WorkItems.Explore do
 
   # steps/3 is the runs of the take ins `take_ins` of the work item `work_item_id`, or of
   # every take in for `:all`, each where it stands at `now`, by take in, then attempt.
-  # Two queries: the runs with their registered runs, then each registered run's result
-  # event with the highest sequence.
+  # Two queries: the runs with their registered runs, then the result event with the
+  # highest sequence of each registered run whose outcome is not stored yet.
   @doc false
   @spec steps(Ecto.UUID.t(), [pos_integer] | :all, DateTime.t()) :: [step]
   def steps(work_item_id, take_ins, %DateTime{} = now) when is_binary(work_item_id) do
@@ -248,7 +240,9 @@ defmodule Apiary.WorkItems.Explore do
 
     query = if take_ins == :all, do: query, else: where(query, [d], d.take_in in ^take_ins)
     rows = Repo.all(query)
-    events = result_events(for {_d, %Run{id: id}} <- rows, do: id)
+
+    events =
+      result_events(for {%DispatchRun{result_outcome: nil}, %Run{id: id}} <- rows, do: id)
 
     for {dispatch_run, run} <- rows,
         do: step(dispatch_run, run, run && Map.get(events, run.id), now)
@@ -258,7 +252,7 @@ defmodule Apiary.WorkItems.Explore do
 
   defp result_events(run_ids) do
     from(e in Event,
-      where: e.run_id in ^run_ids and e.type == ^@result_event,
+      where: e.run_id in ^run_ids and e.type == ^Result.event_type(),
       distinct: e.run_id,
       order_by: [asc: e.run_id, desc: e.sequence]
     )
