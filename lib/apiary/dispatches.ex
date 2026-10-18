@@ -108,7 +108,7 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
-  # ## The starter on a dispatch: `dispatched/3` and `handover/3`
+  # ## The starter on a dispatch: `dispatched/3`, `handover/3` and `release/3`
   #
   # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
   # `access_key` started the job for a dispatch its pool claimed, and
@@ -119,6 +119,13 @@ defmodule Apiary.Dispatches do
   # what the run is made from ends the run and its dispatch, `collection_ended`,
   # `variables_invalid`, `ticket_gone` or `inputs_invalid`, answered as a dispatch that
   # ended.
+  #
+  # `release(access_key, dispatch_id, meta)` gives the dispatch's run back, with the
+  # starter's reason and whether it should wait for another claim, in one transaction, or
+  # refuses in the contract's order (`Apiary.Dispatches.Release`): before the handover the
+  # dispatch ends, `released`, and its run waits again or ends; after it the run ends with
+  # its registered run, `released`, and an explore run with retry queues the next run of
+  # its take in (`queue_next/2`).
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
@@ -137,11 +144,11 @@ defmodule Apiary.Dispatches do
   # ## The end of a run handed over: `end_run_released/2` and `backstop_seconds/1`
   #
   # A run handed over ends with its registered run: by its starter's outcome or its exit,
-  # by its starter's release after the handover (`end_run_released/2`, which no endpoint
-  # calls: the release endpoint answers `404`, `ApiaryWeb.Contract.DispatchController`), or
-  # by the lost-run check, at its gateway's `attach_by` should it never attach, or
-  # at `backstop_seconds/1` of its step after its attach should it have neither an outcome
-  # nor an exit by then (`Apiary.Dispatches.RunEnd`). Its dispatch ends with it and the slot
+  # by its starter's release after the handover (`release/3`, which ends it as
+  # `end_run_released/2` does, `Apiary.Dispatches.Release`), or by the lost-run check, at
+  # its gateway's `attach_by` should it never attach, or at `backstop_seconds/1` of its
+  # step after its attach should it have neither an outcome nor an exit by then
+  # (`Apiary.Dispatches.RunEnd`). Its dispatch ends with it and the slot
   # it held is freed, once.
   #
   # ## The clock
@@ -156,7 +163,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Release, RunEnd, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -763,6 +770,13 @@ defmodule Apiary.Dispatches do
           {:ok, Handover.handed_over()} | {:error, Handover.refusal()}
   def handover(%AccessKey{} = access_key, dispatch_id, meta),
     do: Handover.handover(access_key, dispatch_id, meta)
+
+  # release/3 gives back the run of the dispatch `dispatch_id`, with the starter's reason
+  # and retry (`Apiary.Dispatches.Release.release/3`).
+  @doc false
+  @spec release(AccessKey.t(), term, Release.release()) :: :ok | {:error, Release.refusal()}
+  def release(%AccessKey{} = access_key, dispatch_id, meta),
+    do: Release.release(access_key, dispatch_id, meta)
 
   ## The end of a run handed over
 

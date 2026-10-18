@@ -10,7 +10,8 @@ defmodule Apiary.Dispatches.RunEnd do
   #   it in its transaction (`lock/1`, then `finish/4`, from `Apiary.Runs.Outcome`), and a
   #   projection that folded the exit right after it (`run_ended/1`, from
   #   `Apiary.Runs.Projector`);
-  # - its starter's release after the handover (`released/2`): `released`. The registered
+  # - its starter's release after the handover (`released/2`, from
+  #   `Apiary.Dispatches.Release`): `released`. The registered
   #   run reads as cancelled with the reason `released` (`runs.released_at`, which the fold
   #   applies until an outcome decides, `Apiary.Runs.Fold`), and no outcome is recorded, so
   #   no `end` is sent for it: an end follows only the starter's outcome

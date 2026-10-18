@@ -56,11 +56,6 @@ defmodule Apiary.AuditChanges do
     :"work_item.comment_delete"
   ]
 
-  # The audited action of a node pool's key on the runs dispatched to its workspace whose
-  # change has no context function yet either: made by the pool's key, as `stand_in/3`
-  # makes the others, asked of the workspace, its queue.
-  @pool_stand_ins [:"dispatch.release"]
-
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
   def actions do
@@ -113,8 +108,9 @@ defmodule Apiary.AuditChanges do
       :"adapter.declare",
       :"collection.assign",
       :"collection.set_backlog",
-      :"dispatch.handover"
-    ] ++ @stand_ins ++ @pool_stand_ins
+      :"dispatch.handover",
+      :"dispatch.release"
+    ] ++ @stand_ins
   end
 
   @doc """
@@ -506,17 +502,27 @@ defmodule Apiary.AuditChanges do
     }
   end
 
-  # The pool's key acts in the trail of its workspace's organisation, and the entry's actor
-  # is the key.
-  def make(action, %{scope: scope}) when action in @pool_stand_ins do
-    %{access_key: key} = access_key_fixture(scope, node: pool_fixture(scope))
-    key_scope = Scope.for_access_key(key)
+  # A node pool's starter gives back the run of a dispatch its pool claimed, before its
+  # handover, in the trail of the workspace's organisation, about the pool; the entry's
+  # actor is the pool's key.
+  def make(:"dispatch.release", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(key)
     before = entries()
-    {:ok, _workspace} = stand_in(key_scope, action, scope.workspace)
+
+    :ok =
+      Apiary.Dispatches.release(key, dispatch.public_id, %{
+        revision: 1,
+        reason: "The job could not start.",
+        retry: false
+      })
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
     %{
-      scope: key_scope,
-      subject: {"workspace", scope.workspace.id},
+      scope: Scope.for_access_key(key),
+      subject: {"node", key.node_id},
       before: before,
       actor: {:access_key, key.id}
     }
@@ -748,11 +754,20 @@ defmodule Apiary.AuditChanges do
     {before, Apiary.Dispatches.handover(other, dispatch.public_id, %{revision: 1, body: "{}"})}
   end
 
-  # A node's key, of the same workspace, holds no dispatch action.
-  def refuse(action, %{scope: scope}) when action in @pool_stand_ins do
-    %{access_key: key} = access_key_fixture(scope)
+  # A dispatch another pool of the workspace claimed is not the key's to give back.
+  def refuse(:"dispatch.release", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(claimer)
     before = entries()
-    {before, stand_in(Scope.for_access_key(key), action, scope.workspace)}
+
+    {before,
+     Apiary.Dispatches.release(other, dispatch.public_id, %{
+       revision: 1,
+       reason: "The job could not start.",
+       retry: false
+     })}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,
