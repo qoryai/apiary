@@ -12612,8 +12612,8 @@ msgstr "Runs use the pool's default image until this repository is built."
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the pool's default image: this target no longer names an environment."
-msgstr "Runs use the pool's default image: this repository no longer names an environment."
+msgid "Runs use the pool's default image: this target no longer has an environment set."
+msgstr "Runs use the pool's default image: this repository no longer has an environment set."
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -15327,6 +15327,11 @@ msgstr ""
 msgid "This target"
 msgstr "This repository"
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This target has no environment set, so runs use each pool's default image."
+msgstr "This repository has no environment set, so runs use each pool's default image."
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "This target has no policy versions: it is served %{workspace}'s policy."
@@ -15336,11 +15341,6 @@ msgstr "This repository has no policy versions: it is served %{workspace}'s poli
 #, elixir-autogen, elixir-format
 msgid "This target has no rules."
 msgstr "This repository has no rules."
-
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This target names no environment, so runs use each pool's default image."
-msgstr "This repository names no environment, so runs use each pool's default image."
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format

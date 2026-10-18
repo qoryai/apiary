@@ -691,7 +691,7 @@ defmodule ApiaryWeb.TargetLive.Show do
             id="target-environment-none"
             class="q-tgt-card-empty"
           >
-            {gettext("This target names no environment, so runs use each pool's default image.")}
+            {gettext("This target has no environment set, so runs use each pool's default image.")}
           </p>
           <ul :if={@environment.state == :pools} id="target-environment-pools" class="q-tgt-env">
             <li :for={pool <- @environment.pools} id={"target-environment-pool-#{pool.id}"}>
@@ -875,7 +875,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   defp environment_image(%{pool: %{serves: :retired}} = assigns) do
     ~H"""
     <span id={"#{@id}-retired"}>
-      {gettext("Runs use the pool's default image: this target no longer names an environment.")}
+      {gettext("Runs use the pool's default image: this target no longer has an environment set.")}
     </span>
     """
   end

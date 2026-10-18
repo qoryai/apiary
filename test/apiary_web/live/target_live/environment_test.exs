@@ -157,7 +157,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#target-environment-none",
-               "This repository names no environment, so runs use each pool's default image."
+               "This repository has no environment set, so runs use each pool's default image."
              )
 
       collection(scope, environment_ref: nil)
@@ -350,7 +350,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#{pool_id(pool)}-retired",
-               "Runs use the pool's default image: this repository no longer names an environment."
+               "Runs use the pool's default image: this repository no longer has an environment set."
              )
 
       refute has_element?(view, "#{pool_id(pool)}-image")
