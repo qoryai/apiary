@@ -442,8 +442,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       test = self()
       handler = "work-items-users-#{System.unique_integer()}"
 
-      # How many of the forged ids each query of the users table carries, from any process:
-      # the page's runs in its own.
+      # How many of the forged ids each query of the users table carries, from any
+      # process: the page's runs in its own.
       :telemetry.attach(
         handler,
         [:apiary, :repo, :query],
