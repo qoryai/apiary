@@ -12,8 +12,7 @@ defmodule Apiary.Repo.Migrations.RefuseTheOldNamesOfARunSState do
     drop constraint(:runs, :runs_state_check)
 
     create constraint(:runs, :runs_state_check,
-             check:
-               "state IN ('pending', 'running', 'completed', 'failed', 'cancelled', 'lost')"
+             check: "state IN ('pending', 'running', 'completed', 'failed', 'cancelled', 'lost')"
            )
   end
 
