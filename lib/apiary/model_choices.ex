@@ -73,12 +73,16 @@ defmodule Apiary.ModelChoices do
   alias Apiary.Policy.{Entry, Grammar}
   alias Apiary.Runs.Target
   alias Apiary.Secrets.Value
+  alias ApiaryWeb.Format
 
   # The steps of the queue whose runs use a model.
   @run_kinds ["explore"]
 
   # The runtime of every run of the queue.
   @runtime "claude"
+
+  # How many places a refusal names before "and N more".
+  @shown 5
 
   @model_id ~r/\A[A-Za-z0-9][!-~]{0,199}\z/
   @effort ~r/\A[a-z][a-z0-9-]{0,31}\z/
@@ -88,6 +92,18 @@ defmodule Apiary.ModelChoices do
 
   @typedoc "A place of a choice: a holder, alone or with a run kind."
   @type place :: holder | {:workspace | Target.t(), String.t()}
+
+  @typedoc """
+  A place as a refusal names it: its `level`, the `workspace`'s name, the `target`'s name,
+  the `run_kind`, and the `value_id` of the key it chose.
+  """
+  @type named_place :: %{
+          level: ModelChoice.level(),
+          workspace: String.t() | nil,
+          target: String.t() | nil,
+          run_kind: String.t() | nil,
+          value_id: String.t() | nil
+        }
 
   @doc false
   # run_kinds/0 is the run kinds a choice may be set for.
@@ -876,6 +892,123 @@ defmodule Apiary.ModelChoices do
 
   defp effort_bindings(%ProviderModel{model_id: model_id, effort: effort}),
     do: [model: model_id, values: Enum.join(effort || [], ", ")]
+
+  ## What uses a provider
+
+  @doc false
+  # places_using/2 is the places of the choices, at levels 2 to 6, that use the model
+  # provider `provider`, or, given `model_id`, that use that model of it, by their model
+  # or a tier: each a `t:named_place/0`, the organisation's default first, then by
+  # workspace, target and run kind. Read without a lock: the caller holds the provider's
+  # row `FOR UPDATE`, so no save of a choice of it runs meanwhile.
+  @spec places_using(Connection.t(), String.t() | nil) :: [named_place]
+  def places_using(%Connection{id: id}, model_id \\ nil) do
+    query = from c in ModelChoice, where: c.connection_id == ^id
+
+    query =
+      if model_id,
+        do:
+          where(
+            query,
+            [c],
+            c.model_id == ^model_id or
+              fragment(
+                "EXISTS (SELECT 1 FROM jsonb_each(?) AS t(tier, entry) WHERE t.entry ->> 'model' = ?)",
+                c.tiers,
+                ^model_id
+              )
+          ),
+        else: query
+
+    named(query)
+  end
+
+  @doc false
+  # key_places/1 is the places of the choices, at levels 2 to 6, that use a key of the
+  # secret with the row id `secret_id`, by its value id, each a `t:named_place/0`, for
+  # `Apiary.Secrets.Usage`.
+  @spec key_places(Ecto.UUID.t()) :: [named_place]
+  def key_places(secret_id) do
+    named(
+      from c in ModelChoice,
+        join: p in Connection,
+        on: p.id == c.connection_id,
+        where: p.secret_id == ^secret_id and not is_nil(c.value_id)
+    )
+  end
+
+  defp named(query) do
+    Repo.all(
+      from c in query,
+        left_join: w in Workspace,
+        on: w.id == c.workspace_id,
+        left_join: t in Target,
+        on: t.id == c.target_id,
+        select: %{
+          choice: c,
+          workspace: w.name,
+          target: fragment("? || '/' || ?", t.system, t.path)
+        }
+    )
+    |> Enum.map(fn %{choice: choice} = row ->
+      %{
+        level: ModelChoice.level(choice),
+        workspace: row.workspace,
+        target: row.target,
+        run_kind: choice.run_kind,
+        value_id: choice.value_id
+      }
+    end)
+    |> Enum.sort_by(&{&1.level != 6, &1.workspace || "", &1.target || "", &1.run_kind || ""})
+  end
+
+  @doc false
+  # place_words/1 is how a refusal names a place (`t:named_place/0`): the organisation's
+  # default, a workspace or a target by its name, and a run kind beside it.
+  @spec place_words(named_place) :: String.t()
+  def place_words(%{level: 6}), do: gettext("the organisation's default")
+
+  def place_words(%{level: level} = place) when level in [2, 4],
+    do: gettext("%{name}, %{kind} runs", name: place_name_of(place), kind: place.run_kind)
+
+  def place_words(place), do: place_name_of(place)
+
+  defp place_name_of(%{level: level, target: target}) when level in [2, 3], do: target
+  defp place_name_of(%{workspace: workspace}), do: workspace
+
+  @doc false
+  # in_use_words/2 is why the model provider, or the model, `name` was not removed: the
+  # places of the choices that use it (`t:named_place/0`), the first five, then
+  # "and N more". Nil for none.
+  @spec in_use_words(String.t(), [named_place]) :: String.t() | nil
+  def in_use_words(_name, []), do: nil
+
+  def in_use_words(name, places) do
+    gettext("Change the model choices that use %{provider} first: %{places}.",
+      provider: name,
+      places: listed_words(Enum.map(places, &place_words/1))
+    )
+  end
+
+  @doc false
+  # listed_words/1 is `names` joined with commas, the first five, then "and N more";
+  # nil for none.
+  @spec listed_words([String.t()]) :: String.t() | nil
+  def listed_words([]), do: nil
+
+  def listed_words(names) do
+    {shown, rest} = Enum.split(names, @shown)
+
+    case length(rest) do
+      0 ->
+        Enum.join(shown, ", ")
+
+      more ->
+        Enum.join(shown, ", ") <>
+          " " <>
+          ngettext("and %{number} more", "and %{number} more", more, number: Format.number(more))
+    end
+  end
 
   ## Helpers
 

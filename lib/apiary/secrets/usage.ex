@@ -7,7 +7,8 @@ defmodule Apiary.Secrets.Usage do
 
   A model provider (`Apiary.Connections`) uses the organisation's secret it links, whose
   values are its keys, and by its value id the value that is its default key: a use of
-  kind `:model_provider`. Nothing else links a secret; a test adds further uses
+  kind `:model_provider`. A model choice that chose one of those keys uses that value: a
+  use of kind `:model_choice`. Nothing else uses a secret; a test adds further uses
   (`uses/2`).
 
   A use names what uses the secret, for the refusal to say: its `kind` and `id`, a
@@ -17,7 +18,7 @@ defmodule Apiary.Secrets.Usage do
   import Ecto.Query
 
   alias Apiary.Connections.Connection
-  alias Apiary.Repo
+  alias Apiary.{ModelChoices, Repo}
   alias Apiary.Secrets.Secret
 
   @typedoc "One use of a secret."
@@ -31,7 +32,8 @@ defmodule Apiary.Secrets.Usage do
   @doc """
   uses/2 is what uses `secret`, read through `repo`, the changing transaction's: the
   model providers that link it, by their public id and name, each with its default key's
-  value id, in the order of their names.
+  value id, in the order of their names; then the model choices that chose one of its
+  values as their key, by that value id.
 
   A test sets `config :apiary, Apiary.Secrets.Usage, answer: fun`, a function of the
   repository and the secret (`Application.put_env/3`, in a module that is not async), whose
@@ -40,7 +42,7 @@ defmodule Apiary.Secrets.Usage do
   """
   @spec uses(Ecto.Repo.t(), Secret.t()) :: [use]
   def uses(repo, %Secret{} = secret) do
-    providers(repo, secret) ++ answered(repo, secret)
+    providers(repo, secret) ++ choices(secret) ++ answered(repo, secret)
   end
 
   @doc """
@@ -63,6 +65,21 @@ defmodule Apiary.Secrets.Usage do
           value_id: c.default_value_id
         }
     )
+  end
+
+  # With the `factory` feature, which the documentation leaves out: a model choice
+  # (`Apiary.ModelChoices`) that chose a key of a provider's secret uses that key, by its
+  # value id, a use of kind `:model_choice` named as a refusal names its place. Read in
+  # the caller's transaction, which holds the provider's row.
+  defp choices(%Secret{id: id}) do
+    for place <- ModelChoices.key_places(id) do
+      %{
+        kind: :model_choice,
+        id: nil,
+        name: ModelChoices.place_words(place),
+        value_id: place.value_id
+      }
+    end
   end
 
   defp answered(repo, secret) do
