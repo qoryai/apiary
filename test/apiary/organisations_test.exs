@@ -52,6 +52,34 @@ defmodule Apiary.OrganisationsTest do
       assert Repo.reload!(workspace).domain == "software"
     end
 
+    test "with domain: :required, a sign-up without a domain is refused, creating nothing" do
+      organisations = Repo.aggregate(Organisation, :count)
+      attrs = %{"email" => unique_user_email(), "organisation_name" => "Acme Care"}
+
+      for domain <- [nil, "", " "] do
+        attrs = if domain, do: Map.put(attrs, "domain", domain), else: attrs
+
+        assert %{domain: ["Choose a type."]} =
+                 errors_on(Organisations.change_sign_up(attrs, domain: :required))
+
+        assert {:error, changeset} =
+                 Organisations.sign_up_user(attrs, nil, open: true, domain: :required)
+
+        assert %{domain: ["Choose a type."]} = errors_on(changeset)
+      end
+
+      assert Repo.aggregate(Organisation, :count) == organisations
+      refute Map.has_key?(errors_on(Organisations.change_sign_up(attrs)), :domain)
+
+      assert {:ok, %{workspace: workspace}} =
+               Organisations.sign_up_user(Map.put(attrs, "domain", "general"), nil,
+                 open: true,
+                 domain: :required
+               )
+
+      assert Repo.reload!(workspace).domain == "general"
+    end
+
     test "a domain no registry has is refused on the form's domain, creating nothing" do
       organisations = Repo.aggregate(Organisation, :count)
 

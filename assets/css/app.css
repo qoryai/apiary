@@ -8880,6 +8880,42 @@
     font-size: 0.875rem;
     font-weight: 600;
   }
+  /* A radio choice with a line under its label (`input/1`, a `{label, value, line}`). */
+  .q-choice {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 2px 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    cursor: pointer;
+  }
+  .q-choice:hover,
+  .q-choice:has(:checked) {
+    border-color: var(--q-border-field);
+  }
+  .q-choice:has(:checked) {
+    box-shadow: var(--q-shadow-xs);
+  }
+  fieldset[aria-invalid="true"] .q-choice {
+    border-color: var(--color-error);
+  }
+  .q-choice .radio {
+    margin-top: 2px;
+  }
+  .q-choice-h {
+    color: var(--color-base-content);
+    font-size: 0.84375rem;
+    font-weight: 500;
+    line-height: 20px;
+  }
+  .q-choice-p {
+    grid-column: 2;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 18px;
+  }
   .q-modeopts {
     display: grid;
     grid-auto-columns: minmax(0, 1fr);

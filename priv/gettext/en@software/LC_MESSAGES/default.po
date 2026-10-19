@@ -2681,6 +2681,11 @@ msgstr ""
 msgid "%{workspace}'s policy"
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace}, your first workspace, gets this type. A workspace's type can't be changed after it is created."
+msgstr ""
+
 #: lib/apiary/sources/body.ex
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
@@ -16627,6 +16632,11 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings › %{page}"
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace type"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

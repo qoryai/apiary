@@ -766,7 +766,9 @@ defmodule Apiary.Organisations do
   `validate_unique: false` leaves out the read of whether the address is taken, as the
   form does while it is typed in. `domain`, where the form gives one, is the domain of the
   organisation's first workspace, one of `Apiary.Lingo.Domain.names/0`; without one, the
-  workspace is of the default domain (`build_organisation/2`). An edition whose sign-up page asks more checks it on
+  workspace is of the default domain (`build_organisation/2`). `domain: :required` asks
+  for one, as the set-up page does: none is the error "Choose a type.". An edition whose
+  sign-up page asks more checks it on
   this changeset, and is given it when the organisation is created
   (`c:Apiary.Edition.organisation_created/2`, `sign_up_user/3`).
 
@@ -788,6 +790,7 @@ defmodule Apiary.Organisations do
       {%{}, @sign_up_types}
       |> Ecto.Changeset.cast(attrs, Map.keys(@sign_up_types))
       |> Ecto.Changeset.update_change(:organisation_name, &String.trim/1)
+      |> require_domain(Keyword.get(opts, :domain, :optional))
       |> Ecto.Changeset.validate_inclusion(:domain, Domain.names())
       |> copy_errors(user)
       |> check_password(attrs, Keyword.get_lazy(opts, :password, &password_rule/0))
@@ -799,6 +802,11 @@ defmodule Apiary.Organisations do
       copy_errors(form, Organisation.changeset(%Organisation{}, %{name: name}))
     end
   end
+
+  defp require_domain(form, :required),
+    do: Ecto.Changeset.validate_required(form, :domain, message: Workspace.no_type())
+
+  defp require_domain(form, :optional), do: form
 
   # The errors of the account's, the organisation's or its workspace's changeset, on the
   # form's fields: the address on `email`, the password and its confirmation on theirs,
@@ -855,6 +863,13 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
+  default_workspace_name/0 is the name of the workspace a new organisation starts with:
+  "#{@default_workspace_name}".
+  """
+  @spec default_workspace_name() :: String.t()
+  def default_workspace_name, do: @default_workspace_name
+
+  @doc """
   Registers a user and places them in an organisation, in one transaction.
 
   Without an invitation token the user gets a new organisation named `organisation_name`,
@@ -905,6 +920,8 @@ defmodule Apiary.Organisations do
   none, and drops one sent all the same: the address is confirmed by a link before the
   account can sign in. `actor: :instance` needs none, and keeps one given, mail or not.
   `password: :required` asks for one whatever the mail, as the set-up page does.
+  `domain: :required` asks a sign-up that creates an organisation for the domain of its
+  first workspace, as the set-up page does (`change_sign_up/2`).
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
@@ -973,7 +990,12 @@ defmodule Apiary.Organisations do
 
     form =
       attrs
-      |> change_sign_up(invited: invited?, validate_unique: false, password: password)
+      |> change_sign_up(
+        invited: invited?,
+        validate_unique: false,
+        password: password,
+        domain: if(invited?, do: :optional, else: Keyword.get(opts, :domain, :optional))
+      )
       |> refuse_closed_sign_up(offered?)
 
     if form.valid? do

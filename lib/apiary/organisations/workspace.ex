@@ -60,7 +60,7 @@ defmodule Apiary.Organisations.Workspace do
   def create_changeset(workspace, attrs) do
     workspace
     |> cast(blank_domain_as_none(attrs), [:domain])
-    |> validate_required([:domain], message: dgettext_noop("errors", "Choose a type."))
+    |> validate_required([:domain], message: no_type())
     |> validate_inclusion(:domain, Apiary.Lingo.Domain.names())
     |> put_change(:public_id, Apiary.PublicId.generate("ws"))
     |> unique_constraint(:public_id)
@@ -105,6 +105,9 @@ defmodule Apiary.Organisations.Workspace do
       message: dgettext_noop("errors", "is not a valid slug")
     )
   end
+
+  @doc "The error of a form that creates a workspace with no domain chosen: its type."
+  def no_type, do: dgettext_noop("errors", "Choose a type.")
 
   @doc "The error of a name another workspace of the organisation has."
   def taken_name,

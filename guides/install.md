@@ -697,9 +697,10 @@ Set up Qory Apiary at https://qory.example.com/setup/<code>.
 With `compose.yaml`, `docker compose logs apiary | grep 'Set up Qory Apiary'` finds it:
 the log is one JSON object per line ([Logs](#logs)), and the sentence above is the line's
 `message`. Open the link: its page asks for your email address, a password and its
-confirmation, and your organisation's name, and **Set up** creates the instance's
-organisation, its workspace Main and your account as its owner, an instance admin, and
-signs you in. The code is 32 random bytes, kept in the database until it is used; it does
+confirmation, your organisation's name, and the **Workspace type** of its workspace Main:
+**Software workspace**, for work on code, or **General workspace**, for any other work.
+The type can't be changed after. **Set up** creates the instance's organisation, its
+workspace Main and your account as its owner, an instance admin, and signs you in. The code is 32 random bytes, kept in the database until it is used; it does
 not expire before, and it works once: after it, any set-up link says "This Qory Apiary is
 already set up." and leads to the log-in page. Anyone who can read the log can use the
 link before you do, so open it as soon as the instance is up. On an instance that is set

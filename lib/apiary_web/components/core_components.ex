@@ -576,7 +576,8 @@ defmodule ApiaryWeb.CoreComponents do
       <.input field={@form[:slug]} type="text" label="Address" prefix="qory.example/acme/" />
 
   A `radio` input is a group: its label is the group's legend, and each of `options`, a
-  `{label, value}`, one choice. A text input with a `prefix` shows it in mono before the
+  `{label, value}`, one choice. A choice given as `{label, value, line}` is a card, with
+  its line under its label. A text input with a `prefix` shows it in mono before the
   value, as one field: the path a slug completes.
   """
   attr :id, :any, default: nil
@@ -699,20 +700,30 @@ defmodule ApiaryWeb.CoreComponents do
     >
       <legend :if={@label} class="mb-1 text-[13px]/[18px] font-medium">{@label}</legend>
       <label
-        :for={{{label, value}, index} <- Enum.with_index(@options)}
+        :for={{option, index} <- Enum.with_index(@options)}
         for={"#{@id}-#{index}"}
-        class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+        class={
+          if tuple_size(option) == 3,
+            do: "q-choice",
+            else:
+              "inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+        }
       >
         <input
           type="radio"
           id={"#{@id}-#{index}"}
           name={@name}
-          value={value}
-          checked={to_string(@value) == to_string(value)}
+          value={elem(option, 1)}
+          checked={to_string(@value) == to_string(elem(option, 1))}
           class={["radio radio-sm radio-primary", @class]}
+          aria-describedby={tuple_size(option) == 3 && "#{@id}-#{index}-line"}
           {@rest}
         />
-        {label}
+        <span :if={tuple_size(option) == 3} class="q-choice-h">{elem(option, 0)}</span>
+        <span :if={tuple_size(option) == 3} id={"#{@id}-#{index}-line"} class="q-choice-p">
+          {elem(option, 2)}
+        </span>
+        <span :if={tuple_size(option) == 2}>{elem(option, 0)}</span>
       </label>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
       <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
