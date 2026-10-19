@@ -3,8 +3,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   # (`:index`), the instance's adapters by name, each installed in the organisation or
   # not, with how many collections it reaches and, with several workspaces, how many are
   # unassigned; Add for an owner or an admin, the chevron to an installed one's page, and
-  # the foot notes, the members' by the organisation's workspaces; behind the feature, for
-  # members.
+  # the foot notes, the members' by the organisation's workspaces; with no adapter, an
+  # empty state in place of the table; behind the feature, for members.
   # Add an integration (`:new`), for an owner or an admin: a block for each adapter not
   # installed, Install, which posts to the Install path, or not ready yet; with every one
   # installed, a line that says so, in place of the lead.
@@ -230,9 +230,25 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
              "Owners and admins of #{scope.organisation.name} install integrations and assign their repositories to workspaces."
   end
 
-  test "with no adapter, the table has no row", %{conn: conn, scope: scope} do
+  test "with no adapter, an empty state in place of the table says who adds them", %{
+    conn: conn,
+    scope: scope
+  } do
     {:ok, lv, _html} = live(conn, list_path(scope))
-    refute has_element?(lv, "#integrations tr")
+    refute has_element?(lv, "#integrations")
+    assert has_element?(lv, "h2", "No integration yet")
+
+    assert words(lv, "#integrations-none") ==
+             "An instance admin adds integrations in Instance settings › Integrations. " <>
+               "#{scope.organisation.name} can install them here once they are added."
+  end
+
+  test "with an adapter, the table and no empty state", %{conn: conn, scope: scope} do
+    adapter = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    {:ok, lv, _html} = live(conn, list_path(scope))
+    assert has_element?(lv, "#integrations #integration-#{adapter.public_id}")
+    refute has_element?(lv, "#integrations-none")
+    refute has_element?(lv, "h2", "No integration yet")
   end
 
   test "is not found where the feature is hidden from the person", %{conn: conn, scope: scope} do
