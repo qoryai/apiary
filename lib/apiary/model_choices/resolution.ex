@@ -198,7 +198,10 @@ defmodule Apiary.ModelChoices.Resolution do
   end
 
   defp entry(model) when is_binary(model), do: %{"model" => model}
-  defp entry(%{"model" => model} = entry) when is_binary(model), do: Map.take(entry, ~w(model effort))
+
+  defp entry(%{"model" => model} = entry) when is_binary(model),
+    do: Map.take(entry, ~w(model effort))
+
   defp entry(_other), do: nil
 
   defp listed?(%{models: models}, entry) do
