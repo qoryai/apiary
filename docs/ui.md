@@ -1523,7 +1523,7 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   timeline's last item too unless the run was given an outcome: that item says the exit's
   reason, and the others the outcome's
   ([contract-assumptions.md](contract-assumptions.md), How a run ends):
-  "time limit reached", "no activity for 30 minutes", "permission to run expired",
+  "time limit reached", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
   check whether the run may go on: unreadable answer", and for a run that did not start
@@ -1532,9 +1532,7 @@ instance id the run's node claimed, when it claimed one, under "Node's instance 
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. Any other code is the run's starter's,
-  shown as given with spaces for underscores: "no longer needed". The quiet period reads
-  in whole hours, else whole minutes, else seconds: 1800 seconds is "no activity for 30
-  minutes".
+  shown as given with spaces for underscores: "no longer needed".
 - **The rail's State and Exit.** State is the state's dot and word, with "Registered only"
   under Pending for a run that registered, or "Ping only" for a run that only pinged,
   stored before the registration replaced the ping, and the end reason's words under it. Exit, on a session's run whose exit was

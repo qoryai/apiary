@@ -881,17 +881,12 @@ A run is in one of six states, in four families (`Apiary.Runs.Run.states/0`,
 The fold maps an exit to a state by the first rule that applies
 (`Apiary.Runs.Fold.exit_state/2`):
 
-1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
-   Cancelled. It is the exit an older Forager, under the contract before the outcome, wrote
-   when it stopped a run itself; such exits are stored, and a rebuild folds them again.
-2. `failed` with `session_lost` or `gateway_lost` is Lost: nobody knows how the run ended.
+1. `failed` with `session_lost` or `gateway_lost` is Lost: nobody knows how the run ended.
    An exit came, so the state is final, and `lost_at` is the exit's time: no start or
    heartbeat folded after it revives the run.
-3. `state` decides: `succeeded` is Completed, `failed` Failed and `cancelled` Cancelled.
-4. Without a `state`, as an older Forager wrote some exits, the reason decides:
-   `timeout`, `quiet`, `credential_expired`, `stopped` and `run_ended_at_issuer` are
-   Cancelled, `session_lost` and `gateway_lost` Lost, and any other reason, or none,
-   Failed.
+2. `state` decides: `succeeded` is Completed, `failed` Failed and `cancelled` Cancelled.
+3. Without a `state`, which the contract requires, `session_lost` and `gateway_lost` are
+   Lost, and any other reason, or none, Failed.
 
 A run whose `dev.qory.run.refused` reaches Qory Apiary did not start: it is Failed, with the
 refusal's `code` as its reason and no exit time, and says "did not start" and the code
@@ -917,15 +912,12 @@ A record written before may hold an old name, read in these words:
 
 | Old `reason` | Words | State |
 |---|---|---|
-| `quiet` | no activity for 30 minutes | Cancelled |
-| `credential_expired` | permission to run expired | Cancelled |
+| `credential_expired` | permission to run expired | by its `state` |
 | `credential_check_unreachable` | couldn't check whether the run may go on: no answer | Failed |
 | `credential_check_invalid` | couldn't check whether the run may go on: unreadable answer | Failed |
 
-`quiet_seconds`, an integer of at least 1, comes with `quiet` and with no other reason: the
-quiet period, which the words say in whole hours, else whole minutes, else seconds: 1800
-seconds is "no activity for 30 minutes". A `quiet` without it has no words. `stopped` beside Completed or Failed, which Forager does not write, reads
-"stopped". `interrupted` comes only with `cancelled`, in the exit the session writes: a local
+`quiet` reads as given: "quiet". `stopped` beside Completed or Failed, which Forager does
+not write, reads "stopped". `interrupted` comes only with `cancelled`, in the exit the session writes: a local
 link's record holds it, and a gateway's holds the same exit, which it accepted from the
 session and never writes itself. The exit's code and signal are as the session observed
 them: exit 0 when the program shut down cleanly on the signal, 130 from a SIGINT, or
@@ -956,10 +948,7 @@ row shows the value as recorded, whatever the state: the signal, else the code, 
 recorded" for `-1` without a signal. The state comes from `state` and `reason`, never from
 the exit code: a run its starter judged a failure can show Exit 0.
 
-The column `runs.state` also accepts the names a release before this one stored:
-`succeeded`, read as Completed, and `timed_out` and `ended`, read as Cancelled
-(`Apiary.Runs.Run.old_states/0`, `current_state/1`). Every family, count, filter, word and
-mark reads a row stored under one of them as its new state.
+The check on `runs.state` refuses any value but the six states.
 
 A run's starter may give its outcome (The run endpoint). It is stored on the run, not
 folded, and it sets the run's state and reason whenever it arrives, before the exit or
@@ -1176,9 +1165,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   (`Apiary.Runs.About.validate/1`: a registration whose `about` breaks one is
   `400 invalid_request`), and kept on the run as `registration_about`. It never selects a
   policy: the policy is chosen by the registration's labels.
-- An exit without a `state`, which the contract requires, is read by its reason, as How a
-  run ends sets out: an older Forager wrote some exits so, and such exits are stored.
-  A reason with no rule for it, or none, is Failed (`Apiary.Runs.Fold.exit_state/2`).
+- An exit without a `state`, which the contract requires, is Lost with the reason
+  `session_lost` or `gateway_lost`, and Failed with any other reason, or none
+  (`Apiary.Runs.Fold.exit_state/2`).
 - When the run configuration cannot be read, a registration is answered `503
   {"error":"unavailable"}` and nothing is stored, which the gateway asks again within its
   tries as a run opens (The run endpoint, above). To the last try it is no run: the run
