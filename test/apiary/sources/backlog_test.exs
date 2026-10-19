@@ -1931,6 +1931,24 @@ defmodule Apiary.Sources.BacklogTest do
              }
     end
 
+    test "offer only the adapters that serve the workspace's domain, or that list none",
+         ctx do
+      declare(ctx.connection, "Connected", nil, nil)
+      any = Apiary.NodesFixtures.adapter_fixture(%{name: "Any 1"})
+      software = Apiary.NodesFixtures.adapter_fixture(%{name: "Software 1"})
+      general = Apiary.NodesFixtures.adapter_fixture(%{name: "General 1"})
+
+      for {adapter, domains} <- [{software, ["software"]}, {general, ["general", "marketing"]}] do
+        {1, _} =
+          Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [domains: domains])
+      end
+
+      offered = fn scope -> Enum.map(Backlog.backlog_facts(scope).offered, & &1.id) end
+
+      assert offered.(ctx.scope) == [any.public_id, software.public_id]
+      assert offered.(with_domain(ctx.scope, "general")) == [any.public_id, general.public_id]
+    end
+
     test "what the person may do, and whom to ask for what they may not", ctx do
       assert Backlog.backlog_facts(ctx.scope).may == %{install: true, assign: true, switch: true}
       assert Backlog.backlog_facts(ctx.scope).ask == %{install: [], assign: [], switch: []}

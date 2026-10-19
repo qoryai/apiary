@@ -1521,6 +1521,12 @@ defmodule Apiary.Adapters.Collections do
   #     workspace that is not the organisation's, or that is marked for deletion or
   #     claimed by its purge;
   #   * `{:error, :ended}` for a connection that ended;
+  #   * `{:error, :other_domain}` for a workspace whose domain the connection's adapter
+  #     does not serve: its latest start listed `domains` without the workspace's
+  #     (`Apiary.Lingo.Domain.serves?/2`). An adapter that lists none serves every
+  #     domain. Only this check reads the adapter's domains: a listing, Take in and the
+  #     feed never do, so a collection assigned before the adapter narrowed them stays
+  #     assigned, and its tickets come in as before;
   #   * `{:error, :not_found}` for an id that names no live collection of the connection:
   #     of another connection or organisation, ended, or none;
   #   * `{:ok, count}`, how many changed their link: the others are as asked already.
@@ -1540,15 +1546,16 @@ defmodule Apiary.Adapters.Collections do
   # the count, the connection's public id and the workspace's id (nil when it unlinks);
   # none when nothing changed. After the commit, the collections changed are broadcast.
   @spec assign_collections(Scope.t(), Connection.t(), [Ecto.UUID.t()], Workspace.t() | nil) ::
-          {:ok, non_neg_integer} | {:error, :invalid | :ended | Access.reason()}
+          {:ok, non_neg_integer} | {:error, :invalid | :ended | :other_domain | Access.reason()}
   def assign_collections(%Scope{} = scope, %Connection{} = connection, ids, workspace)
       when is_list(ids) and (is_nil(workspace) or is_struct(workspace, Workspace)) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"collection.assign", scope.organisation),
            {:ok, ids, every_id?} <- cast_ids(ids),
            organisation_id = scope.organisation.id,
-           {:ok, _held} <- lock_connection(organisation_id, connection),
+           {:ok, held} <- lock_connection(organisation_id, connection),
            {:ok, workspace_id} <- lock_target(organisation_id, workspace),
+           :ok <- served(held, workspace),
            true <- every_id? || {:error, :not_found},
            {:ok, collections} <- lock_collections(organisation_id, connection, ids) do
         changed = Enum.reject(collections, &(&1.workspace_id == workspace_id))
@@ -1605,6 +1612,16 @@ defmodule Apiary.Adapters.Collections do
       %Connection{state: :ended} -> {:error, :ended}
       %Connection{} = held -> {:ok, held}
     end
+  end
+
+  # Whether the connection's adapter serves the workspace's domain, as its latest start
+  # listed them; any adapter serves an unassign. The adapter's row is read without a lock:
+  # a start that changes its domains meanwhile changes no assignment either way.
+  defp served(_connection, nil), do: :ok
+
+  defp served(%Connection{adapter_id: adapter_id}, %Workspace{} = workspace) do
+    domains = Repo.one(from n in Node, where: n.id == ^adapter_id, select: n.domains)
+    if Domain.serves?(domains, workspace), do: :ok, else: {:error, :other_domain}
   end
 
   defp lock_target(_organisation_id, nil), do: {:ok, nil}

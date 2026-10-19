@@ -1116,7 +1116,8 @@ defmodule Apiary.Sources.Backlog do
   #     (`Apiary.Lingo.Domain.target_required?/1`), else one with a target, the ticket's,
   #     else its collection's;
   #   * `offered`, the instance's adapters with items that no connected connection of the
-  #     organisation goes through, by name (`t:offered/0`), as
+  #     organisation goes through and that serve the workspace's domain
+  #     (`Apiary.Lingo.Domain.serves?/2`), by name (`t:offered/0`), as
   #     `Apiary.Adapters.list_adapters/1` gives them to the person;
   #   * `may`, whether the person may install an integration (`install`,
   #     `adapter.connect`), assign a collection to a workspace (`assign`,
@@ -1359,13 +1360,14 @@ defmodule Apiary.Sources.Backlog do
   end
 
   # The instance's adapters with items that no connected connection of the organisation
-  # goes through, by name.
+  # goes through and that serve the workspace's domain, by name.
   defp offered(scope, connections) do
     connected = MapSet.new(connections, fn {_connection, adapter} -> adapter.id end)
 
     for adapter <- Adapters.list_adapters(scope),
         adapter.items,
-        not MapSet.member?(connected, adapter.id) do
+        not MapSet.member?(connected, adapter.id),
+        Domain.serves?(adapter.domains, scope.workspace) do
       %{
         name: adapter.name,
         id: adapter.public_id,

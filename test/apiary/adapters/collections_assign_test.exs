@@ -14,6 +14,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
   alias Apiary.Audit.Entry
   alias Apiary.Adapters.{Collection, Collections, Connection, Connections, Feed}
   alias Apiary.Organisations.Workspace
+  alias Apiary.Sources.Backlog
 
   @moduletag needs: :factory
 
@@ -844,6 +845,118 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       :ok = EditionStubs.HidesNamed.put([:factory])
       assert {:error, _refused} = Collections.subscribe(ctx.scope)
       assert {:error, _refused} = Collections.subscribe(ctx.scope, ctx.connection)
+    end
+  end
+
+  describe "the domains the adapter serves" do
+    # The adapter starts with its description listing `domains`, nil for none
+    # (`Apiary.Adapters.declare/2`).
+    defp start(ctx, domains) do
+      document = Apiary.DescriptionFixtures.contract_description()
+
+      document =
+        if domains,
+          do: Map.put(document, "domains", domains),
+          else: Map.delete(document, "domains")
+
+      {:ok, adapter} =
+        Adapters.declare(ctx.key_scope, %{
+          time: DateTime.utc_now(:second),
+          connect_url: "https://tracker-adapter.acme.example/connect",
+          default_interval: 900,
+          minimum_interval: 300,
+          sends_changes: false,
+          description: Apiary.DescriptionFixtures.read_description(document)
+        })
+
+      adapter
+    end
+
+    test "a restart that leaves out the workspace's domain unassigns nothing, and its tickets still list; a new assignment there is refused",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(["SHOP", "API"]))
+      assert %{domains: nil} = start(ctx, nil)
+
+      assert {:ok, 1} =
+               Collections.assign_collections(
+                 ctx.scope,
+                 ctx.connection,
+                 ids(ctx, ["SHOP"]),
+                 ctx.workspace
+               )
+
+      shop = Repo.get!(Collection, id(ctx, "SHOP"))
+
+      ticket =
+        Apiary.WorkItemsFixtures.source_item_fixture(%Scope{},
+          collection: shop,
+          external_ref: "SHOP-1"
+        )
+
+      assert [ticket.public_id] == Enum.map(Backlog.list_tickets(ctx.scope, %{}).rows, & &1.id)
+
+      assert %{domains: ["general"]} = start(ctx, ["general"])
+      assert workspace_of(ctx, "SHOP") == ctx.workspace.id
+
+      # A listing after the restart leaves it assigned too.
+      {:ok, :accepted} = post(ctx, titled(["SHOP", "API"]), id: "listing-2")
+      assert workspace_of(ctx, "SHOP") == ctx.workspace.id
+      assert [ticket.public_id] == Enum.map(Backlog.list_tickets(ctx.scope, %{}).rows, & &1.id)
+
+      assert Collections.assign_collections(
+               ctx.scope,
+               ctx.connection,
+               ids(ctx, ["API"]),
+               ctx.workspace
+             ) ==
+               {:error, :other_domain}
+
+      assert workspace_of(ctx, "API") == nil
+
+      # Unassigning stays a person's step, whatever the domains.
+      assert {:ok, 1} =
+               Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["SHOP"]), nil)
+    end
+
+    test "an adapter that lists no domains serves every workspace; one that lists some, those",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(["SHOP", "API"]))
+      general = %{ctx.other_workspace | domain: "general"}
+
+      Repo.update_all(from(w in Workspace, where: w.id == ^general.id), set: [domain: "general"])
+
+      start(ctx, ["software"])
+
+      assert Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["API"]), general) ==
+               {:error, :other_domain}
+
+      assert {:ok, 1} =
+               Collections.assign_collections(
+                 ctx.scope,
+                 ctx.connection,
+                 ids(ctx, ["SHOP"]),
+                 ctx.workspace
+               )
+
+      start(ctx, nil)
+
+      assert {:ok, 1} =
+               Collections.assign_collections(
+                 ctx.scope,
+                 ctx.connection,
+                 ids(ctx, ["API"]),
+                 general
+               )
+
+      start(ctx, ["general", "software"])
+
+      assert {:ok, 1} =
+               Collections.assign_collections(
+                 ctx.scope,
+                 ctx.connection,
+                 ids(ctx, ["API"]),
+                 ctx.workspace
+               )
     end
   end
 end
