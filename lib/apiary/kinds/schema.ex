@@ -6,10 +6,14 @@ defmodule Apiary.Kinds.Schema do
   definition (`priv/schemas/service-definition.schema.json`), and an integration's
   settings schema. Every schema is given `Apiary.Kinds.Pattern.end_only/1` first, so its
   patterns read `$` as the contracts do. A schema from a file is built once and kept in
-  `:persistent_term`. Nothing is fetched over the network: a reference outside the file
-  resolves to the Forager contract's `auth.schema.json`, vendored under `priv/contract/`,
-  which a service definition's `auth` refers to by its URL, or through JSV's local
-  resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules. A
+  `:persistent_term`. Nothing is fetched over the network. A reference outside the file
+  resolves, by its URL, to one of three vendored files: the Forager contract's
+  `auth.schema.json`, which a service definition's `auth` and a description's
+  `model_provider` role refer to, and its `api-format.schema.json`, which that role
+  refers to, both under `priv/contract/`; and the integrations contract's
+  `definitions.schema.json`, under `priv/contract/integration/`, which the description's
+  schema refers to. JSON Schema's meta-schemas, which JSV embeds, and schemas of loaded
+  modules resolve through JSV's local resolvers, and no other reference resolves. A
   settings schema reaches no module it names: `Apiary.Kinds.SettingsResolver` answers its
   `jsv:` references first.
   """
@@ -19,7 +23,9 @@ defmodule Apiary.Kinds.Schema do
   alias Apiary.Kinds.{Bounds, Pattern}
 
   @forager_contract "https://qory.dev/contracts/forager/v1/"
-  @vendored ~w(auth.schema.json)
+  @vendored ~w(api-format.schema.json auth.schema.json)
+  @integration_contract "https://qory.dev/contracts/integration/v1/"
+  @integration_vendored ~w(definitions.schema.json)
 
   @doc """
   build/2 builds `schema`, a decoded JSON Schema: `{:ok, root}`, or `{:error, reason}` for
@@ -115,14 +121,21 @@ defmodule Apiary.Kinds.Schema do
     }
   end
 
-  # A file of ours that refers to Forager's contract gets the vendored copy, whose
-  # patterns are read as the contract reads them, like the file's own.
+  # A file of ours that refers to Forager's contract or to the integrations contract's
+  # definitions gets the vendored copy, whose patterns are read as the contract reads
+  # them, like those of the file that refers to it.
   @impl JSV.Resolver
-  def resolve(@forager_contract <> file, _opts) when file in @vendored do
-    with {:ok, body} <- File.read(Application.app_dir(:apiary, ["priv", "contract", file])),
+  def resolve(@forager_contract <> file, _opts) when file in @vendored,
+    do: vendored(["contract", file])
+
+  def resolve(@integration_contract <> file, _opts) when file in @integration_vendored,
+    do: vendored(["contract", "integration", file])
+
+  def resolve(url, _opts), do: {:error, {:not_vendored, url}}
+
+  defp vendored(path) do
+    with {:ok, body} <- File.read(Application.app_dir(:apiary, ["priv" | path])),
          {:ok, schema} <- Jason.decode(body),
          do: {:ok, Pattern.end_only(schema)}
   end
-
-  def resolve(url, _opts), do: {:error, {:not_vendored, url}}
 end

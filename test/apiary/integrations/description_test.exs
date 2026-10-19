@@ -28,15 +28,16 @@ defmodule Apiary.Integrations.DescriptionTest do
       names = fixture_names("*.json")
 
       assert names ==
-               ~w(acme-chat.json acme-tracker.json example-projects.json example-tracker.json
-                  github.json unknown-role.json)
+               ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
+                  example-gateway.json example-projects.json example-tracker.json github.json
+                  unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 48
+      assert length(names) == 85
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name

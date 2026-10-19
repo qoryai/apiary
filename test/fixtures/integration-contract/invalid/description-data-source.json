@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "acme-models",
+  "title": "Acme models",
+  "settings": {"type": "object"},
+  "roles": {
+    "source": {"description": "Tickets of Acme tracker.", "program": "acme-tracker", "setup": {"command": "acme-tracker setup", "help": "Asks for the tracker address and prepares it."}, "start": "acme-tracker start", "connect": "Acme tracker asks you to allow access.", "access": "Change the projects in Acme tracker.", "disconnect": "Remove the access in Acme tracker."}
+  }
+}

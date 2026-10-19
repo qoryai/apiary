@@ -1,9 +1,14 @@
 defmodule Apiary.Integrations.Description do
   @moduledoc """
-  Description reads an integration's `description.json`, what its program's `describe`
-  prints and its release publishes, and checks it as the integrations contract says
-  (`priv/contract/integration/description.schema.json`, vendored from the contract at the
-  commit `.integration-contract-ref` names).
+  Description reads an integration's `description.json` and checks it as the
+  integrations contract says (`priv/contract/integration/description.schema.json`,
+  vendored from the contract at the commit `.integration-contract-ref` names). The
+  contract has two forms of a description. The program form, with a `program_version`,
+  is what the `describe` command of an integration's program prints and the
+  integration's release publishes. The data form, without a `program_version`, is a file of data that no program prints: its
+  one role is `model_provider`, and no value of its settings has a member `writeOnly`.
+  The contract's data descriptions of model providers are vendored under
+  `priv/contract/integration/descriptions/`.
 
   `parse/1` refuses a document in which an object repeats a member, at any depth, the
   names compared once their escapes are read: Jason keeps the first value of a repeated
@@ -16,10 +21,11 @@ defmodule Apiary.Integrations.Description do
       it, and no secret is nested in another setting;
     * the credential role's `argument` compiles.
 
-  A role other than `credential` is read as it is: the `source` role once the schema has
-  checked its shape, and a role the schema does not name whatever it holds, once its name
-  matches the schema's pattern and its value is within the bounds. A refusal is
-  `{:error, {:description_invalid, problems}}`.
+  A role other than `credential` is read as it is: the `source` and `model_provider`
+  roles once the schema has checked their shapes, and, in the program form, a role the
+  schema does not name whatever it holds, once its name matches the schema's pattern and
+  its value is within the bounds. The schema refuses a data description with any role
+  other than `model_provider`. A refusal is `{:error, {:description_invalid, problems}}`.
 
   A description of more than 262144 bytes (256 KiB), as `parse/1` is given it, is refused
   before it is decoded, `{:error, {:description_invalid, [:too_large]}}`: the schema's
@@ -83,9 +89,10 @@ defmodule Apiary.Integrations.Description do
 
   @typedoc """
   A description, read: the integration's `name`, `title`, `about` (its `description`),
-  `domains`, `program_version`, every role it names, its secrets (each `name`, and `title`,
-  the secret's title or else its name), the names of its plain settings, what its source
-  role says (nil, and `items` true, without one), and the decoded document.
+  `domains`, `program_version` (nil in the data form), every role it names, its secrets
+  (each `name`, and `title`, the secret's title or else its name), the names of its plain
+  settings, what its source role says (nil, and `items` true, without one), and the
+  decoded document.
   """
   # Of the source role: its words for its items (`item_noun`, nil where it names none),
   # whether that source reports items (`items`, true without a source role), its words for
@@ -96,7 +103,7 @@ defmodule Apiary.Integrations.Description do
           title: String.t(),
           about: String.t() | nil,
           domains: [String.t()] | nil,
-          program_version: String.t(),
+          program_version: String.t() | nil,
           roles: [String.t()],
           secrets: [%{name: String.t(), title: String.t()}],
           settings: [String.t()],

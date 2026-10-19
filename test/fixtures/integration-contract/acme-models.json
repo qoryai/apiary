@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "acme-models",
+  "title": "Acme models",
+  "description": "Models of Acme, at one fixed address.",
+  "settings": {"type": "object"},
+  "roles": {
+    "model_provider": {
+      "endpoint": "https://api.acme.example",
+      "formats": ["anthropic-messages"],
+      "hosts": ["api.acme.example"],
+      "auth": {"scheme": "header", "header": "x-api-key"},
+      "key_variables": ["ANTHROPIC_API_KEY"],
+      "models": [
+        {"id": "acme-large-2", "title": "Acme Large 2", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "acme-small-1", "title": "Acme Small 1"}
+      ]
+    }
+  },
+  "egress_hosts": ["api.acme.example"]
+}

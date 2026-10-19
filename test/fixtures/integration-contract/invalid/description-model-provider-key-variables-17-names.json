@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "acme-cloud",
+  "title": "Acme cloud",
+  "program_version": "0.1.0",
+  "settings": {"type": "object"},
+  "roles": {
+    "model_provider": {
+      "endpoint": "https://api.acme-cloud.example",
+      "formats": ["anthropic-messages"],
+      "hosts": ["api.acme-cloud.example"],
+      "auth": {"scheme": "header", "header": "x-api-key"},
+      "key_variables": ["KEY_1", "KEY_2", "KEY_3", "KEY_4", "KEY_5", "KEY_6", "KEY_7", "KEY_8", "KEY_9", "KEY_10", "KEY_11", "KEY_12", "KEY_13", "KEY_14", "KEY_15", "KEY_16", "KEY_17"],
+      "models": [{"id": "acme-large-2", "title": "Acme Large 2"}]
+    }
+  }
+}
