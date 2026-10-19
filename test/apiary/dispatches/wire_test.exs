@@ -14,11 +14,11 @@ defmodule Apiary.Dispatches.WireTest do
   @base "https://qory.dev/contracts/"
 
   # The vendored schemas, by their URL under the contracts' base: the provisioner
-  # contract's, and the integration contract's it names, vendored beside them under
-  # `integration/v1/` from a later commit of the integrations. Between the two commits,
-  # the integration contract's schemas add definitions and change only the descriptions
-  # of the others, so the provisioner's references resolve to the same rules. Nothing is
-  # fetched.
+  # contract's, and the integration contract's it refers to, vendored beside them under
+  # `integration/v1/` from the same commit of the integrations; and Forager's, which the
+  # handover answer's `run_settings` refers to, from Forager's contract directory
+  # (`Apiary.ContractFixtures.contract_dir/0`), so a test that builds the handover
+  # answer's schema is tagged `:contract`. Nothing is fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -26,19 +26,21 @@ defmodule Apiary.Dispatches.WireTest do
     @base "https://qory.dev/contracts/"
 
     @impl JSV.Resolver
-    def resolve(@base <> path, root) do
-      file = Path.expand(path, root)
+    def resolve(@base <> path, roots) do
+      Enum.find_value(roots, {:error, {:not_vendored, path}}, fn root ->
+        file = Path.expand(path, root)
 
-      with true <- String.starts_with?(file, root <> "/"),
-           {:ok, body} <- File.read(file),
-           {:ok, schema} <- Jason.decode(body) do
-        {:ok, schema}
-      else
-        _ -> {:error, {:not_vendored, path}}
-      end
+        with true <- String.starts_with?(file, root <> "/"),
+             {:ok, body} <- File.read(file),
+             {:ok, schema} <- Jason.decode(body) do
+          {:ok, schema}
+        else
+          _ -> nil
+        end
+      end)
     end
 
-    def resolve(url, _root), do: {:error, {:not_vendored, url}}
+    def resolve(url, _roots), do: {:error, {:not_vendored, url}}
   end
 
   # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
@@ -52,9 +54,17 @@ defmodule Apiary.Dispatches.WireTest do
 
   defp validator(schema) do
     JSV.build!(%{"$ref" => @base <> "provisioner/v1/#{schema}.schema.json"},
-      resolver: {Resolver, @vendored},
+      resolver: {Resolver, [@vendored | forager()]},
       formats: true
     )
+  end
+
+  # The directory of Forager's contracts, when its contract directory is there.
+  defp forager do
+    case Apiary.ContractFixtures.contract_dir() do
+      nil -> []
+      dir -> [Path.expand("../..", dir)]
+    end
   end
 
   defp valid?(schema, document), do: match?({:ok, _}, JSV.validate(document, validator(schema)))
@@ -108,14 +118,15 @@ defmodule Apiary.Dispatches.WireTest do
     "commit" => "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
   }
 
-  test "the vendored contracts are the commits their refs name" do
-    assert File.read!(Path.join(@contract, ".contract-ref")) ==
-             "032b1c23c108218d44838927bc4f4ff7a2a7c34c\n"
-
-    assert File.read!(Path.join(@vendored, "integration/v1/.contract-ref")) ==
-             "72d3e2233ef7d1f2cba95885512633abeeb04741\n"
+  test "the vendored contracts are the commit their refs name" do
+    for dir <- ["provisioner/v1", "integration/v1", "explore/v1"] do
+      assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) ==
+               "92f7df5a8a9488b8ecaaa31e83c23ddbe4b9ddfe\n",
+             dir
+    end
   end
 
+  @tag :contract
   test "every fixture is valid under its vendored schema, or invalid under it as its directory says" do
     for path <- Path.wildcard(Path.join(@fixtures, "**/*.json")) do
       relative = Path.relative_to(path, @fixtures)
@@ -126,6 +137,7 @@ defmodule Apiary.Dispatches.WireTest do
     end
   end
 
+  @tag :contract
   test "a work item's url in an answer is https, or http to a loopback address alone" do
     loopback = Jason.decode!(fixture("claim-answer/explore-loopback.json"))
     assert loopback["work_item"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
@@ -182,7 +194,7 @@ defmodule Apiary.Dispatches.WireTest do
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
     assert length(requests) == 7
     assert length(invalid_requests) == 15
-    assert length(answers) == 23
+    assert length(answers) == 47
     assert length(refusals) == 6
   end
 

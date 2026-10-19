@@ -12,9 +12,7 @@
     "run_id",
     "pool_id",
     "lease_until",
-    "step",
-    "access",
-    "target"
+    "step"
   ],
   "allOf": [
     {
@@ -51,23 +49,29 @@
             "work_item"
           ]
         },
-        "properties": {
-          "revision": {
-            "minimum": 2
-          }
-        }
+        "required": [
+          "access",
+          "target"
+        ]
       }
     }
   ],
+  "dependentRequired": {
+    "target": [
+      "access"
+    ],
+    "access": [
+      "target"
+    ]
+  },
   "properties": {
     "version": {
       "description": "The document format. The starter refuses a version it does not read.",
       "const": 1
     },
     "revision": {
-      "description": "The revision of this contract the control plane built the answer for, the one the request's X-Qory-Contract-Version named. The answer's signature covers it, with the rest of the body. The starter refuses an answer whose revision is not the revision it implements.",
-      "type": "integer",
-      "minimum": 1
+      "description": "The revision of this contract the control plane built the answer for: 3, the one revision the control plane serves and the one the request's X-Qory-Contract-Version named. The answer's signature covers it, with the rest of the body. The starter refuses an answer whose revision is not the revision it implements.",
+      "const": 3
     },
     "dispatch_id": {
       "description": "The dispatch: the id the starter's later requests name in their path.",
@@ -86,15 +90,15 @@
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
     },
     "step": {
-      "description": "The step the run is for. The control plane gives the step prebuild only to a claim whose X-Qory-Contract-Version names revision 2 or later, and names that revision in revision, so a starter that implements revision 1 never meets it.",
+      "description": "The step the run is for.",
       "$ref": "definitions.schema.json#/$defs/step"
     },
     "access": {
-      "description": "What the run may do on its target.",
+      "description": "What the run may do on its target. Present exactly when target is present.",
       "$ref": "definitions.schema.json#/$defs/access"
     },
     "target": {
-      "description": "Where the run's change would go. For the step prebuild, the place whose environment the job builds.",
+      "description": "Where the run's change would go, and absent when the run has no place where a change would go. The step explore may have none. The step prebuild always has one: the place whose environment the job builds.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
     },
     "work_item": {
