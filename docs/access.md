@@ -481,7 +481,11 @@ for each other and never on each other at once:
 5. **Everything else**: the organisation's integrations lock, a transaction-level advisory
    lock that every write to its runtimes, integrations and services takes
    (`Apiary.Connections.lock/1`), then the rows it changes; invitations, access keys,
-   nodes, then runs.
+   nodes, then runs. A change to a model provider takes the integrations lock, then the
+   provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes
+   the organisation's advisory lock for its secrets and the row of the keys' secret
+   `FOR UPDATE`; to choose the default key, that row `FOR SHARE`. It reads what uses the
+   keys without a lock (`Apiary.Secrets.Usage`).
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the
