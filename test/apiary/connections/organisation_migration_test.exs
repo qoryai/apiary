@@ -19,10 +19,16 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
   @move {20_261_016_090_200, Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation,
          "move_connections_to_the_organisation"}
 
-  setup_all do
-    {version, migration, name} = @move
+  # The later migrations of a model provider, whose keys depend on the tables this one
+  # makes: down before it, and up after it.
+  @later [
+    {20_261_019_070_100, Apiary.Repo.Migrations.KeepAProviderSModels, "keep_a_provider_s_models"},
+    {20_261_019_070_000, Apiary.Repo.Migrations.KeepAProviderAsAnIntegrationConnection,
+     "keep_a_provider_as_an_integration_connection"}
+  ]
 
-    unless Code.ensure_loaded?(migration) do
+  setup_all do
+    for {version, migration, name} <- [@move | @later], not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
       |> Code.require_file()
@@ -41,6 +47,16 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
     apply(Ecto.Migrator, direction, [Repo, version, migration, @options])
   end
 
+  defp later_down! do
+    for {version, migration, _name} <- @later,
+        do: assert(:ok = Ecto.Migrator.down(Repo, version, migration, @options))
+  end
+
+  defp later_up! do
+    for {version, migration, _name} <- Enum.reverse(@later),
+        do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
+  end
+
   defp columns(table) do
     %{rows: rows} =
       Repo.query!(
@@ -52,6 +68,7 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
   end
 
   test "down gives each table its workspace again, and up takes it away" do
+    later_down!()
     assert :ok = down!()
     assert "workspace_id" in columns("workspace_connections")
     assert "workspace_id" in columns("integration_releases")
@@ -61,6 +78,7 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
     assert columns("connection_workspaces") == []
 
     assert :ok = up!()
+    later_up!()
     assert columns("workspace_connections") == []
     assert columns("connection_targets") == []
     refute "workspace_id" in columns("organisation_connections")
@@ -92,6 +110,7 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
 
   test "up refuses while a table of the workspaces holds a row" do
     %{scope: scope} = sign_up_fixture()
+    later_down!()
     assert :ok = down!()
 
     Repo.query!(

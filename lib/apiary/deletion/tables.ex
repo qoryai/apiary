@@ -47,9 +47,10 @@ defmodule Apiary.Deletion.Tables do
   # ticket's comments before the ticket, and the tickets and the bookkeeping of their
   # listings before the collections they belong to; an adapter's collections and the
   # bookkeeping of their listings before the connections they name; a work item's events,
-  # answers, confirmations and comments before the work item; a connection's workspaces before the connection, and the
-  # connections before the releases and the service definitions they name; everything of
-  # a workspace before the workspace.
+  # answers, confirmations and comments before the work item; a connection's workspaces
+  # and a provider's models before the connection, and the connections before the
+  # releases, the service definitions and the secrets they name; everything of a
+  # workspace before the workspace.
   #
   # A run of the queue names its work item by the organisation, not the workspace: it
   # stays in the workspace it was queued in when its work item moves to another. So a
@@ -77,6 +78,7 @@ defmodule Apiary.Deletion.Tables do
     {"retention_runs", :workspace},
     {"policy_rules", :workspace},
     {"connection_workspaces", :workspace},
+    {"provider_models", :organisation},
     {"organisation_connections", :organisation},
     {"service_definitions", :organisation},
     {"integration_releases", :organisation},

@@ -20,8 +20,8 @@ defmodule Apiary.Connections.IntegrityVectorsTest do
     on_exit(fn -> Application.put_env(:apiary, KeyDerivation, previous) end)
   end
 
-  defp known_answer(module, row) do
-    version = module.integrity_version()
+  defp known_answer(module, row, version \\ nil) do
+    version = version || module.integrity_version()
     fields = module.integrity_fields(row, version)
     {key_id, code} = Integrity.code(module.integrity_kind(), version, fields)
     assert key_id == "00c237515a3185d8"
@@ -45,9 +45,9 @@ defmodule Apiary.Connections.IntegrityVectorsTest do
       description_sha256: String.duplicate("a", 64)
     }
 
-    assert Connection.integrity_versions() == [2]
+    assert Connection.integrity_versions() == [2, 3]
 
-    assert known_answer(Connection, row) ==
+    assert known_answer(Connection, row, 2) ==
              {2,
               [
                 :id,
@@ -66,6 +66,51 @@ defmodule Apiary.Connections.IntegrityVectorsTest do
                 :service_builtin,
                 :service_definition_id
               ], "32ccf4feab5faa41168fa81a87cb5251fb0344110b35efb9a820b32a59dd3ae1"}
+  end
+
+  test "a connection is coded at version 3, with a model provider's columns" do
+    row = %Connection{
+      id: "0f9b6a8e-1d2c-4e3f-8a7b-6c5d4e3f2a11",
+      organisation_id: @organisation,
+      public_id: "con_0123456789abcdeg",
+      kind: "integration",
+      name: "LiteLLM",
+      applies_to: "all",
+      settings: ~s({"address":"https://litellm.example.com"}),
+      description_sha256: String.duplicate("b", 64),
+      provider_kind: "litellm",
+      description_ref: String.duplicate("c", 40),
+      secret_id: "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
+      default_value_id: "main",
+      chain: "organisation"
+    }
+
+    assert Connection.integrity_version() == 3
+
+    assert known_answer(Connection, row) ==
+             {3,
+              [
+                :id,
+                :organisation_id,
+                :public_id,
+                :kind,
+                :name,
+                :applies_to,
+                :settings,
+                :argument,
+                :release_id,
+                :source,
+                :forge_kind,
+                :version,
+                :description_sha256,
+                :service_builtin,
+                :service_definition_id,
+                :provider_kind,
+                :description_ref,
+                :secret_id,
+                :default_value_id,
+                :chain
+              ], "0850fdfc5591d44419e1b098acaf5e4f1f5948575c300e9730811de41918603a"}
   end
 
   test "a service definition is coded at version 2, without a workspace" do

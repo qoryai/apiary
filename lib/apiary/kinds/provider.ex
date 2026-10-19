@@ -54,8 +54,10 @@ defmodule Apiary.Kinds.Provider do
   load!/1 is the provider the data description at `path` describes. It raises when
   `parse/1` refuses the file, when the description has a `program_version` or a role
   other than `model_provider`, when its `name` differs from the file's name without
-  `.json`, or when its URL endpoint or the `default` of an address setting breaks the rule
-  of `Apiary.Kinds.Endpoint`. `Apiary.Kinds.Providers` calls it when the application is
+  `.json`, when its URL endpoint or the `default` of an address setting breaks the rule
+  of `Apiary.Kinds.Endpoint`, or when it has more than 200 models or a model title of
+  more than 128 characters, which a provider connection cannot hold
+  (`Apiary.Connections.ProviderModel`). `Apiary.Kinds.Providers` calls it when the application is
   compiled, so a description that fails stops the compile.
   """
   @spec load!(Path.t()) :: t
@@ -67,11 +69,16 @@ defmodule Apiary.Kinds.Provider do
       {:ok, %Description{name: ^file, program_version: nil, roles: ["model_provider"]} = read} ->
         provider = %{from(read) | sha256: sha256(bytes)}
 
-        case addresses_refused(provider) do
-          [] ->
+        case {addresses_refused(provider), models_refused(provider)} do
+          {[], []} ->
             provider
 
-          refused ->
+          {[], refused} ->
+            raise ArgumentError,
+                  "#{path} has more models, or longer titles, than a provider holds: " <>
+                    inspect(refused)
+
+          {refused, _models} ->
             raise ArgumentError,
                   "#{path} has an address that Apiary.Kinds.Endpoint refuses: " <>
                     inspect(refused)
@@ -122,6 +129,13 @@ defmodule Apiary.Kinds.Provider do
     for address <- endpoint ++ defaults,
         {:error, refusal} <- [Endpoint.check(address)],
         do: {address, refusal}
+  end
+
+  # What `Apiary.Connections.ProviderModel` holds: 200 models, each title 1 to 128
+  # characters.
+  defp models_refused(%__MODULE__{models: models}) do
+    count = if length(models) > 200, do: [{:models, length(models)}], else: []
+    count ++ for(%{"title" => t} <- models, String.length(t) > 128, do: {:title, t})
   end
 
   defp sha256(bytes), do: :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
