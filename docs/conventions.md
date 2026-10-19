@@ -110,6 +110,15 @@ suite leaves them out (`Apiary.TestSetup.start!/1`). The one of a gateway's back
 after an outage runs with `QORY_FEATURES` unset:
 `mix test --only load test/apiary_web/contract/backlog_load_test.exs`.
 
+## Public ids
+
+Every insert into a table with a `public_id` column (a prefix, `_` and 16 Crockford base32
+characters, `Apiary.PublicId`) goes through `Apiary.PublicId.Insert`. It runs the insert
+again with a fresh id, 3 tries in all, when the unique index `<table>_public_id_index`
+refuses it, in a savepoint when the caller is in a transaction, and for no other error. A
+column default that makes the id (such as `source_item_public_id()`) makes another on the
+next try.
+
 ## Doc comments
 
 Every context, schema and plug carries a `@moduledoc`, and every public context function a
