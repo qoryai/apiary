@@ -22,7 +22,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
   #     and once it has one, `:id` (its `rn_` id), `:path`, `:state`, `:outcome`
-  #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`) and what it gave;
+  #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause` and
+  #     what it gave;
   #   * `:stage` - for an ended work item, the stage it ended at (`:explore`, `:confirm`
   #     or `:shape`); a live one's stage follows from its status;
   #   * `:owner` - a person, or `nil`;
@@ -89,6 +90,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   @ended [:declined, :closed, :undone]
   @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
   @no_result [:no_result, :lost, :cancelled]
+  # The end causes of a run that ended at its handover, before it started, because the
+  # handover could not form what the run is made from (`Apiary.Dispatches.Handover`).
+  @unstarted [:variables_invalid, :ticket_gone, :inputs_invalid]
   @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
   @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
 
@@ -1749,7 +1753,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       that Take in again from the Backlog starts the count again, unless its ticket's
       repository keeps its tickets out of the Backlog (`backlog_off`); or what happened to
       the last run;
-    * no result, lost or cancelled: what happened, and the run's page;
+    * no result, lost or cancelled: what happened, and the run's page; for a run that
+      ended at its handover, before it started (`:end_cause` `:variables_invalid`,
+      `:ticket_gone` or `:inputs_invalid`), what a member fixes and why;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
       with Qory's words under Show Qory's words;
@@ -1762,7 +1768,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   A run is a map: `:id` (its `rn_` public id) and `:path`, `:attempt` and `:of`, `:state`
   (`:pending`, `:running`, `:completed`, `:failed`, `:cancelled` or `:lost`),
   `:started_at`, `:ended_at`, `:duration` (how long it took, in words), `:outcome`
-  (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), and what it gave:
+  (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause` (why its
+  run of the queue ended, nil while it has not), and what it gave:
   `:proposal`, or `:understanding` and `:questions` (each `%{public_id:, text:, answer:}`)
   with `:answered_by` (a person) and `:answered_at` once a member answered them.
 
@@ -2629,6 +2636,11 @@ defmodule ApiaryWeb.WorkItemComponents do
          "It was cancelled before it ended. There is nothing for Qory to show or for a member to confirm."
        )}
 
+  defp no_result_words(%{end_cause: cause}) when cause in @unstarted,
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
+       unstarted_words(cause)}
+
   defp no_result_words(%{outcome: :none}),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
@@ -2649,6 +2661,25 @@ defmodule ApiaryWeb.WorkItemComponents do
        gettext(
          "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
        )}
+
+  # What a member does about a run that ended at its handover, and why it ended.
+  defp unstarted_words(:variables_invalid),
+    do:
+      gettext(
+        "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
+      )
+
+  defp unstarted_words(:ticket_gone),
+    do:
+      gettext(
+        "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."
+      )
+
+  defp unstarted_words(:inputs_invalid),
+    do:
+      gettext(
+        "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."
+      )
 
   attr :id, :string, required: true
   attr :runs, :list, required: true

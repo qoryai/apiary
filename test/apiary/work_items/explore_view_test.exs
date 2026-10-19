@@ -371,8 +371,24 @@ defmodule Apiary.WorkItems.ExploreViewTest do
     test "a run not ended has no duration yet", ctx do
       explore_run_fixture(ctx.work_item, state: :handed_over)
 
-      assert %{run: %{duration_ms: nil, ended_at: nil}} =
+      assert %{run: %{duration_ms: nil, ended_at: nil, end_cause: nil}} =
                WorkItems.explore(ctx.scope, ctx.work_item)
+    end
+
+    test "each run has the end cause of its run of the queue, as its handover or its outcome wrote it",
+         ctx do
+      for {cause, n} <- Enum.with_index([:variables_invalid, :ticket_gone, :inputs_invalid], 20) do
+        work_item = work_item_fixture(ctx.scope, external_ref: "acme/shop##{n}")
+        explore_run_fixture(work_item, end_cause: cause)
+
+        assert %{run: %{id: nil, place: :no_result, outcome: :error, end_cause: ^cause}} =
+                 WorkItems.explore(ctx.scope, work_item)
+
+        explore_run_fixture(work_item, result: understood_result())
+
+        assert %{run: %{end_cause: :run_ended}, earlier_runs: [%{end_cause: ^cause}]} =
+                 WorkItems.explore(ctx.scope, work_item)
+      end
     end
 
     test "a take in again: how the work item had ended, the owner of each take in, and the earlier take in's runs as they were drawn" do

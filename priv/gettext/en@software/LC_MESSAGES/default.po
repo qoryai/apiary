@@ -6949,6 +6949,11 @@ msgstr ""
 msgid "Fix the paths to see the rule in plain words."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Fixed when it was made."
@@ -13374,6 +13379,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Show %{count} earlier comment"
 msgid_plural "Show %{count} earlier comments"
 msgstr[0] ""
@@ -13875,6 +13885,11 @@ msgstr ""
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "Take the %{items} of %{name} into the Backlog"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -14894,6 +14909,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "The rules stay as they are, locked ones too."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run ended before it started."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

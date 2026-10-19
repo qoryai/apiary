@@ -1187,7 +1187,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   describe "explore_tab/1, a run without a result" do
     test "what happened, and the run's page" do
       for {status, overrides, run_state, heading, body} <- [
-            {:no_result, %{state: :failed, outcome: :error}, "Failed",
+            {:no_result, %{state: :failed, outcome: :error, end_cause: :run_ended}, "Failed",
              "The run ended with an error.",
              "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."},
             {:no_result, %{outcome: :none}, "Completed", "The run ended without a result.",
@@ -1218,6 +1218,96 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert attr(html, "#work-item-explore-none a", "href") == [
                  "/8wonders/main/runs/rn_01a97b20c4e81f3d"
                ]
+      end
+    end
+
+    test "a run that ended at its handover, before it started: what to fix and why, here and in the folds" do
+      for {cause, body} <- [
+            {:variables_invalid,
+             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
+            {:ticket_gone,
+             "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."},
+            {:inputs_invalid,
+             "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: cause,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        words = ["The run ended before it started.", body]
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+        assert texts(html, "#work-item-explore-none p") == words
+        assert count(html, "#work-item-explore-none a") == 0
+
+        earlier =
+          tab(work_item(%{number: 97, status: :queued, run: %{attempt: 2, of: 3}}),
+            earlier_runs: [r]
+          )
+
+        assert texts(earlier, "#work-item-explore-earlier-run-1-body p") == words
+
+        take_in = %{
+          taken_in_by: @dana,
+          taken_in_at: ~U[2026-10-16 15:20:00Z],
+          ended: :declined,
+          ended_by: @dana,
+          ended_at: ago(4 * 60),
+          runs: [r]
+        }
+
+        taken =
+          tab(work_item(%{number: 97, status: :queued, run: %{attempt: 1, of: 3}}),
+            earlier_take_ins: [take_in]
+          )
+
+        assert texts(taken, "#work-item-explore-take-ins-1-run-1-body p") == words
+
+        for html <- [html, earlier, taken] do
+          refute html =~ "ended with an error"
+          refute html =~ "Its last result was an error"
+        end
+      end
+    end
+
+    test "a run whose last result was an error keeps its words, here and in the folds" do
+      r =
+        run(%{
+          state: :failed,
+          outcome: :error,
+          end_cause: :run_ended,
+          proposal: nil,
+          ended_at: ago(3600)
+        })
+
+      words = [
+        "The run ended with an error.",
+        "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
+      ]
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+      assert texts(html, "#work-item-explore-none p") |> Enum.take(2) == words
+
+      earlier =
+        tab(work_item(%{number: 97, status: :queued, run: %{attempt: 2, of: 3}}),
+          earlier_runs: [r]
+        )
+
+      assert texts(earlier, "#work-item-explore-earlier-rn_01a97b20c4e81f3d-body p")
+             |> Enum.take(2) == words
+
+      for html <- [html, earlier] do
+        refute html =~ "The run ended before it started."
       end
     end
 
