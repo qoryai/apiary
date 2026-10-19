@@ -77,7 +77,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-runtime-claude",
-               "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token."
+               "Anthropic's coding agent."
              )
 
       assert has_element?(lv, "#add-card-api-sentry h4", "Sentry")

@@ -321,7 +321,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   # The line under an agent's name: the catalogue has no description, so the console
   # says what each of its runtimes is; one it doesn't know, what it is.
   defp runtime_line(%{name: "claude"}),
-    do: gettext("Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token.")
+    do: gettext("Anthropic's coding agent.")
 
   defp runtime_line(_runtime), do: gettext("A coding agent Forager can start.")
 
