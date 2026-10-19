@@ -270,6 +270,11 @@ msgstr ""
 msgid "%{destination}, request %{id}"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} (you)"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{email} is active again."

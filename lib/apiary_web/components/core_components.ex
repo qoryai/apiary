@@ -1250,12 +1250,81 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   A placeholder avatar: the first letter of a name. People are round, an
-  organisation is square. Decorative: the name is always beside it.
+  organisation is square.
+
+  Without `email` it is decorative and hidden from screen readers: the name is always
+  beside it, as in a list of people.
+
+  With `email` it stands for a person in a line of text, in place of their name:
+
+    * an address shows its first character, upper-cased by Unicode rules, a digit or a
+      symbol as it is, in an `<abbr>` whose tooltip and accessible name are the address;
+      the address is also in visually hidden text where the letter is, and the letter is
+      hidden from screen readers;
+    * the `<abbr>` is a tab stop, except with `in_link`, inside a link or a row that
+      opens, which may hold no focusable element;
+    * the reader's address (`reader`, or `kind` `self`) has the account menu's colour,
+      and its tooltip and accessible name read "dana@example.com (you)";
+    * "Former member", the words `ApiaryWeb.People` gives for a deleted account, is those
+      words, with no letter and no tooltip;
+    * nil is nothing.
+
+      <.avatar email={@email} reader={@current_scope.user.email} size="xs" />
   """
   attr :name, :string, default: nil
+
+  attr :email, :string,
+    doc:
+      "the address of the person it stands for in a line of text; given, even as nil, it draws the `<abbr>`"
+
+  attr :reader, :string, default: nil, doc: "with `email`: the reader's address"
+
+  attr :in_link, :boolean,
+    default: false,
+    doc: "with `email`: inside a link or a row that opens, so it is no tab stop"
+
   attr :kind, :string, default: "person", values: ~w(person self organisation pending)
   attr :size, :string, default: "sm", values: ~w(xs sm md lg)
   attr :class, :any, default: nil
+
+  def avatar(%{email: email} = assigns) when email in [nil, ""], do: ~H""
+
+  def avatar(%{email: email} = assigns) do
+    if email == ApiaryWeb.People.former_member() do
+      ~H"{@email}"
+    else
+      you = assigns.kind == "self" or email == assigns.reader
+
+      assigns =
+        assign(assigns,
+          you: you,
+          hint: if(you, do: gettext("%{email} (you)", email: email), else: email),
+          letter: email |> String.first() |> String.upcase()
+        )
+
+      ~H"""
+      <abbr
+        class={["term tooltip inline-flex flex-none rounded-full align-middle !no-underline", @class]}
+        tabindex={!@in_link && "0"}
+        data-tip={@hint}
+        aria-label={@hint}
+      ><span
+        aria-hidden="true"
+        class={[
+          "grid place-items-center rounded-full font-semibold uppercase leading-none",
+          @size == "xs" && "size-[18px] text-[10.5px]",
+          @size == "sm" && "size-6 text-[11px]",
+          @size == "md" && "size-7 text-xs",
+          @size == "lg" && "size-8 text-[13px]",
+          if(@you,
+            do: "bg-primary-soft text-primary-soft-content",
+            else: "bg-base-300 text-muted ring-1 ring-inset ring-line"
+          )
+        ]}
+      >{@letter}</span><span class="sr-only">{@hint}</span></abbr>
+      """
+    end
+  end
 
   def avatar(assigns) do
     ~H"""

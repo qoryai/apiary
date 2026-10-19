@@ -1261,6 +1261,16 @@ needs becomes a component, or an attribute of one, not a copy.
 - **Tooltips** (`.tooltip` with `data-tip`) take no box while hidden, so a right-hand one
   never widens a phone's page; shown, they wrap at 36ch or the window. Escape hides the
   one under the pointer or focus until the pointer leaves or focus moves (`app.js`).
+- **`<.avatar>`** draws a first letter on a circle. In a list of people it sits beside the
+  person's address, decorative and hidden from screen readers. In a line of text it stands
+  for the person (`email`): the first character of the address, upper case, as an `<abbr>`
+  whose tooltip and accessible name are the address, with the address also in visually
+  hidden text, so the line reads aloud as "Locked by priya@example.com on 3 Oct.". The
+  `<abbr>` is a tab stop, except inside a link or a row that opens (`in_link`). The
+  reader's letter has the account menu's colour and its tooltip "dana@example.com
+  (you)"; a line that says "you" keeps the word. Two people of one letter look alike, and
+  the tooltip tells them apart. A deleted account is the words Former member, with no
+  letter. A tooltip or a label is plain text, so it names the person by the whole address.
 - **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>` (with `suggest`, a
   combobox of suggestions), `<.filter_menu>`, `<.sort_menu>` and `<.filter_tokens>` are a
   list's controls; `<.state_word>` says a
