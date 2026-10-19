@@ -30,7 +30,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.RichText
-  import Phoenix.Component, only: [assign: 2, assign: 3, to_form: 2]
+  import Phoenix.Component, only: [assign: 2, assign: 3, to_form: 2, sigil_H: 2]
+  import ApiaryWeb.CoreComponents, only: [avatar: 1]
   # Phoenix.LiveView, its async work run under the page's organisation and workspace ids.
   use ApiaryWeb.Async
 
@@ -170,10 +171,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc "The start of the window a list of rules counts their use in: the last 14 days."
   def use_since, do: DateTime.add(DateTime.utc_now(), -@fortnight, :second)
-
-  @doc "The local part of an email: dana of dana@example.com."
-  def local(nil), do: nil
-  def local(email), do: People.short(email)
 
   @doc """
   Reads who made each rule the page lists, in one read, into its `authors`: the authors
@@ -548,7 +545,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> Map.new(fn change ->
       {change.subject,
        %{
-         by: People.short(People.email(change.changed_by)),
+         by: People.email(change.changed_by),
          at: Format.date(change.inserted_at)
        }}
     end)
@@ -579,6 +576,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         entries: socket.assigns.effective.entries,
         owner: may?(socket, :"security_policy.lock"),
         locked_by: socket.assigns[:locks] || %{},
+        reader: socket.assigns.current_scope.user.email,
         who_locks:
           ApiaryWeb.Edition.who_may_sentence(
             :"security_policy.lock",
@@ -1244,12 +1242,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The sentence of a change, its author first: rich text. `who` is the author's email,
-  "Former member" once their account is deleted (`ApiaryWeb.People`), or nil for a change
-  nobody made, such as a render again after an upgrade, which Qory made. `above` is the
-  name of the level above the workspace, for a change of it (`above_changed`), or nil.
+  shown as its first letter with the address as its tooltip, "Former member" once their
+  account is deleted (`ApiaryWeb.People`), or nil for a change nobody made, such as a
+  render again after an upgrade, which Qory made. `above` is the name of the level above
+  the workspace, for a change of it (`above_changed`), or nil; `reader` is the reader's
+  address.
   """
-  def change_sentence(change, who, above \\ nil) do
-    who = {:b, who || gettext("Qory Apiary")}
+  def change_sentence(change, who, above \\ nil, reader \\ nil) do
+    who = {:b, (who && letter(who, reader)) || gettext("Qory Apiary")}
     diff = Policy.diff(change)
 
     case {change.action, diff} do
@@ -1654,6 +1654,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
+  # The author of a change, as its sentence's subject inside the row that opens it: their
+  # first letter, with the address as its tooltip (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} in_link size="xs" />|
+  end
+
   ## History
 
   @doc "A page of the holder's history as the rows of the change list."
@@ -1672,13 +1679,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
         made = made_version(versions, holder, change)
         query = if changes.page > 1, do: %{"page" => changes.page}, else: %{}
 
-        who = People.short(People.email(change.changed_by))
+        who = People.email(change.changed_by)
 
         %{
           id: change.id,
-          sentence: change_sentence(change, who, above),
+          sentence: change_sentence(change, who, above, scope.user.email),
           origin: origin(change, made),
-          who: who,
           at: change.inserted_at,
           version: made && made.version,
           digest: made && made.digest,
@@ -1859,7 +1865,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
          current?: latest.version == configuration.version,
          latest: latest.version,
          superseded_by: superseded_by,
-         changed_by: People.short(People.account(accounts, configuration.changed_by_id)),
+         changed_by: People.account(accounts, configuration.changed_by_id),
          mode: document_mode(configuration.document),
          mode_source:
            if(latest.version == configuration.version,

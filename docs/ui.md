@@ -992,14 +992,14 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   member reads, under "Connect build-01", "build-01 has no key yet, so it isn't connected
   to Qory Apiary. An owner or admin connects it." A command not yet run shows
   in the command's option, above its button, or its row under Add a key: "A command is waiting to be run
-  on build-01.", "dana@example.com got it at 14:17. It works once, until 14:32. It was
+  on build-01.", "D got it at 14:17. It works once, until 14:32. It was
   shown once: if it's lost, cancel it and get a new one." and Cancel the command…,
   confirmed in place ("Cancel the command from 14:17?", Yes, cancel it and Keep it); its
   button becomes Get a new command. There is no list of codes. With keys, the tab lists
   them under Keys, with a count, one card each, headed by its label and Active or Revoked:
   Key ID, `ak_…` with Copy, since the ID can always be seen again, Added ("Connected with
-  a command by dana, …" or "Generated in a browser by …"), Secret (where the
-  key's secret is), Last used ("Not yet" while unused) and Fingerprint,
+  a command by D, …" or "Generated in a browser by …", D being the person's letter),
+  Secret (where the key's secret is), Last used ("Not yet" while unused) and Fingerprint,
   and an active key's **Forager file**, for everyone who reads the node, and Revoke…,
   confirmed in place. A key whose record doesn't match its integrity code says so on its
   card: "… It can't be used." Under the keys, Add a key says how to move to a new key, add
@@ -1261,6 +1261,17 @@ needs becomes a component, or an attribute of one, not a copy.
 - **Tooltips** (`.tooltip` with `data-tip`) take no box while hidden, so a right-hand one
   never widens a phone's page; shown, they wrap at 36ch or the window. Escape hides the
   one under the pointer or focus until the pointer leaves or focus moves (`app.js`).
+- **`<.avatar>`** draws a first letter on a circle. In a list of people it sits beside the
+  person's address, decorative and hidden from screen readers. In a line of text it stands
+  for the person (`email`): the first character of the address, upper case, as an `<abbr>`
+  whose tooltip and accessible name are the address, with the address also in visually
+  hidden text, so the line reads aloud as "Locked by priya@example.com on 3 Oct.". The
+  `<abbr>` is a tab stop, except inside a link or a row that opens (`in_link`), where its
+  tooltip opens when the link or the row has keyboard focus. The reader's letter has the
+  account menu's colour and its tooltip "dana@example.com (you)"; a line that says "you"
+  keeps the word. Two people of one letter look alike, and the tooltip tells them apart.
+  A deleted account is the words Former member, with no letter. A tooltip or a label is
+  plain text, so it names the person by the whole address.
 - **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>` (with `suggest`, a
   combobox of suggestions), `<.filter_menu>`, `<.sort_menu>` and `<.filter_tokens>` are a
   list's controls; `<.state_word>` says a

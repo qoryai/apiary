@@ -530,7 +530,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(button#{id.("bin.paste.example")}-lock[aria-label^="A locked workspace rule denies *.paste.example. Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "])
+               ~s(button#{id.("bin.paste.example")}-lock[aria-label^="A locked workspace rule denies *.paste.example. Locked by #{scope.user.email} on "])
              )
 
       assert has_element?(
@@ -1023,8 +1023,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refusal = text(view, "#rule-panel-refusal")
       assert refusal =~ "A locked workspace rule denies *.paste.example ."
       assert refusal =~ "so no rule added here would change what happens."
-      assert refusal =~ "Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "
-      refute refusal =~ scope.user.email
+
+      assert refusal =~
+               "Locked by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) on "
+
       assert refusal =~ "You can change or unlock it on the workspace's policy page."
 
       assert has_element?(
@@ -1113,6 +1115,23 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "Rule changed Allowed for the workspace in v2 · of the workspace's policy by you"
 
       refute text(view, "#cx-#{id}-after") =~ "Rule added"
+    end
+
+    test "a rule another person changed names them by their letter, the address its hint",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@allowed_by_rule])
+      {:ok, _} = Policy.deny(admin.scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      letter = String.upcase(String.first(admin.user.email))
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Denied for the workspace in v2 · of the workspace's policy by #{letter} #{admin.user.email} "
+
+      assert has_element?(view, ~s{#cx-#{id}-after abbr[data-tip="#{admin.user.email}"]})
     end
 
     test "an allow rule changed to deny says Rule changed", %{conn: conn, scope: scope} do

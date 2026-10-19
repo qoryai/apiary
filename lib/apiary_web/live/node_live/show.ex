@@ -630,7 +630,11 @@ defmodule ApiaryWeb.NodeLive.Show do
         {@node.name}
       </:crumb>
 
-      <NodeComponents.node_header node={@node} activity={@activity} />
+      <NodeComponents.node_header
+        node={@node}
+        activity={@activity}
+        reader={@current_scope.user.email}
+      />
       <NodeComponents.node_tabs
         node={@node}
         paths={@paths}
@@ -895,10 +899,12 @@ defmodule ApiaryWeb.NodeLive.Show do
           </dd>
           <dt :if={@node.created_by} class="text-faint">{gettext("Made")}</dt>
           <dd :if={@node.created_by}>
-            {gettext("by %{person}, %{date}",
-              person: People.short(People.email(@node.created_by)),
-              date: Format.date(@node.inserted_at)
-            )}
+            <.rich text={
+              rich_gettext("by %{person}, %{date}",
+                person: letter(People.email(@node.created_by), @scope.user.email),
+                date: Format.date(@node.inserted_at)
+              )
+            } />
           </dd>
         </dl>
         <p>
@@ -1358,6 +1364,13 @@ defmodule ApiaryWeb.NodeLive.Show do
 
   defp kind_sentence(:pool),
     do: gettext("Node pool: short-lived instances that share one access key.")
+
+  # Who made the node, in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
 
   defp limit_words(%Node{kind: :node}), do: gettext("1, one instance at a time")
   defp limit_words(%Node{instance_limit: nil}), do: gettext("No limit")

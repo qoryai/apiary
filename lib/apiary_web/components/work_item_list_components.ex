@@ -6,9 +6,9 @@ defmodule ApiaryWeb.WorkItemListComponents do
   # Every component takes plain assigns, as `ApiaryWeb.WorkItemComponents` describes: a
   # work item is a map with `:number`, `:title`, `:key` (the ticket's key at the source,
   # or `nil`), `:status`, `:owner`, `:ended_by` and `:updated_at`, and a person a map with
-  # `:name` and `:you`. Every DOM id and path is Qory Apiary's: the work item's number, and
-  # the paths the page gives. The ticket's key is text only; without one the row shows
-  # none, and the ticket's ref at the source is never shown.
+  # `:name`, `:email` and `:you`. Every DOM id and path is Qory Apiary's: the work item's
+  # number, and the paths the page gives. The ticket's key is text only; without one the
+  # row shows none, and the ticket's ref at the source is never shown.
   #
   # A part that names the tickets of many sources takes the words they share for their
   # items, `item_noun` (`ApiaryWeb.SourceComponents.items/1`): "bugs" where every source
@@ -24,7 +24,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   use ApiaryWeb, :html
 
   import ApiaryWeb.WorkItemComponents,
-    only: [work_item_mark: 1, stage_name: 1, owner_phrase: 1]
+    only: [work_item_mark: 1, stage_name: 1]
 
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
 
@@ -526,10 +526,14 @@ defmodule ApiaryWeb.WorkItemListComponents do
         <span
           class="q-wl-own"
           role="img"
-          title={owner_phrase(@owner)}
-          aria-label={gettext("Owner: %{name}", name: @owner.name)}
+          aria-label={gettext("Owner: %{name}", name: @owner.email)}
         >
-          <.avatar name={@owner.name} size="xs" />
+          <.avatar
+            email={@owner.email}
+            kind={if(@owner.you, do: "self", else: "person")}
+            in_link
+            size="xs"
+          />
         </span>
         <span class="q-wl-upd">
           <BacklogComponents.compact_time at={@work_item.updated_at} now={@now} />

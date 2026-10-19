@@ -159,7 +159,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     case Enum.find(changes, &(&1.action == "mode_changed")) do
       %{after: %{"mode" => mode}} = change when mode in ~w(observe enforce) ->
         %{
-          by: ApiaryWeb.People.short(ApiaryWeb.People.email(change.changed_by)),
+          by: ApiaryWeb.People.email(change.changed_by),
           at: change.inserted_at
         }
 
@@ -903,7 +903,13 @@ defmodule ApiaryWeb.PolicyLive.Target do
         summary={@summary}
         now={@now}
       />
-      <.version_view :if={@action == :version && @v} v={@v} base={@base} now={@now} />
+      <.version_view
+        :if={@action == :version && @v}
+        v={@v}
+        base={@base}
+        now={@now}
+        reader={@current_scope.user.email}
+      />
       <Show.version_head
         :if={@action == :document && @v}
         v={@v}
@@ -917,6 +923,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         v={@v}
         base={@version_base}
         now={@now}
+        reader={@current_scope.user.email}
       />
       <.export_page
         :if={@action == :export && @v && @export}

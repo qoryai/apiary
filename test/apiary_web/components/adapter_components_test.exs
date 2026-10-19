@@ -61,8 +61,23 @@ defmodule ApiaryWeb.AdapterComponentsTest do
     assigns = %{adapter: @adapter}
     html = rendered_to_string(~H"<AdapterComponents.adapter_meta adapter={@adapter} />")
 
-    assert text(html) == "Added by dana, 14 Oct 2026 · na_8f3k2m9q4x7v1t6r"
-    refute text(html) =~ "dana@example.com"
+    assert text(html) == "Added by Ddana@example.com, 14 Oct 2026 · na_8f3k2m9q4x7v1t6r"
+    doc = LazyHTML.from_fragment(html)
+
+    assert LazyHTML.attribute(LazyHTML.query(doc, "#adapter-added abbr"), "data-tip") == [
+             "dana@example.com"
+           ]
+
+    html =
+      rendered_to_string(
+        ~H|<AdapterComponents.adapter_meta adapter={@adapter} reader="dana@example.com" />|
+      )
+
+    assert LazyHTML.attribute(
+             LazyHTML.query(LazyHTML.from_fragment(html), "#adapter-added abbr"),
+             "data-tip"
+           ) ==
+             ["dana@example.com (you)"]
 
     assigns = %{adapter: %{@adapter | created_by: nil}}
     html = rendered_to_string(~H"<AdapterComponents.adapter_meta adapter={@adapter} />")

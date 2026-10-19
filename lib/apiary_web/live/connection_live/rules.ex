@@ -75,7 +75,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
         reduce: %{} do
       locks ->
         Map.put_new(locks, host, %{
-          by: ApiaryWeb.People.short(ApiaryWeb.People.email(change.changed_by)),
+          by: ApiaryWeb.People.email(change.changed_by),
           at: change.inserted_at
         })
     end

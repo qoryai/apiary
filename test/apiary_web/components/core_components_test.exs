@@ -32,6 +32,111 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "an avatar without an address" do
+    test "is decorative, its markup as before the avatar could stand for a person" do
+      assigns = %{}
+
+      assert rendered_to_string(~H|<CoreComponents.avatar name="dana@example.com" />|) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-6 text-[11px] rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line\">\n    \n      d\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(
+               ~H|<CoreComponents.avatar name="dana@example.com" kind="self" size="md" />|
+             ) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-7 text-xs rounded-full bg-primary-soft text-primary-soft-content\">\n    \n      d\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(
+               ~H|<CoreComponents.avatar name="Acme" kind="organisation" size="xs" />|
+             ) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-[18px] text-[10.5px] rounded-selector bg-neutral text-neutral-content\">\n    \n      A\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(~H|<CoreComponents.avatar kind="pending" />|) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-6 text-[11px] rounded-full border border-dashed border-line-field bg-transparent text-faint\">\n    \n      <span phx-r class=\"hero-envelope size-3.5\"></span>\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(~H|<CoreComponents.avatar />|) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-6 text-[11px] rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line\">\n    \n      ?\n    \n  </div>\n</span>"
+    end
+  end
+
+  describe "an avatar for a person's address" do
+    defp avatar(attrs) do
+      LazyHTML.from_fragment(render_component(&CoreComponents.avatar/1, attrs))
+    end
+
+    test "is the first letter in an abbr of the address, a tab stop, read as the address" do
+      doc = avatar(email: "priya@example.com", size: "xs")
+      abbr = LazyHTML.query(doc, "abbr.term.tooltip")
+
+      assert LazyHTML.attribute(abbr, "tabindex") == ["0"]
+      assert LazyHTML.attribute(abbr, "data-tip") == ["priya@example.com"]
+      assert LazyHTML.attribute(abbr, "aria-label") == ["priya@example.com"]
+      assert LazyHTML.text(LazyHTML.query(abbr, "span[aria-hidden=true]")) == "P"
+      assert LazyHTML.text(LazyHTML.query(abbr, "span.sr-only")) == "priya@example.com"
+
+      assert LazyHTML.query(abbr, "span[aria-hidden=true].size-\\[18px\\].bg-base-300")
+             |> Enum.count() == 1
+    end
+
+    test "inside a link or a row that opens, is no tab stop" do
+      abbr = LazyHTML.query(avatar(email: "priya@example.com", in_link: true), "abbr")
+
+      assert LazyHTML.attribute(abbr, "tabindex") == []
+      assert LazyHTML.attribute(abbr, "data-tip") == ["priya@example.com"]
+    end
+
+    test "shows a digit or a symbol as it is, and upper-cases a letter by Unicode rules" do
+      letter = &(&1 |> avatar() |> LazyHTML.query("span[aria-hidden=true]") |> LazyHTML.text())
+
+      assert letter.(email: "7days@example.com") == "7"
+      assert letter.(email: "_ops@example.com") == "_"
+      assert letter.(email: "élodie@example.com") == "É"
+      assert letter.(email: "ørjan@example.com") == "Ø"
+    end
+
+    test "for the reader, has the account menu's colour and says you" do
+      for attrs <- [
+            [email: "dana@example.com", reader: "dana@example.com"],
+            [email: "dana@example.com", kind: "self"]
+          ] do
+        abbr = LazyHTML.query(avatar(attrs), "abbr")
+
+        assert LazyHTML.attribute(abbr, "data-tip") == ["dana@example.com (you)"]
+        assert LazyHTML.attribute(abbr, "aria-label") == ["dana@example.com (you)"]
+        assert LazyHTML.text(LazyHTML.query(abbr, "span.sr-only")) == "dana@example.com (you)"
+        assert Enum.count(LazyHTML.query(abbr, "span.bg-primary-soft")) == 1
+      end
+
+      other = avatar(email: "priya@example.com", reader: "dana@example.com")
+
+      assert LazyHTML.attribute(LazyHTML.query(other, "abbr"), "data-tip") == [
+               "priya@example.com"
+             ]
+
+      assert Enum.count(LazyHTML.query(other, "span.bg-base-300")) == 1
+    end
+
+    test "for two people of one letter, draws the same neutral circle; the hint differs" do
+      [sam, sofia] = Enum.map(["sam@example.com", "sofia@example.com"], &avatar(email: &1))
+      circle = &(&1 |> LazyHTML.query("span[aria-hidden=true]") |> LazyHTML.attribute("class"))
+
+      assert circle.(sam) == circle.(sofia)
+      assert hd(circle.(sam)) =~ "bg-base-300"
+      refute hd(circle.(sam)) =~ "primary"
+
+      assert LazyHTML.attribute(LazyHTML.query(sam, "abbr"), "data-tip") !=
+               LazyHTML.attribute(LazyHTML.query(sofia, "abbr"), "data-tip")
+    end
+
+    test "for a deleted account is the words Former member, with no letter and no hint" do
+      html = render_component(&CoreComponents.avatar/1, email: ApiaryWeb.People.former_member())
+
+      assert String.trim(html) == "Former member"
+    end
+
+    test "for no person is nothing" do
+      assert String.trim(render_component(&CoreComponents.avatar/1, email: nil)) == ""
+    end
+  end
+
   describe "an input with a prefix" do
     test "shows the prefix before the value as one field, read with it" do
       form = Phoenix.Component.to_form(%{"slug" => "data"}, as: :workspace)

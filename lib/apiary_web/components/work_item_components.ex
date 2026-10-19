@@ -38,7 +38,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   # them bugs, and "the ticket" where it names none (nil).
   #
   # The page's parts read more of it, each named where it is used. A person is a map with
-  # `:id`, Qory Apiary's id of the person, `:name` and `:you`, true when the person is the
+  # `:id`, Qory Apiary's id of the person, `:name`, `:email`, the address the person's
+  # letter is drawn from, or "Former member", and `:you`, true when the person is the
   # reader: a text the reader is the subject of says "you" ("You own it", "Closed by you").
   # Two people are the same person by `:id`, never by name.
   #
@@ -234,9 +235,24 @@ defmodule ApiaryWeb.WorkItemComponents do
   def stage_name(:shape), do: gettext("Shape")
 
   @doc false
-  def owner_phrase(owner) do
-    if you?(owner), do: gettext("You own it"), else: gettext("%{name} owns it", name: owner.name)
+  # Who owns the work item, as rich text: "You own it", or the owner's letter with the
+  # address as its tooltip; `in_link` inside a link or a button, where the letter is no
+  # tab stop.
+  def owner_phrase(owner, in_link \\ false) do
+    if you?(owner),
+      do: gettext("You own it"),
+      else: rich_gettext("%{name} owns it", name: letter(owner, in_link))
   end
+
+  # A person in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`), in the account menu's colour for the reader.
+  defp letter(person, in_link) do
+    assigns = %{person: person, in_link: in_link}
+
+    ~H|<.avatar email={@person.email} kind={kind(@person)} in_link={@in_link} size="xs" />|
+  end
+
+  defp kind(person), do: if(you?(person), do: "self", else: "person")
 
   # Whether a ticket's url may be a link out: https, and one the core's external link
   # allows (as the Backlog's ticket).
@@ -340,7 +356,7 @@ defmodule ApiaryWeb.WorkItemComponents do
                 } />
               </.external_link>
             </span>
-            <span>{owner_phrase(@work_item.owner)}</span>
+            <span><.rich text={owner_phrase(@work_item.owner)} /></span>
           </p>
         </div>
       </div>
@@ -1539,7 +1555,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         owner: owner,
         href: if(out?(work_item[:url]), do: work_item.url),
         summary:
-          rich_gettext("%{owner} · %{ref}", owner: owner_phrase(owner), ref: {:part, :ref}),
+          rich_gettext("%{owner} · %{ref}", owner: owner_phrase(owner, true), ref: {:part, :ref}),
         instruction: instruction(work_item.first_instruction),
         ticket_line: ticket_line(assigns, now),
         taken_in: by_line(work_item.taken_in_at, work_item.taken_in_by, now),
@@ -1576,9 +1592,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       <dl class="q-rail-kv">
         <dt>{pgettext("work item", "Owner")}</dt>
         <dd id={"#{@id}-owner"} class="q-wi-l1">
-          <.avatar name={@owner.name} size="xs" />
-          <span>{@owner.name}</span>
-          <span :if={you?(@owner)} class="q-faint">{gettext("(you)")}</span>
+          <.avatar email={@owner.email} kind={kind(@owner)} size="xs" />
+          <%!-- The letter's hidden text says "(you)" already. --%>
+          <span :if={you?(@owner)} class="q-faint" aria-hidden="true">{gettext("(you)")}</span>
         </dd>
         <dt>{SourceComponents.item_label(@item_noun)}</dt>
         <dd id={"#{@id}-ticket"}>
@@ -3719,10 +3735,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <li id={@id} class="q-wi-cm">
-      <.avatar name={@author.name} size="sm" />
+      <.avatar email={@author.email} kind={kind(@author)} size="sm" />
       <div class="q-wi-box">
         <div class="q-wi-box-h">
-          <b>{@author.name}</b>
           <span class="q-faint">{@at_words}</span>
           <.row_menu
             :if={@can_delete && @state == :shown}

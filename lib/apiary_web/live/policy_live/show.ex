@@ -1180,6 +1180,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           v={@v}
           base={@base}
           now={@now}
+          reader={@current_scope.user.email}
         />
         <.export_page
           :if={@live_action == :export && @v && @export}

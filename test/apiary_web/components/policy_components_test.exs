@@ -31,7 +31,6 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         id: id,
         sentence: "Changed",
         origin: nil,
-        who: "dana",
         at: at,
         version: nil,
         digest: nil,
@@ -830,19 +829,24 @@ defmodule ApiaryWeb.PolicyComponentsTest do
           workspace_default="enforce"
           workspace="Main"
           target="incident-bot"
-          set={%{by: "sam", at: DateTime.utc_now()}}
+          set={%{by: "sam@example.com", at: DateTime.utc_now()}}
           pick="enforce"
         />
         """)
 
       doc = card(html)
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#policy-mode-effect abbr"), "data-tip") == [
+               "sam@example.com"
+             ]
+
       assert all(doc, "#policy-mode-change, form, input, button") == []
       refute html =~ "aria-disabled"
       assert text_of(doc, "#policy-mode-source") == "Overridden"
       assert [_] = all(doc, ".q-modecard-tile .hero-eye")
 
       assert text_of(doc, "#policy-mode-effect") ==
-               "Overridden by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
+               "Overridden by Ssam@example.com today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
 
       assert text_of(doc, "#policy-mode-owners") == "Only an owner or an admin sets a mode."
     end

@@ -958,7 +958,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       conn = as_member(context)
       unknown = "#rule-#{rule(scope, "*.paste.example").id}-lock"
       known = "#rule-#{rule(scope, "github.example").id}-lock"
-      by = Regex.escape("Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on ")
+      by = Regex.escape("Locked by #{scope.user.email} on ")
 
       view = open(conn, scope)
 
@@ -1632,8 +1632,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "registry.example is already allowed for the workspace, by #{local} on"
 
       view = open(conn, scope, "/policy/history")
-      assert text(view, "#history-list") =~ "#{local} allowed registry.example"
-      refute text(view, "#history-list") =~ user.email
+
+      assert text(view, "#history-list") =~
+               "#{String.upcase(String.first(user.email))} #{user.email} allowed registry.example"
+
+      assert has_element?(view, ~s{#history-list summary abbr[data-tip="#{user.email}"]})
+      refute has_element?(view, "#history-list summary abbr[tabindex]")
     end
   end
 
@@ -1674,10 +1678,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
           {:ok, _} = Apiary.Organisations.remove_member(scope, member.membership.id)
         end)
 
-      short = Apiary.Accounts.User.short_name(member.user.email)
-      assert strip =~ "Changed by #{short} "
-      assert line =~ short
-      refute strip <> line =~ member.user.email
+      letter = "#{String.upcase(String.first(member.user.email))} #{member.user.email}"
+      assert strip =~ "Changed by #{letter} "
+      assert line =~ "#{letter} ·"
       refute strip <> line =~ "Former member"
     end
 
@@ -1704,10 +1707,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
           version |> Ecto.Changeset.change(changed_by_id: user.id) |> Apiary.Repo.update!()
         end)
 
-      short = Apiary.Accounts.User.short_name(user.email)
-      assert strip =~ "Changed by #{short} "
-      assert line =~ short
-      refute strip <> line =~ user.email
+      letter = "#{String.upcase(String.first(user.email))} #{user.email}"
+      assert strip =~ "Changed by #{letter} "
+      assert line =~ "#{letter} ·"
       refute strip <> line =~ "Former member"
     end
   end
@@ -1733,9 +1735,21 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-summary") =~ "3 versions"
 
       assert text(view, "#history-list") =~
-               "#{Apiary.Accounts.User.short_name(user.email)} switched the workspace's default mode from observe to enforce"
+               "#{String.upcase(String.first(user.email))} #{user.email} (you) switched the workspace's default mode from observe to enforce"
 
-      refute text(view, "#history-list") =~ user.email
+      # One letter a row: the sentence's subject, with no letter column beside it.
+      summaries =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#history-list details > summary")
+
+      assert Enum.count(summaries) == 4
+
+      for summary <- summaries do
+        assert summary |> LazyHTML.query("abbr[data-tip]") |> Enum.count() == 1
+        assert summary |> LazyHTML.query(".avatar") |> Enum.count() == 0
+      end
 
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"
@@ -1820,9 +1834,11 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#ver-1[href='#{older}']")
       refute has_element?(view, "#ver-1[aria-current]")
 
-      # Who made each version, cut to the list, with the whole of it as its title.
-      who = scope.user.email |> String.split("@") |> hd()
-      assert has_element?(view, "#ver-2 small[title='#{who}']", who)
+      # Who made each version: the letter, the address its hint, no tab stop in the link.
+      who = scope.user.email
+      assert has_element?(view, ~s{#ver-2 small abbr[data-tip="#{who} (you)"]})
+      refute has_element?(view, "#ver-2 small abbr[tabindex]")
+      refute has_element?(view, "#ver-2 small[title]")
 
       # On the version in force's own page, its entry is the version shown, not the page.
       view = open(conn, scope, "/policy/versions/2")

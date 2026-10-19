@@ -270,6 +270,11 @@ msgstr ""
 msgid "%{destination}, request %{id}"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} (you)"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{email} is active again."
@@ -10144,7 +10149,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Not installed. %{person}'s install, started today at %{time}, expired before it was finished. Press Install to start again."
+msgid "Not installed. An install %{person} started today at %{time} expired before it was finished. Press Install to start again."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -18289,10 +18294,9 @@ msgid "yesterday, %{time}"
 msgstr ""
 
 #: lib/apiary_web/activity/actor.ex
-#: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/member_live/workspace.ex
-#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "you"

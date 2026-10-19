@@ -1182,8 +1182,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp row_values(row),
     do: %{"host" => row.host, "port" => Integer.to_string(row.port), "path" => row.path || ""}
 
-  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: gettext("you")
-  defp who(%{by: name}, _scope) when is_binary(name), do: ApiaryWeb.People.short(name)
+  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: :you
+  defp who(%{by: email}, _scope) when is_binary(email), do: email
   defp who(_change, _scope), do: nil
 
   defp open_panel(socket, row, act, action) do
@@ -1257,11 +1257,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         refusal: %{
           rule_option: act.rule_option,
           rule: act.entry.host,
-          locked_by: locked && ApiaryWeb.People.short(ApiaryWeb.People.email(locked.changed_by)),
+          locked_by: locked && ApiaryWeb.People.email(locked.changed_by),
           locked_at: locked && locked.inserted_at,
           owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
           who: ApiaryWeb.Edition.who_may_sentence(:"security_policy.lock", scope),
-          rule_path: Rules.rule_path(scope, nil, act.entry.host)
+          rule_path: Rules.rule_path(scope, nil, act.entry.host),
+          reader: scope.user.email
         }
       }
     )

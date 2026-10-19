@@ -10,8 +10,6 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   import ApiaryWeb.PolicyComponents
 
-  alias ApiaryWeb.PolicyLive.Common
-
   @doc "The first render of a policy page, before the socket connects: its shape, and nothing read."
   attr :title, :string, required: true
 
@@ -173,6 +171,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   attr :v, :map, required: true
   attr :base, :string, required: true
   attr :now, :any, required: true
+  attr :reader, :string, default: nil, doc: "the reader's address"
 
   def version_view(assigns) do
     ~H"""
@@ -184,7 +183,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
         >
           <.relative_time at={@v.configuration.rendered_at} />
         </.kv>
-        <.kv label={gettext("Changed by")}>{@v.changed_by || gettext("n/a")}</.kv>
+        <.kv label={gettext("Changed by")}>
+          <.avatar :if={@v.changed_by} email={@v.changed_by} reader={@reader} size="xs" />
+          {if !@v.changed_by, do: gettext("n/a")}
+        </.kv>
         <.kv label={gettext("Change")}>{@v.change_words || gettext("First render")}</.kv>
         <.kv :if={@v.mode} label={gettext("Mode")}>
           {@v.mode}
@@ -342,16 +344,17 @@ defmodule ApiaryWeb.PolicyLive.Views do
               aria-current={entry_current(@v, item)}
             >
               <span class="q-vlist-v">v{item.version}</span>
-              <span class="min-w-0 truncate">
-                {item.words}
-                <small class="block" title={Common.local(item.who)}>
-                  {Enum.join(
-                    Enum.reject(
-                      [Common.local(item.who), Format.relative(item.at, @now)],
-                      &is_nil/1
-                    ),
-                    " · "
-                  )}
+              <%!-- Only the words are cut: a cut would clip the letter's tooltip. --%>
+              <span class="min-w-0">
+                <span class="block truncate">{item.words}</span>
+                <small class="block">
+                  <.avatar
+                    :if={item.who}
+                    email={item.who}
+                    reader={@reader}
+                    in_link
+                    size="xs"
+                  /><span :if={item.who}> · </span>{Format.relative(item.at, @now)}
                   <.source_chip
                     :if={item.workspace}
                     source={:workspace}

@@ -15,9 +15,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   @now ~U[2026-10-17 10:00:00Z]
 
-  @dana %{id: "pr_dana", name: "Dana", you: true}
-  @priya %{id: "pr_priya", name: "Priya", you: false}
-  @lea %{id: "pr_lea", name: "Lea", you: false}
+  @dana %{id: "pr_dana", name: "Dana", email: "dana@example.com", you: true}
+  @priya %{id: "pr_priya", name: "Priya", email: "priya@example.com", you: false}
+  @lea %{id: "pr_lea", name: "Lea", email: "lea@example.com", you: false}
 
   defp ago(seconds), do: DateTime.add(@now, -seconds, :second)
 

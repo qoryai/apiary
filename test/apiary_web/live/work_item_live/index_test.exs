@@ -384,10 +384,13 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       Map.put(said, :closed, words(view, row(closed) <> " .q-wl-nx"))
     end
 
-    defp assert_named(said, name) do
-      assert said.owner == ["Owner: #{name}"]
+    # The row's owner and the Owner filter name a person by the address; the other words
+    # by its local part.
+    defp assert_named(said, address) do
+      name = User.short_name(address)
+      assert said.owner == ["Owner: #{address}"]
       assert said.waiting == ["1 waits for #{name}"]
-      assert Enum.any?(said.options, &String.starts_with?(&1, name)), inspect(said.options)
+      assert Enum.any?(said.options, &String.contains?(&1, address)), inspect(said.options)
       assert said.closed == "Closed by #{name}"
     end
 
@@ -395,7 +398,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
          %{conn: conn, scope: scope} do
       member = member_fixture(scope, :member)
       said = said_of(conn, scope, member.user, fn -> Repo.delete!(member.membership) end)
-      assert_named(said, name(member.user))
+      assert_named(said, member.user.email)
     end
 
     test "a deleted account is a former member", %{conn: conn, scope: scope} do
@@ -413,7 +416,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
          %{conn: conn, scope: scope} do
       user = Apiary.AccountsFixtures.user_fixture()
       said = said_of(conn, scope, user, fn -> :ok end)
-      assert_named(said, name(user))
+      assert_named(said, user.email)
     end
 
     test "an owner of 16 characters that is no id lists nothing, and breaks nothing",
@@ -494,7 +497,14 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       assert has_element?(
                view,
                "#work-items-filter-owner-form .q-filter-option",
-               name(ctx.member)
+               ctx.member.email
+             )
+
+      # A choice in a list of people: the letter beside the address, hidden from a screen
+      # reader.
+      assert has_element?(
+               view,
+               "#work-items-filter-owner-form .q-filter-option .avatar[aria-hidden=true]"
              )
 
       view
@@ -507,7 +517,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       assert patched(view) == %{"owner[]" => ctx.member.id}
       assert rows(view) == ids([ctx.price])
 
-      assert words(view, "#work-items-tokens-owner .q-tok-v") == name(ctx.member)
+      assert words(view, "#work-items-tokens-owner .q-tok-v") == ctx.member.email
       assert words(view, "#work-items-tokens-match") == "1 work item matches"
       assert has_element?(view, ~s(#work-items-tokens-clear[href="#{page(ctx.scope)}"]))
     end

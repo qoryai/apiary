@@ -363,7 +363,11 @@ defmodule ApiaryWeb.SecretLive.Index do
         <% end %>
       </:col>
       <:col :let={row} label={gettext("Changed")} from="sm">
-        <.changed changed={changed_of(row)} people={@people} />
+        <.changed
+          changed={changed_of(row)}
+          people={@people}
+          reader={@current_scope.user.email}
+        />
       </:col>
       <:col :let={row} label={gettext("Used by")} from="sm">
         <%= case row do %>
@@ -424,18 +428,21 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   attr :changed, :map, required: true, doc: "when, and by whose user id"
   attr :people, :map, required: true
+  attr :reader, :string, required: true, doc: "the reader's address"
 
   defp changed(assigns) do
     assigns =
       assign(assigns,
         at: assigns.changed.at,
-        by: People.short(People.account(assigns.people, assigns.changed.by))
+        by: People.account(assigns.people, assigns.changed.by)
       )
 
     ~H"""
     <span class="tabular-nums">
       <%= if @by do %>
-        <.rich text={rich_gettext("%{time} by %{person}", time: {:part, :time}, person: @by)}>
+        <.rich text={
+          rich_gettext("%{time} by %{person}", time: {:part, :time}, person: letter(@by, @reader))
+        }>
           <:part name={:time}><.time_ago at={@at} /></:part>
         </.rich>
       <% else %>
@@ -443,6 +450,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       <% end %>
     </span>
     """
+  end
+
+  # Who changed it, in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
   end
 
   attr :row, :any, required: true
@@ -693,6 +707,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         <.changed
           changed={%{at: variable.updated_at, by: variable.updated_by_id}}
           people={@people}
+          reader={@current_scope.user.email}
         />
       </:col>
       <:action :let={variable}>
