@@ -84,7 +84,7 @@ defmodule Apiary.Sources.Ingest do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.Repo
+  alias Apiary.{PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connection, Connections}
   alias Apiary.Sources.{Comment, Item, Listing, Wire}
@@ -457,7 +457,7 @@ defmodule Apiary.Sources.Ingest do
         ]
 
     {_count, written} =
-      Repo.insert_all(Item, rows,
+      PublicId.Insert.insert_all(Item, rows,
         on_conflict: newer,
         conflict_target: [:collection_id, :external_ref],
         returning: [:public_id]

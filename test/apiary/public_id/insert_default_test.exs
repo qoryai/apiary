@@ -7,12 +7,17 @@ defmodule Apiary.PublicId.InsertDefaultTest do
   # so the test does not depend on the 80 random bits. The module is not async: replacing a
   # function takes a lock that other tests' inserts would wait on.
   use Apiary.DataCase, async: false
+  use Oban.Testing, repo: Apiary.Repo
 
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.SourcesFixtures
+  import Apiary.WorkItemsFixtures
 
-  alias Apiary.{PublicId, Repo}
+  alias Apiary.{PublicId, Repo, Sources}
   alias Apiary.PublicId.Insert
   alias Apiary.Runs.Target
+  alias Apiary.Sources.Item
 
   # Makes `function` return `taken` on its first call, then a random id of `prefix`. A
   # sequence counts the calls, as a rolled back savepoint does not undo `nextval`.
@@ -89,6 +94,38 @@ defmodule Apiary.PublicId.InsertDefaultTest do
       assert {2, _} = Insert.insert_all(Target, rows)
       ids = Repo.all(from t in Target, select: t.public_id)
       assert length(Enum.uniq(ids)) == 3
+    end
+  end
+
+  describe "a ticket" do
+    @describetag needs: :factory
+
+    setup do
+      %{scope: scope} = sign_up_fixture()
+      connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+      {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
+
+      %{
+        key_scope: key_scope(connectable.access_key),
+        trk: source_collection_fixture(scope, connection, %{external_ref: "TRK"}),
+        connection: connection
+      }
+    end
+
+    defp post(ctx, items),
+      do: Sources.post_items(ctx.key_scope, items_body("TRK", items, []))
+
+    test "that an adapter posts, with a default id that is taken, is stored under another", ctx do
+      assert {:ok, _answer} = post(ctx, [item("TRK-1")])
+      taken = Repo.get_by!(Item, external_ref: "TRK-1").public_id
+      replace_default!("source_item_public_id", "tk", taken)
+
+      assert {:ok, _answer} = post(ctx, [item("TRK-2")])
+
+      second = Repo.get_by!(Item, external_ref: "TRK-2")
+      assert second.public_id != taken
+      assert PublicId.valid?("tk", second.public_id)
+      assert Repo.get_by!(Item, external_ref: "TRK-1").public_id == taken
     end
   end
 end

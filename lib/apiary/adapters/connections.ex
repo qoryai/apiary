@@ -218,13 +218,16 @@ defmodule Apiary.Adapters.Connections do
   end
 
   defp take_live(organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
+    # A public id that collides makes the insert run again with a new one.
     {_count, _rows} =
-      Repo.insert_all(
-        Connection,
-        [new_pending(organisation_id, adapter_id, user_id, nonce, now)],
-        on_conflict: :nothing,
-        conflict_target: {:unsafe_fragment, @live_index}
-      )
+      PublicId.Insert.run(Connection, fn _try ->
+        Repo.insert_all(
+          Connection,
+          [new_pending(organisation_id, adapter_id, user_id, nonce, now)],
+          on_conflict: :nothing,
+          conflict_target: {:unsafe_fragment, @live_index}
+        )
+      end)
 
     case lock_live(organisation_id, adapter_id) do
       # The live row it waited on ended meanwhile.
@@ -272,17 +275,30 @@ defmodule Apiary.Adapters.Connections do
   # connection in its place, with a new public id, started by the person who pressed,
   # whose pass, with `nonce`, is its first and expires `validity/0` seconds after now.
   # `{:ok, connection, pass, ended}`.
-  defp replace(live, organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
-    fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
-
-    with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
-         {:ok, ended} <- end_live(live, :replaced, now),
-         {:ok, connection} <-
-           Connection
-           |> struct!(%{fields | pass_expires_at: expires_at})
-           |> Repo.insert() do
+  defp replace(live, organisation_id, %Node{} = adapter, user_id, nonce, now) do
+    with {:ok, ended} <- end_live(live, :replaced, now),
+         {:ok, connection, pass} <-
+           insert_replacement(organisation_id, adapter, user_id, nonce, now) do
       {:ok, connection, pass, ended}
     end
+  end
+
+  # The new pending connection and its pass, which holds its public id: a public id that
+  # collides makes the pass and the row again with a new one. Made after `end_live/3`, as
+  # the live index needs the ended row; a pass that cannot be made rolls the transaction
+  # back, as it does made before.
+  defp insert_replacement(organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
+    PublicId.Insert.run(Connection, fn _try ->
+      fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
+
+      with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
+           {:ok, connection} <-
+             Connection
+             |> struct!(%{fields | pass_expires_at: expires_at})
+             |> Repo.insert() do
+        {:ok, connection, pass}
+      end
+    end)
   end
 
   # One second after `previous`, the expiry of the connection's previous pass; `nil` for

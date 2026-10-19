@@ -617,7 +617,7 @@ defmodule Apiary.Adapters.Collections do
     {live, others} = Enum.split_with(rows, &MapSet.member?(held, &1.external_ref))
 
     {_count, made} =
-      Repo.insert_all(Collection, others,
+      PublicId.Insert.insert_all(Collection, others,
         on_conflict: :nothing,
         conflict_target: {:unsafe_fragment, @live_index},
         returning: @put_fields
@@ -642,7 +642,7 @@ defmodule Apiary.Adapters.Collections do
 
     # Each of `live` is held, so it is still live and conflicts only with itself.
     {_count, updated} =
-      Repo.insert_all(Collection, live,
+      PublicId.Insert.insert_all(Collection, live,
         on_conflict: newer,
         conflict_target: {:unsafe_fragment, @live_index},
         returning: @put_fields

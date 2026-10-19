@@ -12,6 +12,7 @@ defmodule Apiary.PublicId.CallersTest do
 
   alias Apiary.{Organisations, PublicId, PublicIdSource, Repo, Secrets}
   alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.Connection
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Batch, Ingest, Registration, Run, Target}
@@ -224,6 +225,45 @@ defmodule Apiary.PublicId.CallersTest do
       assert [{"a/one", "tg_" <> @taken}, {"a/two", second}] = ids
       assert PublicId.valid?("tg", second)
       assert second != "tg_" <> @taken
+    end
+  end
+
+  describe "an adapter's connection" do
+    @describetag needs: :factory
+
+    setup %{scope: scope} do
+      first = connectable_adapter_fixture(%{name: unique_adapter_name("First tracker")})
+      second = connectable_adapter_fixture(%{name: unique_adapter_name("Second tracker")})
+      %{scope: scope, first: first.adapter, second: second.adapter}
+    end
+
+    test "that a press of Connect starts, with an id that is taken, gets a fresh id", ctx do
+      PublicIdSource.force([@taken])
+      {first, _nonce} = connection_fixture(ctx.scope, ctx.first, :pending)
+      assert first.public_id == "ac_" <> @taken
+
+      PublicIdSource.force([@taken])
+      {second, _nonce} = connection_fixture(ctx.scope, ctx.second, :pending)
+      assert second.public_id != first.public_id
+      assert PublicId.valid?("ac", second.public_id)
+    end
+
+    test "that replaces a connected one, with an id that is taken, gets a fresh id and a pass for it",
+         ctx do
+      PublicIdSource.force([@taken])
+      {first, _nonce} = connection_fixture(ctx.scope, ctx.first, :pending)
+      assert first.public_id == "ac_" <> @taken
+
+      {connected, _nonce} = connection_fixture(ctx.scope, ctx.second, :connected)
+
+      PublicIdSource.force([@taken])
+      assert {:ok, url, {public_id, _nonce}} = Apiary.Adapters.connect(ctx.scope, ctx.second)
+
+      assert public_id != first.public_id
+      assert public_id != connected.public_id
+      assert url =~ "state="
+      assert Repo.get_by!(Connection, public_id: public_id).state == :pending
+      assert Repo.get!(Connection, connected.id).state == :ended
     end
   end
 end
