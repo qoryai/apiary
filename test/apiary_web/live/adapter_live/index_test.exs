@@ -239,7 +239,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     assert has_element?(lv, "h2", "No integration yet")
 
     assert words(lv, "#integrations-none") ==
-             "An instance admin adds integrations in Instance settings › Integrations. " <>
+             "An instance admin adds integrations in Instance settings › Adapters. " <>
                "#{scope.organisation.name} can install them here once they are added."
   end
 

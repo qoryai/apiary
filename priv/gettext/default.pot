@@ -3887,7 +3887,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "An instance admin adds integrations in Instance settings › Integrations. %{organisation} can install them here once they are added."
+msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
