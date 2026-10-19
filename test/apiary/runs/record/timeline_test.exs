@@ -552,9 +552,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
             {%{"state" => "succeeded", "exit_code" => 0}, "completed"},
             {%{"state" => "failed", "exit_code" => 1}, "failed"},
             {%{"state" => "cancelled", "reason" => "no_longer_needed"}, "cancelled"},
-            {%{"state" => "failed", "reason" => "credential_expired"}, "cancelled"},
             {%{"state" => "failed", "reason" => "session_lost"}, "lost"},
-            {%{"reason" => "quiet", "quiet_seconds" => 1800}, "cancelled"},
             {%{"state" => "other"}, "failed"}
           ] do
         assert [%{kind: :run_started}, %{kind: :run_exited, state: ^state}] =

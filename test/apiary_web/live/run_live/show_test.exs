@@ -2548,11 +2548,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       for {exit, state, words} <- [
-            {%{"reason" => "credential_expired"}, "cancelled", "permission to run expired"},
-            {%{"reason" => "run_ended_at_issuer"}, "cancelled", "stopped, no outcome given"},
+            {%{"state" => "cancelled", "reason" => "credential_expired"}, "cancelled",
+             "permission to run expired"},
+            {%{"state" => "cancelled", "reason" => "run_ended_at_issuer"}, "cancelled",
+             "stopped, no outcome given"},
             {%{"reason" => "gateway_lost"}, "lost", "end not recorded"},
             {%{"reason" => "session_lost"}, "lost", "stopped responding"},
-            {%{"reason" => "timeout"}, "cancelled", "time limit reached"}
+            {%{"state" => "cancelled", "reason" => "timeout"}, "cancelled", "time limit reached"}
           ] do
         run = ended_run(scope, exit)
 
@@ -2606,13 +2608,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       scope: scope
     } do
-      for {reason, words, mark} <- [
-            {"credential_expired", "permission to run expired", "q-n.q-n-sys .hero-stop-micro"},
-            {"run_ended_at_issuer", "stopped, no outcome given", "q-n.q-n-sys .hero-stop-micro"},
-            {"gateway_lost", "end not recorded", "q-n-warn .hero-signal-slash-micro"},
-            {"timeout", "time limit reached", "q-n.q-n-sys .hero-stop-micro"}
+      for {state, reason, words, mark} <- [
+            {"cancelled", "credential_expired", "permission to run expired",
+             "q-n.q-n-sys .hero-stop-micro"},
+            {"cancelled", "run_ended_at_issuer", "stopped, no outcome given",
+             "q-n.q-n-sys .hero-stop-micro"},
+            {"failed", "gateway_lost", "end not recorded", "q-n-warn .hero-signal-slash-micro"},
+            {"cancelled", "timeout", "time limit reached", "q-n.q-n-sys .hero-stop-micro"}
           ] do
-        run = ended_run(scope, %{"reason" => reason, "duration_ms" => 95_000})
+        run =
+          ended_run(scope, %{"state" => state, "reason" => reason, "duration_ms" => 95_000})
 
         {:ok, lv, html} =
           live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
@@ -2743,7 +2748,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         run =
           projected(scope, [
             {1, "run.started", started_data()},
-            {2, "run.exited", %{"state" => "failed", "exit_code" => -1, "reason" => reason}}
+            {2, "run.exited", %{"state" => "cancelled", "exit_code" => -1, "reason" => reason}}
           ])
 
         {:ok, lv, html} =
@@ -2833,21 +2838,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             # time limit: Cancelled · time limit reached; Exit is the program's signal
             {%{"state" => "cancelled", "reason" => "timeout", "signal" => "SIGTERM"}, "Cancelled",
              "time limit reached", "SIGTERM", nil},
-            # an older Forager's time limit
-            {%{
-               "state" => "failed",
-               "reason" => "timeout",
-               "exit_code" => -1,
-               "signal" => "SIGTERM"
-             }, "Cancelled", "time limit reached", "SIGTERM", nil},
-            # permission expired, written by an older gateway
-            {%{"state" => "failed", "reason" => "credential_expired", "exit_code" => -1},
-             "Cancelled", "permission to run expired", "not recorded", nil},
+            # permission expired
             {%{"state" => "cancelled", "reason" => "credential_expired", "exit_code" => -1},
              "Cancelled", "permission to run expired", "not recorded", nil},
-            # the starter's end with no outcome, old style and new
-            {%{"state" => "failed", "reason" => "run_ended_at_issuer", "exit_code" => -1},
-             "Cancelled", "stopped, no outcome given", "not recorded", nil},
+            # the starter's end with no outcome
             {%{"state" => "cancelled", "reason" => "stopped", "exit_code" => -1}, "Cancelled",
              "stopped, no outcome given", "not recorded", nil},
             # stopped where it was started: Cancelled · interrupted; Exit is what the program exited with,
@@ -2948,12 +2942,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       for {exit, state, words} <- [
             {%{"state" => "cancelled", "reason" => "quiet", "quiet_seconds" => 1800}, "Cancelled",
              "no activity for 30 minutes"},
-            {%{"reason" => "quiet", "quiet_seconds" => 1800}, "Cancelled",
-             "no activity for 30 minutes"},
             {%{"state" => "cancelled", "reason" => "credential_expired"}, "Cancelled",
              "permission to run expired"},
-            {%{"reason" => "credential_expired"}, "Cancelled", "permission to run expired"},
-            {%{"reason" => "run_ended_at_issuer"}, "Cancelled", "stopped, no outcome given"},
             {%{"state" => "cancelled", "reason" => "stopped"}, "Cancelled",
              "stopped, no outcome given"},
             {%{"state" => "succeeded", "reason" => "all_checks_passed"}, "Completed",

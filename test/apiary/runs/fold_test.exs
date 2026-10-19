@@ -1188,14 +1188,10 @@ defmodule Apiary.Runs.FoldTest do
 
     test "one rule, the first step that applies" do
       for {data, state} <- [
-            # 1. A stop an older Forager wrote as failed is cancelled.
-            {%{"state" => "failed", "reason" => "timeout"}, "cancelled"},
-            {%{"state" => "failed", "reason" => "credential_expired"}, "cancelled"},
-            {%{"state" => "failed", "reason" => "run_ended_at_issuer"}, "cancelled"},
-            # 2. Nobody knows how it ended.
+            # 1. Nobody knows how it ended.
             {%{"state" => "failed", "reason" => "session_lost"}, "lost"},
             {%{"state" => "failed", "reason" => "gateway_lost"}, "lost"},
-            # 3. The state decides, whatever the reason.
+            # 2. The state decides, whatever the reason.
             {%{"state" => "succeeded"}, "completed"},
             {%{"state" => "succeeded", "reason" => "all_checks_passed"}, "completed"},
             {%{"state" => "succeeded", "reason" => "session_lost"}, "completed"},
@@ -1216,11 +1212,7 @@ defmodule Apiary.Runs.FoldTest do
             {%{"state" => "cancelled", "reason" => "timeout"}, "cancelled"},
             {%{"state" => "cancelled", "reason" => "credential_expired"}, "cancelled"},
             {%{"state" => "cancelled", "reason" => "gateway_lost"}, "cancelled"},
-            # 4. No state, as an older Forager wrote it: the reason decides.
-            {%{"reason" => "timeout"}, "cancelled"},
-            {%{"reason" => "credential_expired"}, "cancelled"},
-            {%{"reason" => "stopped"}, "cancelled"},
-            {%{"reason" => "run_ended_at_issuer"}, "cancelled"},
+            # 3. No state, which the contract requires: lost or failed.
             {%{"reason" => "session_lost"}, "lost"},
             {%{"reason" => "gateway_lost"}, "lost"},
             {%{"reason" => "issuer_unreachable"}, "failed"},
@@ -1236,25 +1228,6 @@ defmodule Apiary.Runs.FoldTest do
         assert run.lost_at == if(state == "lost", do: at(18)), inspect(data)
         assert run.exit_code == -1
       end
-
-      quiet = %{"reason" => "quiet", "quiet_seconds" => 1800}
-
-      for data <- [quiet, Map.put(quiet, "state", "cancelled")] do
-        assert session_exit(data).state == "cancelled"
-      end
-    end
-
-    # A rebuild folds the stored exit again from the start, as here.
-    test "an older Forager's failed exit at its time limit or for no activity is cancelled" do
-      for data <- [
-            %{"state" => "failed", "reason" => "timeout"},
-            %{"state" => "failed", "reason" => "quiet", "quiet_seconds" => 1800}
-          ] do
-        run = session_exit(data)
-        assert {run.state, run.reason} == {"cancelled", data["reason"]}, inspect(data)
-        assert run.exited_at == at(18)
-        assert run.lost_at == nil
-      end
     end
 
     test "a state other than the three, and a reason that is not a code, read as absent" do
@@ -1262,10 +1235,8 @@ defmodule Apiary.Runs.FoldTest do
 
       for {data, state, reason} <- [
             {%{"state" => "evaporated", "reason" => "session_lost"}, "lost", "session_lost"},
-            {%{"state" => "ended", "reason" => "quiet", "quiet_seconds" => 60}, "cancelled",
-             "quiet"},
             {%{"state" => "Succeeded"}, "failed", nil},
-            {%{"state" => 1, "reason" => "timeout"}, "cancelled", "timeout"},
+            {%{"state" => 1, "reason" => "timeout"}, "failed", "timeout"},
             {%{"state" => "failed", "reason" => "unheard of"}, "failed", nil},
             {%{"state" => "cancelled", "reason" => "no-longer-needed"}, "cancelled", nil},
             {%{"reason" => "Timeout"}, "failed", nil},
@@ -1352,7 +1323,6 @@ defmodule Apiary.Runs.FoldTest do
 
       for seconds <- [0, -1, 2_147_483_648, "1800", 1.5] do
         assert quiet.(seconds).quiet_seconds == nil
-        assert quiet.(seconds).state == "cancelled"
       end
 
       assert Fold.fold(@run, [exited(18, %{"state" => "succeeded"})]).run.quiet_seconds == nil
@@ -1379,7 +1349,7 @@ defmodule Apiary.Runs.FoldTest do
     end
 
     test "a cancelled run is final: a later start or heartbeat does not undo it" do
-      data = %{"reason" => "quiet", "quiet_seconds" => 1800, "duration_ms" => 5}
+      data = %{"state" => "cancelled", "reason" => "timeout", "duration_ms" => 5}
       %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
       assert run.state == "cancelled"
 
@@ -1656,7 +1626,7 @@ defmodule Apiary.Runs.FoldTest do
       heartbeat(6, 60, 15, 30),
       heartbeat(7, 90, 45, 30),
       event(8, "ping", %{"forager_version" => "v0.4.2", "contract_version" => 1}),
-      exited(9, %{"state" => "failed", "reason" => "timeout"})
+      exited(9, %{"state" => "cancelled", "reason" => "timeout"})
     ]
 
     expected = Fold.fold(@run, events).run

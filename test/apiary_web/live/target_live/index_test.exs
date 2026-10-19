@@ -82,7 +82,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
        %{conn: conn, scope: scope} do
     started_run(scope, repo("github.example", "acme/quiet"),
       ago: 30,
-      exit: %{"reason" => "quiet", "quiet_seconds" => 1800}
+      exit: %{"state" => "cancelled", "reason" => "timeout"}
     )
 
     quiet = Targets.get(scope, "github.example", "acme/quiet")

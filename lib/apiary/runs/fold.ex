@@ -156,14 +156,6 @@ defmodule Apiary.Runs.Fold do
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
-  # The reasons of the failed exit an older Forager, under the contract before the outcome,
-  # wrote when it stopped a run itself, a session's run or a gateway's: its time limit, no
-  # activity, its run credential expired, or its starter ended it. Such an exit is stored,
-  # and a rebuild folds it again.
-  @stopped_reasons ~w(timeout quiet credential_expired run_ended_at_issuer)
-  # The reasons of an exit without a state, stored under that contract, that cancel the run:
-  # its time limit, no activity, its run credential expired, or its starter ended it.
-  @cancelled_reasons ~w(timeout quiet credential_expired stopped run_ended_at_issuer)
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
@@ -488,25 +480,18 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies:
 
-    1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
-       cancelled: the exit an older Forager, under the contract before the outcome, wrote
-       when it stopped a run itself.
-    2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
-    3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
-    4. Without a state, as an older Forager wrote a gateway's exit, the reason decides:
-       `timeout`, `quiet`, `credential_expired`, `stopped` and `run_ended_at_issuer` are
-       cancelled, `session_lost` and `gateway_lost` lost, and any other reason, or none,
-       failed.
+    1. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
+    2. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
+    3. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
+       lost, and any other reason, or none, failed.
 
   A state other than the three is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state("failed", reason) when reason in @stopped_reasons, do: "cancelled"
   def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
   def exit_state("succeeded", _reason), do: "completed"
   def exit_state("failed", _reason), do: "failed"
   def exit_state("cancelled", _reason), do: "cancelled"
-  def exit_state(_state, reason) when reason in @cancelled_reasons, do: "cancelled"
   def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 

@@ -241,13 +241,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
-    test "a run that ended quiet: Cancelled, its word shown, counted with the cancelled runs",
+    test "a run cancelled at its time limit: Cancelled, its word shown, counted with the cancelled runs",
          %{conn: conn, scope: scope} do
       ended =
         started_run(
           scope,
           %{"forge" => "git.example.com", "repository" => "example-org/example-repo"},
-          exit: %{"reason" => "quiet", "quiet_seconds" => 600, "duration_ms" => 635_000}
+          exit: %{"state" => "cancelled", "reason" => "timeout", "duration_ms" => 635_000}
         )
 
       failed = started_run(scope, shop(), exit: %{"state" => "failed", "exit_code" => 1})
