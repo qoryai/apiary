@@ -116,6 +116,7 @@ defmodule Apiary.AuditChanges do
       :"secret.write",
       :"variable.edit",
       :"connection.write",
+      :"model_choice.write",
       :"adapter.create",
       :"adapter.edit",
       :"adapter.set_interval",
@@ -716,6 +717,25 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"connection", connection.id}, before: before}
   end
 
+  # A model provider is added, then the workspace's choice names it, in the workspace's
+  # trail, about the choice. The key's value is the secret no entry may hold.
+  def make(:"model_choice.write", %{scope: scope}) do
+    value = "sk-audit-model-key"
+
+    {:ok, provider} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "openrouter",
+        keys: [%{value_id: "main", value: value}]
+      })
+
+    before = entries()
+
+    {:ok, choice} =
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+    %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
+  end
+
   def make(:"organisation.delete", %{scope: scope}) do
     before = entries()
     {:ok, _} = Deletion.delete_organisation(scope, scope.organisation.slug)
@@ -1283,6 +1303,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"connection.write", scope, _),
     do: Apiary.Connections.create_service(scope, %{service: "sentry"})
+
+  defp attempt(:"model_choice.write", scope, _),
+    do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
 
   defp attempt(:"retention.edit", scope, _),
     do: Retention.update_retention(scope, %{events_retention_days: 30})

@@ -111,6 +111,7 @@ defmodule Apiary.Audit do
   alias Apiary.Runs.{Run, Target}
   alias Apiary.Connections.{Connection, ServiceDefinition}
   alias Apiary.Integrations.Release
+  alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Secrets.Secret
   alias Apiary.Variables.Variable
   alias Apiary.WorkItems.WorkItem
@@ -128,6 +129,7 @@ defmodule Apiary.Audit do
     Secret => "secret",
     Variable => "variable",
     Connection => "connection",
+    ModelChoice => "model_choice",
     ServiceDefinition => "service_definition",
     Release => "integration_release",
     WorkItem => "work_item",
@@ -562,7 +564,9 @@ defmodule Apiary.Audit do
   # (`collection_nouns`), even once the collection is gone; and for each entry that
   # assigns collections to a workspace or unassigns them (`collection.assign`), what the
   # source behind the connection its `details` name calls its collections, by that public
-  # id (`connection_collection_nouns`), where it names them.
+  # id (`connection_collection_nouns`), where it names them. A model choice
+  # (`Apiary.ModelChoices`) is a subject too, and the target its `details` have by
+  # `target_id` is looked up with the targets.
   @spec names(Scope.t(), [Entry.t()]) :: names
   def names(%Scope{organisation: %Organisation{id: organisation_id}}, entries)
       when is_list(entries) do
@@ -585,7 +589,15 @@ defmodule Apiary.Audit do
       ids.(&[&1.workspace_id, if(&1.subject_kind == "workspace", do: &1.subject_id)])
 
     nodes = ids.(&[if(&1.subject_kind == "node", do: &1.subject_id)])
-    targets = ids.(&[if(&1.subject_kind == "target", do: &1.subject_id)])
+
+    targets =
+      ids.(
+        &[
+          if(&1.subject_kind == "target", do: &1.subject_id),
+          if(&1.subject_kind == "model_choice", do: details(&1, "target_id"))
+        ]
+      )
+
     runs = ids.(&[if(&1.subject_kind == "run", do: &1.subject_id)])
 
     backlog_targets =
