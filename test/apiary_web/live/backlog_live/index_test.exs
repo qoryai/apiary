@@ -329,10 +329,15 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=declined"))
       assert has_element?(view, "#{row(ctx.declined)} .q-bl-wi-declined")
 
-      # Who declined it by the local part of their address, never the address.
-      [local, _domain] = String.split(ctx.scope.user.email, "@")
-      assert has_element?(view, row(ctx.declined), "Declined by #{local}")
-      refute view |> element(row(ctx.declined)) |> render() =~ ctx.scope.user.email
+      # Who declined it, the reader here, by their first letter, with their address as its
+      # tooltip.
+      email = ctx.scope.user.email
+      letter = email |> String.first() |> String.upcase()
+      in_row = &"#{row(ctx.declined)} .q-bl-w #{&1}"
+      assert has_element?(view, in_row.(""), "Declined by")
+      assert has_element?(view, in_row.(~s|abbr[data-tip="#{email} (you)"]|))
+      only_letter = ~r/\A#{Regex.escape(letter)}\z/
+      assert has_element?(view, in_row.("abbr [aria-hidden]"), only_letter)
 
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?view=taken"))
       assert has_element?(view, "#{row(ctx.taken)} a.q-bl-wi")

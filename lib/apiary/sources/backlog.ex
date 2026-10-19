@@ -108,10 +108,10 @@ defmodule Apiary.Sources.Backlog do
   @typedoc """
   A ticket's work item, as a row shows it: its number in the workspace, its state, its
   page in the workspace, and, when declined, who declined it, as
-  `ApiaryWeb.People.short/1` names an account: the local part of the email address of an
-  account in use, priya of priya@example.com, "Former member" for a deleted one, nil
-  where no person declined it. `declined_by` is nil for a work item that is not
-  declined. One of another workspace has its state alone.
+  `ApiaryWeb.People.email/1` gives an account: the email address of an account in use,
+  priya@example.com, "Former member" for a deleted one, nil where no person declined it.
+  `declined_by` is nil for a work item that is not declined. One of another workspace has
+  its state alone.
   """
   @type work_item :: %{
           number: pos_integer | nil,
@@ -848,7 +848,7 @@ defmodule Apiary.Sources.Backlog do
       path: selected.path <> Integer.to_string(selected.work_item_number),
       declined_by:
         if(selected.work_item_state == :declined,
-          do: selected.declined_by |> People.email() |> People.short()
+          do: People.email(selected.declined_by)
         )
     }
   end

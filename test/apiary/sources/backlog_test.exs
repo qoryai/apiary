@@ -288,10 +288,8 @@ defmodule Apiary.Sources.BacklogTest do
       assert row.updated_at == ctx.declined.source_updated_at
       assert number == declined_item.number
       assert declined_path == path <> Integer.to_string(number)
-      # Who declined it by the local part of their address, as the policy pages name
-      # people.
-      [local, "example.com"] = String.split(scope.user.email, "@")
-      assert row.work_item.declined_by == local
+      # Who declined it by their address, which the page draws as its first letter.
+      assert row.work_item.declined_by == scope.user.email
       refute Map.has_key?(row, :body)
 
       assert rows[ctx.taken.public_id].work_item == %{
@@ -308,7 +306,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert %{state: :exploring, declined_by: nil} = rows[ctx.closed_taken.public_id].work_item
     end
 
-    test "a declined work item names its person by the local part of their address, a deleted account as a former member, and no one where no person declined it",
+    test "a declined work item has its decliner's address, Former member, or nil",
          ctx do
       %{user: decliner} = member_fixture(ctx.scope, :member)
       by_person = ticket(ctx.collection)
@@ -330,8 +328,7 @@ defmodule Apiary.Sources.BacklogTest do
         Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
       end
 
-      [local, "example.com"] = String.split(decliner.email, "@")
-      assert declined_by.(by_person) == local
+      assert declined_by.(by_person) == decliner.email
       assert declined_by.(by_nobody) == nil
 
       decliner
@@ -354,18 +351,18 @@ defmodule Apiary.Sources.BacklogTest do
       Backlog.get_ticket(ctx.scope, item.public_id).work_item.declined_by
     end
 
-    test "a declined work item names a person removed from the organisation by their account",
+    test "a declined work item has the address of a person removed from the organisation",
          ctx do
       member = member_fixture(ctx.scope, :member)
-      [local, "example.com"] = String.split(member.user.email, "@")
-      assert declined_by(ctx, member.user, fn -> Repo.delete!(member.membership) end) == local
+
+      assert declined_by(ctx, member.user, fn -> Repo.delete!(member.membership) end) ==
+               member.user.email
     end
 
-    test "a declined work item names a person who is not a member of the organisation by their account",
+    test "a declined work item has the address of someone outside the organisation",
          ctx do
       user = Apiary.AccountsFixtures.user_fixture()
-      [local, "example.com"] = String.split(user.email, "@")
-      assert declined_by(ctx, user, fn -> :ok end) == local
+      assert declined_by(ctx, user, fn -> :ok end) == user.email
     end
 
     test "a filer the source says is no person is a bot", ctx do

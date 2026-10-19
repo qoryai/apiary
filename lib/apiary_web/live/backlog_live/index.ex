@@ -250,6 +250,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
                 integration={ticket.integration.name}
                 patch={list_path(@current_scope, @params, ticket: ticket.id)}
                 now={@now}
+                reader={@current_scope.user.email}
               />
             </ul>
           </section>
