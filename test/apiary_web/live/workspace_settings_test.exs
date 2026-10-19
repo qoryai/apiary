@@ -36,7 +36,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       assert has_element?(
                lv,
                "#workspace-type-fixed",
-               "Chosen when the workspace was created, and it can't be changed. It sets the words the workspace's pages use and the integrations it is offered."
+               "Chosen when the workspace was created, and can't be changed. The type sets the words on the workspace's pages and the integrations offered to the workspace."
              )
 
       # Read only: no field for it, and the form sends none.

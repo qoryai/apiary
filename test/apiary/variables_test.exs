@@ -260,7 +260,7 @@ defmodule Apiary.VariablesTest do
                    locked: locked
                  })
 
-        assert error(changeset, :locked) =~ "only a workspace's variable can be locked"
+        assert error(changeset, :locked) =~ "lock only a workspace's variable"
       end
 
       own = set!(scope, site, "SITE", "x", %{locked: false})

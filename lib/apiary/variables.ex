@@ -350,7 +350,7 @@ defmodule Apiary.Variables do
       :locked,
       dgettext_noop(
         "errors",
-        "only a workspace's variable can be locked: a lock holds it against the targets"
+        "lock only a workspace's variable: a locked workspace variable replaces the same variable on every target"
       )
     )
   end

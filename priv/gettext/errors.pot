@@ -319,6 +319,11 @@ msgstr ""
 msgid "is too long"
 msgstr ""
 
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "lock only a workspace's variable: a locked workspace variable replaces the same variable on every target"
+msgstr ""
+
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
@@ -473,11 +478,6 @@ msgstr ""
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "names beginning QORY_ are reserved for Forager"
-msgstr ""
-
-#: lib/apiary/variables.ex
-#, elixir-autogen, elixir-format
-msgid "only a workspace's variable can be locked: a lock holds it against the targets"
 msgstr ""
 
 msgid "should be %{count} byte(s)"
