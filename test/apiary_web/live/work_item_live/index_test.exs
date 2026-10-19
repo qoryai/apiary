@@ -522,15 +522,13 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       assert has_element?(view, ~s(#work-items-tokens-clear[href="#{page(ctx.scope)}"]))
     end
 
-    test "an address with repository, of before, reads as one with collection", ctx do
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop&updated=7d"))
-      assert length(rows(view)) == 2
-      assert words(view, "#work-items-tokens-collection .q-tok-v") == "acme/shop"
+    test "an address with repository in place of collection filters nothing", ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      all = rows(view)
 
-      # The links the page makes name it collection.
-      remove_updated = view |> element("#work-items-tokens-updated .q-tok-x") |> render()
-      assert remove_updated =~ "collection"
-      refute remove_updated =~ "repository"
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop"))
+      assert rows(view) == all
+      refute has_element?(view, "#work-items-tokens-collection")
     end
 
     test "Collection and Updated keep theirs; a forged value matches nothing", ctx do

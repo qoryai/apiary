@@ -15,8 +15,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   #
   # Everything the list shows is in the address, so a narrowed list can be linked and
   # Back works: `view`, `stage`, `q`, `owner`, `collection`, `updated`, `sort`, and a
-  # page's cursor, `after` or `before`. An older address with `repository` in place of
-  # `collection` reads the same. The page hands each to `Apiary.WorkItems`
+  # page's cursor, `after` or `before`. The page hands each to `Apiary.WorkItems`
   # (`list_work_items/3`, `list_bands/3`), which checks it: a value it does not know
   # matches nothing, or is its default, and breaks nothing. An owner is named by Qory
   # Apiary's id for the account, a work item's page by its number in the workspace, and a
@@ -562,7 +561,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       q: if(is_binary(q) and String.trim(q) != "", do: q),
       search: if(not is_binary(q) or String.trim(q) != "", do: q),
       owner: many(params["owner"]),
-      collection: many(params["collection"] || params["repository"]),
+      collection: many(params["collection"]),
       updated: one(params["updated"]),
       sort: choice(params["sort"], @sorts, :updated),
       after: one(params["after"]),

@@ -462,16 +462,14 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       refute has_element?(view, "#backlog-filter-label-form .q-bl-bot-av")
     end
 
-    test "an address with repository, of before, reads as one with collection", ctx do
-      query = "?" <> Plug.Conn.Query.encode(repository: [ctx.api.id], label: ["bug"])
+    test "an address with repository in place of collection filters nothing", ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      all = rows(view)
+
+      query = "?" <> Plug.Conn.Query.encode(repository: [ctx.api.id])
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
-
-      assert words(view, "#backlog-token-collection") == "Collection acme/api"
-
-      # The links the page makes name it collection.
-      remove_label = view |> element("#backlog-token-label a") |> render()
-      assert remove_label =~ "collection"
-      refute remove_label =~ "repository"
+      assert rows(view) == all
+      refute has_element?(view, "#backlog-token-collection")
     end
 
     test "the collections' section and token are named in the source's word for one",

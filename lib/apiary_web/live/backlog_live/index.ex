@@ -23,8 +23,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # tile), and the pager, Newer and Older. Everything the list shows is in the address, so
   # a narrowed list can be linked and Back works:
   # `view`, `q`, `collection`, `filed_by`, `label`, `updated`, `sort`, and a page's
-  # cursor, `after` or `before`; an older address with `repository` in place of
-  # `collection` reads the same. The page hands each to
+  # cursor, `after` or `before`. The page hands each to
   # `Apiary.Sources.Backlog.list_tickets/3`, which checks it: a value it does not know
   # matches nothing, or is its default, and breaks nothing. A collection is named by Qory
   # Apiary's id for it and a ticket by Qory Apiary's id for it (`tk_…`), never by the
@@ -424,7 +423,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
       view: choice(params["view"], @views, :open),
       q: if(is_binary(q) and String.trim(q) != "", do: q),
       search: if(not is_binary(q) or String.trim(q) != "", do: q),
-      collection: many(params["collection"] || params["repository"]),
+      collection: many(params["collection"]),
       filed_by: many(params["filed_by"]),
       label: many(params["label"]),
       updated: one(params["updated"]),
