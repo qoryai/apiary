@@ -23,6 +23,37 @@ defmodule Apiary.Sources.BacklogTest do
 
   @at ~U[2026-10-01 12:00:00Z]
 
+  # The facts' counts and names of what the organisation is connected through.
+  @counted [
+    :connected?,
+    :integrations,
+    :assigned_collections,
+    :linked_collections,
+    :listed?,
+    :open_tickets
+  ]
+
+  # The facts of a person who may not read the workspace's work items.
+  @no_facts %{
+    connected?: false,
+    listed?: false,
+    integrations: [],
+    sources: [],
+    assigned_collections: 0,
+    linked_collections: 0,
+    switched_off: 0,
+    without_items: 0,
+    collection_nouns: [],
+    linked: [],
+    open_tickets: 0,
+    take_in?: false,
+    offered: [],
+    may: %{install: false, assign: false, switch: false},
+    ask: %{install: [], assign: [], switch: []}
+  }
+
+  defp facts(scope, keys \\ @counted), do: scope |> Backlog.backlog_facts() |> Map.take(keys)
+
   setup do
     %{scope: scope} = sign_up_fixture()
     connection = ticket_connection_fixture(scope)
@@ -1247,7 +1278,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.filter_values(ctx.scope, :label, nil) == []
       assert Backlog.filter_values(ctx.scope, :repository, nil) == []
 
-      assert Backlog.backlog_facts(ctx.scope) == %{
+      assert facts(ctx.scope) == %{
                connected?: false,
                integrations: [],
                assigned_collections: 0,
@@ -1339,15 +1370,6 @@ defmodule Apiary.Sources.BacklogTest do
         first: 0
       }
 
-      no_facts = %{
-        connected?: false,
-        integrations: [],
-        assigned_collections: 0,
-        linked_collections: 0,
-        listed?: false,
-        open_tickets: 0
-      }
-
       # Another organisation's person, in their scope and in a scope of ours.
       foreign = %{other | organisation: ctx.scope.organisation, workspace: ctx.scope.workspace}
 
@@ -1362,7 +1384,8 @@ defmodule Apiary.Sources.BacklogTest do
         assert Backlog.filter_values(scope, :filed_by, nil) == []
         assert Backlog.filter_values(scope, :label, nil) == []
         assert Backlog.filter_values(scope, :repository, nil) == []
-        assert Backlog.backlog_facts(scope) == no_facts
+        assert Backlog.backlog_facts(scope) == @no_facts
+        assert Backlog.collection_nouns(scope) == []
         assert {:error, _refused} = Backlog.subscribe(scope)
       end
 
@@ -1533,7 +1556,7 @@ defmodule Apiary.Sources.BacklogTest do
     test "nothing connected, then connected, listed, linked and with open tickets" do
       %{scope: scope} = sign_up_fixture()
 
-      assert Backlog.backlog_facts(scope) == %{
+      assert facts(scope) == %{
                connected?: false,
                integrations: [],
                assigned_collections: 0,
@@ -1546,7 +1569,7 @@ defmodule Apiary.Sources.BacklogTest do
       adapter = Repo.get!(Node, connection.adapter_id)
       integrations = [%{name: adapter.name, id: adapter.public_id}]
 
-      assert Backlog.backlog_facts(scope) == %{
+      assert facts(scope) == %{
                connected?: true,
                integrations: integrations,
                assigned_collections: 0,
@@ -1559,7 +1582,7 @@ defmodule Apiary.Sources.BacklogTest do
       collection = source_collection_fixture(scope, connection)
       source_collection_fixture(scope, connection, %{workspace_id: nil})
 
-      assert Backlog.backlog_facts(scope) == %{
+      assert facts(scope) == %{
                connected?: true,
                integrations: integrations,
                assigned_collections: 1,
@@ -1571,7 +1594,7 @@ defmodule Apiary.Sources.BacklogTest do
       ticket(collection)
       ticket(collection, state: :closed)
 
-      assert Backlog.backlog_facts(scope) == %{
+      assert facts(scope) == %{
                connected?: true,
                integrations: integrations,
                assigned_collections: 1,
@@ -1662,6 +1685,296 @@ defmodule Apiary.Sources.BacklogTest do
                integrations: [%{name: adapter.name, id: adapter.public_id}],
                listed?: true
              } == Map.take(Backlog.backlog_facts(scope), [:connected?, :integrations, :listed?])
+    end
+  end
+
+  describe "the facts of an empty Backlog, per source" do
+    # Records `item` and `collection`, `{one, other}` or nil, on the adapter of
+    # `connection`, renamed `name`.
+    defp declare(connection, name, item, collection) do
+      {item_one, item_other} = item || {nil, nil}
+      {one, other} = collection || {nil, nil}
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^connection.adapter_id),
+          set: [
+            name: name,
+            item_noun_one: item_one,
+            item_noun_other: item_other,
+            collection_noun_one: one,
+            collection_noun_other: other
+          ]
+        )
+
+      Repo.get!(Node, connection.adapter_id)
+    end
+
+    defp listed(connection, complete?) do
+      now = DateTime.utc_now()
+
+      connection
+      |> Ecto.Changeset.change(listed_at: now, listing_completed_at: if(complete?, do: now))
+      |> Repo.update!()
+    end
+
+    # How many queries `fun` makes, by this process.
+    defp queries(fun) do
+      handler = "backlog-facts-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, _meta, _config ->
+          if self() == parent, do: send(parent, :query)
+        end,
+        nil
+      )
+
+      try do
+        fun.()
+        count_queries(0)
+      after
+        :telemetry.detach(handler)
+      end
+    end
+
+    defp count_queries(n) do
+      receive do
+        :query -> count_queries(n + 1)
+      after
+        0 -> n
+      end
+    end
+
+    test "each source by name, with its words, its listing and its collections' counts",
+         ctx do
+      forge = declare(ctx.connection, "Zulu forge", {"issue", "issues"}, nil)
+      ctx.connection |> listed(true)
+      helpdesk_connection = ticket_connection_fixture(ctx.scope)
+
+      helpdesk =
+        declare(helpdesk_connection, "Alpha helpdesk", {"incident", "incidents"}, {
+          "queue",
+          "queues"
+        })
+
+      helpdesk_connection = listed(helpdesk_connection, false)
+
+      # The forge's: acme/shop linked; one off; one without items; one unassigned; one of
+      # another workspace; one ended.
+      off = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/off"})
+      off |> Ecto.Changeset.change(backlog: false) |> Repo.update!()
+      bare = source_collection_fixture(ctx.scope, ctx.connection, %{title: "acme/bare"})
+      bare |> Ecto.Changeset.change(items: false) |> Repo.update!()
+      source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+      platform = workspace_fixture(ctx.scope.organisation, "Platform")
+      source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: platform.id})
+      end_collection(source_collection_fixture(ctx.scope, ctx.connection))
+      billing = source_collection_fixture(ctx.scope, helpdesk_connection, %{title: "Billing"})
+
+      facts = Backlog.backlog_facts(ctx.scope)
+
+      assert facts.sources == [
+               %{
+                 name: "Alpha helpdesk",
+                 id: helpdesk.public_id,
+                 item_noun: %{one: "incident", other: "incidents"},
+                 collection_noun: %{one: "queue", other: "queues"},
+                 listed?: true,
+                 listing_complete?: false,
+                 collections: 1,
+                 unassigned: 0,
+                 assigned: 1,
+                 linked: 1,
+                 switched_off: 0,
+                 without_items: 0
+               },
+               %{
+                 name: "Zulu forge",
+                 id: forge.public_id,
+                 item_noun: %{one: "issue", other: "issues"},
+                 collection_noun: nil,
+                 listed?: true,
+                 listing_complete?: true,
+                 collections: 5,
+                 unassigned: 1,
+                 assigned: 3,
+                 linked: 1,
+                 switched_off: 1,
+                 without_items: 1
+               }
+             ]
+
+      # The integration's page counts the same.
+      connection = Repo.get!(Connection, ctx.connection.id)
+      assert %{total: 5, unassigned: 1} = Collections.counts(ctx.scope, connection)
+
+      assert facts.integrations == [
+               %{name: "Alpha helpdesk", id: helpdesk.public_id},
+               %{name: "Zulu forge", id: forge.public_id}
+             ]
+
+      assert %{
+               assigned_collections: 4,
+               linked_collections: 2,
+               switched_off: 1,
+               without_items: 1
+             } = facts
+
+      assert facts.collection_nouns == [{%{one: "queue", other: "queues"}, 1}, {nil, 3}]
+      assert Backlog.collection_nouns(ctx.scope) == [%{one: "queue", other: "queues"}, nil]
+
+      # The linked ones, by their integration's name, then title.
+      assert facts.linked == [
+               %{
+                 id: billing.public_id,
+                 title: "Billing",
+                 integration: %{name: "Alpha helpdesk", id: helpdesk.public_id},
+                 item_noun: %{one: "incident", other: "incidents"},
+                 collection_noun: %{one: "queue", other: "queues"},
+                 listing_complete?: false,
+                 open_tickets: 0
+               },
+               %{
+                 id: ctx.collection.public_id,
+                 title: "acme/shop",
+                 integration: %{name: "Zulu forge", id: forge.public_id},
+                 item_noun: %{one: "issue", other: "issues"},
+                 collection_noun: nil,
+                 listing_complete?: true,
+                 open_tickets: 0
+               }
+             ]
+    end
+
+    test "the first five linked collections, with their open tickets", ctx do
+      for title <- ["acme/e", "acme/d", "acme/c", "acme/b", "acme/a"],
+          do: source_collection_fixture(ctx.scope, ctx.connection, %{title: title})
+
+      ticket(ctx.collection)
+      ticket(ctx.collection, state: :closed)
+      facts = Backlog.backlog_facts(ctx.scope)
+
+      assert Enum.map(facts.linked, & &1.title) ==
+               ["acme/a", "acme/b", "acme/c", "acme/d", "acme/e"]
+
+      assert facts.linked_collections == 6
+
+      ctx.collection |> Ecto.Changeset.change(title: "acme/0") |> Repo.update!()
+      assert [%{title: "acme/0", open_tickets: 1} | _] = Backlog.backlog_facts(ctx.scope).linked
+    end
+
+    test "another workspace's or another organisation's collection never appears", ctx do
+      platform = workspace_fixture(ctx.scope.organisation, "Platform")
+      there = workspace_scope(ctx.scope.user, platform)
+      theirs = source_collection_fixture(there, ctx.connection, %{title: "acme/platform"})
+      ticket(theirs)
+
+      %{scope: elsewhere} = sign_up_fixture()
+      foreign = ticket_connection_fixture(elsewhere)
+      declare(foreign, "Foreign", nil, {"queue", "queues"})
+      other = source_collection_fixture(elsewhere, foreign, %{title: "Their queue"})
+
+      facts = Backlog.backlog_facts(ctx.scope)
+      assert Enum.map(facts.linked, & &1.id) == [ctx.collection.public_id]
+      assert facts.collection_nouns == [{nil, 1}]
+      assert Backlog.collection_nouns(ctx.scope) == [nil]
+      assert [%{assigned: 1, linked: 1}] = facts.sources
+      refute facts.take_in?
+
+      assert Enum.map(Backlog.backlog_facts(there).linked, & &1.id) == [theirs.public_id]
+      assert Enum.map(Backlog.backlog_facts(elsewhere).linked, & &1.id) == [other.public_id]
+
+      # An adapter another organisation is connected through is still offered here.
+      assert [%{name: "Foreign"}] = facts.offered
+    end
+
+    test "Take in: a ticket of Open with a target, its own or its collection's", ctx do
+      item = ticket(ctx.collection)
+      refute Backlog.backlog_facts(ctx.scope).take_in?
+
+      item
+      |> Ecto.Changeset.change(target_system: "code.example.com", target_path: "acme/shop")
+      |> Repo.update!()
+
+      assert Backlog.backlog_facts(ctx.scope).take_in?
+
+      # Closed at the source, it cannot be taken in.
+      item |> Ecto.Changeset.change(state: :closed) |> Repo.update!()
+      refute Backlog.backlog_facts(ctx.scope).take_in?
+
+      ctx.collection
+      |> Ecto.Changeset.change(target_system: "code.example.com", target_path: "acme/shop")
+      |> Repo.update!()
+
+      ticket(ctx.collection)
+      assert Backlog.backlog_facts(ctx.scope).take_in?
+    end
+
+    test "offer the instance's adapters with items the organisation is not connected through",
+         ctx do
+      declare(ctx.connection, "Connected", nil, nil)
+      tracker = Apiary.NodesFixtures.adapter_fixture(%{name: "Tracker 1"})
+      helpdesk = Apiary.NodesFixtures.adapter_fixture(%{name: "Helpdesk 1"})
+      quiet = Apiary.NodesFixtures.adapter_fixture(%{name: "Quiet 1"})
+      {1, _} = Repo.update_all(from(n in Node, where: n.id == ^quiet.id), set: [items: false])
+      %{adapter: pending} = Apiary.NodesFixtures.connectable_adapter_fixture(%{name: "Pending 1"})
+      Apiary.NodesFixtures.connection_fixture(ctx.scope, pending, :pending)
+
+      offered = Backlog.backlog_facts(ctx.scope).offered
+
+      # By name; a pending connection is no install yet.
+      assert Enum.map(offered, & &1.id) == [
+               helpdesk.public_id,
+               pending.public_id,
+               tracker.public_id
+             ]
+
+      assert hd(offered) == %{
+               name: "Helpdesk 1",
+               id: helpdesk.public_id,
+               item_noun: nil,
+               collection_noun: nil
+             }
+    end
+
+    test "what the person may do, and whom to ask for what they may not", ctx do
+      assert Backlog.backlog_facts(ctx.scope).may == %{install: true, assign: true, switch: true}
+      assert Backlog.backlog_facts(ctx.scope).ask == %{install: [], assign: [], switch: []}
+
+      %{user: admin} = member_fixture(ctx.scope, :admin)
+      %{membership: suspended} = member_fixture(ctx.scope, :admin)
+
+      suspended |> Ecto.Changeset.change(suspended_at: DateTime.utc_now()) |> Repo.update!()
+
+      %{user: member} = member_fixture(ctx.scope, :member)
+      scope = workspace_scope(member, ctx.scope.workspace)
+      names = [ctx.scope.user.email, admin.email] |> Enum.map(&People.short/1)
+
+      assert %{
+               may: %{install: false, assign: false, switch: false},
+               ask: %{install: ^names, assign: ^names, switch: ^names}
+             } = Backlog.backlog_facts(scope)
+    end
+
+    test "the same number of queries whatever the number of collections", ctx do
+      tracker = ticket_connection_fixture(ctx.scope)
+      count = fn -> queries(fn -> Backlog.backlog_facts(ctx.scope) end) end
+      %{user: member} = member_fixture(ctx.scope, :member)
+      as_member = workspace_scope(member, ctx.scope.workspace)
+      member_count = fn -> queries(fn -> Backlog.backlog_facts(as_member) end) end
+      few = {count.(), member_count.()}
+
+      for n <- 1..30 do
+        collection = source_collection_fixture(ctx.scope, tracker, %{title: "acme/#{n}"})
+        ticket(collection)
+      end
+
+      for _ <- 1..10,
+          do: source_collection_fixture(ctx.scope, ctx.connection, %{workspace_id: nil})
+
+      assert {count.(), member_count.()} == few
     end
   end
 
