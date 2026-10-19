@@ -38,7 +38,7 @@ defmodule Apiary.Organisations do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, Repo}
+  alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
   alias Apiary.Lingo.Domain
 
@@ -1279,7 +1279,9 @@ defmodule Apiary.Organisations do
 
       Ecto.Multi.new()
       |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert_organisation(name, pick) end)
-      |> Ecto.Multi.insert(:workspace, &main_workspace(&1.organisation, domain))
+      |> Ecto.Multi.run(:workspace, fn _repo, %{organisation: organisation} ->
+        organisation |> main_workspace(domain) |> PublicId.Insert.insert()
+      end)
       |> Ecto.Multi.run(:membership, fn repo, %{organisation: organisation} ->
         if user,
           do: repo.insert(membership_changeset(organisation, user, :owner)),
@@ -1465,7 +1467,8 @@ defmodule Apiary.Organisations do
       with :ok <- Access.authorize(scope, :"workspace.create", organisation),
            :ok <- lock_allowance(organisation),
            :ok <- ensure_within_limit(organisation),
-           {:ok, workspace} <- organisation |> new_workspace_changeset(attrs) |> Repo.insert(),
+           {:ok, workspace} <-
+             organisation |> new_workspace_changeset(attrs) |> PublicId.Insert.insert(),
            {:ok, _entry} <-
              Audit.record(
                Repo,

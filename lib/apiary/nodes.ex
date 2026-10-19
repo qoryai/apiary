@@ -63,7 +63,7 @@ defmodule Apiary.Nodes do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Audit, Environments, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Audit, Environments, Gateways, PublicId, Repo, Runs}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches.Slots
@@ -283,7 +283,7 @@ defmodule Apiary.Nodes do
              |> put_first_choice(attrs, workspace)
              |> validate_gateway(scope),
            {:ok, changeset} <- limit_set(asking, changeset, workspace),
-           {:ok, node} <- Repo.insert(changeset),
+           {:ok, node} <- PublicId.Insert.insert(changeset),
            {:ok, node} <- default_if_none(node, workspace),
            _queued = queue_prebuilds(node),
            {:ok, _entry} <-
@@ -366,7 +366,7 @@ defmodule Apiary.Nodes do
                %Node{organisation_id: organisation_id, workspace_id: nil, created_by_id: user.id},
                Map.put(stringify(attrs), "kind", :gateway)
              ),
-           {:ok, gateway} <- Repo.insert(changeset),
+           {:ok, gateway} <- PublicId.Insert.insert(changeset),
            {:ok, gateway} <- default_if_none(gateway, nil),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"node.create", gateway, %{after: created(gateway)}) do

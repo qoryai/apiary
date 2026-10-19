@@ -56,7 +56,7 @@ defmodule Apiary.Runs.Ingest do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Gateways, Nodes}
+  alias Apiary.{Access, AccessKeys, Gateways, Nodes, PublicId}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
@@ -402,7 +402,7 @@ defmodule Apiary.Runs.Ingest do
   # for the one that wins and inserts nothing, and the read after it sees the row.
   # The read locks the row for the rest of the transaction.
   defp upsert_run(access_key, batch, meta, now) do
-    Repo.insert_all(
+    PublicId.Insert.insert_all(
       Run,
       [
         Map.merge(

@@ -377,7 +377,7 @@ defmodule Apiary.Secrets do
     with :ok <- may,
          :ok <- valid_new(how, secret_changeset, value_changesets),
          {:ok, secret} <-
-           secret_changeset |> Repo.insert() |> with_values(how, value_changesets),
+           secret_changeset |> PublicId.Insert.insert() |> with_values(how, value_changesets),
          {:ok, value_ids} <- insert_values(scope, secret, value_changesets),
          {:ok, _entry} <-
            entry(opts, scope, secret, %{

@@ -439,7 +439,7 @@ defmodule Apiary.Connections do
            {:ok, workspace_ids} <-
              workspace_ids(organisation.id, connection_reach_ids(changeset, attrs)),
            :ok <- no_overlap(organisation.id, apply_changes(changeset), workspace_ids),
-           {:ok, inserted} <- changeset |> Coded.seal() |> Repo.insert(),
+           {:ok, inserted} <- insert_sealed(changeset),
            :ok <- insert_workspaces(inserted, workspace_ids),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"connection.write", inserted, %{
@@ -459,6 +459,12 @@ defmodule Apiary.Connections do
 
   defp built(build, new, _organisation_id) when is_function(build, 1), do: {:ok, build.(new)}
   defp built(build, new, organisation_id), do: build.(new, organisation_id)
+
+  # The row is coded with its public id (`Apiary.Kinds.Coded`), so a fresh id after a
+  # collision (`Apiary.PublicId.Insert`) is coded again.
+  defp insert_sealed(changeset) do
+    PublicId.Insert.insert(changeset, &(&1 |> Coded.seal() |> Repo.insert()))
+  end
 
   defp attrs_changeset(changeset, %Connection{kind: kind} = connection, attrs) do
     provider? = Connection.provider?(connection)
@@ -987,7 +993,7 @@ defmodule Apiary.Connections do
              }),
            {:ok, changeset} <-
              default_key(changeset, provider, secret, attrs["default_key"] || first_key(attrs)),
-           {:ok, inserted} <- changeset |> Coded.seal() |> Repo.insert(),
+           {:ok, inserted} <- insert_sealed(changeset),
            :ok <- insert_workspaces(inserted, workspace_ids),
            :ok <- insert_models(inserted, provider.models),
            {:ok, _entry} <-
@@ -1031,8 +1037,10 @@ defmodule Apiary.Connections do
     }
   end
 
-  # The secret of a provider's keys is named after the provider's public id, which is
-  # unique, so the name is free among the organisation's secrets.
+  # The secret of a provider's keys is named after the public id the provider was made
+  # with, which is unique, so the name is free among the organisation's secrets. Should
+  # that id collide at the insert, the provider is inserted with a fresh id
+  # (`Apiary.PublicId.Insert`) and the secret keeps the name it has.
   defp keys_name(%Connection{public_id: "con_" <> id}), do: "MODEL_PROVIDER_" <> String.upcase(id)
 
   # The keys as they came: a list as it is, a form's map in the order of its index.
@@ -1686,8 +1694,7 @@ defmodule Apiary.Connections do
           updated_by_id: scope.user && scope.user.id
         }
         |> definition_changeset(decoded)
-        |> Coded.seal()
-        |> Repo.insert()
+        |> insert_sealed()
         |> with_entry(scope, "definition_created")
       end
     end)

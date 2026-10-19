@@ -815,7 +815,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp write_chunk(specs, ctx) do
     built = Enum.map(specs, &build(&1, ctx))
 
-    Repo.insert_all(Run, Enum.map(built, fn {run, _events} -> run end))
+    Apiary.PublicId.Insert.insert_all(Run, Enum.map(built, fn {run, _events} -> run end))
 
     built
     |> Enum.flat_map(fn {_run, events} -> events end)

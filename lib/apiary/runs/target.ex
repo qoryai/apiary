@@ -19,7 +19,7 @@ defmodule Apiary.Runs.Target do
   # `Apiary.Targets.set_further_repositories/3`, which checks them.
   use Ecto.Schema
 
-  alias Apiary.Repo
+  alias Apiary.PublicId
 
   @label_max 256
   # C0 and DEL, C1 (U+0085, the next line, among them), and the line and paragraph
@@ -70,7 +70,7 @@ defmodule Apiary.Runs.Target do
     |> Enum.sort()
     |> Enum.chunk_every(@insert_chunk)
     |> Enum.each(fn chunk ->
-      Repo.insert_all(
+      PublicId.Insert.insert_all(
         __MODULE__,
         for {system, path} <- chunk do
           %{

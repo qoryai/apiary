@@ -115,7 +115,7 @@ defmodule Apiary.Runs.Registration do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Gateways, Nodes, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Gateways, Nodes, PublicId, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
@@ -829,46 +829,79 @@ defmodule Apiary.Runs.Registration do
   # winner's, and the run id is used otherwise, which rolls back. An insert that loses to
   # a run of another workspace through the same gateway, under the same id, finds no row
   # here: the run id is used.
+  #
+  # The insert does nothing on any conflict, a collision of the new public id too. It
+  # then finds no row and the public id taken by another run: that try is a collision, and
+  # the insert runs again with a new id (`Apiary.PublicId.Insert`). When every try finds
+  # the id taken, the registration is unavailable, as one the database fails.
   defp insert(access_key, registration, meta, digest, answer, now) do
-    {inserted, _rows} =
-      Repo.insert_all(
-        Run,
-        [
-          %{
-            id: Ecto.UUID.generate(),
-            public_id: Run.new_public_id(),
-            organisation_id: access_key.organisation_id,
-            workspace_id: access_key.workspace_id,
-            node_run_id: registration.run_id,
-            access_key_id: access_key.id,
-            state: "pending",
-            forager_version: forager_version(registration, meta),
-            contract_version: meta.contract_version,
-            registered_at: now,
-            registration_labels: registration.labels,
-            registration_about: registration.about,
-            registration_digest: digest,
-            registration_interval_seconds: registration.interval_seconds,
-            registration_answer_digest: answer[:digest],
-            # The registration stands for the record's sequence 1, never posted.
-            projected_sequence: Run.projected_from(%{registered_at: now}),
-            inserted_at: now,
-            updated_at: now
-          }
-          |> Map.merge(Nodes.placement(access_key.node, meta[:instance_id]))
-          |> Map.merge(answer[:through] || %{})
-        ],
-        on_conflict: :nothing
-      )
+    result =
+      PublicId.Insert.run(Run, fn _try ->
+        public_id = Run.new_public_id()
 
-    run =
-      Repo.one(
-        from r in Run,
-          where:
-            r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^registration.run_id,
-          lock: "FOR UPDATE"
-      )
+        {inserted, _rows} =
+          insert_row(public_id, access_key, registration, meta, digest, answer, now)
 
+        run =
+          Repo.one(
+            from r in Run,
+              where:
+                r.workspace_id == ^access_key.workspace_id and
+                  r.node_run_id == ^registration.run_id,
+              lock: "FOR UPDATE"
+          )
+
+        if is_nil(run) and Repo.exists?(from r in Run, where: r.public_id == ^public_id),
+          do: {:error, :public_id_taken},
+          else: {inserted, run}
+      end)
+
+    case result do
+      {:error, :public_id_taken} ->
+        Logger.error(
+          "a registration could not be stored: its public id was taken #{PublicId.Insert.max_tries()} times"
+        )
+
+        {:error, :unavailable}
+
+      {inserted, run} ->
+        stored(inserted, run, access_key, answer, digest)
+    end
+  end
+
+  defp insert_row(public_id, access_key, registration, meta, digest, answer, now) do
+    Repo.insert_all(
+      Run,
+      [
+        %{
+          id: Ecto.UUID.generate(),
+          public_id: public_id,
+          organisation_id: access_key.organisation_id,
+          workspace_id: access_key.workspace_id,
+          node_run_id: registration.run_id,
+          access_key_id: access_key.id,
+          state: "pending",
+          forager_version: forager_version(registration, meta),
+          contract_version: meta.contract_version,
+          registered_at: now,
+          registration_labels: registration.labels,
+          registration_about: registration.about,
+          registration_digest: digest,
+          registration_interval_seconds: registration.interval_seconds,
+          registration_answer_digest: answer[:digest],
+          # The registration stands for the record's sequence 1, never posted.
+          projected_sequence: Run.projected_from(%{registered_at: now}),
+          inserted_at: now,
+          updated_at: now
+        }
+        |> Map.merge(Nodes.placement(access_key.node, meta[:instance_id]))
+        |> Map.merge(answer[:through] || %{})
+      ],
+      on_conflict: :nothing
+    )
+  end
+
+  defp stored(inserted, run, access_key, answer, digest) do
     cond do
       is_nil(run) ->
         {:error, :run_id_used}

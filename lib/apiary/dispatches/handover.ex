@@ -110,7 +110,19 @@ defmodule Apiary.Dispatches.Handover do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Audit, Dispatches, Gateways, Nodes, Repo, Runs, Targets}
+  alias Apiary.{
+    Access,
+    AccessKeys,
+    Audit,
+    Dispatches,
+    Gateways,
+    Nodes,
+    PublicId,
+    Repo,
+    Runs,
+    Targets
+  }
+
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
@@ -599,7 +611,7 @@ defmodule Apiary.Dispatches.Handover do
       }
       |> struct!(Nodes.placement(key.node, dispatch_run.run_id))
       |> struct!(through)
-      |> Repo.insert!()
+      |> PublicId.Insert.insert!()
 
     {1, _rows} =
       Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
