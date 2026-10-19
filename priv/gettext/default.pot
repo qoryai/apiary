@@ -7882,11 +7882,6 @@ msgstr ""
 msgid "It declares no secret."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "It declares these secrets: %{names}."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "It does not allow %{suffix} itself."
@@ -8056,11 +8051,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "It must match %{patterns}."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "It needs one of: %{ids}."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
