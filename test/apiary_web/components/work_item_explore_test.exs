@@ -1280,6 +1280,36 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a run whose last result was an error keeps its words, here and in the folds" do
+      r =
+        run(%{
+          state: :failed,
+          outcome: :error,
+          end_cause: :run_ended,
+          proposal: nil,
+          ended_at: ago(3600)
+        })
+
+      words = [
+        "The run ended with an error.",
+        "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
+      ]
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+      assert texts(html, "#work-item-explore-none p") |> Enum.take(2) == words
+
+      earlier =
+        tab(work_item(%{number: 97, status: :queued, run: %{attempt: 2, of: 3}}),
+          earlier_runs: [r]
+        )
+
+      assert texts(earlier, "#work-item-explore-earlier-run-1-body p") |> Enum.take(2) == words
+
+      for html <- [html, earlier] do
+        refute html =~ "The run ended before it started."
+      end
+    end
+
     test "the run line's time: lost and cancelled" do
       lost = run(%{state: :lost, outcome: nil, ended_at: ago(21 * 60)})
       html = tab(work_item(%{status: :lost, run: lost}))
