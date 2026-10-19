@@ -524,6 +524,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_connection("provider_default_key_changed"),
     do: gettext("Changed a model provider's default key")
 
+  defp said_connection("provider_keys_changed"), do: gettext("Changed a model provider's keys")
+
   defp said_connection("provider_model_added"), do: gettext("Added a model to a model provider")
 
   defp said_connection("provider_model_changed"),
@@ -770,7 +772,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       do: nil
 
   # A model provider's change: the host, the key's value ID or the model ID before and
-  # after, or the model's ID.
+  # after, or the key's value ID or the model's ID.
+  def change(:"connection.write", before, after_, %{"change" => "provider_keys_changed"} = d),
+    do: from_to(before["value_id"], after_["value_id"]) || value_id(d["value_id"])
+
   def change(:"connection.write", before, after_, %{"change" => "provider_address_changed"}),
     do: from_to(before["host"], after_["host"])
 
@@ -797,6 +802,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(_policy, _before, _after, %{"change" => _change} = details), do: version(details)
 
   def change(_action, _before, _after, _details), do: nil
+
+  defp value_id(id) when is_binary(id), do: [{:m, id}]
+  defp value_id(_id), do: nil
 
   # The version of the run configuration the change left in force.
   defp version(%{"version" => version}) when is_integer(version),

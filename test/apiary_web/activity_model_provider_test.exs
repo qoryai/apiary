@@ -36,6 +36,7 @@ defmodule ApiaryWeb.ActivityModelProviderTest do
           {"provider_deleted", "Removed a model provider"},
           {"provider_address_changed", "Changed a model provider's address"},
           {"provider_default_key_changed", "Changed a model provider's default key"},
+          {"provider_keys_changed", "Changed a model provider's keys"},
           {"provider_model_added", "Added a model to a model provider"},
           {"provider_model_changed", "Changed a model of a model provider"},
           {"provider_model_removed", "Removed a model from a model provider"},
@@ -68,6 +69,15 @@ defmodule ApiaryWeb.ActivityModelProviderTest do
       assert changed(%{}, %{}, entry(change, %{"model_id" => "acme/m1"}).details) ==
                [{:m, "acme/m1"}]
     end
+
+    assert changed(
+             %{"value_id" => "main"},
+             %{"value_id" => "first"},
+             entry("provider_keys_changed").details
+           ) == Describer.from_to("main", "first")
+
+    assert changed(nil, nil, entry("provider_keys_changed", %{"value_id" => "spare"}).details) ==
+             [{:m, "spare"}]
 
     assert changed(%{}, %{}, entry("provider_created").details) == nil
   end
