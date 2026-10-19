@@ -79,9 +79,6 @@ defmodule Apiary.Runs.Run do
     field :exit_code, :integer
     field :signal, :string
     field :reason, :string
-    # The quiet period of an exit with the reason "quiet", which an older Forager wrote; nil
-    # otherwise.
-    field :quiet_seconds, :integer
     field :duration_ms, :integer
 
     field :last_event_at, :utc_datetime_usec

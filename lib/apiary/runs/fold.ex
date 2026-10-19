@@ -46,9 +46,7 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
-  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start). An
-  exit with the reason `quiet`, which an older Forager wrote, says the quiet period,
-  `quiet_seconds`.
+  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start).
 
   How the run ended is its exit's `state` and `reason` (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
   any other value is absent; the reason is a code, a lower-case letter then up to 63
@@ -394,7 +392,6 @@ defmodule Apiary.Runs.Fold do
         reason: reason,
         exit_reason: reason,
         refused_at: nil,
-        quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
         duration_ms: integer(data, "duration_ms", 0..@int8),
         lost_at: if(state == "lost", do: event.time)
       })

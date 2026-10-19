@@ -28,7 +28,6 @@ defmodule Apiary.Runs.FoldTest do
     exit_code: nil,
     signal: nil,
     reason: nil,
-    quiet_seconds: nil,
     duration_ms: nil,
     last_heartbeat_at: nil,
     elapsed_seconds: nil,
@@ -1310,22 +1309,6 @@ defmodule Apiary.Runs.FoldTest do
         %{run: run} = Fold.fold(run, [started(2)], latest)
         assert {run.state, run.lost_at} == {"lost", at(18)}
       end
-    end
-
-    test "keeps the quiet period of a quiet exit, and reads one out of range as absent" do
-      quiet = fn seconds ->
-        data = %{"reason" => "quiet", "quiet_seconds" => seconds, "duration_ms" => 5}
-        Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)]).run
-      end
-
-      assert quiet.(1800).quiet_seconds == 1800
-      assert quiet.(1).quiet_seconds == 1
-
-      for seconds <- [0, -1, 2_147_483_648, "1800", 1.5] do
-        assert quiet.(seconds).quiet_seconds == nil
-      end
-
-      assert Fold.fold(@run, [exited(18, %{"state" => "succeeded"})]).run.quiet_seconds == nil
     end
 
     test "a session's run stopped where it was started is Cancelled, interrupted, with its exit as observed" do

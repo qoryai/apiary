@@ -178,11 +178,10 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   Why the run ended, in words: the one line the run page's header and rail say after the
   state, its timeline's last item and the runs list's preview. `run` is a run or an exit:
-  its `reason`, `quiet_seconds` for `quiet`, and `state` when it has one, as a string or an
-  atom.
+  its `reason`, and `state` when it has one, as a string or an atom.
 
   Forager's reasons have these words, none naming who or what ended the run:
-  "time limit reached", "no activity for 30 minutes", "permission to run expired",
+  "time limit reached", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer". A reason stored
   under its earlier name reads as the new one. A run whose starter sent its outcome with
@@ -195,8 +194,7 @@ defmodule ApiaryWeb.RunComponents do
   A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
   the refusal's code as its reason, reads the same.
 
-  Nil when there is no reason, for `run_closed`, for `quiet` without its period, and for a
-  value that is no code.
+  Nil when there is no reason, for `run_closed`, and for a value that is no code.
   """
   @spec reason_words(map()) :: String.t() | nil
   def reason_words(%Run{} = run) do
@@ -277,13 +275,6 @@ defmodule ApiaryWeb.RunComponents do
 
   defp words_of("timeout", _run), do: gettext("time limit reached")
 
-  defp words_of("quiet", run) do
-    case Map.get(run, :quiet_seconds) do
-      seconds when is_integer(seconds) and seconds > 0 -> quiet_words(seconds)
-      _ -> nil
-    end
-  end
-
   defp words_of("credential_expired", _run), do: gettext("permission to run expired")
 
   # Forager writes `stopped` only with cancelled, when the starter gave no outcome; beside an
@@ -309,30 +300,6 @@ defmodule ApiaryWeb.RunComponents do
 
   defp words_of("run_closed", _run), do: nil
   defp words_of(code, _run), do: String.replace(code, "_", " ")
-
-  # The quiet period as a duration reads: in hours or minutes when it is a whole number of
-  # them, else in seconds.
-  defp quiet_words(seconds) when rem(seconds, 3600) == 0 do
-    hours = div(seconds, 3600)
-
-    ngettext("no activity for %{number} hour", "no activity for %{number} hours", hours,
-      number: Format.number(hours)
-    )
-  end
-
-  defp quiet_words(seconds) when rem(seconds, 60) == 0 do
-    minutes = div(seconds, 60)
-
-    ngettext("no activity for %{number} minute", "no activity for %{number} minutes", minutes,
-      number: Format.number(minutes)
-    )
-  end
-
-  defp quiet_words(seconds) do
-    ngettext("no activity for %{number} second", "no activity for %{number} seconds", seconds,
-      number: Format.number(seconds)
-    )
-  end
 
   # A translated sentence with one element in it. `text` is the sentence, translated with the
   # element's binding set to `hole/0`; the slot is rendered where the binding stood.

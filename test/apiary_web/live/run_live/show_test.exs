@@ -2940,8 +2940,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     test "an exit with no exit code: the same words", %{conn: conn, scope: scope} do
       for {exit, state, words} <- [
-            {%{"state" => "cancelled", "reason" => "quiet", "quiet_seconds" => 1800}, "Cancelled",
-             "no activity for 30 minutes"},
             {%{"state" => "cancelled", "reason" => "credential_expired"}, "Cancelled",
              "permission to run expired"},
             {%{"state" => "cancelled", "reason" => "stopped"}, "Cancelled",
@@ -3137,7 +3135,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       runs =
         for reason <- reasons, state <- [nil, "succeeded", "failed", "cancelled"] do
           exit =
-            %{"reason" => reason, "exit_code" => -1, "quiet_seconds" => 1800}
+            %{"reason" => reason, "exit_code" => -1}
             |> then(&if(state, do: Map.put(&1, "state", state), else: &1))
 
           session_run(scope, exit)
