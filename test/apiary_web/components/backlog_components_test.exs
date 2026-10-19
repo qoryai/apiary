@@ -177,8 +177,8 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       html = declined("dana@example.com")
 
       # Who declined it is their first letter, with the address as its tooltip and its
-      # name, beside the title and in the line under it; the titles have the address.
-      for place <- [".q-bl-w", ".q-bl-sub"] do
+      # name, beside the title, and on a separate line under it where the row is narrow.
+      for place <- [".q-bl-w", ".q-bl-sub-declined"] do
         assert attr(html, "#{place} abbr", "data-tip") == ["dana@example.com"]
         assert attr(html, "#{place} abbr", "aria-label") == ["dana@example.com"]
         assert attr(html, "#{place} abbr", "tabindex") == ["0"]
@@ -189,12 +189,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       # The letter is hidden from screen readers, so the text read aloud is the address.
       assert text(html, ".q-bl-w") == "Declined by Ddana@example.com"
 
-      assert text(html, ".q-bl-sub") ==
-               "acme/shop#1231 · by Lea · 3 min · Declined by Ddana@example.com"
-
-      assert attr(html, ".q-bl-sub", "title") == [
-               "acme/shop#1231 · by Lea · 3 min · Declined by dana@example.com"
-             ]
+      assert text(html, ".q-bl-sub-declined") == "Declined by Ddana@example.com"
 
       assert text(html, "a.q-bl-wi") == "#79"
       assert attr(html, "a.q-bl-wi", "class") == ["q-bl-wi q-bl-wi-declined"]
@@ -241,11 +236,27 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       html = declined(nil)
 
       assert text(html, ".q-bl-w") == "Declined by"
+      assert text(html, ".q-bl-sub-declined") == "Declined by"
       assert count(html, "abbr") == 0
+    end
 
-      assert attr(html, ".q-bl-sub", "title") == [
-               "acme/shop#1231 · by Lea · 3 min · Declined by "
-             ]
+    test "declined, where the row is narrow: the title is on the line that can be cut" do
+      html = declined("dana@example.com")
+      sub = "acme/shop#1231 · by Lea · 3 min"
+
+      # The line under the title is cut with an ellipsis, so its title has its whole
+      # text; who declined it is on the next line, which no ellipsis cuts, with no title,
+      # so a hover on the letter shows its tip alone.
+      assert text(html, ".q-bl-sub:not(.q-bl-sub-declined)") == sub
+      assert attr(html, ".q-bl-sub:not(.q-bl-sub-declined)", "title") == [sub]
+      assert attr(html, ".q-bl-sub-declined", "title") == []
+      assert count(html, ".q-bl-sub-declined [title]") == 0
+      assert count(html, ".q-bl-sub-declined abbr") == 1
+
+      # Any other word ends the line that can be cut, and its title.
+      html = row(ticket(%{state: :closed, state_reason: "Not planned"}))
+      assert attr(html, ".q-bl-sub", "title") == [sub <> " · Not planned"]
+      assert count(html, ".q-bl-sub-declined") == 0
     end
 
     for state <- [:undone, :closed] do

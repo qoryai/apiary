@@ -10899,6 +10899,11 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    /* Who declined it: a separate line, which no ellipsis cuts, so the letter and its
+       tip show whole. */
+    .q-bl-sub.q-bl-sub-declined {
+      overflow: visible;
+    }
     .q-bl-act {
       width: auto;
       padding-top: 1px;

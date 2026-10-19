@@ -63,7 +63,8 @@ defmodule ApiaryWeb.BacklogComponents do
 
   Who declined a work item is their first letter, with the address as its tooltip
   (`CoreComponents.avatar/1`, in the account menu's colour where the address is
-  `reader`), and the address in the row's titles.
+  `reader`), and the address in the title of the work item's link. Where the row is
+  narrow, it is on a separate line under the title, which no ellipsis cuts.
 
   `take_in` and `take_in_again` are what a press does (`phx-click`: an event name or a
   `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id`.
@@ -87,6 +88,10 @@ defmodule ApiaryWeb.BacklogComponents do
     now = assigns.now || DateTime.utc_now()
     view = row_view(ticket)
     {word, shown_word} = word(view.word, assigns.reader)
+    # Under the title, where the row is narrow, who declined it is on a separate line,
+    # which no ellipsis cuts; any other word ends the line that can be cut.
+    declined = match?({:declined_by, _email}, view.word)
+    line_word = if(!declined, do: word)
 
     sub =
       gettext("%{ref} · by %{who} · %{ago}",
@@ -99,8 +104,9 @@ defmodule ApiaryWeb.BacklogComponents do
       assigns
       |> assign(:now, now)
       |> assign(view)
-      |> assign(word: word, shown_word: shown_word)
-      |> assign(sub: sub, sub_title: if(word, do: sub <> " · " <> word, else: sub))
+      |> assign(word: word, shown_word: shown_word, declined: declined)
+      |> assign(sub: sub, line_word: line_word)
+      |> assign(:sub_title, if(line_word, do: sub <> " · " <> line_word, else: sub))
       |> assign(
         shown_key: Apiary.ExternalText.line(ticket.key),
         shown_repository: Apiary.ExternalText.line(ticket.repository)
@@ -118,7 +124,10 @@ defmodule ApiaryWeb.BacklogComponents do
         ><.external_text text={@ticket.title} /></.link>
         <span :if={@word} class="q-bl-w"><.rich text={@shown_word} /></span>
         <span class="q-bl-sub" title={@sub_title}>
-          {@sub}<span :if={@word}> · <.rich text={@shown_word} /></span>
+          {@sub}<span :if={@line_word}> · {@line_word}</span>
+        </span>
+        <span :if={@declined} class="q-bl-sub q-bl-sub-declined">
+          <.rich text={@shown_word} />
         </span>
       </span>
       <span
