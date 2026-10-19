@@ -106,6 +106,11 @@ defmodule Apiary.ModelChoices do
         }
 
   @doc false
+  # runtime_name/0 is the name of the runtime of every run of the queue.
+  @spec runtime_name() :: String.t()
+  def runtime_name, do: @runtime
+
+  @doc false
   # run_kinds/0 is the run kinds a choice may be set for.
   @spec run_kinds() :: [String.t()]
   def run_kinds, do: @run_kinds
@@ -161,8 +166,33 @@ defmodule Apiary.ModelChoices do
   def resolve(%Scope{}, _holder, _run_kind), do: {:error, :not_found}
 
   # What a resolution reads for the runs of `run_kind` of `workspace` at `target`, nil for
-  # none: the choices of the organisation's chain that may reach them, and the providers those name. Read without a lock.
+  # none: the choices of the organisation's chain that may reach them, and the providers
+  # those name. Read without a lock.
   defp input(%Workspace{} = workspace, target, run_kind) do
+    input = choices_for(workspace, target, run_kind)
+    ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
+
+    providers =
+      Repo.all(
+        from c in Connection,
+          where:
+            c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
+              not is_nil(c.provider_kind),
+          preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
+      )
+      |> Map.new(&{&1.id, resolution_provider(&1)})
+
+    Map.put(input, :providers, providers)
+  end
+
+  @doc false
+  # choices_for/3 is what a resolution reads of the choices for the runs of `run_kind` of
+  # `workspace` at `target`, nil for none, without the providers: the choices of the
+  # organisation's chain that may reach them, read without a lock, as
+  # `Apiary.ModelChoices.Resolution.resolve/1` takes them. `Apiary.Dispatches.RunSettings`
+  # reads the providers itself, once it holds their rows.
+  @spec choices_for(Workspace.t(), Target.t() | nil, String.t()) :: map
+  def choices_for(%Workspace{} = workspace, target, run_kind) do
     chain = Edition.model_choice_chain(workspace.organisation_id)
     target_id = target && target.id
 
@@ -188,30 +218,17 @@ defmodule Apiary.ModelChoices do
             )
       )
 
-    ids = for %{connection_id: id} <- choices, is_binary(id), uniq: true, do: id
+    %{choices: choices, workspace_id: workspace.id, target_id: target_id, run_kind: run_kind}
+  end
 
-    providers =
-      Repo.all(
-        from c in Connection,
-          where:
-            c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
-              not is_nil(c.provider_kind),
-          preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
-      )
-      |> Map.new(fn provider ->
-        {provider.id,
-         %{
-           default_value_id: provider.default_value_id,
-           models: Enum.map(provider.models, &Map.take(&1, [:model_id, :effort, :is_default]))
-         }}
-      end)
-
+  @doc false
+  # resolution_provider/1 is `provider`, a provider connection with its models loaded, as
+  # `Apiary.ModelChoices.Resolution` reads a provider.
+  @spec resolution_provider(Connection.t()) :: Resolution.provider()
+  def resolution_provider(%Connection{} = provider) do
     %{
-      choices: choices,
-      workspace_id: workspace.id,
-      target_id: target_id,
-      run_kind: run_kind,
-      providers: providers
+      default_value_id: provider.default_value_id,
+      models: Enum.map(provider.models, &Map.take(&1, [:model_id, :effort, :is_default]))
     }
   end
 
@@ -737,24 +754,11 @@ defmodule Apiary.ModelChoices do
   defp not_denied(_provider, _description, %{workspace: nil}), do: :ok
 
   defp not_denied(%Connection{} = provider, %Provider{} = description, at) do
-    effective = Policy.effective(%{at.scope | workspace: at.workspace}, at.target)
-
-    denies =
-      for %Entry{kind: :host, action: :deny, in_force: true} = entry <- effective.entries,
-          do: entry
-
-    found =
-      Enum.find_value(hosts(provider, description), fn host ->
-        Enum.find_value(denies, fn entry ->
-          if Grammar.covers?(entry.host, host), do: {entry, host}
-        end)
-      end)
-
-    case found do
+    case denying(provider, description, at) do
       nil ->
         :ok
 
-      {entry, host} ->
+      {entry, host, effective} ->
         {:error,
          {dgettext_noop(
             "errors",
@@ -766,6 +770,32 @@ defmodule Apiary.ModelChoices do
           provider: provider.name}}
     end
   end
+
+  # The first deny rule in force at `at` that covers a host the provider's runs reach, with
+  # that host and the policy in force: `{entry, host, effective}`, or nil for none.
+  defp denying(%Connection{} = provider, %Provider{} = description, at) do
+    effective = Policy.effective(%{at.scope | workspace: at.workspace}, at.target)
+
+    denies =
+      for %Entry{kind: :host, action: :deny, in_force: true} = entry <- effective.entries,
+          do: entry
+
+    Enum.find_value(hosts(provider, description), fn host ->
+      Enum.find_value(denies, fn entry ->
+        if Grammar.covers?(entry.host, host), do: {entry, host, effective}
+      end)
+    end)
+  end
+
+  @doc false
+  # denied?/5 is whether a deny rule in force for the runs at `workspace` and `target`
+  # (nil for none) of the organisation of `scope` covers a host the runs of `provider`,
+  # whose description is `description`, reach.
+  @spec denied?(Connection.t(), Provider.t(), Scope.t(), Workspace.t(), Target.t() | nil) ::
+          boolean
+  def denied?(%Connection{} = provider, %Provider{} = description, scope, workspace, target),
+    do:
+      denying(provider, description, %{scope: scope, workspace: workspace, target: target}) != nil
 
   # Where the deny rule is: the workspace, locked or not, the target by its name, or the
   # level an edition keeps above the workspace, by its name.

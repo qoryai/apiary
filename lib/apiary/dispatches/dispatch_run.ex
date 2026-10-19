@@ -58,7 +58,12 @@ defmodule Apiary.Dispatches.DispatchRun do
   # `inputs_invalid`, a claimed run whose handover could not form its run variables, its
   # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone;
   # `prebuilt`, a prebuild handed over whose starter reported the image it built
-  # (prebuilt.schema.json), its registered run left to its outcome.
+  # (prebuilt.schema.json), its registered run left to its outcome; `provider_gone`,
+  # `runtime_unserved`, `key_gone`, `model_gone` and `host_denied`, a claimed explore run
+  # whose model choice its handover could not form: its model provider is gone or does not
+  # apply to the workspace, no longer serves the runtime, no longer has the chosen key,
+  # no longer lists the chosen model or effort value, or a deny rule covers its host
+  # (`Apiary.Dispatches.RunSettings`), 410 gone.
   @end_causes [
     :released,
     :closed,
@@ -70,7 +75,12 @@ defmodule Apiary.Dispatches.DispatchRun do
     :variables_invalid,
     :ticket_gone,
     :inputs_invalid,
-    :prebuilt
+    :prebuilt,
+    :provider_gone,
+    :runtime_unserved,
+    :key_gone,
+    :model_gone,
+    :host_denied
   ]
 
   # What a run gave (`Apiary.Explore.Result.outcome/1`).

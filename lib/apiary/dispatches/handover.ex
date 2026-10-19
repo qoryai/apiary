@@ -64,11 +64,14 @@ defmodule Apiary.Dispatches.Handover do
   #       `variables_invalid`; an explore run whose work item's ticket is no longer kept,
   #       `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`),
   #       or whose work item has no target in a domain that requires one
-  #       (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`;
+  #       (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`; an explore run
+  #       whose model choice cannot be formed (`Apiary.Dispatches.RunSettings`):
+  #       `provider_gone`, `runtime_unserved`, `key_gone`, `model_gone` or `host_denied`;
   #   11. the run key cannot be made for the gateway's address
-  #       (`Apiary.Runs.Registration.issue_through/5`), or anything else fails:
-  #       `{:error, :unavailable}`, and the transaction rolls back: no run, no run key, the
-  #       dispatch as it was.
+  #       (`Apiary.Runs.Registration.issue_through/5`), the run settings take more than 64
+  #       KiB, the answer takes more than 1 MiB with every comment left out of its input,
+  #       or anything else fails: `{:error, :unavailable}`, and the transaction rolls
+  #       back: no run, no run key, the dispatch as it was.
   #
   # Else the run is registered, as a registration through the gateway by the pool:
   # `pending`, its `node_run_id` the run's `run_id`, on the pool, its instance the run's
@@ -94,6 +97,14 @@ defmodule Apiary.Dispatches.Handover do
   # the run's target, or no target for an explore run whose work item has none. An explore
   # run's input has the same domain and the same target, from the same values.
   #
+  # An explore run has `run_settings` with the features `factory` and `secrets` on
+  # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
+  # provider's row id, its keys' secret's row id, the chosen key's value id and the
+  # provider's chain; later reads take those, never the choices. The answer, encoded, takes
+  # at most 1 MiB: the input is given what the rest of the answer leaves, measured with a
+  # run key of the longest length the contract allows, and leaves out its oldest comments
+  # first (`comments_omitted`).
+  #
   # A refusal commits what the lapse of step 3 wrote, and an end what it ended. Once the
   # transaction commits, the run is broadcast as changed and the workspaces whose queue or
   # slots changed are told. An exception in the transaction rolls it back, is logged by
@@ -101,10 +112,13 @@ defmodule Apiary.Dispatches.Handover do
   # `{:error, :unavailable}`. The broadcast and the telling, after the commit, never change
   # the answer: a failure of either is logged by its module, or its kind, alone.
   #
-  # Locks, in the order `Apiary.Dispatches.Slots` gives: the environment records a lapse
-  # needs, the run of the queue, the dispatch, the gateway's row `FOR SHARE`, then the
-  # registered run, inserted. Nothing else is locked: not the pool, its connection, its
-  # collection, the work item or the workspace.
+  # Locks, in the order `Apiary.Dispatches.Slots` gives, after those of an explore run's
+  # model providers: the rows of the model providers its choices name `FOR SHARE`, then
+  # the rows of their keys' secrets `FOR SHARE` (`Apiary.Dispatches.RunSettings`), taken
+  # before anything else, then the environment records a lapse needs, the run of the
+  # queue, the dispatch, the gateway's row `FOR SHARE`, then the registered run,
+  # inserted. Nothing else is locked: not the pool, its connection, its collection, the
+  # work item or the workspace.
 
   import Ecto.Query, only: [from: 2]
 
@@ -126,16 +140,17 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Inputs, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Inputs, RunEnd, RunSettings, Slots}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{About, Registration, Run, RunVariables, Target}
   alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.Contract.DispatchAnswer
 
   @prebuild DispatchRun.prebuild()
   # The causes a claimed run ends for when its handover cannot form what it is made from.
-  @unformed [:variables_invalid, :ticket_gone, :inputs_invalid]
+  @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++ RunSettings.causes()
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
@@ -145,11 +160,19 @@ defmodule Apiary.Dispatches.Handover do
   }
   # The attach window of a run registered by its handover, in seconds.
   @attach_seconds 600
+  # The most bytes the handover answer takes, encoded: 1 MiB, the provisioner contract's.
+  @answer_bytes 1_048_576
+  # The revision of the provisioner contract the answer is built for, and the longest run
+  # key (`handover-answer.schema.json`), by which the answer is measured before the run
+  # key is made.
+  @revision 3
+  @longest_run_key "qrk_" <> String.duplicate("A", 2044)
 
   @typedoc """
   A handover answered: the registered run, its run key, the run of the queue, the name of
   its workspace's domain, the run's target (nil for an explore run without one), its work
-  item (nil for a prebuild) and the step's input.
+  item (nil for a prebuild), its run settings (nil for none,
+  `Apiary.Dispatches.RunSettings`) and the step's input.
   """
   @type handed_over :: %{
           run: Run.t(),
@@ -158,6 +181,7 @@ defmodule Apiary.Dispatches.Handover do
           domain: String.t(),
           target: %{system: String.t(), path: String.t()} | nil,
           work_item: WorkItem.t() | nil,
+          run_settings: Jason.OrderedObject.t() | nil,
           inputs: Jason.OrderedObject.t()
         }
 
@@ -198,7 +222,7 @@ defmodule Apiary.Dispatches.Handover do
   def handover(%AccessKey{key_id: key_id}, dispatch_id, %{body: body}) when is_binary(body) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
-      |> transact(dispatch_id, :"dispatch.handover", nil, fn locked ->
+      |> transact(dispatch_id, :"dispatch.handover", &RunSettings.hold/1, fn locked ->
         with :ok <- not_ended(locked),
              :ok <- not_handed_over(locked),
              :ok <- lease_held(locked),
@@ -387,6 +411,10 @@ defmodule Apiary.Dispatches.Handover do
       {:end, cause} ->
         {:ended, end_claimed(locked.run, cause, locked.now)}
 
+      :unavailable ->
+        Logger.error("a handover could not be made: the answer does not fit its limit")
+        {:error, :unavailable}
+
       {:ok, formed} ->
         pool = locked.key.node
 
@@ -409,7 +437,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
     case collection(dispatch_run) do
       {:ok, target} ->
-        formed(dispatch_run, workspace, target, nil, fn _domain ->
+        formed(dispatch_run, workspace, target, nil, nil, fn _domain ->
           {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
         end)
 
@@ -419,24 +447,65 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # An explore run has its work item's target, nil for none; a work item without one in
-  # a domain that requires a target ends `inputs_invalid`. The answer and the input get
-  # the same target and the same domain.
-  defp formed(%{run: %DispatchRun{} = dispatch_run}, workspace) do
+  # a domain that requires a target ends `inputs_invalid`. Its run settings come next
+  # (`Apiary.Dispatches.RunSettings`), which can end it with a cause of their own or refuse
+  # the handover. The answer and the input get the same target and the same domain, and the
+  # input the bytes of the answer's limit that the rest of the answer leaves.
+  defp formed(%{run: %DispatchRun{} = dispatch_run, held: held}, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
 
-    if is_nil(target) and Domain.target_required?(workspace) do
-      {:end, :inputs_invalid}
-    else
-      formed(dispatch_run, workspace, target, work_item, fn domain ->
-        Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target})
+    with false <- is_nil(target) and Domain.target_required?(workspace),
+         {:ok, settings} <- RunSettings.build(held) do
+      formed(dispatch_run, workspace, target, work_item, settings, fn domain ->
+        rest = %{
+          dispatch_run: dispatch_run,
+          domain: domain,
+          target: target,
+          work_item: work_item,
+          run_settings: settings && settings.wire
+        }
+
+        Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
       end)
+    else
+      true -> {:end, :inputs_invalid}
+      {:end, _cause} = ended -> ended
+      :unavailable -> :unavailable
     end
+  end
+
+  # The bytes of `answer_limit/0` that the answer leaves its input: the limit less the
+  # answer encoded with an empty input and the longest run key, which the contract allows.
+  defp budget(%{dispatch_run: dispatch_run} = rest) do
+    empty =
+      DispatchAnswer.handover_body(%{
+        revision: @revision,
+        run_id: dispatch_run.run_id,
+        run_key: @longest_run_key,
+        step: dispatch_run.step,
+        domain: rest.domain,
+        target: rest.target,
+        work_item: rest.work_item,
+        run_settings: rest.run_settings,
+        inputs: Jason.OrderedObject.new([])
+      })
+
+    max(answer_limit() - (byte_size(empty) - 2), 1)
+  end
+
+  # answer_limit/0 is the most bytes the answer takes, encoded: 1 MiB. A test sets
+  # `config :apiary, Apiary.Dispatches.Handover, answer_limit: bytes`
+  # (`Application.put_env/3`, in a module that is not async), to see the input cut.
+  defp answer_limit do
+    :apiary
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:answer_limit, @answer_bytes)
   end
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
-  defp formed(dispatch_run, workspace, target, work_item, inputs) do
+  defp formed(dispatch_run, workspace, target, work_item, settings, inputs) do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
@@ -452,16 +521,19 @@ defmodule Apiary.Dispatches.Handover do
          about: about,
          variables: variables,
          workspace: workspace,
+         settings: settings,
          answer: %{
            dispatch_run: dispatch_run,
            domain: domain,
            target: target,
            work_item: work_item,
+           run_settings: settings && settings.wire,
            inputs: inputs
          }
        }}
     else
       {:variables, {:error, _rule}} -> {:end, :variables_invalid}
+      {:inputs, {:error, :answer_too_large}} -> :unavailable
       {:inputs, {:error, cause}} -> {:end, cause}
     end
   end
@@ -604,6 +676,7 @@ defmodule Apiary.Dispatches.Handover do
         registration_about: formed.about,
         registration_digest: :crypto.hash(:sha256, body),
         registration_variables: formed.variables,
+        run_settings: formed.settings && formed.settings.stored,
         projected_sequence: Run.projected_from(%{registered_at: now}),
         dispatch_run_id: dispatch_run.id,
         inserted_at: now,
@@ -611,6 +684,7 @@ defmodule Apiary.Dispatches.Handover do
       }
       |> struct!(Nodes.placement(key.node, dispatch_run.run_id))
       |> struct!(through)
+      |> struct!((formed.settings && formed.settings.columns) || %{})
       |> PublicId.Insert.insert!()
 
     {1, _rows} =

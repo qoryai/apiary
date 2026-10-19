@@ -135,6 +135,19 @@ defmodule Apiary.Runs.Run do
     # changed; nil for every other run. Not folded: a rebuild keeps it.
     field :registration_variables, :map
 
+    # The run settings Qory wrote for a run of a workspace's queue when it registered it
+    # (`Apiary.Dispatches.RunSettings`), as the handover answered them, with no key, and
+    # the model provider the run uses: its row, its keys' secret's row, the value id of
+    # its chosen key and its chain. Written once with the registration and never changed;
+    # nil for every other run, and for an explore run of a workspace with `factory` or
+    # `secrets` off. The provider fields are nil where no provider was chosen, and the two
+    # rows become nil should they be deleted. Not folded: a rebuild keeps them.
+    field :run_settings, :map
+    belongs_to :provider_connection, Apiary.Connections.Connection
+    belongs_to :provider_secret, Apiary.Secrets.Secret
+    field :provider_value_id, :string
+    field :provider_chain, :string
+
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
     # `time` its body was built at, on the starter's clock; when this server took it; and
