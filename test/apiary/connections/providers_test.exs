@@ -215,8 +215,8 @@ defmodule Apiary.Connections.ProvidersTest do
       assert Connections.add_provider_model(member, provider, %{model_id: "a"}) ==
                {:error, :forbidden}
 
-      # The keys' secret goes by the same answer, not by the edition's.
-      assert Secrets.delete_secret(member, provider.secret) == {:error, :forbidden}
+      # The keys go by the same answer, not by the edition's.
+      assert Connections.delete_provider_key(member, provider, "spare") == {:error, :forbidden}
     end
 
     test "is not found in another organisation", %{scope: scope} do
@@ -446,25 +446,66 @@ defmodule Apiary.Connections.ProvidersTest do
   end
 
   describe "the keys" do
-    test "are not deleted while the provider links them", %{scope: scope} do
+    test "are entered and changed only through the provider", %{scope: scope} do
+      provider = openrouter!(scope)
+
+      assert {:ok, provider} =
+               Connections.add_provider_key(scope, provider, %{value_id: "third", value: "z"})
+
+      assert {:ok, provider} = Connections.rename_provider_key(scope, provider, "third", "fourth")
+      assert {:ok, provider} = Connections.set_provider_key(scope, provider, "fourth", "w")
+      assert {:ok, provider} = Connections.delete_provider_key(scope, provider, "spare")
+      assert Enum.map(provider.secret.values, & &1.value_id) == ["fourth", "main"]
+
+      # The default key stays, by its value id.
+      use = %{kind: :model_provider, id: provider.public_id, name: "OpenRouter", value_id: "main"}
+
+      assert Connections.delete_provider_key(scope, provider, "main") ==
+               {:error, {:in_use, [use]}}
+
+      assert Connections.rename_provider_key(scope, provider, "main", "first") ==
+               {:error, {:in_use, [use]}}
+
+      assert {:error, changeset} =
+               Connections.add_provider_key(scope, provider, %{value_id: "Bad", value: "x"})
+
+      assert errors_on(changeset)[:value_id]
+    end
+
+    test "are left out of the organisation's secrets, and not found there", %{scope: scope} do
+      Apiary.Edition.put_test_stub(Apiary.EditionStubs.GrantsOrganisationSecrets)
       provider = openrouter!(scope)
       secret = provider.secret
 
-      use = %{kind: :model_provider, id: provider.public_id, name: "OpenRouter", value_id: "main"}
+      {:ok, other} =
+        Secrets.create_organisation_secret(scope, %{name: "SHARED_TOKEN", value: "x"})
 
-      assert Secrets.delete_secret(scope, secret) == {:error, {:in_use, [use]}}
-      assert Secrets.delete_value(scope, secret, "main") == {:error, {:in_use, [use]}}
-      assert Secrets.rename_value(scope, secret, "main", "first") == {:error, {:in_use, [use]}}
+      assert {:ok, [%Secret{id: id}]} = Secrets.list_organisation_secrets(scope)
+      assert id == other.id
+      assert Secrets.get_organisation_secret(scope, secret.public_id) == {:error, :not_found}
+      assert {:ok, %Secret{}} = Secrets.get_organisation_secret(scope, other.public_id)
+      assert Secrets.list_uses(scope, [secret]) == {:ok, %{secret.id => []}}
 
-      assert {:ok, secret} = Secrets.add_value(scope, secret, %{value_id: "third", value: "z"})
-      assert {:ok, secret} = Secrets.rename_value(scope, secret, "third", "fourth")
-      assert {:ok, _secret} = Secrets.delete_value(scope, secret, "spare")
+      for refused <- [
+            Secrets.update_secret(scope, secret, %{name: "RENAMED"}),
+            Secrets.add_value(scope, secret, %{value_id: "third", value: "z"}),
+            Secrets.set_value(scope, secret, "main", "y"),
+            Secrets.rename_value(scope, secret, "spare", "other"),
+            Secrets.delete_value(scope, secret, "spare"),
+            Secrets.delete_secret(scope, secret)
+          ] do
+        assert refused == {:error, :not_found}
+      end
 
-      # The key the provider keeps on is still there.
-      assert {:ok, %Connection{secret: %Secret{values: values}}} =
+      # Nor is another secret written as a provider's keys.
+      assert Secrets.delete_value(scope, other, nil, provider_keys: true) ==
+               {:error, :not_found}
+
+      assert {:ok, %Connection{secret: %Secret{name: name, values: values}}} =
                Connections.get_provider(scope, provider.public_id)
 
-      assert Enum.map(values, & &1.value_id) == ["fourth", "main"]
+      assert name == secret.name
+      assert Enum.map(values, & &1.value_id) == ["main", "spare"]
     end
 
     test "go with the provider, as do its models", %{scope: scope} do
@@ -498,7 +539,7 @@ defmodule Apiary.Connections.ProvidersTest do
           provider = openrouter!(scope)
           {:ok, provider} = Connections.update_provider(scope, provider, %{name: "Other"})
           {:error, refused} = Connections.put_default_key(scope, provider, "other")
-          {:error, keys_refused} = Secrets.delete_secret(scope, provider.secret)
+          {:error, keys_refused} = Connections.delete_provider_key(scope, provider, "main")
 
           {:error, created_refused} =
             Connections.create_provider(scope, %{

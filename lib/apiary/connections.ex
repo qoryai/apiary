@@ -43,8 +43,13 @@ defmodule Apiary.Connections do
   belongs to an operator's chain, and the core refuses every change to it,
   `{:error, :forbidden}`; an edition manages it.
 
+  A provider's keys are entered and changed only through the functions here
+  (`add_provider_key/3` to `delete_provider_key/3`): `Apiary.Secrets` leaves them out of
+  the organisation's secrets.
+
   A change to a provider takes the organisation's integrations lock, then the provider's
-  row `FOR UPDATE`, then its keys' secret row `FOR SHARE` where it reads a key. Deleting it
+  row `FOR UPDATE`, then, to change its keys, the organisation's lock for its secrets and
+  its keys' secret row `FOR UPDATE`, or that row `FOR SHARE` to choose a default key. Deleting it
   deletes its models and its keys' secret with it (`Apiary.Secrets.delete_provider_keys/2`).
 
   ## Where a connection applies
@@ -1290,6 +1295,65 @@ defmodule Apiary.Connections do
                do: {:ok, updated}
         end
       end
+    end)
+  end
+
+  @doc """
+  add_provider_key/3 adds a key to a model provider's keys (`connection.write`): `attrs`
+  has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them. `{:ok, provider}`,
+  or `{:error, refusal}` as `Apiary.Secrets.add_value/4` answers.
+  """
+  @spec add_provider_key(Scope.t(), Connection.t(), map) ::
+          {:ok, Connection.t()} | {:error, refusal}
+  def add_provider_key(%Scope{} = scope, %Connection{} = provider, attrs),
+    do: write_keys(scope, provider, &Secrets.add_value(&1, &2, attrs, provider_keys: true))
+
+  @doc """
+  set_provider_key/4 replaces the value of a model provider's key with the value id
+  `value_id` (`connection.write`). `{:ok, provider}`, or `{:error, refusal}` as
+  `Apiary.Secrets.set_value/5` answers.
+  """
+  @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t()) ::
+          {:ok, Connection.t()} | {:error, refusal}
+  def set_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, value),
+    do:
+      write_keys(
+        scope,
+        provider,
+        &Secrets.set_value(&1, &2, value_id, value, provider_keys: true)
+      )
+
+  @doc """
+  rename_provider_key/4 gives a model provider's key another value id
+  (`connection.write`). `{:ok, provider}`, or `{:error, refusal}` as
+  `Apiary.Secrets.rename_value/5` answers: `{:in_use, uses}` for its default key.
+  """
+  @spec rename_provider_key(Scope.t(), Connection.t(), String.t(), String.t()) ::
+          {:ok, Connection.t()} | {:error, refusal}
+  def rename_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, new_value_id),
+    do:
+      write_keys(
+        scope,
+        provider,
+        &Secrets.rename_value(&1, &2, value_id, new_value_id, provider_keys: true)
+      )
+
+  @doc """
+  delete_provider_key/3 deletes a model provider's key (`connection.write`).
+  `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.delete_value/4` answers:
+  `{:in_use, uses}` for its default key, `:last_value` for its only key.
+  """
+  @spec delete_provider_key(Scope.t(), Connection.t(), String.t()) ::
+          {:ok, Connection.t()} | {:error, refusal}
+  def delete_provider_key(%Scope{} = scope, %Connection{} = provider, value_id),
+    do: write_keys(scope, provider, &Secrets.delete_value(&1, &2, value_id, provider_keys: true))
+
+  # A write to a provider's keys, under the provider's locks: `fun` of the scope and the
+  # keys' secret, as `Apiary.Secrets` writes it.
+  defp write_keys(scope, provider, fun) do
+    write_provider(scope, provider, fn scope, _organisation, current ->
+      with {:ok, _secret} <- fun.(scope, %Secret{id: current.secret_id, workspace_id: nil}),
+           do: {:ok, current}
     end)
   end
 

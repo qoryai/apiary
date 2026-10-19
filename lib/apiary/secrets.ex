@@ -66,7 +66,10 @@ defmodule Apiary.Secrets do
   A model provider's keys are the values of an organisation's secret that the provider
   links (`Apiary.Connections`), in both editions. `create_provider_keys/2` makes that
   secret when the provider is added, and `delete_provider_keys/2` deletes it with the
-  provider. A change to such a secret, from `update_secret/3` to `delete_secret/2`, asks
+  provider. Such a secret is entered and shown only through its provider: the lists and
+  reads of the organisation's secrets leave it out, and a write to it is not found,
+  unless `Apiary.Connections` writes it as the provider's keys (`provider_keys: true` on
+  `set_value/5`, `add_value/4`, `rename_value/5` and `delete_value/4`). That write asks
   `Apiary.Access` for `connection.write` on the organisation, with the `factory` feature
   shown to the scope, instead of the edition.
 
@@ -92,6 +95,7 @@ defmodule Apiary.Secrets do
   alias Apiary.{Access, Audit, Edition, Features, KeyDerivation, LogMetadata, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Connections.Connection
   alias Apiary.Secrets.{Cipher, DataKey, OrganisationDataKey, Secret, Usage, Value}
 
   @max_values 32
@@ -160,7 +164,7 @@ defmodule Apiary.Secrets do
 
   @doc """
   list_organisation_secrets/1 is the scope's organisation's secrets, those without a
-  workspace, by name whatever its case, each with its values, their value ids and when
+  workspace, but the keys of its model providers, by name whatever its case, each with its values, their value ids and when
   they were set, never their ciphertext, as `list_secrets/1` loads them: `{:ok, secrets}`,
   where the edition lets the scope's person read them
   (`c:Apiary.Edition.organisation_secrets/2`, `:read`); else its `{:error, reason}`.
@@ -171,7 +175,7 @@ defmodule Apiary.Secrets do
     with :ok <- may_read_organisation(scope) do
       {:ok,
        Repo.all(
-         from s in organisation_secrets(scope),
+         from s in shown_organisation_secrets(scope),
            order_by: [asc: fragment("lower(?)", s.name), asc: s.id],
            preload: [values: ^values_query()]
        )}
@@ -183,7 +187,7 @@ defmodule Apiary.Secrets do
   workspace, with the public id `public_id`, with its values as `list_secrets/1` loads
   them: `{:ok, secret}`, where the edition lets the scope's person read them; else
   `{:error, reason}`, the edition's, or `:not_found` for a secret the organisation does
-  not have at its level.
+  not have at its level, or the keys of a model provider.
   """
   @spec get_organisation_secret(Scope.t(), term) ::
           {:ok, Secret.t()} | {:error, Access.reason()}
@@ -192,7 +196,7 @@ defmodule Apiary.Secrets do
          true <- PublicId.valid?("sec", public_id),
          %Secret{} = secret <-
            Repo.one(
-             from s in organisation_secrets(scope),
+             from s in shown_organisation_secrets(scope),
                where: s.public_id == ^public_id,
                preload: [values: ^values_query()]
            ) do
@@ -208,8 +212,8 @@ defmodule Apiary.Secrets do
   `list_organisation_secrets/1` gave them (`Apiary.Secrets.Usage`), by the secret's row
   id: `{:ok, uses}`, for a reader who may read every level among them, `secret.read` for
   the scope's workspace's, and the edition's answer for the organisation's; else
-  `{:error, reason}`. A secret of another workspace or organisation is used by nothing
-  here.
+  `{:error, reason}`. A secret of another workspace or organisation, or the keys of a
+  model provider, is used by nothing here.
   """
   @spec list_uses(Scope.t(), [Secret.t()]) ::
           {:ok, %{Ecto.UUID.t() => [Usage.use()]}} | {:error, Access.reason()}
@@ -232,9 +236,10 @@ defmodule Apiary.Secrets do
 
   defp uses_in(
          %Scope{organisation: %Organisation{id: organisation_id}},
-         %Secret{organisation_id: organisation_id, workspace_id: nil} = secret
-       ),
-       do: Usage.uses(Repo, secret)
+         %Secret{id: id, organisation_id: organisation_id, workspace_id: nil} = secret
+       ) do
+    if Usage.provider_keys?(id), do: [], else: Usage.uses(Repo, secret)
+  end
 
   defp uses_in(
          %Scope{workspace: %Workspace{id: workspace_id}},
@@ -282,6 +287,19 @@ defmodule Apiary.Secrets do
   defp organisation_secrets(%Scope{organisation: %Organisation{id: organisation_id}}) do
     from s in Secret,
       where: s.organisation_id == ^organisation_id and is_nil(s.workspace_id)
+  end
+
+  # The same, but the keys of its model providers, which only `Apiary.Connections` reads.
+  defp shown_organisation_secrets(
+         %Scope{organisation: %Organisation{id: organisation_id}} = scope
+       ) do
+    from s in organisation_secrets(scope),
+      where:
+        s.id not in subquery(
+          from c in Connection,
+            where: c.organisation_id == ^organisation_id and not is_nil(c.secret_id),
+            select: c.secret_id
+        )
   end
 
   defp values_query do
@@ -498,7 +516,7 @@ defmodule Apiary.Secrets do
   """
   @spec update_secret(Scope.t(), Secret.t(), map) :: {:ok, Secret.t()} | {:error, refusal}
   def update_secret(%Scope{} = scope, %Secret{} = secret, attrs) do
-    write_secret(scope, secret, fn scope, current ->
+    write_secret(scope, secret, [], fn scope, current ->
       changeset =
         current
         |> Secret.changeset(attrs)
@@ -539,10 +557,10 @@ defmodule Apiary.Secrets do
   value id when `value_id` is nil. `{:ok, secret}`, or `{:error, refusal}`: `:not_found` for
   a value id the secret does not have, a changeset whose error is on `value`.
   """
-  @spec set_value(Scope.t(), Secret.t(), String.t() | nil, String.t()) ::
+  @spec set_value(Scope.t(), Secret.t(), String.t() | nil, String.t(), keyword) ::
           {:ok, Secret.t()} | {:error, refusal}
-  def set_value(%Scope{} = scope, %Secret{} = secret, value_id, value) do
-    write_secret(scope, secret, fn scope, current ->
+  def set_value(%Scope{} = scope, %Secret{} = secret, value_id, value, opts \\ []) do
+    write_secret(scope, secret, opts, fn scope, current ->
       with {:ok, row} <- fetch_value(current, value_id),
            changeset = Value.changeset(row, %{"value" => value}),
            :ok <- valid(changeset),
@@ -572,11 +590,11 @@ defmodule Apiary.Secrets do
   takes. `{:ok, secret}`, or `{:error, refusal}`: a changeset whose errors are on `value`,
   `value_id` or `first_value_id`; `:too_many_values` past `max_values/0`.
   """
-  @spec add_value(Scope.t(), Secret.t(), map) :: {:ok, Secret.t()} | {:error, refusal}
-  def add_value(%Scope{} = scope, %Secret{} = secret, attrs) do
+  @spec add_value(Scope.t(), Secret.t(), map, keyword) :: {:ok, Secret.t()} | {:error, refusal}
+  def add_value(%Scope{} = scope, %Secret{} = secret, attrs, opts \\ []) do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
 
-    write_secret(scope, secret, fn scope, current ->
+    write_secret(scope, secret, opts, fn scope, current ->
       changeset = Value.changeset(%Value{}, attrs, value_id: :required)
       unnamed = Enum.find(current.values, &is_nil(&1.value_id))
 
@@ -650,14 +668,14 @@ defmodule Apiary.Secrets do
   a value id the secret does not have, a changeset whose error is on `value_id`,
   `{:in_use, uses}` for a value something uses by its value id.
   """
-  @spec rename_value(Scope.t(), Secret.t(), String.t() | nil, String.t()) ::
+  @spec rename_value(Scope.t(), Secret.t(), String.t() | nil, String.t(), keyword) ::
           {:ok, Secret.t()} | {:error, refusal}
-  def rename_value(%Scope{} = scope, %Secret{} = secret, value_id, new_value_id) do
+  def rename_value(%Scope{} = scope, %Secret{} = secret, value_id, new_value_id, opts \\ []) do
     # The value id as it will be stored: what the no-op compare, the associated data and
     # the audit entry all take.
     new_value_id = Value.normalise_value_id(new_value_id)
 
-    write_secret(scope, secret, fn scope, current ->
+    write_secret(scope, secret, opts, fn scope, current ->
       case fetch_value(current, value_id) do
         {:ok, %Value{value_id: ^new_value_id}} ->
           {:ok, current}
@@ -693,10 +711,10 @@ defmodule Apiary.Secrets do
   the secret does not have, `:last_value` for its only value, which goes only with the
   secret, `{:in_use, uses}` for a value something uses.
   """
-  @spec delete_value(Scope.t(), Secret.t(), String.t() | nil) ::
+  @spec delete_value(Scope.t(), Secret.t(), String.t() | nil, keyword) ::
           {:ok, Secret.t()} | {:error, refusal}
-  def delete_value(%Scope{} = scope, %Secret{} = secret, value_id) do
-    write_secret(scope, secret, fn scope, current ->
+  def delete_value(%Scope{} = scope, %Secret{} = secret, value_id, opts \\ []) do
+    write_secret(scope, secret, opts, fn scope, current ->
       with {:ok, row} <- fetch_value(current, value_id),
            :ok <- not_last(current),
            :ok <- not_in_use(value_uses(current, value_id)),
@@ -730,7 +748,7 @@ defmodule Apiary.Secrets do
   @spec delete_secret(Scope.t(), Secret.t()) :: {:ok, Secret.t()} | {:error, refusal}
   def delete_secret(%Scope{} = scope, %Secret{} = secret) do
     scope
-    |> write_secret(secret, &deleted/2)
+    |> write_secret(secret, [], &deleted/2)
     |> reload_deleted()
   end
 
@@ -809,7 +827,11 @@ defmodule Apiary.Secrets do
   @spec delete_provider_keys(Scope.t(), Ecto.UUID.t()) :: {:ok, Secret.t()} | {:error, refusal}
   def delete_provider_keys(%Scope{} = scope, secret_id) do
     scope
-    |> write_secret(%Secret{workspace_id: nil, id: secret_id}, &deleted/2, :provider)
+    |> write_secret(
+      %Secret{workspace_id: nil, id: secret_id},
+      [as: :provider_deleted],
+      &deleted/2
+    )
     |> reload_deleted()
   end
 
@@ -992,26 +1014,44 @@ defmodule Apiary.Secrets do
 
   # A write to one secret, at the level the secret is at: the secret read again under
   # `FOR UPDATE` at that level, in the scope's workspace or organisation, with its values,
-  # then asked of. An organisation's secret that a model provider links is asked of as a
-  # provider's keys (`whose` `:provider`), and so is one `delete_provider_keys/2` deletes.
-  defp write_secret(scope, secret, fun, whose \\ nil)
-
-  defp write_secret(%Scope{} = scope, %Secret{workspace_id: nil, id: id}, fun, whose) do
-    whose = whose || if(Usage.provider_keys?(id), do: :provider, else: :edition)
-
-    write_organisation(scope, whose, fn scope, _organisation ->
-      case Repo.one(
-             from s in organisation_secrets(scope),
-               where: s.id == ^id,
-               lock: "FOR UPDATE"
-           ) do
-        %Secret{} = current -> fun.(scope, Repo.preload(current, values: values_query()))
-        nil -> {:error, :not_found}
-      end
-    end)
+  # then asked of. The keys of a model provider are written only as its keys
+  # (`provider_keys: true`, asked of as `provider_verdict/1`), and not found otherwise; an
+  # organisation's other secrets only otherwise. `delete_provider_keys/2` deletes the keys
+  # once their provider is gone (`as: :provider_deleted`).
+  defp write_secret(%Scope{} = scope, %Secret{workspace_id: nil, id: id}, opts, fun) do
+    with {:ok, whose} <- whose(id, opts) do
+      write_organisation(scope, whose, fn scope, _organisation ->
+        case Repo.one(
+               from s in organisation_secrets(scope),
+                 where: s.id == ^id,
+                 lock: "FOR UPDATE"
+             ) do
+          %Secret{} = current -> fun.(scope, Repo.preload(current, values: values_query()))
+          nil -> {:error, :not_found}
+        end
+      end)
+    end
   end
 
-  defp write_secret(%Scope{} = scope, %Secret{id: id}, fun, _whose) do
+  defp write_secret(%Scope{} = scope, %Secret{id: id}, opts, fun) do
+    if opts[:provider_keys],
+      do: {:error, :not_found},
+      else: write_workspace_secret(scope, id, fun)
+  end
+
+  # Who answers for a write to the organisation's secret `id`: the edition, or for a model
+  # provider's keys, written as its keys, `provider_verdict/1`.
+  defp whose(_id, as: :provider_deleted), do: {:ok, :provider}
+
+  defp whose(id, opts) do
+    case {Usage.provider_keys?(id), opts[:provider_keys] == true} do
+      {true, true} -> {:ok, :provider}
+      {false, false} -> {:ok, :edition}
+      _other -> {:error, :not_found}
+    end
+  end
+
+  defp write_workspace_secret(scope, id, fun) do
     write(scope, fn scope, _workspace ->
       with %Secret{} = current <-
              Repo.one(
