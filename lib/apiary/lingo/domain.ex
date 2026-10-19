@@ -43,6 +43,9 @@ defmodule Apiary.Lingo.Domain do
   @typedoc "A target as a run's labels name it: its system and its path in that system."
   @type target :: %{system: String.t(), path: String.t()}
 
+  @typedoc "Run variables: each variable's name, with its value."
+  @type variables :: %{required(String.t()) => String.t()}
+
   @doc """
   The target a run's labels name, by the domain's labelling rule:
   `{:ok, %{system:, path:}}`, or `:none` when the labels name none, or name one that
@@ -96,7 +99,7 @@ defmodule Apiary.Lingo.Domain do
   the domain's rules. A handover asks it again of the target it hands over.
   """
   @callback run_variables(target, picked :: [String.t()]) ::
-              {:ok, Apiary.Runs.RunVariables.variables() | nil} | {:error, atom}
+              {:ok, variables | nil} | {:error, atom}
 
   @doc """
   Whether the environment of a collection of the domain is prebuilt: a prebuild is
@@ -174,7 +177,7 @@ defmodule Apiary.Lingo.Domain do
   `c:run_variables/2` of the workspace's domain.
   """
   @spec run_variables(%Workspace{} | nil, target | nil, [String.t()]) ::
-          {:ok, Apiary.Runs.RunVariables.variables() | nil} | {:error, atom}
+          {:ok, variables | nil} | {:error, atom}
   def run_variables(_workspace, nil, _picked), do: {:ok, nil}
 
   def run_variables(workspace, %{} = target, picked) when is_list(picked),
@@ -187,8 +190,8 @@ defmodule Apiary.Lingo.Domain do
   @doc """
   Whether an adapter that lists `domains` in its description, nil for none, serves the
   workspace: one that lists none serves every domain, and one that lists some serves a
-  workspace whose domain is among them. A person picks only among those that serve the
-  workspace (`Apiary.Adapters.Collections.assign_collections/4`).
+  workspace whose domain is among them. A person who assigns a collection to a workspace
+  picks only among the adapters that serve it.
   """
   @spec serves?([String.t()] | nil, %Workspace{} | nil) :: boolean
   def serves?(nil, _workspace), do: true

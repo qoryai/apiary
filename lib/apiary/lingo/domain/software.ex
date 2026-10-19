@@ -8,10 +8,10 @@ defmodule Apiary.Lingo.Domain.Software do
   which Qory may add to a run (`paths_label/0`), names nothing here either.
 
   A work item needs a target, its repository. The target's rules are those of the run
-  variables `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES` (`Apiary.Runs.RunVariables`):
-  the system a host name, the path `owner/name` with no segment that starts with a dash.
-  Take in checks them, and a handover checks them again with the further repositories.
-  A collection's environment is prebuilt.
+  variables `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`: the system a host name, the
+  path `owner/name` with no segment that starts with a dash. Take in checks them, and a
+  handover checks them again with the further repositories. A collection's environment
+  is prebuilt.
   """
   # Qory adds the `repositories` label to a run it hands over, with the `factory` feature,
   # which the documentation leaves out.
