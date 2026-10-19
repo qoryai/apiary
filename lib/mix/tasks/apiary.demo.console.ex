@@ -5,8 +5,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   Fills an empty database with an instance to review the whole console against: an
   organisation, its workspaces, people, weeks of runs across about a hundred and fifty
   repositories, nodes, keys, a security policy, secrets, variables and integrations, and,
-  with the `factory` feature, an adapter's tickets and work items. All of it synthetic and
-  neutral. A development tool: it refuses to run in production.
+  with the `factory` feature, two adapters' tickets and work items. All of it synthetic
+  and neutral. A development tool: it refuses to run in production.
 
       unset DATABASE_URL
       export APIARY_DEV_DATABASE=apiary_redesign_demo
@@ -63,7 +63,14 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       again, as the pool spot-runners gave its run back; one runs again after that; two
       are declined, two closed and one undone. A run gives a result only through a
       gateway, which the demo does not have, so no work item waits for an answer or is
-      confirmed. Without the feature none of it is made.
+      confirmed. Beside it, a source that is no forge: the adapter **Helpdesk**, whose
+      words are incident and queue, connected for Acme too. Its two queues,
+      acme/customer-support and acme/billing-support, have no target; their 12
+      incidents, open and closed, have comments. None is taken in, as a take in needs a
+      target. The queues go to a workspace **Support** (`support`), which Dana makes,
+      where the edition's limit (`c:Apiary.Edition.limits/0`) allows more than one
+      workspace. The core's allows one, so its demo keeps the queues in Main, beside the
+      repositories. Without the feature none of it is made.
     * Dana pins three repositories.
     * Last, build-01's enrolment code is made and cancelled.
 

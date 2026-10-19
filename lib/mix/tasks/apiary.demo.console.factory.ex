@@ -1,31 +1,38 @@
 defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   @moduledoc false
 
-  # The factory part of `mix apiary.demo.console`, with the `factory` feature on: an
-  # adapter of the instance, Tracker, connected for Acme, with its repositories, their
-  # tickets and their comments, and work items of those tickets in the states a run of
-  # the queue reaches without a gateway.
+  # The factory part of `mix apiary.demo.console`, with the `factory` feature on: two
+  # adapters of the instance, each connected for Acme.
+  #
+  #   * Tracker, with its repositories, their tickets and their comments, and work items
+  #     of those tickets in the states a run of the queue reaches without a gateway.
+  #   * Helpdesk, a source that is no forge: its words are incident and queue, its two
+  #     queues have no target, and its incidents have none, so none is taken in. The
+  #     queues go to the workspace Support where the edition's limit
+  #     (`Apiary.Edition.limits/0`, which a workspace's creation checks) allows more than
+  #     one workspace, and to Main where it allows one.
   #
   # Each step calls the context function that the request or the page calls:
   #
-  #   * Dana, an instance admin who signed in a minute ago, makes the adapter and its
+  #   * Dana, an instance admin who signed in a minute ago, makes each adapter and its
   #     enrolment code (`Apiary.Adapters.create_adapter/2`, `create_code/2`); the adapter
   #     enrols its key with that code (`Apiary.AccessKeys.enrol/2`);
   #   * the adapter declares itself (`Apiary.Adapters.declare/3`), lists its
-  #     repositories (`Apiary.Adapters.Collections.post_listing/2`), and posts their
+  #     collections (`Apiary.Adapters.Collections.post_listing/2`), and posts their
   #     tickets and comments (`Apiary.Sources.post_items/2`, `post_comments/2`), each body
   #     read by the contract's wire module first and each request recorded as a use of
   #     its key, as the adapter's signed requests would be;
   #   * Dana connects Acme (`Apiary.Adapters.connect/2`), and comes back with the
-  #     adapter's return (`Apiary.Adapters.Connections.complete_return/4`); she assigns
-  #     the repositories (`Apiary.Adapters.Collections.assign_collections/4`) and turns
-  #     one repository's Backlog off (`set_collection_backlog/4`);
+  #     adapter's return (`Apiary.Adapters.Connections.complete_return/4`); she makes
+  #     Support where the edition allows it (`Apiary.Organisations.create_workspace/2`),
+  #     assigns the collections (`Apiary.Adapters.Collections.assign_collections/4`) and
+  #     turns one repository's Backlog off (`set_collection_backlog/4`);
   #   * members take tickets in, decline, close and undo (`Apiary.WorkItems`), each under
   #     their scope; the pool spot-runners claims and gives back the first run of some of
   #     them, without a retry (`Apiary.Dispatches.claim/3`, `release/3`), so that run
   #     ends cancelled.
   #
-  # The key pair the adapter enrols is made here and kept in memory only: its secret
+  # The key pair each adapter enrols is made here and kept in memory only: its secret
   # signs the enrolment's proof and the connect return, and is then dropped.
   #
   # Left out: a run handed over (`Apiary.Dispatches.handover/3`) needs a gateway with a
@@ -47,8 +54,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   alias Apiary.WorkItems
   alias Apiary.WorkItems.WorkItem
 
-  @adapter "Tracker"
   @host "https://tracker.example.com"
+  @helpdesk_host "https://helpdesk.example.com"
   # The code host the repositories' runs would clone from.
   @code_host "git.example.com"
 
@@ -79,7 +86,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     jonas: {"Jonas", "person"},
     amara: {"Amara", "person"},
     reporter: {"Error reporter", "automation"},
-    deps: {"Dependency bot", "automation"}
+    deps: {"Dependency bot", "automation"},
+    monitor: {"Status monitor", "automation"}
   }
 
   # The tickets: repository, number, type, title, labels, filer, state, comments, days
@@ -190,6 +198,45 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     {:amara, "Is this the same as the report from the partner last month?"}
   ]
 
+  # Helpdesk's queues, and their incidents, as `@tickets` has its tickets.
+  @queues ["acme/customer-support", "acme/billing-support"]
+
+  @incidents [
+    {"acme/customer-support", 901, "incident", "Customers cannot reset their password", ["login"],
+     :monitor, "open", 2, 1,
+     "The reset mail is not sent; 42 customers wrote in since this morning."},
+    {"acme/customer-support", 902, "incident", "Order confirmation shows the wrong address",
+     ["orders"], :lea, "open", 1, 2, "Three customers sent screenshots of another address."},
+    {"acme/customer-support", 903, "incident", "Chat widget does not load on the help pages",
+     ["help centre"], :monitor, "open", 0, 0, "The widget answers 503 since 06:10 UTC."},
+    {"acme/customer-support", 904, "incident", "Parcel tracking link opens an empty page",
+     ["delivery"], :sam, "open", 1, 3, "The link misses the parcel number for express orders."},
+    {"acme/customer-support", 905, "incident", "Gift cards show a zero balance", ["payments"],
+     :amara, "open", 0, 4, "The balance shows after a second reload."},
+    {"acme/customer-support", 906, "incident", "Newsletter sign-up returns an error",
+     ["marketing"], :jonas, "closed", 1, 9, "The form posts to the old endpoint."},
+    {"acme/customer-support", 907, "incident", "Store opening hours are wrong for Sundays",
+     ["stores"], :priya, "closed", 0, 12, "The page shows weekday hours on Sundays."},
+    {"acme/billing-support", 911, "incident", "Card payments fail for amounts over 1,000 EUR",
+     ["payments"], :monitor, "open", 2, 0, "The payment step answers declined for every card."},
+    {"acme/billing-support", 912, "incident", "Refund mails go out without the amount",
+     ["refunds"], :mirek, "open", 0, 3, "The amount field in the mail is empty."},
+    {"acme/billing-support", 913, "incident", "Invoice download asks customers to sign in twice",
+     ["invoicing"], :dana, "open", 1, 5, "The second sign-in starts after the first succeeds."},
+    {"acme/billing-support", 914, "incident", "Direct debit dates are a day late", ["payments"],
+     :priya, "closed", 1, 15, "Debits for the first of the month arrive on the second."},
+    {"acme/billing-support", 915, "incident", "Credit note PDF is blank", ["invoicing"], :monitor,
+     "closed", 0, 20, "The PDF has a page and no text."}
+  ]
+
+  # The comments an incident's thread draws from, in turn.
+  @incident_comments [
+    {:lea, "Support has a reply template for this now."},
+    {:monitor, "Checks fail in **2 of 3** regions:\n\n- eu-west: down\n- eu-central: down"},
+    {:mirek, "A fix is deployed to staging; production follows at 14:00 UTC."},
+    {:dana, "Customers who wrote in get a voucher once this is closed."}
+  ]
+
   # The work items, in the order they are taken in: who takes the ticket in, the ticket by
   # its repository and number, what then happens to it, and its first instruction.
   #
@@ -227,12 +274,12 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   @spec fill(Scope.t(), Scope.t() | nil) :: :ok
   def fill(%Scope{} = main, second) do
     admin = signed_in(main)
-    {adapter, key} = adapter!(admin)
-    connection = connect!(main, adapter, key)
+    {tracker, key} = adapter!(admin, "Tracker", tracker_source())
+    connection = connect!(main, tracker, key)
 
-    list_repositories!(key, connection)
+    list_collections!(key, connection, @host, for({path, _} <- @repositories, do: path))
     repositories = assign!(main, second, connection)
-    tickets!(key)
+    tickets!(key, @tickets, @host, @comments)
 
     {:ok, 1} =
       Collections.set_collection_backlog(
@@ -243,7 +290,15 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
       )
 
     work_items!(main)
-    summary(adapter)
+
+    {helpdesk, desk_key} = adapter!(admin, "Helpdesk", helpdesk_source())
+    desk = connect!(main, helpdesk, desk_key)
+    list_collections!(desk_key, desk, @helpdesk_host, @queues)
+    assign_queues!(main, desk)
+    tickets!(desk_key, @incidents, @helpdesk_host, @incident_comments)
+
+    summary(tracker)
+    summary(helpdesk)
   end
 
   # Dana's scope as a sign-in a minute ago leaves it: what an instance admin's change of
@@ -253,27 +308,30 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
   ## The adapter
 
-  # The adapter, its enrolment code, the key it enrols with it and its declaration.
-  # Returns the adapter, and its key with the key's secret, which signs the connect
-  # return.
-  defp adapter!(admin) do
-    {:ok, adapter} = Adapters.create_adapter(admin, %{"name" => @adapter})
+  # The adapter `name`, its enrolment code, the key it enrols with it and its
+  # declaration, with `source` as its description's source role. Returns the adapter,
+  # and its key with the key's secret, which signs the connect return.
+  defp adapter!(admin, name, source) do
+    {:ok, adapter} = Adapters.create_adapter(admin, %{"name" => name})
     {:ok, _row, code} = Adapters.create_code(admin, adapter)
     {public, secret} = :crypto.generate_key(:eddsa, :ed25519)
-    {:ok, key} = AccessKeys.enrol(enrolment(code, public, secret))
+    program = String.downcase(name)
+    {:ok, key} = AccessKeys.enrol(enrolment(code, public, secret, program))
 
-    {:ok, declaration} = AdapterWire.declaration(Jason.encode!(declaration()))
+    {:ok, declaration} =
+      AdapterWire.declaration(Jason.encode!(declaration(name, program, source)))
+
     {:ok, adapter} = Adapters.declare(key_scope(key), declaration)
 
     {adapter, {key, secret}}
   end
 
   # The request the adapter enrols with: its code, its public key and the proof under it.
-  defp enrolment(code, public, secret) do
+  defp enrolment(code, public, secret, name) do
     code = Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
     public = Ed25519.encode(public)
     now = System.os_time(:second)
-    message = SignedMessage.enrolment(code, public, "tracker", now)
+    message = SignedMessage.enrolment(code, public, name, now)
     proof = :crypto.sign(:eddsa, :none, message, [secret, :ed25519])
 
     {:ok, request} =
@@ -281,7 +339,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
         Jason.encode!(%{
           "version" => 1,
           "code" => code,
-          "name" => "tracker",
+          "name" => name,
           "public_key" => public,
           "timestamp" => now,
           "proof" => Ed25519.encode(proof)
@@ -291,36 +349,55 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     request
   end
 
-  defp declaration do
+  defp declaration(title, program, source) do
     %{
       "version" => 1,
       "time" => time(DateTime.utc_now()),
-      "connect_url" => @host <> "/connect",
+      "connect_url" => "https://#{program}.example.com/connect",
       "sync" => %{"default_interval" => 900, "minimum_interval" => 300, "sends_changes" => true},
       "description" => %{
         "version" => 1,
-        "name" => "tracker",
-        "title" => "Tracker",
+        "name" => program,
+        "title" => title,
         "program_version" => "0.4.0",
         "settings" => %{"type" => "object"},
-        "roles" => %{
-          "source" => %{
-            "description" => "Reads the open tickets of Tracker repositories.",
-            "program" => "tracker-adapter",
-            "setup" => %{
-              "command" => "tracker-adapter setup",
-              "help" => "Asks for the address of the Tracker site and registers the adapter."
-            },
-            "start" => "tracker-adapter serve --secret-file /etc/tracker-adapter/secret",
-            "connect" => "Tracker asks you to sign in and to choose the repositories it reads.",
-            "access" =>
-              "In Tracker, open Settings, then Adapters, to change which repositories it reads.",
-            "disconnect" => "In Tracker, open Settings, then Adapters, and remove the adapter.",
-            "item_noun" => %{"one" => "ticket", "other" => "tickets"},
-            "collection_noun" => %{"one" => "repository", "other" => "repositories"}
-          }
-        }
+        "roles" => %{"source" => source}
       }
+    }
+  end
+
+  defp tracker_source do
+    %{
+      "description" => "Reads the open tickets of Tracker repositories.",
+      "program" => "tracker-adapter",
+      "setup" => %{
+        "command" => "tracker-adapter setup",
+        "help" => "Asks for the address of the Tracker site and registers the adapter."
+      },
+      "start" => "tracker-adapter serve --secret-file /etc/tracker-adapter/secret",
+      "connect" => "Tracker asks you to sign in and to choose the repositories it reads.",
+      "access" =>
+        "In Tracker, open Settings, then Adapters, to change which repositories it reads.",
+      "disconnect" => "In Tracker, open Settings, then Adapters, and remove the adapter.",
+      "item_noun" => %{"one" => "ticket", "other" => "tickets"},
+      "collection_noun" => %{"one" => "repository", "other" => "repositories"}
+    }
+  end
+
+  defp helpdesk_source do
+    %{
+      "description" => "Reads the open incidents of Helpdesk queues.",
+      "program" => "helpdesk-adapter",
+      "setup" => %{
+        "command" => "helpdesk-adapter setup",
+        "help" => "Asks for the address of the Helpdesk site and registers the adapter."
+      },
+      "start" => "helpdesk-adapter serve --secret-file /etc/helpdesk-adapter/secret",
+      "connect" => "Helpdesk asks you to sign in and to choose the queues it reads.",
+      "access" => "In Helpdesk, open Settings, then Adapters, to change which queues it reads.",
+      "disconnect" => "In Helpdesk, open Settings, then Adapters, and remove the adapter.",
+      "item_noun" => %{"one" => "incident", "other" => "incidents"},
+      "collection_noun" => %{"one" => "queue", "other" => "queues"}
     }
   end
 
@@ -363,8 +440,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
   ## The repositories
 
-  # The adapter's listing of the repositories it reaches, in one part.
-  defp list_repositories!(key, connection) do
+  # The adapter's listing of the collections it reaches, `paths`, in one part. A path on
+  # the code host is a repository's target; a queue of `@queues` has none.
+  defp list_collections!(key, connection, host, paths) do
     now = DateTime.utc_now()
 
     body = %{
@@ -372,16 +450,15 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
       "time" => time(now),
       "connection_id" => connection.public_id,
       "collections" =>
-        for {path, _workspace} <- @repositories do
-          %{
-            "ref" => path,
-            "url" => "#{@host}/#{path}",
-            "title" => path,
-            "target" => %{"system" => @code_host, "path" => path}
-          }
+        for path <- paths do
+          collection = %{"ref" => path, "url" => "#{host}/#{path}", "title" => path}
+
+          if path in @queues,
+            do: collection,
+            else: Map.put(collection, "target", %{"system" => @code_host, "path" => path})
         end,
       "listing" => %{
-        "id" => "repositories-#{System.os_time(:second)}",
+        "id" => "collections-#{System.os_time(:second)}",
         "part" => 1,
         "started_at" => time(DateTime.add(now, -5, :second)),
         "complete" => true
@@ -416,18 +493,58 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     rows
   end
 
+  # Dana assigns the queues as the Integrations page would: to Support where the
+  # edition allows more than one workspace, else to Main.
+  defp assign_queues!(main, connection) do
+    ids =
+      for %{name: name, id: id} <- Collections.list_collections(main, connection),
+          name in @queues,
+          do: id
+
+    {:ok, _changed} = Collections.assign_collections(main, connection, ids, support!(main))
+  end
+
+  # The workspace Support, found or made by Dana as the page that adds a workspace makes
+  # it, where the edition's limit allows more than one workspace; Main where it allows
+  # one, or where Support would pass the limit.
+  defp support!(%Scope{} = main) do
+    if Apiary.Edition.limits().workspaces == 1 do
+      main.workspace
+    else
+      case Organisations.resolve_scope(Scope.for_user(main.user), "acme", "support") do
+        {:ok, %Scope{workspace: workspace}} -> workspace
+        :error -> make_support(main)
+      end
+    end
+  end
+
+  defp make_support(main) do
+    case Organisations.create_workspace(main, %{"name" => "Support", "slug" => "support"}) do
+      {:ok, workspace} ->
+        workspace
+
+      {:error, :limit} ->
+        Mix.shell().info(
+          "The edition allows acme no more workspaces: support is not made; its queues go to main"
+        )
+
+        main.workspace
+    end
+  end
+
   ## The tickets
 
-  # Each repository's tickets, as a complete listing of them, then each ticket's comments.
-  defp tickets!(key) do
+  # Each collection's tickets of `tickets`, at `host`, as a complete listing of them, then
+  # each ticket's comments, from `pool`.
+  defp tickets!(key, tickets, host, pool) do
     now = DateTime.utc_now()
 
-    for {path, tickets} <- Enum.group_by(@tickets, &elem(&1, 0)) do
+    for {path, tickets} <- Enum.group_by(tickets, &elem(&1, 0)) do
       body = %{
         "version" => 1,
         "time" => time(now),
         "collection_ref" => path,
-        "items" => Enum.map(tickets, &item(&1, now)),
+        "items" => Enum.map(tickets, &item(&1, host, now)),
         "listing" => %{
           "id" => "tickets-#{path}-#{System.os_time(:second)}",
           "part" => 1,
@@ -440,12 +557,12 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
       {:ok, :accepted} = Sources.post_items(key_scope(key), items)
     end
 
-    for ticket <- @tickets, elem(ticket, 7) > 0 do
+    for ticket <- tickets, elem(ticket, 7) > 0 do
       body = %{
         "version" => 1,
         "time" => time(now),
         "item_ref" => ref(ticket),
-        "comments" => comments(ticket, now)
+        "comments" => comments(ticket, host, pool, now)
       }
 
       {:ok, comments} = SourceWire.comments(Jason.encode!(body))
@@ -453,7 +570,11 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     end
   end
 
-  defp item({path, number, type, title, labels, filer, state, count, _days, line} = ticket, now) do
+  defp item(
+         {path, number, type, title, labels, filer, state, count, _days, line} = ticket,
+         host,
+         now
+       ) do
     filed = filed_at(ticket, now)
     {name, kind} = Map.fetch!(@filers, filer)
 
@@ -461,7 +582,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
       "ref" => ref(ticket),
       "key" => "##{number}",
       "type" => type,
-      "url" => "#{@host}/#{path}/tickets/#{number}",
+      "url" => "#{host}/#{path}/#{segment(type)}/#{number}",
       "title" => title,
       "body" => body(type, line, path),
       "body_format" => "markdown",
@@ -478,6 +599,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   # A ticket changes last with its last comment, an hour apart from its filing for each.
   defp updated(filed, now, count),
     do: Enum.min([DateTime.add(filed, (count + 1) * 3600, :second), now], DateTime)
+
+  # The part of a ticket's address at its source that comes before its number.
+  defp segment("incident"), do: "incidents"
+  defp segment(_type), do: "tickets"
 
   defp ref({path, number, _type, _title, _labels, _filer, _state, _count, _days, _line}),
     do: "#{path}##{number}"
@@ -518,6 +643,17 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     """
   end
 
+  defp body("incident", line, _path) do
+    """
+    #{line}
+
+    ## Impact
+
+    - Customers affected since the first report
+    - Workaround: none yet
+    """
+  end
+
   defp body("task", line, path) do
     """
     #{line}
@@ -529,20 +665,21 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
   # The ticket's comments, each from the pool in turn, an hour apart after its filing.
   defp comments(
-         {path, number, _type, _title, _labels, _filer, _state, count, _days, _line} =
-           ticket,
+         {path, number, type, _title, _labels, _filer, _state, count, _days, _line} = ticket,
+         host,
+         pool,
          now
        ) do
     filed = filed_at(ticket, now)
 
     for n <- 1..count do
-      {author, text} = Enum.at(@comments, rem(number + n, length(@comments)))
+      {author, text} = Enum.at(pool, rem(number + n, length(pool)))
       {name, kind} = Map.fetch!(@filers, author)
       at = Enum.min([DateTime.add(filed, n * 3600, :second), now], DateTime)
 
       %{
         "ref" => "#{ref(ticket)}-#{n}",
-        "url" => "#{@host}/#{path}/tickets/#{number}#comment-#{n}",
+        "url" => "#{host}/#{path}/#{segment(type)}/#{number}#comment-#{n}",
         "author" => %{"name" => name, "kind" => kind},
         "body" => text,
         "body_format" => "markdown",
@@ -645,6 +782,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
   ## The summary
 
+  # The adapter's lines: its collections by workspace, its tickets by state and the work
+  # items of them by state, each in the adapter's words.
   defp summary(adapter) do
     collections =
       Repo.all(
@@ -674,17 +813,21 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
           select: {w.state, count()}
       )
 
+    %{other: collections_word} = Adapters.collection_noun(adapter)
+    %{other: items_word} = Adapters.item_noun(adapter)
+
     Mix.shell().info("""
-    Factory: 1 adapter, #{total(collections)} repositories, #{total(tickets)} tickets, \
-    #{total(work_items)} work items
-      repositories: #{format(collections)}
-      tickets: #{format(tickets)}
+    Factory: #{adapter.name}, #{total(collections)} #{collections_word}, \
+    #{total(tickets)} #{items_word}, #{total(work_items)} work items
+      #{collections_word}: #{format(collections)}
+      #{items_word}: #{format(tickets)}
       work items: #{format(work_items)}\
     """)
   end
 
   defp total(pairs), do: pairs |> Enum.map(&elem(&1, 1)) |> Enum.sum()
 
+  defp format([]), do: "none"
   defp format(pairs), do: Enum.map_join(pairs, ", ", fn {name, count} -> "#{name} #{count}" end)
 
   defp time(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()

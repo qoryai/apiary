@@ -237,33 +237,36 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
   end
 
   @tag needs: :factory
-  test "with the factory feature: an adapter connected for Acme, its repositories, tickets and work items" do
+  test "with the factory feature: two adapters connected for Acme, their collections, tickets and work items" do
     fill()
 
     main = main_workspace()
     one_workspace? = Apiary.Edition.limits().workspaces == 1
 
-    assert [adapter] =
-             Repo.all(from n in Node, where: n.kind == :adapter and is_nil(n.deleted_at))
+    adapters =
+      Repo.all(from n in Node, where: n.kind == :adapter and is_nil(n.deleted_at))
+      |> Map.new(&{&1.name, &1})
 
-    assert adapter.name == "Tracker"
-    assert adapter.connect_url == "https://tracker.example.com/connect"
+    assert Map.keys(adapters) == ["Helpdesk", "Tracker"]
+    %{"Tracker" => tracker, "Helpdesk" => helpdesk} = adapters
+    assert tracker.connect_url == "https://tracker.example.com/connect"
+    assert Adapters.item_noun(tracker) == %{one: "ticket", other: "tickets"}
+    assert Adapters.collection_noun(tracker) == %{one: "repository", other: "repositories"}
+    assert helpdesk.connect_url == "https://helpdesk.example.com/connect"
+    assert Adapters.item_noun(helpdesk) == %{one: "incident", other: "incidents"}
+    assert Adapters.collection_noun(helpdesk) == %{one: "queue", other: "queues"}
 
-    assert [%Adapters.Connection{state: :connected} = connection] = Repo.all(Adapters.Connection)
-    assert connection.organisation_id == main.organisation_id
-    assert connection.listed_at
+    connections = Repo.all(Adapters.Connection) |> Map.new(&{&1.adapter_id, &1})
+    assert map_size(connections) == 2
+
+    for adapter <- [tracker, helpdesk] do
+      assert %{state: :connected, listed_at: %DateTime{}} = connection = connections[adapter.id]
+      assert connection.organisation_id == main.organisation_id
+    end
 
     # Nine repositories: seven in Main, acme/warehouse in Shop ops or, with one
     # workspace, in Main, and acme/sandbox in none.
-    places =
-      Repo.all(
-        from c in Adapters.Collection,
-          left_join: w in assoc(c, :workspace),
-          where: is_nil(c.ended_at),
-          select: {c.title, w.slug}
-      )
-      |> Map.new()
-
+    places = places(tracker)
     assert map_size(places) == 9
     assert places["acme/sandbox"] == nil
     assert places["acme/warehouse"] == if(one_workspace?, do: "main", else: "shop-ops")
@@ -273,14 +276,28 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     assert %{backlog: false} = Repo.get_by!(Adapters.Collection, title: "acme/infra")
 
-    states = Repo.all(from i in Item, select: i.state) |> Enum.frequencies()
-    assert states == %{open: 34, closed: 8}
+    # Two queues, with no target, in Support, or in Main where the edition allows one
+    # workspace.
+    support = if one_workspace?, do: "main", else: "support"
+
+    assert places(helpdesk) ==
+             %{"acme/customer-support" => support, "acme/billing-support" => support}
+
+    refute Repo.exists?(
+             from c in Adapters.Collection,
+               where: c.adapter_id == ^helpdesk.id and not is_nil(c.target_system)
+           )
+
+    assert states(tracker) == %{open: 34, closed: 8}
+    assert states(helpdesk) == %{open: 8, closed: 4}
     # Each ticket has the comments its count says.
     comments = Repo.all(from i in Item, select: i.comment_count) |> Enum.sum()
-    assert comments == 55
+    assert comments == 55 + 9
     assert count(Apiary.Sources.Comment) == comments
 
     work_items = Repo.all(from w in WorkItem, where: w.workspace_id == ^main.id)
+    assert Enum.all?(work_items, &(&1.adapter_id == tracker.id))
+    refute Repo.exists?(from w in WorkItem, where: w.adapter_id == ^helpdesk.id)
 
     assert work_items |> Enum.map(& &1.state) |> Enum.frequencies() ==
              %{exploring: 5, declined: 2, closed: 2, undone: 1}
@@ -301,9 +318,18 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
              Apiary.Sources.Backlog.list_tickets(lea, view: :open)
 
     # Open in Main, without acme/infra's three, whose Backlog is off, and without
-    # acme/warehouse's three where it is in Shop ops.
-    open = if one_workspace?, do: 31, else: 28
-    assert counts == %{open: open - 7, taken: 5, declined: 2, closed: 8, total: open + 8}
+    # acme/warehouse's three where it is in Shop ops; with the incidents, eight open and
+    # four closed, where the queues are in Main.
+    open = if one_workspace?, do: 31 + 8, else: 28
+    closed = if one_workspace?, do: 8 + 4, else: 8
+
+    assert counts == %{
+             open: open - 7,
+             taken: 5,
+             declined: 2,
+             closed: closed,
+             total: open + closed
+           }
 
     for view <- [:taken, :declined, :closed] do
       assert %{rows: [_ | _]} = Apiary.Sources.Backlog.list_tickets(lea, view: view)
@@ -311,6 +337,47 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     assert %{rows: rows} = Apiary.WorkItems.list_work_items(lea, view: :open)
     assert length(rows) == 5
+
+    # The incidents in the Backlog of the queues' workspace, to a member of it: in Main,
+    # beside the repositories, a page names neither adapter's words.
+    desk =
+      if one_workspace?,
+        do: lea,
+        else: scope_of("dana@example.com", Repo.get_by!(Workspace, slug: "support"))
+
+    for {queue, open, closed} <- [{"acme/customer-support", 5, 2}, {"acme/billing-support", 3, 2}] do
+      for {view, n} <- [open: open, closed: closed] do
+        assert %{rows: rows} =
+                 Apiary.Sources.Backlog.list_tickets(desk, view: view, search: queue)
+
+        assert length(rows) == n
+        assert Enum.all?(rows, &(&1.repository == queue))
+      end
+    end
+
+    if one_workspace? do
+      assert Adapters.workspace_collection_noun(desk) == nil
+      assert Adapters.workspace_item_noun(desk) == nil
+    else
+      assert Adapters.workspace_collection_noun(desk) == %{one: "queue", other: "queues"}
+      assert Adapters.workspace_item_noun(desk) == %{one: "incident", other: "incidents"}
+    end
+  end
+
+  # The titles of `adapter`'s collections in use, with the slug of each one's workspace.
+  defp places(adapter) do
+    Repo.all(
+      from c in Adapters.Collection,
+        left_join: w in assoc(c, :workspace),
+        where: c.adapter_id == ^adapter.id and is_nil(c.ended_at),
+        select: {c.title, w.slug}
+    )
+    |> Map.new()
+  end
+
+  defp states(adapter) do
+    Repo.all(from i in Item, where: i.adapter_id == ^adapter.id, select: i.state)
+    |> Enum.frequencies()
   end
 
   # Off, the `factory` feature is absent from the fill, which completes all the same.
