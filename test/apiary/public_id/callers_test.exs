@@ -5,6 +5,8 @@ defmodule Apiary.PublicId.CallersTest do
   # test's process.
   use Apiary.DataCase, async: true
 
+  import Apiary.AccessKeysFixtures
+  import Apiary.ContractFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -12,6 +14,7 @@ defmodule Apiary.PublicId.CallersTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.{Batch, Ingest, Registration, Run, Target}
   alias Apiary.Secrets.Secret
 
   @taken "0123456789abcdef"
@@ -114,6 +117,113 @@ defmodule Apiary.PublicId.CallersTest do
 
       assert created.public_id != "ws_" <> @taken
       assert PublicId.valid?("ws", created.public_id)
+    end
+  end
+
+  describe "a run" do
+    setup %{scope: scope} do
+      %{access_key: key} = access_key_fixture(scope)
+      %{key: key}
+    end
+
+    defp batch!(events) do
+      {:ok, batch} = events |> Jason.encode!() |> Batch.parse()
+      batch
+    end
+
+    defp ingest(key) do
+      {_subject, [started]} = first_events()
+      Ingest.ingest(key, batch!([started]), %{contract_version: 1})
+    end
+
+    test "that its first batch creates, with an id that is taken, gets a fresh id", %{key: key} do
+      PublicIdSource.force([@taken])
+      assert {:ok, %{run: first}} = ingest(key)
+      assert first.public_id == "rn_" <> @taken
+
+      PublicIdSource.force([@taken])
+      assert {:ok, %{run: second}} = ingest(key)
+      assert second.public_id != first.public_id
+      assert PublicId.valid?("rn", second.public_id)
+    end
+
+    defp registration_body(run_id) do
+      %{
+        "version" => 1,
+        "run_id" => run_id,
+        "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"},
+        "about" => %{"kind" => "fix", "subjects" => [%{"type" => "issue", "ref" => "77"}]},
+        "time" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+        "forager_version" => "0.8.0",
+        "contract_version" => 1,
+        "interval_seconds" => 30,
+        "events" => ["*"]
+      }
+    end
+
+    defp register(key, run_id) do
+      bytes = run_id |> registration_body() |> Jason.encode!()
+      {:ok, registration} = Registration.parse(Jason.decode!(bytes))
+
+      Registration.register(key, registration, %{
+        body: bytes,
+        contract_version: 1,
+        instance_id: "i_one"
+      })
+    end
+
+    test "that a registration creates, with an id that is taken, gets a fresh id", %{key: key} do
+      PublicIdSource.force([@taken])
+      assert {:ok, %{run: first, repeated: false}} = register(key, Ecto.UUID.generate())
+      assert first.public_id == "rn_" <> @taken
+
+      PublicIdSource.force([@taken])
+      assert {:ok, %{run: second, repeated: false}} = register(key, Ecto.UUID.generate())
+      assert second.public_id != first.public_id
+      assert Repo.get!(Run, second.id).public_id == second.public_id
+    end
+
+    test "that a registration creates is unavailable, and nothing is stored, when every try collides",
+         %{key: key} do
+      PublicIdSource.force([@taken])
+      assert {:ok, %{run: first}} = register(key, Ecto.UUID.generate())
+
+      PublicIdSource.force([@taken, @taken, @taken])
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, :unavailable} = register(key, Ecto.UUID.generate())
+      end)
+
+      assert [^first] = Repo.all(Run)
+    end
+
+    test "that a registration repeats keeps the run and its id, with no retry", %{key: key} do
+      run_id = Ecto.UUID.generate()
+      assert {:ok, %{run: first}} = register(key, run_id)
+
+      assert {:ok, %{run: again, repeated: true}} = register(key, run_id)
+      assert again.public_id == first.public_id
+    end
+  end
+
+  describe "a target" do
+    test "that a run names, with an id that is taken, gets a fresh id", %{scope: scope} do
+      PublicIdSource.force([@taken])
+
+      Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        %{system: "git", path: "a/one"}
+      ])
+
+      PublicIdSource.force([@taken])
+
+      Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        %{system: "git", path: "a/two"}
+      ])
+
+      ids = Repo.all(from t in Target, order_by: t.path, select: {t.path, t.public_id})
+      assert [{"a/one", "tg_" <> @taken}, {"a/two", second}] = ids
+      assert PublicId.valid?("tg", second)
+      assert second != "tg_" <> @taken
     end
   end
 end
