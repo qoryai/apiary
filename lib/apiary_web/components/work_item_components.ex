@@ -725,26 +725,26 @@ defmodule ApiaryWeb.WorkItemComponents do
           case answers_of(run[:answers_by]) do
             :none ->
               gettext(
-                "Qory reads the %{item} and the code when the run starts, and proposes how to build it.",
+                "Qory reads the %{item} when the run starts, and proposes what to do.",
                 item: assigns.item
               )
 
             :you ->
               gettext(
-                "Qory reads the %{item}, the code and your answers when the run starts, and proposes how to build it.",
+                "Qory reads the %{item} and your answers when the run starts, and proposes what to do.",
                 item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "Qory reads the %{item}, the code and %{name}'s answers when the run starts, and proposes how to build it.",
+                "Qory reads the %{item} and %{name}'s answers when the run starts, and proposes what to do.",
                 name: name,
                 item: assigns.item
               )
 
             :several ->
               gettext(
-                "Qory reads the %{item}, the code and the answers of this take in when the run starts, and proposes how to build it.",
+                "Qory reads the %{item} and the answers of this take in when the run starts, and proposes what to do.",
                 item: assigns.item
               )
           end,
@@ -769,7 +769,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.bee />
       <span>
         {gettext(
-          "Qory reads the %{item} and the code when the run starts, and proposes how to build it.",
+          "Qory reads the %{item} when the run starts, and proposes what to do.",
           item: @item
         )}
       </span>
@@ -794,26 +794,26 @@ defmodule ApiaryWeb.WorkItemComponents do
           case answers_of(run[:answers_by]) do
             :none ->
               gettext(
-                "Qory is exploring. It reads the %{item} and the code, and proposes how to build it.",
+                "Qory is exploring. It reads the %{item} and proposes what to do.",
                 item: assigns.item
               )
 
             :you ->
               gettext(
-                "Qory is exploring again, with your answers. It reads the %{item} and the code, and proposes how to build it.",
+                "Qory is exploring again, with your answers. It reads the %{item} and proposes what to do.",
                 item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "Qory is exploring again, with %{name}'s answers. It reads the %{item} and the code, and proposes how to build it.",
+                "Qory is exploring again, with %{name}'s answers. It reads the %{item} and proposes what to do.",
                 name: name,
                 item: assigns.item
               )
 
             :several ->
               gettext(
-                "Qory is exploring again, with the answers of this take in. It reads the %{item} and the code, and proposes how to build it.",
+                "Qory is exploring again, with the answers of this take in. It reads the %{item} and proposes what to do.",
                 item: assigns.item
               )
           end,
@@ -840,15 +840,15 @@ defmodule ApiaryWeb.WorkItemComponents do
           if(assigns.can_act,
             do:
               ngettext(
-                "Qory asked %{number} question before it can propose how to build it. Answer it, and Qory explores again with your answer. Or decline the work item.",
-                "Qory asked %{number} questions before it can propose how to build it. Answer them, and Qory explores again with your answers. Or decline the work item.",
+                "Qory asked %{number} question before it can propose what to do. Answer it, and Qory explores again with your answer. Or decline the work item.",
+                "Qory asked %{number} questions before it can propose what to do. Answer them, and Qory explores again with your answers. Or decline the work item.",
                 n,
                 number: number
               ),
             else:
               ngettext(
-                "Qory asked %{number} question before it can propose how to build it.",
-                "Qory asked %{number} questions before it can propose how to build it.",
+                "Qory asked %{number} question before it can propose what to do.",
+                "Qory asked %{number} questions before it can propose what to do.",
                 n,
                 number: number
               )
@@ -975,7 +975,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           cond do
             assigns.can_act ->
               gettext(
-                "Qory proposed how to build it. Confirm it, change it first, or decline the work item."
+                "Qory proposed what to do. Confirm it, change it first, or decline the work item."
               )
 
             you?(owner) ->
@@ -2016,7 +2016,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, :none} ->
           {gettext("Explore is queued."),
            gettext(
-             "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and the code, and proposes how to build it, or asks what it needs to know.",
+             "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2025,7 +2025,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, whose} ->
           {queued_heading(whose),
            gettext(
-             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item}, the code and these answers, from the start.",
+             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2034,7 +2034,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:running, :none} ->
           {gettext("Qory is exploring."),
            gettext(
-             "Run %{attempt} of %{of} reads the %{item} and the code. It proposes how to build it, or asks what it needs to know.",
+             "Run %{attempt} of %{of} reads the %{item}. It proposes what to do, or asks what it needs to know.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2043,7 +2043,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:running, whose} ->
           {running_heading(whose),
            gettext(
-             "Run %{attempt} of %{of} reads the %{item}, the code and these answers, from the start. It proposes how to build it, or asks what it still needs to know.",
+             "Run %{attempt} of %{of} reads the %{item} and these answers, from the start. It proposes what to do, or asks what it still needs to know.",
              attempt: attempt,
              of: of,
              item: assigns.item
@@ -2689,7 +2689,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     ngettext("Asked %{number} question", "Asked %{number} questions", n, number: Format.number(n))
   end
 
-  defp run_gave(%{outcome: :proposal}), do: gettext("Proposed how to build it")
+  defp run_gave(%{outcome: :proposal}), do: gettext("Proposed what to do")
   defp run_gave(%{state: state}), do: RunComponents.state_label(state)
 
   attr :id, :string, required: true
@@ -3318,7 +3318,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:asked` - how many questions Qory asked and after how long (`questions`,
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
-    * `:proposed` - Qory proposed how to build it, after how long, and whose turn it is
+    * `:proposed` - Qory proposed what to do, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
       (`outcome`: `:error`, `:none` or `:refused`);
@@ -3559,18 +3559,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp event_line(%{kind: :proposed, owner: nil, duration: duration}),
-    do: rich_gettext("Qory proposed how to build it, after %{duration}.", duration: duration)
+    do: rich_gettext("Qory proposed what to do, after %{duration}.", duration: duration)
 
   defp event_line(%{kind: :proposed, owner: owner, duration: duration}) do
     if you?(owner),
       do:
         rich_gettext(
-          "Qory proposed how to build it, after %{duration}. It waits for you to confirm",
+          "Qory proposed what to do, after %{duration}. It waits for you to confirm",
           duration: duration
         ),
       else:
         rich_gettext(
-          "Qory proposed how to build it, after %{duration}. It waits for %{name} to confirm",
+          "Qory proposed what to do, after %{duration}. It waits for %{name} to confirm",
           duration: duration,
           name: {:b, owner.name}
         )

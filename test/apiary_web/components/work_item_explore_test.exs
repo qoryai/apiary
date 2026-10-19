@@ -666,6 +666,36 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   defp items(html, id), do: texts(html, "##{id} > span")
 
+  describe "step_card/1, in a general workspace" do
+    # A general workspace reads the source texts, which name no code; the tests above read
+    # the software catalogue's, the default locale's.
+    test "Explore reads the ticket and the answers, and proposes what to do" do
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@general", fn ->
+        for {people, line} <- [
+              {[], "Qory reads the ticket when the run starts, and proposes what to do."},
+              {[@dana],
+               "Qory reads the ticket and your answers when the run starts, and proposes what to do."},
+              {[@priya],
+               "Qory reads the ticket and Priya's answers when the run starts, and proposes what to do."},
+              {[@dana, @priya],
+               "Qory reads the ticket and the answers of this take in when the run starts, and proposes what to do."}
+            ] do
+          w = work_item(%{status: :queued, run: %{attempt: 2, of: 3, answers_by: people}})
+          assert text(card(w), ".q-wi-bee-line") == line
+        end
+
+        assert text(asked(3), ".q-wi-bee-line") ==
+                 "Qory asked 3 questions before it can propose what to do. Answer them, and Qory explores again with your answers. Or decline the work item."
+
+        assert text(asked(1, can_act: false), ".q-wi-bee-line") ==
+                 "Qory asked 1 question before it can propose what to do."
+
+        assert text(card(work_item(%{})), ".q-wi-bee-line") ==
+                 "Qory proposed what to do. Confirm it, change it first, or decline the work item."
+      end)
+    end
+  end
+
   describe "explore_tab/1, queued and running" do
     test "queued, the first run: Run 1 of 3, Queued, and what Qory does" do
       html = tab(work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}}))

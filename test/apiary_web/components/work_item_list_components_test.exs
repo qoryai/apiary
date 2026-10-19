@@ -494,6 +494,19 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     assert attr(html, "#work-items-open-backlog", "href") == ["/8wonders/main/backlog"]
   end
 
+  test "in a general workspace, the stages and the empty list name no code" do
+    # A general workspace reads the source texts; the tests above read the software
+    # catalogue's, the default locale's.
+    Gettext.with_locale(ApiaryWeb.Gettext, "en@general", fn ->
+      assert texts(strip(exploring: 1), ".q-wl-st-what") |> hd() == "Qory reads the ticket"
+
+      html = render_component(&L.work_items_empty/1, backlog_path: "/8wonders/main/backlog")
+
+      assert text(html, ".q-wl-empty") =~
+               "A work item starts when someone takes in one of the Backlog's tickets. Qory then explores it and proposes what to do."
+    end)
+  end
+
   describe "the words the sources share for their items" do
     # A page about many items names them by the word every source shares; "ticket" where
     # they differ or name none.

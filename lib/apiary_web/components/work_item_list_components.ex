@@ -117,7 +117,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   @doc false
   # stage_line/2 is what a stage is, in a line; `item_noun` as the strip's.
   def stage_line(:explore, item_noun),
-    do: gettext("Qory reads the %{item} and the code", item: SourceComponents.item(item_noun))
+    do: gettext("Qory reads the %{item}", item: SourceComponents.item(item_noun))
 
   def stage_line(:confirm, _item_noun), do: gettext("A member confirms what Qory proposes")
   def stage_line(:shape, _item_noun), do: gettext("The plan and its acceptance criteria")
@@ -610,7 +610,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
       class="q-wl-empty"
     >
       {gettext(
-        "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes how to build it.",
+        "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
         items: SourceComponents.items(@item_noun)
       )}
       <:actions>

@@ -477,7 +477,7 @@ msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "only a workspace's variable can be locked: a lock holds it against the repositories"
+msgid "only a workspace's variable can be locked: a lock holds it against the targets"
 msgstr ""
 
 msgid "should be %{count} byte(s)"
