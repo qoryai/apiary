@@ -38,13 +38,6 @@ defmodule Apiary.WorkItems.Moves do
   # Its first instruction is the one the page gives, empty for none, within the bounds of
   # `Apiary.WorkItems.WorkItem.take_in_changeset/2`, else the changeset.
   #
-  # The page may send a model choice for the runs of the take in, `model_choice`, a map
-  # of `provider`, `key`, `model`, `effort` and `tiers`, with the features `factory` and
-  # `secrets` shown to the scope; else it is left out. It is checked before the
-  # transaction, then again in it, and stored with the take in
-  # (`Apiary.ModelChoices.store_take_in/4`); a refusal is
-  # `{:model_choice, :forbidden | changeset}`, with the reason on its field.
-  #
   # ## The order of the locks
   #
   # Every move takes its locks in the order the core keeps for everything that holds more
@@ -53,10 +46,8 @@ defmodule Apiary.WorkItems.Moves do
   # ticket's collection `FOR SHARE`, so no assign, move, Backlog switch or end changes its
   # link meanwhile, its adapter's `items` read after it; then the work item `FOR UPDATE`;
   # then, only right after the work item, the workspace's counter of numbers
-  # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then, for a take
-  # in with a model choice, its model provider `FOR KEY SHARE` and the secret of its keys
-  # `FOR SHARE`; then the runs of the queue (`Apiary.Dispatches`); then the adapter's
-  # feed counter, last
+  # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
+  # the queue (`Apiary.Dispatches`); then the adapter's feed counter, last
   # (`Apiary.Adapters.Feed`). An undo, a decline and a close take no connection or
   # collection: the work item, then its runs. An answer, a confirmation and a run of
   # Explore again take the work item alone, then queue through
@@ -179,7 +170,7 @@ defmodule Apiary.WorkItems.Moves do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, Dispatches, ModelChoices, Organisations, Repo, WorkItems}
+  alias Apiary.{Access, Audit, Dispatches, Organisations, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Feed}
   alias Apiary.Dispatches.DispatchRun
@@ -202,17 +193,15 @@ defmodule Apiary.WorkItems.Moves do
           | :owner
           | :not_taken
           | {:taken, WorkItem.t()}
-          | {:model_choice, :forbidden | Ecto.Changeset.t()}
           | Ecto.Changeset.t()
 
   @typedoc """
-  What the page gives a take in: the owner, the first instruction and the model choice,
-  under atom keys or their strings.
+  What the page gives a take in: the owner, and the first instruction, under atom keys or
+  their strings.
   """
   @type take_in_attrs :: %{
           optional(:owner_id | String.t()) => Ecto.UUID.t(),
-          optional(:first_instruction | String.t()) => String.t(),
-          optional(:model_choice | String.t()) => map
+          optional(:first_instruction | String.t()) => String.t()
         }
 
   ## Take in
@@ -222,19 +211,17 @@ defmodule Apiary.WorkItems.Moves do
           {:ok, WorkItem.t()} | {:error, take_in_refusal}
   def take_in(%Scope{} = scope, item_id, attrs) when is_map(attrs) do
     result =
-      with {:ok, choice} <- model_choice(scope, attrs) do
-        Repo.transact(fn ->
-          with {:ok, workspace} <- workspace(scope),
-               :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
-               {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
-               :ok <- none_yet(scope, ticket),
-               :ok <- open(ticket),
-               {:ok, target} <- target(workspace, ticket),
-               {:ok, owner_id} <- owner(scope, attrs) do
-            make(scope, workspace, ticket, target, owner_id, attrs, choice)
-          end
-        end)
-      end
+      Repo.transact(fn ->
+        with {:ok, workspace} <- workspace(scope),
+             :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
+             :ok <- none_yet(scope, ticket),
+             :ok <- open(ticket),
+             {:ok, target} <- target(workspace, ticket),
+             {:ok, owner_id} <- owner(scope, attrs) do
+          make(scope, workspace, ticket, target, owner_id, attrs)
+        end
+      end)
 
     case result do
       {:ok, {work_item, told}} ->
@@ -251,7 +238,7 @@ defmodule Apiary.WorkItems.Moves do
 
   # A new work item of the ticket, its event, its first run, its feed entry and its entry
   # in the trail.
-  defp make(scope, workspace, ticket, target, owner_id, attrs, choice) do
+  defp make(scope, workspace, ticket, target, owner_id, attrs) do
     %{item: item, collection: collection, adapter: adapter} = ticket
     now = DateTime.utc_now()
 
@@ -279,7 +266,6 @@ defmodule Apiary.WorkItems.Moves do
 
     with {:ok, changeset} <- valid(changeset),
          {:ok, work_item} <- insert(changeset, workspace, ticket),
-         :ok <- ModelChoices.store_take_in(scope, work_item, 1, choice),
          :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
          {:ok, _run} <- Dispatches.queue(work_item, 1),
          {:ok, _seq} <- feed(adapter, work_item, "taken_in"),
@@ -295,17 +281,6 @@ defmodule Apiary.WorkItems.Moves do
           tickets: [{collection.workspace_id, item.public_id}]
         }}}
     end
-  end
-
-  # The model choice the page sends (`model_choice`), checked once before the take in's
-  # transaction, without a lock, by a person who may take the work item in: `{:ok, nil}`
-  # for none, `{:ok, changeset}` for one to store, or the refusal.
-  defp model_choice(scope, attrs) do
-    params = Map.get(attrs, :model_choice, Map.get(attrs, "model_choice"))
-
-    with {:ok, workspace} <- workspace(scope),
-         :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
-         do: ModelChoices.take_in_input(scope, params)
   end
 
   # The number is taken once the changeset holds, right after the work item it numbers:
@@ -338,19 +313,17 @@ defmodule Apiary.WorkItems.Moves do
           {:ok, WorkItem.t()} | {:error, take_in_refusal}
   def take_in_again(%Scope{} = scope, item_id, attrs) when is_map(attrs) do
     result =
-      with {:ok, choice} <- model_choice(scope, attrs) do
-        Repo.transact(fn ->
-          with {:ok, workspace} <- workspace(scope),
-               :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
-               {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
-               {:ok, ended} <- ended(scope, ticket),
-               :ok <- open(ticket),
-               {:ok, target} <- target(workspace, ticket),
-               {:ok, owner_id} <- owner(scope, attrs) do
-            again(scope, workspace, ended, ticket, target, owner_id, attrs, choice)
-          end
-        end)
-      end
+      Repo.transact(fn ->
+        with {:ok, workspace} <- workspace(scope),
+             :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
+             {:ok, ended} <- ended(scope, ticket),
+             :ok <- open(ticket),
+             {:ok, target} <- target(workspace, ticket),
+             {:ok, owner_id} <- owner(scope, attrs) do
+          again(scope, workspace, ended, ticket, target, owner_id, attrs)
+        end
+      end)
 
     case result do
       {:ok, {work_item, told}} ->
@@ -376,7 +349,7 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
-  defp again(scope, workspace, ended, ticket, target, owner_id, attrs, choice) do
+  defp again(scope, workspace, ended, ticket, target, owner_id, attrs) do
     %{item: item, collection: collection, adapter: adapter} = ticket
     now = DateTime.utc_now()
     take_in = ended.take_in + 1
@@ -406,7 +379,6 @@ defmodule Apiary.WorkItems.Moves do
 
     with {:ok, changeset} <- valid(changeset),
          {:ok, work_item} <- changeset |> move(ended, workspace) |> Repo.update(),
-         :ok <- ModelChoices.store_take_in(scope, work_item, take_in, choice),
          :ok <-
            event(work_item, :taken_in, scope, now, %{
              "take_in" => take_in,
