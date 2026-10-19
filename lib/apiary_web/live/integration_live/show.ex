@@ -8,7 +8,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     * **Overview** (`:overview`): what it is, its id, its source, version and roles (a
       program's), the API it is set up from, built in or a custom API (an API's), or its
       catalogue entry (an agent's), where it applies, who added and changed it, the
-      secrets it declares and a program's plain settings;
+      secrets it declares (an API's and a program's) and a program's plain settings;
     * **Workspaces** (`…/targets`): where it applies, every workspace of the organisation
       or the chosen ones, with Add workspace (`…/targets/add`, a page that chooses one)
       and the removal of one, confirmed on its row (`…/targets/:target_id/remove`,
@@ -375,7 +375,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       </dl>
     </SettingsComponents.part>
 
+    <%!-- A runtime connection offers none of its runtime's declarations
+         (`Apiary.Kinds.Runtimes`), so its page has no part for them. --%>
     <SettingsComponents.part
+      :if={@connection.kind != "runtime"}
       id="connection-secrets"
       title={gettext("Secrets it declares")}
       count={length(@secrets)}
@@ -392,9 +395,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           </dd>
         <% end %>
       </dl>
-      <p :for={group <- @one_of} class="text-[13px]/5 text-muted">
-        {gettext("It needs one of: %{ids}.", ids: Enum.join(group, ", "))}
-      </p>
       <p :if={@secrets == []} class="text-[13px]/5 text-muted">
         {gettext("It declares no secret.")}
       </p>
@@ -795,8 +795,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       definition: definition,
       runtime: runtime,
       about: about(connection, description, definition),
-      secrets: secrets(connection, description, definition, runtime),
-      one_of: one_of(runtime),
+      secrets: secrets(connection, description, definition),
       plain: if(description, do: Common.plain_settings(description), else: []),
       patterns: if(description, do: Common.argument_patterns(description), else: []),
       settings: Connection.settings_map(connection),
@@ -836,31 +835,23 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   defp about(%Connection{kind: "service"}, _description, %{} = d), do: d["description"]
   defp about(_connection, _description, _definition), do: nil
 
-  # The secrets it declares, each `%{id:, title:, variable:}`: a runtime's declarations,
-  # a service definition's, an integration description's secrets, which name no variable.
-  defp secrets(%Connection{kind: "runtime"}, _description, _definition, %{} = runtime),
-    do: for(d <- runtime.declares, do: %{id: d["id"], title: d["title"], variable: d["name"]})
-
-  defp secrets(%Connection{kind: "service"}, _description, %{} = definition, _runtime),
+  # The secrets it declares, each `%{id:, title:, variable:}`: a service definition's, an
+  # integration description's secrets, which name no variable.
+  defp secrets(%Connection{kind: "service"}, _description, %{} = definition),
     do:
       for(
         d <- definition["declares"],
         do: %{id: d["id"], title: d["title"], variable: d["name"]}
       )
 
-  defp secrets(%Connection{kind: "integration"}, %{} = description, _definition, _runtime),
+  defp secrets(%Connection{kind: "integration"}, %{} = description, _definition),
     do:
       for(
         s <- description.secrets,
         do: %{id: s.name, title: s.title, variable: nil}
       )
 
-  defp secrets(_connection, _description, _definition, _runtime), do: []
-
-  defp one_of(%{one_of: groups}),
-    do: for(%{"required" => true, "of" => of} <- groups, do: of)
-
-  defp one_of(_runtime), do: []
+  defp secrets(_connection, _description, _definition), do: []
 
   @impl true
   def handle_params(params, _uri, socket) do

@@ -380,15 +380,24 @@ defmodule Apiary.ContractFixtures do
     end
   end
 
-  @doc "The commit of qoryai/forager in `.forager-contract-ref`."
-  def pinned_ref do
+  @doc "The commit of qoryai/forager in `.forager-contract-ref`: its first line of data."
+  def pinned_ref, do: hd(ref_lines())
+
+  @doc """
+  The files core copies byte for byte from Forager's contract directory, each a path
+  under `priv/contract/`: the lines of `.forager-contract-ref` after the commit.
+  """
+  def vendored, do: tl(ref_lines())
+
+  # The lines of `.forager-contract-ref` that are not empty and no comment.
+  defp ref_lines do
     Mix.Project.project_file()
     |> Path.dirname()
     |> Path.join(".forager-contract-ref")
     |> File.read!()
     |> String.split("\n")
     |> Enum.map(&String.trim/1)
-    |> Enum.find(&(&1 != "" and not String.starts_with?(&1, "#")))
+    |> Enum.filter(&(&1 != "" and not String.starts_with?(&1, "#")))
   end
 
   defp pinned_dir do

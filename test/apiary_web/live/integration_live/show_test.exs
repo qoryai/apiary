@@ -91,7 +91,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
   end
 
   describe "Overview" do
-    test "says what an agent is, its id, where it applies and the secrets it declares",
+    test "says what an agent is, its id and where it applies, and offers no model key",
          %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, html} = live(conn, ipath(scope, runtime))
@@ -117,20 +117,16 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-facts", "Every workspace")
       # A long value, such as the list of denied variables, wraps rather than widen the page.
       assert has_element?(lv, "#connection-facts dl.break-words")
-      assert has_element?(lv, "#connection-secrets", "ANTHROPIC_API_KEY")
-      assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
-
-      assert has_element?(
-               lv,
-               "#connection-secrets-unlinked",
-               "Qory Apiary links no stored secret to it."
-             )
-
-      refute has_element?(lv, "#connection-secrets-unlinked a")
+      # A runtime connection offers none of the runtime's declarations, the model keys: the
+      # page has no part for them and no group of them.
+      refute has_element?(lv, "#connection-secrets")
+      refute has_element?(lv, "#connection-secrets-unlinked")
+      refute html =~ "ANTHROPIC_API_KEY"
+      refute html =~ "CLAUDE_CODE_OAUTH_TOKEN"
+      refute html =~ "It needs one of"
 
       section = lv |> element("#settings-section-integrations") |> render()
-      # Qory Apiary is named only in the line of the secrets it declares.
-      refute String.replace(section, "Qory Apiary links no stored secret", "") =~ "Qory"
+      refute section =~ "Qory"
 
       assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
 

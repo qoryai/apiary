@@ -448,12 +448,9 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           options={for runtime <- Runtimes.list(), do: {runtime.title, runtime.name}}
           aria-describedby="runtime-catalogue"
         />
+        <%!-- A runtime connection offers none of its runtime's declarations
+             (`Apiary.Kinds.Runtimes`), so the form lists none. --%>
         <div :if={@runtime} id="runtime-catalogue" class="grid gap-1 text-[13px]/5 text-muted">
-          <p>
-            {gettext("It declares these secrets: %{names}.",
-              names: Enum.map_join(@runtime.declares, ", ", &"#{&1["title"]} (#{&1["name"]})")
-            )}
-          </p>
           <p :if={Runtimes.hosts(@runtime) != []}>
             {gettext("Its hosts: %{hosts}.", hosts: Enum.join(Runtimes.hosts(@runtime), ", "))}
           </p>

@@ -209,24 +209,28 @@ defmodule Apiary.Kinds.ServicesTest do
   end
 
   describe "the runtimes" do
-    test "the catalogue lists Claude Code with its declarations and its required group" do
+    test "the catalogue lists Claude Code with its declarations and no group" do
       assert {:ok, runtime} = Runtimes.fetch("claude")
       assert runtime.title == "Claude Code"
       assert Enum.map(runtime.declares, & &1["id"]) == ["api_key", "oauth_token"]
-      assert [%{"id" => "model_key", "required" => true}] = runtime.one_of
+      assert runtime.one_of == []
       assert Runtimes.hosts(runtime) == ["api.anthropic.com"]
       assert Runtimes.fetch("nothing") == :error
     end
 
     @tag :contract
-    test "the vendored catalogue and auth schema are the contract's" do
+    test "every vendored file .forager-contract-ref lists is the contract's" do
       dir = Apiary.ContractFixtures.contract_dir()
-      # A local Forager checkout from before the catalogue has neither file; CI, at the
-      # pinned commit, requires both.
+      # A local Forager checkout from before a file has none of it; CI, at the pinned
+      # commit, requires every one.
       required? = System.get_env("CONTRACT_FIXTURES_REQUIRED") == "1"
+      files = Enum.map(Apiary.ContractFixtures.vendored(), &Path.relative_to(&1, "priv/contract"))
 
-      for file <- ~w(runtimes.json auth.schema.json),
-          required? or File.exists?(Path.join(dir, file)) do
+      assert Enum.sort(files) ==
+               ~w(api-format.schema.json auth.schema.json policy.schema.json
+                  run-configuration.schema.json runtimes.json)
+
+      for file <- files, required? or File.exists?(Path.join(dir, file)) do
         assert {:ok, File.read!(Application.app_dir(:apiary, ["priv", "contract", file]))} ==
                  File.read(Path.join(dir, file)),
                "priv/contract/#{file} differs from the contract's: copy it from #{dir}"

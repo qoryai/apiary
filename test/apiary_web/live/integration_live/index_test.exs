@@ -537,7 +537,11 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
       assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
       refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
-      assert has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
+      # The form offers none of the runtime's declarations, the model keys.
+      assert has_element?(lv, "#runtime-catalogue", "Its hosts: api.anthropic.com.")
+      refute has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
+      refute has_element?(lv, "#runtime-catalogue", "CLAUDE_CODE_OAUTH_TOKEN")
+      refute has_element?(lv, "#runtime-catalogue", "It declares")
       assert has_element?(lv, "#connection_runtime[aria-describedby=runtime-catalogue]")
 
       {:error, {:live_redirect, %{to: to}}} =

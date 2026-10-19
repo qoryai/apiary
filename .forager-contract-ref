@@ -11,5 +11,15 @@
 # workspaces, and the refusals of a gateway that may no longer serve a run's workspace;
 # a run configuration and a policy may name the image by a reference pinned by digest,
 # and Forager's deny list leaves in the server's values of QORY_RUN_SYSTEM and
-# QORY_RUN_REPOSITORIES.
-c196a788c644033be1eb07ac84e074c9a7545bf7
+# QORY_RUN_REPOSITORIES; the fixed list of model API formats (api-format.schema.json),
+# and a runtime's `model` in runtimes.json, with the formats it sends; a run
+# configuration's `credentials`, whose values the server seals to the access key in its
+# answer to the secrets request, a signed POST to discovery's `secrets.url`; a Claude
+# Code runtime that requires no model key; and a gateway that opens its machine only
+# for an exact entry of the node's policy, never for an entry of a server's policy.
+eac178ce03d6a0198752006384cb5356c4471b67
+priv/contract/api-format.schema.json
+priv/contract/auth.schema.json
+priv/contract/policy.schema.json
+priv/contract/run-configuration.schema.json
+priv/contract/runtimes.json

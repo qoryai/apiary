@@ -7,16 +7,20 @@ defmodule Apiary.Kinds.Runtimes do
   `name`, such as `claude`, a `title`, its `reserves`, its `denies`, its
   `credential_files`, its `declares` (each with its `id`, `title`, the variable `name` it
   sets, its `hosts`, its `auth`, as the contract's `auth.schema.json` has it, and its
-  `paths`, which may be absent), and its `one_of` groups (each with `id`, `required` and
-  `of`). A test compares the file with Forager's contract directory.
+  `paths`, which may be absent), its `one_of` groups (each with `id`, `required` and
+  `of`), and its `model`, when it has one: the model API formats it sends and where a
+  run's model id, effort and endpoint go. The loader reads no `model`. A test compares
+  the file with Forager's contract directory.
 
   The catalogue is read when the application is compiled: a runtime is added by a
   release. Every list of a runtime is read with `Map.fetch!/2`, since Forager always
   writes them, so a key the contract renames fails the compile instead of reading as an
   empty list.
 
-  A runtime connection (`Apiary.Connections`) names its runtime by `name`, and links each
-  declaration to a stored secret.
+  A runtime connection (`Apiary.Connections`) names its runtime by `name`. It offers
+  none of the runtime's declarations and stores no secret: by Forager's contract, a
+  variable a runtime declares is a variable of the run's model credential (its README,
+  "The model endpoint"), and a runtime connection holds no model key.
   """
 
   @path Path.join([__DIR__, "..", "..", "..", "priv", "contract", "runtimes.json"])
