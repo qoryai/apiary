@@ -1524,7 +1524,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :collection_noun, :map,
     default: nil,
     doc:
-      "what its ticket's source calls its collections, `%{one:, other:}` (`Apiary.Adapters.collection_noun/1`); nil for the domain's word"
+      "what its ticket's source calls its collections, `%{one:, other:}` (`Apiary.Adapters.collection_noun/1`); nil for \"collection\""
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 

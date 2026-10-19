@@ -1130,8 +1130,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   # The word for many of the adapter's collections (`:other`), or for one (1): what it
-  # calls them (`Apiary.Adapters.collection_noun/1`), else the domain's word
-  # (`ApiaryWeb.SourceComponents.collection/1` and `collections/1`).
+  # calls them (`Apiary.Adapters.collection_noun/1`), else "collection" and
+  # "collections" (`ApiaryWeb.SourceComponents.collection/1` and `collections/1`).
   defp collection_word(adapter, 1), do: SourceComponents.collection(noun(adapter))
   defp collection_word(adapter, :other), do: SourceComponents.collections(noun(adapter))
 

@@ -88,7 +88,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: backlog_label(Adapters.organisation_item_noun(scope))
 
   # Assigning collections names the collections of the organisation's sources: the words
-  # they share (`Apiary.Adapters.organisation_collection_noun/1`), else the domain's.
+  # they share (`Apiary.Adapters.organisation_collection_noun/1`), else "collections".
   def label(:"collection.assign", scope),
     do: assign_label(Adapters.organisation_collection_noun(scope))
 
@@ -153,8 +153,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   # A collection's Backlog turned on or off: the entry is the collection's, and names it
   # by the title it had then (`name`), in the words of the source behind its connection
-  # (`Apiary.Audit.names/2`'s `item_nouns` and `collection_nouns`), else tickets and the
-  # domain's word. The title is its adapter's, shown as an external system's text is
+  # (`Apiary.Audit.names/2`'s `item_nouns` and `collection_nouns`), else tickets and
+  # collection. The title is its adapter's, shown as an external system's text is
   # (`Apiary.ExternalText.line/1`).
   @impl true
   def sentence(
@@ -213,7 +213,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # Collections assigned to a workspace, or unassigned from theirs (the entry of an
   # unassign names no workspace, `"workspace_id"` nil), in the words of the source behind
   # the connection the entry names (`Apiary.Audit.names/2`'s
-  # `connection_collection_nouns`), else the domain's.
+  # `connection_collection_nouns`), else "collection" and "collections".
   def sentence(
         :"collection.assign",
         %{details: %{"count" => count, "workspace_id" => workspace_id} = details},
