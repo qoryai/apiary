@@ -1272,7 +1272,7 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         tone: if(assigns.quiet, do: "quiet", else: assigns.run.state),
-        said?: Apiary.Runs.Run.current_state(assigns.run.state) not in ["completed", "pending"]
+        said?: assigns.run.state not in ["completed", "pending"]
       )
 
     ~H"""

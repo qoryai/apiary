@@ -174,10 +174,10 @@ defmodule Apiary.WorkItems.Explore do
 
       outcome ->
         cond do
-          match?(%Run{}, run) and Run.current_state(run.state) == "cancelled" ->
+          match?(%Run{state: "cancelled"}, run) ->
             {:cancelled, nil, nil}
 
-          match?(%Run{}, run) and Run.current_state(run.state) == "lost" ->
+          match?(%Run{state: "lost"}, run) ->
             {:lost, nil, nil}
 
           true ->
@@ -260,9 +260,6 @@ defmodule Apiary.WorkItems.Explore do
   @doc false
   @spec with_status(Ecto.Queryable.t()) :: Ecto.Query.t()
   def with_status(query) do
-    cancelled = Run.with_old_names(["cancelled"])
-    lost = Run.with_old_names(["lost"])
-
     from [work_item: w] in query,
       left_lateral_join:
         s in fragment(
@@ -289,8 +286,8 @@ defmodule Apiary.WorkItems.Explore do
               WHEN d.result_outcome IS NULL THEN 'running'
               WHEN d.result_outcome IN ('proposal', 'questions') AND d.result IS NOT NULL
                 THEN d.result_outcome
-              WHEN r.state = ANY(?) THEN 'cancelled'
-              WHEN r.state = ANY(?) THEN 'lost'
+              WHEN r.state = 'cancelled' THEN 'cancelled'
+              WHEN r.state = 'lost' THEN 'lost'
               ELSE 'no_result'
             END AS place
             FROM dispatch_runs AS d
@@ -302,8 +299,6 @@ defmodule Apiary.WorkItems.Explore do
           """,
           w.id,
           w.take_in,
-          type(^cancelled, {:array, :string}),
-          type(^lost, {:array, :string}),
           w.id,
           w.take_in
         ),
@@ -433,7 +428,7 @@ defmodule Apiary.WorkItems.Explore do
   # `:cancelled` when it was released, closed or undone and `:failed` otherwise.
   @doc false
   @spec run_state(step) :: atom | nil
-  def run_state(%{run: %Run{state: state}}), do: Map.get(@run_states, Run.current_state(state))
+  def run_state(%{run: %Run{state: state}}), do: Map.get(@run_states, state)
 
   def run_state(%{dispatch_run: %DispatchRun{state: :ended, end_cause: cause}})
       when cause in [:released, :closed, :undone],

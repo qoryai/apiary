@@ -16,8 +16,7 @@ defmodule ApiaryWeb.TargetComponentsTest do
   @shared MapSet.new(["acme/shop"])
 
   test "state_mark/1: a run that completed is its dot, its word for a screen reader" do
-    # An older release stored completed as succeeded.
-    for state <- ~w(completed succeeded) do
+    for state <- ~w(completed) do
       html = render_component(&TargetComponents.state_mark/1, state: state)
       assert html =~ "q-sdot-#{state}"
       assert html =~ ~s(<span class="sr-only">Completed</span>)
@@ -35,8 +34,6 @@ defmodule ApiaryWeb.TargetComponentsTest do
           {"running", "Running"},
           {"failed", "Failed"},
           {"cancelled", "Cancelled"},
-          {"timed_out", "Cancelled"},
-          {"ended", "Cancelled"},
           {"lost", "Lost"}
         ] do
       html = render_component(&TargetComponents.state_mark/1, state: state)

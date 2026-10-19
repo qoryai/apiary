@@ -80,7 +80,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
       for _ <- 1..60,
           do:
             run_fixture(scope, %{
-              state: "succeeded",
+              state: "completed",
               started_at: DateTime.utc_now(),
               denied_count: 1
             })

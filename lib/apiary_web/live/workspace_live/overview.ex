@@ -1772,10 +1772,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
-  # What became of a run that ended while it was on the list; a name an older release stored
-  # reads as its new state.
+  # What became of a run that ended while it was on the list.
   defp ended(state) do
-    case Run.current_state(state) do
+    case state do
       "completed" -> gettext("Completed.")
       "failed" -> gettext("Failed.")
       "cancelled" -> gettext("Cancelled.")
