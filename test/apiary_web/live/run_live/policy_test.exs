@@ -1117,6 +1117,23 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute text(view, "#cx-#{id}-after") =~ "Rule added"
     end
 
+    test "a rule another person changed names them by their letter, the address its hint",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@allowed_by_rule])
+      {:ok, _} = Policy.deny(admin.scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      letter = String.upcase(String.first(admin.user.email))
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Denied for the workspace in v2 · of the workspace's policy by #{letter} #{admin.user.email} "
+
+      assert has_element?(view, ~s{#cx-#{id}-after abbr[data-tip="#{admin.user.email}"]})
+    end
+
     test "an allow rule changed to deny says Rule changed", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
       run = policy_run(scope, egress: [@allowed_by_rule])
