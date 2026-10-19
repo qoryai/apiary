@@ -55,7 +55,6 @@ defmodule Apiary.ModelChoicesWithoutFeaturesTest do
 
       assert ModelChoices.list_choices(scope) == {:error, :not_found}
       assert ModelChoices.resolve(scope, target, "explore") == {:error, :not_found}
-      assert {:ok, nil} = ModelChoices.take_in_input(scope, %{provider: provider.public_id})
 
       assert Repo.aggregate(ModelChoice, :count) == 1
       assert Repo.get_by!(ModelChoice, workspace_id: scope.workspace.id).locked

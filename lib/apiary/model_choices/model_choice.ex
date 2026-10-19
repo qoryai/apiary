@@ -16,7 +16,7 @@ defmodule Apiary.ModelChoices.ModelChoice do
   # | 5 | the workspace | `workspace_id` |
   # | 6 | the organisation's default | none of them |
   #
-  # Level 1 is a take in's choice (`Apiary.ModelChoices.TakeInChoice`). `chain` is
+  # `chain` is
   # `organisation`, or `operator` for a row an operator sets for a client, which an edition
   # writes. Only a row of levels 4 and 5 is `locked`.
   #
@@ -30,8 +30,8 @@ defmodule Apiary.ModelChoices.ModelChoice do
   @typedoc "A model choice at levels 2 to 6."
   @type t :: %__MODULE__{}
 
-  @typedoc "A level of a model choice: 1, a take in's, to 6, the organisation's default."
-  @type level :: 1..6
+  @typedoc "A level of a model choice: 2, a target and a run kind, to 6, the organisation's default."
+  @type level :: 2..6
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

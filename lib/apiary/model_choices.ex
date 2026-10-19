@@ -140,7 +140,7 @@ defmodule Apiary.ModelChoices do
   @doc false
   # resolve/3 is what the choices come to for the runs of `run_kind` at `holder`, the
   # scope's workspace or a target of it, as `Apiary.ModelChoices.Resolution.resolve/1`
-  # answers, with no take in's choice: `{:ok, {:ok, resolution}}`, `{:ok, :none}` or
+  # answers: `{:ok, {:ok, resolution}}`, `{:ok, :none}` or
   # `{:ok, {:error, :provider_removed}}`, for a reader who may `connection.read`; else
   # `{:error, reason}`.
   @spec resolve(Scope.t(), :workspace | Target.t(), String.t()) ::
@@ -151,7 +151,7 @@ defmodule Apiary.ModelChoices do
          {:ok, _organisation} <- may_read(scope),
          true <- run_kind in @run_kinds,
          {:ok, target} <- target(scope, holder) do
-      {:ok, Resolution.resolve(input(workspace, target, run_kind, nil))}
+      {:ok, Resolution.resolve(input(workspace, target, run_kind))}
     else
       false -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
@@ -161,9 +161,8 @@ defmodule Apiary.ModelChoices do
   def resolve(%Scope{}, _holder, _run_kind), do: {:error, :not_found}
 
   # What a resolution reads for the runs of `run_kind` of `workspace` at `target`, nil for
-  # none, with the take in's choice `take_in`: the choices of the organisation's chain
-  # that may reach them, and the providers those name. Read without a lock.
-  defp input(%Workspace{} = workspace, target, run_kind, take_in) do
+  # none: the choices of the organisation's chain that may reach them, and the providers those name. Read without a lock.
+  defp input(%Workspace{} = workspace, target, run_kind) do
     chain = Edition.model_choice_chain(workspace.organisation_id)
     target_id = target && target.id
 
@@ -189,10 +188,7 @@ defmodule Apiary.ModelChoices do
             )
       )
 
-    take_in = if chain == "organisation", do: take_in
-
-    ids =
-      for %{connection_id: id} <- [take_in | choices], is_binary(id), uniq: true, do: id
+    ids = for %{connection_id: id} <- choices, is_binary(id), uniq: true, do: id
 
     providers =
       Repo.all(
@@ -211,7 +207,6 @@ defmodule Apiary.ModelChoices do
       end)
 
     %{
-      take_in: take_in,
       choices: choices,
       workspace_id: workspace.id,
       target_id: target_id,
@@ -236,7 +231,7 @@ defmodule Apiary.ModelChoices do
     write(scope, place, fn scope, at ->
       changeset = input(attrs, at)
 
-      with {:ok, provider} <- hold_provider(changeset, at.organisation, "FOR SHARE"),
+      with {:ok, provider} <- hold_provider(changeset, at.organisation),
            {:ok, values} <- checked(changeset, provider, Map.put(at, :scope, scope)) do
         current = lock_choice_row(at)
         save(scope, at, current, provider, values)
@@ -604,13 +599,13 @@ defmodule Apiary.ModelChoices do
       )
 
   # The provider `changeset` names, a model provider of the organisation's chain, read
-  # with its models and its keys' value ids, its row locked in `lock` (nil for none):
+  # with its models and its keys' value ids, its row locked `FOR SHARE`:
   # `{:ok, provider}`, `{:ok, nil}` for none named, or the changeset with the reason on
   # `provider`.
-  defp hold_provider(%Ecto.Changeset{valid?: false} = changeset, _organisation, _lock),
+  defp hold_provider(%Ecto.Changeset{valid?: false} = changeset, _organisation),
     do: {:error, changeset}
 
-  defp hold_provider(changeset, %Organisation{id: organisation_id}, lock) do
+  defp hold_provider(changeset, %Organisation{id: organisation_id}) do
     case get_field(changeset, :provider) do
       nil ->
         {:ok, nil}
@@ -620,14 +615,8 @@ defmodule Apiary.ModelChoices do
           from c in Connection,
             where:
               c.organisation_id == ^organisation_id and c.public_id == ^public_id and
-                not is_nil(c.provider_kind) and c.chain == "organisation"
-
-        query =
-          case lock do
-            nil -> query
-            "FOR SHARE" -> lock(query, "FOR SHARE")
-            "FOR KEY SHARE" -> lock(query, "FOR KEY SHARE")
-          end
+                not is_nil(c.provider_kind) and c.chain == "organisation",
+            lock: "FOR SHARE"
 
         case Repo.one(query) do
           %Connection{} = provider ->

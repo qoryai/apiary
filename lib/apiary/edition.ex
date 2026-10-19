@@ -140,7 +140,7 @@ defmodule Apiary.Edition do
   # (`Apiary.ModelChoices`): "organisation", the choices the organisation sets, or
   # "operator", the choices an operator sets for it as its client, which are then the
   # whole chain, while the organisation's are kept and unused. Asked without a lock, once
-  # per resolution and per take in. The core answers "organisation".
+  # per resolution. The core answers "organisation".
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 

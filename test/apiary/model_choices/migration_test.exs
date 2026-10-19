@@ -1,7 +1,7 @@
 defmodule Apiary.ModelChoices.MigrationTest do
-  # The migrations of the model choice, run down and up again inside the test's
-  # transaction, which rolls it all back, and the checks they add, each at its bound and
-  # one past it. They change the tables under every other test, so this is not async.
+  # The migration of the model choice, run down and up again inside the test's
+  # transaction, which rolls it all back, and the checks it adds, each at its bound and
+  # one past it. It changes the table under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration up again while later ones are applied makes Ecto warn that an
@@ -12,16 +12,13 @@ defmodule Apiary.ModelChoices.MigrationTest do
 
   import Apiary.ConnectionsFixtures
   import Apiary.OrganisationsFixtures
-  import Apiary.WorkItemsFixtures
 
   alias Apiary.Connections
-  alias Apiary.ModelChoices.{ModelChoice, TakeInChoice}
+  alias Apiary.ModelChoices.ModelChoice
 
   @migrations [
     {20_261_019_070_200, Apiary.Repo.Migrations.KeepTheModelChoiceAtEachLevel,
-     "keep_the_model_choice_at_each_level"},
-    {20_261_019_070_300, Apiary.Repo.Migrations.KeepATakeInSModelChoice,
-     "keep_a_take_in_s_model_choice"}
+     "keep_the_model_choice_at_each_level"}
   ]
 
   @options [log: false, migration_lock: false]
@@ -40,7 +37,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
     %{rows: rows} =
       Repo.query!(
         "SELECT table_name FROM information_schema.tables WHERE table_name = ANY($1)",
-        [["model_choices", "take_in_model_choices"]]
+        [["model_choices"]]
       )
 
     rows |> List.flatten() |> Enum.sort()
@@ -53,8 +50,8 @@ defmodule Apiary.ModelChoices.MigrationTest do
     count == 1
   end
 
-  test "down takes the tables and the tier check away, and up puts them back" do
-    assert tables() == ["model_choices", "take_in_model_choices"]
+  test "down takes the table and the tier check away, and up puts them back" do
+    assert tables() == ["model_choices"]
     assert function?()
 
     for {version, migration, _name} <- Enum.reverse(@migrations),
@@ -66,7 +63,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
     for {version, migration, _name} <- @migrations,
         do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
-    assert tables() == ["model_choices", "take_in_model_choices"]
+    assert tables() == ["model_choices"]
     assert function?()
   end
 
@@ -276,86 +273,6 @@ defmodule Apiary.ModelChoices.MigrationTest do
 
       assert choice(ctx, %{workspace_id: other.id, target_id: ctx.target.id}) ==
                "model_choices_target_id_fkey"
-    end
-
-    test "a take in's choice: its bounds and its shape", ctx do
-      item = work_item_fixture(ctx.scope)
-      row = %{work_item_id: item.id, take_in: 1}
-      tiers = %{"light" => "m"}
-      put = &write(TakeInChoice, Map.merge(base(ctx), Map.merge(row, &1)))
-      put_at = fn take_in, attrs -> put.(Map.put(attrs, :take_in, take_in)) end
-
-      assert put_at.(1, %{provider_chosen: true}) == :ok
-
-      assert put_at.(1, %{provider_chosen: true}) ==
-               "take_in_model_choices_work_item_id_take_in_index"
-
-      assert put_at.(0, %{provider_chosen: true}) == "take_in_model_choices_take_in_check"
-
-      assert put_at.(2, %{provider_chosen: true, value_id: "a" <> String.duplicate("b", 63)}) ==
-               :ok
-
-      assert put_at.(3, %{provider_chosen: true, value_id: "a" <> String.duplicate("b", 64)}) ==
-               "take_in_model_choices_value_id_format"
-
-      assert put_at.(4, %{provider_chosen: true, model_id: "a" <> String.duplicate("/", 199)}) ==
-               :ok
-
-      assert put_at.(5, %{provider_chosen: true, model_id: "a" <> String.duplicate("/", 200)}) ==
-               "take_in_model_choices_model_id_format"
-
-      assert put_at.(6, %{
-               provider_chosen: true,
-               model_id: "m",
-               effort: "a" <> String.duplicate("b", 31)
-             }) == :ok
-
-      assert put_at.(7, %{
-               provider_chosen: true,
-               model_id: "m",
-               effort: "a" <> String.duplicate("b", 32)
-             }) ==
-               "take_in_model_choices_effort_format"
-
-      assert put_at.(8, %{provider_chosen: true, effort: "high"}) ==
-               "take_in_model_choices_shape_check"
-
-      assert put_at.(9, %{provider_chosen: false, connection_id: nil, tiers: tiers}) == :ok
-
-      assert put_at.(10, %{provider_chosen: false, connection_id: nil}) ==
-               "take_in_model_choices_shape_check"
-
-      assert put_at.(11, %{provider_chosen: false, tiers: tiers}) ==
-               "take_in_model_choices_shape_check"
-
-      assert put_at.(12, %{
-               provider_chosen: false,
-               connection_id: nil,
-               model_id: "m",
-               tiers: tiers
-             }) ==
-               "take_in_model_choices_shape_check"
-
-      assert put_at.(13, %{provider_chosen: true, tiers: %{"light" => "m n"}}) ==
-               "take_in_model_choices_tiers_check"
-
-      # A provider removed keeps the take in's choice, which still says one was chosen.
-      before = Repo.aggregate(TakeInChoice, :count)
-      Repo.delete_all(Connections.Connection)
-      assert Repo.aggregate(TakeInChoice, :count) == before
-
-      assert [] =
-               Repo.all(
-                 from c in TakeInChoice, where: c.provider_chosen and not is_nil(c.connection_id)
-               )
-
-      assert Repo.aggregate(
-               from(c in TakeInChoice, where: c.provider_chosen and is_nil(c.connection_id)),
-               :count
-             ) > 0
-
-      Repo.delete!(item)
-      assert Repo.aggregate(TakeInChoice, :count) == 0
     end
   end
 end

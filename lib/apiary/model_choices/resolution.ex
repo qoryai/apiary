@@ -3,21 +3,19 @@ defmodule Apiary.ModelChoices.Resolution do
   # one model, one effort value or none, and a tier map. Pure: choices and providers in,
   # a resolution out. `Apiary.ModelChoices` reads what it takes.
   #
-  # The levels, from the most specific: 1, the take in's choice
-  # (`Apiary.ModelChoices.TakeInChoice`); 2, the target and the run kind; 3, the target;
+  # The levels, from the most specific: 2, the target and the run kind; 3, the target;
   # 4, the workspace and the run kind; 5, the workspace; 6, the organisation's default
   # (`Apiary.ModelChoices.ModelChoice`). A run with no target has no levels 2 and 3.
   #
   # **The order.** A locked choice of the workspace (levels 4 and 5) comes first, the
-  # more specific first; then levels 1 to 6, each once.
+  # more specific first; then levels 2 to 6, each once.
   #
   # **The provider, the key, the model and the effort** come from one choice: the first in
   # the order that chose a provider. A choice without a key takes the provider's default
   # key; without a model, the provider's default model, and then no effort, so the runtime
   # uses its default effort. No choice with a provider resolves to `:none`: the run uses
-  # the gateway's key. A take in's choice whose provider was removed resolves to
-  # `{:error, :provider_removed}`, and so does a choice whose provider is not among
-  # `providers`.
+  # the gateway's key. A choice whose provider is not among `providers` resolves to
+  # `{:error, :provider_removed}`.
   #
   # **The tiers**, each of `light`, `fast` and `thinking` by itself: the first choice in the
   # order whose tier map maps the tier to a model on the resolved provider's list, with an
@@ -25,7 +23,7 @@ defmodule Apiary.ModelChoices.Resolution do
   # program fills it, or runs the agent on the run's model.
   @moduledoc false
 
-  alias Apiary.ModelChoices.{ModelChoice, TakeInChoice}
+  alias Apiary.ModelChoices.ModelChoice
 
   @tiers ~w(light fast thinking)
 
@@ -46,13 +44,11 @@ defmodule Apiary.ModelChoices.Resolution do
         }
 
   @typedoc """
-  What a resolution reads: the take in's choice or nil, the model choices of the
-  organisation's chain at levels 2 to 6 (rows of other places are left out here), the
-  run's workspace, target (nil for none) and run kind, and the providers the choices name,
+  What a resolution reads: the model choices of the organisation's chain at levels 2 to 6
+  (rows of other places are left out here), the run's workspace, target (nil for none) and run kind, and the providers the choices name,
   by their row id.
   """
   @type input :: %{
-          required(:take_in) => TakeInChoice.t() | nil,
           required(:choices) => [ModelChoice.t()],
           required(:workspace_id) => Ecto.UUID.t(),
           required(:target_id) => Ecto.UUID.t() | nil,
@@ -116,8 +112,7 @@ defmodule Apiary.ModelChoices.Resolution do
           level != nil,
           do: {level, choice}
 
-    take_in = if input.take_in, do: [{1, input.take_in}], else: []
-    by_level = Enum.sort_by(take_in ++ placed, &elem(&1, 0))
+    by_level = Enum.sort_by(placed, &elem(&1, 0))
     {locked, rest} = Enum.split_with(by_level, fn {_level, choice} -> locked?(choice) end)
     locked ++ rest
   end
@@ -144,12 +139,9 @@ defmodule Apiary.ModelChoices.Resolution do
   defp locked?(%ModelChoice{locked: true}), do: true
   defp locked?(_choice), do: false
 
-  defp chose_provider?({_level, %TakeInChoice{provider_chosen: chosen}}), do: chosen
   defp chose_provider?({_level, %ModelChoice{connection_id: id}}), do: not is_nil(id)
 
-  defp provider(%{connection_id: nil}, _providers), do: {:error, :provider_removed}
-
-  defp provider(%{connection_id: id}, providers) do
+  defp provider(%ModelChoice{connection_id: id}, providers) do
     case Map.fetch(providers, id) do
       {:ok, provider} -> {:ok, provider}
       :error -> {:error, :provider_removed}

@@ -2,7 +2,7 @@ defmodule Apiary.ModelChoices.ResolutionTest do
   # The resolution reads no table: choices and providers go in, one answer comes out.
   use ExUnit.Case, async: true
 
-  alias Apiary.ModelChoices.{ModelChoice, Resolution, TakeInChoice}
+  alias Apiary.ModelChoices.{ModelChoice, Resolution}
 
   @workspace "00000000-0000-0000-0000-0000000000a1"
   @other_workspace "00000000-0000-0000-0000-0000000000a2"
@@ -28,7 +28,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
 
   defp input(choices, opts \\ []) do
     %{
-      take_in: opts[:take_in],
       choices: choices,
       workspace_id: @workspace,
       target_id: Keyword.get(opts, :target_id, @target),
@@ -51,9 +50,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     struct!(ModelChoice, Map.merge(%{connection_id: @alpha}, Map.merge(place, Map.new(attrs))))
   end
 
-  defp take_in(attrs),
-    do: struct!(TakeInChoice, Map.merge(%{provider_chosen: true, connection_id: @alpha}, attrs))
-
   defp resolved(input) do
     assert {:ok, %Resolution{} = resolution} = Resolution.resolve(input)
     resolution
@@ -70,14 +66,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
         assert %{level: ^level, model_id: model} = resolved(input(rest))
         assert model == "level#{level}"
       end
-    end
-
-    test "start at level 1, the take in's choice" do
-      choices = for level <- 2..6, do: at(level, model_id: "level#{level}")
-      choice = take_in(%{model_id: "taken", value_id: "mine", connection_id: @beta})
-
-      assert %{level: 1, model_id: "taken", value_id: "mine", connection_id: @beta} =
-               resolved(input(choices, take_in: choice))
     end
 
     test "skip a level that sets only tiers" do
@@ -117,12 +105,11 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       assert %{level: 6, model_id: "small"} = resolved(input([at(6, model_id: "small") | others]))
     end
 
-    test "resolve a run with no target from levels 4 to 6 and the take in" do
+    test "resolve a run with no target from levels 4 to 6" do
       choices = for level <- 2..6, do: at(level, model_id: "level#{level}")
       no_target = input(choices, target_id: nil)
 
       assert %{level: 4, model_id: "level4"} = resolved(no_target)
-      assert %{level: 1} = resolved(%{no_target | take_in: take_in(%{model_id: "taken"})})
 
       rest = Enum.filter(choices, &(ModelChoice.level(&1) in [2, 3, 5, 6]))
       assert %{level: 5, model_id: "level5"} = resolved(input(rest, target_id: nil))
@@ -138,9 +125,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     test "end with the provider removed where the chosen provider is gone" do
       assert Resolution.resolve(input([at(5, connection_id: "missing")])) ==
                {:error, :provider_removed}
-
-      gone = take_in(%{connection_id: nil})
-      assert Resolution.resolve(input([at(5)], take_in: gone)) == {:error, :provider_removed}
     end
   end
 
@@ -150,14 +134,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       below = for level <- [2, 3, 4], do: at(level, model_id: "level#{level}")
 
       assert %{level: 5, model_id: "mid"} = resolved(input([locked | below]))
-
-      taken = take_in(%{model_id: "taken"})
-      assert %{level: 5} = resolved(input([locked | below], take_in: taken))
-    end
-
-    test "holds against level 1, the take in's choice" do
-      locked = at(4, model_id: "mid", locked: true)
-      assert %{level: 4, model_id: "mid"} = resolved(input([locked], take_in: take_in(%{})))
     end
 
     test "of the more specific workspace level wins among locks" do
@@ -235,14 +211,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
                "light" => %{"model" => "small"},
                "thinking" => %{"model" => "big"}
              }
-    end
-
-    test "come from the take in at level 1" do
-      choice = take_in(%{tiers: %{"light" => %{"model" => "mid", "effort" => "high"}}})
-      choices = [at(5, tiers: %{"light" => "small"})]
-
-      assert %{tiers: %{"light" => %{"model" => "mid", "effort" => "high"}}} =
-               resolved(input(choices, take_in: choice))
     end
 
     test "leave out a tier whose effort the model does not list" do
