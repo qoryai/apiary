@@ -4,11 +4,11 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
   # does not reach the workspace; the stages strip, the Open view's bands and a stage
   # alone; the views with their counts and each row's status; Waiting on you, and the
   # sidebar's count beside Work items; Search; the Filter menu, its tokens and the match
-  # count; Sort; the pager; a forged view, stage, sort or cursor; the texts of an
-  # external system; a row the instance closed; the people the list names, by their
-  # accounts; the empty list; the list
-  # read again on a message of its workspace's work items, with the scope first; and an
-  # event it does not know.
+  # count, the collections' section in their sources' words; Sort; the pager; a forged
+  # view, stage, sort or cursor; the texts of an external system; a row the instance
+  # closed; the people the list names, by their accounts; the empty list; the list read
+  # again on a message of its workspace's work items, with the scope first; and an event
+  # it does not know.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -525,6 +525,35 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
         {:ok, view, _html} = live(ctx.conn, page(ctx.scope, forged))
         assert rows(view) == [], forged
       end
+    end
+
+    test "the collections' section and its token in their sources' words", ctx do
+      section = "#work-items-filter .q-fm-label"
+      token = "#work-items-tokens-repository"
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop"))
+
+      # Sources that name no words read Collection.
+      assert texts(view, section) == ["Owner", "Collection", "Updated"]
+      assert words(view, "#{token} .q-tok-k") == "Collection"
+
+      for {work_item, name, {one, other}} <- [
+            {ctx.basket, "Beta", {"queue", "queues"}},
+            {ctx.price, "Alpha", {"repository", "repositories"}}
+          ] do
+        {1, _} =
+          Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^work_item.adapter_id),
+            set: [name: name, collection_noun_one: one, collection_noun_other: other]
+          )
+      end
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop"))
+
+      # Each source's word once, by the adapter's name, joined with or.
+      assert texts(view, section) == ["Owner", "Repository or queue", "Updated"]
+      assert words(view, "#{token} .q-tok-k") == "Repository or queue"
+
+      assert view |> element("#{token} .q-tok-x") |> render() =~
+               ~s(aria-label="Remove Repository or queue: acme/shop")
     end
   end
 

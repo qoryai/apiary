@@ -10,6 +10,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   # installed, a line that says so, in place of the lead.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -68,7 +69,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     end
 
     assert words(lv, "#integrations-serve") ==
-             "An integration installed here serves each workspace through the repositories assigned to it."
+             "An integration installed here serves each workspace through the collections assigned to it."
 
     refute has_element?(lv, "#integrations-who")
   end
@@ -91,7 +92,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     assert has_element?(lv, ~s{a#{id}-name[href="#{show}"]}, installed.name)
     assert has_element?(lv, ~s{a#{id}-open[href="#{show}"][aria-label="Open #{installed.name}"]})
     refute has_element?(lv, "#{id}-add")
-    assert words(lv, "#{id}-state") == "Installed · 0 repositories"
+    assert words(lv, "#{id}-state") == "Installed · 0 collections"
 
     id = "#integration-#{pending.public_id}"
     assert words(lv, "#{id}-state") == "Not installed"
@@ -124,9 +125,9 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
     {:ok, lv, _html} = live(conn, list_path(scope))
 
-    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 3 repositories"
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 3 collections"
     assert words(lv, "#integration-#{shop.public_id}-state") == "Installed · 1 project"
-    assert words(lv, "#integration-#{platform.public_id}-state") == "Installed · 0 repositories"
+    assert words(lv, "#integration-#{platform.public_id}-state") == "Installed · 0 collections"
   end
 
   test "with several workspaces, how many are unassigned, when any is", %{
@@ -140,13 +141,13 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     for _ <- 1..2, do: source_collection_fixture(scope, connection)
 
     {:ok, lv, _html} = live(conn, list_path(scope))
-    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 2 repositories"
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 2 collections"
 
     source_collection_fixture(scope, connection, %{workspace_id: nil})
     {:ok, lv, _html} = live(conn, list_path(scope))
 
     assert words(lv, "#integration-#{acme.public_id}-state") ==
-             "Installed · 3 repositories, 1 unassigned"
+             "Installed · 3 collections, 1 unassigned"
 
     assert has_element?(lv, "#integration-#{acme.public_id}-state b", "1")
   end
@@ -157,28 +158,41 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     source_collection_fixture(scope, connection, %{workspace_id: nil})
 
     {:ok, lv, _html} = live(conn, list_path(scope))
-    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 1 repository"
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 1 collection"
   end
 
-  test "names the collections as the adapters do, when they all name the same", %{
+  test "names the collections as each adapter does, joined by name where they differ", %{
     conn: conn,
     scope: scope
   } do
-    adapter_fixture() |> describe_source("example-tracker.json")
+    adapter_fixture(%{name: unique_adapter_name("Beta")})
+    |> describe_source("example-tracker.json")
 
     {:ok, lv, _html} = live(conn, list_path(scope))
 
     assert words(lv, "#integrations-serve") ==
              "An integration installed here serves each workspace through the projects assigned to it."
 
-    adapter_fixture() |> describe_source("acme-tracker.json")
+    adapter_fixture(%{name: unique_adapter_name("Gamma")}) |> describe_source("acme-tracker.json")
     {:ok, lv, _html} = live(conn, list_path(scope))
 
     assert words(lv, "#integrations-serve") ==
-             "An integration installed here serves each workspace through the repositories assigned to it."
+             "An integration installed here serves each workspace through the projects and collections assigned to it."
+
+    alpha = adapter_fixture(%{name: unique_adapter_name("Alpha")})
+
+    {1, _} =
+      Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^alpha.id),
+        set: [collection_noun_one: "queue", collection_noun_other: "queues"]
+      )
+
+    {:ok, lv, _html} = live(conn, list_path(scope))
+
+    assert words(lv, "#integrations-serve") ==
+             "An integration installed here serves each workspace through the queues, projects and collections assigned to it."
   end
 
-  test "a source that names no word for its collections: the domain's, for one and many", %{
+  test "a source that names no word for its collections: collection, for one and many", %{
     conn: conn,
     scope: scope
   } do
@@ -189,15 +203,15 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     source_collection_fixture(scope, connection)
 
     {:ok, lv, _html} = live(conn, list_path(scope))
-    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 1 repository"
+    assert words(lv, "#integration-#{acme.public_id}-state") == "Installed · 1 collection"
 
     assert words(lv, "#integrations-serve") ==
-             "An integration installed here serves each workspace through the repositories assigned to it."
+             "An integration installed here serves each workspace through the collections assigned to it."
 
     {:ok, lv, _html} = live(conn, list_path(scope) <> "/new")
 
     assert words(lv, "#add-#{shop.public_id}") =~
-             "The repositories it reaches are listed on this page."
+             "The collections it reaches are listed on this page."
   end
 
   test "an admin has Add too", %{scope: scope} do
@@ -227,7 +241,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     {:ok, lv, _html} = live(member_conn(scope), list_path(scope))
 
     assert words(lv, "#integrations-who") ==
-             "Owners and admins of #{scope.organisation.name} install integrations and assign their repositories to workspaces."
+             "Owners and admins of #{scope.organisation.name} install integrations and assign their collections to workspaces."
   end
 
   test "with no adapter, an empty state in place of the table says who adds them", %{
@@ -241,6 +255,9 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     assert words(lv, "#integrations-none") ==
              "An instance admin adds integrations in Instance settings › Adapters. " <>
                "#{scope.organisation.name} can install them here once they are added."
+
+    # The foot note about what an integration installed here does waits for one.
+    refute has_element?(lv, "#integrations-serve")
   end
 
   test "with an adapter, the table and no empty state", %{conn: conn, scope: scope} do
@@ -296,7 +313,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       assert words(lv, "#{id}-name") == acme.name
 
       assert words(lv, id) ==
-               "#{acme.name} #{acme.name} then brings you back here. The repositories it reaches are listed on this page. #{org} can have one installation of #{acme.name}. Install Cancel"
+               "#{acme.name} #{acme.name} then brings you back here. The collections it reaches are listed on this page. #{org} can have one installation of #{acme.name}. Install Cancel"
 
       install = "#{list_path(scope)}/#{acme.public_id}/install"
       assert has_element?(lv, ~s{form#{id}-form[action="#{install}"][method="post"]})

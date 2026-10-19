@@ -19,7 +19,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
 
   @moduletag needs: :factory
 
-  @hint "If the tickets of one of these repositories only track bugs, turn its Backlog switch off. Work items already taken in stay."
+  @hint "If the tickets of one of these collections only track bugs, turn its Backlog switch off. Work items already taken in stay."
   @read_only "Only owners and admins change the Backlog switches."
 
   setup :register_and_log_in_user
@@ -119,7 +119,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-lead") ==
-             "These repositories are each assigned to one workspace, and their tickets come into that workspace's Backlog while their Backlog switches are on."
+             "These collections are each assigned to one workspace, and their tickets come into that workspace's Backlog while their Backlog switches are on."
 
     assert words(lv, "#collections-backlog-hint") == @hint
     refute has_element?(lv, "#collections-backlog-read-only")
@@ -146,14 +146,14 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     refute has_element?(lv, switch(connection, "acme/web") <> "-none")
 
     assert rows(lv) == [
-             "Repository Workspace Backlog Open tickets Added",
+             "Collection Workspace Backlog Open tickets Added",
              "acme/web Unassigned — Today",
              "acme/api Backlog Platform — Today",
              "acme/shop Backlog Platform — Today"
            ]
 
     lv |> element("#collections-view-unassigned") |> render_click()
-    assert hd(rows(lv)) == "Repository Workspace Backlog Open tickets Added"
+    assert hd(rows(lv)) == "Collection Workspace Backlog Open tickets Added"
     refute has_element?(lv, ~s{#collections-table [role="switch"]})
     assert words(lv, "#collections-backlog-hint") == @hint
   end
@@ -172,7 +172,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     lv |> element(switch(connection, "acme/shop")) |> render_click()
 
     assert words(lv, "#flash-info") =~
-             "No longer taking tickets into the Backlog from repository acme/shop."
+             "No longer taking tickets into the Backlog from collection acme/shop."
 
     assert has_element?(lv, ~s{#{switch(connection, "acme/shop")}[aria-checked="false"]})
     assert has_element?(lv, ~s{#{switch(connection, "acme/shop")}-line[aria-checked="false"]})
@@ -181,7 +181,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     lv |> element(switch(connection, "acme/shop") <> "-line") |> render_click()
 
     assert words(lv, "#flash-info") =~
-             "Now taking tickets into the Backlog from repository acme/shop."
+             "Now taking tickets into the Backlog from collection acme/shop."
 
     assert has_element?(lv, ~s{#{switch(connection, "acme/shop")}[aria-checked="true"]})
     assert %Collection{backlog: true} = collection(connection, "acme/shop")
@@ -340,7 +340,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
+             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every collection is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
 
     assert words(lv, "#collections-backlog-hint") == @hint
     assert has_element?(lv, ~s{#{switch(connection, "acme/shop")}[aria-checked="true"]})
@@ -353,7 +353,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     assert words(lv, "#{docs}-none .sr-only") == "No tickets to take in"
 
     assert rows(lv) == [
-             "Repository Workspace Backlog Open tickets Added",
+             "Collection Workspace Backlog Open tickets Added",
              "acme/docs #{scope.workspace.name} — No tickets to take in — Today",
              "acme/shop Backlog #{scope.workspace.name} — Today"
            ]
@@ -459,7 +459,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     lv |> element(switch(connection, "\u202Eacme/shop\u200B\a")) |> render_click()
 
     assert words(lv, "#flash-info") =~
-             "No longer taking tickets into the Backlog from repository acme/shop\uFFFD."
+             "No longer taking tickets into the Backlog from collection acme/shop\uFFFD."
 
     refute render(element(lv, "#flash-info")) =~ "\u202E"
   end

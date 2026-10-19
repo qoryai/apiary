@@ -283,11 +283,19 @@ defmodule ApiaryWeb.WorkItemListComponents do
   end
 
   @doc """
-  The list's Filter: by Owner, Repository and Updated, each a section the page fills (the
-  `owner`, `repository` and `updated` slots: a form that sets the filter); what each is
-  set to, where it is (`values`, by section), beside its name. `count` is how many are on.
+  The list's Filter: by Owner, the collections the work items' tickets came from, and
+  Updated, each a section the page fills (the `owner`, `repository` and `updated` slots: a
+  form that sets the filter); what each is set to, where it is (`values`, by section),
+  beside its name. `count` is how many are on. The collections' section is named
+  `collection_label`, the sources' word for one of them.
   """
   attr :id, :string, default: "work-items-filter"
+
+  attr :collection_label, :string,
+    required: true,
+    doc:
+      "the collections' section's name, `ApiaryWeb.SourceComponents.collection_label/1` of the workspace's sources' words: \"Repository or queue\""
+
   attr :count, :integer, default: 0, doc: "how many filters are on"
   attr :values, :map, default: %{}, doc: "what each filter is set to, by section"
   slot :owner, required: true
@@ -307,7 +315,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
       </:section>
       <:section
         key="repository"
-        label={pgettext("work item", "Repository")}
+        label={@collection_label}
         icon="hero-folder"
         value={@values[:repository]}
       >
@@ -334,6 +342,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   """
   attr :id, :string, default: "work-items-tokens"
   attr :filters, :list, required: true, doc: "the filters in force, as above"
+
+  attr :collection_label, :string,
+    required: true,
+    doc: "the collections' filter's name, as `work_item_filter/1` takes it"
+
   attr :clear, :string, default: nil, doc: "the list with no filter on"
   attr :match, :integer, default: nil, doc: "how many work items the filters keep"
 
@@ -345,10 +358,13 @@ defmodule ApiaryWeb.WorkItemListComponents do
         id={"#{@id}-#{filter.key}"}
         patch={filter.patch}
         label={
-          gettext("Remove %{filter}: %{value}", filter: filter_name(filter.key), value: filter.value)
+          gettext("Remove %{filter}: %{value}",
+            filter: filter_name(filter.key, @collection_label),
+            value: filter.value
+          )
         }
       >
-        <span class="q-tok-k">{filter_name(filter.key)}</span>
+        <span class="q-tok-k">{filter_name(filter.key, @collection_label)}</span>
         <b class="q-tok-v" title={filter.value}>{filter.value}</b>
       </:token>
       <span :if={@match} id={"#{@id}-match"} class="q-wl-match" role="status">
@@ -360,9 +376,9 @@ defmodule ApiaryWeb.WorkItemListComponents do
     """
   end
 
-  defp filter_name(:owner), do: pgettext("work item", "Owner")
-  defp filter_name(:repository), do: pgettext("work item", "Repository")
-  defp filter_name(:updated), do: gettext("Updated")
+  defp filter_name(:owner, _collection_label), do: pgettext("work item", "Owner")
+  defp filter_name(:repository, collection_label), do: collection_label
+  defp filter_name(:updated, _collection_label), do: gettext("Updated")
 
   @doc """
   The line under the bar of a view whose list is not plain: Waiting on you, and Declined.

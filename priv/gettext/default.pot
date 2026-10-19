@@ -718,6 +718,7 @@ msgstr ""
 msgid "%{label} is revoked."
 msgstr ""
 
+#: lib/apiary_web/components/source_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{list} and %{last}"
@@ -726,6 +727,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{list} and %{number} more"
+msgstr ""
+
+#: lib/apiary_web/components/source_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{list} or %{last}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -12107,13 +12113,6 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Repository"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_list_components.ex
-#: lib/apiary_web/live/work_item_live/index.ex
-#, elixir-autogen, elixir-format
-msgctxt "work item"
 msgid "Repository"
 msgstr ""
 

@@ -361,7 +361,7 @@ defmodule ApiaryWeb.BacklogComponents do
 
   The first fact is the collection the ticket is listed from, labelled with its source's
   word for one of its collections (`collection_noun`, `SourceComponents.collection/1`),
-  its first letter in upper case: "Project", or the domain's word where it names none.
+  its first letter in upper case: "Project", or "Collection" where it names none.
 
   `ticket` is a map with these keys:
 
@@ -410,7 +410,7 @@ defmodule ApiaryWeb.BacklogComponents do
   attr :collection_noun, :map,
     default: nil,
     doc:
-      "what its source calls its collections, `%{one:, other:}` (`Apiary.Adapters.collection_noun/1`); nil for the domain's word"
+      "what its source calls its collections, `%{one:, other:}` (`Apiary.Adapters.collection_noun/1`); nil for collection and collections"
 
   slot :take_in, doc: "the Take in or Take in again block"
   slot :rendered_body, doc: "the ticket's text, through `SourceComponents.body/1`"

@@ -178,7 +178,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#integration-status") == "Not installed."
 
     assert words(lv, "#integration-install") ==
-             "#{adapter.name} then brings you back here. The repositories it reaches are listed on this page. #{scope.organisation.name} can have one installation of #{adapter.name}. Install"
+             "#{adapter.name} then brings you back here. The collections it reaches are listed on this page. #{scope.organisation.name} can have one installation of #{adapter.name}. Install"
 
     refute has_element?(lv, "#integration-install-name")
     refute has_element?(lv, "#integration-install-cancel")
@@ -358,10 +358,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     assert words(lv, "#integration-status") == "Installed by #{short(scope.user)} today."
     refute has_element?(lv, "#integration-install")
-    assert words(lv, "#collections-heading") == "Repositories"
+    assert words(lv, "#collections-heading") == "Collections"
 
     assert words(lv, "#collections-waiting") ==
-             "Waiting for #{adapter.name} to send its repositories…"
+             "Waiting for #{adapter.name} to send its collections…"
 
     assert has_element?(lv, ~s{#collections-waiting[role="status"]})
     refute has_element?(lv, "#collections-late")
@@ -396,7 +396,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert :sys.get_state(lv.pid).socket.assigns.timer == timer
   end
 
-  test "a source that names no word for its collections: the domain's, for one and many", %{
+  test "a source that names no word for its collections: collection, for one and many", %{
     conn: conn,
     scope: scope,
     adapter: adapter,
@@ -407,12 +407,12 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     post(key, connection, [{"acme/shop", :target}], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
-    assert words(lv, "#collections-heading") == "Repositories 1"
-    assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
-    assert hd(rows(lv)) =~ "Repository Workspace"
-    assert words(lv, "#collections-count") == "1 repository"
-    assert has_element?(lv, ~s{#collections-search input[placeholder="Find a repository"]})
-    assert words(lv, "#collections-targets") =~ "Assigning a repository here"
+    assert words(lv, "#collections-heading") == "Collections 1"
+    assert has_element?(lv, ~s{[role="region"][aria-label="Collections"]})
+    assert hd(rows(lv)) =~ "Collection Workspace"
+    assert words(lv, "#collections-count") == "1 collection"
+    assert has_element?(lv, ~s{#collections-search input[placeholder="Find a collection"]})
+    assert words(lv, "#collections-targets") =~ "Assigning a collection here"
   end
 
   test "the collections are named in the adapter's words", %{
@@ -494,24 +494,24 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     post(key, connection, [{"acme/shop", :target}, {"acme/api", :target}], 1, true)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
-    assert words(lv, "#collections-heading") == "Repositories 2"
+    assert words(lv, "#collections-heading") == "Collections 2"
     refute has_element?(lv, "#collections-waiting")
     refute has_element?(lv, "#collections-filling")
 
     assert words(lv, "#collections-lead") ==
-             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every repository is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
+             "#{scope.organisation.name} has one workspace, #{scope.workspace.name}, so every collection is assigned to it, and its tickets come into #{scope.workspace.name}'s Backlog while its Backlog switch is on."
 
-    assert words(lv, "#collections-count") == "2 repositories"
-    assert has_element?(lv, ~s{[role="region"][aria-label="Repositories"]})
+    assert words(lv, "#collections-count") == "2 collections"
+    assert has_element?(lv, ~s{[role="region"][aria-label="Collections"]})
 
     assert rows(lv) == [
-             "Repository Workspace Backlog Open tickets Added",
+             "Collection Workspace Backlog Open tickets Added",
              "acme/api Backlog #{scope.workspace.name} — Today",
              "acme/shop Backlog #{scope.workspace.name} — Today"
            ]
 
     assert words(lv, "#collections-targets") ==
-             "Assigning a repository here doesn't change a workspace's Repositories, which list what its runs change."
+             "Assigning a collection here doesn't change a workspace's Repositories, which list what its runs change."
 
     refute has_element?(lv, "#collections-pager")
   end
@@ -543,7 +543,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert rows(lv) == [
-             "Repository Workspace Backlog Open tickets Added",
+             "Collection Workspace Backlog Open tickets Added",
              "acme/shop Backlog #{scope.workspace.name} 3 #{ApiaryWeb.Format.day(earlier)}"
            ]
   end
@@ -603,7 +603,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-targets") ==
-             "Assigning a repository here doesn't change a workspace's Repositories, which list what its runs change."
+             "Assigning a collection here doesn't change a workspace's Repositories, which list what its runs change."
 
     # The collection with a target ends: the page follows, and the foot note goes.
     shop =
@@ -647,7 +647,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       "second"
     )
 
-    assert words(lv, "#collections-targets") =~ "Assigning a repository here"
+    assert words(lv, "#collections-targets") =~ "Assigning a collection here"
   end
 
   test "an adapter with no items follows the same rule for the foot note", %{
@@ -867,11 +867,11 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     post(key, connection, titles(1..60), 1, false)
 
     assert words(lv, "#collections-filling") ==
-             "#{adapter.name} is still sending its repositories…"
+             "#{adapter.name} is still sending its collections…"
 
     assert has_element?(lv, ~s{#collections-filling[role="status"]})
     refute has_element?(lv, "#collections-waiting")
-    assert words(lv, "#collections-heading") == "Repositories"
+    assert words(lv, "#collections-heading") == "Collections"
     assert words(lv, "#collections-count") == "60 so far"
     assert length(rows(lv)) == 51
     assert words(lv, "#collections-pager-footer") == "1–50 of 60"
@@ -879,8 +879,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     post(key, connection, titles(61..70), 2, true)
 
     refute has_element?(lv, "#collections-filling")
-    assert words(lv, "#collections-heading") == "Repositories 70"
-    assert words(lv, "#collections-count") == "70 repositories"
+    assert words(lv, "#collections-heading") == "Collections 70"
+    assert words(lv, "#collections-count") == "70 collections"
     assert words(lv, "#collections-pager-footer") == "1–50 of 70"
   end
 
@@ -944,11 +944,11 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       })
 
     assert rows(lv) == [
-             "Repository Workspace Backlog Open tickets Added",
+             "Collection Workspace Backlog Open tickets Added",
              "acme/api Backlog #{scope.workspace.name} — Today"
            ]
 
-    assert words(lv, "#collections-count") == "1 repository"
+    assert words(lv, "#collections-count") == "1 collection"
   end
 
   test "collections the integration no longer reaches: a line under the table says how many",
@@ -961,15 +961,15 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     relist(key, connection, ["acme/api", "acme/shop"], "second", ~U[2026-10-02 09:00:00Z])
 
     assert words(lv, "#collections-ended") ==
-             "1 repository that #{adapter.name} no longer reaches isn't shown."
+             "1 collection that #{adapter.name} no longer reaches isn't shown."
 
     relist(key, connection, ["acme/api"], "third", ~U[2026-10-03 09:00:00Z])
 
     assert words(lv, "#collections-ended") ==
-             "2 repositories that #{adapter.name} no longer reaches aren't shown."
+             "2 collections that #{adapter.name} no longer reaches aren't shown."
 
     assert Enum.drop(rows(lv), 1) == ["acme/api Backlog #{scope.workspace.name} — Today"]
-    assert words(lv, "#collections-count") == "1 repository"
+    assert words(lv, "#collections-count") == "1 collection"
 
     # Under the table.
     [_before, after_table] = String.split(render(lv), ~s{id="collections-table"}, parts: 2)
@@ -1013,15 +1013,15 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-lead") ==
-             "These repositories are each assigned to one workspace, and their tickets come into that workspace's Backlog while their Backlog switches are on."
+             "These collections are each assigned to one workspace, and their tickets come into that workspace's Backlog while their Backlog switches are on."
 
     assert words(lv, "#collections-unassigned") ==
-             "3 repositories are unassigned. Their tickets reach no backlog until you assign each to a workspace. Show them"
+             "3 collections are unassigned. Their tickets reach no backlog until you assign each to a workspace. Show them"
 
     assert words(lv, "#collections-view-all") == "All 3"
     assert words(lv, "#collections-view-unassigned") == "Unassigned 3"
     assert has_element?(lv, ~s{#collections-view-all[aria-current="page"]})
-    assert has_element?(lv, ~s{#collections-search input[placeholder="Find a repository"]})
+    assert has_element?(lv, ~s{#collections-search input[placeholder="Find a collection"]})
     assert has_element?(lv, "#collections-bar.q-int-assignbar > #collections-search.q-find")
     refute has_element?(lv, "#collections-search.q-find-query")
     assert words(lv, "#collections-workspace-button") == "Workspace"
@@ -1029,21 +1029,21 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     assert has_element?(
              lv,
-             ~s{#collections-assign-button[disabled][title="Select repositories to assign them"]},
+             ~s{#collections-assign-button[disabled][title="Select collections to assign them"]},
              "Assign to workspace"
            )
 
-    assert words(lv, "#collections-assign-hint") == "Select repositories to assign them"
+    assert words(lv, "#collections-assign-hint") == "Select collections to assign them"
     refute has_element?(lv, "#collections-count")
     refute has_element?(lv, "#collections-selection")
 
     assert has_element?(
              lv,
-             ~s{#collections-table-every[aria-label="Select every repository shown"]}
+             ~s{#collections-table-every[aria-label="Select every collection shown"]}
            )
 
     assert rows(lv) == [
-             "Repository Workspace Backlog Open tickets Added",
+             "Collection Workspace Backlog Open tickets Added",
              "acme/api Unassigned — Today",
              "acme/shop Unassigned — Today",
              "acme/web Unassigned — Today"
@@ -1073,10 +1073,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     assert has_element?(
              lv,
-             ~s{#collections-assign ul[role="menu"][aria-label="Assign 1 repository to"]}
+             ~s{#collections-assign ul[role="menu"][aria-label="Assign 1 collection to"]}
            )
 
-    assert words(lv, "#collections-assign-#{platform.id}") == "Platform 0 repositories"
+    assert words(lv, "#collections-assign-#{platform.id}") == "Platform 0 collections"
 
     assert words(lv, "#collections-assign .q-int-assign-foot") ==
              "Its tickets go with it. Work items already taken in stay where they are."
@@ -1093,10 +1093,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     refute has_element?(lv, "#collections-selection")
 
     assert words(lv, "#collections-unassigned") =~
-             "1 repository is unassigned. Its tickets reach no backlog until you assign it to a workspace."
+             "1 collection is unassigned. Its tickets reach no backlog until you assign it to a workspace."
 
     assert rows(lv) == [
-             "Repository Workspace Backlog Open tickets Added",
+             "Collection Workspace Backlog Open tickets Added",
              "acme/api Unassigned — Today",
              "acme/shop Backlog Platform — Today",
              "acme/web Backlog Platform — Today"
@@ -1198,7 +1198,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     lv |> element("#collections-table-every") |> render_click()
     lv |> element("#collections-assign-#{platform.id}") |> render_click()
-    assert words(lv, "#flash-info") =~ "Assigned 5 repositories to Platform."
+    assert words(lv, "#flash-info") =~ "Assigned 5 collections to Platform."
   end
 
   test "an assign refused for a person no longer an owner or an admin says who assigns", %{
@@ -1215,7 +1215,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     lv |> element("#collections-assign-#{platform.id}") |> render_click()
 
     assert words(lv, "#flash-error") =~
-             "Only owners and admins of #{scope.organisation.name} assign repositories."
+             "Only owners and admins of #{scope.organisation.name} assign collections."
 
     refute has_element?(lv, "#collections-selection")
     refute has_element?(lv, "#collections-table input")
@@ -1273,7 +1273,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     lv |> element("#collections-assign-#{platform.id}") |> render_click()
 
     assert words(lv, "#flash-error p:first-child") == out_of_date
-    assert words(lv, "#flash-error p.text-muted") == "It now shows the repositories as they are."
+    assert words(lv, "#flash-error p.text-muted") == "It now shows the collections as they are."
 
     assert Enum.drop(rows(lv), 1) == ["acme/api Unassigned — Today"]
     lv |> element("#flash-error button") |> render_click()
@@ -1410,7 +1410,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     render_patch(lv, page(scope, adapter) <> "?q=billing&page=3")
     assert_patch(lv, page(scope, adapter) <> "?q=billing")
-    assert words(lv, "#collections-table-none") == "No repositories match “billing”."
+    assert words(lv, "#collections-table-none") == "No collections match “billing”."
   end
 
   test "assigning the last row of a page of the unassigned view: page 1, every row reachable",
@@ -1464,7 +1464,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     lv |> element("#collections-table-every") |> render_click()
     lv |> element("#collections-assign-#{platform.id}") |> render_click()
     assert_patch(lv, page(scope, adapter) <> "?q=repo")
-    assert words(lv, "#flash-info") == "Assigned 10 repositories to Platform."
+    assert words(lv, "#flash-info") == "Assigned 10 collections to Platform."
     assert words(lv, "#collections-pager-footer") == "1–50 of 60"
     assert Enum.at(rows(lv), 1) == "acme/repo-001 Unassigned — Today"
 
@@ -1528,12 +1528,12 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     relist(key, connection, titles(1..50), "second", ~U[2026-10-02 09:00:00Z])
 
     {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo-07")
-    assert words(lv, "#collections-table-none") == "No repositories match “repo-07”."
+    assert words(lv, "#collections-table-none") == "No collections match “repo-07”."
     assert length(rows(lv)) == 2
 
     render_patch(lv, page(scope, adapter) <> "?q=repo-07&page=2")
     assert_patch(lv, page(scope, adapter) <> "?q=repo-07")
-    assert words(lv, "#collections-table-none") == "No repositories match “repo-07”."
+    assert words(lv, "#collections-table-none") == "No collections match “repo-07”."
     assert length(rows(lv)) == 2
   end
 
@@ -1633,7 +1633,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     # A search that finds only ended collections: no rows, no pager.
     {:ok, lv, _html} = live(conn, page(scope, adapter) <> "?q=repo-00")
-    assert words(lv, "#collections-table-none") == "No repositories match “repo-00”."
+    assert words(lv, "#collections-table-none") == "No collections match “repo-00”."
     refute has_element?(lv, "#collections-pager")
   end
 
@@ -1739,7 +1739,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     refute has_element?(lv, "#collections-table-none")
 
     lv |> form("#collections-search", %{q: " billing "}) |> render_change()
-    assert words(lv, "#collections-table-none") == "No repositories match “billing”."
+    assert words(lv, "#collections-table-none") == "No collections match “billing”."
     assert length(rows(lv)) == 2
     assert has_element?(lv, "#collections-table-every[disabled]")
     refute has_element?(lv, "#collections-pager")
@@ -1757,7 +1757,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(member_conn(scope), page(scope, adapter))
 
     assert words(lv, "#collections-unassigned") ==
-             "1 repository is unassigned. Its tickets reach no backlog until an owner or an admin assigns it to a workspace."
+             "1 collection is unassigned. Its tickets reach no backlog until an owner or an admin assigns it to a workspace."
 
     assert has_element?(lv, "#collections-views")
     assert has_element?(lv, "#collections-bar")
@@ -1821,7 +1821,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
     post(key, connection, ["acme/web"], 2, true)
     assert has_element?(lv, "#collections-views")
-    assert words(lv, "#collections-unassigned") =~ "3 repositories are unassigned."
+    assert words(lv, "#collections-unassigned") =~ "3 collections are unassigned."
   end
 
   test "a member reads where it stands, with no install block and no Install", %{

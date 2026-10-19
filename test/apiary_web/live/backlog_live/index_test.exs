@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.BacklogLive.IndexTest do
   # A workspace's Backlog (`ApiaryWeb.BacklogLive.Index`): read by its members and not
   # found to anyone else; its views with their counts; Search; the Filter menu's
-  # Repository, Filed by, Label and Updated, their tokens, Clear and the match count;
+  # collections, Filed by, Label and Updated, their tokens, Clear and the match count;
   # Sort; the pager both ways; a forged cursor, filter, view, order or search, which
   # matches nothing or is the default and breaks nothing; the words of the source for its
   # items; and the list read again on a message of its workspace's Backlog, and not on
@@ -188,11 +188,11 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       workspace = ctx.scope.workspace.name
 
       assert words(view, "#page-header-description") ==
-               "Tickets from the 2 repositories assigned to #{workspace}. " <>
+               "Tickets from the 2 collections assigned to #{workspace}. " <>
                  "Take one in to make it a work item."
 
       link = "#page-header-description a#backlog-integration"
-      assert words(view, link) == "2 repositories assigned to #{workspace}"
+      assert words(view, link) == "2 collections assigned to #{workspace}"
 
       assert has_element?(
                view,
@@ -207,7 +207,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
                ["Organisation settings › Integrations › #{ctx.adapter.name}"]
     end
 
-    test "one repository in the singular", ctx do
+    test "one collection in the singular", ctx do
       ticket(ctx.shop)
 
       ctx.api
@@ -217,10 +217,10 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       assert words(view, "#backlog-integration") ==
-               "1 repository assigned to #{ctx.scope.workspace.name}"
+               "1 collection assigned to #{ctx.scope.workspace.name}"
     end
 
-    test "counts a repository with its Backlog off; not another workspace's", ctx do
+    test "counts a collection with its Backlog off; not another workspace's", ctx do
       ticket(ctx.shop)
       ctx.api |> Ecto.Changeset.change(backlog: false) |> Repo.update!()
       platform = workspace_fixture(ctx.scope.organisation, "Platform")
@@ -229,7 +229,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       assert words(view, "#page-header-description") ==
-               "Tickets from the 2 repositories assigned to #{ctx.scope.workspace.name}. " <>
+               "Tickets from the 2 collections assigned to #{ctx.scope.workspace.name}. " <>
                  "Take one in to make it a work item."
     end
 
@@ -258,7 +258,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       assert words(view, "#page-header-description") ==
-               "Tickets from the 3 repositories assigned to #{ctx.scope.workspace.name}. " <>
+               "Tickets from the 3 collections assigned to #{ctx.scope.workspace.name}. " <>
                  "Take one in to make it a work item."
 
       refute has_element?(view, "#page-header-description a")
@@ -420,7 +420,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       assert texts(view, "#backlog-filter-sections .q-fm-label") ==
-               ["Repository", "Filed by", "Label", "Updated"]
+               ["Collection", "Filed by", "Label", "Updated"]
 
       # The bot's tile, a letter a screen reader skips, stands right before its name.
       assert words(view, "#backlog-filter-filed_by-form") == "Lea 2 ddeps-bot 1"
@@ -453,13 +453,13 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       query = "?" <> Plug.Conn.Query.encode(repository: [ctx.api.id])
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
 
-      # "Repository" where the source names none.
-      assert texts(view, "#backlog-filter-sections .q-fm-label") |> hd() == "Repository"
-      assert words(view, "#backlog-token-repository") == "Repository acme/api"
+      # "Collection" where the source names none, in every kind of workspace.
+      assert texts(view, "#backlog-filter-sections .q-fm-label") |> hd() == "Collection"
+      assert words(view, "#backlog-token-repository") == "Collection acme/api"
 
       assert has_element?(
                view,
-               ~s(#backlog-token-repository a[aria-label="Remove the repository filter"])
+               ~s(#backlog-token-repository a[aria-label="Remove the collection filter"])
              )
 
       {1, _} =
@@ -477,7 +477,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
                ~s(#backlog-token-repository a[aria-label="Remove the project filter"])
              )
 
-      refute has_element?(view, ~s(a[aria-label="Remove the repository filter"]))
+      refute has_element?(view, ~s(a[aria-label="Remove the collection filter"]))
     end
 
     test "Filed by keeps a filer's tickets, its token says so and takes it away", ctx do
@@ -502,12 +502,13 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       refute has_element?(view, "#backlog-tokens")
     end
 
-    test "Repository keeps a repository's tickets by its id, named by its title", ctx do
+    test "the collections' section keeps a collection's tickets by its id, named by its title",
+         ctx do
       query = "?" <> Plug.Conn.Query.encode(repository: [ctx.shop.id])
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, query))
 
       assert rows(view) == ids([ctx.lea_shop])
-      assert words(view, "#backlog-token-repository") == "Repository acme/shop"
+      assert words(view, "#backlog-token-repository") == "Collection acme/shop"
       assert words(view, "#backlog-match") == "1 ticket matches"
 
       assert has_element?(
@@ -516,7 +517,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
              )
 
       view
-      |> element(~s(#backlog-token-repository a[aria-label="Remove the repository filter"]))
+      |> element(~s(#backlog-token-repository a[aria-label="Remove the collection filter"]))
       |> render_click()
 
       assert length(rows(view)) == 3
@@ -958,7 +959,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
                )
       end
 
-      assert words(view, "#backlog-token-repository") == "Repository " <> shown("acme/web")
+      assert words(view, "#backlog-token-repository") == "Collection " <> shown("acme/web")
     end
 
     test "a value with nothing left to show, offered or only chosen: marked", ctx do

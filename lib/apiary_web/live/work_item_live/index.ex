@@ -4,9 +4,10 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # **The list.** The page's head; the stages strip, Explore, Confirm and Shape, each with
   # its count and what in it needs a look, and a link to that stage alone; the views as
   # tabs, each with its count (Open, Waiting on you, Declined, Closed); Search; one Filter
-  # menu (Owner, Repository, Updated); Sort (Recently updated, Newest), on every view but
-  # Waiting on you; the filters in force as tokens under the bar with Clear and how many
-  # work items match; the line of a view that needs one; and the rows
+  # menu (Owner, the collections in their sources' words, Updated); Sort (Recently
+  # updated, Newest), on every view but Waiting on you; the filters in force as tokens
+  # under the bar with Clear and how many work items match; the line of a view that needs
+  # one; and the rows
   # (`ApiaryWeb.WorkItemListComponents`). The Open view shows the stages as bands, each
   # with its first rows and Show all, a link to that stage alone; a stage alone, and every
   # other view, is a page of rows with the pager. A workspace with no work item, under no
@@ -44,7 +45,8 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   alias Apiary.{Access, Adapters, ExternalText, WorkItems}
   alias Apiary.Runs.Filters
   alias Apiary.WorkItems.Explore
-  alias ApiaryWeb.{People, UserAuth}
+  alias Apiary.Sources.Backlog
+  alias ApiaryWeb.{People, SourceComponents, UserAuth}
 
   @views [:open, :you, :declined, :closed]
   @stages [:explore, :confirm, :shape]
@@ -95,6 +97,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
             <span class="q-grow"></span>
             <.work_item_search value={@params.q} item_noun={@item_noun} />
             <.work_item_filter
+              collection_label={@collection_label}
               count={Enum.count(filters(), &on?(@params, &1))}
               values={Map.new(filters(), &{&1, value_words(@params, &1, @options)})}
             >
@@ -114,7 +117,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                 <.filter_options
                   id="work-items-filter-repository"
                   name="repository"
-                  label={pgettext("work item", "Repository")}
+                  label={@collection_label}
                   multiple
                   values={@params.repository}
                   options={options(@options, @narrowed, @params, :repository)}
@@ -150,6 +153,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
           </div>
 
           <.work_item_tokens
+            collection_label={@collection_label}
             filters={tokens(@current_scope, @params, @options)}
             clear={list_path(@current_scope, @params, owner: [], repository: [], updated: nil)}
             match={total(@list, @params)}
@@ -257,6 +261,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
      |> assign(
        page_title: gettext("Work items"),
        item_noun: Adapters.workspace_item_noun(scope),
+       collection_label: SourceComponents.collection_label(Backlog.collection_nouns(scope)),
        can_act: Access.can?(scope, :"work_item.answer", scope.workspace),
        params: nil,
        list: nil,

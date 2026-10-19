@@ -2,7 +2,7 @@ defmodule ApiaryWeb.ActivityCollectionAssignTest do
   # The Activity line of `collection.assign`: its label in the filter, its sentence by the
   # count of collections assigned to a workspace, or unassigned from theirs, and its
   # subject, the workspace's name, or the organisation's for an unassign. Both name the
-  # collections by their sources' word, else the domain's.
+  # collections by their sources' word, else collections.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -26,16 +26,16 @@ defmodule ApiaryWeb.ActivityCollectionAssignTest do
   test "the label, the sentence by the count, and the workspace as its subject" do
     %{scope: scope} = sign_up_fixture()
     workspace_id = scope.workspace.id
-    assert Core.label(:"collection.assign") == "Assigned repositories"
+    assert Core.label(:"collection.assign") == "Assigned collections"
 
     one = entry(%{"count" => 1, "workspace_id" => workspace_id}, "workspace", workspace_id)
     many = entry(%{"count" => 12, "workspace_id" => workspace_id}, "workspace", workspace_id)
 
     assert Core.sentence(:"collection.assign", one, %{}) ==
-             "Assigned 1 repository to a workspace"
+             "Assigned 1 collection to a workspace"
 
     assert Core.sentence(:"collection.assign", many, %{}) ==
-             "Assigned 12 repositories to a workspace"
+             "Assigned 12 collections to a workspace"
 
     names = %{workspaces: %{workspace_id => scope.workspace.name}}
 
@@ -57,13 +57,13 @@ defmodule ApiaryWeb.ActivityCollectionAssignTest do
     many = entry(%{"count" => 2, "workspace_id" => nil}, "organisation", organisation_id)
 
     assert Core.sentence(:"collection.assign", one, %{}) ==
-             "Unassigned 1 repository from its workspace"
+             "Unassigned 1 collection from its workspace"
 
     assert Core.sentence(:"collection.assign", many, %{}) ==
-             "Unassigned 2 repositories from their workspaces"
+             "Unassigned 2 collections from their workspaces"
 
-    assert shown(one) == "Unassigned 1 repository from its workspace"
-    assert shown(many) == "Unassigned 2 repositories from their workspaces"
+    assert shown(one) == "Unassigned 1 collection from its workspace"
+    assert shown(many) == "Unassigned 2 collections from their workspaces"
     refute shown(many) == "Made a change"
 
     assert %{text: name} = Core.subject(many, :"collection.assign", %{}, scope, nil)
@@ -75,18 +75,18 @@ defmodule ApiaryWeb.ActivityCollectionAssignTest do
     workspace_id = scope.workspace.id
     assign = entry(%{"count" => 3, "workspace_id" => workspace_id}, "workspace", workspace_id)
 
-    assert shown(assign) == "Assigned 3 repositories to a workspace"
+    assert shown(assign) == "Assigned 3 collections to a workspace"
   end
 
   describe "the words of the sources' collections" do
     @describetag needs: :factory
 
-    test "the label: the organisation's sources' shared word, else the domain's" do
+    test "the label: the organisation's sources' shared word, else collections" do
       %{scope: scope} = sign_up_fixture()
-      assert Core.label(:"collection.assign", scope) == "Assigned repositories"
+      assert Core.label(:"collection.assign", scope) == "Assigned collections"
 
       connection = ticket_connection_fixture(scope)
-      assert Core.label(:"collection.assign", scope) == "Assigned repositories"
+      assert Core.label(:"collection.assign", scope) == "Assigned collections"
 
       collection_name(connection.adapter_id, "project", "projects")
       assert Core.label(:"collection.assign", scope) == "Assigned projects"
@@ -132,7 +132,7 @@ defmodule ApiaryWeb.ActivityCollectionAssignTest do
                "Unassigned 2 projects from their workspaces"
              ]
 
-      # A connection it cannot find, or none: the domain's word.
+      # A connection it cannot find, or none: collections.
       lost = %{
         assign.(3)
         | details: %{assign.(3).details | "connection_id" => "ac_0000000000000000"}
@@ -143,13 +143,13 @@ defmodule ApiaryWeb.ActivityCollectionAssignTest do
       assert names.connection_collection_nouns == %{}
 
       assert Core.sentence(:"collection.assign", lost, names) ==
-               "Assigned 3 repositories to a workspace"
+               "Assigned 3 collections to a workspace"
 
       assert Core.sentence(:"collection.assign", none, names) ==
-               "Assigned 1 repository to a workspace"
+               "Assigned 1 collection to a workspace"
     end
 
-    test "a source that names none: the domain's word" do
+    test "a source that names none: collection and collections" do
       %{scope: scope} = sign_up_fixture()
       connection = ticket_connection_fixture(scope)
       organisation_id = scope.organisation.id
@@ -165,7 +165,7 @@ defmodule ApiaryWeb.ActivityCollectionAssignTest do
       assert names.connection_collection_nouns == %{}
 
       assert Core.sentence(:"collection.assign", unassign, names) ==
-               "Unassigned 2 repositories from their workspaces"
+               "Unassigned 2 collections from their workspaces"
     end
   end
 

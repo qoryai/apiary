@@ -14,10 +14,11 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # chevron, lead to its page (`ApiaryWeb.AdapterLive.Show`); one not installed offers Add
   # to whoever may connect one (`adapter.connect`, owners and admins), which leads to Add
   # an integration. With no adapter in the instance, an empty state takes the table's
-  # place: "No integration yet", and that an instance admin adds them. Under the table or
-  # the empty state, what an integration installed here does, and, for whoever may not
-  # connect one, who does: with several workspaces, who assigns their collections too.
-  # Those words for the collections are the adapters', when they all name the same.
+  # place: "No integration yet", and that an instance admin adds them. Under the table,
+  # what an integration installed here does, in each adapter's words for its collections,
+  # joined where they differ; and under the table or the empty state, for whoever may not
+  # connect one, who does: with several workspaces, who assigns their collections too, in
+  # the adapters' words when they all name the same.
   #
   # Add an integration is for whoever may connect one (`adapter.connect`); to anyone else
   # it is a path that does not exist. Each adapter not installed is a block
@@ -71,6 +72,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
        rows: rows,
        all_installed: rows != [] and Enum.all?(rows, & &1.installed),
        noun: Adapters.shared_collection_noun(adapters),
+       nouns: Enum.map(adapters, &Adapters.collection_noun/1),
        connects: connects,
        several: length(Organisations.list_workspaces(scope)) > 1,
        sending: nil
@@ -235,10 +237,10 @@ defmodule ApiaryWeb.AdapterLive.Index do
         </.table>
 
         <div class="grid gap-1.5">
-          <p id="integrations-serve" class="q-foot-note">
+          <p :if={@rows != []} id="integrations-serve" class="q-foot-note">
             {gettext(
               "An integration installed here serves each workspace through the %{collections} assigned to it.",
-              collections: SourceComponents.collections(@noun)
+              collections: SourceComponents.collections(@nouns, :and)
             )}
           </p>
           <p :if={!@connects && !@several} id="integrations-who" class="q-foot-note">
