@@ -3101,11 +3101,6 @@ msgstr ""
 msgid "A secret with several values names each one with a value ID."
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "A software workspace"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "A starter that reaches Qory Apiary directly can leave %{via} out."
@@ -4816,6 +4811,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the workspace's default mode"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Chosen when the workspace was created, and it can't be changed. It sets the words the workspace's pages use and the integrations it is offered."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -7013,6 +7013,18 @@ msgstr ""
 msgid "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
 msgstr ""
 
+#: lib/apiary/lingo/domain/general.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
+msgstr ""
+
+#: lib/apiary/lingo/domain/software.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -7209,6 +7221,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "General"
+msgstr ""
+
+#: lib/apiary/lingo/domain/general.ex
+#, elixir-autogen, elixir-format
+msgid "General workspace"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -13238,11 +13255,6 @@ msgstr ""
 msgid "Set up from"
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "Set when the workspace was created. It decides the words its pages use."
-msgstr ""
-
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Set your password"
@@ -13515,6 +13527,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Smaller text"
+msgstr ""
+
+#: lib/apiary/lingo/domain/software.ex
+#, elixir-autogen, elixir-format
+msgid "Software workspace"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex

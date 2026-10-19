@@ -80,6 +80,18 @@ defmodule Apiary.Lingo.Domain do
   @callback name() :: String.t()
 
   @doc """
+  The domain's label, as a person picks a workspace's type and reads it in the workspace's
+  settings: "Software workspace". Translated in the locale of the caller's process.
+  """
+  @callback label() :: String.t()
+
+  @doc """
+  One line under `c:label/0` that says what work a workspace of the domain is for and what
+  Qory reads there. Translated in the locale of the caller's process.
+  """
+  @callback description() :: String.t()
+
+  @doc """
   Whether a work item of the domain needs a target: true where Take in refuses a ticket
   that has no target, neither the ticket's nor its collection's.
   """
@@ -121,6 +133,14 @@ defmodule Apiary.Lingo.Domain do
   """
   @spec default() :: module
   def default, do: @default
+
+  @doc """
+  The domains a person picks a new workspace's type from, in the order a form offers them:
+  the default first, then the others by name.
+  """
+  @spec choices() :: [module]
+  def choices,
+    do: [@default | for(name <- names(), (domain = @domains[name]) != @default, do: domain)]
 
   @doc """
   The domain of a workspace, through `domains/0`, by the name its struct carries: the
