@@ -3558,6 +3558,16 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Added a model provider"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added a model to a model provider"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Added a policy rule"
 msgstr ""
 
@@ -4614,6 +4624,26 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed a model of a model provider"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a model provider's address"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a model provider's default key"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a model provider's default model"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed a node"
 msgstr ""
 
@@ -4796,6 +4826,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose an outside API: a built-in one, or a custom API of this organisation."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another default key for %{provider} first: %{value} is its default key."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -12060,6 +12095,11 @@ msgstr ""
 msgid "Remove the label filter"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the model provider %{provider} first: %{name} has the provider's keys."
+msgstr ""
+
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the updated filter"
@@ -12098,6 +12138,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Removed a member"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Removed a model from a model provider"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Removed a model provider"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

@@ -2423,16 +2423,12 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp refusal(socket, reason, view \\ :secrets)
 
   # A secret's deletion or a value's, refused while what it deletes stays: its
-  # confirmation stays open and says why.
-  defp refusal(socket, {:in_use, uses}, _view),
-    do:
-      held(
-        socket,
-        gettext("%{name} is used by %{uses}: unlink it there first.",
-          name: socket.assigns.secret.name,
-          uses: uses |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")
-        )
-      )
+  # confirmation stays open and says why. A value's new value id, refused while a model
+  # provider uses the value by its value id: the form stays open, with the reason.
+  defp refusal(%{assigns: %{act: :rename_value}} = socket, {:in_use, uses}, _view),
+    do: put_flash(socket, :error, in_use(socket.assigns, uses))
+
+  defp refusal(socket, {:in_use, uses}, _view), do: held(socket, in_use(socket.assigns, uses))
 
   defp refusal(socket, :last_value, _view), do: held(socket, last_value(socket.assigns.secret))
 
@@ -2510,6 +2506,30 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp value_gone(secret),
     do: gettext("That value is no longer in %{name}.", name: secret.name)
+
+  # Why a secret or a value in use stays. A model provider uses the secret whose values
+  # are its keys, and its default key by its value id: the step is in the provider. Any
+  # other use comes only from a test of `Apiary.Secrets.Usage`, and keeps the line before.
+  defp in_use(%{act: :delete_secret, secret: secret}, [%{kind: :model_provider} = use | _]),
+    do:
+      gettext("Remove the model provider %{provider} first: %{name} has the provider's keys.",
+        provider: use.name,
+        name: secret.name
+      )
+
+  defp in_use(%{value: value}, [%{kind: :model_provider} = use | _]),
+    do:
+      gettext("Choose another default key for %{provider} first: %{value} is its default key.",
+        provider: use.name,
+        value: value.value_id
+      )
+
+  defp in_use(%{secret: secret}, uses),
+    do:
+      gettext("%{name} is used by %{uses}: unlink it there first.",
+        name: secret.name,
+        uses: uses |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")
+      )
 
   # A change its confirmation asked for, refused while what it acts on stays: the list read
   # again, and the confirmation still open, saying why under its question

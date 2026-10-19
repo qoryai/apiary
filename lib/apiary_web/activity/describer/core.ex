@@ -515,6 +515,26 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_connection("definition_created"), do: gettext("Wrote a service definition")
   defp said_connection("definition_updated"), do: gettext("Changed a service definition")
   defp said_connection("definition_deleted"), do: gettext("Deleted a service definition")
+  defp said_connection("provider_created"), do: gettext("Added a model provider")
+  defp said_connection("provider_deleted"), do: gettext("Removed a model provider")
+
+  defp said_connection("provider_address_changed"),
+    do: gettext("Changed a model provider's address")
+
+  defp said_connection("provider_default_key_changed"),
+    do: gettext("Changed a model provider's default key")
+
+  defp said_connection("provider_model_added"), do: gettext("Added a model to a model provider")
+
+  defp said_connection("provider_model_changed"),
+    do: gettext("Changed a model of a model provider")
+
+  defp said_connection("provider_model_removed"),
+    do: gettext("Removed a model from a model provider")
+
+  defp said_connection("provider_default_model_changed"),
+    do: gettext("Changed a model provider's default model")
+
   defp said_connection(_change), do: gettext("Changed an integration")
 
   # What was acted on, as it is called now.
@@ -748,6 +768,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(action, _before, _after, _details)
       when action in [:"secret.write", :"variable.edit"],
       do: nil
+
+  # A model provider's change: the host, the key's value ID or the model ID before and
+  # after, or the model's ID.
+  def change(:"connection.write", before, after_, %{"change" => "provider_address_changed"}),
+    do: from_to(before["host"], after_["host"])
+
+  def change(:"connection.write", before, after_, %{"change" => "provider_default_key_changed"}),
+    do: from_to(before["default_value_id"], after_["default_value_id"])
+
+  def change(:"connection.write", before, after_, %{"change" => "provider_default_model_changed"}),
+      do: from_to(before["default_model_id"], after_["default_model_id"])
+
+  def change(:"connection.write", _before, _after, %{
+        "change" => "provider_model_" <> _,
+        "model_id" => id
+      })
+      when is_binary(id),
+      do: [{:m, id}]
 
   def change(_policy, before, after_, %{"change" => "mode_changed"} = details),
     do: Enum.reject([from_to(before["mode"], after_["mode"]), version(details)], &is_nil/1)
