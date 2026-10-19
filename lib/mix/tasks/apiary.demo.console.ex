@@ -314,7 +314,11 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   defp second_workspace(main, owner) do
     {name, slug} = @second
 
-    case Organisations.create_workspace(main, %{"name" => name, "slug" => slug}) do
+    case Organisations.create_workspace(main, %{
+           "name" => name,
+           "slug" => slug,
+           "domain" => "software"
+         }) do
       {:ok, _workspace} ->
         scope!(owner, slug)
 

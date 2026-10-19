@@ -358,7 +358,10 @@ defmodule Apiary.AuditChanges do
   def make(:"workspace.create", %{scope: scope}) do
     scope = mark_only_workspace(scope)
     before = entries()
-    {:ok, workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
+
+    {:ok, workspace} =
+      Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "software"})
+
     %{scope: scope, subject: {"workspace", workspace.id}, before: before}
   end
 
@@ -1156,7 +1159,7 @@ defmodule Apiary.AuditChanges do
     do: Deletion.restore_organisation(scope, organisation.id)
 
   defp attempt(:"workspace.create", scope, _),
-    do: Organisations.create_workspace(scope, %{"name" => "Data"})
+    do: Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "software"})
 
   defp attempt(:"workspace.delete", scope, workspace),
     do: Deletion.delete_workspace(scope, workspace.id, workspace.slug)

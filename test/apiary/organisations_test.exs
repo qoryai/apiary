@@ -32,6 +32,40 @@ defmodule Apiary.OrganisationsTest do
       assert membership.organisation_id == organisation.id
     end
 
+    test "Main is of the domain the form gives, and of the default domain without one" do
+      {:ok, %{workspace: workspace}} =
+        Organisations.sign_up_user(
+          %{email: unique_user_email(), organisation_name: "Acme Ops", domain: "general"},
+          nil,
+          open: true
+        )
+
+      assert Repo.reload!(workspace).domain == "general"
+
+      {:ok, %{workspace: workspace}} =
+        Organisations.sign_up_user(
+          %{email: unique_user_email(), organisation_name: "Acme Shop"},
+          nil,
+          open: true
+        )
+
+      assert Repo.reload!(workspace).domain == "software"
+    end
+
+    test "a domain no registry has is refused on the form's domain, creating nothing" do
+      organisations = Repo.aggregate(Organisation, :count)
+
+      assert {:error, changeset} =
+               Organisations.sign_up_user(
+                 %{email: unique_user_email(), organisation_name: "Acme", domain: "unknown"},
+                 nil,
+                 open: true
+               )
+
+      assert %{domain: ["is invalid"]} = errors_on(changeset)
+      assert Repo.aggregate(Organisation, :count) == organisations
+    end
+
     test "returns the form's changeset when the email is invalid, creating nothing" do
       # Counted from what is there: the tests that race on connections of their own commit
       # what they make, and a run stopped half way leaves it until the next.
@@ -102,6 +136,46 @@ defmodule Apiary.OrganisationsTest do
 
       assert organisation.name
       assert membership.level == :owner
+    end
+  end
+
+  describe "build_organisation/2 and the domain of Main" do
+    defp build_organisation(name, opts) do
+      user =
+        Apiary.Accounts.User.email_changeset(%Apiary.Accounts.User{}, %{
+          email: unique_user_email()
+        })
+
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:user, user)
+      |> Organisations.build_organisation(
+        [name: name, how: :test, scope: &person_scope/1] ++ opts
+      )
+      |> Repo.transaction()
+    end
+
+    defp person_scope(%{user: user, organisation: organisation, workspace: workspace}),
+      do: %Scope{user: user, organisation: organisation, workspace: workspace}
+
+    test "without a domain, Main is of the default domain, as before" do
+      assert {:ok, %{created: %{workspace: workspace}}} = build_organisation("Acme Default", [])
+      assert Repo.reload!(workspace).domain == Apiary.Lingo.Domain.default().name()
+      assert workspace.domain == "software"
+    end
+
+    test "a registered domain lands on Main" do
+      assert {:ok, %{created: %{workspace: workspace}}} =
+               build_organisation("Acme Example", domain: "example")
+
+      assert Repo.reload!(workspace).domain == "example"
+    end
+
+    test "an unknown domain is refused on Main's domain, and no organisation is created" do
+      assert {:error, :workspace, changeset, _changes} =
+               build_organisation("Acme Unknown", domain: "unknown")
+
+      assert %{domain: ["is invalid"]} = errors_on(changeset)
+      refute Repo.exists?(from o in Organisation, where: o.name == "Acme Unknown")
     end
   end
 
@@ -490,7 +564,10 @@ defmodule Apiary.OrganisationsTest do
       scope = mark_only_workspace(scope)
 
       assert {:ok, workspace} =
-               Organisations.create_workspace(scope, %{"name" => "Café Société, Data"})
+               Organisations.create_workspace(scope, %{
+                 "domain" => "software",
+                 "name" => "Café Société, Data"
+               })
 
       assert %{name: "Café Société, Data", slug: "cafe-societe-data", domain: "software"} =
                workspace
@@ -509,29 +586,66 @@ defmodule Apiary.OrganisationsTest do
       assert after_ == %{"name" => "Café Société, Data", "slug" => "cafe-societe-data"}
     end
 
+    test "the domain is the form's, required, and one of the domains there are" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert {:error, changeset} = Organisations.create_workspace(scope, %{"name" => "Data"})
+      assert %{domain: ["can't be blank"]} = errors_on(changeset)
+
+      changeset = Organisations.change_new_workspace(scope, %{"name" => "Data"})
+      assert %{domain: ["can't be blank"]} = errors_on(changeset)
+
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "unknown"})
+
+      assert %{domain: ["is invalid"]} = errors_on(changeset)
+
+      assert {:ok, %{domain: "general"} = workspace} =
+               Organisations.create_workspace(scope, %{"name" => "Ops", "domain" => "general"})
+
+      assert Repo.reload!(workspace).domain == "general"
+    end
+
     test "the slug is the form's where it gives one, and checked as a slug" do
       %{scope: scope} = sign_up_fixture()
       scope = mark_only_workspace(scope)
 
       assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{name: "Data", slug: "Data Lake"})
+               Organisations.create_workspace(scope, %{
+                 domain: "software",
+                 name: "Data",
+                 slug: "Data Lake"
+               })
 
       assert %{slug: [_rule]} = errors_on(changeset)
 
       assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{name: "Data", slug: "settings"})
+               Organisations.create_workspace(scope, %{
+                 domain: "software",
+                 name: "Data",
+                 slug: "settings"
+               })
 
       assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
 
       assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{name: "Data", slug: "gateways"})
+               Organisations.create_workspace(scope, %{
+                 domain: "software",
+                 name: "Data",
+                 slug: "gateways"
+               })
 
       assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
 
       assert Organisations.suggest_workspace_slug(scope, "Gateways") == "gateways-2"
 
       assert {:ok, %{slug: "lake"}} =
-               Organisations.create_workspace(scope, %{name: "Data", slug: " lake "})
+               Organisations.create_workspace(scope, %{
+                 domain: "software",
+                 name: "Data",
+                 slug: " lake "
+               })
     end
 
     test "a name kept back is never a workspace's slug: it gets the slug with -2" do
@@ -539,7 +653,9 @@ defmodule Apiary.OrganisationsTest do
       scope = mark_only_workspace(scope)
 
       assert Organisations.suggest_workspace_slug(scope, "New") == "new-2"
-      assert {:ok, %{slug: "api-2"}} = Organisations.create_workspace(scope, %{"name" => "API"})
+
+      assert {:ok, %{slug: "api-2"}} =
+               Organisations.create_workspace(scope, %{"domain" => "software", "name" => "API"})
     end
 
     test "a name or a slug another workspace of the organisation holds is refused" do
@@ -547,11 +663,17 @@ defmodule Apiary.OrganisationsTest do
       scope = mark_only_workspace(scope)
 
       # The marked one still holds its name and slug.
-      assert {:error, changeset} = Organisations.create_workspace(scope, %{name: main.name})
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{domain: "software", name: main.name})
+
       assert %{name: [_taken]} = errors_on(changeset)
 
       assert {:error, changeset} =
-               Organisations.create_workspace(scope, %{name: "Another", slug: main.slug})
+               Organisations.create_workspace(scope, %{
+                 domain: "software",
+                 name: "Another",
+                 slug: main.slug
+               })
 
       assert %{slug: [_taken]} = errors_on(changeset)
 
@@ -561,14 +683,20 @@ defmodule Apiary.OrganisationsTest do
       assert Organisations.suggest_workspace_slug(scope, "") == "workspace"
 
       assert {:ok, %{name: "Main ", slug: "main-2"}} =
-               Organisations.create_workspace(scope, %{name: "Main ", slug: ""})
+               Organisations.create_workspace(scope, %{
+                 domain: "software",
+                 name: "Main ",
+                 slug: ""
+               })
     end
 
     test "an empty name is refused, and the form's changeset says so" do
       %{scope: scope} = sign_up_fixture()
       scope = mark_only_workspace(scope)
 
-      assert {:error, changeset} = Organisations.create_workspace(scope, %{"name" => ""})
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{"domain" => "software", "name" => ""})
+
       assert %{name: ["can't be blank"]} = errors_on(changeset)
 
       changeset = Organisations.change_new_workspace(scope, %{"name" => "Data", "slug" => ""})
@@ -581,17 +709,42 @@ defmodule Apiary.OrganisationsTest do
 
       case Apiary.Edition.limits().workspaces do
         1 ->
-          assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "Data"})
+          assert {:error, :limit} =
+                   Organisations.create_workspace(scope, %{
+                     "domain" => "software",
+                     "name" => "Data"
+                   })
+
           assert [_main] = Organisations.list_workspaces(scope)
           refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
 
           scope = mark_only_workspace(scope)
-          assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
-          assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "More"})
+
+          assert {:ok, _workspace} =
+                   Organisations.create_workspace(scope, %{
+                     "domain" => "software",
+                     "name" => "Data"
+                   })
+
+          assert {:error, :limit} =
+                   Organisations.create_workspace(scope, %{
+                     "domain" => "software",
+                     "name" => "More"
+                   })
 
         :unlimited ->
-          assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
-          assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "More"})
+          assert {:ok, _workspace} =
+                   Organisations.create_workspace(scope, %{
+                     "domain" => "software",
+                     "name" => "Data"
+                   })
+
+          assert {:ok, _workspace} =
+                   Organisations.create_workspace(scope, %{
+                     "domain" => "software",
+                     "name" => "More"
+                   })
+
           assert length(Organisations.list_workspaces(scope)) == 3
       end
     end
@@ -601,8 +754,12 @@ defmodule Apiary.OrganisationsTest do
       %{scope: admin} = member_fixture(owner, :admin)
       %{scope: member} = member_fixture(owner, :member)
 
-      assert {:error, :forbidden} = Organisations.create_workspace(admin, %{"name" => "Data"})
-      assert {:error, :forbidden} = Organisations.create_workspace(member, %{"name" => "Data"})
+      assert {:error, :forbidden} =
+               Organisations.create_workspace(admin, %{"domain" => "software", "name" => "Data"})
+
+      assert {:error, :forbidden} =
+               Organisations.create_workspace(member, %{"domain" => "software", "name" => "Data"})
+
       refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
     end
 
