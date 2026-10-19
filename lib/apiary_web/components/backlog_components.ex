@@ -87,7 +87,10 @@ defmodule ApiaryWeb.BacklogComponents do
     ticket = assigns.ticket
     now = assigns.now || DateTime.utc_now()
     view = row_view(ticket)
-    {word, shown_word} = word(view.word, assigns.reader)
+    # Beside the title, the letter's tip opens to its right, as the row is one line high
+    # and the list's box cuts what overflows it above the first row.
+    {word, shown_word} = word(view.word, assigns.reader, "tooltip-right")
+    {_word, narrow_word} = word(view.word, assigns.reader, nil)
     # Under the title, where the row is narrow, who declined it is on a separate line,
     # which no ellipsis cuts; any other word ends the line that can be cut.
     declined = match?({:declined_by, _email}, view.word)
@@ -104,7 +107,8 @@ defmodule ApiaryWeb.BacklogComponents do
       assigns
       |> assign(:now, now)
       |> assign(view)
-      |> assign(word: word, shown_word: shown_word, declined: declined)
+      |> assign(word: word, shown_word: shown_word, narrow_word: narrow_word)
+      |> assign(:declined, declined)
       |> assign(sub: sub, line_word: line_word)
       |> assign(:sub_title, if(line_word, do: sub <> " · " <> line_word, else: sub))
       |> assign(
@@ -127,7 +131,7 @@ defmodule ApiaryWeb.BacklogComponents do
           {@sub}<span :if={@line_word}> · {@line_word}</span>
         </span>
         <span :if={@declined} class="q-bl-sub q-bl-sub-declined">
-          <.rich text={@shown_word} />
+          <.rich text={@narrow_word} />
         </span>
       </span>
       <span
@@ -206,17 +210,17 @@ defmodule ApiaryWeb.BacklogComponents do
   defp row_view(%{work_item: _live}), do: %{word: nil, link: :taken, action: nil}
 
   # The word beside the title, as text for a title and as it is drawn: who declined a
-  # work item is their first letter, with the address as its tooltip.
-  defp word({:declined_by, email}, reader) do
+  # work item is their first letter, with the address as its tooltip, placed by `tip`.
+  defp word({:declined_by, email}, reader, tip) do
     {gettext("Declined by %{name}", name: email),
-     rich_gettext("Declined by %{name}", name: letter(email, reader))}
+     rich_gettext("Declined by %{name}", name: letter(email, reader, tip))}
   end
 
-  defp word(word, _reader), do: {word, word}
+  defp word(word, _reader, _tip), do: {word, word}
 
-  defp letter(email, reader) do
-    assigns = %{email: email, reader: reader}
-    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  defp letter(email, reader, tip) do
+    assigns = %{email: email, reader: reader, tip: tip}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" class={@tip} />|
   end
 
   attr :kind, :atom, required: true, values: [:taken, :declined]

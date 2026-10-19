@@ -186,6 +186,12 @@ defmodule ApiaryWeb.BacklogComponentsTest do
         assert text(html, "#{place} abbr .sr-only") == "dana@example.com"
       end
 
+      # Beside the title the tip opens to the right, inside the list's box on any row.
+      assert [class] = attr(html, ".q-bl-w abbr", "class")
+      assert "tooltip-right" in String.split(class)
+      assert [class] = attr(html, ".q-bl-sub-declined abbr", "class")
+      refute "tooltip-right" in String.split(class)
+
       # The letter is hidden from screen readers, so the text read aloud is the address.
       assert text(html, ".q-bl-w") == "Declined by Ddana@example.com"
 

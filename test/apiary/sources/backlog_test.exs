@@ -444,6 +444,19 @@ defmodule Apiary.Sources.BacklogTest do
 
       assert one > 0
       assert many == one
+
+      # Who declined a work item is read with the rows too, whoever declined it.
+      declined = fn -> list(ctx.scope, view: :declined).rows end
+      work_item(ctx.scope, ticket(ctx.collection), :declined)
+      one_declined = queries(fn -> assert length(declined.()) == 1 end)
+
+      for _ <- 1..9 do
+        %{user: user} = member_fixture(ctx.scope, :member)
+        ctx.scope |> work_item(ticket(ctx.collection)) |> set_state(:declined, user)
+      end
+
+      many_declined = queries(fn -> assert length(declined.()) == 10 end)
+      assert many_declined == one_declined
     end
   end
 
