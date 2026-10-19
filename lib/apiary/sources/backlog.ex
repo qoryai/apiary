@@ -77,7 +77,7 @@ defmodule Apiary.Sources.Backlog do
   @params [
     :view,
     :search,
-    :repository,
+    :collection,
     :filed_by,
     :label,
     :state,
@@ -290,7 +290,7 @@ defmodule Apiary.Sources.Backlog do
   #     by the key, `acme/shop#1231`, or the title alone without a key) or the filer's
   #     name holds, any case, its `%`, `_` and `\` as they are, the spaces around it left
   #     out; at most 1,024 characters of valid UTF-8 with no NUL, else nothing matches;
-  #   * `repository:` a collection's id, the one Qory Apiary gives it, or a list of them:
+  #   * `collection:` a collection's id, the one Qory Apiary gives it, or a list of them:
   #     the tickets of those collections;
   #   * `filed_by:` a filer's name, as stored, or a list of them;
   #   * `label:` a label, as stored, or a list of them: the tickets that carry any of
@@ -334,7 +334,7 @@ defmodule Apiary.Sources.Backlog do
           organisation_id
           |> backlog(workspace.id)
           |> search(params.search)
-          |> repositories(params.repository)
+          |> collections(params.collection)
           |> filers(params.filed_by)
           |> labels(params.label)
           |> state(params.state)
@@ -567,9 +567,9 @@ defmodule Apiary.Sources.Backlog do
 
   defp pattern(_text), do: :none
 
-  defp repositories(query, nil), do: query
+  defp collections(query, nil), do: query
 
-  defp repositories(query, ids) do
+  defp collections(query, ids) do
     case cast_ids(ids) do
       {:ok, ids} -> where(query, [collection: c], c.id in ^ids)
       :error -> where(query, false)
@@ -871,7 +871,7 @@ defmodule Apiary.Sources.Backlog do
     %{
       view: choice(values.view, @views, :open),
       search: values.search,
-      repository: list(values.repository),
+      collection: list(values.collection),
       filed_by: list(values.filed_by),
       label: list(values.label),
       state: state_value(values.state),
@@ -923,13 +923,13 @@ defmodule Apiary.Sources.Backlog do
   #     a person filed one of them, else `:bot`.
   #   * `:label`: every label the Backlog's tickets carry, as stored: `key` and `label`
   #     are the label, `count` the tickets that carry it in every view, `avatar` nil.
-  #   * `:repository`: every live collection linked to the workspace (its Backlog on, with
+  #   * `:collection`: every live collection linked to the workspace (its Backlog on, with
   #     items, as its adapter has), whose connection is connected: `key` is the collection's id, the one Qory Apiary gives it, `label` its
   #     title, `count` its tickets in every view, `avatar` nil.
-  @spec filter_values(Scope.t(), :filed_by | :label | :repository, String.t() | nil) ::
+  @spec filter_values(Scope.t(), :filed_by | :label | :collection, String.t() | nil) ::
           [value]
   def filter_values(%Scope{} = scope, kind, query)
-      when kind in [:filed_by, :label, :repository] do
+      when kind in [:filed_by, :label, :collection] do
     with {:ok, organisation_id, %Workspace{id: workspace_id}} <- workspace(scope),
          pattern when pattern != :none <- pattern(query) do
       values(kind, organisation_id, workspace_id, pattern)
@@ -980,7 +980,7 @@ defmodule Apiary.Sources.Backlog do
     |> Enum.map(&Map.put(&1, :avatar, nil))
   end
 
-  defp values(:repository, organisation_id, workspace_id, pattern) do
+  defp values(:collection, organisation_id, workspace_id, pattern) do
     from(c in Collection,
       join: k in Connection,
       on: k.id == c.connection_id and k.organisation_id == c.organisation_id,

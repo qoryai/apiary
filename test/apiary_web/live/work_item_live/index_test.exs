@@ -522,16 +522,27 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       assert has_element?(view, ~s(#work-items-tokens-clear[href="#{page(ctx.scope)}"]))
     end
 
-    test "Repository and Updated keep theirs; a forged value matches nothing", ctx do
-      ctx.basket |> set!(updated_at: DateTime.add(DateTime.utc_now(), -3, :day))
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop"))
+    test "an address with repository, of before, reads as one with collection", ctx do
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop&updated=7d"))
       assert length(rows(view)) == 2
-      assert words(view, "#work-items-tokens-repository .q-tok-v") == "acme/shop"
+      assert words(view, "#work-items-tokens-collection .q-tok-v") == "acme/shop"
+
+      # The links the page makes name it collection.
+      remove_updated = view |> element("#work-items-tokens-updated .q-tok-x") |> render()
+      assert remove_updated =~ "collection"
+      refute remove_updated =~ "repository"
+    end
+
+    test "Collection and Updated keep theirs; a forged value matches nothing", ctx do
+      ctx.basket |> set!(updated_at: DateTime.add(DateTime.utc_now(), -3, :day))
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?collection[]=acme/shop"))
+      assert length(rows(view)) == 2
+      assert words(view, "#work-items-tokens-collection .q-tok-v") == "acme/shop"
 
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?updated=24h"))
       assert rows(view) == ids([ctx.price])
 
-      for forged <- ["?updated=1y", "?owner[]=not-an-id", "?repository[]=acme/none"] do
+      for forged <- ["?updated=1y", "?owner[]=not-an-id", "?collection[]=acme/none"] do
         {:ok, view, _html} = live(ctx.conn, page(ctx.scope, forged))
         assert rows(view) == [], forged
       end
@@ -539,8 +550,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
 
     test "the collections' section and its token in their sources' words", ctx do
       section = "#work-items-filter .q-fm-label"
-      token = "#work-items-tokens-repository"
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop"))
+      token = "#work-items-tokens-collection"
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?collection[]=acme/shop"))
 
       # Sources that name no words read Collection.
       assert texts(view, section) == ["Owner", "Collection", "Updated"]
@@ -556,7 +567,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
           )
       end
 
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?repository[]=acme/shop"))
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope, "?collection[]=acme/shop"))
 
       # Each source's word once, by the adapter's name, joined with or.
       assert texts(view, section) == ["Owner", "Repository or queue", "Updated"]

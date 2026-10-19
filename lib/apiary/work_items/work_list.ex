@@ -199,7 +199,7 @@ defmodule Apiary.WorkItems.WorkList do
   #     `\` as they are, or the work item's number, with or without a `#` before it; at
   #     most 1,024 characters of valid UTF-8 with no NUL, else nothing matches;
   #   * `owner:` an owner's account id, or a list of them;
-  #   * `repository:` the title of a collection, as a row names it, or a list of them;
+  #   * `collection:` the title of a collection, as a row names it, or a list of them;
   #   * `updated:` a window the runs list offers, by its value (`1h`, `24h`, `7d`, `14d`
   #     or `30d`): the work items last changed at or after that long before `now`;
   #   * `sort:` one of `t:sort/0` (`:updated` by default), or its string; the view `:you`
@@ -304,13 +304,13 @@ defmodule Apiary.WorkItems.WorkList do
 
   # filter_values/3 is what the Filter menu offers for `kind` in the scope's workspace,
   # to a person who may read its work items: the owners of its work items, by account id
-  # (`:owner`), or the titles of the collections that hold their tickets (`:repository`),
+  # (`:owner`), or the titles of the collections that hold their tickets (`:collection`),
   # most work items first, at most 100. `query`, unless nil or blank, keeps the
-  # repositories whose title holds it, any case, as a search reads it; the page names the
+  # collections whose title holds it, any case, as a search reads it; the page names the
   # owners, so it narrows them itself. None to anyone else.
   @doc false
-  @spec filter_values(Scope.t(), :owner | :repository, String.t() | nil) :: [value]
-  def filter_values(%Scope{} = scope, kind, query) when kind in [:owner, :repository] do
+  @spec filter_values(Scope.t(), :owner | :collection, String.t() | nil) :: [value]
+  def filter_values(%Scope{} = scope, kind, query) when kind in [:owner, :collection] do
     with {:ok, organisation_id, workspace_id} <- workspace(scope),
          pattern when pattern != :none <- pattern(query) do
       organisation_id
@@ -330,7 +330,7 @@ defmodule Apiary.WorkItems.WorkList do
     |> Repo.all()
   end
 
-  defp offered(query, :repository, pattern) do
+  defp offered(query, :collection, pattern) do
     query =
       case pattern do
         {pattern, _number} ->
@@ -376,7 +376,7 @@ defmodule Apiary.WorkItems.WorkList do
     |> work_items(workspace_id)
     |> search(params.search)
     |> owners(params.owner)
-    |> repositories(params.repository)
+    |> collections(params.collection)
     |> updated(params.updated, now)
   end
 
@@ -517,9 +517,9 @@ defmodule Apiary.WorkItems.WorkList do
 
   defp cast_ids(_ids), do: :error
 
-  defp repositories(query, nil), do: query
+  defp collections(query, nil), do: query
 
-  defp repositories(query, titles) do
+  defp collections(query, titles) do
     if is_list(titles) and length(titles) <= @max_filter_values and Enum.all?(titles, &title?/1),
       do:
         where(
@@ -843,7 +843,7 @@ defmodule Apiary.WorkItems.WorkList do
       stage: stage_of(params["stage"]),
       search: blank(params["search"]),
       owner: values(params["owner"]),
-      repository: values(params["repository"]),
+      collection: values(params["collection"]),
       updated: window(params["updated"]),
       sort: sort_of(params["sort"]),
       after: blank(params["after"]),

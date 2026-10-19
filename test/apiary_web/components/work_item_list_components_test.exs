@@ -190,9 +190,9 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
           <:owner>
             <p>owners</p>
           </:owner>
-          <:repository>
+          <:collection>
             <p>repositories</p>
-          </:repository>
+          </:collection>
           <:updated>
             <p>days</p>
           </:updated>
@@ -210,8 +210,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
         render_component(&L.work_item_tokens/1,
           collection_label: "Project",
           filters: [
-            %{key: :owner, value: "Priya", patch: "/8wonders/main/work?repository=acme%2Fshop"},
-            %{key: :repository, value: "acme/shop", patch: "/8wonders/main/work?owner=Priya"}
+            %{key: :owner, value: "Priya", patch: "/8wonders/main/work?collection=acme%2Fshop"},
+            %{key: :collection, value: "acme/shop", patch: "/8wonders/main/work?owner=Priya"}
           ],
           clear: "/8wonders/main/work",
           match: 5

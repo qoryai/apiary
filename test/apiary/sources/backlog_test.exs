@@ -576,10 +576,10 @@ defmodule Apiary.Sources.BacklogTest do
       %{other: other, lea: lea, sam: sam, closed: closed}
     end
 
-    test "by repository, by filer and by state, alone and together", ctx do
-      assert ids(list(ctx.scope, repository: ctx.other.id)) == [ctx.sam.public_id]
+    test "by collection, by filer and by state, alone and together", ctx do
+      assert ids(list(ctx.scope, collection: ctx.other.id)) == [ctx.sam.public_id]
 
-      assert ids(list(ctx.scope, view: :all, repository: [ctx.other.id])) ==
+      assert ids(list(ctx.scope, view: :all, collection: [ctx.other.id])) ==
                [ctx.sam.public_id, ctx.closed.public_id]
 
       assert ids(list(ctx.scope, %{"view" => "all", "filed_by" => ["Lea"]})) ==
@@ -590,22 +590,22 @@ defmodule Apiary.Sources.BacklogTest do
       assert ids(list(ctx.scope, %{"view" => "all", "state" => "open"})) ==
                [ctx.lea.public_id, ctx.sam.public_id]
 
-      page = list(ctx.scope, view: :all, filed_by: "Lea", repository: ctx.other.id)
+      page = list(ctx.scope, view: :all, filed_by: "Lea", collection: ctx.other.id)
       assert ids(page) == [ctx.closed.public_id]
       assert page.counts == %{open: 0, taken: 0, declined: 0, closed: 1, total: 1}
 
       # An empty filter is none.
-      assert length(list(ctx.scope, repository: [], filed_by: "").rows) == 2
+      assert length(list(ctx.scope, collection: [], filed_by: "").rows) == 2
     end
 
     test "a value that is not one, or too many, matches nothing", ctx do
       many = for _ <- 1..101, do: Ecto.UUID.generate()
 
       for params <- [
-            [repository: "acme/api"],
-            [repository: [ctx.other.id, 7]],
-            [repository: many],
-            [repository: ctx.other.public_id],
+            [collection: "acme/api"],
+            [collection: [ctx.other.id, 7]],
+            [collection: many],
+            [collection: ctx.other.public_id],
             [filed_by: String.duplicate("a", 101)],
             [filed_by: List.duplicate("Lea", 101)],
             [filed_by: [<<0xFF>>]],
@@ -831,7 +831,7 @@ defmodule Apiary.Sources.BacklogTest do
             {[label: "ui"], 58},
             {[label: "ui", view: :all], 60},
             {[label: ["ui", "nothing"], view: :all, sort: :comments], 60},
-            {[repository: collection.id, view: :all], 180},
+            {[collection: collection.id, view: :all], 180},
             {[search: "checkout", view: :all, sort: :created, order: :asc], 180}
           ] do
         pages = older_pages(scope, params)
@@ -1229,13 +1229,13 @@ defmodule Apiary.Sources.BacklogTest do
       end_collection(gone)
       ticket(unlinked)
 
-      assert Backlog.filter_values(ctx.scope, :repository, "") == [
+      assert Backlog.filter_values(ctx.scope, :collection, "") == [
                %{key: ctx.collection.id, label: "acme/shop", count: 2, avatar: nil},
                %{key: other.id, label: "acme/api", count: 1, avatar: nil},
                %{key: empty.id, label: "acme/zoo", count: 0, avatar: nil}
              ]
 
-      assert Backlog.filter_values(ctx.scope, :repository, "API") == [
+      assert Backlog.filter_values(ctx.scope, :collection, "API") == [
                %{key: other.id, label: "acme/api", count: 1, avatar: nil}
              ]
     end
@@ -1261,10 +1261,10 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.get_ticket(ctx.scope, foreign.public_id) == nil
       assert Backlog.list_comments(ctx.scope, foreign.public_id) == []
 
-      assert Backlog.filter_values(ctx.scope, :repository, nil) |> Enum.map(& &1.key) ==
+      assert Backlog.filter_values(ctx.scope, :collection, nil) |> Enum.map(& &1.key) ==
                [ctx.collection.id]
 
-      assert ids(list(ctx.scope, view: :all, repository: theirs_collection.id)) == []
+      assert ids(list(ctx.scope, view: :all, collection: theirs_collection.id)) == []
       assert Backlog.backlog_facts(ctx.scope).open_tickets == 1
     end
 
@@ -1286,7 +1286,7 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.list_comments(ctx.scope, item.public_id) == []
       assert Backlog.filter_values(ctx.scope, :filed_by, nil) == []
       assert Backlog.filter_values(ctx.scope, :label, nil) == []
-      assert Backlog.filter_values(ctx.scope, :repository, nil) == []
+      assert Backlog.filter_values(ctx.scope, :collection, nil) == []
 
       assert facts(ctx.scope) == %{
                connected?: false,
@@ -1328,9 +1328,9 @@ defmodule Apiary.Sources.BacklogTest do
       assert list(ctx.scope).counts.total == 1
       assert Backlog.get_ticket(ctx.scope, item.public_id) == nil
       assert Backlog.list_comments(ctx.scope, item.public_id) == []
-      assert ids(list(ctx.scope, view: :all, repository: ctx.collection.id)) == []
+      assert ids(list(ctx.scope, view: :all, collection: ctx.collection.id)) == []
 
-      assert [%{label: "acme/api"}] = Backlog.filter_values(ctx.scope, :repository, nil)
+      assert [%{label: "acme/api"}] = Backlog.filter_values(ctx.scope, :collection, nil)
 
       assert %{
                connected?: true,
@@ -1393,7 +1393,7 @@ defmodule Apiary.Sources.BacklogTest do
         assert Backlog.list_comments(scope, item.public_id) == []
         assert Backlog.filter_values(scope, :filed_by, nil) == []
         assert Backlog.filter_values(scope, :label, nil) == []
-        assert Backlog.filter_values(scope, :repository, nil) == []
+        assert Backlog.filter_values(scope, :collection, nil) == []
         assert Backlog.backlog_facts(scope) == @no_facts
         assert Backlog.collection_nouns(scope) == []
         assert {:error, _refused} = Backlog.subscribe(scope)
