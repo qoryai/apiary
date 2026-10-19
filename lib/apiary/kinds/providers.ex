@@ -10,14 +10,29 @@ defmodule Apiary.Kinds.Providers do
   `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`.
 
   `ref/0` is the integrations commit the descriptions were vendored from, which a provider
-  connection records with the description's digest. The release image is built without
-  `.integration-contract-ref`, so the commit is written here too, and a test checks that
-  the two agree.
+  connection records with the description's digest. It is read from
+  `.integration-contract-ref` when the application is compiled: the commit is the file's
+  one line that is not a comment, 40 lower-case hex digits, or the compile stops.
   """
 
   alias Apiary.Kinds.{Provider, Runtime, Runtimes}
 
-  @ref "72d3e2233ef7d1f2cba95885512633abeeb04741"
+  @ref_path Path.expand("../../../.integration-contract-ref", __DIR__)
+  @external_resource @ref_path
+
+  @ref (case @ref_path
+             |> File.read!()
+             |> String.split("\n", trim: true)
+             |> Enum.reject(&String.starts_with?(&1, "#")) do
+          [ref] ->
+            if Regex.match?(~r/\A[0-9a-f]{40}\z/, ref),
+              do: ref,
+              else:
+                raise("#{@ref_path} has no commit of 40 lower-case hex digits: #{inspect(ref)}")
+
+          lines ->
+            raise "#{@ref_path} has #{length(lines)} lines that are not comments, not one"
+        end)
 
   @dir Path.expand("../../../priv/contract/integration/descriptions", __DIR__)
 
