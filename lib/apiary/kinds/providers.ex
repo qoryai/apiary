@@ -8,9 +8,31 @@ defmodule Apiary.Kinds.Providers do
   fails stops the compile; a provider is added by a release.
 
   `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`.
+
+  `ref/0` is the integrations commit the descriptions were vendored from, which a provider
+  connection records with the description's digest. It is read from
+  `.integration-contract-ref` when the application is compiled: the commit is the file's
+  one line that is not a comment, 40 lower-case hex digits, or the compile stops.
   """
 
   alias Apiary.Kinds.{Provider, Runtime, Runtimes}
+
+  @ref_path Path.expand("../../../.integration-contract-ref", __DIR__)
+  @external_resource @ref_path
+
+  @ref (case @ref_path
+             |> File.read!()
+             |> String.split("\n", trim: true)
+             |> Enum.reject(&String.starts_with?(&1, "#")) do
+          [ref] ->
+            if Regex.match?(~r/\A[0-9a-f]{40}\z/, ref),
+              do: ref,
+              else:
+                raise("#{@ref_path} has no commit of 40 lower-case hex digits: #{inspect(ref)}")
+
+          lines ->
+            raise "#{@ref_path} has #{length(lines)} lines that are not comments, not one"
+        end)
 
   @dir Path.expand("../../../priv/contract/integration/descriptions", __DIR__)
 
@@ -26,6 +48,10 @@ defmodule Apiary.Kinds.Providers do
   def __mix_recompile__? do
     @dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort() != @paths
   end
+
+  @doc "ref/0 is the integrations commit the descriptions were vendored from."
+  @spec ref() :: String.t()
+  def ref, do: @ref
 
   @doc "list/0 is every provider of the catalogue, in the order of its name."
   @spec list() :: [Provider.t()]

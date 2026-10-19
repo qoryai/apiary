@@ -21,12 +21,18 @@ defmodule Apiary.Secrets.OrganisationLevelMigrationTest do
   @validate {20_261_016_090_400, Apiary.Repo.Migrations.ValidateAStoredSecretSLevelChecks,
              "validate_a_stored_secret_s_level_checks"}
 
+  # The later migration of a model provider, whose key to a secret depends on an index
+  # these make: down before them, and up after them.
+  @provider {20_261_019_070_000, Apiary.Repo.Migrations.KeepAProviderAsAnIntegrationConnection,
+             "keep_a_provider_as_an_integration_connection"}
+
   @options [log: false, migration_lock: false]
 
   @tables ~w(secret_values secrets workspace_data_keys organisation_data_keys)
 
   setup_all do
-    for {version, migration, name} <- [@level, @validate], not Code.ensure_loaded?(migration) do
+    for {version, migration, name} <- [@level, @validate, @provider],
+        not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
       |> Code.require_file()
@@ -42,6 +48,7 @@ defmodule Apiary.Secrets.OrganisationLevelMigrationTest do
     do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
   defp down_all! do
+    down!(@provider)
     down!(@validate)
     down!(@level)
   end
@@ -49,6 +56,7 @@ defmodule Apiary.Secrets.OrganisationLevelMigrationTest do
   defp up_all! do
     up!(@level)
     up!(@validate)
+    up!(@provider)
   end
 
   # What the tables are: their columns, indexes, constraints and triggers, by name.

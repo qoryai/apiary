@@ -56,6 +56,9 @@ RUN mix assets.setup
 
 COPY priv priv
 
+# The integrations commit the vendored descriptions come from (`Apiary.Kinds.Providers`).
+COPY .integration-contract-ref ./
+
 COPY lib lib
 
 # Compile the release

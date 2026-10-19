@@ -28,9 +28,39 @@ msgstr ""
 msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
 msgstr ""
 
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another default key for %{provider} first: %{value} is its default key."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Choose one of %{provider}'s keys: %{value} is not one of them."
+msgstr ""
+
+#: lib/apiary/connections/provider_model.ex
+#, elixir-autogen, elixir-format
+msgid "Edit the model already listed, or enter another ID. This provider already has %{model}."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an email address, such as dana@example.com."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Enter another host. Runs may not reach %{host}: it is in %{range}."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Enter the full host name, such as models.example.com. Runs may not reach a host without a dot."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Enter the host that runs reach over the network. %{host} is a name for the local machine."
 msgstr ""
 
 #: lib/apiary/targets.ex
@@ -58,14 +88,79 @@ msgstr ""
 msgid "Line %{line} repeats line %{first}."
 msgstr ""
 
+#: lib/apiary/connections/provider_model.ex
+#, elixir-autogen, elixir-format
+msgid "List at most %{count} effort values, each once."
+msgstr ""
+
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."
 msgstr ""
 
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Percent-encode %{character} in the path, or remove it."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Remove a model first: a provider has at most %{count} models."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the %{character} and everything after it. The address takes a path, but no query or fragment."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the part before @ from the address. Enter the key among the provider's keys instead."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the address to at most 2,048 characters."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Start the address with https://, such as https://models.example.com."
+msgstr ""
+
 #: lib/apiary/targets.ex
 #, elixir-autogen, elixir-format
 msgid "Together with %{target}, these come to %{bytes} characters; the most is 256."
+msgstr ""
+
+#: lib/apiary/connections/provider_model.ex
+#, elixir-autogen, elixir-format
+msgid "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
+msgstr ""
+
+#: lib/apiary/connections/provider_model.ex
+#, elixir-autogen, elixir-format
+msgid "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the address as four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the host as labels of letters, digits and hyphens joined by dots, such as models.example.com."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the host in lower case: %{host}."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the port as a number from 1 to 65535, with no leading zero."
 msgstr ""
 
 #: lib/apiary/policy/rule.ex
