@@ -7,7 +7,7 @@ defmodule Apiary.Secrets.Usage do
 
   A model provider (`Apiary.Connections`) uses the organisation's secret it links, whose
   values are its keys, and by its value id the value that is its default key: a use of
-  kind `:model_provider`. Nothing else links a secret; a test adds a use of its own
+  kind `:model_provider`. Nothing else links a secret; a test adds further uses
   (`uses/2`).
 
   A use names what uses the secret, for the refusal to say: its `kind` and `id`, a
