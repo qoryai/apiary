@@ -9,8 +9,9 @@ defmodule Apiary.Kinds.Runtimes do
   sets, its `hosts`, its `auth`, as the contract's `auth.schema.json` has it, and its
   `paths`, which may be absent), its `one_of` groups (each with `id`, `required` and
   `of`), and its `model`, when it has one: the model API formats it sends and where a
-  run's model id, effort and endpoint go. The loader reads no `model`. A test compares
-  the file with Forager's contract directory.
+  run's model id, effort and endpoint go. The loader keeps `model` as it is; a `model`
+  without a list of `formats` fails the compile. A test compares the file with Forager's
+  contract directory.
 
   The catalogue is read when the application is compiled: a runtime is added by a
   release. Every list of a runtime is read with `Map.fetch!/2`, since Forager always
@@ -40,7 +41,12 @@ defmodule Apiary.Kinds.Runtimes do
                    denies: Map.fetch!(runtime, "denies"),
                    credential_files: Map.fetch!(runtime, "credential_files"),
                    declares: Map.fetch!(runtime, "declares"),
-                   one_of: Map.fetch!(runtime, "one_of")
+                   one_of: Map.fetch!(runtime, "one_of"),
+                   model:
+                     case Map.get(runtime, "model") do
+                       nil -> nil
+                       %{"formats" => formats} = model when is_list(formats) -> model
+                     end
                  }
                end
              end).()
@@ -57,6 +63,14 @@ defmodule Apiary.Kinds.Runtimes do
       nil -> :error
     end
   end
+
+  @doc """
+  formats/1 is the model API formats a runtime sends, from its `model`: `[]` for a
+  runtime without a `model`.
+  """
+  @spec formats(Runtime.t()) :: [String.t()]
+  def formats(%Runtime{model: %{"formats" => formats}}), do: formats
+  def formats(%Runtime{}), do: []
 
   @doc "hosts/1 is every host a runtime's declarations set a value on, each once."
   @spec hosts(Runtime.t()) :: [String.t()]
