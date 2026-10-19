@@ -754,6 +754,11 @@ msgstr ""
 msgid "%{key} leaves focus"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{kind} runs"
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -1183,9 +1188,19 @@ msgstr ""
 msgid "%{name} undid this, before a run started"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s default model choice"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{name}'s first"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s model choice"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -1220,6 +1235,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s rules may only narrow them. A deny holds in either mode."
 msgstr "%{name}'s rules come first and hold in every workspace and repository; %{workspace}'s rules may only narrow them. A deny holds in either mode."
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}, %{kind} runs"
+msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -4524,6 +4544,11 @@ msgstr ""
 msgid "Change the %{collections}"
 msgstr ""
 
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Change the model choices that use %{provider} first: %{places}."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Change the value of %{name}"
@@ -4620,6 +4645,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed a member's level"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a model choice"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -8764,6 +8794,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Locked a model choice"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Locked a policy rule"
 msgstr ""
 
@@ -9158,6 +9193,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Mode set to %{mode}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Model choice changed"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -12137,6 +12177,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Removed a model choice"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Removed a model from a model provider"
 msgstr ""
 
@@ -13159,6 +13204,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Set Qory Apiary's public key."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Set a model choice"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15937,6 +15987,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Unlocked a model choice"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Unlocked a policy rule"
 msgstr ""
 
@@ -17315,6 +17370,7 @@ msgstr ""
 msgid "and %{more} more on the %{link}"
 msgstr ""
 
+#: lib/apiary/model_choices.ex
 #: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/overview_components.ex
@@ -18270,6 +18326,11 @@ msgid_plural "the most runs in %{number} days"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "the organisation's default"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "the same"
@@ -18300,6 +18361,7 @@ msgstr ""
 msgid "the top"
 msgstr ""
 
+#: lib/apiary/model_choices.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
@@ -18310,6 +18372,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "the workspace %{name}"
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "the workspace (locked)"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
   the organisation, its members and invitations, its workspaces, their access keys, nodes,
-  runs, retention, security policy, stored secrets and variables, the trail's pruning
+  runs, retention, security policy, stored secrets and variables, model choices, the trail's pruning
   and the instance's commands. The page asks it after the edition's describer, and it says
   nil for an action it does not know, as it does for the edition's.
   """
@@ -59,6 +59,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"secret.write"), do: gettext("Stored secret changed")
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
+  def label(:"model_choice.write"), do: gettext("Model choice changed")
   def label(:"collection.assign"), do: assign_label(nil)
 
   def label(:"collection.set_backlog"), do: backlog_label(nil)
@@ -115,9 +116,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # confirmation of its proposal, a run of Explore again and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the handover of a claimed
   # run, its release, the image a prebuild built, the choosing of what a target's runs also
-  # read, a build of a target's environment asked for, the installing of an adapter and the
-  # start of its set-up have labels yet, so the filter offers those alone, where the reader
-  # is shown the feature (the page asks it); the others' entries show as any change.
+  # read, the setting of a model choice of a workspace or a target, a build of a target's
+  # environment asked for, the installing of an adapter and the start of its set-up have
+  # labels yet, so the filter offers those alone, where the reader is shown the feature
+  # (the page asks it); the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -132,6 +134,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.explore_again",
           :"work_item.comment",
           :"work_item.comment_delete",
+          :"model_choice.write",
           :"collection.assign",
           :"collection.set_backlog",
           :"dispatch.handover",
@@ -411,6 +414,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"secret.write", %{"change" => change}, _actor), do: said_secret(change)
   defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
   defp said(:"connection.write", %{"change" => change}, _actor), do: said_connection(change)
+  defp said(:"model_choice.write", %{"change" => change}, _actor), do: said_choice(change)
 
   defp said(:"work_item.undo", _details, _actor),
     do: gettext("Undid a take in, before a run started")
@@ -537,7 +541,16 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_connection("provider_default_model_changed"),
     do: gettext("Changed a model provider's default model")
 
+  # The organisation's default model choice is written under `connection.write`.
+  defp said_connection("choice_" <> _ = change), do: said_choice(change)
   defp said_connection(_change), do: gettext("Changed an integration")
+
+  defp said_choice("choice_set"), do: gettext("Set a model choice")
+  defp said_choice("choice_changed"), do: gettext("Changed a model choice")
+  defp said_choice("choice_removed"), do: gettext("Removed a model choice")
+  defp said_choice("choice_locked"), do: gettext("Locked a model choice")
+  defp said_choice("choice_unlocked"), do: gettext("Unlocked a model choice")
+  defp said_choice(_change), do: gettext("Changed a model choice")
 
   # What was acted on, as it is called now.
   @impl true
@@ -622,6 +635,34 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           name when is_binary(name) -> %{text: name, mono: true, href: nil}
           _none when kind == "secret" -> text(gettext("A stored secret"))
           _none -> text(gettext("A variable"))
+        end
+
+      # A model choice, by the place it was set at: the workspace or the target as it is
+      # called now, else as the entry named it, and the organisation for its default.
+      "model_choice" ->
+        details = entry.details || %{}
+
+        case details["level"] do
+          6 ->
+            text(
+              gettext("%{name}'s default model choice",
+                name: details["name"] || scope.organisation.name
+              )
+            )
+
+          level when level in [2, 3] ->
+            text(
+              gettext("%{name}'s model choice",
+                name: names.targets[details["target_id"]] || details["name"] || gettext("n/a")
+              )
+            )
+
+          _workspace ->
+            text(
+              gettext("%{name}'s model choice",
+                name: names.workspaces[entry.workspace_id] || details["name"] || gettext("n/a")
+              )
+            )
         end
 
       # An integration, a release and a service definition are named in the entry itself.
@@ -770,6 +811,14 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(action, _before, _after, _details)
       when action in [:"secret.write", :"variable.edit"],
       do: nil
+
+  # A model choice at a run kind, levels 2 and 4: the run kind, in a line. The
+  # organisation's default is written under `connection.write`, the rest under
+  # `model_choice.write`.
+  def change(action, _before, _after, %{"level" => level, "run_kind" => kind})
+      when action in [:"model_choice.write", :"connection.write"] and level in [2, 4] and
+             is_binary(kind),
+      do: gettext("%{kind} runs", kind: kind)
 
   # A model provider's change: the host, the key's value ID or the model ID before and
   # after, or the key's value ID or the model's ID.
