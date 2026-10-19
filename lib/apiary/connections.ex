@@ -1006,6 +1006,7 @@ defmodule Apiary.Connections do
       end
     end)
     |> reload()
+    |> without_keys()
   end
 
   defp fetch_provider(name) do
@@ -1253,6 +1254,7 @@ defmodule Apiary.Connections do
         {:ok, deleted}
       end
     end)
+    |> without_keys()
   end
 
   def delete_provider(%Scope{}, %Connection{}), do: {:error, :not_found}
@@ -1642,10 +1644,22 @@ defmodule Apiary.Connections do
   # A write to one provider: `write_connection/3`, for a provider only.
   defp write_provider(scope, %Connection{provider_kind: kind} = provider, fun)
        when is_binary(kind) do
-    write_connection(scope, provider, fun) |> reload()
+    write_connection(scope, provider, fun) |> reload() |> without_keys()
   end
 
   defp write_provider(_scope, %Connection{}, _fun), do: {:error, :not_found}
+
+  # A refusal handed back from a write of a provider keeps no key value. Ecto keeps every
+  # param a changeset was cast from, so the keys of a form stay in `params` unless they
+  # are dropped here, under a string or an atom key. The `changes` hold none: a provider's
+  # own changeset has no key, and the changeset of the keys' secret comes scrubbed from
+  # `Apiary.Secrets`.
+  @key_params ["keys", "key", "value", "values", :keys, :key, :value, :values]
+
+  defp without_keys({:error, %Ecto.Changeset{params: params} = changeset}) when is_map(params),
+    do: {:error, %{changeset | params: Map.drop(params, @key_params)}}
+
+  defp without_keys(other), do: other
 
   # A provider and everything of it need `factory` and `secrets` shown to the scope.
   defp providers_shown(scope) do

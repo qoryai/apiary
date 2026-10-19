@@ -606,6 +606,70 @@ defmodule Apiary.Connections.ProvidersTest do
     end
   end
 
+  describe "a refused write" do
+    # Whether `needle` is anywhere in `term`: a string, a map or struct, a list or a tuple.
+    defp holds?(term, needle) when is_binary(term), do: String.contains?(term, needle)
+    defp holds?(%_{} = term, needle), do: term |> Map.from_struct() |> holds?(needle)
+
+    defp holds?(term, needle) when is_map(term),
+      do: Enum.any?(term, fn {key, value} -> holds?(key, needle) or holds?(value, needle) end)
+
+    defp holds?(term, needle) when is_list(term), do: Enum.any?(term, &holds?(&1, needle))
+
+    defp holds?(term, needle) when is_tuple(term),
+      do: term |> Tuple.to_list() |> holds?(needle)
+
+    defp holds?(_term, _needle), do: false
+
+    defp refused!({:error, %Ecto.Changeset{} = changeset}) do
+      for part <- [changeset.params, changeset.changes, changeset.errors] do
+        refute holds?(part, @key)
+      end
+
+      refute Map.has_key?(changeset.params || %{}, "keys")
+      changeset
+    end
+
+    test "of a new provider returns a changeset with no key in its params", %{scope: scope} do
+      keys = [%{"value_id" => "main", "value" => @key}]
+
+      for attrs <- [
+            %{"provider" => "openrouter", "name" => "", "keys" => keys},
+            %{"provider" => "openrouter", "applies_to" => "nowhere", "keys" => keys},
+            %{"provider" => "litellm", "settings" => %{"address" => "http://x"}, "keys" => keys},
+            %{"provider" => "openrouter", "keys" => keys, "default_key" => "other"},
+            %{provider: "openrouter", name: "", keys: [%{value_id: "main", value: @key}]}
+          ] do
+        changeset = scope |> Connections.create_provider(attrs) |> refused!()
+        assert changeset.params["name"] in ["", nil] or changeset.params["provider"]
+      end
+    end
+
+    test "of a change to a provider returns a changeset with no key in its params",
+         %{scope: scope} do
+      provider = openrouter!(scope)
+
+      changeset =
+        scope
+        |> Connections.update_provider(provider, %{
+          "name" => "",
+          "keys" => [%{"value_id" => "main", "value" => @key}]
+        })
+        |> refused!()
+
+      assert changeset.params == %{"name" => ""}
+
+      refused!(Connections.put_default_key(scope, provider, "other"))
+      refused!(Connections.delete_provider_key(scope, provider, "main"))
+
+      refused!(
+        Connections.add_provider_key(scope, provider, %{"value_id" => "Bad Id", "value" => @key})
+      )
+
+      refused!(Connections.set_provider_key(scope, provider, "main", ""))
+    end
+  end
+
   test "an organisation's deletion takes its providers, their models and their keys",
        %{scope: scope} do
     provider = openrouter!(scope)
