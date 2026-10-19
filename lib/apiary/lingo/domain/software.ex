@@ -6,12 +6,18 @@ defmodule Apiary.Lingo.Domain.Software do
   that can name a target (`Apiary.Runs.Target.label/1`), or the run names none. Any
   other label, sent by Forager beside them, names nothing here. The `repositories` label,
   which Qory may add to a run (`paths_label/0`), names nothing here either.
+
+  A work item needs a target, its repository. The target's rules are those of the run
+  variables `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES` (`Apiary.Runs.RunVariables`):
+  the system a host name, the path `owner/name` with no segment that starts with a dash.
+  Take in checks them, and a handover checks them again with the further repositories.
+  A collection's environment is prebuilt.
   """
   # Qory adds the `repositories` label to a run it hands over, with the `factory` feature,
   # which the documentation leaves out.
   @behaviour Apiary.Lingo.Domain
 
-  alias Apiary.Runs.Target
+  alias Apiary.Runs.{RunVariables, Target}
 
   @system_label "forge"
   @path_label "repository"
@@ -35,4 +41,21 @@ defmodule Apiary.Lingo.Domain.Software do
 
   @impl true
   def name, do: "software"
+
+  @impl true
+  def target_required?, do: true
+
+  @impl true
+  def check_target(target) do
+    case RunVariables.for_target(target) do
+      {:ok, _variables} -> :ok
+      {:error, _rule} -> {:error, :target_invalid}
+    end
+  end
+
+  @impl true
+  def run_variables(target, picked), do: RunVariables.for_target(target, picked)
+
+  @impl true
+  def prebuilds?, do: true
 end
