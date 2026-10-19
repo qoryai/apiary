@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.Contract.PoolClaimTest do
   # `POST /v1/pools/claim` (`ApiaryWeb.Contract.PoolClaimController`): the claim answer,
-  # signed, held to the vendored `claim-answer.schema.json`, a prebuild's at revision 2
-  # and never at revision 1; the refusals in their order;
+  # signed, held to the vendored `claim-answer.schema.json`, a prebuild's to its pool
+  # alone, an explore run's without a target with neither access nor target; the refusals
+  # in their order;
   # another pool's id refused as an unknown one is; `dispatch.claim` refused or not found
   # as one answer; the hold, its wake, its end and its cap per key; and the key read again
   # after the wait. Not async: the features, the hold's settings and the registry of holds
@@ -88,7 +89,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       target: @claim,
       content_type: "application/json",
       delivery: nil,
-      contract_version: Keyword.get(opts, :contract_version, "1")
+      contract_version: Keyword.get(opts, :contract_version, "3")
     )
   end
 
@@ -151,7 +152,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
       assert answer == %{
                "version" => 1,
-               "revision" => 1,
+               "revision" => 3,
                "dispatch_id" => dispatch.public_id,
                "run_id" => run.run_id,
                "pool_id" => ctx.pool.public_id,
@@ -213,13 +214,13 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
     end
   end
 
-  describe "a claim at revision 2" do
+  describe "a claim of a prebuild or of a run without a target" do
     test "takes a prebuild held for its pool, answered 200, signed, as the contract's prebuild",
          ctx do
       collection = collection_fixture(ctx.scope, target_path: "acme/shop")
       run = prebuild!(collection, ctx.pool)
 
-      conn = claim(ctx, body(%{"pool_id" => ctx.pool.public_id}), contract_version: "2")
+      conn = claim(ctx, body(%{"pool_id" => ctx.pool.public_id}))
       assert conn.status == 200
       assert signed_answer?(conn)
 
@@ -234,7 +235,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
       assert answer == %{
                "version" => 1,
-               "revision" => 2,
+               "revision" => 3,
                "dispatch_id" => dispatch.public_id,
                "run_id" => run.run_id,
                "pool_id" => ctx.pool.public_id,
@@ -247,34 +248,35 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert Repo.get!(DispatchRun, run.id).state == :claimed
     end
 
-    test "takes an explore run as at revision 1, its answer naming revision 2", ctx do
-      work_item = work_item_fixture(ctx.scope)
+    test "takes an explore run without a target, in the general domain: neither access nor target",
+         ctx do
+      scope = with_domain(ctx.scope, "general")
+      work_item = work_item_fixture(scope, %{target_system: nil, target_path: nil})
       run = queue!(work_item)
 
-      conn = claim(ctx, body(), contract_version: "2")
+      conn = claim(ctx, body())
+      assert {conn.status, signed_answer?(conn)} == {200, true}
       answer = Jason.decode!(conn.resp_body)
-      assert {conn.status, answer["revision"], answer["run_id"]} == {200, 2, run.run_id}
-      assert answer["work_item"]["id"] == work_item.public_id
       assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
+
+      assert members(conn.resp_body) ==
+               @fixtures
+               |> Path.join("claim-answer/explore-without-target.json")
+               |> File.read!()
+               |> members()
+
+      assert {answer["revision"], answer["run_id"]} == {3, run.run_id}
+      assert answer["work_item"]["id"] == work_item.public_id
+      refute Map.has_key?(answer, "access") or Map.has_key?(answer, "target")
     end
 
-    test "a claim at revision 1 never takes a prebuild, nor another pool's claim at revision 2",
-         ctx do
+    test "another pool never takes a prebuild held for a pool", ctx do
       # The pool made before the collection, whose fixture applies no trigger.
       other = pool_fixture(ctx.scope)
       %{access_key: other_key, pair: other_pair} = enrolled_key_fixture(ctx.scope, other)
       run = prebuild!(collection_fixture(ctx.scope), ctx.pool)
 
-      conn = claim(ctx, body())
-      assert {conn.status, conn.resp_body} == {204, ""}
-
-      conn =
-        claim(ctx, body(%{}, 1),
-          key_id: other_key.key_id,
-          seed: other_pair.secret,
-          contract_version: "2"
-        )
-
+      conn = claim(ctx, body(), key_id: other_key.key_id, seed: other_pair.secret)
       assert {conn.status, conn.resp_body} == {204, ""}
       assert Repo.get!(DispatchRun, run.id).state == :waiting
       assert dispatches() == 0

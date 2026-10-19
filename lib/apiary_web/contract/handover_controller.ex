@@ -13,18 +13,20 @@ defmodule ApiaryWeb.Contract.HandoverController do
   # `invalid_request` (`Apiary.Dispatches.Wire.handover/1`); a `time` more than 300
   # seconds from the clock, either way, or a request whose signature was accepted before,
   # is `401`, unsigned (`ApiaryWeb.Contract.AdapterRequest.accept/2`), before anything is
-  # looked up. Then the handover (`Apiary.Dispatches.handover/3`), for the revision the
-  # request named, with the refusals in the contract's order: the key read again and
-  # refused, `401`, unsigned; an unknown dispatch, another pool's, or the action refused,
-  # `403` `forbidden`, one answer; a prebuild's dispatch at revision 1, `404` `not_found`;
-  # a dispatch that ended, or that the handover ended as it could not form the run, `410`
+  # looked up. Then the handover (`Apiary.Dispatches.handover/3`), with the refusals in
+  # the contract's order: the key read again and refused, `401`, unsigned; an unknown
+  # dispatch, another pool's, or the action refused, `403` `forbidden`, one answer; a
+  # dispatch that ended, or that the handover ended as it could not form the run, `410`
   # `gone`; `409` `handed_over`, `lease_expired`, `not_dispatched` and `no_gateway`; and
   # last, a run key or anything else Qory could not make, `503` `unavailable`, after which
   # nothing was written.
   #
   # A run handed over is `200`: `handover-answer.schema.json`, its members in the
-  # schema's order, its `revision` the request's, its `work_item` an explore run's alone,
-  # and its `inputs` as Qory wrote them (`Apiary.Dispatches.Inputs`). The run key is given
+  # schema's order, its `revision` the request's, its `domain` the name of the run's
+  # workspace's domain, its `access` and `target` both present for a run with a target
+  # and both left out for an explore run without one, its `work_item` an explore run's
+  # alone, and its `inputs` as Qory wrote them (`Apiary.Dispatches.Inputs`). The answer
+  # has no `run_settings`. The run key is given
   # once, in this answer; nothing here logs it, the body or the input.
 
   use ApiaryWeb, :controller
@@ -52,13 +54,12 @@ defmodule ApiaryWeb.Contract.HandoverController do
 
   # The handover of a request accepted: `conn` is the one `accept/2` marked.
   defp accepted(conn, dispatch_id) do
-    meta = %{revision: conn.assigns.contract_version, body: conn.assigns.raw_body}
+    meta = %{body: conn.assigns.raw_body}
 
     case handover(conn.assigns.access_key, dispatch_id, meta) do
       {:ok, handed_over} -> answer(conn, handed_over)
       {:error, :unauthorized} -> refuse(conn, 401, "unauthorized")
       {:error, :forbidden} -> refuse(conn, 403, "forbidden")
-      {:error, :not_found} -> refuse(conn, 404, "not_found")
       {:error, :gone} -> refuse(conn, 410, "gone")
       {:error, reason} when reason in @conflicts -> refuse(conn, 409, Atom.to_string(reason))
       {:error, :unavailable} -> refuse(conn, 503, "unavailable")
@@ -90,9 +91,10 @@ defmodule ApiaryWeb.Contract.HandoverController do
             {"run_id", run.node_run_id},
             {"run_key", run_key},
             {"step", dispatch_run.step},
-            {"access", DispatchAnswer.access(dispatch_run.step)},
-            {"target", DispatchAnswer.target(handed_over.target.system, handed_over.target.path)}
-          ] ++ work_item ++ [{"inputs", handed_over.inputs}]
+            {"domain", handed_over.domain}
+          ] ++
+            DispatchAnswer.reach(dispatch_run.step, handed_over.target) ++
+            work_item ++ [{"inputs", handed_over.inputs}]
         )
       )
 

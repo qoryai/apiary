@@ -4,10 +4,10 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   # pool's access key, the refusals in their order, the time's window, the replay rule,
   # every other kind of key refused as an unknown key is, the answers signed but a 401, and
   # the routes where the feature is off. A claim accepted, with an empty queue and no
-  # wait, is answered `204`, signed; a `dispatched`, a handover, a release or, at revision
-  # 2, a prebuilt accepted, of a dispatch no pool has, `403` `forbidden`, signed, and a
-  # prebuilt at revision 1, which does not serve its route, `404` `not_found`, signed. Not
-  # async: the features are the whole node's.
+  # wait, is answered `204`, signed; a `dispatched`, a handover, a release or a prebuilt
+  # accepted, of a dispatch no pool has, `403` `forbidden`, signed. Every request names
+  # revision 3 of the provisioner contract, the one served, unless a test says otherwise.
+  # Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import ExUnit.CaptureLog
@@ -81,7 +81,12 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   end
 
   defp signed(ctx, target, body, opts \\ []) do
-    defaults = [target: target, content_type: "application/json", delivery: nil]
+    defaults = [
+      target: target,
+      content_type: "application/json",
+      delivery: nil,
+      contract_version: "3"
+    ]
 
     signed_post(
       build_conn(),
@@ -96,18 +101,11 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
   defp used_at(key), do: Repo.get!(AccessKey, key.id).last_used_at
 
-  # An accepted request's answer, at `revision`, 1 unless given: a claim of an empty queue
-  # with no wait, `204` with no body; a `dispatched`, a handover, a release or, at revision
-  # 2, a prebuilt of `@dispatch`, which no pool has, `403` `forbidden`; a prebuilt at
-  # revision 1, `404` `not_found`, before the dispatch is asked.
-  defp accepted?(conn, target, revision \\ "1")
-  defp accepted?(conn, @claim, _revision), do: conn.status == 204 and conn.resp_body == ""
-
-  defp accepted?(conn, target, revision) do
-    if String.ends_with?(target, "/prebuilt") and revision == "1",
-      do: json_response(conn, 404) == @not_found,
-      else: json_response(conn, 403) == @forbidden
-  end
+  # An accepted request's answer: a claim of an empty queue with no wait, `204` with no
+  # body; a `dispatched`, a handover, a release or a prebuilt of `@dispatch`, which no pool
+  # has, `403` `forbidden`.
+  defp accepted?(conn, @claim), do: conn.status == 204 and conn.resp_body == ""
+  defp accepted?(conn, _target), do: json_response(conn, 403) == @forbidden
 
   defp seen_count, do: Repo.aggregate("adapter_seen_requests", :count)
 
@@ -130,7 +128,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   end
 
   describe "a verified request" do
-    test "on each route is accepted: a claim of an empty queue 204, a dispatched, a handover or a release of a dispatch no pool has 403 forbidden, a prebuilt at revision 1 404 not_found, signed",
+    test "on each route is accepted: a claim of an empty queue 204, a dispatched, a handover, a release or a prebuilt of a dispatch no pool has 403 forbidden, signed",
          ctx do
       for target <- @targets do
         conn = signed(ctx, target, body(target))
@@ -155,13 +153,19 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       assert accepted?(conn, @claim)
     end
 
-    test "is served the provisioner contract's revisions 1 and 2", ctx do
-      assert AdapterRequest.revisions(:pool) == [1, 2]
+    test "is served the provisioner contract's revision 3 alone, and refused 1 and 2", ctx do
+      assert AdapterRequest.revisions(:pool) == [3]
 
       for target <- @targets do
-        conn = signed(ctx, target, body(target), contract_version: "2")
-        assert accepted?(conn, target, "2"), target
+        conn = signed(ctx, target, body(target))
+        assert accepted?(conn, target), target
         assert signed_answer?(conn), target
+
+        for version <- ["1", "2"] do
+          conn = signed(ctx, target, body(target, 1), contract_version: version)
+          assert json_response(conn, 400) == @unsupported, "#{target} #{version}"
+          assert signed_answer?(conn), target
+        end
       end
 
       assert AdapterRequest.revisions(:adapter) == [1]
@@ -291,7 +295,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
       conn =
         AdapterRequest.call(
-          request("/v1/adapter", key.key_id, pair.secret, ~s({"version":1})),
+          request("/v1/adapter", key.key_id, pair.secret, ~s({"version":1}), "1"),
           AdapterRequest.init([])
         )
 
@@ -380,14 +384,14 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     test "400 bad_request for an instance id absent or malformed, signed, before the revision",
          ctx do
       for instance_id <- [nil, "-starts-with-a-dash", String.duplicate("a", 65)] do
-        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "3")
+        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "4")
         assert json_response(conn, 400) == @bad_request, inspect(instance_id)
         assert signed_answer?(conn)
       end
     end
 
     test "400 unsupported_contract_version, signed, before the body", ctx do
-      for version <- [nil, "3", "02", "01", "1.0", "one"] do
+      for version <- [nil, "1", "2", "4", "03", "3.0", "three"] do
         conn = claim(ctx, %{"version" => 2}, contract_version: version)
         assert json_response(conn, 400) == @unsupported, inspect(version)
         assert signed_answer?(conn)
@@ -585,15 +589,16 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     assert {:error, _seconds} = RateLimit.check({:pool, id}, rate: 50, burst: 100)
   end
 
-  # A request that reached the plug, signed under `seed` with its raw body kept.
-  defp request(target, key_id, seed, raw) do
+  # A request that reached the plug, signed under `seed` with its raw body kept, naming
+  # the contract's `revision`.
+  defp request(target, key_id, seed, raw, revision \\ "3") do
     instance_id = Apiary.ContractFixtures.instance_id()
 
     build_conn(:post, target, raw)
     |> put_req_header("content-type", "application/json")
     |> put_req_header("x-qory-access-key-id", key_id)
     |> put_req_header("x-qory-instance-id", instance_id)
-    |> put_req_header("x-qory-contract-version", "1")
+    |> put_req_header("x-qory-contract-version", revision)
     |> put_req_header(
       "x-qory-signature-ed25519",
       Apiary.ContractFixtures.sign_request(seed, key_id, instance_id, "POST", target, raw)

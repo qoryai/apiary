@@ -83,7 +83,7 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
   end
 
   # A prebuild of a fresh collection, queued by the trigger with the pool's environment
-  # record of it, claimed at revision 2 and said started: committed.
+  # record of it, claimed and said started: committed.
   defp started!(ctx) do
     collection = collection_fixture(ctx.scope)
     Agent.update(ctx.made, &[collection.adapter_id | &1])
@@ -91,7 +91,7 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
     {:ok, [queued]} =
       Repo.transact(fn -> {:ok, Environments.trigger([collection], Dispatches.now())} end)
 
-    %{dispatch: dispatch} = dispatched!(ctx.key, 2)
+    %{dispatch: dispatch} = dispatched!(ctx.key)
     assert dispatch.dispatch_run_id == queued.id
     %{collection: collection, dispatch_run: queued, dispatch: dispatch}
   end
@@ -104,7 +104,7 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
   end
 
   defp handover(ctx, %{dispatch: dispatch}) do
-    fn -> Dispatches.handover(ctx.key, dispatch.public_id, %{revision: 2, body: @body}) end
+    fn -> Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body}) end
   end
 
   defp prebuilt(ctx, %{dispatch: dispatch, dispatch_run: queued}, attrs \\ %{}) do
@@ -114,7 +114,6 @@ defmodule Apiary.Dispatches.PrebuiltRacesTest do
   defp release(ctx, %{dispatch: dispatch}) do
     fn ->
       Dispatches.release(ctx.key, dispatch.public_id, %{
-        revision: 2,
         reason: "The build failed.",
         retry: false
       })

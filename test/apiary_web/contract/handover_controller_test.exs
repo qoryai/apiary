@@ -31,8 +31,10 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
   @vendored Path.expand("../../fixtures/contract", __DIR__)
   @base "https://qory.dev/contracts/"
 
-  # The vendored schemas by their URL under the contracts' base, and the explore
-  # contract's from `priv/contract`, where Qory keeps them. Nothing is fetched.
+  # The vendored schemas by their URL under the contracts' base, the explore contract's
+  # from `priv/contract`, where Qory keeps them, and Forager's from its contract directory
+  # (`Apiary.ContractFixtures.contract_dir/0`), which the handover answer's `run_settings`
+  # refers to: a test that builds that schema is tagged `:contract`. Nothing is fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -86,7 +88,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       target: "/v1/dispatches/#{id(dispatch)}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: Keyword.get(opts, :revision, "1")
+      contract_version: "3"
     )
   end
 
@@ -107,23 +109,32 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
     {work_item, run}
   end
 
-  defp claimed!(ctx, revision \\ 1) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), revision)
+  defp claimed!(ctx) do
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
     dispatch
   end
 
-  defp started!(ctx, revision \\ 1) do
-    dispatch = claimed!(ctx, revision)
-    conn = dispatched(ctx, dispatch, revision: Integer.to_string(revision))
+  defp started!(ctx) do
+    dispatch = claimed!(ctx)
+    conn = dispatched(ctx, dispatch)
     assert conn.status == 204
     dispatch
   end
 
   defp validator(path) do
     JSV.build!(%{"$ref" => @base <> path},
-      resolver: {Resolver, [@vendored, Application.app_dir(:apiary, "priv/contract")]},
+      resolver:
+        {Resolver, [@vendored, Application.app_dir(:apiary, "priv/contract")] ++ forager()},
       formats: true
     )
+  end
+
+  # The directory of Forager's contracts, when its contract directory is there.
+  defp forager do
+    case Apiary.ContractFixtures.contract_dir() do
+      nil -> []
+      dir -> [Path.expand("../..", dir)]
+    end
   end
 
   # The members of a JSON object, in their order.
@@ -153,6 +164,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
     do: json_response(conn, status) == %{"error" => code} and signed_answer?(conn)
 
   describe "a handover" do
+    @tag :contract
     test "of an explore run is 200, signed, not stored, the contract's answer with the explore input",
          ctx do
       {work_item, queued} = queued!(ctx, %{first_instruction: "Look at the cart first."})
@@ -188,7 +200,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert {:ok, _} = JSV.validate(answer["inputs"], validator("explore/v1/inputs.schema.json"))
 
       assert members(conn.resp_body) ==
-               ~w(version revision run_id run_key step access target work_item inputs)
+               ~w(version revision run_id run_key step domain access target work_item inputs)
 
       assert conn.resp_body
              |> Jason.decode!(objects: :ordered_objects)
@@ -197,11 +209,12 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
              |> elem(1)
              |> Map.get(:values)
              |> keys() ==
-               ~w(version work_item run ticket instruction comments comments_omitted answers target)
+               ~w(version work_item run ticket instruction comments comments_omitted answers target domain)
 
-      assert answer["revision"] == 1
+      assert answer["revision"] == 3
       assert answer["run_id"] == queued.run_id
       assert answer["step"] == "explore"
+      assert answer["domain"] == "software"
       assert answer["access"] == "read"
       assert answer["target"] == %{"system" => "forge.example.com", "path" => "acme/shop"}
       assert answer["work_item"]["id"] == work_item.public_id
@@ -209,6 +222,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
 
       # What the explore contract asks of the two together.
       assert answer["inputs"]["target"] == answer["target"]
+      assert answer["inputs"]["domain"] == answer["domain"]
       assert answer["inputs"]["work_item"]["id"] == answer["work_item"]["id"]
       assert answer["inputs"]["instruction"]["text"] == "Look at the cart first."
       assert [%{"body" => "The cart empties itself."}] = answer["inputs"]["comments"]
@@ -276,15 +290,42 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert inputs["comments"] == []
     end
 
-    test "of a prebuild at revision 2 is 200, signed, with no work item and its input the ref it was queued for",
+    @tag :contract
+    test "of an explore run without a target, in the general domain, is 200 with its domain, no access and no target",
+         ctx do
+      with_domain(ctx.scope, "general")
+      {work_item, queued} = queued!(ctx, %{target_system: nil, target_path: nil})
+      dispatch = started!(ctx)
+      conn = handover(ctx, dispatch)
+
+      assert conn.status == 200
+      assert signed_answer?(conn)
+      answer = Jason.decode!(conn.resp_body)
+
+      assert {:ok, _} =
+               JSV.validate(answer, validator("provisioner/v1/handover-answer.schema.json"))
+
+      assert {:ok, _} = JSV.validate(answer["inputs"], validator("explore/v1/inputs.schema.json"))
+
+      assert members(conn.resp_body) ==
+               ~w(version revision run_id run_key step domain work_item inputs)
+
+      assert {answer["run_id"], answer["domain"]} == {queued.run_id, "general"}
+      assert answer["work_item"]["id"] == work_item.public_id
+      assert answer["inputs"]["domain"] == "general"
+      refute Map.has_key?(answer["inputs"], "target")
+    end
+
+    @tag :contract
+    test "of a prebuild is 200, signed, with no work item and its input the ref it was queued for",
          ctx do
       collection = collection_fixture(ctx.scope)
 
       {:ok, _queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-      dispatch = started!(ctx, 2)
-      conn = handover(ctx, dispatch, revision: "2")
+      dispatch = started!(ctx)
+      conn = handover(ctx, dispatch)
 
       assert conn.status == 200
       assert signed_answer?(conn)
@@ -294,10 +335,11 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
                JSV.validate(answer, validator("provisioner/v1/handover-answer.schema.json"))
 
       assert members(conn.resp_body) ==
-               ~w(version revision run_id run_key step access target inputs)
+               ~w(version revision run_id run_key step domain access target inputs)
 
-      assert answer["revision"] == 2
+      assert answer["revision"] == 3
       assert answer["step"] == "prebuild"
+      assert answer["domain"] == "software"
       assert answer["access"] == "read"
 
       assert answer["target"] == %{
@@ -308,9 +350,6 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert answer["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
       ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
       assert keys(ordered["inputs"].values) == ~w(version environment_ref)
-
-      # At revision 1 the same dispatch is a step not served.
-      assert refused?(handover(ctx, dispatch), 404, "not_found")
     end
 
     test "is refused with each status and code, signed", ctx do
@@ -459,15 +498,14 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       {:ok, _queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-      prebuild = claimed!(ctx, 2)
-      assert refused?(dispatched(ctx, prebuild), 404, "not_found")
+      prebuild = claimed!(ctx)
 
       {1, _rows} =
         Repo.update_all(from(d in Dispatch, where: d.id == ^prebuild.id),
           set: [ended_at: DateTime.utc_now(), end_cause: :released]
         )
 
-      assert refused?(dispatched(ctx, prebuild, revision: "2"), 410, "gone")
+      assert refused?(dispatched(ctx, prebuild), 410, "gone")
     end
 
     test "with a lease lapsed is 409 lease_expired, signed, the lapse committed", ctx do

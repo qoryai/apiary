@@ -94,6 +94,13 @@ defmodule Apiary.WorkItems.MemberActionsTest do
 
   defp proposed!(work_item), do: explore_run_fixture(work_item, result: understood_result())
 
+  # The domain and the target a handover gives the input of a run of `work_item`.
+  defp run(work_item),
+    do: %{
+      domain: "software",
+      target: %{system: work_item.target_system, path: work_item.target_path}
+    }
+
   defp edit_form(attrs) do
     Map.merge(
       %{
@@ -197,7 +204,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
                ~r/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/
 
       work_item = Repo.get!(WorkItem, ctx.work_item.id)
-      {:ok, inputs} = Inputs.explore(work_item, third)
+      {:ok, inputs} = Inputs.explore(work_item, third, run(work_item))
       inputs = inputs |> Jason.encode!() |> Jason.decode!()
 
       assert Enum.map(inputs["answers"], & &1["answer"]) == ["The small one.", "The one in town."]
@@ -252,7 +259,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       next =
         Repo.one!(from r in DispatchRun, where: r.work_item_id == ^answered.id and r.attempt == 2)
 
-      assert Inputs.explore(answered, next) == {:error, :inputs_invalid}
+      assert Inputs.explore(answered, next, run(answered)) == {:error, :inputs_invalid}
     end
 
     test "answers belong to their take in: another take in reads none of them", ctx do

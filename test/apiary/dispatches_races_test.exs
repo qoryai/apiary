@@ -1,5 +1,5 @@
 defmodule Apiary.DispatchesRacesTest do
-  # Claims racing each other (`Apiary.Dispatches.claim/3`), each on a separate
+  # Claims racing each other (`Apiary.Dispatches.claim/2`), each on a separate
   # connection, outside the SQL sandbox, so each commits and each waits on the other's
   # locks as it would in production. Not async: what these tests commit is visible to every other
   # test while they run, and they delete it again before they end; the ledger and the
@@ -387,7 +387,7 @@ defmodule Apiary.DispatchesRacesTest do
       collection = collection!(ctx)
 
       {:ok, [run]} = trigger(collection, "env-1").()
-      {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+      {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
 
       {first, holder} =
         hold(fn ->
@@ -415,13 +415,13 @@ defmodule Apiary.DispatchesRacesTest do
       {:ok, [run]} = trigger(collection, "env-1").()
 
       {:ok, %{dispatch: dispatch}} =
-        Dispatches.claim(key, DateTime.add(Dispatches.now(), -700, :second), 2)
+        Dispatches.claim(key, DateTime.add(Dispatches.now(), -700, :second))
 
       # The trigger's first half: its record locked, as its upsert locks it.
       {first, holder} = hold(fn -> lock_records(collection) end)
 
       # The claim locks the pool, then waits on the record of its lapsed prebuild.
-      claim = start(fn -> Dispatches.claim(key, Dispatches.now(), 2) end)
+      claim = start(fn -> Dispatches.claim(key, Dispatches.now()) end)
       await_waited(claim.backend, holder)
 
       # The trigger's second half: the record's queued_ref, then the prebuild, whose
@@ -488,8 +488,8 @@ defmodule Apiary.DispatchesRacesTest do
       [low, high] = Enum.sort_by([collection!(ctx, "A"), collection!(ctx, "B")], & &1.id)
       {:ok, _queued} = listing([low, high], "env-1").()
       back = DateTime.add(Dispatches.now(), -700, :second)
-      {:ok, %{run: one}} = Dispatches.claim(key, back, 2)
-      {:ok, %{run: two}} = Dispatches.claim(key, back, 2)
+      {:ok, %{run: one}} = Dispatches.claim(key, back)
+      {:ok, %{run: two}} = Dispatches.claim(key, back)
 
       {first, holder} =
         hold(fn ->
@@ -596,8 +596,8 @@ defmodule Apiary.DispatchesRacesTest do
                 listing: listing(Enum.shuffle(collections), "env-#{round}b"),
                 listing: listing(Enum.shuffle(collections), dropped),
                 sweep: rescued(fn -> Dispatches.sweep(Dispatches.now()) end),
-                lapsing_claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 0), back, 2) end),
-                claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 1), Dispatches.now(), 2) end)
+                lapsing_claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 0), back) end),
+                claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 1), Dispatches.now()) end)
               ]
               |> Enum.take(sides(6))
               |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)

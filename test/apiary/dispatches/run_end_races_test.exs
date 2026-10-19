@@ -248,8 +248,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     end
 
     # A collection, the pool's environment record of it, `env-1` queued and a good build
-    # kept, and a prebuild of it claimed at revision 2, said started and handed over, its
-    # gateway not yet attached: committed.
+    # kept, and a prebuild of it claimed, said started and handed over, its gateway not
+    # yet attached: committed.
     defp prebuild_handed_over!(ctx) do
       collection = collection_fixture(ctx.scope)
       Agent.update(ctx.collections_made, &[collection.adapter_id | &1])
@@ -272,11 +272,11 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       {:ok, queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.place.pool, "env-1") end)
 
-      %{dispatch: dispatch} = dispatched!(ctx.place.key, 2)
+      %{dispatch: dispatch} = dispatched!(ctx.place.key)
       assert dispatch.dispatch_run_id == queued.id
 
       {:ok, %{run: run}} =
-        Dispatches.handover(ctx.place.key, dispatch.public_id, %{revision: 2, body: @body})
+        Dispatches.handover(ctx.place.key, dispatch.public_id, %{body: @body})
 
       %{
         collection: collection,
@@ -294,7 +294,6 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     defp release_prebuild(ctx, handed) do
       fn ->
         Dispatches.release(ctx.place.key, handed.dispatch.public_id, %{
-          revision: 2,
           reason: @reason,
           retry: false
         })

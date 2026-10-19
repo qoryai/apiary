@@ -193,7 +193,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
         Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
 
       %{access_key: key} = enrolled_key_fixture(scope, pool)
-      {:ok, _claimed} = Dispatches.claim(key, Dispatches.now(), 2)
+      {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
       view = open(conn, path)
 
       assert has_element?(view, "#{pool_id(pool)}-running", "A build is running.")
@@ -504,7 +504,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       end
 
       %{access_key: key} = enrolled_key_fixture(scope, arm)
-      {:ok, _claimed} = Dispatches.claim(key, Dispatches.now(), 2)
+      {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
       set_policy_image!(scope)
       view = open(conn, path)

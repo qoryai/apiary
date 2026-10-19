@@ -91,7 +91,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
     %{work_item: work_item, dispatch_run: queued, dispatch: dispatch}
   end
 
-  # A prebuild of a fresh collection, claimed at revision 2 and said started: committed.
+  # A prebuild of a fresh collection, claimed and said started: committed.
   defp prebuild_started!(ctx) do
     collection = collection_fixture(ctx.scope)
     made!(ctx, collection.adapter_id)
@@ -99,16 +99,16 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
     {:ok, queued} =
       Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-    %{dispatch: dispatch} = dispatched!(ctx.key, 2)
+    %{dispatch: dispatch} = dispatched!(ctx.key)
     assert dispatch.dispatch_run_id == queued.id
     %{collection: collection, dispatch_run: queued, dispatch: dispatch}
   end
 
-  defp handover(ctx, %{dispatch: dispatch}, revision \\ 1),
-    do: fn -> handover_now(ctx, dispatch, revision) end
+  defp handover(ctx, %{dispatch: dispatch}),
+    do: fn -> handover_now(ctx, dispatch) end
 
-  defp handover_now(ctx, dispatch, revision),
-    do: Dispatches.handover(ctx.key, dispatch.public_id, %{revision: revision, body: @body})
+  defp handover_now(ctx, dispatch),
+    do: Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
 
   # The release after the handover, inside the transaction it is given or its own.
   defp release(%{dispatch_run: %DispatchRun{id: id}}),
@@ -248,7 +248,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
       assert Slots.held(ctx.pool.id) == 0
 
       # A handover after the release finds the dispatch ended.
-      assert handover_now(ctx, claimed.dispatch, 1) == {:error, :gone}
+      assert handover_now(ctx, claimed.dispatch) == {:error, :gone}
     end
 
     test "the release first, before the handover: it is not_handed_over, and the handover waits, then hands the run over",
@@ -320,7 +320,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
       {first, first_pid} = hold(sweep(DateTime.utc_now()))
       assert ctx.scope.workspace.id in first.result
 
-      second = start(handover(ctx, claimed, 2))
+      second = start(handover(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
@@ -340,7 +340,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
         lapse!(claimed)
 
         [handed, _swept] =
-          together([handover(ctx, claimed, 2), sweep(DateTime.utc_now())])
+          together([handover(ctx, claimed), sweep(DateTime.utc_now())])
 
         assert handed == {:error, :gone}
         ended!(ctx, claimed, :superseded, :run_ended)

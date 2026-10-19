@@ -220,6 +220,13 @@ defmodule Apiary.Lingo.DomainTest do
       end
     end
 
+    test "name/1 is the name of the workspace's domain, the default's for none or a retired one" do
+      assert Domain.name(%Workspace{domain: "general"}) == "general"
+      assert Domain.name(%Workspace{domain: "example"}) == "example"
+      assert Domain.name(%Workspace{domain: "retired"}) == "software"
+      assert Domain.name(nil) == "software"
+    end
+
     test "target_labels/1 asks the workspace's domain" do
       assert Domain.target_labels(%Workspace{domain: "software"}) == Software.target_labels()
       assert Domain.target_labels(nil) == Software.target_labels()

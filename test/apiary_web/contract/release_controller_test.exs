@@ -81,7 +81,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       target: "/v1/dispatches/#{id(dispatch)}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: Keyword.get(opts, :revision, "1")
+      contract_version: "3"
     )
   end
 
@@ -99,24 +99,17 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
     post(ctx, dispatch, "release", body, opts)
   end
 
-  defp started!(ctx, revision \\ "1") do
-    {:ok, %{dispatch: dispatch}} =
-      Dispatches.claim(ctx.key, Dispatches.now(), String.to_integer(revision))
-
-    conn =
-      post(ctx, dispatch, "dispatched", %{"version" => 1, "time" => now_time()},
-        revision: revision
-      )
+  defp started!(ctx) do
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+    conn = post(ctx, dispatch, "dispatched", %{"version" => 1, "time" => now_time()})
 
     assert conn.status == 204
     dispatch
   end
 
-  defp handed_over!(ctx, revision \\ "1") do
-    dispatch = started!(ctx, revision)
-
-    conn =
-      post(ctx, dispatch, "handover", %{"version" => 1, "time" => now_time()}, revision: revision)
+  defp handed_over!(ctx) do
+    dispatch = started!(ctx)
+    conn = post(ctx, dispatch, "handover", %{"version" => 1, "time" => now_time()})
 
     assert conn.status == 200
     dispatch
@@ -228,15 +221,15 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       assert %DispatchRun{state: :ended, end_cause: :released} = Repo.get!(DispatchRun, queued.id)
     end
 
-    test "of a prebuild at revision 2 is 204, before the handover and after it", ctx do
+    test "of a prebuild is 204, before the handover and after it", ctx do
       first = prebuild!(ctx)
-      dispatch = started!(ctx, "2")
-      assert given_back?(release(ctx, dispatch, false, revision: "2"))
+      dispatch = started!(ctx)
+      assert given_back?(release(ctx, dispatch, false))
       assert Repo.get!(DispatchRun, first.id).end_cause == :released
 
       second = prebuild!(ctx)
-      dispatch = handed_over!(ctx, "2")
-      assert given_back?(release(ctx, dispatch, true, revision: "2"))
+      dispatch = handed_over!(ctx)
+      assert given_back?(release(ctx, dispatch, true))
       assert Repo.get!(DispatchRun, second.id).end_cause == :released
     end
 
@@ -262,18 +255,16 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
                "forbidden"
              )
 
-      # A prebuild's dispatch at revision 1.
       prebuild!(ctx)
-      prebuild = started!(ctx, "2")
-      assert refused?(release(ctx, prebuild, true), 404, "not_found")
+      prebuild = started!(ctx)
 
       # Lapsed before its handover.
       lapse!(dispatch)
       assert refused?(release(ctx, dispatch, true), 409, "lease_expired")
 
       # Ended.
-      assert given_back?(release(ctx, prebuild, false, revision: "2"))
-      assert refused?(release(ctx, prebuild, false, revision: "2"), 410, "gone")
+      assert given_back?(release(ctx, prebuild, false))
+      assert refused?(release(ctx, prebuild, false), 410, "gone")
     end
 
     test "under a bad signature is 401, unsigned", ctx do
@@ -287,7 +278,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
 
     test "that cannot be written is 503 unavailable, signed, and writes nothing", ctx do
       queued = prebuild!(ctx)
-      dispatch = started!(ctx, "2")
+      dispatch = started!(ctx)
 
       # A rule the record's failure breaks, in this test's transaction alone: the write
       # of the release fails.
@@ -297,7 +288,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       )
 
       {conn, log} =
-        ExUnit.CaptureLog.with_log(fn -> release(ctx, dispatch, false, revision: "2") end)
+        ExUnit.CaptureLog.with_log(fn -> release(ctx, dispatch, false) end)
 
       assert refused?(conn, 503, "unavailable")
       assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
