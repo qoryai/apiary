@@ -724,7 +724,7 @@ defmodule Apiary.AuditChanges do
 
     {:ok, provider} =
       Apiary.Connections.create_provider(scope, %{
-        provider: "openrouter",
+        provider: "anthropic",
         keys: [%{value_id: "main", value: value}]
       })
 
