@@ -330,6 +330,46 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     end
   end
 
+  describe "a run that ended at its handover, before it started" do
+    test "Explore's tab says what to fix and why; neither tab says the run ended with an error",
+         %{conn: conn, scope: scope} do
+      for {cause, body} <- [
+            {:variables_invalid,
+             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
+            {:ticket_gone,
+             "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."},
+            {:inputs_invalid,
+             "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."}
+          ] do
+        work_item = work_item_fixture(scope)
+        explore_run_fixture(work_item, end_cause: cause)
+
+        {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+
+        assert has_element?(
+                 view,
+                 "#work-item-explore-none-h",
+                 "The run ended before it started."
+               )
+
+        assert has_element?(view, "#work-item-explore-none p", body)
+        refute html =~ "ended with an error"
+        refute html =~ "Its last result was an error"
+
+        {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
+        refute html =~ "ended with an error"
+      end
+    end
+
+    test "a run whose last result was an error still says so", %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: {:data, %{"is_error" => true, "result" => "No"}})
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(view, "#work-item-explore-none-h", "The run ended with an error.")
+    end
+  end
+
   describe "live" do
     test "a change to the work item is drawn; one to another is not read", %{
       conn: conn,

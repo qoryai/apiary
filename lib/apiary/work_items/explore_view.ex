@@ -36,7 +36,8 @@ defmodule Apiary.WorkItems.ExploreView do
   # never handed over), `workspace_id`, the workspace it was queued in, where it stays
   # when its work item moves, `attempt`, `of`, `state`
   # (`Apiary.WorkItems.Explore.run_state/1`), `place` (`Apiary.WorkItems.Explore.step/4`),
-  # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`, and
+  # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`,
+  # `end_cause`, the end cause of its run of the queue (nil while it has not ended), and
   # by what it gave: `proposal` (`Apiary.WorkItems.Proposal.from_result/1`), nil for none;
   # `understanding` and `questions`, each `%{public_id: position, text: question, answer:
   # answer or nil}`, for a run that asked; and `answered_by_id` and `answered_at` once its
@@ -131,6 +132,7 @@ defmodule Apiary.WorkItems.ExploreView do
       ended_at: ended_at,
       duration_ms: ended_at && duration_ms(step, ended_at),
       outcome: step.outcome,
+      end_cause: step.dispatch_run.end_cause,
       proposal: nil,
       understanding: nil,
       questions: [],

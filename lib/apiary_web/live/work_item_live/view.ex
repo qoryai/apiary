@@ -213,6 +213,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       duration_ms: nil,
       duration: nil,
       outcome: nil,
+      end_cause: nil,
       proposal: nil,
       understanding: nil,
       questions: [],
