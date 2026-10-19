@@ -1303,7 +1303,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           earlier_runs: [r]
         )
 
-      assert texts(earlier, "#work-item-explore-earlier-run-1-body p") |> Enum.take(2) == words
+      assert texts(earlier, "#work-item-explore-earlier-rn_01a97b20c4e81f3d-body p")
+             |> Enum.take(2) == words
 
       for html <- [html, earlier] do
         refute html =~ "The run ended before it started."
