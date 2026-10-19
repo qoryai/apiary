@@ -182,8 +182,8 @@ defmodule Apiary.Setup do
   in one transaction that also checks the code under the row's lock and marks it used.
   `attrs` are the sign-up form's: `email`, `organisation_name`, `password`,
   `password_confirmation`, and `domain`, Main's domain, the default domain without one.
-  It creates the instance's organisation, its workspace Main and the account as its owner, and the edition's part of a first sign-up applies
-  (`:first_sign_up`).
+  It creates the instance's organisation, its workspace Main and the account as its
+  owner, and the edition's part of a first sign-up applies (`:first_sign_up`).
 
   Answers `{:ok, map}` as the sign-up does; `{:error, :already_set_up}` once the instance
   is set up, a set-up a moment before included; `{:error, :invalid_code}` for a code that

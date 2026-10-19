@@ -1342,8 +1342,8 @@ defmodule Apiary.Sources.Backlog do
   end
 
   # Whether Take in may take a ticket of the Open view: any, where the workspace's domain
-  # needs no target, else one with a target, its own, else its collection's, as Take in
-  # reads it (`Apiary.WorkItems.Moves`).
+  # needs no target, else one with a target, the ticket's, else its collection's, as Take
+  # in reads it (`Apiary.WorkItems.Moves`).
   defp take_in?(organisation_id, %Workspace{id: workspace_id} = workspace) do
     open = organisation_id |> backlog(workspace_id) |> view(:open)
 

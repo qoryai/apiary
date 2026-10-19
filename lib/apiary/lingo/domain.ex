@@ -78,7 +78,7 @@ defmodule Apiary.Lingo.Domain do
 
   @doc """
   Whether a work item of the domain needs a target: true where Take in refuses a ticket
-  that has none, its own or its collection's.
+  that has no target, neither the ticket's nor its collection's.
   """
   @callback target_required?() :: boolean
 
