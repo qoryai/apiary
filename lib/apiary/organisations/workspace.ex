@@ -59,13 +59,25 @@ defmodule Apiary.Organisations.Workspace do
   """
   def create_changeset(workspace, attrs) do
     workspace
-    |> cast(attrs, [:domain])
-    |> validate_required([:domain])
+    |> cast(blank_domain_as_none(attrs), [:domain])
+    |> validate_required([:domain], message: dgettext_noop("errors", "Choose a type."))
     |> validate_inclusion(:domain, Apiary.Lingo.Domain.names())
     |> put_change(:public_id, Apiary.PublicId.generate("ws"))
     |> unique_constraint(:public_id)
     |> check_constraint(:public_id, name: :workspaces_public_id_format)
     |> changeset(attrs)
+  end
+
+  # A blank domain is no choice. Cast would put the schema's default in its place, so it
+  # is nil before the cast.
+  defp blank_domain_as_none(attrs) do
+    Map.new(attrs, fn
+      {key, value} when key in [:domain, "domain"] and is_binary(value) ->
+        {key, if(String.trim(value) == "", do: nil, else: value)}
+
+      pair ->
+        pair
+    end)
   end
 
   @doc "The changeset of a workspace's name, on creation and on rename."
@@ -75,10 +87,7 @@ defmodule Apiary.Organisations.Workspace do
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
     |> Apiary.Names.validate_characters(:name)
-    |> unique_constraint([:organisation_id, :name],
-      error_key: :name,
-      message: dgettext_noop("errors", "is already the name of a workspace in this organisation")
-    )
+    |> unique_constraint([:organisation_id, :name], error_key: :name, message: taken_name())
   end
 
   @doc """
@@ -90,15 +99,20 @@ defmodule Apiary.Organisations.Workspace do
     changeset
     |> put_change(:slug, slug)
     |> Slug.validate(ApiaryWeb.ReservedSlugs.workspace())
-    |> unique_constraint([:organisation_id, :slug],
-      error_key: :slug,
-      message: dgettext_noop("errors", "is already the slug of a workspace in this organisation")
-    )
+    |> unique_constraint([:organisation_id, :slug], error_key: :slug, message: taken_slug())
     |> check_constraint(:slug,
       name: :workspaces_slug_format,
       message: dgettext_noop("errors", "is not a valid slug")
     )
   end
+
+  @doc "The error of a name another workspace of the organisation has."
+  def taken_name,
+    do: dgettext_noop("errors", "is already the name of a workspace in this organisation")
+
+  @doc "The error of a slug another workspace of the organisation has."
+  def taken_slug,
+    do: dgettext_noop("errors", "is already the slug of a workspace in this organisation")
 
   @retention_days 1..3650
 

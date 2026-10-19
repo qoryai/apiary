@@ -1481,9 +1481,13 @@ defmodule Apiary.Organisations do
   end
 
   # A new workspace of the organisation: its name and its domain, as the form gives them,
-  # and its slug, the form's where it gives one, else one made from the name. The slug
-  # goes through the params too, so the form knows the field was used and shows what is
-  # wrong with it.
+  # and its slug, the form's where it gives one, else one made from the name. The form's
+  # params go to the changeset as the form sent them, so a field the person has not used
+  # yet, the domain included, shows no error before the form is sent. The slug goes
+  # through the params too, as a used field, so the form shows what is wrong with a slug
+  # made from the name. A name or a slug another workspace of the organisation has is
+  # refused here as well as by the unique indexes, so the form shows it beside any other
+  # error, a missing domain included.
   defp new_workspace_changeset(%Organisation{id: organisation_id} = organisation, attrs) do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
     name = attrs["name"]
@@ -1494,9 +1498,20 @@ defmodule Apiary.Organisations do
         _none -> workspace_slug(organisation, if(is_binary(name), do: name, else: ""))
       end
 
-    %Workspace{organisation_id: organisation_id}
-    |> Workspace.create_changeset(%{name: name, slug: slug, domain: attrs["domain"]})
+    params = attrs |> Map.delete("_unused_slug") |> Map.put("slug", slug)
+
+    # No domain until the form gives one: the schema's default is no choice of the person's.
+    %Workspace{organisation_id: organisation_id, domain: nil}
+    |> Workspace.create_changeset(params)
     |> Workspace.put_slug(slug)
+    |> Ecto.Changeset.unsafe_validate_unique([:organisation_id, :name], Repo,
+      error_key: :name,
+      message: Workspace.taken_name()
+    )
+    |> Ecto.Changeset.unsafe_validate_unique([:organisation_id, :slug], Repo,
+      error_key: :slug,
+      message: Workspace.taken_slug()
+    )
   end
 
   @doc """
