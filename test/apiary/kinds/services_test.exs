@@ -209,11 +209,13 @@ defmodule Apiary.Kinds.ServicesTest do
   end
 
   describe "the runtimes" do
-    test "the catalogue lists Claude Code with its declarations and no group" do
+    test "the catalogue lists Claude Code with its declarations, no group and its model formats" do
       assert {:ok, runtime} = Runtimes.fetch("claude")
       assert runtime.title == "Claude Code"
       assert Enum.map(runtime.declares, & &1["id"]) == ["api_key", "oauth_token"]
       assert runtime.one_of == []
+      assert runtime.model["formats"] == ["anthropic-messages"]
+      assert Runtimes.formats(runtime) == ["anthropic-messages"]
       assert Runtimes.hosts(runtime) == ["api.anthropic.com"]
       assert Runtimes.fetch("nothing") == :error
     end
