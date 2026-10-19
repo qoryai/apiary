@@ -112,19 +112,28 @@ document.addEventListener("click", e => {
 })
 
 // A tooltip is dismissible (WCAG 1.4.13): Escape hides the one under the pointer or
-// focus until the pointer leaves it or focus moves on. Escape still does its own work.
+// focus, or inside the focused link or row, until the pointer leaves it or focus moves
+// on. Escape still does its own work.
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return
   document.querySelectorAll(".tooltip[data-tip]").forEach(tip => {
-    if (!tip.matches(":hover, :focus-visible, :has(:focus-visible)")) return
+    const shown =
+      ":hover, :focus-visible, :has(:focus-visible), " +
+      ":is(a, summary):focus-visible .tooltip"
+    if (!tip.matches(shown)) return
     tip.setAttribute("data-tip-hidden", "")
+    // A tip opened by the focus of the link or row it sits in: the link or row, not the
+    // tip, loses the focus.
+    const holder = tip.parentElement?.closest("a:focus-visible, summary:focus-visible")
     const show = () => {
       tip.removeAttribute("data-tip-hidden")
       tip.removeEventListener("mouseleave", show)
       tip.removeEventListener("focusout", show)
+      holder?.removeEventListener("focusout", show)
     }
     tip.addEventListener("mouseleave", show)
     tip.addEventListener("focusout", show)
+    holder?.addEventListener("focusout", show)
   })
 })
 

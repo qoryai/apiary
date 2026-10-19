@@ -1275,7 +1275,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   attr :email, :string,
     doc:
-      "the address of the person it stands for in a line of text; given, even as nil, it draws the `<abbr>`"
+      "the address of the person it stands for in a line of text: an address draws the `<abbr>`, \"Former member\" draws those words, and nil draws nothing"
 
   attr :reader, :string, default: nil, doc: "with `email`: the reader's address"
 

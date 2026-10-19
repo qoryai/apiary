@@ -851,8 +851,9 @@
     transition-delay: 0ms;
   }
   /* A tip inside a link or a row that opens has no tab stop, since a control may not hold
-     another (`avatar/1`'s `in_link`): it opens when that link or row has keyboard focus. */
-  :where(:is(a, summary):focus-visible .tooltip)[data-tip]::before {
+     another (`avatar/1`'s `in_link`): it opens when that link or row has keyboard focus.
+     A tip there that has a tab stop opens only on that stop. */
+  :where(:is(a, summary):focus-visible .tooltip:not([tabindex]))[data-tip]::before {
     display: block;
     opacity: 1;
     transition-delay: 0ms;
