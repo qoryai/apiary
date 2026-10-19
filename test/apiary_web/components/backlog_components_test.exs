@@ -162,20 +162,46 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert attr(html, "span.q-bl-wi", "title") == ["Taken in: work item #341"]
     end
 
+    defp declined(declined_by, extra \\ []) do
+      work_item = %{
+        number: 79,
+        state: :declined,
+        path: "/acme/shop/work/79",
+        declined_by: declined_by
+      }
+
+      row(ticket(%{work_item: work_item}), extra)
+    end
+
     test "declined: who declined it, its work item, and Take in again" do
-      work_item = %{number: 79, state: :declined, path: "/acme/shop/work/79", declined_by: "Dana"}
-      html = row(ticket(%{work_item: work_item}))
+      html = declined("dana@example.com")
 
-      assert text(html, ".q-bl-w") == "Declined by Dana"
-      assert text(html, ".q-bl-sub") == "acme/shop#1231 · by Lea · 3 min · Declined by Dana"
+      # Who declined it is their first letter, with the address as its tooltip and its
+      # name, beside the title, and on a separate line under it where the row is narrow.
+      for place <- [".q-bl-w", ".q-bl-sub-declined"] do
+        assert attr(html, "#{place} abbr", "data-tip") == ["dana@example.com"]
+        assert attr(html, "#{place} abbr", "aria-label") == ["dana@example.com"]
+        assert attr(html, "#{place} abbr", "tabindex") == ["0"]
+        assert text(html, "#{place} abbr [aria-hidden=true]") == "D"
+        assert text(html, "#{place} abbr .sr-only") == "dana@example.com"
+      end
 
-      assert attr(html, ".q-bl-sub", "title") == [
-               "acme/shop#1231 · by Lea · 3 min · Declined by Dana"
-             ]
+      # Beside the title the tip opens to the right, inside the list's box on any row.
+      assert [class] = attr(html, ".q-bl-w abbr", "class")
+      assert "tooltip-right" in String.split(class)
+      assert [class] = attr(html, ".q-bl-sub-declined abbr", "class")
+      refute "tooltip-right" in String.split(class)
+
+      # The letter is hidden from screen readers, so the text read aloud is the address.
+      assert text(html, ".q-bl-w") == "Declined by Ddana@example.com"
+
+      assert text(html, ".q-bl-sub-declined") == "Declined by Ddana@example.com"
 
       assert text(html, "a.q-bl-wi") == "#79"
       assert attr(html, "a.q-bl-wi", "class") == ["q-bl-wi q-bl-wi-declined"]
-      assert attr(html, "a.q-bl-wi", "title") == ["Work item #79, declined by Dana"]
+
+      assert attr(html, "a.q-bl-wi", "title") ==
+               ["Work item #79, declined by dana@example.com"]
 
       [again] = html |> query(".q-bl-act button") |> Enum.to_list()
       assert LazyHTML.text(again) =~ "Take in again"
@@ -185,6 +211,58 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert LazyHTML.attribute(again, "phx-click") == ["take_in_again"]
       assert LazyHTML.attribute(again, "phx-value-id") == ["tk_01"]
       assert LazyHTML.attribute(again, "phx-value-ref") == []
+    end
+
+    test "declined by the reader: the letter says it is them" do
+      html = declined("dana@example.com", reader: "dana@example.com")
+
+      assert attr(html, ".q-bl-w abbr", "data-tip") == ["dana@example.com (you)"]
+      assert text(html, ".q-bl-w abbr .sr-only") == "dana@example.com (you)"
+      assert [class] = attr(html, ".q-bl-w abbr [aria-hidden=true]", "class")
+      assert "bg-primary-soft" in String.split(class)
+
+      # Another reader sees the letter on the neutral circle.
+      html = declined("dana@example.com", reader: "priya@example.com")
+      assert attr(html, ".q-bl-w abbr", "data-tip") == ["dana@example.com"]
+      assert [class] = attr(html, ".q-bl-w abbr [aria-hidden=true]", "class")
+      assert "bg-base-300" in String.split(class)
+    end
+
+    test "declined by a deleted account: the words Former member, with no letter" do
+      html = declined(ApiaryWeb.People.former_member())
+
+      assert text(html, ".q-bl-w") == "Declined by Former member"
+      assert count(html, "abbr") == 0
+
+      assert attr(html, "a.q-bl-wi", "title") ==
+               ["Work item #79, declined by Former member"]
+    end
+
+    test "declined by no person: no letter, and the line as it was" do
+      html = declined(nil)
+
+      assert text(html, ".q-bl-w") == "Declined by"
+      assert text(html, ".q-bl-sub-declined") == "Declined by"
+      assert count(html, "abbr") == 0
+    end
+
+    test "declined, where the row is narrow: the title is on the line that can be cut" do
+      html = declined("dana@example.com")
+      sub = "acme/shop#1231 · by Lea · 3 min"
+
+      # The line under the title is cut with an ellipsis, so its title has its whole
+      # text; who declined it is on the next line, which no ellipsis cuts, with no title,
+      # so a hover on the letter shows its tip alone.
+      assert text(html, ".q-bl-sub:not(.q-bl-sub-declined)") == sub
+      assert attr(html, ".q-bl-sub:not(.q-bl-sub-declined)", "title") == [sub]
+      assert attr(html, ".q-bl-sub-declined", "title") == []
+      assert count(html, ".q-bl-sub-declined [title]") == 0
+      assert count(html, ".q-bl-sub-declined abbr") == 1
+
+      # Any other word ends the line that can be cut, and its title.
+      html = row(ticket(%{state: :closed, state_reason: "Not planned"}))
+      assert attr(html, ".q-bl-sub", "title") == [sub <> " · Not planned"]
+      assert count(html, ".q-bl-sub-declined") == 0
     end
 
     for state <- [:undone, :closed] do

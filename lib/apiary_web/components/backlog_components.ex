@@ -52,13 +52,19 @@ defmodule ApiaryWeb.BacklogComponents do
     * `:work_item` - `nil`, or the ticket's work item, a map with `:number`, `:state` (an
       atom: `:declined`, `:undone`, `:closed`, or a state in which it is live, such as
       `:exploring`), `:path` (its page, or `nil`) and, when declined, `:declined_by` (the
-      name of who declined it).
+      email address of who declined it, "Former member" for a deleted account, or `nil`
+      where no person declined it).
 
   The action follows the ticket: an open ticket with no work item has Take in; a live
   work item is its number, a link; a declined one says who declined it, links its work
   item, and offers Take in again on hover or focus; an undone or closed one offers Take in
   again. A closed ticket has no action, and shows its state word and the link to its work
   item, if any.
+
+  Who declined a work item is their first letter, with the address as its tooltip
+  (`CoreComponents.avatar/1`, in the account menu's colour where the address is
+  `reader`), and the address in the title of the work item's link. Where the row is
+  narrow, it is on a separate line under the title, which no ellipsis cuts.
 
   `take_in` and `take_in_again` are what a press does (`phx-click`: an event name or a
   `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id`.
@@ -73,6 +79,7 @@ defmodule ApiaryWeb.BacklogComponents do
   attr :patch, :string, required: true, doc: "the list with this ticket open"
   attr :now, :any, default: nil, doc: "the time the row is drawn at; now by default"
   attr :selected, :boolean, default: false, doc: "whether the ticket is the one open"
+  attr :reader, :string, default: nil, doc: "the reader's address"
   attr :take_in, :any, default: nil, doc: "Take in's `phx-click`"
   attr :take_in_again, :any, default: nil, doc: "Take in again's `phx-click`"
 
@@ -80,6 +87,14 @@ defmodule ApiaryWeb.BacklogComponents do
     ticket = assigns.ticket
     now = assigns.now || DateTime.utc_now()
     view = row_view(ticket)
+    # Beside the title, the letter's tip opens to its right, as the row is one line high
+    # and the list's box cuts what overflows it above the first row.
+    {word, shown_word} = word(view.word, assigns.reader, "tooltip-right")
+    {_word, narrow_word} = word(view.word, assigns.reader, nil)
+    # Under the title, where the row is narrow, who declined it is on a separate line,
+    # which no ellipsis cuts; any other word ends the line that can be cut.
+    declined = match?({:declined_by, _email}, view.word)
+    line_word = if(!declined, do: word)
 
     sub =
       gettext("%{ref} · by %{who} · %{ago}",
@@ -92,7 +107,10 @@ defmodule ApiaryWeb.BacklogComponents do
       assigns
       |> assign(:now, now)
       |> assign(view)
-      |> assign(sub: sub, sub_title: if(view.word, do: sub <> " · " <> view.word, else: sub))
+      |> assign(word: word, shown_word: shown_word, narrow_word: narrow_word)
+      |> assign(:declined, declined)
+      |> assign(sub: sub, line_word: line_word)
+      |> assign(:sub_title, if(line_word, do: sub <> " · " <> line_word, else: sub))
       |> assign(
         shown_key: Apiary.ExternalText.line(ticket.key),
         shown_repository: Apiary.ExternalText.line(ticket.repository)
@@ -108,9 +126,12 @@ defmodule ApiaryWeb.BacklogComponents do
           class="q-bl-t"
           aria-current={@selected && "true"}
         ><.external_text text={@ticket.title} /></.link>
-        <span :if={@word} class="q-bl-w">{@word}</span>
+        <span :if={@word} class="q-bl-w"><.rich text={@shown_word} /></span>
         <span class="q-bl-sub" title={@sub_title}>
-          {@sub}<span :if={@word}> · {@word}</span>
+          {@sub}<span :if={@line_word}> · {@line_word}</span>
+        </span>
+        <span :if={@declined} class="q-bl-sub q-bl-sub-declined">
+          <.rich text={@narrow_word} />
         </span>
       </span>
       <span
@@ -178,7 +199,7 @@ defmodule ApiaryWeb.BacklogComponents do
 
   defp row_view(%{work_item: %{state: :declined} = work_item}),
     do: %{
-      word: gettext("Declined by %{name}", name: work_item.declined_by),
+      word: {:declined_by, work_item.declined_by},
       link: :declined,
       action: :again
     }
@@ -187,6 +208,20 @@ defmodule ApiaryWeb.BacklogComponents do
     do: %{word: nil, link: nil, action: :again}
 
   defp row_view(%{work_item: _live}), do: %{word: nil, link: :taken, action: nil}
+
+  # The word beside the title, as text for a title and as it is drawn: who declined a
+  # work item is their first letter, with the address as its tooltip, placed by `tip`.
+  defp word({:declined_by, email}, reader, tip) do
+    {gettext("Declined by %{name}", name: email),
+     rich_gettext("Declined by %{name}", name: letter(email, reader, tip))}
+  end
+
+  defp word(word, _reader, _tip), do: {word, word}
+
+  defp letter(email, reader, tip) do
+    assigns = %{email: email, reader: reader, tip: tip}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" class={@tip} />|
+  end
 
   attr :kind, :atom, required: true, values: [:taken, :declined]
   attr :work_item, :map, required: true
