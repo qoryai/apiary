@@ -170,7 +170,7 @@ defmodule Apiary.WorkItems.Moves do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, Dispatches, Organisations, Repo, WorkItems}
+  alias Apiary.{Access, Audit, Dispatches, Organisations, PublicId, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Feed}
   alias Apiary.Dispatches.DispatchRun
@@ -288,7 +288,7 @@ defmodule Apiary.WorkItems.Moves do
   defp insert(changeset, workspace, ticket) do
     changeset
     |> Ecto.Changeset.put_change(:number, Number.next(workspace))
-    |> Repo.insert()
+    |> PublicId.Insert.insert()
     |> case do
       {:ok, work_item} ->
         {:ok, work_item}
@@ -745,7 +745,7 @@ defmodule Apiary.WorkItems.Moves do
       inserted_at: now
     }
     |> Comment.changeset(%{body: body})
-    |> Repo.insert()
+    |> PublicId.Insert.insert()
   end
 
   @doc false

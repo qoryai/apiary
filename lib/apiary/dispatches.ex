@@ -165,7 +165,7 @@ defmodule Apiary.Dispatches do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, AccessKeys, Gateways, Nodes, Repo}
+  alias Apiary.{Access, AccessKeys, Gateways, Nodes, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
@@ -709,7 +709,7 @@ defmodule Apiary.Dispatches do
         claimed_at: now,
         lease_until: lease_until(now)
       })
-      |> Repo.insert!()
+      |> PublicId.Insert.insert!()
 
     Map.merge(
       %{dispatch: dispatch, run: %{run | state: :claimed}, work_item: nil, collection: nil},

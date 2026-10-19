@@ -63,7 +63,18 @@ defmodule Apiary.Adapters do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Accounts, Audit, Dispatches, Features, Repo, WorkItems}
+  alias Apiary.{
+    Access,
+    AccessKeys,
+    Accounts,
+    Audit,
+    Dispatches,
+    Features,
+    PublicId,
+    Repo,
+    WorkItems
+  }
+
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
 
@@ -427,7 +438,7 @@ defmodule Apiary.Adapters do
                },
                attrs
              ),
-           {:ok, adapter} <- Repo.insert(changeset),
+           {:ok, adapter} <- PublicId.Insert.insert(changeset),
            {:ok, _entry} <-
              Audit.record(Repo, recorder, :"adapter.create", adapter, %{
                after: Map.take(adapter, [:name, :kind, :public_id])
