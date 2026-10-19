@@ -60,16 +60,18 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       workspace; acme/sandbox to none. Their 42 tickets, open and closed, filed by
       people and by bots, with labels and comments. Ten work items of those tickets,
       taken in by members of Main: three wait for their first run; one waits to run
-      again, as the pool spot-runners gave its run back; one runs again after that; two
-      are declined, two closed and one undone. A run gives a result only through a
-      gateway, which the demo does not have, so no work item waits for an answer or is
-      confirmed. Beside it, a source that is no forge: the adapter **Helpdesk**, whose
-      words are incident and queue, connected for Acme too. Its two queues,
+      again, as the pool spot-runners gave its run back; one more, whose run was given
+      back too, is sent to Explore again, and its second run waits; two are declined,
+      two closed and one undone. A work item's Explore run gives a result once a gateway
+      takes it over, and the demo has no gateway, so no work item waits for an answer
+      or is confirmed. Beside it, a source that is no forge: the adapter **Helpdesk**,
+      whose words are incident and queue, connected for Acme too. Its two queues,
       acme/customer-support and acme/billing-support, have no target; their 12
-      incidents, open and closed, have comments. None is taken in, as a take in needs a
-      target. The queues go to a workspace **Support** (`support`), which Dana makes,
-      where the edition's limit (`c:Apiary.Edition.limits/0`) allows more than one
-      workspace. The core's allows one, so its demo keeps the queues in Main, beside the
+      incidents are open and closed, and some have comments. None is taken in, as a take
+      in needs a target. The queues go to a workspace **Support** (`support`), which Dana
+      makes, where the edition's limit (`c:Apiary.Edition.limits/0`) allows more than
+      one workspace; where making Support would pass that limit, they stay in Main. The
+      core's limit allows one workspace, so its demo keeps the queues in Main, beside the
       repositories. Without the feature none of it is made.
     * Dana pins three repositories.
     * Last, build-01's enrolment code is made and cancelled.
