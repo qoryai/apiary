@@ -59,8 +59,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # show every one or the unassigned ones (`?view=unassigned`), the warning's Show them
   # leads to the second, and a menu keeps those of one workspace (`?workspace_id=`).
   # Whoever may assign them (`collection.assign`, owners and admins) selects rows, of
-  # those shown, then picks a workspace from the selection's menu, Assign to workspace
-  # (`Apiary.Adapters.Collections.assign_collections/4`); a flash says what went where,
+  # those shown, then picks a workspace from the selection's menu, Assign to workspace,
+  # which lists only the workspaces whose domain the adapter serves
+  # (`Apiary.Lingo.Domain.serves?/2`, `Apiary.Adapters.Collections.assign_collections/4`);
+  # a flash says what went where,
   # over the first page of the same view, search and workspace.
   # Before anything is selected, the menu's button shows disabled. While a listing is
   # still arriving, nothing can be selected, and there is no warning, view or filter.
@@ -89,6 +91,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   alias Apiary.{Access, Adapters}
   alias Apiary.Adapters.{Collections, Connection, Connections}
+  alias Apiary.Lingo.Domain
   alias Apiary.Organisations
 
   alias ApiaryWeb.{
@@ -697,7 +700,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
                   find={length(@workspaces) > 8}
                   query={@menu_q}
                   workspaces={
-                    for workspace <- @workspaces, named?(workspace, @menu_q) do
+                    for workspace <- @workspaces,
+                        Domain.serves?(@adapter.domains, workspace),
+                        named?(workspace, @menu_q) do
                       {workspace,
                        count_words(@adapter, true, Map.get(@counts.by_workspace, workspace.id, 0))}
                     end
@@ -1079,7 +1084,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
         integration: adapter.name
       )
 
-  defp refused(%{adapter: adapter}, reason) when reason in [:not_found, :invalid] do
+  # The menu lists only the workspaces the adapter serves, so `:other_domain` comes from
+  # a start that narrowed its domains after the page read them.
+  defp refused(%{adapter: adapter}, reason)
+       when reason in [:not_found, :invalid, :other_domain] do
     gettext(
       "Nothing was assigned: the page was out of date. It now shows the %{collections} as they are.",
       collections: collection_word(adapter, :other)

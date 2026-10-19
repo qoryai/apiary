@@ -203,6 +203,16 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
       assert saved(scope, shop) == []
     end
 
+    test "not there, and no card, where the workspace's domain has no label for a run's paths",
+         %{conn: conn, scope: scope, path: path, form_path: form_path} do
+      with_domain(scope, "general")
+
+      view = open(conn, path)
+      refute has_element?(view, "#target-further-repositories")
+
+      assert_raise ApiaryWeb.NotFound, fn -> live(conn, form_path) end
+    end
+
     test "Cancel goes back to the target's page", %{conn: conn, path: path, form_path: form_path} do
       form = open(conn, form_path)
       assert has_element?(form, ~s(#further-repositories-save-cancel[href="#{path}"]))

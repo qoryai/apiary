@@ -308,6 +308,46 @@ defmodule Apiary.WorkItems.TakeInTest do
     end
   end
 
+  describe "in a domain that needs no target" do
+    setup ctx, do: %{scope: with_domain(ctx.scope, "general")}
+
+    test "takes in a ticket with no target: the work item has none, and its run waits", ctx do
+      ticket =
+        backlog_ticket_fixture(ctx.scope,
+          connection: ctx.connection,
+          collection: %{target_system: nil, target_path: nil}
+        )
+
+      assert {:ok, %WorkItem{target_system: nil, target_path: nil} = work_item} =
+               WorkItems.take_in(ctx.scope, ticket.public_id)
+
+      assert %WorkItem{target_system: nil, target_path: nil} = Repo.reload!(work_item)
+      assert [%DispatchRun{state: :waiting}] = runs(work_item)
+    end
+
+    test "keeps the domain's rules for a target there is, and not the software ones", ctx do
+      ticket =
+        backlog_ticket_fixture(ctx.scope,
+          connection: ctx.connection,
+          collection: %{target_system: "ads.example.com", target_path: "accounts/1234/-a"}
+        )
+
+      assert {:ok, %WorkItem{target_system: "ads.example.com", target_path: "accounts/1234/-a"}} =
+               WorkItems.take_in(ctx.scope, ticket.public_id)
+
+      for system <- ["ads..example.com", ".example.com", "ads.example.com."] do
+        ticket =
+          backlog_ticket_fixture(ctx.scope,
+            connection: ctx.connection,
+            collection: %{target_system: system, target_path: "accounts/1234"}
+          )
+
+        assert WorkItems.take_in(ctx.scope, ticket.public_id) == {:error, :target_invalid},
+               system
+      end
+    end
+  end
+
   describe "the lookups" do
     setup ctx do
       {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)

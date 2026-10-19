@@ -8,10 +8,11 @@ defmodule Apiary.WorkItems.WorkItem do
   # says what system it is of; `item_id`, the ticket (`Apiary.Sources.Item`), or nil once
   # the ticket's row is gone; `external_ref`, the ticket's ref at its source, an external
   # id, 1 to 200 characters; `url`, its address, `https://`, 2,048 characters at most;
-  # `title`, 1 to 1,024 characters; `collection_title`, the title of the repository or
-  # project that holds it, 1 to 1,024 characters; and where a change for it goes,
-  # `target_system`, a host name to the contract's pattern, and `target_path`, 1 to 200
-  # characters. A later change at the source does not change it until a take in again,
+  # `title`, 1 to 1,024 characters; `collection_title`, the title of the collection that
+  # holds it, 1 to 1,024 characters; and where a change for it goes, its target, both or
+  # neither: `target_system`, a host name to the contract's pattern, and `target_path`, 1
+  # to 200 characters. Whether it needs a target is its workspace's domain's rule
+  # (`Apiary.Lingo.Domain.target_required?/1`). A later change at the source does not change it until a take in again,
   # which takes the ticket's current record, its connection, its title, its address and
   # its collection's title as they are then (`take_in_again_changeset/2`). A ticket has
   # one work item in an organisation, live or not, by its adapter and its ref, so that a
@@ -105,8 +106,9 @@ defmodule Apiary.WorkItems.WorkItem do
   def max_instruction, do: @max_instruction
 
   # take_in_changeset/2 is the changeset of a new work item's snapshot, the connection
-  # and the adapter its ticket came through and the ticket among it, its target, its owner
-  # and its first instruction, each within the bounds above, counted in code points as
+  # and the adapter its ticket came through and the ticket among it, its target, both its
+  # system and its path or neither (`validate_target/1`), its owner and its first
+  # instruction, each within the bounds above, counted in code points as
   # the database counts them, with a fresh public id, at its first take in. The first
   # instruction holds no character a run's input refuses (`validate_instruction/1`). A
   # value the database refuses all the same is an error on its field, and a second work
@@ -142,8 +144,6 @@ defmodule Apiary.WorkItems.WorkItem do
       :url,
       :title,
       :collection_title,
-      :target_system,
-      :target_path,
       :owner_id
     ])
     |> validate_length(:external_ref, min: 1, max: @max_external_ref, count: :codepoints)
@@ -151,8 +151,7 @@ defmodule Apiary.WorkItems.WorkItem do
     |> validate_format(:url, @url)
     |> validate_length(:title, min: 1, max: @max_title, count: :codepoints)
     |> validate_length(:collection_title, min: 1, max: @max_title, count: :codepoints)
-    |> validate_format(:target_system, @system)
-    |> validate_length(:target_path, min: 1, max: @max_target_path, count: :codepoints)
+    |> validate_target()
     |> validate_instruction()
     |> put_change(:public_id, Apiary.PublicId.generate(@prefix))
     |> put_change(:take_in, 1)
@@ -161,7 +160,8 @@ defmodule Apiary.WorkItems.WorkItem do
     |> check_constraint(:title, name: :work_items_title_check)
     |> check_constraint(:collection_title, name: :work_items_collection_title_check)
     |> check_constraint(:target_system, name: :work_items_target_check)
-    |> check_constraint(:target_path, name: :work_items_target_shape_check)
+    |> check_constraint(:target_system, name: :work_items_target_shape_check)
+    |> check_constraint(:target_path, name: :work_items_target_pair_check)
     |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> unique_constraint(:external_ref,
@@ -205,28 +205,48 @@ defmodule Apiary.WorkItems.WorkItem do
       :url,
       :title,
       :collection_title,
-      :target_system,
-      :target_path,
       :owner_id
     ])
     |> validate_length(:url, max: @max_url, count: :codepoints)
     |> validate_format(:url, @url)
     |> validate_length(:title, min: 1, max: @max_title, count: :codepoints)
     |> validate_length(:collection_title, min: 1, max: @max_title, count: :codepoints)
-    |> validate_format(:target_system, @system)
-    |> validate_length(:target_path, min: 1, max: @max_target_path, count: :codepoints)
+    |> validate_target()
     |> validate_instruction()
     |> put_change(:take_in, take_in + 1)
     |> check_constraint(:url, name: :work_items_url_check)
     |> check_constraint(:title, name: :work_items_title_check)
     |> check_constraint(:collection_title, name: :work_items_collection_title_check)
     |> check_constraint(:target_system, name: :work_items_target_check)
-    |> check_constraint(:target_path, name: :work_items_target_shape_check)
+    |> check_constraint(:target_system, name: :work_items_target_shape_check)
+    |> check_constraint(:target_path, name: :work_items_target_pair_check)
     |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
     |> foreign_key_constraint(:connection_id, name: :work_items_connection_id_fkey)
     |> foreign_key_constraint(:item_id, name: :work_items_item_id_fkey)
+  end
+
+  # The target: both its system and its path, or neither, for a work item without one;
+  # the system a host name's characters, and the path 1 to `@max_target_path` code
+  # points. Whether a work item needs one, and what else its path must be, are its
+  # workspace's domain's rules, which Take in checks (`Apiary.Lingo.Domain`).
+  defp validate_target(changeset) do
+    case {get_field(changeset, :target_system), get_field(changeset, :target_path)} do
+      {nil, nil} ->
+        changeset
+
+      {nil, _path} ->
+        add_error(changeset, :target_system, "can't be blank", validation: :required)
+
+      {_system, nil} ->
+        add_error(changeset, :target_path, "can't be blank", validation: :required)
+
+      {_system, _path} ->
+        changeset
+        |> validate_format(:target_system, @system)
+        |> validate_length(:target_path, min: 1, max: @max_target_path, count: :codepoints)
+    end
   end
 
   # The first instruction: at most `@max_instruction` code points, and none of the

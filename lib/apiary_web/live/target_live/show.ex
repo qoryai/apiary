@@ -49,9 +49,10 @@ defmodule ApiaryWeb.TargetLive.Show do
   # Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for whoever
   # may ask for one (`target.rebuild_environment`), where the target names an environment
   # and a pool serves the workspace; a reader who may not sees no button. After it, under
-  # the same condition, what its runs also read (`Apiary.Targets.further_repositories/1`),
-  # one path a line, with Change, for those who may change it
-  # (`target.set_further_repositories`), which leads to its form page
+  # the same condition, where the workspace's domain has a label for a run's paths
+  # (`Apiary.Lingo.Domain.paths_label/1`), what its runs also read
+  # (`Apiary.Targets.further_repositories/1`), one path a line, with Change, for those who
+  # may change it (`target.set_further_repositories`), which leads to its form page
   # (`ApiaryWeb.TargetLive.FurtherRepositories`).
 
   use ApiaryWeb, :live_view
@@ -62,6 +63,7 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   alias Apiary.{Access, Environments, Runs, Targets}
   alias Apiary.Adapters.Collections
+  alias Apiary.Lingo.Domain
   alias Apiary.Runs.{Filters, Target}
   alias ApiaryWeb.{PolicyLive, SourceComponents}
 
@@ -302,14 +304,17 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   defp may_rebuild?(_scope, _target, _environment), do: false
 
-  # What the target's runs also read, where the reader is shown the work items, and whether
-  # the reader may change it.
+  # What the target's runs also read, where the reader is shown the work items and the
+  # workspace's domain has a label for a run's paths (`Apiary.Lingo.Domain.paths_label/1`),
+  # and whether the reader may change it.
   defp load_further(socket) do
     %{current_scope: scope, target: target} = socket.assigns
 
     assign(socket,
       further:
-        if(Access.can?(scope, :"work_item.read", scope.workspace),
+        if(
+          Access.can?(scope, :"work_item.read", scope.workspace) and
+            Domain.paths_label(scope.workspace) != nil,
           do: Targets.further_repositories(target)
         ),
       may_set_further: Access.can?(scope, :"target.set_further_repositories", target)

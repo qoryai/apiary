@@ -519,7 +519,11 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   end
 
   defp make_support(main) do
-    case Organisations.create_workspace(main, %{"name" => "Support", "slug" => "support"}) do
+    case Organisations.create_workspace(main, %{
+           "name" => "Support",
+           "slug" => "support",
+           "domain" => "software"
+         }) do
       {:ok, workspace} ->
         workspace
 

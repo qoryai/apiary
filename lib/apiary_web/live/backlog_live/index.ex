@@ -9,8 +9,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # integration's page in Organisation settings › Integrations, by its adapter's public
   # id, when one integration that brings items connects the organisation
   # (`Apiary.Sources.Backlog.backlog_facts/1`); with several, the words are not a link.
-  # The second sentence is said only while a ticket of the Open view has a target, which
-  # Take in needs (`take_in?`).
+  # The second sentence is said only while Take in may take a ticket of the Open view
+  # (`take_in?`): one with a target, where the workspace's domain needs one.
   #
   # **The list.** The views as tabs, each with its count (Open, Taken in, Declined,
   # Closed), with a line under them on Closed and on Declined, where one integration that
@@ -627,8 +627,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
   end
 
   # The line under the title: where the tickets come from, with the count and what follows
-  # it (`assigned/1`) a link to the integration; then Take in, while a ticket of the Open
-  # view has a target.
+  # it (`assigned/1`) a link to the integration; then Take in, while Take in may take a
+  # ticket of the Open view.
   defp sub_line(item_noun, assigned, true),
     do:
       rich_gettext("%{items} from the %{assigned}. Take one in to make it a work item.",

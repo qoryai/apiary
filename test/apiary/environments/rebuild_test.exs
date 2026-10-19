@@ -203,6 +203,15 @@ defmodule Apiary.Environments.RebuildTest do
     assert Environments.rebuild(scope, target(scope)) == {:error, :not_found}
   end
 
+  test "not found: a workspace whose domain has no prebuilds, and the target's page shows none",
+       %{scope: scope, shop: shop, target: target} do
+    scope = with_domain(scope, "general")
+    assert Environments.rebuild(scope, target) == {:error, :not_found}
+    assert waiting(shop) == []
+    assert entries(target) == []
+    assert Environments.section(scope, target) == nil
+  end
+
   test "not found: a target of another workspace, or of another organisation",
        %{scope: scope, shop: shop, target: target} do
     second = workspace_fixture(scope.organisation)

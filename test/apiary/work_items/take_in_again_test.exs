@@ -213,6 +213,21 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
     assert again.take_in == 4
   end
 
+  test "in a domain that needs no target, takes in again a ticket that lost its target", ctx do
+    declined!(ctx)
+    scope = with_domain(ctx.scope, "general")
+
+    Repo.get!(Collection, ctx.ticket.collection_id)
+    |> Ecto.Changeset.change(target_system: nil, target_path: nil)
+    |> Repo.update!()
+
+    assert {:ok, %WorkItem{state: :exploring, take_in: 2, target_system: nil, target_path: nil}} =
+             WorkItems.take_in_again(scope, ctx.ticket.public_id)
+
+    assert %{"target_system" => "forge.example.com"} =
+             latest_taken_in(ctx.work_item).data["before"]
+  end
+
   describe "refused" do
     test "for a ticket with no work item", ctx do
       other = backlog_ticket_fixture(ctx.scope, connection: ctx.connection)

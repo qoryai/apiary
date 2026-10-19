@@ -28,10 +28,12 @@ defmodule Apiary.WorkItems.Moves do
   # `:not_found`. A collection assigned there that is not linked, its Backlog switch off or
   # with no items, it or its adapter (`Apiary.Adapters.Collection.linked?/1`), is
   # `:not_linked`. A ticket closed at its source is `:ticket_closed`. The work item's
-  # target is the ticket's target, else its collection's; with neither, `:no_target`; one
-  # a run's variables refuse (`Apiary.Runs.RunVariables`), `:target_invalid`. Its
-  # owner is the person the page names, the one taking it in unless named, who must act
-  # in the workspace (`Apiary.Organisations.list_workspace_members/1`), else `:owner`.
+  # target is the ticket's target, else its collection's, as the workspace's domain checks
+  # it (`Apiary.Lingo.Domain.check_target/2`): with neither, `:no_target` where the domain
+  # needs a target, else a work item without one; one that breaks the domain's rules,
+  # `:target_invalid`. Its owner is the person the page names, the one taking it in
+  # unless named, who must act in the workspace
+  # (`Apiary.Organisations.list_workspace_members/1`), else `:owner`.
   # The page gives the owner and the first instruction under atom keys or their strings.
   # Its first instruction is the one the page gives, empty for none, within the bounds of
   # `Apiary.WorkItems.WorkItem.take_in_changeset/2`, else the changeset.
@@ -172,9 +174,9 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Feed}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.RunVariables
   alias Apiary.Sources.{Item, Topic}
   alias Apiary.WorkItems.{Answer, Comment, Confirmation, Explore, Number, Proposal, State}
   alias Apiary.WorkItems.WorkItem
@@ -215,7 +217,7 @@ defmodule Apiary.WorkItems.Moves do
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
              :ok <- none_yet(scope, ticket),
              :ok <- open(ticket),
-             {:ok, target} <- target(ticket),
+             {:ok, target} <- target(workspace, ticket),
              {:ok, owner_id} <- owner(scope, attrs) do
           make(scope, workspace, ticket, target, owner_id, attrs)
         end
@@ -256,8 +258,8 @@ defmodule Apiary.WorkItems.Moves do
         url: item.url,
         title: item.title,
         collection_title: collection.title,
-        target_system: target.system,
-        target_path: target.path,
+        target_system: target && target.system,
+        target_path: target && target.path,
         owner_id: owner_id,
         first_instruction: instruction(attrs)
       })
@@ -317,7 +319,7 @@ defmodule Apiary.WorkItems.Moves do
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
              {:ok, ended} <- ended(scope, ticket),
              :ok <- open(ticket),
-             {:ok, target} <- target(ticket),
+             {:ok, target} <- target(workspace, ticket),
              {:ok, owner_id} <- owner(scope, attrs) do
           again(scope, workspace, ended, ticket, target, owner_id, attrs)
         end
@@ -360,8 +362,8 @@ defmodule Apiary.WorkItems.Moves do
         url: item.url,
         title: item.title,
         collection_title: collection.title,
-        target_system: target.system,
-        target_path: target.path,
+        target_system: target && target.system,
+        target_path: target && target.path,
         owner_id: owner_id,
         first_instruction: instruction(attrs)
       })
@@ -979,8 +981,9 @@ defmodule Apiary.WorkItems.Moves do
   defp open(%{item: %Item{state: :open}}), do: :ok
   defp open(_ticket), do: {:error, :ticket_closed}
 
-  # The work item's target: the ticket's target, else its collection's.
-  defp target(%{item: item, collection: collection}) do
+  # The work item's target: the ticket's target, else its collection's, nil for neither,
+  # as the workspace's domain allows it (`Apiary.Lingo.Domain.check_target/2`).
+  defp target(workspace, %{item: item, collection: collection}) do
     target =
       cond do
         is_binary(item.target_system) ->
@@ -993,20 +996,8 @@ defmodule Apiary.WorkItems.Moves do
           nil
       end
 
-    with :ok <- check_target(target), do: {:ok, target}
+    with :ok <- Domain.check_target(workspace, target), do: {:ok, target}
   end
-
-  # Whether a run can be given the target: one there is, which its run's variables hold
-  # (`Apiary.Runs.RunVariables.for_target/2`, as a handover asks it).
-  defp check_target(%{system: system, path: path} = target)
-       when is_binary(system) and is_binary(path) do
-    case RunVariables.for_target(target) do
-      {:ok, _variables} -> :ok
-      {:error, _invalid} -> {:error, :target_invalid}
-    end
-  end
-
-  defp check_target(_none), do: {:error, :no_target}
 
   # The owner the page names, else the person taking it in, who acts in the workspace.
   defp owner(%Scope{user: %{id: user_id}} = scope, attrs) do

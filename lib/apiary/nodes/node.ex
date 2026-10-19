@@ -114,6 +114,12 @@ defmodule Apiary.Nodes.Node do
     # the description, once its schema has checked it (`source_role_changeset/2`), and
     # never cast.
     field :source_access, :string
+    # An adapter's alone (`nodes_domains_check`): the domains its latest start's
+    # description lists, each a domain's name (`Apiary.Lingo.Domain`); nil where it lists
+    # none, which serves every domain, and before its first start. Set at each start
+    # (`domains_changeset/2`) and never cast. A person picks among the adapters that serve
+    # a workspace's domain (`Apiary.Lingo.Domain.serves?/2`).
+    field :domains, {:array, :string}
     # An adapter's alone (`nodes_installed_as_check`): the name an adapter installed with
     # Qory Apiary is listed as (`Apiary.Adapters.Installed`), unique among the adapters in
     # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
@@ -366,6 +372,22 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:items, name: :nodes_items_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)
+  end
+
+  @doc false
+  # The changeset of the domains an adapter's description lists
+  # (`Apiary.Integrations.Description`, `domains`, which the description's schema has
+  # checked), or nil for none. `Apiary.Adapters.declare/2` calls it at each start, on the
+  # changeset of the declaration, so the latest start's description replaces what an
+  # earlier one said. It changes no collection's assignment: a restart never unassigns.
+  @spec domains_changeset(Ecto.Changeset.t(), Description.t()) :: Ecto.Changeset.t()
+  def domains_changeset(
+        %Ecto.Changeset{data: %__MODULE__{kind: :adapter}} = changeset,
+        %Description{domains: domains}
+      ) do
+    changeset
+    |> change(domains: domains)
+    |> check_constraint(:domains, name: :nodes_domains_check)
   end
 
   @doc false

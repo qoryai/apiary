@@ -580,6 +580,28 @@ defmodule Apiary.EnvironmentsTest do
       assert prebuilds(new) == [{ctx.pool.id, "env-1"}]
     end
 
+    test "a workspace whose domain has no prebuilds queues none: by a listing, an assign or a new pool",
+         ctx do
+      with_domain(ctx.scope, "general")
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      assert shop.workspace_id == ctx.scope.workspace.id
+      assert prebuilds(shop) == []
+      assert Environments.for_collection(shop.id) == []
+
+      _new = pool_fixture(ctx.scope)
+      assert prebuilds(shop) == []
+
+      software = workspace_fixture(ctx.scope.organisation)
+      theirs = pool_fixture(%{ctx.scope | workspace: software})
+      {:ok, 1} = Collections.assign_collections(ctx.scope, ctx.connection, [shop.id], software)
+      assert prebuilds(shop) == [{theirs.id, "env-1"}]
+
+      general = Repo.get!(Workspace, ctx.scope.workspace.id)
+      {:ok, 1} = Collections.assign_collections(ctx.scope, ctx.connection, [shop.id], general)
+      list(ctx, 2, %{environment_ref: "env-2"})
+      assert prebuilds(shop) == [{theirs.id, "env-1"}]
+    end
+
     test "a move to another workspace queues for its pools", ctx do
       workspace = workspace_fixture(ctx.scope.organisation)
       theirs = pool_fixture(%{ctx.scope | workspace: workspace})

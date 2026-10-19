@@ -1118,6 +1118,38 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-view-unassigned") == "Unassigned 0"
   end
 
+  test "the assign menu lists only the workspaces whose domain the adapter serves", %{
+    conn: conn,
+    scope: scope,
+    adapter: adapter,
+    key: key
+  } do
+    {_connection, platform} = several(scope, adapter, key, ["acme/api", "acme/shop"])
+
+    Repo.update_all(from(w in Apiary.Organisations.Workspace, where: w.id == ^platform.id),
+      set: [domain: "general"]
+    )
+
+    Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+      set: [domains: ["software"]]
+    )
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+    pick(lv, "acme/api")
+    assert has_element?(lv, "#collections-assign-#{scope.workspace.id}")
+    refute has_element?(lv, "#collections-assign-#{platform.id}")
+
+    # A start that narrows the domains after the page read them: nothing is assigned.
+    Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+      set: [domains: ["general"]]
+    )
+
+    lv |> element("#collections-assign-#{scope.workspace.id}") |> render_click()
+
+    assert words(lv, "#flash-error") =~
+             "Nothing was assigned: the page was out of date."
+  end
+
   test "the names the toast says it assigned: as a page shows a text the integration sent", %{
     conn: conn,
     scope: scope,

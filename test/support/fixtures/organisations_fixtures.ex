@@ -167,6 +167,17 @@ defmodule Apiary.OrganisationsFixtures do
   end
 
   @doc """
+  `scope` with its workspace of the domain `name`, written to its row directly: the product
+  sets a workspace's domain only when it creates the workspace, and a test that needs a
+  workspace of another domain makes it so after.
+  """
+  def with_domain(%Scope{workspace: %Workspace{id: id} = workspace} = scope, name)
+      when is_binary(name) do
+    {1, _rows} = Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [domain: name])
+    %{scope | workspace: %{workspace | domain: name}}
+  end
+
+  @doc """
   The scope of `user` in `workspace` of its organisation, as a page of its path loads it;
   nil where the user does not reach it.
   """

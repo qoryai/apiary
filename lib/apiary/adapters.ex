@@ -940,8 +940,10 @@ defmodule Apiary.Adapters do
   # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
   # reports items, its words for its collections, and its line on how to change which
   # collections it reaches, each replacing what the start before said; a description with
-  # no source role stores the defaults, no words, items and no line. They are no part of
-  # the trail's entry. A start that changes `items` writes the feed's
+  # no source role stores the defaults, no words, items and no line. Each start also
+  # stores the domains its description lists, nil for none
+  # (`Apiary.Nodes.Node.domains_changeset/2`); a start that narrows them leaves every
+  # collection assigned as it was. They are no part of the trail's entry. A start that changes `items` writes the feed's
   # `linked` or `unlinked` entry for each live collection whose link that changes, in the
   # same transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
   # declaration's `sync` entry, so that the feed counter is taken after the collections,
@@ -975,6 +977,7 @@ defmodule Apiary.Adapters do
                sync_sends_changes: declaration.sends_changes
              })
              |> Node.source_role_changeset(declaration.description)
+             |> Node.domains_changeset(declaration.description)
              |> Repo.update(),
            :ok <- record_declaration(scope, current, declared),
            {:ok, relinked} <- Collections.relink_adapter(current, declared),
