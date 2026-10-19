@@ -59,9 +59,7 @@ defmodule Apiary.Repo.Migrations.KeepAProviderSModels do
              check: "provider_effort_valid(effort)"
            )
 
-    create constraint(:provider_models, :provider_models_position_check,
-             check: "position >= 0"
-           )
+    create constraint(:provider_models, :provider_models_position_check, check: "position >= 0")
 
     create unique_index(:provider_models, [:connection_id, :model_id])
 
