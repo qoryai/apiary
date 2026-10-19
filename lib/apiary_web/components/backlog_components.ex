@@ -596,4 +596,622 @@ defmodule ApiaryWeb.BacklogComponents do
     </section>
     """
   end
+
+  ## The empty Backlog
+
+  @doc """
+  The Backlog that holds no ticket: why it is empty, in one of its states, and what to do
+  next, in its sources' words (`ApiaryWeb.SourceComponents`). `facts` is what
+  `Apiary.Sources.Backlog.backlog_facts/1` gives, a plain map. `state` is the page's
+  reading of the facts, the first that holds:
+
+    * `:none` - no integration the organisation is connected through sends tickets. The
+      instance's other integrations that do are offered as cards, each with Install to
+      whoever may install one; with none, the line says that an instance admin adds them;
+    * `:unlisted` - none of those integrations has listed its collections yet: a box for
+      each, with Open to whoever may install one;
+    * `:unassigned` - no collection is assigned to the workspace: with one integration,
+      how many it lists and Assign; with several, a row for each with its count and
+      Assign;
+    * `:itemless` - the collections assigned have no items at their source, and the cards;
+    * `:off` - the Backlog is off for each assigned collection with items: the cards,
+      then Turn the Backlog on;
+    * `:waiting` - a collection is linked and no ticket has arrived: the first five
+      linked, each with its state, then Change.
+
+  Whoever may not take a state's action reads who may, and whom to ask (`facts.ask`).
+  Install, Open, Assign, Turn the Backlog on and Change lead to the integration's page in
+  Organisation settings › Integrations (`integration_path`, given its adapter's public
+  id), or to that list (`integrations_path`) where several integrations are concerned.
+  """
+  attr :id, :string, default: "backlog-empty"
+
+  attr :state, :atom,
+    required: true,
+    values: [:none, :unlisted, :unassigned, :itemless, :off, :waiting]
+
+  attr :facts, :map, required: true, doc: "the facts, as above"
+  attr :organisation, :string, required: true, doc: "the organisation's name"
+  attr :workspace, :string, required: true, doc: "the workspace's name"
+  attr :integrations_path, :string, required: true, doc: "Organisation settings › Integrations"
+  attr :integration_path, :any, required: true, doc: "an integration's page, of its public id"
+
+  def empty_backlog(%{state: :none} = assigns) do
+    ~H"""
+    <div id={@id} data-state="none">
+      <.empty_state
+        icon="hero-squares-plus"
+        tone="neutral"
+        title={
+          gettext("%{organisation} has no integration that sends tickets",
+            organisation: @organisation
+          )
+        }
+      >
+        <p id={"#{@id}-line"}>
+          {pgettext(
+            "plain",
+            "Tickets come into the Backlog from another system, such as an issue tracker, a support desk or a forge, through an integration that %{organisation} installs.",
+            organisation: @organisation
+          )}
+        </p>
+        <p :if={@facts.offered == []} id={"#{@id}-instance"} class="mt-1.5">
+          {gettext("An instance admin adds integrations in Instance settings › Adapters.")}
+          {gettext(
+            "%{organisation} can then install them in Organisation settings › Integrations.",
+            organisation: @organisation
+          )}
+        </p>
+        <:actions :if={@facts.offered != []}>
+          <.offered
+            id={"#{@id}-offered"}
+            offered={@facts.offered}
+            install={@facts.may.install}
+            organisation={@organisation}
+            integrations_path={@integrations_path}
+            integration_path={@integration_path}
+          />
+          <.ask_install
+            :if={!@facts.may.install}
+            id={@id}
+            names={@facts.ask.install}
+            organisation={@organisation}
+          />
+        </:actions>
+      </.empty_state>
+    </div>
+    """
+  end
+
+  def empty_backlog(%{state: :unlisted} = assigns) do
+    ~H"""
+    <div id={@id} data-state="unlisted" class="grid gap-4">
+      <.empty_state
+        :for={source <- @facts.sources}
+        icon="hero-arrow-path"
+        tone="neutral"
+        title={
+          gettext("%{integration} hasn't listed its %{collections} yet",
+            integration: source.name,
+            collections: SourceComponents.collections(source.collection_noun)
+          )
+        }
+      >
+        <p id={"#{@id}-line-#{source.id}"}>
+          {gettext(
+            "%{integration} sends the list after the install. Then the %{items} of the %{collections} assigned to %{workspace} appear here.",
+            integration: source.name,
+            items: SourceComponents.items(source.item_noun),
+            collections: SourceComponents.collections(source.collection_noun),
+            workspace: @workspace
+          )}
+        </p>
+        <:actions :if={@facts.may.install}>
+          <.action_with_caption
+            id={"#{@id}-open-#{source.id}"}
+            icon="hero-squares-plus"
+            path={@integration_path.(source.id)}
+            caption={integration_caption(source.name)}
+          >
+            {gettext("Open %{integration}", integration: source.name)}
+          </.action_with_caption>
+        </:actions>
+      </.empty_state>
+    </div>
+    """
+  end
+
+  def empty_backlog(%{state: :unassigned} = assigns) do
+    sources = assigns.facts.sources
+    nouns = Enum.map(sources, & &1.collection_noun)
+
+    assigns =
+      assign(assigns,
+        sources: sources,
+        collections: SourceComponents.collections(nouns, :and),
+        title:
+          gettext("No %{collection} is assigned to %{workspace}",
+            collection: SourceComponents.collection(nouns, :or),
+            workspace: assigns.workspace
+          ),
+        items: SourceComponents.items(shared_item_noun(sources))
+      )
+
+    ~H"""
+    <div id={@id} data-state="unassigned">
+      <.empty_state icon="hero-folder" tone="neutral" title={@title}>
+        <p :for={source <- @sources} :if={length(@sources) == 1} id={"#{@id}-line"}>
+          {ngettext(
+            "%{integration} lists %{number} %{collection} for %{organisation}. Assign it if %{workspace} works on it, and its %{items} appear here.",
+            "%{integration} lists %{number} %{collections} for %{organisation}. Assign the ones %{workspace} works on, and their %{items} appear here.",
+            source.collections,
+            integration: source.name,
+            number: Format.number(source.collections),
+            collection: SourceComponents.collection(source.collection_noun),
+            collections: SourceComponents.collections(source.collection_noun),
+            organisation: @organisation,
+            workspace: @workspace,
+            items: SourceComponents.items(source.item_noun)
+          )}
+        </p>
+        <p :if={length(@sources) > 1} id={"#{@id}-line"}>
+          {gettext("Assign the %{collections} %{workspace} works on, and their %{items} appear here.",
+            collections: @collections,
+            workspace: @workspace,
+            items: @items
+          )}
+        </p>
+        <:actions>
+          <.action_with_caption
+            :for={source <- @sources}
+            :if={length(@sources) == 1 and @facts.may.assign}
+            id={"#{@id}-assign-#{source.id}"}
+            icon="hero-folder"
+            variant="primary"
+            path={@integration_path.(source.id)}
+            caption={integration_caption(source.name)}
+          >
+            {assign_words(source)}
+          </.action_with_caption>
+          <ul
+            :if={length(@sources) > 1}
+            id={"#{@id}-sources"}
+            aria-label={gettext("Integrations")}
+            class="q-rows w-full max-w-[460px] rounded-box border border-line bg-base-100 text-left"
+          >
+            <li
+              :for={source <- @sources}
+              id={"#{@id}-source-#{source.id}"}
+              class="flex min-h-[38px] items-center gap-2.5 px-3 py-1.5 text-[12.5px]"
+            >
+              <.integration_tile name={source.name} class="q-bl-mk" />
+              <span class="min-w-0 flex-1 truncate">{source.name}</span>
+              <span class="whitespace-nowrap text-faint">
+                {ngettext("%{number} %{collection}", "%{number} %{collections}", source.collections,
+                  number: Format.number(source.collections),
+                  collection: SourceComponents.collection(source.collection_noun),
+                  collections: SourceComponents.collections(source.collection_noun)
+                )}
+              </span>
+              <.button
+                :if={@facts.may.assign}
+                id={"#{@id}-assign-#{source.id}"}
+                size="xs"
+                navigate={@integration_path.(source.id)}
+                title={integration_caption(source.name)}
+              >
+                {assign_words(source)}
+              </.button>
+            </li>
+          </ul>
+          <div
+            :if={!@facts.may.assign}
+            id={"#{@id}-who"}
+            class="grid w-full justify-items-center gap-1"
+          >
+            <p class="text-[13.5px]/5 text-muted">
+              {gettext(
+                "Only owners and admins of %{organisation} assign %{collections} to workspaces.",
+                organisation: @organisation,
+                collections: @collections
+              )}
+            </p>
+            <.ask :if={@facts.ask.assign != []} id={"#{@id}-ask"}>
+              {gettext("Ask %{names} to assign the ones %{workspace} works on.",
+                names: SourceComponents.joined(@facts.ask.assign, :or),
+                workspace: @workspace
+              )}
+            </.ask>
+          </div>
+        </:actions>
+      </.empty_state>
+    </div>
+    """
+  end
+
+  def empty_backlog(%{state: :itemless} = assigns) do
+    assigns =
+      assign(assigns, :itemless, Enum.filter(assigns.facts.sources, &(&1.without_items > 0)))
+
+    ~H"""
+    <div id={@id} data-state="itemless">
+      <.empty_state icon="hero-inbox-stack" tone="neutral" title={off_title(@workspace)}>
+        <p id={"#{@id}-line"}>
+          <%= for source <- @itemless do %>
+            {gettext(
+              "The %{collections} assigned to %{workspace} have no %{items} at %{integration}.",
+              collections: SourceComponents.collections(source.collection_noun),
+              workspace: @workspace,
+              items: SourceComponents.items(source.item_noun),
+              integration: source.name
+            )}
+          <% end %>
+          <%= if @facts.offered != [] do %>
+            {other_system(@workspace)}
+          <% end %>
+        </p>
+        <:actions :if={@facts.offered != []}>
+          <.offered
+            id={"#{@id}-offered"}
+            offered={@facts.offered}
+            install={@facts.may.install}
+            organisation={@organisation}
+            integrations_path={@integrations_path}
+            integration_path={@integration_path}
+          />
+          <.ask_install
+            :if={!@facts.may.install}
+            id={@id}
+            names={@facts.ask.install}
+            organisation={@organisation}
+          />
+        </:actions>
+      </.empty_state>
+    </div>
+    """
+  end
+
+  def empty_backlog(%{state: :off} = assigns) do
+    off = Enum.filter(assigns.facts.sources, &(&1.switched_off > 0))
+    nouns = Enum.map(off, & &1.collection_noun)
+    n = assigns.facts.switched_off
+
+    assigns =
+      assign(assigns,
+        line:
+          ngettext(
+            "The Backlog is off for the one %{collection} assigned to %{workspace}.",
+            "The Backlog is off for the %{number} %{collections} assigned to %{workspace}.",
+            n,
+            number: Format.number(n),
+            collection: SourceComponents.collection(nouns, :or),
+            collections: SourceComponents.collections(nouns, :and),
+            workspace: assigns.workspace
+          ),
+        cards?: assigns.facts.offered != [],
+        target: several_or_one(off, assigns)
+      )
+
+    ~H"""
+    <div id={@id} data-state="off">
+      <.empty_state icon="hero-inbox-stack" tone="neutral" title={off_title(@workspace)}>
+        <p id={"#{@id}-line"}>
+          {@line}
+          <%= if @cards? do %>
+            {other_system(@workspace)}
+          <% end %>
+        </p>
+        <:actions>
+          <.offered
+            :if={@cards?}
+            id={"#{@id}-offered"}
+            offered={@facts.offered}
+            install={@facts.may.install}
+            organisation={@organisation}
+            integrations_path={@integrations_path}
+            integration_path={@integration_path}
+          />
+          <.action_with_caption
+            :if={@facts.may.switch}
+            id={"#{@id}-turn-on"}
+            icon={!@cards? && "hero-inbox-stack"}
+            variant={if @cards?, do: "ghost", else: "primary"}
+            path={@target.path}
+            caption={@target.caption}
+          >
+            {gettext("Turn the Backlog on")}
+          </.action_with_caption>
+          <.ask_install
+            :if={@cards? and !@facts.may.install}
+            id={@id}
+            names={@facts.ask.install}
+            organisation={@organisation}
+          />
+          <p
+            :if={!@cards? and !@facts.may.switch}
+            id={"#{@id}-who"}
+            class="w-full text-[13.5px]/5 text-muted"
+          >
+            {gettext("Only owners and admins change the Backlog switches.")}
+          </p>
+        </:actions>
+      </.empty_state>
+    </div>
+    """
+  end
+
+  def empty_backlog(%{state: :waiting} = assigns) do
+    sources = Enum.filter(assigns.facts.sources, &(&1.linked > 0))
+    nouns = Enum.map(sources, & &1.collection_noun)
+    item_noun = shared_item_noun(sources)
+    shown = length(assigns.facts.linked)
+
+    assigns =
+      assign(assigns,
+        sources: sources,
+        nouns: nouns,
+        item_noun: item_noun,
+        more: assigns.facts.linked_collections - shown,
+        target: several_or_one(sources, assigns)
+      )
+
+    ~H"""
+    <div id={@id} data-state="waiting">
+      <.empty_state
+        icon="hero-inbox-stack"
+        tone="neutral"
+        title={gettext("No %{items} yet", items: SourceComponents.items(@item_noun))}
+      >
+        <p :for={source <- @sources} :if={length(@sources) == 1} id={"#{@id}-line"}>
+          {gettext(
+            "%{integration} lists the open %{items} of the %{collections} assigned to %{workspace}, then sends each new one and each change.",
+            integration: source.name,
+            items: SourceComponents.items(@item_noun),
+            collections: SourceComponents.collections(@nouns, :and),
+            workspace: @workspace
+          )}
+        </p>
+        <p :if={length(@sources) > 1} id={"#{@id}-line"}>
+          {gettext(
+            "Each integration lists the open %{items} of the %{collections} assigned to %{workspace}, then sends each new one and each change.",
+            items: SourceComponents.items(@item_noun),
+            collections: SourceComponents.collections(@nouns, :and),
+            workspace: @workspace
+          )}
+        </p>
+        <:actions>
+          <ul
+            id={"#{@id}-linked"}
+            aria-label={
+              gettext("%{collections} assigned to %{workspace}",
+                collections: SourceComponents.collections_label(@nouns),
+                workspace: @workspace
+              )
+            }
+            class="q-rows w-full max-w-[460px] rounded-box border border-line bg-base-100 text-left"
+          >
+            <li
+              :for={collection <- @facts.linked}
+              id={"#{@id}-linked-#{collection.id}"}
+              class="flex min-h-[38px] items-center gap-2.5 px-3 py-1.5 text-[12.5px]"
+            >
+              <.integration_tile name={collection.integration.name} class="q-bl-mk" />
+              <span
+                class="min-w-0 flex-1 truncate q-mono"
+                title={Apiary.ExternalText.line(collection.title)}
+              ><.external_text text={collection.title} /></span>
+              <span class="whitespace-nowrap text-faint">
+                {if collection.listing_complete?,
+                  do:
+                    gettext("No open %{items}",
+                      items: SourceComponents.items(collection.item_noun)
+                    ),
+                  else: gettext("Not listed yet")}
+              </span>
+            </li>
+            <li
+              :if={@more > 0}
+              id={"#{@id}-linked-more"}
+              class="flex min-h-[38px] items-center justify-center px-3 py-1.5 text-[12.5px] text-muted"
+            >
+              {ngettext("and %{number} more", "and %{number} more", @more,
+                number: Format.number(@more)
+              )}
+            </li>
+          </ul>
+          <.action_with_caption
+            :if={@facts.may.assign}
+            id={"#{@id}-change"}
+            icon="hero-folder"
+            path={@target.path}
+            caption={@target.caption}
+          >
+            {gettext("Change the %{collections}",
+              collections: SourceComponents.collections(@nouns, :and)
+            )}
+          </.action_with_caption>
+          <.ask :if={!@facts.may.assign} id={"#{@id}-who"} icon="hero-inbox">
+            {gettext("Each new %{item} filed in one of these %{collections} appears here.",
+              item: SourceComponents.item(@item_noun),
+              collections: SourceComponents.collections(@nouns, :or)
+            )}
+          </.ask>
+        </:actions>
+      </.empty_state>
+    </div>
+    """
+  end
+
+  defp off_title(workspace),
+    do: gettext("No tickets come into %{workspace}'s Backlog", workspace: workspace)
+
+  defp other_system(workspace),
+    do:
+      pgettext(
+        "plain",
+        "To take %{workspace}'s tickets from another system, install its integration.",
+        workspace: workspace
+      )
+
+  defp integration_caption(name),
+    do: gettext("Organisation settings › Integrations › %{integration}", integration: name)
+
+  defp assign_words(source),
+    do:
+      gettext("Assign %{collections}",
+        collections: SourceComponents.collections(source.collection_noun)
+      )
+
+  # The words the sources share for their items; nil, ticket and tickets, where they
+  # differ.
+  defp shared_item_noun([%{item_noun: noun} | rest]),
+    do: if(Enum.all?(rest, &(&1.item_noun == noun)), do: noun)
+
+  defp shared_item_noun([]), do: nil
+
+  # Where an action about `sources` leads: one integration's page, or the list of them.
+  defp several_or_one([source], assigns),
+    do: %{
+      path: assigns.integration_path.(source.id),
+      caption: integration_caption(source.name)
+    }
+
+  defp several_or_one(_sources, assigns),
+    do: %{
+      path: assigns.integrations_path,
+      caption: gettext("Organisation settings › %{page}", page: gettext("Integrations"))
+    }
+
+  # The cards of the integrations the organisation can install: the first six, by name,
+  # then Show all.
+  attr :id, :string, required: true
+  attr :offered, :list, required: true
+  attr :install, :boolean, required: true
+  attr :organisation, :string, required: true
+  attr :integrations_path, :string, required: true
+  attr :integration_path, :any, required: true
+
+  defp offered(assigns) do
+    assigns = assign(assigns, :cards, Enum.take(assigns.offered, 6))
+
+    ~H"""
+    <section
+      id={@id}
+      aria-labelledby={"#{@id}-heading"}
+      class="grid w-full justify-items-center gap-2"
+    >
+      <h3 id={"#{@id}-heading"} class="text-xs/4 font-medium text-muted">
+        {gettext("Integrations %{organisation} can install", organisation: @organisation)}
+      </h3>
+      <ul class={[
+        "grid w-full grid-cols-1 gap-2 text-left",
+        if(length(@cards) == 1, do: "max-w-[340px]", else: "max-w-[680px] md:grid-cols-2")
+      ]}>
+        <li
+          :for={adapter <- @cards}
+          id={"#{@id}-#{adapter.id}"}
+          class="flex items-center gap-3 rounded-box border border-line bg-base-100 p-3 shadow-xs hover:border-line-strong"
+        >
+          <.integration_tile
+            name={adapter.name}
+            class="q-bl-src !size-8 !rounded-lg !border-[1.5px] bg-base-200 !text-sm"
+          />
+          <span class="grid min-w-0 flex-1">
+            <.link
+              id={"#{@id}-#{adapter.id}-name"}
+              navigate={@integration_path.(adapter.id)}
+              title={integration_caption(adapter.name)}
+              class="truncate text-[13.5px] font-medium hover:underline"
+            >
+              {adapter.name}
+            </.link>
+            <span class="truncate text-[12.5px] text-muted">{offer_line(adapter)}</span>
+          </span>
+          <.button
+            :if={@install}
+            id={"#{@id}-#{adapter.id}-install"}
+            size="xs"
+            navigate={@integration_path.(adapter.id)}
+            title={integration_caption(adapter.name)}
+          >
+            {gettext("Install")}
+          </.button>
+        </li>
+      </ul>
+      <.link
+        :if={length(@offered) > length(@cards)}
+        id={"#{@id}-all"}
+        navigate={@integrations_path}
+        class="text-[12.5px] text-accent hover:underline"
+      >
+        {gettext("Show all")}
+      </.link>
+    </section>
+    """
+  end
+
+  # What an offered integration sends, in its words: "Tasks from projects"; its words for
+  # its items alone where it names no collections.
+  defp offer_line(%{item_noun: items, collection_noun: nil}),
+    do: SourceComponents.items_label(items)
+
+  defp offer_line(%{item_noun: items, collection_noun: collections}),
+    do:
+      gettext("%{items} from %{collections}",
+        items: SourceComponents.items_label(items),
+        collections: SourceComponents.collections(collections)
+      )
+
+  # Who installs integrations, and whom to ask.
+  attr :id, :string, required: true
+  attr :names, :list, required: true
+  attr :organisation, :string, required: true
+
+  defp ask_install(assigns) do
+    ~H"""
+    <div id={"#{@id}-who"} class="grid w-full justify-items-center gap-1">
+      <p class="text-[13.5px]/5 text-muted">
+        {gettext("Owners and admins of %{organisation} install integrations.",
+          organisation: @organisation
+        )}
+      </p>
+      <.ask :if={@names != []} id={"#{@id}-ask"}>
+        {gettext("Ask %{names} to install one.", names: SourceComponents.joined(@names, :or))}
+      </.ask>
+    </div>
+    """
+  end
+
+  # A line with a quiet icon: whom to ask, or what happens next.
+  attr :id, :string, required: true
+  attr :icon, :string, default: "hero-users"
+  slot :inner_block, required: true
+
+  defp ask(assigns) do
+    ~H"""
+    <p id={@id} class="inline-flex w-full items-center justify-center gap-2 text-[13px]">
+      <.icon name={@icon} class="size-4 shrink-0 text-muted" />
+      <span>{render_slot(@inner_block)}</span>
+    </p>
+    """
+  end
+
+  # A state's action, a button, with where it leads under it.
+  attr :id, :string, required: true
+  attr :icon, :any, default: nil
+  attr :variant, :string, default: "default"
+  attr :path, :string, required: true
+  attr :caption, :string, required: true
+  slot :inner_block, required: true
+
+  defp action_with_caption(assigns) do
+    ~H"""
+    <div class="grid w-full justify-items-center gap-1.5">
+      <.button id={@id} variant={@variant} navigate={@path} title={@caption}>
+        <.icon :if={@icon} name={@icon} class="size-4" />{render_slot(@inner_block)}
+      </.button>
+      <p id={"#{@id}-caption"} class="text-xs text-faint">{@caption}</p>
+    </div>
+    """
+  end
 end

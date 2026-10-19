@@ -22,9 +22,17 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
 
   setup :register_and_log_in_user
 
+  # acme/shop has a target, so a ticket of it can be taken in; acme/api has none.
   setup %{scope: scope} do
     connection = ticket_connection_fixture(scope)
-    shop = source_collection_fixture(scope, connection, %{title: "acme/shop"})
+
+    shop =
+      source_collection_fixture(scope, connection, %{
+        title: "acme/shop",
+        target_system: "code.example.com",
+        target_path: "acme/shop"
+      })
+
     api = source_collection_fixture(scope, connection, %{title: "acme/api"})
     %{connection: connection, shop: shop, api: api}
   end
@@ -168,11 +176,13 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       refute conn.resp_body =~ "Discount codes"
     end
 
-    test "a Backlog with no ticket draws nothing under its header", %{conn: conn, scope: scope} do
+    test "a Backlog with no ticket says why in place of the list", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, page(scope))
       assert has_element?(view, "h1", "Backlog")
       refute has_element?(view, "#backlog")
-      # Its line under the title is a later step's, with the empty states.
+      # Its integration has not listed (`empty_test.exs` has each state).
+      assert has_element?(view, ~s(#backlog-empty[data-state="unlisted"]))
+      # An empty Backlog has no line under the title.
       refute has_element?(view, "#page-header-description")
     end
   end
@@ -258,8 +268,7 @@ defmodule ApiaryWeb.BacklogLive.IndexTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       assert words(view, "#page-header-description") ==
-               "Tickets from the 3 collections assigned to #{ctx.scope.workspace.name}. " <>
-                 "Take one in to make it a work item."
+               "Tickets from the 3 collections assigned to #{ctx.scope.workspace.name}."
 
       refute has_element?(view, "#page-header-description a")
     end
