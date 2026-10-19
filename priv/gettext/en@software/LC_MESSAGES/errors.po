@@ -43,6 +43,11 @@ msgstr ""
 
 #: lib/apiary/connections.ex
 #, elixir-autogen, elixir-format
+msgid "Choose another default key for %{provider} first: %{value} is its default key."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
 msgid "Choose one of %{provider}'s keys: %{value} is not one of them."
 msgstr ""
 

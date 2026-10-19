@@ -458,18 +458,36 @@ defmodule Apiary.Connections.ProvidersTest do
       assert Enum.map(provider.secret.values, & &1.value_id) == ["fourth", "main"]
 
       # The default key stays, by its value id.
-      use = %{kind: :model_provider, id: provider.public_id, name: "OpenRouter", value_id: "main"}
+      for refused <- [
+            Connections.delete_provider_key(scope, provider, "main"),
+            Connections.rename_provider_key(scope, provider, "main", "first")
+          ] do
+        assert {:error, changeset} = refused
 
-      assert Connections.delete_provider_key(scope, provider, "main") ==
-               {:error, {:in_use, [use]}}
-
-      assert Connections.rename_provider_key(scope, provider, "main", "first") ==
-               {:error, {:in_use, [use]}}
+        assert errors_on(changeset).value_id == [
+                 "Choose another default key for OpenRouter first: main is its default key."
+               ]
+      end
 
       assert {:error, changeset} =
                Connections.add_provider_key(scope, provider, %{value_id: "Bad", value: "x"})
 
       assert errors_on(changeset)[:value_id]
+
+      # Each change is the provider's entry, and the keys' secret has none.
+      entries = Enum.drop(trail(provider.id), 1)
+
+      assert Enum.map(entries, & &1.details["change"]) ==
+               List.duplicate("provider_keys_changed", 4)
+
+      assert Enum.map(entries, &{&1.before, &1.after, &1.details["value_id"]}) == [
+               {nil, %{"value_id" => "third"}, "third"},
+               {%{"value_id" => "third"}, %{"value_id" => "fourth"}, nil},
+               {nil, nil, "fourth"},
+               {%{"value_id" => "spare"}, nil, "spare"}
+             ]
+
+      refute Repo.exists?(from e in Entry, where: e.subject_id == ^provider.secret_id)
     end
 
     test "are left out of the organisation's secrets, and not found there", %{scope: scope} do
@@ -497,9 +515,39 @@ defmodule Apiary.Connections.ProvidersTest do
         assert refused == {:error, :not_found}
       end
 
-      # Nor is another secret written as a provider's keys.
-      assert Secrets.delete_value(scope, other, nil, provider_keys: true) ==
+      # Nor is another secret written or deleted as a provider's keys: only the secret the
+      # provider's row links, in the scope's organisation.
+      %{scope: elsewhere} = sign_up_fixture()
+
+      {:ok, foreign} =
+        Connections.create_provider(elsewhere, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "x"}, %{value_id: "spare", value: "y"}]
+        })
+
+      {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
+
+      assert Secrets.delete_value(scope, other, nil, provider: provider) == {:error, :not_found}
+      assert Secrets.set_value(scope, other, nil, "y", provider: provider) == {:error, :not_found}
+
+      assert Secrets.delete_value(scope, foreign.secret, "spare", provider: provider) ==
                {:error, :not_found}
+
+      assert Secrets.delete_value(scope, foreign.secret, "spare", provider: foreign) ==
+               {:error, :not_found}
+
+      for named <- [
+            %Connection{id: Ecto.UUID.generate(), secret_id: other.id},
+            %{runtime | secret_id: other.id},
+            %{foreign | secret_id: other.id},
+            foreign
+          ] do
+        assert Secrets.delete_provider_keys(scope, named, fn -> flunk("unlinked") end) ==
+                 {:error, :not_found}
+      end
+
+      assert {:ok, %Secret{}} = Secrets.get_organisation_secret(scope, other.public_id)
+      assert {:ok, %Connection{}} = Connections.get_provider(elsewhere, foreign.public_id)
 
       assert {:ok, %Connection{secret: %Secret{name: name, values: values}}} =
                Connections.get_provider(scope, provider.public_id)
@@ -527,10 +575,7 @@ defmodule Apiary.Connections.ProvidersTest do
       assert entry.details["change"] == "provider_deleted"
       assert entry.before["provider_kind"] == "openrouter"
 
-      assert Repo.exists?(
-               from e in Entry,
-                 where: e.subject_id == ^provider.secret_id and e.action == "secret.write"
-             )
+      refute Repo.exists?(from e in Entry, where: e.subject_id == ^provider.secret_id)
     end
 
     test "never reach a log line, an entry or a refusal", %{scope: scope} do
