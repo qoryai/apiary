@@ -4,8 +4,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   @moduledoc """
   Fills an empty database with an instance to review the whole console against: an
   organisation, its workspaces, people, weeks of runs across about a hundred and fifty
-  repositories, nodes, keys, a security policy, secrets, variables and integrations. All
-  of it synthetic and neutral. A development tool: it refuses to run in production.
+  repositories, nodes, keys, a security policy, secrets, variables and integrations, and,
+  with the `factory` feature, an adapter's tickets and work items. All of it synthetic and
+  neutral. A development tool: it refuses to run in production.
 
       unset DATABASE_URL
       export APIARY_DEV_DATABASE=apiary_redesign_demo
@@ -52,6 +53,17 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * Where the edition allows an organisation a second workspace, **Shop ops**
       (`shop-ops`) is made too, with a smaller, separate history; the core's allows
       one.
+    * With the instance's `factory` feature: the adapter **Tracker**, made by Dana at the
+      instance, with its key, and connected for Acme. Its nine repositories on
+      git.example.com: seven assigned to Main, acme/infra among them with its Backlog
+      turned off; acme/warehouse to Shop ops, or to Main where the edition allows one
+      workspace; acme/sandbox to none. Their 42 tickets, open and closed, filed by
+      people and by bots, with labels and comments. Ten work items of those tickets,
+      taken in by members of Main: three wait for their first run; one waits to run
+      again, as the pool spot-runners gave its run back; one runs again after that; two
+      are declined, two closed and one undone. A run gives a result only through a
+      gateway, which the demo does not have, so no work item waits for an answer or is
+      confirmed. Without the feature none of it is made.
     * Dana pins three repositories.
     * Last, build-01's enrolment code is made and cancelled.
 
@@ -87,6 +99,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Run, Target}
   alias Mix.Tasks.Apiary.Demo
+  alias Mix.Tasks.Apiary.Demo.Console.Factory
   alias Mix.Tasks.Apiary.Demo.History
 
   @switches [runs: :integer, days: :integer, seed: :integer, concurrency: :integer]
@@ -276,6 +289,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         if Apiary.Features.on?(:secrets), do: variables_of_second(scope)
         [scope_of_second(owner, scope)]
       end
+
+    if Apiary.Features.on?(:factory), do: Factory.fill(main, second && hd(second))
 
     pins(main)
 
