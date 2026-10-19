@@ -1717,36 +1717,6 @@ defmodule Apiary.Sources.BacklogTest do
       |> Repo.update!()
     end
 
-    # How many queries `fun` makes, by this process.
-    defp queries(fun) do
-      handler = "backlog-facts-#{System.unique_integer()}"
-      parent = self()
-
-      :telemetry.attach(
-        handler,
-        [:apiary, :repo, :query],
-        fn _event, _measurements, _meta, _config ->
-          if self() == parent, do: send(parent, :query)
-        end,
-        nil
-      )
-
-      try do
-        fun.()
-        count_queries(0)
-      after
-        :telemetry.detach(handler)
-      end
-    end
-
-    defp count_queries(n) do
-      receive do
-        :query -> count_queries(n + 1)
-      after
-        0 -> n
-      end
-    end
-
     test "each source by name, with its words, its listing and its collections' counts",
          ctx do
       forge = declare(ctx.connection, "Zulu forge", {"issue", "issues"}, nil)
