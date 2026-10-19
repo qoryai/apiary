@@ -723,7 +723,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "h2") == "Details"
 
       assert texts(html, "dt") ==
-               ["Owner", "Ticket", "Repository", "Taken in", "First instruction", "Runs"]
+               ["Owner", "Ticket", "Collection", "Taken in", "First instruction", "Runs"]
 
       assert text(html, "#work-item-details-owner .sr-only") == "dana@example.com (you)"
       assert text(html, "#work-item-details-owner abbr span[aria-hidden]") == "D"
@@ -1416,7 +1416,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
     test "Details and the first tab name it by the word, its first letter in upper case" do
       assert texts(details(work_item(), item_noun: @bug), "dt") ==
-               ["Owner", "Bug", "Repository", "Taken in", "First instruction", "Runs"]
+               ["Owner", "Bug", "Collection", "Taken in", "First instruction", "Runs"]
 
       tabs =
         render_component(&WorkItemComponents.work_item_tabs/1,

@@ -177,12 +177,16 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert attr(html, "input", "value") == ["rounding"]
     end
 
-    test "the Filter: Owner, Repository and Updated" do
+    test "the Filter: Owner, the collections in their sources' words, and Updated" do
       assigns = %{}
 
       html =
         rendered_to_string(~H"""
-        <L.work_item_filter count={1} values={%{owner: "Priya"}}>
+        <L.work_item_filter
+          collection_label="Repository or queue"
+          count={1}
+          values={%{owner: "Priya"}}
+        >
           <:owner>
             <p>owners</p>
           </:owner>
@@ -196,7 +200,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
         """)
 
       assert text(html, ".q-fm-h") == "Filter by"
-      assert texts(html, ".q-fm-label") == ["Owner", "Repository", "Updated"]
+      assert texts(html, ".q-fm-label") == ["Owner", "Repository or queue", "Updated"]
       assert text(html, "#work-items-filter-value-owner") == "Priya"
       assert text(html, "#work-items-filter-button") =~ "Filter"
     end
@@ -204,6 +208,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     test "the tokens: each with its remove label, Clear, and how many match" do
       html =
         render_component(&L.work_item_tokens/1,
+          collection_label: "Project",
           filters: [
             %{key: :owner, value: "Priya", patch: "/8wonders/main/work?repository=acme%2Fshop"},
             %{key: :repository, value: "acme/shop", patch: "/8wonders/main/work?owner=Priya"}
@@ -212,11 +217,11 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
           match: 5
         )
 
-      assert texts(html, ".q-tok") == ["Owner Priya", "Repository acme/shop"]
+      assert texts(html, ".q-tok") == ["Owner Priya", "Project acme/shop"]
 
       assert attr(html, ".q-tok-x", "aria-label") == [
                "Remove Owner: Priya",
-               "Remove Repository: acme/shop"
+               "Remove Project: acme/shop"
              ]
 
       assert text(html, ".q-tok-clear") == "Clear"
@@ -224,6 +229,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
       one =
         render_component(&L.work_item_tokens/1,
+          collection_label: "Project",
           filters: [%{key: :updated, value: "Last 7 days", patch: "/8wonders/main/work"}],
           match: 1
         )

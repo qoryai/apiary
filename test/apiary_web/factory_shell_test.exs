@@ -381,7 +381,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"work_item.explore_again", "Work item explored again"} in options
       assert {"work_item.comment", "Work item comment added"} in options
       assert {"work_item.comment_delete", "Work item comment deleted"} in options
-      assert {"collection.assign", "Assigned repositories"} in options
+      assert {"collection.assign", "Assigned collections"} in options
 
       assert {"collection.set_backlog", "Taking tickets into the Backlog turned on or off"} in options
 

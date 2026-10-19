@@ -603,10 +603,10 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert attr(html, "a#tk-close", "aria-label") == ["Close the bug"]
     end
 
-    test "over the list: Repository and Labels, the block, the text, the comments" do
+    test "over the list: Collection and Labels, the block, the text, the comments" do
       html = list_frame(ticket(), comments())
 
-      assert texts(html, "#tk-facts dt") == ["Repository", "Labels"]
+      assert texts(html, "#tk-facts dt") == ["Collection", "Labels"]
       assert text(html, "#tk-facts .q-bl-repo") == "acme/shop"
       assert text(html, "#tk-facts .q-bl-lb") == "bug, checkout"
       refute text(html, "#tk-facts") =~ "Filed by"
@@ -667,7 +667,7 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       assert text(html, ".q-bl-tk-main #tk-text > #text") == "the text"
       assert text(html, ".q-bl-tk-main #tk-comments h3") == "3 comments"
 
-      assert texts(html, ".q-bl-tk-side #tk-facts dt") == ["Repository", "Labels", "Filed by"]
+      assert texts(html, ".q-bl-tk-side #tk-facts dt") == ["Collection", "Labels", "Filed by"]
       assert texts(html, ".q-bl-tk-side #tk-facts dd") == ["acme/shop", "bug, checkout", "Lea"]
       assert text(html, ".q-bl-tk-side a#tk-out") == "Open on GitHub (opens in a new tab)"
       assert attr(html, "a#tk-out", "href") == ["https://example.com/acme/shop/issues/1231"]

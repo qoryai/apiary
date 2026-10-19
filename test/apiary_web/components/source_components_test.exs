@@ -196,18 +196,47 @@ defmodule ApiaryWeb.SourceComponentsTest do
   end
 
   describe "the words for a source's collections" do
-    test "its adapter's, or the domain's word where it names none" do
+    test "its adapter's, or collection where it names none, in every kind of workspace" do
       project = %{one: "project", other: "projects"}
       assert SourceComponents.collection(project) == "project"
       assert SourceComponents.collections(project) == "projects"
       assert SourceComponents.collection_label(project) == "Project"
 
-      assert SourceComponents.collection(nil) == "repository"
-      assert SourceComponents.collections(nil) == "repositories"
-      assert SourceComponents.collection_label(nil) == "Repository"
+      assert SourceComponents.collection(nil) == "collection"
+      assert SourceComponents.collections(nil) == "collections"
+      assert SourceComponents.collection_label(nil) == "Collection"
 
       assert SourceComponents.collection_label(%{one: "work board", other: "work boards"}) ==
                "Work board"
+    end
+
+    test "of several sources: each source's words once, joined with and or with or" do
+      repository = %{one: "repository", other: "repositories"}
+      queue = %{one: "queue", other: "queues"}
+      project = %{one: "project", other: "projects"}
+
+      assert SourceComponents.collection([repository, queue], :or) == "repository or queue"
+      assert SourceComponents.collections([repository, queue], :and) == "repositories and queues"
+      assert SourceComponents.collections([repository, queue], :or) == "repositories or queues"
+      assert SourceComponents.collection_label([repository, queue]) == "Repository or queue"
+      assert SourceComponents.collections_label([repository, queue]) == "Repositories and queues"
+
+      assert SourceComponents.collections([repository, project, queue], :and) ==
+               "repositories, projects and queues"
+
+      # One that names none joins as collections; the same words once; none at all.
+      assert SourceComponents.collections([repository, nil], :and) ==
+               "repositories and collections"
+
+      assert SourceComponents.collection([queue, queue], :or) == "queue"
+      assert SourceComponents.collection([], :or) == "collection"
+      assert SourceComponents.collection_label([]) == "Collection"
+    end
+
+    test "joined/2 lists one word as it is, and more with commas and the last word" do
+      assert SourceComponents.joined(["dana"], :or) == "dana"
+      assert SourceComponents.joined(["dana", "priya"], :or) == "dana or priya"
+      assert SourceComponents.joined(["a", "b", "c"], :and) == "a, b and c"
     end
   end
 
@@ -215,7 +244,7 @@ defmodule ApiaryWeb.SourceComponentsTest do
     @project %{one: "project", other: "projects"}
     @story %{one: "story", other: "stories"}
 
-    test "on or off, in the source's words, else the domain's and tickets" do
+    test "on or off, in the source's words, else collection and tickets" do
       assert SourceComponents.backlog_turned(1, true, "Shop board", @project, @story) ==
                "Now taking stories into the Backlog from project Shop board."
 
@@ -223,10 +252,10 @@ defmodule ApiaryWeb.SourceComponentsTest do
                "No longer taking stories into the Backlog from project Shop board."
 
       assert SourceComponents.backlog_turned(1, true, "acme/shop", nil, nil) ==
-               "Now taking tickets into the Backlog from repository acme/shop."
+               "Now taking tickets into the Backlog from collection acme/shop."
 
       assert SourceComponents.backlog_turned(1, false, "acme/shop", nil, nil) ==
-               "No longer taking tickets into the Backlog from repository acme/shop."
+               "No longer taking tickets into the Backlog from collection acme/shop."
     end
 
     test "nil for a press that changed nothing, so the page claims no change" do

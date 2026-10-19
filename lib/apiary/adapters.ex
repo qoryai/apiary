@@ -320,7 +320,7 @@ defmodule Apiary.Adapters do
   # collection_noun/1 is what `adapter` calls one of its collections and many, as its
   # description's source role names them (`Apiary.Nodes.Node`'s `collection_noun_one` and
   # `collection_noun_other`): `%{one: one, other: other}`, lower case, shown as plain
-  # text; nil where it names none, for the default, the domain's word for a collection.
+  # text; nil where it names none, for the default, "collection" and "collections".
   # An adapter with no items names its collections too.
   @spec collection_noun(Node.t()) :: %{one: String.t(), other: String.t()} | nil
   def collection_noun(%Node{
@@ -337,7 +337,7 @@ defmodule Apiary.Adapters do
   # shared_collection_noun/1 is the words a page about the collections of many sources
   # uses, of `adapters`: those of every one of them, with items or not, since a source
   # with no items still reports collections, when each names the same
-  # (`collection_noun/1`); nil, the domain's word, otherwise, and when there is none.
+  # (`collection_noun/1`); nil, "collections", otherwise, and when there is none.
   @spec shared_collection_noun([Node.t()]) :: %{one: String.t(), other: String.t()} | nil
   def shared_collection_noun(adapters) when is_list(adapters) do
     case adapters |> Enum.map(&collection_noun/1) |> Enum.uniq() do

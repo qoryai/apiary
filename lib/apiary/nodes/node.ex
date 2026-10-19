@@ -104,8 +104,8 @@ defmodule Apiary.Nodes.Node do
     field :item_noun_other, :string
     field :items, :boolean, default: true
     # An adapter's alone (`nodes_collection_noun_check`): its description's source role's
-    # words for one collection and for many, both or neither (nil for the default, the
-    # domain's word), beside `items` false too.
+    # words for one collection and for many, both or neither (nil for the default,
+    # "collection" and "collections"), beside `items` false too.
     field :collection_noun_one, :string
     field :collection_noun_other, :string
     # An adapter's alone (`nodes_source_access_check`): its description's source role's

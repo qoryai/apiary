@@ -24,10 +24,14 @@ defmodule ApiaryWeb.SourceComponents do
   #
   # **The words for a source's collections** (`collection/1`, `collections/1`,
   # `collection_label/1`) are what its adapter calls one of them and many
-  # (`Apiary.Adapters.collection_noun/1`), or the domain's word where it names none (nil),
-  # bound as data, `%{collection}` or `%{collections}`, with the same rules: a page or a
-  # sentence about many collections passes the words their sources share
-  # (`Apiary.Adapters.shared_collection_noun/1`), nil where they differ.
+  # (`Apiary.Adapters.collection_noun/1`), or collection and collections where it names
+  # none (nil), in every kind of workspace, bound as data, `%{collection}` or
+  # `%{collections}`, with the same rules: a page or a sentence about many collections
+  # passes the words their sources share
+  # (`Apiary.Adapters.shared_collection_noun/1`), nil where they differ; or it passes
+  # every source's words, a list, and says each once, joined with "and" or "or"
+  # (`collection/2`, `collections/2`, `collection_label/1`, `collections_label/1`,
+  # `joined/2`): "repositories and queues", "Repository or queue".
   #
   # **The line after a collection's Backlog switch is pressed** (`backlog_turned/5`)
   # says what the press changed, and is nil when it changed nothing.
@@ -67,6 +71,43 @@ defmodule ApiaryWeb.SourceComponents do
 
   def collections(nil),
     do: pgettext("source collection, when its adapter names none", "collections")
+
+  @doc false
+  # collection/2 is the words for one collection of any of the sources whose words for
+  # their collections are `nouns`, a list of what `collection_noun/1` gives, collection
+  # for an empty one: each source's word once, in the list's order, joined with "or"
+  # (`joined/2`): "repository or queue".
+  @spec collection([%{one: String.t(), other: String.t()} | nil], :or) :: String.t()
+  def collection(nouns, :or) when is_list(nouns),
+    do: nouns |> words(&collection/1) |> joined(:or)
+
+  @doc false
+  # collections/2 is the words for many collections of the sources whose words are
+  # `nouns`, as `collection/2` reads them, joined with "and" or "or" (`join`):
+  # "repositories and queues".
+  @spec collections([%{one: String.t(), other: String.t()} | nil], :and | :or) ::
+          String.t()
+  def collections(nouns, join) when is_list(nouns) and join in [:and, :or],
+    do: nouns |> words(&collections/1) |> joined(join)
+
+  defp words([], word), do: [word.(nil)]
+  defp words(nouns, word), do: nouns |> Enum.map(word) |> Enum.uniq()
+
+  @doc false
+  # joined/2 is `words`, one or more, as a sentence lists them: the last joined to the
+  # others with "and" or "or" (`join`), the others with a comma: "a, b and c".
+  @spec joined([String.t(), ...], :and | :or) :: String.t()
+  def joined([word], _join), do: word
+
+  def joined([_first | _rest] = words, join) do
+    {list, [last]} = Enum.split(words, -1)
+    list = Enum.join(list, ", ")
+
+    case join do
+      :and -> gettext("%{list} and %{last}", list: list, last: last)
+      :or -> gettext("%{list} or %{last}", list: list, last: last)
+    end
+  end
 
   @doc false
   # backlog_turned/5 is the line a page shows once
@@ -117,8 +158,24 @@ defmodule ApiaryWeb.SourceComponents do
   @doc false
   # collection_label/1 is `collection/1` with its first letter in upper case: a label
   # that is the noun alone, such as a fact's beside a collection's title.
-  @spec collection_label(%{one: String.t(), other: String.t()} | nil) :: String.t()
+  # Given a list of words, as `collection/2` reads it, it is their words for one joined
+  # with "or": "Repository or queue".
+  @spec collection_label(
+          %{one: String.t(), other: String.t()}
+          | nil
+          | [%{one: String.t(), other: String.t()} | nil]
+        ) :: String.t()
+  def collection_label(nouns) when is_list(nouns),
+    do: nouns |> collection(:or) |> upcase_first()
+
   def collection_label(noun), do: noun |> collection() |> upcase_first()
+
+  @doc false
+  # collections_label/1 is `collections/2` of `nouns`, joined with "and", with its first
+  # letter in upper case: "Repositories and queues".
+  @spec collections_label([%{one: String.t(), other: String.t()} | nil]) :: String.t()
+  def collections_label(nouns) when is_list(nouns),
+    do: nouns |> collections(:and) |> upcase_first()
 
   defp upcase_first(word) do
     {first, rest} = String.split_at(word, 1)

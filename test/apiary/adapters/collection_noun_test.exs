@@ -46,7 +46,7 @@ defmodule Apiary.Adapters.CollectionNounTest do
     adapter |> Node.source_role_changeset(description) |> Repo.update!()
   end
 
-  test "an adapter's: the description's, or none for the domain's word", ctx do
+  test "an adapter's: the description's, or none for collection and collections", ctx do
     %{adapter: plain} = adapter(ctx.scope)
     assert Adapters.collection_noun(plain) == nil
 

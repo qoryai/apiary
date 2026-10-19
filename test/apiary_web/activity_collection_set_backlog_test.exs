@@ -143,21 +143,21 @@ defmodule ApiaryWeb.ActivityCollectionSetBacklogTest do
       %{scope: scope, connection: connection, collection: collection, entry: entry}
     end
 
-    test "the sentence names the title it had, in the domain's words where the source names none" do
+    test "the sentence names the title it had, collection where the source names none" do
       %{scope: scope, entry: off} = pressed(false)
       names = Audit.names(scope, [off])
 
       assert Core.sentence(:"collection.set_backlog", off, names) ==
-               "Turned off taking tickets into the Backlog from repository Shop board"
+               "Turned off taking tickets into the Backlog from collection Shop board"
 
       on = %{off | details: %{off.details | "backlog" => true}}
 
       assert Core.sentence(:"collection.set_backlog", on, names) ==
-               "Turned on taking tickets into the Backlog from repository Shop board"
+               "Turned on taking tickets into the Backlog from collection Shop board"
 
       # The page asks the edition's describer first.
       assert shown(off) ==
-               "Turned off taking tickets into the Backlog from repository Shop board"
+               "Turned off taking tickets into the Backlog from collection Shop board"
     end
 
     test "the sentence names the title as a page shows an external system's text" do
@@ -166,7 +166,7 @@ defmodule ApiaryWeb.ActivityCollectionSetBacklogTest do
       sent = %{off | details: %{off.details | "name" => "\u202EShop board\u200B\a"}}
 
       assert Core.sentence(:"collection.set_backlog", sent, Audit.names(scope, [sent])) ==
-               "Turned off taking tickets into the Backlog from repository Shop board\uFFFD"
+               "Turned off taking tickets into the Backlog from collection Shop board\uFFFD"
     end
 
     test "the sentence and the subject in the source's words, from its connection" do
@@ -209,12 +209,12 @@ defmodule ApiaryWeb.ActivityCollectionSetBacklogTest do
                "Turned on taking stories into the Backlog from project Shop board"
     end
 
-    test "with its row gone and a source that names none, the domain's word" do
+    test "with its row gone and a source that names none, collection" do
       %{scope: scope, collection: collection, entry: on} = pressed(true)
       Repo.delete!(collection)
 
       assert Core.subject(on, :"collection.set_backlog", Audit.names(scope, [on]), scope, nil) ==
-               %{text: "Deleted repository", mono: false, href: nil}
+               %{text: "Deleted collection", mono: false, href: nil}
 
       # An entry naming no connection it can find has no nouns.
       lost = %{on | details: %{on.details | "connection_id" => "ac_0000000000000000"}}

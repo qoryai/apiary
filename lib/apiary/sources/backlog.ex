@@ -35,9 +35,12 @@ defmodule Apiary.Sources.Backlog do
   # and Declined. The counts of each view, and the total, come from one grouped query,
   # under the same search and filters as the page, without its view.
   #
-  # **The facts** (`backlog_facts/1`) name the integrations that bring items the
-  # organisation is connected through, each by its adapter's name and public id, read
-  # with the connections.
+  # **The facts** (`backlog_facts/1`) are what an empty Backlog says why it is empty
+  # from: the integrations that bring items the organisation is connected through, each
+  # by its adapter's name and public id, with their words and their collections' counts;
+  # the collections linked to the workspace; the adapters of the instance it could
+  # install; and what the person may do and whom to ask. They are read with the
+  # connections, after the same gate as every read.
   #
   # Every text a ticket holds came from an adapter and is untrusted: these reads return it
   # as data. Every input a person gives (a search, a filter value, a cursor, a public id)
@@ -48,9 +51,9 @@ defmodule Apiary.Sources.Backlog do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Repo}
+  alias Apiary.{Access, Adapters, Organisations, Repo}
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.Adapters.{Collection, Connection}
+  alias Apiary.Adapters.{Collection, Collections, Connection}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Filters
@@ -201,14 +204,73 @@ defmodule Apiary.Sources.Backlog do
           avatar: :person | :bot | nil
         }
 
+  @typedoc """
+  What an adapter calls one of its items or collections and many, lower case, as its
+  description names them (`Apiary.Adapters.item_noun/1`, `collection_noun/1`); nil where
+  it names none.
+  """
+  @type noun :: %{one: String.t(), other: String.t()} | nil
+
+  @typedoc """
+  An integration the organisation is connected through whose adapter has items: its
+  adapter's name, public id and words; whether a listing has named its connection and
+  whether one has been complete; the live collections its connection reaches and those
+  of them assigned to no workspace; and the live collections it has assigned to the
+  workspace, linked, with items and their Backlog off, and without items.
+  """
+  @type source :: %{
+          name: String.t(),
+          id: String.t(),
+          item_noun: noun,
+          collection_noun: noun,
+          listed?: boolean,
+          listing_complete?: boolean,
+          collections: non_neg_integer,
+          unassigned: non_neg_integer,
+          assigned: non_neg_integer,
+          linked: non_neg_integer,
+          switched_off: non_neg_integer,
+          without_items: non_neg_integer
+        }
+
+  @typedoc """
+  A collection linked to the workspace: its public id (`sc_…`), its title as its source
+  names it, its integration, its adapter's words, whether its connection's listing has
+  been complete, and how many tickets of the Backlog are open in it.
+  """
+  @type linked :: %{
+          id: String.t(),
+          title: String.t(),
+          integration: integration,
+          item_noun: noun,
+          collection_noun: noun,
+          listing_complete?: boolean,
+          open_tickets: non_neg_integer
+        }
+
+  @typedoc """
+  An adapter of the instance with items that the organisation is not connected through:
+  its name, its public id and its words.
+  """
+  @type offered :: %{name: String.t(), id: String.t(), item_noun: noun, collection_noun: noun}
+
   @typedoc "The facts an empty Backlog, and the page's line under its title, speak from."
   @type facts :: %{
           connected?: boolean,
+          listed?: boolean,
           integrations: [integration],
+          sources: [source],
           assigned_collections: non_neg_integer,
           linked_collections: non_neg_integer,
-          listed?: boolean,
-          open_tickets: non_neg_integer
+          switched_off: non_neg_integer,
+          without_items: non_neg_integer,
+          collection_nouns: [{noun, pos_integer}],
+          linked: [linked],
+          open_tickets: non_neg_integer,
+          take_in?: boolean,
+          offered: [offered],
+          may: %{install: boolean, assign: boolean, switch: boolean},
+          ask: %{install: [String.t()], assign: [String.t()], switch: [String.t()]}
         }
 
   @no_counts %{open: 0, taken: 0, declined: 0, closed: 0, total: 0}
@@ -1016,79 +1078,325 @@ defmodule Apiary.Sources.Backlog do
 
   ## The facts of an empty Backlog
 
+  # The linked collections the facts name at most.
+  @most_linked 5
+
+  @no_here %{assigned: 0, linked: 0, switched_off: 0, without_items: 0}
+
   @doc false
   # backlog_facts/1 is what an empty Backlog of the scope's workspace, and the line under
-  # the page's title, speak from, to a person who may read its work items: whether the
-  # organisation has a connection that is connected (`connected?`); the integrations of
-  # those connections whose adapter brings items, each by its adapter's name and public
-  # id, by name (`integrations`, `t:integration/0`); how many live collections of a
-  # connected connection, through an adapter with items, are assigned to the workspace,
-  # whatever their Backlog switch and their items (`assigned_collections`, the count the
-  # line under the title says), and how many of them are linked, with their Backlog on
-  # and with items (`linked_collections`); whether an adapter's listing has named a
-  # connected connection (`listed?`, its `listed_at`); and how many tickets the Backlog
-  # holds open at their source (`open_tickets`), whatever their work item. Nothing
-  # connected, no integration, nothing assigned, nothing linked, nothing listed and none
-  # open to anyone else.
+  # the page's title, speak from, to a person who may read its work items (`t:facts/0`):
+  #
+  #   * `connected?`, whether the organisation has a connection that is connected;
+  #     `listed?`, whether an adapter's listing has named one of them (its `listed_at`);
+  #   * `integrations`, the integrations of those connections whose adapter has items,
+  #     each by its adapter's name and public id, by name (`t:integration/0`);
+  #   * `sources`, the same integrations in the same order, each with its adapter's words
+  #     for its items and its collections, whether a listing has named its connection
+  #     (`listed?`) and whether one has been complete (`listing_complete?`), how many live
+  #     collections its connection reaches and how many of them are assigned to no
+  #     workspace (`collections` and `unassigned`, `Apiary.Adapters.Collections.counts/2`,
+  #     the numbers of the integration's page), and how many live collections it has
+  #     assigned to the workspace (`assigned`), linked (`linked`), with items and their
+  #     Backlog off (`switched_off`), and without items (`without_items`)
+  #     (`t:source/0`);
+  #   * `assigned_collections`, `linked_collections`, `switched_off` and `without_items`,
+  #     the sources' counts summed: `assigned_collections` is the count the line under the
+  #     title says, whatever the collections' Backlog switch and items;
+  #   * `collection_nouns`, the words of each source with a collection assigned to the
+  #     workspace for its collections, each once, in the order of `sources`, with how many
+  #     of its collections are assigned (`{noun, count}`); the words alone are
+  #     `collection_nouns/1`'s;
+  #   * `linked`, the first 5 linked collections, by their integration's name, then their
+  #     title, each with how many tickets of the Backlog are open in it (`t:linked/0`);
+  #   * `open_tickets`, how many tickets the Backlog holds open at their source, whatever
+  #     their work item; `take_in?`, whether an open ticket of the Open view has a target,
+  #     the ticket's, else its collection's, which Take in needs;
+  #   * `offered`, the instance's adapters with items that no connected connection of the
+  #     organisation goes through, by name (`t:offered/0`), as
+  #     `Apiary.Adapters.list_adapters/1` gives them to the person;
+  #   * `may`, whether the person may install an integration (`install`,
+  #     `adapter.connect`), assign a collection to a workspace (`assign`,
+  #     `collection.assign`) and turn a Backlog switch (`switch`,
+  #     `collection.set_backlog`), as `Apiary.Access.can?/3` answers; `ask`, under the
+  #     same keys, the short names of the members whose level holds the action, in
+  #     `Apiary.Organisations.list_members/1`'s order, without a suspended membership or a
+  #     deleted account, for each action the person may not take, and `[]` for each they
+  #     may.
+  #
+  # The queries are the same whatever the number of collections: one each for the
+  # connections, the assigned counts, the open tickets, Take in, the linked collections
+  # and their open tickets, and the instance's adapters; `counts/2`'s two per source; and
+  # the members', once, only for a person who may not take one of the three actions.
+  # Everything empty, false or 0 to anyone else.
   @spec backlog_facts(Scope.t()) :: facts
   def backlog_facts(%Scope{} = scope) do
     case workspace(scope) do
       {:ok, organisation_id, %Workspace{id: workspace_id}} ->
-        # One row per adapter: its connected connections, those a listing named, and
-        # whether it brings items.
-        connections =
-          Repo.all(
-            from k in Connection,
-              join: n in Node,
-              on: n.id == k.adapter_id,
-              where:
-                k.organisation_id == ^organisation_id and k.state == :connected and
-                  is_nil(k.ended_at),
-              group_by: [n.id, n.name, n.public_id, n.items],
-              order_by: [asc: n.name, asc: n.public_id],
-              select: {%{name: n.name, id: n.public_id}, count(k.listed_at), n.items}
-          )
-
-        # The assigned collections, and among them the linked ones, in one count.
-        {assigned, linked} =
-          Repo.one(
-            from c in Collection,
-              join: k in Connection,
-              on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
-              join: n in Node,
-              on: n.id == c.adapter_id,
-              where:
-                c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
-                  n.items and is_nil(c.ended_at) and k.state == :connected and
-                  is_nil(k.ended_at),
-              select: {count(c.id), filter(count(c.id), c.backlog and c.items)}
-          )
-
-        open =
-          organisation_id
-          |> backlog(workspace_id)
-          |> where([item: i], i.state == :open)
-          |> select([item: i], count(i.id))
-          |> Repo.one()
+        connections = connected(organisation_id)
+        sources = sources(scope, connections, assigned_here(organisation_id, workspace_id))
+        linked = linked(organisation_id, workspace_id)
+        may = may(scope)
 
         %{
           connected?: connections != [],
-          integrations: for({integration, _listed, true} <- connections, do: integration),
-          assigned_collections: assigned,
-          linked_collections: linked,
-          listed?: Enum.any?(connections, fn {_integration, listed, _items} -> listed > 0 end),
-          open_tickets: open
+          listed?: Enum.any?(connections, fn {connection, _adapter} -> connection.listed_at end),
+          integrations: Enum.map(sources, &Map.take(&1, [:name, :id])),
+          sources: sources,
+          assigned_collections: sum(sources, :assigned),
+          linked_collections: sum(sources, :linked),
+          switched_off: sum(sources, :switched_off),
+          without_items: sum(sources, :without_items),
+          collection_nouns: assigned_nouns(sources),
+          linked: linked,
+          open_tickets: open_tickets(organisation_id, workspace_id),
+          take_in?: take_in?(organisation_id, workspace_id),
+          offered: offered(scope, connections),
+          may: may,
+          ask: ask(scope, may)
         }
 
       :error ->
+        no_facts()
+    end
+  end
+
+  # The facts of a person who may not read the workspace's work items.
+  defp no_facts do
+    %{
+      connected?: false,
+      listed?: false,
+      integrations: [],
+      sources: [],
+      assigned_collections: 0,
+      linked_collections: 0,
+      switched_off: 0,
+      without_items: 0,
+      collection_nouns: [],
+      linked: [],
+      open_tickets: 0,
+      take_in?: false,
+      offered: [],
+      may: %{install: false, assign: false, switch: false},
+      ask: %{install: [], assign: [], switch: []}
+    }
+  end
+
+  @doc false
+  # collection_nouns/1 is the words of the sources of the scope's workspace for their
+  # collections, to a person who may read its work items: of each adapter with items
+  # through which a connected connection has a live collection assigned to the
+  # workspace, by name, `Apiary.Adapters.collection_noun/1`, each once (nil, the
+  # source's that names none, too). The sources of `backlog_facts/1`'s
+  # `collection_nouns`; `[]` to anyone else.
+  @spec collection_nouns(Scope.t()) :: [noun]
+  def collection_nouns(%Scope{} = scope) do
+    case workspace(scope) do
+      {:ok, organisation_id, %Workspace{id: workspace_id}} ->
+        Repo.all(
+          from n in Node,
+            join: c in Collection,
+            on: c.adapter_id == n.id,
+            join: k in Connection,
+            on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+            where:
+              c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
+                n.items and is_nil(c.ended_at) and k.state == :connected and
+                is_nil(k.ended_at),
+            distinct: [asc: n.name, asc: n.public_id],
+            order_by: [asc: n.name, asc: n.public_id]
+        )
+        |> Enum.map(&Adapters.collection_noun/1)
+        |> Enum.uniq()
+
+      :error ->
+        []
+    end
+  end
+
+  # The organisation's connected connections, each with its adapter, by the adapter's
+  # name.
+  defp connected(organisation_id) do
+    Repo.all(
+      from k in Connection,
+        join: n in Node,
+        on: n.id == k.adapter_id,
+        where:
+          k.organisation_id == ^organisation_id and k.state == :connected and
+            is_nil(k.ended_at),
+        order_by: [asc: n.name, asc: n.public_id, asc: k.id],
+        select: {k, n}
+    )
+  end
+
+  # The live collections of a connected connection assigned to the workspace, counted by
+  # adapter in one query: all of them, the linked ones, those with items and their
+  # Backlog off, and those without items.
+  defp assigned_here(organisation_id, workspace_id) do
+    Repo.all(
+      from c in Collection,
+        join: k in Connection,
+        on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+        where:
+          c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
+            is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at),
+        group_by: c.adapter_id,
+        select:
+          {c.adapter_id,
+           %{
+             assigned: count(c.id),
+             linked: filter(count(c.id), c.backlog and c.items),
+             switched_off: filter(count(c.id), not c.backlog and c.items),
+             without_items: filter(count(c.id), not c.items)
+           }}
+    )
+    |> Map.new()
+  end
+
+  # The sources: the connected connections through an adapter with items, one per adapter.
+  defp sources(scope, connections, here) do
+    for {connection, adapter} <- Enum.uniq_by(connections, fn {_k, n} -> n.id end),
+        adapter.items do
+      counts = Collections.counts(scope, connection)
+
+      Map.merge(
         %{
-          connected?: false,
-          integrations: [],
-          assigned_collections: 0,
-          linked_collections: 0,
-          listed?: false,
-          open_tickets: 0
-        }
+          name: adapter.name,
+          id: adapter.public_id,
+          item_noun: Adapters.item_noun(adapter),
+          collection_noun: Adapters.collection_noun(adapter),
+          listed?: not is_nil(connection.listed_at),
+          listing_complete?: Collections.listing_complete?(connection),
+          collections: counts.total,
+          unassigned: counts.unassigned
+        },
+        Map.get(here, adapter.id, @no_here)
+      )
+    end
+  end
+
+  defp sum(sources, key), do: sources |> Enum.map(&Map.fetch!(&1, key)) |> Enum.sum()
+
+  # The sources' words for their collections, each once in the sources' order, with how
+  # many collections assigned to the workspace each counts.
+  defp assigned_nouns(sources) do
+    assigned = Enum.filter(sources, &(&1.assigned > 0))
+
+    for noun <- assigned |> Enum.map(& &1.collection_noun) |> Enum.uniq() do
+      {noun, assigned |> Enum.filter(&(&1.collection_noun == noun)) |> sum(:assigned)}
+    end
+  end
+
+  # The first linked collections of the workspace, with their open tickets.
+  defp linked(organisation_id, workspace_id) do
+    rows =
+      Repo.all(
+        from c in Collection,
+          join: k in Connection,
+          on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+          join: n in Node,
+          on: n.id == c.adapter_id,
+          where:
+            c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
+              c.backlog and c.items and n.items and is_nil(c.ended_at) and
+              k.state == :connected and is_nil(k.ended_at),
+          order_by: [asc: n.name, asc: n.public_id, asc: c.title, asc: c.id],
+          limit: @most_linked,
+          select: {c, k.listing_completed_at, n}
+      )
+
+    ids = Enum.map(rows, fn {collection, _at, _adapter} -> collection.id end)
+
+    open =
+      organisation_id
+      |> backlog(workspace_id)
+      |> where([item: i, collection: c], i.state == :open and c.id in ^ids)
+      |> group_by([collection: c], c.id)
+      |> select([item: i, collection: c], {c.id, count(i.id)})
+      |> Repo.all()
+      |> Map.new()
+
+    for {collection, completed_at, adapter} <- rows do
+      %{
+        id: collection.public_id,
+        title: collection.title,
+        integration: %{name: adapter.name, id: adapter.public_id},
+        item_noun: Adapters.item_noun(adapter),
+        collection_noun: Adapters.collection_noun(adapter),
+        listing_complete?: not is_nil(completed_at),
+        open_tickets: Map.get(open, collection.id, 0)
+      }
+    end
+  end
+
+  defp open_tickets(organisation_id, workspace_id) do
+    organisation_id
+    |> backlog(workspace_id)
+    |> where([item: i], i.state == :open)
+    |> select([item: i], count(i.id))
+    |> Repo.one()
+  end
+
+  # Whether a ticket of the Open view has a target, its own, else its collection's, as
+  # Take in reads it (`Apiary.WorkItems.Moves`).
+  defp take_in?(organisation_id, workspace_id) do
+    organisation_id
+    |> backlog(workspace_id)
+    |> view(:open)
+    |> where(
+      [item: i, collection: c],
+      not is_nil(i.target_system) or not is_nil(c.target_system)
+    )
+    |> Repo.exists?()
+  end
+
+  # The instance's adapters with items that no connected connection of the organisation
+  # goes through, by name.
+  defp offered(scope, connections) do
+    connected = MapSet.new(connections, fn {_connection, adapter} -> adapter.id end)
+
+    for adapter <- Adapters.list_adapters(scope),
+        adapter.items,
+        not MapSet.member?(connected, adapter.id) do
+      %{
+        name: adapter.name,
+        id: adapter.public_id,
+        item_noun: Adapters.item_noun(adapter),
+        collection_noun: Adapters.collection_noun(adapter)
+      }
+    end
+  end
+
+  @actions %{
+    install: :"adapter.connect",
+    assign: :"collection.assign",
+    switch: :"collection.set_backlog"
+  }
+
+  defp may(%Scope{organisation: organisation} = scope),
+    do: Map.new(@actions, fn {key, action} -> {key, Access.can?(scope, action, organisation)} end)
+
+  # For each action the person may not take, who may: the short names of the members whose
+  # level holds it, as `ApiaryWeb.SettingsLive` reads a level's actions.
+  defp ask(scope, may) do
+    if Enum.all?(may, fn {_key, may?} -> may? end) do
+      Map.new(@actions, fn {key, _action} -> {key, []} end)
+    else
+      roles = Access.roles()
+
+      members =
+        for %{suspended_at: nil, user: %User{deleted_at: nil} = user} = member <-
+              Organisations.list_members(scope),
+            do: {member.level, People.short(People.email(user))}
+
+      Map.new(@actions, fn {key, action} ->
+        names =
+          if Map.fetch!(may, key),
+            do: [],
+            else: for({level, name} <- members, action in Map.get(roles, level, []), do: name)
+
+        {key, names}
+      end)
     end
   end
 
