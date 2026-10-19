@@ -18,9 +18,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   # The ticket's ref at the source: opaque, never drawn.
   @ref "123456#42"
 
-  @dana %{id: "pr_dana", name: "Dana", you: true}
-  @priya %{id: "pr_priya", name: "Priya", you: false}
-  @lea %{id: "pr_lea", name: "Lea", you: false}
+  @dana %{id: "pr_dana", name: "Dana", email: "dana@example.com", you: true}
+  @priya %{id: "pr_priya", name: "Priya", email: "priya@example.com", you: false}
+  @lea %{id: "pr_lea", name: "Lea", email: "lea@example.com", you: false}
 
   defp ago(seconds), do: DateTime.add(@now, -seconds, :second)
 
@@ -179,7 +179,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
     test "another's work item: whose it is; no Close without the right to" do
       html = header(work_item(%{owner: @priya}), can_close: false)
-      assert html =~ "Priya owns it"
+      assert text(html, ".q-wi-meta > span:last-child") == "Ppriya@example.com owns it"
+      assert attr(html, ".q-wi-meta abbr", "data-tip") == ["priya@example.com"]
+      assert attr(html, ".q-wi-meta abbr", "tabindex") == ["0"]
       assert text(html, ".q-wi-meta .q-wi-st") == "Waits for Priya to confirm"
       assert count(html, "#work-item-head-close") == 0
       assert count(html, "#work-item-head-copy") == 1
@@ -444,7 +446,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "Waits for you to confirm Qory's proposal or decline the work item."
 
       html =
-        card(work_item(%{owner: %{id: "pr_x", name: "<b>Ana</b>", you: false}}), can_act: false)
+        card(
+          work_item(%{
+            owner: %{id: "pr_x", name: "<b>Ana</b>", email: "<b>ana@example.com", you: false}
+          }),
+          can_act: false
+        )
 
       assert html =~ "Waits for &lt;b&gt;Ana&lt;/b&gt; to confirm"
       assert count(html, ".q-wi-bee-line b") == 0
@@ -482,8 +489,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       w =
         work_item(%{
           status: :shape,
-          owner: %{name: "Mirek", you: false},
-          confirmed_by: %{name: "Mirek", you: false},
+          owner: %{name: "Mirek", email: "mirek@example.com", you: false},
+          confirmed_by: %{name: "Mirek", email: "mirek@example.com", you: false},
           confirmed_at: ago(3 * 3600)
         })
 
@@ -587,7 +594,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     end
 
     test "closed: who and on which day, the ticket's state, and Take in again" do
-      html = ended(:closed, %{name: "Mirek", you: false}, ~U[2026-10-12 10:07:00Z])
+      html =
+        ended(
+          :closed,
+          %{name: "Mirek", email: "mirek@example.com", you: false},
+          ~U[2026-10-12 10:07:00Z]
+        )
 
       assert text(html, "#work-item-ended-line") == "Mirek closed this work item on 12 Oct."
 
@@ -645,7 +657,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
     test "after the uninstall: the first line alone, and no Take in again" do
       for {status, by, line} <- [
-            {:closed, %{name: "Mirek", you: false}, "Mirek closed this work item on 12 Oct."},
+            {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
+             "Mirek closed this work item on 12 Oct."},
             {:declined, @priya, "Priya declined this work item"},
             {:undone, @dana, "You undid this"},
             {:undone, @priya, "Priya undid this"}
@@ -660,7 +673,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
     test "while the repository keeps its tickets out of the Backlog: the first line alone, and no Take in again" do
       for {status, by, line} <- [
-            {:closed, %{name: "Mirek", you: false}, "Mirek closed this work item on 12 Oct."},
+            {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
+             "Mirek closed this work item on 12 Oct."},
             {:declined, @priya, "Priya declined this work item"},
             {:undone, @dana, "You undid this"}
           ] do
@@ -711,7 +725,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert texts(html, "dt") ==
                ["Owner", "Ticket", "Repository", "Taken in", "First instruction", "Runs"]
 
-      assert text(html, "#work-item-details-owner") == "D Dana (you)"
+      assert text(html, "#work-item-details-owner .sr-only") == "dana@example.com (you)"
+      assert text(html, "#work-item-details-owner abbr span[aria-hidden]") == "D"
+      assert attr(html, "#work-item-details-owner abbr", "data-tip") == ["dana@example.com (you)"]
+      assert count(html, "#work-item-details-owner abbr .bg-primary-soft") == 1
+      assert text(html, "#work-item-details-owner > span[aria-hidden]") == "(you)"
+      refute html =~ "Dana"
       assert text(html, "#work-item-details-ticket a") == "#1204 (opens in a new tab)"
       assert attr(html, "#work-item-details-ticket a", "href") == [@url]
 
@@ -735,11 +754,13 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         })
 
       html = details(w)
-      assert text(html, "#work-item-details-owner") == "P Priya"
+      assert text(html, "#work-item-details-owner") == "Ppriya@example.com"
+      assert attr(html, "#work-item-details-owner abbr", "data-tip") == ["priya@example.com"]
+      assert attr(html, "#work-item-details-toggle abbr", "tabindex") == []
       refute html =~ "(you)"
 
       assert text(html, "#work-item-details-toggle .q-wi-dtoggle-s") ==
-               "Priya owns it · G #1204"
+               "Ppriya@example.com owns it · G #1204"
 
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by you"
       assert text(html, "#work-item-details-instruction") == "None"
@@ -783,7 +804,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
     test "ended: how, when and by whom" do
       for {status, by, row} <- [
-            {:closed, %{name: "Mirek", you: false}, "Closed 12 Oct, by Mirek"},
+            {:closed, %{name: "Mirek", email: "mirek@example.com", you: false},
+             "Closed 12 Oct, by Mirek"},
             {:declined, @priya, "Declined 12 Oct, by Priya"},
             {:undone, @dana, "Undone 12 Oct, by you"}
           ] do
@@ -983,8 +1005,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     end
 
     test "taken in: the owner is another person by id, not by name" do
-      taker = %{id: "pr_priya_a", name: "Priya", you: false}
-      namesake = %{id: "pr_priya_b", name: "Priya", you: false}
+      taker = %{id: "pr_priya_a", name: "Priya", email: "priya@example.com", you: false}
+      namesake = %{id: "pr_priya_b", name: "Priya", email: "priya@example.com", you: false}
 
       for {owner, expected} <- [
             {namesake, "Priya took this in from G #1204. Priya owns it"},
@@ -1051,7 +1073,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "shown: who and when, its text as written, escaped; More for the reader's" do
       html = comment(@dana, can_delete: true)
 
-      assert text(html, ".q-wi-box-h b") == "Dana"
+      assert count(html, ".q-wi-box-h b") == 0
+      assert attr(html, ".q-wi-cm > abbr", "data-tip") == ["dana@example.com (you)"]
+      assert text(html, ".q-wi-cm > abbr span[aria-hidden]") == "D"
       assert text(html, ".q-wi-box-h time") == "14 Oct, 11:34"
       assert text(html, "#comment-cm_01-body") =~ "Wrong work item, sorry"
       assert html =~ "&lt;b&gt;not bold&lt;/b&gt;"
@@ -1369,7 +1393,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "Closing ends the work on it in Qory Apiary. The bug stays open on GitHub and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
 
       ended =
-        ended(:closed, %{name: "Mirek", you: false}, ~U[2026-10-12 10:07:00Z], item_noun: @bug)
+        ended(
+          :closed,
+          %{name: "Mirek", email: "mirek@example.com", you: false},
+          ~U[2026-10-12 10:07:00Z],
+          item_noun: @bug
+        )
 
       assert words(ended) =~
                "The bug is still open on GitHub and keeps Qory's label. In the Backlog, Take in again brings this work item back."

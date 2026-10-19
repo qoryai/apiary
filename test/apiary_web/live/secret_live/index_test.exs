@@ -1564,10 +1564,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
           Repo.delete!(admin.membership)
         end)
 
-      short = Apiary.Accounts.User.short_name(admin.user.email)
+      letter = "#{String.upcase(String.first(admin.user.email))} #{admin.user.email}"
 
       for row <- Tuple.to_list(rows) do
-        assert row =~ "by #{short}"
+        assert row =~ "by #{letter}"
         refute row =~ "Former member"
       end
     end
@@ -1597,7 +1597,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         end)
 
       for row <- Tuple.to_list(rows) do
-        assert row =~ "by #{Apiary.Accounts.User.short_name(user.email)}"
+        assert row =~ "by #{String.upcase(String.first(user.email))} #{user.email}"
         refute row =~ "Former member"
       end
     end

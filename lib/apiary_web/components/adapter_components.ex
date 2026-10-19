@@ -112,6 +112,7 @@ defmodule ApiaryWeb.AdapterComponents do
     do: SettingsComponents.page_title(scope, :instance, parts ++ [gettext("Adapters")])
 
   attr :adapter, Node, required: true, doc: "the adapter, with the account that added it"
+  attr :reader, :string, default: nil, doc: "the reader's address"
 
   @doc false
   # The line under an adapter's name: who added it and when, or, for an adapter installed
@@ -123,15 +124,24 @@ defmodule ApiaryWeb.AdapterComponents do
         {gettext("Installed with Qory Apiary")}
       </span>
       <span :if={!@adapter.installed_as} id="adapter-added">
-        {gettext("Added by %{person}, %{date}",
-          person: People.short(People.email(@adapter.created_by)) || People.former_member(),
-          date: Format.date(@adapter.inserted_at)
-        )}
+        <.rich text={
+          rich_gettext("Added by %{person}, %{date}",
+            person: letter(People.email(@adapter.created_by) || People.former_member(), @reader),
+            date: Format.date(@adapter.inserted_at)
+          )
+        } />
       </span>
       <span class="text-faint" aria-hidden="true">·</span>
       <span id="adapter-public-id" class="q-mono">{@adapter.public_id}</span>
     </span>
     """
+  end
+
+  # Who added the adapter, in a sentence: their first letter, with the address as its
+  # tooltip (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
   end
 
   attr :adapter, Node, required: true

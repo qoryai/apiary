@@ -315,7 +315,8 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :set, :any,
     default: nil,
-    doc: "the target's: who overrode the mode and when, `%{by:, at:}`, or nil when unknown"
+    doc:
+      "the target's: who overrode the mode, by address, and when, `%{by:, at:}`, or nil when unknown"
 
   slot :effect, doc: "the question's sentence: what the pick does, and in whose runs"
   slot :inner_block, doc: "what follows the question's sentence: what enforce would deny"
@@ -389,12 +390,14 @@ defmodule ApiaryWeb.PolicyComponents do
                 )}
                 <.rich text={floor_own_sentence(@scope, @own, @following)} />
               <% @floor -> %>
-                <.rich text={floor_sentence(@setting, @set, @floor.name)} />
+                <.rich text={floor_sentence(@setting, @set, @floor.name, reader(@scope))} />
               <% @level == :workspace -> %>
                 {workspace_effect(@mode)}
                 <.rich text={own_sentence(@scope, @own, @following)} />
               <% true -> %>
-                <.rich text={whose_sentence(@setting, @workspace_default, @workspace, @set)} />
+                <.rich text={
+                  whose_sentence(@setting, @workspace_default, @workspace, @set, reader(@scope))
+                } />
                 {effect_sentence(@mode, @workspace)}
             <% end %>
             <span :if={!@floor && !@can_edit} id={"#{@id}-owners"}>
@@ -777,51 +780,62 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # Under a required mode: a target's own observe is kept and said to be out of force;
   # its own enforce, or following the workspace, is what holds anyway.
-  defp floor_sentence("observe", %{by: by, at: %DateTime{} = at}, name) when is_binary(by),
-    do:
-      rich_gettext(
-        "Its observe override, set by %{by} %{when}, is not in force: %{name} requires enforce.",
-        by: {:b, by},
-        when: when_words(at),
-        name: name
-      )
+  defp floor_sentence("observe", %{by: by, at: %DateTime{} = at}, name, reader)
+       when is_binary(by),
+       do:
+         rich_gettext(
+           "Its observe override, set by %{by} %{when}, is not in force: %{name} requires enforce.",
+           by: {:b, letter(by, reader)},
+           when: when_words(at),
+           name: name
+         )
 
-  defp floor_sentence("observe", _set, name),
+  defp floor_sentence("observe", _set, name, _reader),
     do: [gettext("Its observe override is not in force: %{name} requires enforce.", name: name)]
 
-  defp floor_sentence(_setting, _set, name),
+  defp floor_sentence(_setting, _set, name, _reader),
     do: [gettext("%{name} requires enforce in every workspace and target.", name: name)]
 
   # Whose the mode is: the workspace's, or the target's own with who set it and when; a
   # whole sentence per case, the workspace's mode a verb of its own.
-  defp whose_sentence("follow", "enforce", workspace, _set),
+  defp whose_sentence("follow", "enforce", workspace, _set, _reader),
     do: [gettext("It follows %{workspace}, which enforces.", workspace: workspace)]
 
-  defp whose_sentence("follow", _observe, workspace, _set),
+  defp whose_sentence("follow", _observe, workspace, _set, _reader),
     do: [gettext("It follows %{workspace}, which observes.", workspace: workspace)]
 
-  defp whose_sentence(_own, default, workspace, %{by: by, at: %DateTime{} = at})
+  defp whose_sentence(_own, default, workspace, %{by: by, at: %DateTime{} = at}, reader)
        when is_binary(by) do
     if default == "enforce",
       do:
         rich_gettext("Overridden by %{by} %{when}; %{workspace} enforces.",
-          by: {:b, by},
+          by: {:b, letter(by, reader)},
           when: when_words(at),
           workspace: workspace
         ),
       else:
         rich_gettext("Overridden by %{by} %{when}; %{workspace} observes.",
-          by: {:b, by},
+          by: {:b, letter(by, reader)},
           when: when_words(at),
           workspace: workspace
         )
   end
 
-  defp whose_sentence(_own, "enforce", workspace, _set),
+  defp whose_sentence(_own, "enforce", workspace, _set, _reader),
     do: [gettext("Overridden; %{workspace} enforces.", workspace: workspace)]
 
-  defp whose_sentence(_own, _observe, workspace, _set),
+  defp whose_sentence(_own, _observe, workspace, _set, _reader),
     do: [gettext("Overridden; %{workspace} observes.", workspace: workspace)]
+
+  # A person in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
+
+  defp reader(%{user: %{email: email}}), do: email
+  defp reader(_scope), do: nil
 
   defp when_words(at) do
     case Format.days_back(at, DateTime.utc_now()) do

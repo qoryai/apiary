@@ -5,11 +5,12 @@ defmodule ApiaryWeb.WorkItemLive.View do
   #
   # **People.** `Apiary.WorkItems.ExploreView` names people by the ids of their accounts.
   # `people/2` looks every account of a page up, once, and `person/2` gives the
-  # components' person, `%{id:, name:, you:}`: a person by their short name, the local
-  # part of the address of their account, whether or not they are a member of the
-  # organisation, as the Work items list names people; and **Former member** for a
-  # deleted account, an id no account has, and no id at all. Where no id means no person
-  # (no owner, or a close by the instance), the page passes nil and asks for none.
+  # components' person, `%{id:, name:, email:, you:}`: a person by their short name, the
+  # local part of the address of their account, and that address, whether or not they are
+  # a member of the organisation, as the Work items list names people; and **Former
+  # member** for a deleted account, an id no account has, and no id at all. Where no id
+  # means no person (no owner, or a close by the instance), the page passes nil and asks
+  # for none.
   #
   # **Runs.** A run names the workspace it was queued in, where it stays when its work
   # item moves. Its id links its page only where the reader may read the runs of that
@@ -40,7 +41,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
     accounts = People.accounts(ids)
 
     for id <- ids, is_binary(id), into: %{} do
-      {id, %{id: id, name: People.short(People.account(accounts, id)), you: id == me}}
+      email = People.account(accounts, id)
+      {id, %{id: id, name: People.short(email), email: email, you: id == me}}
     end
   end
 
@@ -51,7 +53,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
   def person(_people, nil), do: former(nil)
   def person(people, id), do: Map.get(people, id) || former(id)
 
-  defp former(id), do: %{id: id, name: People.former_member(), you: false}
+  defp former(id),
+    do: %{id: id, name: People.former_member(), email: People.former_member(), you: false}
 
   ## The page
 

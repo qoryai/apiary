@@ -179,9 +179,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
     person =
       connection &&
-        People.short(
-          People.account(People.accounts([connection.created_by_id]), connection.created_by_id)
-        )
+        People.account(People.accounts([connection.created_by_id]), connection.created_by_id)
 
     socket
     |> assign(connection: connection, ended: ended, state: state, person: person)
@@ -224,6 +222,13 @@ defmodule ApiaryWeb.AdapterLive.Show do
   end
 
   defp state(%Connection{}), do: :not_installed
+
+  # Who installed it, in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(assigns) do
+    assigns = %{email: assigns.person, reader: assigns.current_scope.user.email}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
 
   defp today?(at), do: DateTime.to_date(Format.local(at)) == Format.today()
 
@@ -546,7 +551,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
           </span>
         </:title_block>
         <:subtitle>
-          <span id="integration-status">{status(assigns)}</span>
+          <span id="integration-status"><.rich text={status(assigns)} /></span>
         </:subtitle>
 
         <IntegrationComponents.install_block
@@ -903,10 +908,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
     at = assigns.connection.connected_at
 
     if today?(at),
-      do: gettext("Installed by %{person} today.", person: assigns.person),
+      do: rich_gettext("Installed by %{person} today.", person: letter(assigns)),
       else:
-        gettext("Installed by %{person} on %{date}.",
-          person: assigns.person,
+        rich_gettext("Installed by %{person} on %{date}.",
+          person: letter(assigns),
           date: Format.day(at)
         )
   end
@@ -915,18 +920,18 @@ defmodule ApiaryWeb.AdapterLive.Show do
     do: gettext("Not installed.")
 
   defp status(%{state: :pending} = assigns) do
-    gettext(
+    rich_gettext(
       "Not installed. %{person} started an install today at %{time} that isn't finished: finish it on %{integration}, or press Install to start again.",
-      person: assigns.person,
+      person: letter(assigns),
       time: Format.time(assigns.connection.updated_at),
       integration: assigns.adapter.name
     )
   end
 
   defp status(%{state: :expired} = assigns) do
-    gettext(
-      "Not installed. %{person}'s install, started today at %{time}, expired before it was finished. Press Install to start again.",
-      person: assigns.person,
+    rich_gettext(
+      "Not installed. An install %{person} started today at %{time} expired before it was finished. Press Install to start again.",
+      person: letter(assigns),
       time: Format.time(assigns.connection.updated_at)
     )
   end

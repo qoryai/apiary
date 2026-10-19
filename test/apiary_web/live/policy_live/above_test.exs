@@ -307,7 +307,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert text(view, "#policy-mode-required") == "Required by Eight Wonders"
 
       assert text(view, "#policy-mode-effect") =~
-               "Its observe override, set by #{ApiaryWeb.People.short(scope.user.email)} today, is not in force: Eight Wonders requires enforce."
+               "Its observe override, set by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) today, is not in force: Eight Wonders requires enforce."
 
       refute has_element?(view, "#policy-mode-change")
       render_hook(view, "mode_open", %{"mode" => "enforce"})

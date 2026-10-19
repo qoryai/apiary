@@ -362,7 +362,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
       change.(release)
       {:ok, lv, _html} = live(conn, ipath(scope, release))
       text = lv |> render() |> plain()
-      [_, person] = Regex.run(~r/asked for by (Former member|\S+)/, text)
+      [_, person] = Regex.run(~r/asked for by (Former member|\S+ \S+)/, text)
       {person, text}
     end
 
@@ -372,17 +372,19 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     defp by_user(release, user),
       do: release |> Ecto.Changeset.change(requested_by_id: user.id) |> Repo.update!()
 
-    defp short(user), do: Apiary.Accounts.User.short_name(user.email)
+    # The words of a person's letter in the page's text: the letter, then the address of its
+    # hidden text.
+    defp letter(user), do: "#{String.upcase(String.first(user.email))} #{user.email}"
 
-    test "a person removed from the organisation is named by the short name of their account",
+    test "a person removed from the organisation is named by the first letter of their account's address",
          %{conn: conn, scope: scope} do
       admin = member_fixture(scope, :admin)
 
       {said, text} =
         said_of(conn, scope, admin, fn _record -> Repo.delete!(admin.membership) end)
 
-      assert said == short(admin.user)
-      refute text =~ admin.user.email
+      assert said == letter(admin.user)
+      assert text =~ admin.user.email
     end
 
     test "a deleted account is a former member", %{conn: conn, scope: scope} do
@@ -396,13 +398,13 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
       assert said == "Former member"
     end
 
-    test "a person who is not a member of the organisation is named by the short name of their account",
+    test "a person who is not a member of the organisation is named by the first letter of their account's address",
          %{conn: conn, scope: scope} do
       admin = member_fixture(scope, :admin)
       user = Apiary.AccountsFixtures.user_fixture()
       {said, text} = said_of(conn, scope, admin, &by_user(&1, user))
-      assert said == short(user)
-      refute text =~ user.email
+      assert said == letter(user)
+      assert text =~ user.email
     end
   end
 end

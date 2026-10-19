@@ -408,7 +408,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       |> render()
     end
 
-    test "a member is named by their short name, never their address", %{
+    test "a comment's author is their first letter, the address its hint", %{
       conn: conn,
       scope: scope
     } do
@@ -416,10 +416,14 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       member = member_fixture(scope, :member)
       {:ok, comment} = WorkItems.comment(member.scope, work_item, "Seen on staging")
 
-      {:ok, view, html} = live(conn, thread_path(scope, work_item))
-      assert author(view, comment) =~ Apiary.Accounts.User.short_name(member.user.email)
-      refute html =~ member.user.email
-      refute render(view) =~ member.user.email
+      {:ok, view, _html} = live(conn, thread_path(scope, work_item))
+      letter = String.upcase(String.first(member.user.email))
+      dom = "#work-item-thread-#{comment.public_id}"
+
+      assert has_element?(view, ~s{#{dom} > abbr[data-tip="#{member.user.email}"][tabindex="0"]})
+      assert has_element?(view, "#{dom} > abbr > span[aria-hidden=true]", letter)
+      assert has_element?(view, "#{dom} > abbr > .sr-only", member.user.email)
+      refute has_element?(view, "#{dom} .q-wi-box-h b")
     end
 
     defp owner(view), do: view |> element("#work-item-details-owner") |> render()

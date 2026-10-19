@@ -101,6 +101,7 @@ defmodule ApiaryWeb.NodeComponents do
   """
   attr :node, Node, required: true
   attr :activity, :map, required: true, doc: "the node's `t:Apiary.Nodes.activity/0`"
+  attr :reader, :string, default: nil, doc: "the reader's address"
 
   def node_header(assigns) do
     ~H"""
@@ -120,15 +121,24 @@ defmodule ApiaryWeb.NodeComponents do
           <.node_state id="node-state" node={@node} activity={@activity} />
           <span :if={@node.created_by} class="text-faint" aria-hidden="true">·</span>
           <span :if={@node.created_by} id="node-made">
-            {gettext("made by %{person}, %{date}",
-              person: People.short(People.email(@node.created_by)),
-              date: Format.day(@node.inserted_at)
-            )}
+            <.rich text={
+              rich_gettext("made by %{person}, %{date}",
+                person: letter(People.email(@node.created_by), @reader),
+                date: Format.day(@node.inserted_at)
+              )
+            } />
           </span>
         </span>
       </:description>
     </.page_header>
     """
+  end
+
+  # Who made the node, in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
   end
 
   @doc """

@@ -179,8 +179,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       core = refusal.()
       assert String.ends_with?(core, ". Only an owner can change or unlock it.")
-      assert core =~ "Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "
-      refute core =~ scope.user.email
+
+      assert core =~
+               "Locked by #{String.upcase(String.first(scope.user.email))}#{scope.user.email} on "
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
       sentence = Apiary.EditionStubs.LockWorded.sentence()
@@ -211,9 +212,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
         |> LazyHTML.attribute("data-tip")
 
       assert tip =~
-               "A locked workspace rule denies files.cdn.example. Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "
-
-      refute tip =~ scope.user.email
+               "A locked workspace rule denies files.cdn.example. Locked by #{scope.user.email} on "
 
       refute has_element?(view, "##{cdn}-allow")
       refute has_element?(view, "##{cdn}-deny")
@@ -515,6 +514,21 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
                "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
 
       refute text(view, "##{cdn}-after") =~ "Rule added"
+    end
+
+    test "a rule another person changed names them by their letter, the address its hint",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      {:ok, _} = Policy.deny(admin.scope, nil, %{host: "registry.example"})
+
+      view = open(conn, scope)
+      registry = dst("registry.example")
+      letter = String.upcase(String.first(admin.user.email))
+
+      assert text(view, "##{registry}-after") =~
+               "Denied for the workspace in v2 · of the workspace's policy by #{letter} #{admin.user.email} "
+
+      assert has_element?(view, ~s{##{registry}-after abbr[data-tip="#{admin.user.email}"]})
     end
 
     test "an allow rule changed to deny says Rule changed", %{conn: conn, scope: scope} do

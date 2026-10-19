@@ -27,7 +27,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   alias Apiary.{Connections, Integrations}
   alias Apiary.Connections.Connection
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.{People, SettingsComponents}
+  alias ApiaryWeb.SettingsComponents
 
   # How often a pending release is read again, in milliseconds.
   @poll 2_000
@@ -114,7 +114,12 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             )}
           </.notice>
 
-          <.found description={@description} release={@release} people={@people} />
+          <.found
+            description={@description}
+            release={@release}
+            people={@people}
+            reader={@current_scope.user.email}
+          />
 
           <.move_form
             :if={@moving && @may_write && @accepted}
@@ -141,6 +146,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   attr :description, :any, required: true
   attr :release, :any, required: true
   attr :people, :map, required: true
+  attr :reader, :string, required: true, doc: "the reader's address"
 
   defp found(assigns) do
     ~H"""
@@ -182,9 +188,12 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <dd>
           <.time_ago :if={@release.fetched_at} at={@release.fetched_at} />
           <span :if={Common.who(@people, @release.requested_by_id)} class="text-muted">
-            · {gettext("asked for by %{person}",
-              person: People.short(Common.who(@people, @release.requested_by_id))
-            )}
+            ·
+            <.rich text={
+              rich_gettext("asked for by %{person}",
+                person: letter(Common.who(@people, @release.requested_by_id), @reader)
+              )
+            } />
           </span>
         </dd>
         <dt class="text-faint">{gettext("Description digest")}</dt>
@@ -486,6 +495,13 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   # An event the page's controls do not send, or sent where they are not: nothing.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # The person who asked, in a sentence: their first letter, with the address as its
+  # tooltip (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
 
   defp refusal(scope, reason) do
     connections =

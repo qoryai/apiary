@@ -60,7 +60,10 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
   defp time(at), do: ApiaryWeb.Format.time(at)
 
-  defp short(user), do: Apiary.Accounts.User.short_name(user.email)
+  # The words of a person's letter in the page's text: the letter, then the address of its
+  # hidden text, and "(you)" for the reader.
+  defp letter(user, you \\ false),
+    do: "#{String.upcase(String.first(user.email))}#{user.email}#{if you, do: " (you)"}"
 
   # One part of a listing of `connection`, as the adapter of `key` sends it: a collection
   # per title, with no target; `{title, :target}` for one whose target is on
@@ -240,7 +243,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{short(scope.user)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
+             "Not installed. #{letter(scope.user, true)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
 
     assert has_element?(lv, "#integration-install")
   end
@@ -251,7 +254,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{short(scope.user)}'s install, started today at #{time(connection.updated_at)}, expired before it was finished. Press Install to start again."
+             "Not installed. An install #{letter(scope.user, true)} started today at #{time(connection.updated_at)} expired before it was finished. Press Install to start again."
 
     assert has_element?(lv, "#integration-install")
   end
@@ -356,7 +359,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     connection_fixture(scope, adapter, :connected)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
-    assert words(lv, "#integration-status") == "Installed by #{short(scope.user)} today."
+    assert words(lv, "#integration-status") == "Installed by #{letter(scope.user, true)} today."
     refute has_element?(lv, "#integration-install")
     assert words(lv, "#collections-heading") == "Repositories"
 
@@ -437,7 +440,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Installed by #{short(scope.user)} on #{ApiaryWeb.Format.day(earlier)}."
+             "Installed by #{letter(scope.user, true)} on #{ApiaryWeb.Format.day(earlier)}."
 
     refute has_element?(lv, "#collections-waiting")
   end
@@ -1854,7 +1857,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") ==
-             "Not installed. #{short(scope.user)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
+             "Not installed. #{letter(scope.user, true)} started an install today at #{time(connection.updated_at)} that isn't finished: finish it on #{adapter.name}, or press Install to start again."
 
     set(connection, pass_expires_at: DateTime.add(DateTime.utc_now(:second), -1))
 
@@ -1915,8 +1918,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       line =
         installed_by(conn, scope, adapter, member.user, fn -> Repo.delete!(member.membership) end)
 
-      assert line == "Installed by #{short(member.user)} today."
-      refute line =~ member.user.email
+      assert line == "Installed by #{letter(member.user)} today."
     end
 
     test "a deleted account is a former member", %{conn: conn, scope: scope, adapter: adapter} do
@@ -1934,8 +1936,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
          %{conn: conn, scope: scope, adapter: adapter} do
       user = Apiary.AccountsFixtures.user_fixture()
       line = installed_by(conn, scope, adapter, user, fn -> :ok end)
-      assert line == "Installed by #{short(user)} today."
-      refute line =~ user.email
+      assert line == "Installed by #{letter(user)} today."
     end
   end
 end

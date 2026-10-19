@@ -67,6 +67,12 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   # The text of an element as rendered, its marks gone and its spaces kept.
   defp text(html), do: html |> LazyHTML.from_fragment() |> LazyHTML.text()
 
+  # The reader's letter in the page's text: the letter, then the hidden text, the address
+  # and "(you)"; with `:tip`, its tooltip.
+  defp me(scope, part \\ :text)
+  defp me(scope, :tip), do: "#{scope.user.email} (you)"
+  defp me(scope, :text), do: String.upcase(String.first(scope.user.email)) <> me(scope, :tip)
+
   # The pin as the page shows it: K2's list, in YAML's flow form and as JSON.
   defp pin_lines do
     [%{"alg" => "ed25519", "public_key" => public_key}] = SigningKey.apiary_public_key()
@@ -176,8 +182,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{made.key_id}-added",
-               "Generated in a browser by #{Apiary.Accounts.User.short_name(scope.user.email)}, #{Format.datetime(made.received_at)}"
+               "Generated in a browser by #{me(scope)}, #{Format.datetime(made.received_at)}"
              )
+
+      assert has_element?(lv, ~s{#key-#{made.key_id}-added abbr[data-tip="#{me(scope, :tip)}"]})
 
       assert has_element?(
                lv,
@@ -220,10 +228,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{enrolled.key_id}-added",
-               "Connected with a command by #{Apiary.Accounts.User.short_name(scope.user.email)}"
+               "Connected with a command by #{me(scope)}"
              )
-
-      refute has_element?(lv, "#key-#{enrolled.key_id}-added", scope.user.email)
 
       assert has_element?(
                lv,
@@ -257,10 +263,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{key.key_id}",
-               "by #{Apiary.Accounts.User.short_name(scope.user.email)}"
+               "by #{me(scope)}"
              )
 
-      refute has_element?(lv, "#key-#{key.key_id}", scope.user.email)
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
       refute has_element?(lv, "#key-#{key.key_id}-forager-file")
     end
@@ -863,7 +868,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#node-codes")
 
       assert words(lv, "#code-#{row.id}") =~
-               "A command is waiting to be run on build-01. #{Apiary.Accounts.User.short_name(scope.user.email)} got it at #{got}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
+               "A command is waiting to be run on build-01. #{me(scope)} got it at #{got}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
 
       assert has_element?(lv, "#code-new-button", "Get a new command")
 
@@ -1657,7 +1662,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{added.key_id}-added",
-               "Generated in a browser by #{Apiary.Accounts.User.short_name(scope.user.email)}, #{Format.datetime(added.received_at)}"
+               "Generated in a browser by #{me(scope)}, #{Format.datetime(added.received_at)}"
              )
 
       # Back to the key's page: opened again, nothing says the secret is shown, or offers

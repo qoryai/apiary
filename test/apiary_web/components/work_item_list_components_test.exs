@@ -14,8 +14,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
   alias ApiaryWeb.WorkItemListComponents, as: L
 
   @now ~U[2026-10-17 12:00:00Z]
-  @dana %{name: "Dana", you: true}
-  @priya %{name: "Priya", you: false}
+  @dana %{name: "Dana", email: "dana@example.com", you: true}
+  @priya %{name: "Priya", email: "priya@example.com", you: false}
 
   defp ago(seconds), do: DateTime.add(@now, -seconds, :second)
 
@@ -293,8 +293,10 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert text(html, ".q-wl-nx") == "Waits for you to confirm"
       assert text(html, ".q-wl-sub") == "#88 · Waits for you to confirm"
       assert count(html, ".q-wl-row-hot") == 1
-      assert attr(html, ".q-wl-own", "title") == ["You own it"]
-      assert attr(html, ".q-wl-own", "aria-label") == ["Owner: Dana"]
+      assert attr(html, ".q-wl-own", "title") == []
+      assert attr(html, ".q-wl-own", "aria-label") == ["Owner: dana@example.com"]
+      assert attr(html, ".q-wl-own abbr", "data-tip") == ["dana@example.com (you)"]
+      assert attr(html, ".q-wl-own abbr", "tabindex") == []
       assert attr(html, ".q-wl-own", "role") == ["img"]
       assert text(html, ".q-wl-upd") == "2 d"
     end
@@ -357,8 +359,9 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
     test "another's work item: the owner's mark names them" do
       html = row(work_item(%{owner: @priya}))
-      assert attr(html, ".q-wl-own", "title") == ["Priya owns it"]
-      assert attr(html, ".q-wl-own", "aria-label") == ["Owner: Priya"]
+      assert attr(html, ".q-wl-own", "aria-label") == ["Owner: priya@example.com"]
+      assert attr(html, ".q-wl-own abbr", "data-tip") == ["priya@example.com"]
+      assert text(html, ".q-wl-own abbr span[aria-hidden]") == "P"
     end
 
     test "what the ticket holds is escaped" do

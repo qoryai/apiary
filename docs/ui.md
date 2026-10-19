@@ -992,14 +992,14 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   member reads, under "Connect build-01", "build-01 has no key yet, so it isn't connected
   to Qory Apiary. An owner or admin connects it." A command not yet run shows
   in the command's option, above its button, or its row under Add a key: "A command is waiting to be run
-  on build-01.", "dana@example.com got it at 14:17. It works once, until 14:32. It was
+  on build-01.", "D got it at 14:17. It works once, until 14:32. It was
   shown once: if it's lost, cancel it and get a new one." and Cancel the command…,
   confirmed in place ("Cancel the command from 14:17?", Yes, cancel it and Keep it); its
   button becomes Get a new command. There is no list of codes. With keys, the tab lists
   them under Keys, with a count, one card each, headed by its label and Active or Revoked:
   Key ID, `ak_…` with Copy, since the ID can always be seen again, Added ("Connected with
-  a command by dana, …" or "Generated in a browser by …"), Secret (where the
-  key's secret is), Last used ("Not yet" while unused) and Fingerprint,
+  a command by D, …" or "Generated in a browser by …", D being the person's letter),
+  Secret (where the key's secret is), Last used ("Not yet" while unused) and Fingerprint,
   and an active key's **Forager file**, for everyone who reads the node, and Revoke…,
   confirmed in place. A key whose record doesn't match its integrity code says so on its
   card: "… It can't be used." Under the keys, Add a key says how to move to a new key, add

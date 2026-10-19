@@ -379,7 +379,12 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       <:crumb navigate={@live_action != :overview && @paths.overview}>{@adapter.name}</:crumb>
 
       <.settings_page section={:adapters} title={@adapter.name}>
-        <:subtitle><AdapterComponents.adapter_meta adapter={@adapter} /></:subtitle>
+        <:subtitle>
+          <AdapterComponents.adapter_meta
+            adapter={@adapter}
+            reader={@current_scope.user.email}
+          />
+        </:subtitle>
 
         <AdapterComponents.adapter_tabs
           adapter={@adapter}

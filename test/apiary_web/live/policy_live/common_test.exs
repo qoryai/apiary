@@ -85,14 +85,14 @@ defmodule ApiaryWeb.PolicyLive.CommonTest do
       removed = change("rule_removed", [@credential], [])
       changed = change("rule_changed", [@credential], [%{@credential | "argument" => "acme/lib"}])
 
-      assert flat(Common.change_sentence(added, "dana")) ==
-               "dana added the secret forge-token acme/shop"
+      assert flat(Common.change_sentence(added, "dana@example.com")) ==
+               "Ddana@example.com added the secret forge-token acme/shop"
 
-      assert flat(Common.change_sentence(removed, "dana")) ==
-               "dana removed the secret forge-token acme/shop"
+      assert flat(Common.change_sentence(removed, "dana@example.com")) ==
+               "Ddana@example.com removed the secret forge-token acme/shop"
 
-      assert flat(Common.change_sentence(changed, "dana")) ==
-               "dana changed the argument of the secret forge-token acme/lib"
+      assert flat(Common.change_sentence(changed, "dana@example.com")) ==
+               "Ddana@example.com changed the argument of the secret forge-token acme/lib"
 
       assert Common.change_words(added) == "Secret forge-token"
       assert flat(Common.rule_words(@credential)) == "Secret forge-token acme/shop"
@@ -101,6 +101,15 @@ defmodule ApiaryWeb.PolicyLive.CommonTest do
   end
 
   defp flat(text) when is_binary(text), do: text
+  # A person's letter (`ApiaryWeb.CoreComponents.avatar/1`): its words.
+  defp flat(%Phoenix.LiveView.Rendered{} = rendered),
+    do:
+      rendered
+      |> Phoenix.HTML.Safe.to_iodata()
+      |> IO.iodata_to_binary()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+
   defp flat({_tag, inner}), do: flat(inner)
   defp flat({_tag, inner, _class}), do: flat(inner)
   defp flat(list) when is_list(list), do: Enum.map_join(list, &flat/1)

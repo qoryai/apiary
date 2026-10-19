@@ -108,7 +108,11 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   options={options(@options, @narrowed, @params, :owner)}
                   query={@narrow["owner"]}
                   search_label={gettext("Find a name")}
-                />
+                >
+                  <:tile :let={{label, _value, _count}}>
+                    <.avatar :if={label != People.former_member()} name={label} size="xs" />
+                  </:tile>
+                </.filter_options>
               </:owner>
               <:repository>
                 <.filter_options
@@ -436,7 +440,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   # The people the rows name, their owners and who ended them, and the one owner the list
   # is filtered to (`one_owner/1`), whom Confirm's line names, by account id, with the
-  # owners the Filter menu offers: `%{id => name}`.
+  # owners the Filter menu offers: `%{id => address}`.
   defp people(rows, owner, offered) do
     known = Map.new(offered, &{&1.key, &1.label})
 
@@ -450,20 +454,24 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     Map.merge(known, names(ids))
   end
 
-  # The name of each person of `ids`, as the work item page names one, read in one query:
-  # the local part of the email address of their account, whether or not they are a member
-  # of the organisation, "Former member" for a deleted account or an id no account has.
+  # The address of each person of `ids`, read in one query: the email address of their
+  # account, whether or not they are a member of the organisation, "Former member" for a
+  # deleted account or an id no account has. A person is named by the address in the
+  # Owner filter and by its first letter on a row; the other words name them by the
+  # address's local part (`person/3`).
   defp names([]), do: %{}
 
   defp names(ids) do
     accounts = People.accounts(ids)
-    Map.new(ids, &{&1, People.short(People.account(accounts, &1))})
+    Map.new(ids, &{&1, People.account(accounts, &1)})
   end
 
   defp person(_people, nil, _scope), do: nil
 
-  defp person(people, id, scope),
-    do: %{id: id, name: Map.get(people, id) || People.former_member(), you: id == scope.user.id}
+  defp person(people, id, scope) do
+    email = Map.get(people, id) || People.former_member()
+    %{id: id, name: People.short(email), email: email, you: id == scope.user.id}
+  end
 
   ## Rows
 
@@ -498,7 +506,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp waiting(%{waiting: n}, params, people) when n > 0 do
     case one_owner(params) do
       nil -> %{count: n, for: :member}
-      id -> %{count: n, for: Map.get(people, id) || People.former_member()}
+      id -> %{count: n, for: People.short(Map.get(people, id) || People.former_member())}
     end
   end
 

@@ -190,7 +190,6 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
       [_, added] = Regex.run(~r/Added (.*?) ·/, text)
       [_, changed] = Regex.run(~r/Last changed (.*?) ·/, text)
       assert added == changed
-      refute text =~ admin.user.email
       added
     end
 
@@ -207,7 +206,7 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
          %{conn: conn, scope: scope} do
       admin = member_fixture(scope, :admin)
       said = said_of(conn, scope, admin, fn _record -> Repo.delete!(admin.membership) end)
-      assert said == Apiary.Accounts.User.short_name(admin.user.email)
+      assert said == "#{String.upcase(String.first(admin.user.email))} #{admin.user.email}"
     end
 
     test "a deleted account is a former member", %{conn: conn, scope: scope} do
@@ -227,7 +226,7 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
       admin = member_fixture(scope, :admin)
       user = Apiary.AccountsFixtures.user_fixture()
       said = said_of(conn, scope, admin, &by_user(&1, user))
-      assert said == Apiary.Accounts.User.short_name(user.email)
+      assert said == "#{String.upcase(String.first(user.email))} #{user.email}"
     end
   end
 end

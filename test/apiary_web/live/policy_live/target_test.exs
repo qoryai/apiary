@@ -805,7 +805,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       refute text(view, "#flash-info") =~ "github.example"
 
       assert text(view, "#policy-mode-effect") =~
-               "Overridden by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} observes. A connection no rule allows is denied."
+               "Overridden by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) today; #{scope.workspace.name} observes. A connection no rule allows is denied."
     end
 
     test "the Document view is the document in force under the card, and follows the mode in place",
@@ -877,7 +877,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert Policy.get_mode(scope, target).own == "observe"
 
       assert text(view, "#policy-mode-effect") =~
-               "Overridden by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
+               "Overridden by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
 
       pick_mode(view, "follow")
       assert text(view, "#policy-mode-q") == "Let acme/shop follow #{scope.workspace.name}?"

@@ -530,7 +530,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(button#{id.("bin.paste.example")}-lock[aria-label^="A locked workspace rule denies *.paste.example. Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "])
+               ~s(button#{id.("bin.paste.example")}-lock[aria-label^="A locked workspace rule denies *.paste.example. Locked by #{scope.user.email} on "])
              )
 
       assert has_element?(
@@ -1023,8 +1023,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refusal = text(view, "#rule-panel-refusal")
       assert refusal =~ "A locked workspace rule denies *.paste.example ."
       assert refusal =~ "so no rule added here would change what happens."
-      assert refusal =~ "Locked by #{Apiary.Accounts.User.short_name(scope.user.email)} on "
-      refute refusal =~ scope.user.email
+
+      assert refusal =~
+               "Locked by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) on "
+
       assert refusal =~ "You can change or unlock it on the workspace's policy page."
 
       assert has_element?(

@@ -34,6 +34,7 @@ defmodule ApiaryWeb.RunComponents do
 
   import ApiaryWeb.CoreComponents,
     only: [
+      avatar: 1,
       badge: 1,
       button: 1,
       icon: 1,
@@ -3842,7 +3843,8 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   The line a row gains once a rule answers it. The row above it is the record and stays as
   it was. `line` is `%{action, level, version, by, at, state, reloaded_at}`, with
-  `changed?` true when the rule was changed rather than added; `state` is
+  `changed?` true when the rule was changed rather than added, and `by` the address of
+  who made it, `:you` for the reader, or nil; `state` is
   `:pending` (the run is alive and has not reported the digest in force), `:in_force` (it
   has: claimed from the record, never after a timer), `:ended`, `:machine` (the run takes
   no policy from this server) or `:workspace` (the workspace's page, which says nothing of
@@ -3862,8 +3864,7 @@ defmodule ApiaryWeb.RunComponents do
       <span>
         <.rich text={after_head(@line)}>
           <:part name={:version}><.scoped_version version={@line.version} class="text-xs" /></:part>
-        </.rich><span :if={@line.state != :in_force && @line.by}>{" " <>
-          gettext("by %{name}", name: @line.by)}</span><span :if={
+        </.rich><span :if={@line.state != :in_force && @line.by}>{" "}<.rich text={by_words(@line)} /></span><span :if={
           @line.state != :in_force && @line.at
         }> · <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
         <.link :if={@rule_path} id={@rule_id} navigate={@rule_path} class="q-after-rule">
@@ -3872,6 +3873,24 @@ defmodule ApiaryWeb.RunComponents do
       </span>
     </div>
     """
+  end
+
+  # Who made the rule, in the after line: "you" for the reader; anyone else their first
+  # letter, with the address as its tooltip (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp by_words(line), do: rich_gettext("by %{name}", name: by_letter(line.by))
+
+  defp by_letter(:you), do: gettext("you")
+
+  defp by_letter(email) do
+    assigns = %{email: email}
+    ~H|<.avatar email={@email} size="xs" />|
+  end
+
+  # Who locked the rule, in a refusal: their first letter, with the address as its
+  # tooltip (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp locker(refusal) do
+    assigns = %{email: refusal.locked_by, reader: refusal[:reader]}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
   end
 
   defp after_badge(%{state: :in_force}), do: gettext("In force in this run")
@@ -3929,12 +3948,14 @@ defmodule ApiaryWeb.RunComponents do
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :workspace, level:,
         target: %{label:} | nil, targets: [%{id, label, runs}], choice:,
         what: %{target:, workspace:}, own_rule:, workspace:, alive:, fetched:, interval:, consequence:, error:,
-        refusal: nil | %{rule_option:, rule:, locked_by:, locked_at:, owner:, who:, rule_path:}}
+        refusal: nil | %{rule_option:, rule:, locked_by:, locked_at:, owner:, who:, rule_path:,
+          reader:}}
 
   or, where only the level above the workspace allows the host, `%{anchor:, host:,
   elsewhere: %{name:, path:}}`. A refusal's `who` is the edition's sentence of who may
   change a locked rule (`c:ApiaryWeb.Edition.who_may_sentence/2`), said to a reader who
-  may not (`owner` false), or nil for the core's.
+  may not (`owner` false), or nil for the core's. Its `locked_by` is the address of who
+  locked the rule, and `reader` the reader's.
 
   The form changes with `rule_change` and is sent with `rule_submit`: Enter sends it once
   its button says what it does. Cancel and Escape send `rule_cancel`. A refusal, and the
@@ -4011,13 +4032,15 @@ defmodule ApiaryWeb.RunComponents do
               ),
             else: gettext("It holds against every target, so a deny added here would change nothing.")}
           <span :if={@panel.refusal.locked_by}>
-            {if @panel.refusal.locked_at,
-              do:
-                gettext("Locked by %{name} on %{date}.",
-                  name: @panel.refusal.locked_by,
-                  date: Format.date(@panel.refusal.locked_at)
-                ),
-              else: gettext("Locked by %{name}.", name: @panel.refusal.locked_by)}
+            <.rich text={
+              if @panel.refusal.locked_at,
+                do:
+                  rich_gettext("Locked by %{name} on %{date}.",
+                    name: locker(@panel.refusal),
+                    date: Format.date(@panel.refusal.locked_at)
+                  ),
+                else: rich_gettext("Locked by %{name}.", name: locker(@panel.refusal))
+            } />
           </span>
           {if @panel.refusal.owner,
             do: gettext("You can change or unlock it on the workspace's policy page."),

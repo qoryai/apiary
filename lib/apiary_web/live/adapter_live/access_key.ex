@@ -521,7 +521,12 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
       <:crumb navigate={@paths.overview}>{@adapter.name}</:crumb>
 
       <.settings_page section={:adapters} title={@adapter.name}>
-        <:subtitle><AdapterComponents.adapter_meta adapter={@adapter} /></:subtitle>
+        <:subtitle>
+          <AdapterComponents.adapter_meta
+            adapter={@adapter}
+            reader={@current_scope.user.email}
+          />
+        </:subtitle>
 
         <AdapterComponents.adapter_tabs adapter={@adapter} paths={@paths} current={:keys} />
 
@@ -563,6 +568,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
               codes={@codes}
               code={@code}
               paths={@paths}
+              reader={@current_scope.user.email}
             >
               {gettext(
                 "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
@@ -700,6 +706,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
               codes={@codes}
               code={@code}
               paths={@paths}
+              reader={@current_scope.user.email}
             >
               {gettext(
                 "You get one command to run on the machine that runs the adapter. It carries a one-time code, not a key, which works once within 15 minutes."
@@ -719,6 +726,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   attr :codes, :list, required: true, doc: "the adapter's codes still waiting to be run"
   attr :code, :any, required: true, doc: "the code whose cancelling is asked, or nil"
   attr :paths, :map, required: true, doc: "the adapter's `paths/1`"
+  attr :reader, :string, default: nil, doc: "the reader's address"
   slot :inner_block, required: true, doc: "what happens, in sentences"
 
   # The one way to connect the adapter: its title, what happens, each command still
@@ -744,6 +752,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
         node={@adapter}
         may={%{revoke_code: true}}
         paths={%{access_key: @paths.keys}}
+        reader={@reader}
         adapter
       />
       <div :if={@offered}>
