@@ -13,7 +13,9 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositories do
   rule under the field. Cancel goes back to the target's page.
 
   It opens for whoever may change the list (`target.set_further_repositories`, owners and
-  admins) and is not found for anyone else, as an id of no target of the workspace is.
+  admins) and is not found for anyone else, as an id of no target of the workspace is. It
+  is not found either in a workspace whose domain has no label for a run's paths
+  (`Apiary.Lingo.Domain.paths_label/1`), whose runs read no further paths.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :factory
@@ -22,6 +24,7 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositories do
   import ApiaryWeb.TargetComponents
 
   alias Apiary.{Access, Targets}
+  alias Apiary.Lingo.Domain
   alias Apiary.Runs.Target
 
   @action :"target.set_further_repositories"
@@ -30,7 +33,8 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositories do
   def mount(%{"target_id" => public_id}, _session, socket) do
     scope = socket.assigns.current_scope
 
-    with %Target{} = target <- Targets.get_by_public_id(scope, public_id),
+    with true <- Domain.paths_label(scope.workspace) != nil,
+         %Target{} = target <- Targets.get_by_public_id(scope, public_id),
          true <- Access.can?(scope, @action, target) do
       shared = Targets.shared?(scope, target.path)
 

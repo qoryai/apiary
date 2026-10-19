@@ -12,8 +12,9 @@ defmodule Apiary.Environments do
   # ## The trigger: `trigger/2` and `trigger_for_pool/2`
   #
   # A prebuild is queued for a collection and a node pool (`Apiary.Dispatches.queue_prebuild/3`,
-  # held for that pool) when the collection is live, assigned to the pool's workspace, has a
-  # target and an `environment_ref`, and the pool's record of it is missing, was queued
+  # held for that pool) when the collection is live, assigned to the pool's workspace, whose
+  # domain has prebuilds (`Apiary.Lingo.Domain.prebuilds?/1`), has a target and an
+  # `environment_ref`, and the pool's record of it is missing, was queued
   # for another `environment_ref` or another target, or was retired after it was last
   # queued: the trigger is keyed on the target and the `environment_ref`. Queuing
   # sets the record's `queued_ref`, `queued_at` and queued target (`queued_target_system`,
@@ -33,7 +34,7 @@ defmodule Apiary.Environments do
   # last queued are retired at `now`, and its prebuilds that wait end, `collection_ended`
   # (`Apiary.Dispatches.end_waiting_prebuilds/2`): the image goes from new runs, nothing
   # is left to build, and the record keeps the rest. A collection assigned to no
-  # workspace, or without a target, queues nothing.
+  # workspace, to one whose domain has no prebuilds, or without a target, queues nothing.
   #
   # `trigger_for_pool(pool, now)` applies it, inside the caller's transaction, to a new
   # node pool, for every collection assigned to its workspace (`Apiary.Nodes.create_node/2`).
@@ -140,14 +141,15 @@ defmodule Apiary.Environments do
   # is not read: the trigger of that change queues its prebuilds. One audit entry about
   # the target, with how many prebuilds it queued, and none when it queued none. It
   # answers `{:ok, count}`, `Apiary.Access`'s refusal, or `{:error, :not_found}` for a
-  # target that names no environment in its workspace, or whose workspace has no node
-  # pool.
+  # target that names no environment in its workspace, whose workspace has no node pool,
+  # or whose workspace's domain has no prebuilds.
   #
   # ## What a target's page says: `section/2`
   #
   # `section(scope, target)` is the environment of a target of the scope's workspace, to a
   # person who may read the workspace's work items (`work_item.read`, the feature
-  # `factory`'s), nil for anyone else: `state`, `:no_pool` where the workspace has no live
+  # `factory`'s), in a workspace whose domain has prebuilds, nil for anyone else and in
+  # any other workspace: `state`, `:no_pool` where the workspace has no live
   # node pool, `:no_environment` where no live collection assigned to the workspace with the
   # target names an `environment_ref` and no pool's record of one is retired, else
   # `:pools`; `named`, whether one of those collections names an `environment_ref`; and
@@ -174,6 +176,7 @@ defmodule Apiary.Environments do
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
@@ -393,6 +396,7 @@ defmodule Apiary.Environments do
   def rebuild(%Scope{} = scope, %Target{} = target) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"target.rebuild_environment", target),
+           true <- prebuilt?(target.workspace_id) || [],
            [_ | _] = collections <- hold_named(target),
            :ok <- lock_records(collections),
            [_ | _] = pools <- Map.get(pools([target.workspace_id]), target.workspace_id, []) do
@@ -533,7 +537,8 @@ defmodule Apiary.Environments do
         } = scope,
         %Target{organisation_id: organisation_id, workspace_id: workspace_id} = target
       ) do
-    if Access.can?(scope, :"work_item.read", workspace), do: read_section(target)
+    if Access.can?(scope, :"work_item.read", workspace) and Domain.prebuilds?(workspace),
+      do: read_section(target)
   end
 
   def section(%Scope{}, %Target{}), do: nil
@@ -690,6 +695,8 @@ defmodule Apiary.Environments do
     {absent, present} = Enum.split_with(collections, &is_nil(&1.environment_ref))
     :ok = retire(absent, now)
     due = Enum.filter(present, &due?/1)
+    built = prebuilt_workspaces(due |> Enum.map(& &1.workspace_id) |> Enum.uniq())
+    due = Enum.filter(due, &MapSet.member?(built, &1.workspace_id))
     pools = pools(due |> Enum.map(& &1.workspace_id) |> Enum.uniq())
 
     for collection <- Enum.sort_by(due, & &1.id),
@@ -710,12 +717,15 @@ defmodule Apiary.Environments do
     in_transaction!("trigger_for_pool/2")
 
     collections =
-      Repo.all(
-        from c in Collection,
-          where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
-          where: not is_nil(c.environment_ref) and not is_nil(c.target_system),
-          order_by: c.id
-      )
+      if prebuilt?(workspace_id),
+        do:
+          Repo.all(
+            from c in Collection,
+              where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
+              where: not is_nil(c.environment_ref) and not is_nil(c.target_system),
+              order_by: c.id
+          ),
+        else: []
 
     for collection <- collections, run <- queue(collection, [pool], now), do: run
   end
@@ -725,6 +735,19 @@ defmodule Apiary.Environments do
     do: is_binary(workspace_id) and is_binary(system)
 
   defp due?(%Collection{}), do: false
+
+  # Those of `workspace_ids` whose domain has prebuilds (`Apiary.Lingo.Domain.prebuilds?/1`),
+  # read without a lock: a workspace's domain never changes.
+  defp prebuilt_workspaces([]), do: MapSet.new()
+
+  defp prebuilt_workspaces(workspace_ids) do
+    Repo.all(from w in Workspace, where: w.id in ^workspace_ids)
+    |> Enum.filter(&Domain.prebuilds?/1)
+    |> MapSet.new(& &1.id)
+  end
+
+  defp prebuilt?(workspace_id),
+    do: MapSet.member?(prebuilt_workspaces([workspace_id]), workspace_id)
 
   # The live node pools of `workspace_ids`, by workspace, each list by id.
   defp pools([]), do: %{}
