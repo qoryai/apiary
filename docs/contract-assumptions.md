@@ -344,7 +344,16 @@ the body, the `time`), the first of these that applies is the answer:
 
 **A run of the queue.** A node pool's starter claims the runs a workspace queues and
 hands each over (the provisioner contract, `contracts/provisioner/v1` of
-`qoryai/integrations`). Its `handover.schema.json` has the handover register the run, and
+`qoryai/integrations`). Qory Apiary serves revision 3 of that contract alone: a request
+whose `X-Qory-Contract-Version` names any other revision is refused `400`
+`unsupported_contract_version`, and each claim answer and handover answer has `revision`
+3. A claim answer and a
+handover answer have the run's `target` and its `access` together, or neither for an
+explore run whose work item has no target, which a workspace outside the software domain
+allows; a prebuild always has both. A handover answer also has `domain`, the name of the
+run's workspace's domain, and an explore run's input has the same `domain` and the same
+`target`, or no `target`, written from the same values as the answer. Its
+`handover.schema.json` has the handover register the run, and
 has the run endpoint refuse, under any key, a registration whose `run_id` is that of such a
 run, waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager
@@ -389,8 +398,8 @@ a prebuild's input is the `environment_ref` its run of the queue was queued for,
 starter reports back, unchanged, in its `prebuilt`;
 its run key names the gateway and the pool, with an attach window of 600 seconds, and is
 given once, in the signed `200`, with `Cache-Control: no-store`. The refusals come in the contract's order: `403` `forbidden` for
-an unknown dispatch, another pool's, or a key the action is refused to, one answer; `404`
-`not_found` for a prebuild's dispatch at revision 1; `410` `gone` for a dispatch that ended;
+an unknown dispatch, another pool's, or a key the action is refused to, one answer; `410`
+`gone` for a dispatch that ended;
 `409` `handed_over`, `lease_expired`, `not_dispatched` and `no_gateway`; and `503`
 `unavailable` last, after which nothing was written. A lease that lapsed unswept is freed
 first, and that is committed: the run waits in its queue again, or a prebuild ends
@@ -401,7 +410,8 @@ starter stops the job it started: a
 prebuild's collection ended, moved to another workspace, unassigned or left without a target
 (`collection_ended`), run variables that break their rules for the target
 (`variables_invalid`), a work item whose ticket is no longer kept (`ticket_gone`), or an
-input that breaks the explore contract's rules for it (`inputs_invalid`). The contract names
+input that breaks the explore contract's rules for it, or a work item with no target in a
+domain that requires one (`inputs_invalid`). The contract names
 `410` for a dispatch that ended and no cause for these; Qory Apiary reads them as ends of the
 dispatch, never as `503`, which would have the starter ask again for a run that can never be
 handed over.
@@ -447,8 +457,7 @@ The release gives a run back (`release.schema.json`), with the starter's `reason
 `retry`, in one transaction (`Apiary.Dispatches.Release`). The refusals come in the
 contract's order: `403` `forbidden` for an unknown dispatch, another pool's, or a key the
 action is refused to, one answer, decided before any lock and writing nothing; then a lease
-that lapsed unswept is freed, and that is committed whatever follows; `404` `not_found` for
-a prebuild's dispatch at revision 1; `410` `gone` for a dispatch that ended, of a run that
+that lapsed unswept is freed, and that is committed whatever follows; `410` `gone` for a dispatch that ended, of a run that
 ended, or of a run handed over whose outcome or exit came first, a prebuild's outcome alone;
 `409` `lease_expired` for a
 dispatch not handed over that is stale or past its `lease_until`; and `503` `unavailable`
@@ -476,8 +485,7 @@ at once one acts and the other is `410` `gone`.
 The prebuilt reports the image a prebuild built (`prebuilt.schema.json`), with the run's
 `run_id`, the `image`, its `size`, the `environment_ref` the job read from its handover's
 input and the `commit` it built from, in one transaction (`Apiary.Dispatches.Prebuilt`).
-The refusals come in the contract's order: `404` `not_found` at revision 1, which does not
-serve the route, first, before anything that depends on the dispatch; `403` `forbidden` for
+The refusals come in the contract's order: `403` `forbidden` for
 an unknown dispatch, another pool's, or a key the action is refused to, one answer, decided
 before any lock and writing nothing; then a lease that lapsed unswept is freed, and that is
 committed whatever follows; `410` `gone` for a dispatch that ended, of a run that ended, a

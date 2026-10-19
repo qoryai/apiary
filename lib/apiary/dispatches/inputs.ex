@@ -7,7 +7,7 @@ defmodule Apiary.Dispatches.Inputs do
   # - `prebuild/1`: exactly `{"version": 1, "environment_ref": ref}`, as the contract closes
   #   it, the ref the run of the queue was queued for (`dispatch_runs.environment_ref`),
   #   which the job reports back, unchanged, in its `prebuilt`.
-  # - `explore/2`: the explore contract's `inputs.schema.json`, version 1, every member in
+  # - `explore/3`: the explore contract's `inputs.schema.json`, version 1, every member in
   #   the schema's order, from the rows Qory keeps and nothing the starter sent:
   #   - `work_item`: its public id, its number and its address (`Apiary.WorkItems.stable_url/1`);
   #   - `run`: the run's `attempt` and `of`;
@@ -29,7 +29,12 @@ defmodule Apiary.Dispatches.Inputs do
   #   - `answers`: the answers given within the run's take in, oldest first
   #     (`Apiary.WorkItems.take_in_answers/2`), each with who gave it, named as who took
   #     the work item in is named and held to the same rule;
-  #   - `target`: the work item's target, the handover answer's `target`.
+  #   - `target`: the run's target, the handover answer's `target`, left out where the
+  #     work item has none;
+  #   - `domain`: the name of the workspace's domain, the handover answer's `domain`.
+  #
+  #   The handover gives the target and the domain (`Apiary.Dispatches.Handover`), the
+  #   same values it writes into its answer.
   #
   #   Every time is in UTC to the whole second, and every length is counted in code
   #   points, as the contract counts it. The answer is `{:ok, inputs}`, a
@@ -81,17 +86,27 @@ defmodule Apiary.Dispatches.Inputs do
   def prebuild(environment_ref) when is_binary(environment_ref),
     do: Jason.OrderedObject.new([{"version", @version}, {"environment_ref", environment_ref}])
 
-  # explore/2 is the input of the explore run `dispatch_run` of `work_item` (the moduledoc).
+  # explore/3 is the input of the explore run `dispatch_run` of `work_item`, for the run's
+  # `target`, nil for none, and the name of its workspace's `domain` (the moduledoc).
   @doc false
-  @spec explore(WorkItem.t(), DispatchRun.t()) ::
+  @spec explore(WorkItem.t(), DispatchRun.t(), %{
+          domain: String.t(),
+          target: %{system: String.t(), path: String.t()} | nil
+        }) ::
           {:ok, Jason.OrderedObject.t()} | {:error, :ticket_gone | :inputs_invalid}
-  def explore(%WorkItem{} = work_item, %DispatchRun{} = dispatch_run) do
+  def explore(
+        %WorkItem{} = work_item,
+        %DispatchRun{} = dispatch_run,
+        %{domain: domain, target: target} = run
+      )
+      when is_binary(domain) and (is_nil(target) or is_map(target)) do
     with {:ok, item} <- ticket(work_item),
          {:ok, by} <- taken_in_by(work_item),
          :ok <- valid(work_item),
          {:ok, answers} <- answers(work_item, dispatch_run) do
       comments = Enum.map(comments(item), &comment/1)
-      inputs = bounded(&document(work_item, dispatch_run, item, by, answers, &1, &2), comments)
+      document = &document(work_item, dispatch_run, item, by, answers, run, &1, &2)
+      inputs = bounded(document, comments)
 
       # Every comment left out, the rest is within the bound by the columns' bounds; held all
       # the same.
@@ -172,43 +187,45 @@ defmodule Apiary.Dispatches.Inputs do
   defp person(name, kind),
     do: Jason.OrderedObject.new([{"name", name}, {"kind", Atom.to_string(kind)}])
 
-  defp document(work_item, dispatch_run, item, by, answers, comments, omitted) do
-    Jason.OrderedObject.new([
-      {"version", @version},
-      {"work_item",
-       Jason.OrderedObject.new([
-         {"id", work_item.public_id},
-         {"number", work_item.number},
-         {"url", WorkItems.stable_url(work_item)}
-       ])},
-      {"run",
-       Jason.OrderedObject.new([{"attempt", dispatch_run.attempt}, {"of", dispatch_run.of}])},
-      {"ticket",
-       Jason.OrderedObject.new([
-         {"external_ref", work_item.external_ref},
-         {"url", work_item.url},
-         {"title", work_item.title},
-         {"body", item.body},
-         {"filed_by", person(item.filed_by_name, item.filed_by_kind)},
-         {"filed_at", time(item.source_created_at)},
-         {"collection", work_item.collection_title}
-       ])},
-      {"instruction",
-       Jason.OrderedObject.new([
-         {"text", work_item.first_instruction || ""},
-         {"by", Jason.OrderedObject.new([{"name", by}])},
-         {"at", time(work_item.taken_in_at)}
-       ])},
-      {"comments", comments},
-      {"comments_omitted", omitted},
-      {"answers", answers},
-      {"target",
-       Jason.OrderedObject.new([
-         {"system", work_item.target_system},
-         {"path", work_item.target_path}
-       ])}
-    ])
+  defp document(work_item, dispatch_run, item, by, answers, run, comments, omitted) do
+    Jason.OrderedObject.new(
+      [
+        {"version", @version},
+        {"work_item",
+         Jason.OrderedObject.new([
+           {"id", work_item.public_id},
+           {"number", work_item.number},
+           {"url", WorkItems.stable_url(work_item)}
+         ])},
+        {"run",
+         Jason.OrderedObject.new([{"attempt", dispatch_run.attempt}, {"of", dispatch_run.of}])},
+        {"ticket",
+         Jason.OrderedObject.new([
+           {"external_ref", work_item.external_ref},
+           {"url", work_item.url},
+           {"title", work_item.title},
+           {"body", item.body},
+           {"filed_by", person(item.filed_by_name, item.filed_by_kind)},
+           {"filed_at", time(item.source_created_at)},
+           {"collection", work_item.collection_title}
+         ])},
+        {"instruction",
+         Jason.OrderedObject.new([
+           {"text", work_item.first_instruction || ""},
+           {"by", Jason.OrderedObject.new([{"name", by}])},
+           {"at", time(work_item.taken_in_at)}
+         ])},
+        {"comments", comments},
+        {"comments_omitted", omitted},
+        {"answers", answers}
+      ] ++ target(run.target) ++ [{"domain", run.domain}]
+    )
   end
+
+  defp target(nil), do: []
+
+  defp target(%{system: system, path: path}),
+    do: [{"target", Jason.OrderedObject.new([{"system", system}, {"path", path}])}]
 
   # The document with every comment that fits, the newest kept: the fewest oldest left out
   # for the whole to be at most `@max_bytes` encoded. Each comment's size is counted once;

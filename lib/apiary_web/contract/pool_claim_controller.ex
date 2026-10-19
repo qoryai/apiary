@@ -17,13 +17,13 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #   3. a `pool_id` other than the key's node pool is `403` `forbidden`, the same answer
   #      as any refusal of `Apiary.Access`: the pool, the workspace and the organisation
   #      are the key's alone, never the body's;
-  #   4. the claim (`Apiary.Dispatches.claim/3`), for the revision the request named: the
-  #      key read again, revoked or of an organisation out of use since, `401`, unsigned;
-  #      `dispatch.claim` refused, `403` `forbidden`; the pool's choice of gateway leading
-  #      to none, `409` `no_gateway`. A claim at revision 1 is never given a prebuild;
+  #   4. the claim (`Apiary.Dispatches.claim/2`): the key read again, revoked or of an
+  #      organisation out of use since, `401`, unsigned; `dispatch.claim` refused, `403`
+  #      `forbidden`; the pool's choice of gateway leading to none, `409` `no_gateway`;
   #   5. a run claimed is `200`, signed: the contract's `claim-answer.schema.json`, its
-  #      `revision` the request's, inside the signed body. A prebuild's answer names its
-  #      collection's target and has no `work_item`.
+  #      `revision` the request's, inside the signed body. A prebuild's answer has its
+  #      collection's target and no `work_item`. An explore run whose work item has no
+  #      target has neither `access` nor `target`.
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
   # pool at its instance limit, the request is held, up to its `wait_seconds`: it listens
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
     key = conn.assigns.access_key
 
     with :ok <- same_pool(claim.pool_id, key),
-         {:ok, %{} = claimed} <- claim(key, conn.assigns.contract_version, claim.wait_seconds) do
+         {:ok, %{} = claimed} <- claim(key, claim.wait_seconds) do
       answer(conn, claimed)
     else
       {:ok, :none} -> send_resp(conn, 204, "")
@@ -97,9 +97,9 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   defp same_pool(_pool_id, _key), do: {:error, :forbidden}
 
-  defp claim(key, revision, 0), do: Dispatches.claim(key, Dispatches.now(), revision)
+  defp claim(key, 0), do: Dispatches.claim(key, Dispatches.now())
 
-  defp claim(%AccessKey{workspace_id: workspace_id} = key, revision, wait_seconds) do
+  defp claim(%AccessKey{workspace_id: workspace_id} = key, wait_seconds) do
     settings = Application.get_env(:apiary, __MODULE__) || []
     hold = min(wait_seconds * 1_000, Keyword.get(settings, :hold, @hold))
     poll = Keyword.get(settings, :poll, @poll)
@@ -110,8 +110,8 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
     :ok = Dispatches.subscribe(workspace_id)
 
     try do
-      case Dispatches.claim(key, Dispatches.now(), revision) do
-        {:ok, :none} = none -> hold(key, revision, none, now() + hold, poll)
+      case Dispatches.claim(key, Dispatches.now()) do
+        {:ok, :none} = none -> hold(key, none, now() + hold, poll)
         other -> other
       end
     after
@@ -121,14 +121,14 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   end
 
   # Holds while a slot of the key is free; a key with none answers at once.
-  defp hold(%AccessKey{id: key_id} = key, revision, none, deadline, poll) do
+  defp hold(%AccessKey{id: key_id} = key, none, deadline, poll) do
     case take_slot(key_id) do
       nil ->
         none
 
       slot ->
         try do
-          wait(key, revision, deadline, poll)
+          wait(key, deadline, poll)
         after
           Registry.unregister(@holds, slot)
         end
@@ -147,7 +147,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   # Waits for a change told, or the poll, then tries again, until a try claims a run or
   # is refused, or the deadline passes.
-  defp wait(key, revision, deadline, poll) do
+  defp wait(key, deadline, poll) do
     case deadline - now() do
       left when left > 0 ->
         receive do
@@ -156,8 +156,8 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
           min(poll, left) -> :ok
         end
 
-        case Dispatches.claim(key, Dispatches.now(), revision) do
-          {:ok, :none} -> wait(key, revision, deadline, poll)
+        case Dispatches.claim(key, Dispatches.now()) do
+          {:ok, :none} -> wait(key, deadline, poll)
           other -> other
         end
 
@@ -188,8 +188,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
             {"run_id", run.run_id},
             {"pool_id", pool.public_id},
             {"lease_until", DispatchAnswer.time(dispatch.lease_until)},
-            {"step", run.step},
-            {"access", DispatchAnswer.access(run.step)}
+            {"step", run.step}
           ] ++ DispatchAnswer.what_for(claimed)
         )
       )

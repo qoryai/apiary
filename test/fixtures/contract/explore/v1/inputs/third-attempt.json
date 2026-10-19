@@ -60,5 +60,6 @@
   "target": {
     "system": "code.example.com",
     "path": "example/service"
-  }
+  },
+  "domain": "software"
 }

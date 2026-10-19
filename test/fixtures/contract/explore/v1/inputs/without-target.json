@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "work_item": {
+    "id": "wi_8kx2mq4vt9ab3c5d",
+    "number": 341,
+    "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
+  },
+  "run": {
+    "attempt": 1,
+    "of": 3
+  },
+  "ticket": {
+    "external_ref": "TRK-77",
+    "url": "https://tracker.example.com/items/TRK-77",
+    "title": "The spring campaign spends past its daily budget",
+    "body": "The spring campaign spent 140 of its 100 daily budget on 2026-10-16.\nThe other campaigns stay within their budgets.",
+    "filed_by": {
+      "name": "Alex Example",
+      "kind": "person"
+    },
+    "filed_at": "2026-10-17T09:12:00Z",
+    "collection": "Campaigns"
+  },
+  "instruction": {
+    "text": "Look at the budget settings first.",
+    "by": {
+      "name": "Sam Example"
+    },
+    "at": "2026-10-17T09:30:00Z"
+  },
+  "comments": [
+    {
+      "by": {
+        "name": "Alex Example",
+        "kind": "person"
+      },
+      "at": "2026-10-17T09:15:00Z",
+      "body": "It started after the bid change on 2026-10-15."
+    }
+  ],
+  "comments_omitted": 0,
+  "answers": [],
+  "domain": "marketing"
+}

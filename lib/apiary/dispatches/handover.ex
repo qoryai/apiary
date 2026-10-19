@@ -23,9 +23,7 @@ defmodule Apiary.Dispatches.Handover do
   #      its run waits again, or a prebuild ends `superseded`;
   #   4. the run of the queue locked `FOR UPDATE` (`Apiary.Dispatches.RunEnd.lock/1`), then
   #      the dispatch, and the clock read once both are held;
-  #   5. a dispatch of a prebuild asked at revision 1, which does not know the step, is
-  #      `{:error, :not_found}`;
-  #   6. a dispatch that ended, or of a run that ended, is `{:error, :gone}`.
+  #   5. a dispatch that ended, or of a run that ended, is `{:error, :gone}`.
   #
   # The release asks the same, in the same transaction (`transact/5`), and holds one row
   # between steps 2 and 3: its run's work item or environment record
@@ -41,19 +39,19 @@ defmodule Apiary.Dispatches.Handover do
   #
   # ## `handover/3`
   #
-  # After the six above, the first of these that applies:
+  # After the five above, the first of these that applies:
   #
-  #   7. the run was handed over before, through this dispatch or another: `{:error,
+  #   6. the run was handed over before, through this dispatch or another: `{:error,
   #      :handed_over}`;
-  #   8. the dispatch is stale, or the clock is at or past its `lease_until`:
+  #   7. the dispatch is stale, or the clock is at or past its `lease_until`:
   #      `{:error, :lease_expired}`;
-  #   9. the starter has not said `dispatched`: `{:error, :not_dispatched}`;
-  #   10. the pool's choice of gateway, as it resolves now (`Apiary.Gateways.resolve/1`),
-  #       leads to no gateway: direct, no default gateway, a named gateway that may not
-  #       serve the workspace, or a gateway with no active key; or the gateway, read
-  #       `FOR SHARE` as its deletion holds it `FOR UPDATE`, may no longer serve the
-  #       workspace: `{:error, :no_gateway}`. The dispatch stays claimed;
-  #   11. what the run is formed from, which the handover cannot form: the run of the
+  #   8. the starter has not said `dispatched`: `{:error, :not_dispatched}`;
+  #   9. the pool's choice of gateway, as it resolves now (`Apiary.Gateways.resolve/1`),
+  #      leads to no gateway: direct, no default gateway, a named gateway that may not
+  #      serve the workspace, or a gateway with no active key; or the gateway, read
+  #      `FOR SHARE` as its deletion holds it `FOR UPDATE`, may no longer serve the
+  #      workspace: `{:error, :no_gateway}`. The dispatch stays claimed;
+  #   10. what the run is formed from, which the handover cannot form: the run of the
   #       queue and its dispatch end, in the transaction, with a cause the run of the queue
   #       keeps, a stale dispatch of it `run_ended`, and the slot the dispatch took is freed
   #       once; `{:error, :gone}`, so the starter stops the job it started. A prebuild whose
@@ -65,8 +63,9 @@ defmodule Apiary.Dispatches.Handover do
   #       break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
   #       `variables_invalid`; an explore run whose work item's ticket is no longer kept,
   #       `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`),
-  #       or whose work item has no target, `inputs_invalid`;
-  #   12. the run key cannot be made for the gateway's address
+  #       or whose work item has no target in a domain that requires one
+  #       (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`;
+  #   11. the run key cannot be made for the gateway's address
   #       (`Apiary.Runs.Registration.issue_through/5`), or anything else fails:
   #       `{:error, :unavailable}`, and the transaction rolls back: no run, no run key, the
   #       dispatch as it was.
@@ -90,6 +89,10 @@ defmodule Apiary.Dispatches.Handover do
   # public id and the step. The registration, the run key and the handover are one write:
   # of two handovers of one run, the second waits at the run of the queue, then finds it
   # handed over.
+  #
+  # The answer has the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and
+  # the run's target, or no target for an explore run whose work item has none. An explore
+  # run's input has the same domain and the same target, from the same values.
   #
   # A refusal commits what the lapse of step 3 wrote, and an end what it ended. Once the
   # transaction commits, the run is broadcast as changed and the workspaces whose queue or
@@ -132,14 +135,16 @@ defmodule Apiary.Dispatches.Handover do
   @attach_seconds 600
 
   @typedoc """
-  A handover answered: the registered run, its run key, the run of the queue, the run's
-  target, its work item (nil for a prebuild) and the step's input.
+  A handover answered: the registered run, its run key, the run of the queue, the name of
+  its workspace's domain, the run's target (nil for an explore run without one), its work
+  item (nil for a prebuild) and the step's input.
   """
   @type handed_over :: %{
           run: Run.t(),
           run_key: String.t(),
           dispatch_run: DispatchRun.t(),
-          target: %{system: String.t(), path: String.t()},
+          domain: String.t(),
+          target: %{system: String.t(), path: String.t()} | nil,
           work_item: WorkItem.t() | nil,
           inputs: Jason.OrderedObject.t()
         }
@@ -147,7 +152,6 @@ defmodule Apiary.Dispatches.Handover do
   @type refusal ::
           :unauthorized
           | :forbidden
-          | :not_found
           | :gone
           | :handed_over
           | :lease_expired
@@ -156,17 +160,15 @@ defmodule Apiary.Dispatches.Handover do
           | :unavailable
 
   # dispatched/3 records that the starter started the job for the dispatch `dispatch_id`
-  # of the pool of `access_key`, at the provisioner contract's `revision`, with the job's
-  # `external` (nil for none): the moduledoc.
+  # of the pool of `access_key`, with the job's `external` (nil for none): the moduledoc.
   @doc false
-  @spec dispatched(AccessKey.t(), term, %{revision: pos_integer, external: map | nil}) ::
+  @spec dispatched(AccessKey.t(), term, %{external: map | nil}) ::
           :ok | {:error, refusal}
-  def dispatched(%AccessKey{key_id: key_id}, dispatch_id, %{revision: revision} = meta) do
+  def dispatched(%AccessKey{key_id: key_id}, dispatch_id, %{} = meta) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
       |> transact(dispatch_id, :"dispatch.dispatched", nil, fn locked ->
-        with :ok <- step_known(locked, revision),
-             :ok <- not_ended(locked) do
+        with :ok <- not_ended(locked) do
           record_dispatched(locked, meta[:external])
         end
       end)
@@ -177,18 +179,15 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # handover/3 hands the run of the dispatch `dispatch_id` of the pool of `access_key`
-  # over, at the provisioner contract's `revision`, for the handover's raw `body`: the
-  # moduledoc.
+  # over, for the handover's raw `body`: the moduledoc.
   @doc false
-  @spec handover(AccessKey.t(), term, %{revision: pos_integer, body: binary}) ::
+  @spec handover(AccessKey.t(), term, %{body: binary}) ::
           {:ok, handed_over} | {:error, refusal}
-  def handover(%AccessKey{key_id: key_id}, dispatch_id, %{revision: revision, body: body})
-      when is_binary(body) do
+  def handover(%AccessKey{key_id: key_id}, dispatch_id, %{body: body}) when is_binary(body) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
       |> transact(dispatch_id, :"dispatch.handover", nil, fn locked ->
-        with :ok <- step_known(locked, revision),
-             :ok <- not_ended(locked),
+        with :ok <- not_ended(locked),
              :ok <- not_handed_over(locked),
              :ok <- lease_held(locked),
              :ok <- was_dispatched(locked),
@@ -205,7 +204,7 @@ defmodule Apiary.Dispatches.Handover do
 
   ## What both ask first
 
-  # transact/5 is the transaction of the moduledoc's six first steps, then `fun` on what
+  # transact/5 is the transaction of the moduledoc's five first steps, then `fun` on what
   # they hold, for the action `action` of the key `key_id` on the dispatch `dispatch_id`;
   # the release shares it (`Apiary.Dispatches.Release`). `hold`, when given, is called
   # once the action was asked and before the slots due are freed, on the dispatch's run of
@@ -303,12 +302,6 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # step_known/2: revision 1 does not know the step prebuild.
-  @doc false
-  @spec step_known(map, pos_integer) :: :ok | {:refused, :not_found}
-  def step_known(%{run: %DispatchRun{step: @prebuild}}, 1), do: {:refused, :not_found}
-  def step_known(_locked, _revision), do: :ok
-
   # not_ended/1: a dispatch that ended, or of a run that ended, is gone.
   @doc false
   @spec not_ended(map) :: :ok | {:refused, :gone}
@@ -404,7 +397,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
     case collection(dispatch_run) do
       {:ok, target} ->
-        formed(dispatch_run, workspace, target, nil, fn ->
+        formed(dispatch_run, workspace, target, nil, fn _domain ->
           {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
         end)
 
@@ -413,31 +406,31 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
+  # An explore run has its work item's target, nil for none; a work item without one in
+  # a domain that requires a target ends `inputs_invalid`. The answer and the input get
+  # the same target and the same domain.
   defp formed(%{run: %DispatchRun{} = dispatch_run}, workspace) do
-    case Repo.get!(WorkItem, dispatch_run.work_item_id) do
-      # Revisions 1 and 2 of the provisioner contract, the ones served, require a target
-      # in the handover answer and in Explore's input. A claim never takes a run whose
-      # work item has none (`Apiary.Dispatches`); one whose target went after its claim
-      # ends here.
-      %WorkItem{target_system: nil} ->
-        {:end, :inputs_invalid}
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+    target = target(work_item)
 
-      %WorkItem{} = work_item ->
-        target = %{system: work_item.target_system, path: work_item.target_path}
-
-        formed(dispatch_run, workspace, target, work_item, fn ->
-          Inputs.explore(work_item, dispatch_run)
-        end)
+    if is_nil(target) and Domain.target_required?(workspace) do
+      {:end, :inputs_invalid}
+    else
+      formed(dispatch_run, workspace, target, work_item, fn domain ->
+        Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target})
+      end)
     end
   end
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
+  # `inputs` is given the name of the workspace's domain.
   defp formed(dispatch_run, workspace, target, work_item, inputs) do
     picked = further_repositories(workspace, target)
+    domain = Domain.name(workspace)
 
     with {:variables, {:ok, variables}} <-
            {:variables, Domain.run_variables(workspace, target, picked)},
-         {:inputs, {:ok, inputs}} <- {:inputs, inputs.()} do
+         {:inputs, {:ok, inputs}} <- {:inputs, inputs.(domain)} do
       about = about(dispatch_run, work_item)
       :ok = About.validate(about)
 
@@ -449,6 +442,7 @@ defmodule Apiary.Dispatches.Handover do
          workspace: workspace,
          answer: %{
            dispatch_run: dispatch_run,
+           domain: domain,
            target: target,
            work_item: work_item,
            inputs: inputs
@@ -459,6 +453,12 @@ defmodule Apiary.Dispatches.Handover do
       {:inputs, {:error, cause}} -> {:end, cause}
     end
   end
+
+  # A work item's target, or nil for one without.
+  defp target(%WorkItem{target_system: nil}), do: nil
+
+  defp target(%WorkItem{target_system: system, target_path: path}),
+    do: %{system: system, path: path}
 
   # The run's labels: the target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the
   # domain has one and gives run variables, the label of the run's paths

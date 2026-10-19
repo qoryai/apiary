@@ -1,15 +1,15 @@
 defmodule Apiary.Explore.ResultTest do
   # The explore result check against the explore contract's fixtures, vendored from the
-  # integrations at 2564006 under `test/fixtures/contract/explore/v1/`: each result
-  # fixture passes and each refused result fixture is no result, carried in a
+  # integrations at the commit in `test/fixtures/contract/explore/v1/.contract-ref`: each
+  # result fixture passes and each refused result fixture is no result, carried in a
   # `dev.qory.session.result` event as Forager sends it. Then the event rules (the last
   # result event by sequence, `is_error`, the `result` string), the 128 KiB bound in
   # bytes of the decoded string, each character and source rule of the schema, the strict
   # objects, the lengths in code points, and input that is not UTF-8 or not JSON.
   #
   # The inputs fixtures are vendored beside them and not validated here:
-  # `inputs.schema.json` refers to the integrations contract's `changes.schema.json` and
-  # `definitions.schema.json`, which this repository does not vendor.
+  # `ApiaryWeb.Contract.HandoverControllerTest` holds the inputs Qory writes to
+  # `inputs.schema.json`.
   use ExUnit.Case, async: true
   use ExUnitProperties
 
@@ -95,12 +95,13 @@ defmodule Apiary.Explore.ResultTest do
     end
 
     test "the refused inputs fixtures are vendored beside them" do
-      assert fixtures("invalid") |> Enum.count(&String.starts_with?(&1, "inputs-")) == 9
+      assert fixtures("invalid") |> Enum.count(&String.starts_with?(&1, "inputs-")) == 10
 
       assert fixtures("inputs") == [
                "first-attempt-loopback.json",
                "first-attempt.json",
-               "third-attempt.json"
+               "third-attempt.json",
+               "without-target.json"
              ]
     end
   end

@@ -94,7 +94,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   end
 
   # A prebuild of a fresh collection, with the pool's environment record of it, claimed
-  # at revision 2 and said started: committed.
+  # and said started: committed.
   defp prebuild_started!(ctx) do
     collection = collection_fixture(ctx.scope)
     made!(ctx, collection.adapter_id)
@@ -112,25 +112,24 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     {:ok, queued} =
       Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-    %{dispatch: dispatch} = dispatched!(ctx.key, 2)
+    %{dispatch: dispatch} = dispatched!(ctx.key)
     assert dispatch.dispatch_run_id == queued.id
     %{collection: collection, record: record, dispatch_run: queued, dispatch: dispatch}
   end
 
-  defp release(ctx, claimed, retry, revision \\ 1),
-    do: fn -> release_now(ctx, claimed, retry, revision) end
+  defp release(ctx, claimed, retry),
+    do: fn -> release_now(ctx, claimed, retry) end
 
-  defp release_now(ctx, %{dispatch: dispatch}, retry, revision) do
+  defp release_now(ctx, %{dispatch: dispatch}, retry) do
     Dispatches.release(ctx.key, dispatch.public_id, %{
-      revision: revision,
       reason: "The job could not start.",
       retry: retry
     })
   end
 
-  defp handover(ctx, %{dispatch: dispatch}, revision \\ 1) do
+  defp handover(ctx, %{dispatch: dispatch}) do
     fn ->
-      Dispatches.handover(ctx.key, dispatch.public_id, %{revision: revision, body: @body})
+      Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
     end
   end
 
@@ -397,7 +396,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       {first, first_pid} = hold(trigger(claimed, "env-2"))
       assert {:ok, [%DispatchRun{} = queued]} = first.result
 
-      second = start(release(ctx, claimed, true, 2))
+      second = start(release(ctx, claimed, true))
       await_blocked(second.backend, first_pid)
       commit(first)
 
@@ -414,7 +413,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
          ctx do
       claimed = prebuild_started!(ctx)
 
-      {first, first_pid} = hold(release(ctx, claimed, true, 2))
+      {first, first_pid} = hold(release(ctx, claimed, true))
       assert first.result == :ok
 
       second = start(trigger(claimed, "env-2"))
@@ -434,7 +433,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
 
         [released, _triggered, _swept] =
           together([
-            release(ctx, claimed, true, 2),
+            release(ctx, claimed, true),
             trigger(claimed, "env-#{round + 1}"),
             sweep(DateTime.utc_now())
           ])

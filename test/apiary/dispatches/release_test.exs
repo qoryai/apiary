@@ -68,23 +68,22 @@ defmodule Apiary.Dispatches.ReleaseTest do
     {collection, record, run}
   end
 
-  defp started!(ctx, revision \\ 1) do
-    %{dispatch: dispatch} = dispatched!(ctx.key, revision)
+  defp started!(ctx) do
+    %{dispatch: dispatch} = dispatched!(ctx.key)
     dispatch
   end
 
-  defp handed_over!(ctx, revision \\ 1) do
-    dispatch = started!(ctx, revision)
+  defp handed_over!(ctx) do
+    dispatch = started!(ctx)
 
     assert {:ok, %{run: run}} =
-             Dispatches.handover(ctx.key, dispatch.public_id, %{revision: revision, body: @body})
+             Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
 
     {dispatch, run}
   end
 
   defp release(key, dispatch, retry, opts \\ []) do
     Dispatches.release(key, id(dispatch), %{
-      revision: Keyword.get(opts, :revision, 1),
       reason: Keyword.get(opts, :reason, @reason),
       retry: retry
     })
@@ -185,20 +184,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
       assert %Dispatch{ended_at: nil} = dispatch!(dispatch)
     end
 
-    test "a prebuild's dispatch at revision 1 is not_found, after the lapse is committed",
-         ctx do
-      {_collection, _record, queued} = prebuild!(ctx)
-      dispatch = started!(ctx, 2)
-      assert release(ctx.key, dispatch, false) == {:error, :not_found}
-      assert %Dispatch{ended_at: nil, stale_at: nil} = dispatch!(dispatch)
-
-      lapse!(dispatch)
-      assert release(ctx.key, dispatch, false) == {:error, :not_found}
-      assert %Dispatch{stale_at: %DateTime{}, ended_at: nil} = dispatch!(dispatch)
-      assert queue_run!(queued).state == :waiting
-      assert entries() == []
-    end
-
     test "a dispatch that ended is gone, and nothing is written", ctx do
       {_work_item, queued} = queued!(ctx)
       dispatch = started!(ctx)
@@ -296,14 +281,14 @@ defmodule Apiary.Dispatches.ReleaseTest do
     test "with retry waits again with the record's queued_ref, and no failure is recorded",
          ctx do
       {_collection, record, queued} = prebuild!(ctx)
-      dispatch = started!(ctx, 2)
+      dispatch = started!(ctx)
 
       {1, _rows} =
         Repo.update_all(from(r in Record, where: r.id == ^record.id),
           set: [queued_ref: "env-2"]
         )
 
-      assert release(ctx.key, dispatch, true, revision: 2) == :ok
+      assert release(ctx.key, dispatch, true) == :ok
 
       run = queue_run!(queued)
       assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = run
@@ -324,7 +309,7 @@ defmodule Apiary.Dispatches.ReleaseTest do
     test "with retry ends superseded while another prebuild of its collection and pool waits",
          ctx do
       {collection, record, queued} = prebuild!(ctx)
-      dispatch = started!(ctx, 2)
+      dispatch = started!(ctx)
 
       {:ok, waiting} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
@@ -334,7 +319,7 @@ defmodule Apiary.Dispatches.ReleaseTest do
           set: [queued_ref: "env-3"]
         )
 
-      assert release(ctx.key, dispatch, true, revision: 2) == :ok
+      assert release(ctx.key, dispatch, true) == :ok
 
       assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(queued)
       assert %DispatchRun{state: :waiting, environment_ref: "env-3"} = queue_run!(waiting)
@@ -352,9 +337,9 @@ defmodule Apiary.Dispatches.ReleaseTest do
     test "without retry ends, and records the last build as failed, keeping the good one",
          ctx do
       {_collection, record, queued} = prebuild!(ctx)
-      dispatch = started!(ctx, 2)
+      dispatch = started!(ctx)
 
-      assert release(ctx.key, dispatch, false, revision: 2) == :ok
+      assert release(ctx.key, dispatch, false) == :ok
 
       assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(queued)
       released!(ctx, dispatch)
@@ -458,9 +443,9 @@ defmodule Apiary.Dispatches.ReleaseTest do
          ctx do
       for retry <- [true, false] do
         {collection, record, queued} = prebuild!(ctx)
-        {dispatch, run} = handed_over!(ctx, 2)
+        {dispatch, run} = handed_over!(ctx)
 
-        assert release(ctx.key, dispatch, retry, revision: 2) == :ok
+        assert release(ctx.key, dispatch, retry) == :ok
 
         assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(queued)
         released!(ctx, dispatch)
@@ -521,13 +506,13 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
   test "a failure rolls back, writes nothing, and is unavailable", ctx do
     {_collection, record, queued} = prebuild!(ctx)
-    dispatch = started!(ctx, 2)
+    dispatch = started!(ctx)
 
     # A reason the record cannot keep, which the body never carries: the write fails.
     too_long = String.duplicate("a", 300)
 
     {answer, log} =
-      with_log(fn -> release(ctx.key, dispatch, false, revision: 2, reason: too_long) end)
+      with_log(fn -> release(ctx.key, dispatch, false, reason: too_long) end)
 
     assert answer == {:error, :unavailable}
     refute log =~ too_long
@@ -536,6 +521,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
     assert %Record{failure_cause: nil} = record!(record)
     assert entries() == []
 
-    assert release(ctx.key, dispatch, false, revision: 2) == :ok
+    assert release(ctx.key, dispatch, false) == :ok
   end
 end

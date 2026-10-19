@@ -287,7 +287,7 @@ defmodule Apiary.DispatchesTest do
       assert theirs.id != first.id
 
       # Claimed, it is left as it is, and the next waits beside it.
-      assert {:ok, %{run: %{id: claimed_id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert {:ok, %{run: %{id: claimed_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
       assert claimed_id == first.id
 
       {:ok, next} =
@@ -324,35 +324,12 @@ defmodule Apiary.DispatchesTest do
     end
   end
 
-  describe "claim/3 and a prebuild" do
+  describe "claim/2 and a prebuild" do
     @describetag needs: :factory
 
     defp prebuild!(collection, pool, ref \\ "env-1") do
       {:ok, run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, ref) end)
       run
-    end
-
-    test "a claim at revision 1 never takes one; the pool's at revision 2 takes it", ctx do
-      collection = collection_fixture(ctx.scope)
-      run = prebuild!(collection, ctx.pool)
-
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
-      assert Dispatches.claim(ctx.key, Dispatches.now(), 1) == {:ok, :none}
-      assert run!(run).state == :waiting
-
-      # An explore run queued after it goes to the claim at revision 1.
-      explore = queued!(ctx.scope)
-      assert claimed!(ctx.key).dispatch_run_id == explore.id
-      assert run!(run).state == :waiting
-
-      assert {:ok,
-              %{dispatch: dispatch, run: taken, work_item: nil, collection: found, pool: pool}} =
-               Dispatches.claim(ctx.key, Dispatches.now(), 2)
-
-      assert {taken.id, taken.state, run!(run).state} == {run.id, :claimed, :claimed}
-      assert found.id == collection.id
-      assert pool.id == ctx.pool.id
-      assert {dispatch.dispatch_run_id, dispatch.pool_id} == {run.id, ctx.pool.id}
     end
 
     test "only the pool it is held for takes it, in the queue's order with every other run",
@@ -363,21 +340,21 @@ defmodule Apiary.DispatchesTest do
       run = prebuild!(collection, ctx.pool)
       explore = queued!(ctx.scope)
 
-      # Another pool of the workspace, at revision 2, passes it and takes the next run.
+      # Another pool of the workspace passes it and takes the next run.
       assert {:ok, %{run: %{id: id}, work_item: %{}, collection: nil}} =
-               Dispatches.claim(other_key, Dispatches.now(), 2)
+               Dispatches.claim(other_key, Dispatches.now())
 
       assert id == explore.id
-      assert Dispatches.claim(other_key, Dispatches.now(), 2) == {:ok, :none}
+      assert Dispatches.claim(other_key, Dispatches.now()) == {:ok, :none}
       assert run!(run).state == :waiting
 
-      # Its pool, at revision 2, takes the oldest of the prebuilds held for it and the
-      # workspace's other runs.
+      # Its pool takes the oldest of the prebuilds held for it and the workspace's other
+      # runs.
       later = queued!(ctx.scope)
       run_id = run.id
-      assert {:ok, %{run: %{id: ^run_id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert {:ok, %{run: %{id: ^run_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
 
-      assert {:ok, %{run: %{id: later_id}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert {:ok, %{run: %{id: later_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
       assert later_id == later.id
     end
 
@@ -422,7 +399,7 @@ defmodule Apiary.DispatchesTest do
       :ok = Dispatches.subscribe(ctx.scope.workspace.id)
 
       assert {:ok, %{run: %{id: id}, collection: %{id: kept_id}}} =
-               Dispatches.claim(ctx.key, Dispatches.now(), 2)
+               Dispatches.claim(ctx.key, Dispatches.now())
 
       assert {id, kept_id} == {next.id, kept.id}
 
@@ -448,13 +425,13 @@ defmodule Apiary.DispatchesTest do
       {:ok, _deleted} = Nodes.delete_node(ctx.scope, deleted)
 
       # The other pools take the runs in the queue's order, the oldest held for none.
-      assert {:ok, %{run: %{id: first}}} = Dispatches.claim(other_key, Dispatches.now(), 1)
-      assert {:ok, %{run: %{id: second}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
-      assert {:ok, %{run: %{id: third}}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      assert {:ok, %{run: %{id: first}}} = Dispatches.claim(other_key, Dispatches.now())
+      assert {:ok, %{run: %{id: second}}} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, %{run: %{id: third}}} = Dispatches.claim(ctx.key, Dispatches.now())
       assert [first, second, third] == [explore.id, mine.id, later.id]
 
-      assert Dispatches.claim(ctx.key, Dispatches.now(), 2) == {:ok, :none}
-      assert Dispatches.claim(other_key, Dispatches.now(), 2) == {:ok, :none}
+      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Dispatches.claim(other_key, Dispatches.now()) == {:ok, :none}
 
       # It still waits, and counts toward no pool's slots.
       assert run!(held).state == :waiting
@@ -472,7 +449,7 @@ defmodule Apiary.DispatchesTest do
         set: [environment_ref: nil]
       )
 
-      assert Dispatches.claim(ctx.key, Dispatches.now(), 2) == {:ok, :none}
+      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :collection_ended} = run!(run)
     end
   end
@@ -649,7 +626,7 @@ defmodule Apiary.DispatchesTest do
     end
   end
 
-  describe "claim/3" do
+  describe "claim/2" do
     @describetag needs: :factory
 
     test "takes the oldest waiting run of the key's workspace, with the key's pool and key",
@@ -687,21 +664,17 @@ defmodule Apiary.DispatchesTest do
       assert Dispatch.public_id?(dispatch.public_id)
     end
 
-    test "never takes a run whose work item has no target: it waits, at revisions 1 and 2",
-         ctx do
+    test "takes a run whose work item has no target, in the queue's order", ctx do
       scope = with_domain(ctx.scope, "general")
       none = scope |> work_item_fixture(%{target_system: nil, target_path: nil}) |> queue!()
       next = queued!(scope)
 
-      for revision <- [1, 2] do
-        assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now(), revision)
-        assert id == next.id
-        assert Dispatches.claim(ctx.key, Dispatches.now(), revision) == {:ok, :none}
-        assert %DispatchRun{state: :waiting} = run!(none)
+      assert {:ok, %{run: %{id: id}, work_item: %WorkItem{target_system: nil}}} =
+               Dispatches.claim(ctx.key, Dispatches.now())
 
-        Repo.update_all(from(r in DispatchRun, where: r.id == ^next.id), set: [state: :waiting])
-        Repo.delete_all(from d in Dispatch, where: d.dispatch_run_id == ^next.id)
-      end
+      assert id == none.id
+      assert {:ok, %{run: %{id: next_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert next_id == next.id
     end
 
     test "ends a waiting run whose work item's connection ended, and takes the next", ctx do

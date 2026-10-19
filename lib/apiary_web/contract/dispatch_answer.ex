@@ -4,24 +4,35 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # The parts the answers of the provisioner contract share, the claim's
   # (`ApiaryWeb.Contract.PoolClaimController`) and the handover's
   # (`ApiaryWeb.Contract.HandoverController`): a run's target and its work item, as
-  # `definitions.schema.json` has them, what a run of a step may do on its target, and a
-  # time in UTC to the whole second.
+  # `definitions.schema.json` has them, what a run of a step may do on its target, present
+  # together with the target or left out with it, and a time in UTC to the whole second.
 
   alias Apiary.WorkItems
 
-  # what_for/1 is the target and the work item of an explore run, the target of a
-  # prebuild's collection with no work item: `{name, value}` members, in order.
+  # what_for/1 is the access, the target and the work item of an explore run, the access
+  # and the target of a prebuild's collection with no work item: `{name, value}` members,
+  # in order. An explore run whose work item has no target has neither access nor target.
   @doc false
-  @spec what_for(map) :: [{String.t(), Jason.OrderedObject.t()}]
-  def what_for(%{work_item: nil, collection: collection}),
-    do: [{"target", target(collection.target_system, collection.target_path)}]
+  @spec what_for(map) :: [{String.t(), String.t() | Jason.OrderedObject.t()}]
+  def what_for(%{work_item: nil, collection: collection, run: run}),
+    do: reach(run.step, target_of(collection))
 
-  def what_for(%{work_item: work_item}) do
-    [
-      {"target", target(work_item.target_system, work_item.target_path)},
-      {"work_item", work_item(work_item)}
-    ]
-  end
+  def what_for(%{work_item: work_item, run: run}),
+    do: reach(run.step, target_of(work_item)) ++ [{"work_item", work_item(work_item)}]
+
+  # reach/2 is the `access` of a run of `step` and its `target`, both present for a run
+  # with a target and both left out for one without, as the contract requires them
+  # together: `{name, value}` members, in order.
+  @doc false
+  @spec reach(String.t(), %{system: String.t(), path: String.t()} | nil) ::
+          [{String.t(), String.t() | Jason.OrderedObject.t()}]
+  def reach(_step, nil), do: []
+
+  def reach(step, %{system: system, path: path}),
+    do: [{"access", access(step)}, {"target", target(system, path)}]
+
+  defp target_of(%{target_system: nil}), do: nil
+  defp target_of(%{target_system: system, target_path: path}), do: %{system: system, path: path}
 
   # target/2 is a target of `system` and `path`.
   @doc false

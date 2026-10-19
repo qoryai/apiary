@@ -124,7 +124,7 @@ defmodule Apiary.Environments.RebuildTest do
       Repo.transact(fn -> {:ok, Environments.trigger([shop], Dispatches.now())} end)
 
     %{access_key: key} = enrolled_key_fixture(scope, mac)
-    {:ok, %{run: claimed}} = Dispatches.claim(key, Dispatches.now(), 2)
+    {:ok, %{run: claimed}} = Dispatches.claim(key, Dispatches.now())
     assert claimed.pool_id == mac.id
     [linux_waiting] = waiting_ids(shop)
 
