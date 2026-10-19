@@ -16,8 +16,8 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # an integration. With no adapter in the instance, an empty state takes the table's
   # place: "No integration yet", and that an instance admin adds them. Under the table,
   # what an integration installed here does, and, for whoever may not connect one, who
-  # does: with several workspaces, who assigns their collections too. Those words for the collections are the adapters', when they all
-  # name the same.
+  # does: with several workspaces, who assigns their collections too. Those words for the
+  # collections are the adapters', when they all name the same.
   #
   # Add an integration is for whoever may connect one (`adapter.connect`); to anyone else
   # it is a path that does not exist. Each adapter not installed is a block
