@@ -53,6 +53,10 @@ defmodule Apiary.Edition.Core do
   @impl true
   def above_workspace(_workspace), do: nil
 
+  # The core has no operator: an organisation's runs take its own chain of model choices.
+  @impl true
+  def model_choice_chain(_organisation_id), do: "organisation"
+
   # The core keeps no secret at an organisation.
   @impl true
   def organisation_secrets(_scope, _verb), do: {:error, :not_found}

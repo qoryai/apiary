@@ -487,6 +487,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.use",
         :"connection.read",
         :"connection.write",
+        :"model_choice.write",
         :"adapter.create",
         :"adapter.edit",
         :"adapter.set_interval",

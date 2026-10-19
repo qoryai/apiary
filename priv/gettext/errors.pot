@@ -35,10 +35,46 @@ msgstr ""
 
 #: lib/apiary/connections.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another default key for %{provider} first: %{value} is its default key."
+msgid "Change the model choices that use the key %{value} first: %{places}."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a model from %{provider}'s list: %{model} is not on it."
 msgstr ""
 
 #: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another default key for %{provider} first: %{value} is its default key."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider for %{runtime}. %{provider} serves no request format that %{runtime} sends."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider for %{runtime}. %{runtime} has no environment variable for %{provider}'s key with the same authentication."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider, or change the deny rule %{rule} in %{place}. The rule covers %{host}, which runs of %{provider} reach."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider: %{provider} is not used in this workspace."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose one of %{model}'s effort values: %{values}."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose one of %{provider}'s keys: %{value} is not one of them."
 msgstr ""
@@ -139,13 +175,20 @@ msgid "Together with %{target}, these come to %{bytes} characters; the most is 2
 msgstr ""
 
 #: lib/apiary/connections/provider_model.ex
+#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
 msgstr ""
 
 #: lib/apiary/connections/provider_model.ex
+#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Use light, fast or thinking: %{tier} is not a tier."
 msgstr ""
 
 #: lib/apiary/kinds/endpoint.ex

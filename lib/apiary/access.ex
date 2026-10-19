@@ -295,10 +295,18 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"connection.write",
-      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the organisation's service definitions",
+      "add, change and remove a runtime, an integration, a model provider or a service, and where and how it applies; edit a model provider's models; set the organisation's default model choice; fetch an integration's release; write the organisation's service definitions",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation
+    ),
+    # The model a run uses: the choices of the workspace and its targets, which need the
+    # features `factory` and `secrets` both (`Apiary.ModelChoices`).
+    Action.new(
+      :"model_choice.write",
+      "set, change, lock and remove the model choices of the workspace and its targets",
+      feature: :factory,
+      roles: @admins
     ),
     # The server contract.
     Action.new(:"run.post_events", "open a run and post its events",

@@ -47,6 +47,14 @@ defmodule Apiary.EditionStubs do
       do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
   end
 
+  defmodule OperatorChain do
+    @moduledoc """
+    The operator's rows are the whole chain of model choices of every organisation
+    (`c:Apiary.Edition.model_choice_chain/1`).
+    """
+    def model_choice_chain(_organisation_id), do: "operator"
+  end
+
   @doc """
   rendezvous/0 pauses a change where a stub calls it, while the test that started it asks
   so (`Process.put(:level_refusal_rendezvous, true)` in the test's process): it says

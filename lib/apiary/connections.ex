@@ -87,7 +87,18 @@ defmodule Apiary.Connections do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Features, Integrations, LogMetadata, PublicId, Repo, Secrets}
+  alias Apiary.{
+    Access,
+    Audit,
+    Features,
+    Integrations,
+    LogMetadata,
+    ModelChoices,
+    PublicId,
+    Repo,
+    Secrets
+  }
+
   alias Apiary.Accounts.Scope
 
   alias Apiary.Connections.{
@@ -112,7 +123,8 @@ defmodule Apiary.Connections do
   `{:integration_settings_not_allowed, names}`, `{:integration_settings_invalid, details}`,
   `{:integration_settings_too_large, max}` and `{:integration_argument_not_allowed, roles}`;
   for a definition, `{:definition_invalid, problems}`; for a provider,
-  `:provider_unknown`, `:provider_changed` and `Apiary.Secrets`' refusals of its keys.
+  `:provider_unknown`, `:provider_changed`, `{:model_in_use, places}` and
+  `Apiary.Secrets`' refusals of its keys.
   """
   @type refusal :: Access.reason() | Ecto.Changeset.t() | atom | {atom, term}
 
@@ -1012,6 +1024,7 @@ defmodule Apiary.Connections do
       end
     end)
     |> reload()
+    |> without_keys()
   end
 
   defp fetch_provider(name) do
@@ -1238,15 +1251,19 @@ defmodule Apiary.Connections do
   @doc """
   delete_provider/2 removes a model provider (`connection.write`) with its workspaces, its
   models and its keys' secret: `{:ok, provider}`, the provider as it was, or
-  `{:error, refusal}`. It leaves one `connection.write` entry.
+  `{:error, refusal}`, `{:model_in_use, places}` while a model choice uses it, with the
+  places of those choices. It leaves one `connection.write` entry.
   """
   @spec delete_provider(Scope.t(), Connection.t()) :: {:ok, Connection.t()} | {:error, refusal}
   def delete_provider(%Scope{} = scope, %Connection{provider_kind: kind} = provider)
       when is_binary(kind) do
     write_connection(scope, provider, fn scope, _organisation, current ->
-      # The later pieces refuse here, after the row's lock, while a model choice or a live
-      # run uses the provider, read without a lock.
-      with {:ok, deleted} <- delete_with_keys(scope, current),
+      # The model choices that use the provider, read without a lock under the provider's
+      # row lock. A live run that uses it is not read yet: a run keeps its provider only
+      # once the handover writes it. Read those runs here then, and name them in the
+      # refusal beside the choices.
+      with :ok <- not_chosen(ModelChoices.places_using(current)),
+           {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"connection.write", deleted, %{
                before: provider_audited(current),
@@ -1261,9 +1278,13 @@ defmodule Apiary.Connections do
         {:ok, deleted}
       end
     end)
+    |> without_keys()
   end
 
   def delete_provider(%Scope{}, %Connection{}), do: {:error, :not_found}
+
+  defp not_chosen([]), do: :ok
+  defp not_chosen(places), do: {:error, {:model_in_use, places}}
 
   # The provider's row deleted, and with it the secret of its keys, which
   # `Apiary.Secrets` deletes once the row that links it is gone.
@@ -1348,7 +1369,7 @@ defmodule Apiary.Connections do
   rename_provider_key/4 gives a model provider's key another value id
   (`connection.write`). `{:ok, provider}`, or `{:error, refusal}` as
   `Apiary.Secrets.rename_value/5` answers, or a changeset whose error is on `value_id` for
-  its default key.
+  its default key or a key a model choice uses.
   """
   @spec rename_provider_key(Scope.t(), Connection.t(), String.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -1370,7 +1391,7 @@ defmodule Apiary.Connections do
   delete_provider_key/3 deletes a model provider's key (`connection.write`).
   `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.delete_value/4` answers:
   `:last_value` for its only key, or a changeset whose error is on `value_id` for its
-  default key.
+  default key or a key a model choice uses.
   """
   @spec delete_provider_key(Scope.t(), Connection.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -1407,6 +1428,20 @@ defmodule Apiary.Connections do
                    Map.put(change, :details, details)
                  ),
                do: {:ok, current}
+
+        {:error, {:in_use, [%{kind: :model_choice, value_id: value_id} | _rest] = uses}} ->
+          {:error,
+           current
+           |> change()
+           |> add_error(
+             :value_id,
+             dgettext_noop(
+               "errors",
+               "Change the model choices that use the key %{value} first: %{places}."
+             ),
+             value: value_id,
+             places: ModelChoices.listed_words(Enum.map(uses, & &1.name))
+           )}
 
         {:error, {:in_use, [%{kind: :model_provider} | _uses]}} ->
           {:error,
@@ -1544,14 +1579,15 @@ defmodule Apiary.Connections do
   delete_provider_model/3 removes the model with the exact id `model_id` from a model
   provider's list (`connection.write`). When it was the default, the first model left on
   the list becomes the default. `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for
-  a model the list does not have.
+  a model the list does not have, `{:model_in_use, places}` while a model choice uses the
+  model, by its model or a tier, with the places of those choices.
   """
   @spec delete_provider_model(Scope.t(), Connection.t(), String.t()) ::
           {:ok, Connection.t()} | {:error, refusal}
   def delete_provider_model(%Scope{} = scope, %Connection{} = provider, model_id) do
     write_provider(scope, provider, fn scope, _organisation, current ->
-      # The later pieces refuse here while a model choice uses the model.
       with {:ok, model} <- listed_model(current, model_id),
+           :ok <- not_chosen(ModelChoices.places_using(current, model_id)),
            {:ok, _deleted} <- Repo.delete(model),
            {:ok, default} <- default_after(current, model),
            {:ok, _entry} <-
@@ -1650,10 +1686,22 @@ defmodule Apiary.Connections do
   # A write to one provider: `write_connection/3`, for a provider only.
   defp write_provider(scope, %Connection{provider_kind: kind} = provider, fun)
        when is_binary(kind) do
-    write_connection(scope, provider, fun) |> reload()
+    write_connection(scope, provider, fun) |> reload() |> without_keys()
   end
 
   defp write_provider(_scope, %Connection{}, _fun), do: {:error, :not_found}
+
+  # A refusal handed back from a write of a provider keeps no key value. Ecto keeps every
+  # param a changeset was cast from, so the keys of a form stay in `params` unless they
+  # are dropped here, under a string or an atom key. The `changes` hold none: a provider's
+  # own changeset has no key, and the changeset of the keys' secret comes scrubbed from
+  # `Apiary.Secrets`.
+  @key_params ["keys", "key", "value", "values", :keys, :key, :value, :values]
+
+  defp without_keys({:error, %Ecto.Changeset{params: params} = changeset}) when is_map(params),
+    do: {:error, %{changeset | params: Map.drop(params, @key_params)}}
+
+  defp without_keys(other), do: other
 
   # A provider and everything of it need `factory` and `secrets` shown to the scope.
   defp providers_shown(scope) do

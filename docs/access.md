@@ -486,6 +486,15 @@ for each other and never on each other at once:
    the organisation's advisory lock for its secrets and the row of the keys' secret
    `FOR UPDATE`; to choose the default key, that row `FOR SHARE`. It reads what uses the
    keys without a lock (`Apiary.Secrets.Usage`).
+   A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
+   policy's order, then the provider's row `FOR SHARE`, then the choice's row
+   `FOR UPDATE`. A write of the organisation's default takes the organisation's rows and
+   the membership, then the integrations lock, then the provider's row `FOR SHARE` and
+   the choice's row. A change to a provider or to one of its models takes the provider's
+   row `FOR UPDATE`, so it waits for a save of a choice of that provider, or is seen by
+   it: the change reads the choices that use the provider, or the model, without a lock,
+   and refuses while one does. No change to a provider takes a lock on an adapter's
+   connection.
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the
@@ -626,7 +635,8 @@ organisation.
 
 The races are tested outside the sandbox, on connections that commit
 (`test/apiary/access_races_test.exs`, `deletion_races_test.exs`,
-`sign_up_races_test.exs`, `suspension_races_test.exs`, `nodes_races_test.exs`).
+`sign_up_races_test.exs`, `suspension_races_test.exs`, `nodes_races_test.exs`,
+`model_choices_races_test.exs`).
 
 ## The page asks the same question
 
