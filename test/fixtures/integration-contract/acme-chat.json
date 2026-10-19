@@ -8,5 +8,6 @@
   "settings": {"type": "object"},
   "roles": {
     "credential": {"argument": "[a-z][a-z0-9-]{0,79}", "hosts": ["chat.acme.example"]}
-  }
+  },
+  "egress_hosts": ["chat.acme.example"]
 }

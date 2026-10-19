@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "acme-tracker",
+  "title": "Acme tracker",
+  "program_version": "0.1.0",
+  "settings": {"type": "object"},
+  "roles": {
+    "credential": {"argument": "[A-Z]+", "hosts": ["tracker.acme.example"]}
+  },
+  "egress_hosts": ["0177.0.0.1"]
+}

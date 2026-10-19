@@ -14,8 +14,11 @@ defmodule Apiary.Dispatches.WireTest do
   @base "https://qory.dev/contracts/"
 
   # The vendored schemas, by their URL under the contracts' base: the provisioner
-  # contract's, and the integration contract's it names, vendored beside them from the
-  # same commit under `integration/v1/`. Nothing is fetched.
+  # contract's, and the integration contract's it names, vendored beside them under
+  # `integration/v1/` from a later commit of the integrations. Between the two commits,
+  # the integration contract's schemas add definitions and change only the descriptions
+  # of the others, so the provisioner's references resolve to the same rules. Nothing is
+  # fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -105,12 +108,12 @@ defmodule Apiary.Dispatches.WireTest do
     "commit" => "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
   }
 
-  test "the vendored contract is the commit its ref names" do
+  test "the vendored contracts are the commits their refs name" do
     assert File.read!(Path.join(@contract, ".contract-ref")) ==
              "032b1c23c108218d44838927bc4f4ff7a2a7c34c\n"
 
     assert File.read!(Path.join(@vendored, "integration/v1/.contract-ref")) ==
-             "032b1c23c108218d44838927bc4f4ff7a2a7c34c\n"
+             "72d3e2233ef7d1f2cba95885512633abeeb04741\n"
   end
 
   test "every fixture is valid under its vendored schema, or invalid under it as its directory says" do

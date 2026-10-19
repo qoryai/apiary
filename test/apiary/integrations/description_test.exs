@@ -28,15 +28,16 @@ defmodule Apiary.Integrations.DescriptionTest do
       names = fixture_names("*.json")
 
       assert names ==
-               ~w(acme-chat.json acme-tracker.json example-projects.json example-tracker.json
-                  github.json unknown-role.json)
+               ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
+                  example-gateway.json example-projects.json example-tracker.json github.json
+                  unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 48
+      assert length(names) == 85
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -257,6 +258,139 @@ defmodule Apiary.Integrations.DescriptionTest do
                @fixtures |> Path.join("unknown-role.json") |> File.read!() |> Description.parse()
 
       assert description.roles == ["acme_role", "credential"]
+    end
+  end
+
+  # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
+  # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
+  @integrations_ref "72d3e2233ef7d1f2cba95885512633abeeb04741"
+  @vendored_sha256 %{
+    "priv/contract/integration/description.schema.json" =>
+      "f5d9f17c0d3eaab76835f5a5a7252b97d4c789445aa3243024987db74dbddb7a",
+    "priv/contract/integration/definitions.schema.json" =>
+      "dccf00468dc180a63a116b6fa823e04358b94d3b0b79678843f8f49ae9056e0b",
+    "priv/contract/integration/descriptions/anthropic.json" =>
+      "4144d460838262122a9692cc770ec723a73054323ed1905aaf6318bc6d4c08c1",
+    "priv/contract/integration/descriptions/claude-subscription.json" =>
+      "5f37264b346275be09fb5fcf7d70b40b6c237861571f3917504ce638e47f14e2",
+    "priv/contract/integration/descriptions/deepseek.json" =>
+      "f70abcc193da78d1af5da699f66060f9ec478165bf9dd2077f0dbe064156c080",
+    "priv/contract/integration/descriptions/litellm.json" =>
+      "b7e6c7986a3f8e951e2a57be814a91f284030391ea568e6d488fccf81da92d6b",
+    "priv/contract/integration/descriptions/openrouter.json" =>
+      "5461a0913683190c84784bdbc9d5942bfa9c29b93b6fc7e46e5330fde9dc23d3",
+    "test/fixtures/contract/integration/v1/changes.schema.json" =>
+      "20213633b1e66629e11b7406b386f0c85603196ae84677186d049329d16c8bf3",
+    "test/fixtures/contract/integration/v1/definitions.schema.json" =>
+      "dccf00468dc180a63a116b6fa823e04358b94d3b0b79678843f8f49ae9056e0b",
+    "test/fixtures/contract/integration/v1/refusal.schema.json" =>
+      "3290b901ceb26b3d52a08aa869e4bdb301d43ad73e383e991404ae060d9955b0"
+  }
+
+  @root Path.expand("../../..", __DIR__)
+  @descriptions Path.join(@root, "priv/contract/integration/descriptions")
+
+  defp vendored_description(name),
+    do: @descriptions |> Path.join(name <> ".json") |> File.read!() |> Jason.decode!()
+
+  describe "the files vendored from the integrations" do
+    test "are the bytes of the pinned commit" do
+      ref =
+        @root
+        |> Path.join(".integration-contract-ref")
+        |> File.read!()
+        |> String.split("\n", trim: true)
+        |> Enum.reject(&String.starts_with?(&1, "#"))
+
+      assert ref == [@integrations_ref]
+
+      assert File.read!(Path.join(@root, "test/fixtures/contract/integration/v1/.contract-ref")) ==
+               @integrations_ref <> "\n"
+
+      vendored =
+        for dir <- ["priv/contract/integration", "test/fixtures/contract/integration/v1"],
+            path <- Path.wildcard(Path.join([@root, dir, "**", "*.json"])),
+            do: Path.relative_to(path, @root)
+
+      assert Enum.sort(vendored) == Enum.sort(Map.keys(@vendored_sha256))
+
+      for {path, sha256} <- @vendored_sha256 do
+        bytes = File.read!(Path.join(@root, path))
+        assert Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == sha256, path
+      end
+    end
+  end
+
+  describe "a data description" do
+    test "each vendored description of a model provider is read" do
+      names =
+        @descriptions |> Path.join("*.json") |> Path.wildcard() |> Enum.map(&Path.basename/1)
+
+      assert names ==
+               ~w(anthropic.json claude-subscription.json deepseek.json litellm.json
+                  openrouter.json)
+
+      for name <- names do
+        assert {:ok, description} =
+                 @descriptions |> Path.join(name) |> File.read!() |> Description.parse(),
+               name
+
+        assert description.name == Path.rootname(name)
+        assert description.program_version == nil, name
+        assert description.roles == ["model_provider"], name
+        assert description.secrets == [], name
+      end
+    end
+
+    test "is refused with a key variable the schema refuses" do
+      assert {:error, {:description_invalid, [{:schema, summary}]}} =
+               parse_fixture("invalid/description-model-provider-key-variables-lower-case.json")
+
+      assert %{kind: :pattern, instanceLocation: "#/roles/model_provider/key_variables/0"} in summary.errors
+
+      anthropic = vendored_description("anthropic")
+
+      for variables <- [[], List.duplicate("ANTHROPIC_API_KEY", 2), ["1KEY"]] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 anthropic
+                 |> put_in(["roles", "model_provider", "key_variables"], variables)
+                 |> encode()
+                 |> Description.parse(),
+               inspect(variables)
+      end
+    end
+
+    test "is refused with an egress host that is a local name" do
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               parse_fixture("invalid/description-egress-hosts-localhost.json")
+
+      anthropic = vendored_description("anthropic")
+
+      for host <- ["localhost", "api.localhost", "127.0.0.1", "169.254.169.254", "intranet"] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 anthropic |> Map.put("egress_hosts", [host]) |> encode() |> Description.parse(),
+               host
+      end
+    end
+
+    test "is refused with a role that has a program, or with a program member" do
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               parse_fixture("invalid/description-data-source.json")
+
+      {:ok, tracker} = parse_fixture("example-tracker.json")
+      anthropic = vendored_description("anthropic")
+
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               anthropic
+               |> put_in(["roles", "source"], tracker.document["roles"]["source"])
+               |> encode()
+               |> Description.parse()
+
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               anthropic
+               |> Map.put("program", "qory-anthropic")
+               |> encode()
+               |> Description.parse()
     end
   end
 
