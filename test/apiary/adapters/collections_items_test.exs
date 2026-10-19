@@ -122,9 +122,9 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
 
   defp tickets(ctx), do: Enum.map(Backlog.list_tickets(ctx.scope, %{}).rows, & &1.title)
 
-  defp repositories(ctx),
+  defp collections(ctx),
     do:
-      ctx.scope |> Backlog.filter_values(:repository, nil) |> Enum.map(& &1.label) |> Enum.sort()
+      ctx.scope |> Backlog.filter_values(:collection, nil) |> Enum.map(& &1.label) |> Enum.sort()
 
   describe "a source that reports no items" do
     setup ctx, do: %{adapter: describe_source(ctx.adapter, "example-projects.json")}
@@ -219,7 +219,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
                {:error, :not_linked}
 
       assert tickets(ctx) == ["Title of A"]
-      assert repositories(ctx) == ["API"]
+      assert collections(ctx) == ["API"]
       assert Collections.backlog_switch(ctx.scope, shop_target) == nil
       assert Backlog.backlog_facts(ctx.scope).linked_collections == 1
 
@@ -238,7 +238,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
       refute refused?(ctx, "SHOP")
       assert Collections.backlog_switch(ctx.scope, shop_target) == %{on: true, item_noun: nil}
       assert Enum.sort(tickets(ctx)) == ["Title of A", "Title of R"]
-      assert repositories(ctx) == ["API", "SHOP"]
+      assert collections(ctx) == ["API", "SHOP"]
     end
 
     test "with its switch off, it flips both ways with no entry, and the switch stays off",
