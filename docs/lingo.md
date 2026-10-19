@@ -57,7 +57,7 @@ This is done with Gettext, not with a list of word swaps:
 | Engine (msgid) | Software domain (`en@software`) |
 |---|---|
 | target, targets | repository, repositories |
-| collection, collections | repository, repositories |
+| collection, collections | same, except "Turned on/off taking a repository's %{items}…" |
 | system, systems | forge, forges |
 | change request | pull request |
 | apply, applied | merge, merged |
