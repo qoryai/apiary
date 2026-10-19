@@ -13,10 +13,11 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # workspaces, how many of them are assigned to none, when any is. Its name, and its
   # chevron, lead to its page (`ApiaryWeb.AdapterLive.Show`); one not installed offers Add
   # to whoever may connect one (`adapter.connect`, owners and admins), which leads to Add
-  # an integration. Under the table, what an integration installed here does, and, for
-  # whoever may not connect one, who does: with several workspaces, who assigns their
-  # collections too. Those words for the collections are the adapters', when they all
-  # name the same.
+  # an integration. With no adapter in the instance, an empty state takes the table's
+  # place: "No integration yet", and that an instance admin adds them. Under the table or
+  # the empty state, what an integration installed here does, and, for whoever may not
+  # connect one, who does: with several workspaces, who assigns their collections too.
+  # Those words for the collections are the adapters', when they all name the same.
   #
   # Add an integration is for whoever may connect one (`adapter.connect`); to anyone else
   # it is a path that does not exist. Each adapter not installed is a block
@@ -152,7 +153,22 @@ defmodule ApiaryWeb.AdapterLive.Index do
           )}
         </:subtitle>
 
+        <.empty_state
+          :if={@rows == []}
+          icon={nil}
+          tone="neutral"
+          title={gettext("No integration yet")}
+        >
+          <p id="integrations-none">
+            {gettext(
+              "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added.",
+              organisation: @current_scope.organisation.name
+            )}
+          </p>
+        </.empty_state>
+
         <.table
+          :if={@rows != []}
           id="integrations"
           label={gettext("Integrations")}
           rows={@rows}
