@@ -14,10 +14,14 @@ defmodule Apiary.PublicId do
   # Crockford base32 without the ambiguous letters i, l, o, u.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"
 
+  # The module that gives the 10 random bytes: `:crypto`. Only the test configuration
+  # names another, to make an id collide (`config/test.exs`).
+  @random Application.compile_env(:apiary, [__MODULE__, :random], :crypto)
+
   @doc "generate/1 is a fresh id with `prefix`: `prefix`, `_`, 16 random characters."
   @spec generate(String.t()) :: String.t()
   def generate(prefix) when is_binary(prefix) do
-    random = :crypto.strong_rand_bytes(10)
+    random = @random.strong_rand_bytes(10)
     prefix <> "_" <> for(<<chunk::5 <- random>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
   end
 

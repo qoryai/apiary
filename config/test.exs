@@ -133,3 +133,7 @@ config :apiary, Apiary.Integrations.Fetch,
 # An adapter's read of its change feed answers at once when the feed holds nothing new;
 # the test of the hold sets the hold it needs.
 config :apiary, ApiaryWeb.Contract.ChangesController, hold: 0
+
+# The random bytes of a public id come from a queue a test can fill, to make an id collide
+# (`Apiary.PublicIdSource`, in test/support).
+config :apiary, Apiary.PublicId, random: Apiary.PublicIdSource
