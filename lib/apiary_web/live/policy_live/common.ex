@@ -1685,7 +1685,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
           id: change.id,
           sentence: change_sentence(change, who, above, scope.user.email),
           origin: origin(change, made),
-          who: who,
           at: change.inserted_at,
           version: made && made.version,
           digest: made && made.digest,

@@ -1737,6 +1737,20 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-list") =~
                "#{String.upcase(String.first(user.email))} #{user.email} (you) switched the workspace's default mode from observe to enforce"
 
+      # One letter a row: the sentence's subject, with no letter column beside it.
+      summaries =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#history-list details > summary")
+
+      assert Enum.count(summaries) == 4
+
+      for summary <- summaries do
+        assert summary |> LazyHTML.query("abbr[data-tip]") |> Enum.count() == 1
+        assert summary |> LazyHTML.query(".avatar") |> Enum.count() == 0
+      end
+
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"
       assert text(view, "#history-list") =~ "locked registry.example"

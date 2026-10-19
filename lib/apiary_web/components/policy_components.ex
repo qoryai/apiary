@@ -2087,8 +2087,8 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The changes of a page of history, grouped by day, newest first. A change row is a
   native `<details>`; opening one patches `?change=`, and the page computes its diff.
-  `changes` are maps: `id`, `sentence` (rich), `origin` (a faint second line or nil),
-  `who`, `at`, `version`, `digest`, `navigate` (the version page), `workspace` (a change
+  `changes` are maps: `id`, `sentence` (rich, its subject the author's letter), `origin`
+  (a faint second line or nil), `at`, `version`, `digest`, `navigate` (the version page), `workspace` (a change
   of the workspace shown in a target's history), `patch`, `close`.
   """
   attr :id, :string, required: true
@@ -2135,7 +2135,6 @@ defmodule ApiaryWeb.PolicyComponents do
         phx-click={JS.patch(if @open, do: @change.close, else: @change.patch)}
       >
         <.icon name="hero-chevron-right-micro" class="q-chg-chev size-3" />
-        <.avatar name={@change.who} />
         <span class="q-chg-say">
           <.rich text={@change.sentence} />
           <small :if={@change.origin}>{@change.origin}</small>

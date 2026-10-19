@@ -344,8 +344,9 @@ defmodule ApiaryWeb.PolicyLive.Views do
               aria-current={entry_current(@v, item)}
             >
               <span class="q-vlist-v">v{item.version}</span>
-              <span class="min-w-0 truncate">
-                {item.words}
+              <%!-- Only the words are cut: a cut would clip the letter's tooltip. --%>
+              <span class="min-w-0">
+                <span class="block truncate">{item.words}</span>
                 <small class="block">
                   <.avatar
                     :if={item.who}

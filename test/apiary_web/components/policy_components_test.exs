@@ -31,7 +31,6 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         id: id,
         sentence: "Changed",
         origin: nil,
-        who: "dana",
         at: at,
         version: nil,
         digest: nil,

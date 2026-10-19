@@ -850,6 +850,13 @@
     opacity: 1;
     transition-delay: 0ms;
   }
+  /* A tip inside a link or a row that opens has no tab stop, since a control may not hold
+     another (`avatar/1`'s `in_link`): it opens when that link or row has keyboard focus. */
+  :where(:is(a, summary):focus-visible .tooltip)[data-tip]::before {
+    display: block;
+    opacity: 1;
+    transition-delay: 0ms;
+  }
   :where(.tooltip)[data-tip][data-tip-hidden]::before {
     display: none;
     transition: none;
@@ -7969,7 +7976,7 @@
   }
   .q-chg > summary {
     display: grid;
-    grid-template-columns: 12px 24px minmax(0, 1fr) auto auto;
+    grid-template-columns: 12px minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 10px;
     min-height: 44px;
@@ -8265,15 +8272,15 @@
       grid-row: 2;
     }
     .q-chg > summary {
-      grid-template-columns: 12px 24px minmax(0, 1fr);
+      grid-template-columns: 12px minmax(0, 1fr);
       row-gap: 3px;
     }
     .q-chg-when {
-      grid-column: 3;
+      grid-column: 2;
       font-size: 0.75rem;
     }
     .q-chg-v {
-      grid-column: 3;
+      grid-column: 2;
       min-width: 0;
       justify-self: start;
     }
