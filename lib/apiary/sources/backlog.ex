@@ -54,6 +54,7 @@ defmodule Apiary.Sources.Backlog do
   alias Apiary.{Access, Adapters, Organisations, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Adapters.{Collection, Collections, Connection}
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Filters
@@ -1110,8 +1111,10 @@ defmodule Apiary.Sources.Backlog do
   #   * `linked`, the first 5 linked collections, by their integration's name, then their
   #     title, each with how many tickets of the Backlog are open in it (`t:linked/0`);
   #   * `open_tickets`, how many tickets the Backlog holds open at their source, whatever
-  #     their work item; `take_in?`, whether an open ticket of the Open view has a target,
-  #     the ticket's, else its collection's, which Take in needs;
+  #     their work item; `take_in?`, whether Take in may take an open ticket of the Open
+  #     view: any, where the workspace's domain needs no target
+  #     (`Apiary.Lingo.Domain.target_required?/1`), else one with a target, the ticket's,
+  #     else its collection's;
   #   * `offered`, the instance's adapters with items that no connected connection of the
   #     organisation goes through, by name (`t:offered/0`), as
   #     `Apiary.Adapters.list_adapters/1` gives them to the person;
@@ -1132,7 +1135,7 @@ defmodule Apiary.Sources.Backlog do
   @spec backlog_facts(Scope.t()) :: facts
   def backlog_facts(%Scope{} = scope) do
     case workspace(scope) do
-      {:ok, organisation_id, %Workspace{id: workspace_id}} ->
+      {:ok, organisation_id, %Workspace{id: workspace_id} = workspace} ->
         connections = connected(organisation_id)
         sources = sources(scope, connections, assigned_here(organisation_id, workspace_id))
         linked = linked(organisation_id, workspace_id)
@@ -1150,7 +1153,7 @@ defmodule Apiary.Sources.Backlog do
           collection_nouns: assigned_nouns(sources),
           linked: linked,
           open_tickets: open_tickets(organisation_id, workspace_id),
-          take_in?: take_in?(organisation_id, workspace_id),
+          take_in?: take_in?(organisation_id, workspace),
           offered: offered(scope, connections),
           may: may,
           ask: ask(scope, may)
@@ -1337,17 +1340,22 @@ defmodule Apiary.Sources.Backlog do
     |> Repo.one()
   end
 
-  # Whether a ticket of the Open view has a target, its own, else its collection's, as
-  # Take in reads it (`Apiary.WorkItems.Moves`).
-  defp take_in?(organisation_id, workspace_id) do
-    organisation_id
-    |> backlog(workspace_id)
-    |> view(:open)
-    |> where(
-      [item: i, collection: c],
-      not is_nil(i.target_system) or not is_nil(c.target_system)
-    )
-    |> Repo.exists?()
+  # Whether Take in may take a ticket of the Open view: any, where the workspace's domain
+  # needs no target, else one with a target, its own, else its collection's, as Take in
+  # reads it (`Apiary.WorkItems.Moves`).
+  defp take_in?(organisation_id, %Workspace{id: workspace_id} = workspace) do
+    open = organisation_id |> backlog(workspace_id) |> view(:open)
+
+    if Domain.target_required?(workspace) do
+      open
+      |> where(
+        [item: i, collection: c],
+        not is_nil(i.target_system) or not is_nil(c.target_system)
+      )
+      |> Repo.exists?()
+    else
+      Repo.exists?(open)
+    end
   end
 
   # The instance's adapters with items that no connected connection of the organisation

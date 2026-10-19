@@ -1892,6 +1892,18 @@ defmodule Apiary.Sources.BacklogTest do
       assert Backlog.backlog_facts(ctx.scope).take_in?
     end
 
+    test "Take in: any ticket of Open, where the workspace's domain needs no target", ctx do
+      scope = with_domain(ctx.scope, "general")
+      refute Backlog.backlog_facts(scope).take_in?
+
+      item = ticket(ctx.collection)
+      assert Backlog.backlog_facts(scope).take_in?
+      refute Backlog.backlog_facts(ctx.scope |> with_domain("software")).take_in?
+
+      item |> Ecto.Changeset.change(state: :closed) |> Repo.update!()
+      refute Backlog.backlog_facts(scope).take_in?
+    end
+
     test "offer the instance's adapters with items the organisation is not connected through",
          ctx do
       declare(ctx.connection, "Connected", nil, nil)

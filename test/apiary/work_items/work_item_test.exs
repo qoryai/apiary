@@ -231,9 +231,20 @@ defmodule Apiary.WorkItems.WorkItemTest do
         end)
       end
 
+      # Both or neither: a work item of a domain that needs no target may have none.
       for column <- ~w(target_system target_path) do
-        refused(column, fn -> update!("work_items", item.id, "#{column} = NULL") end)
+        refused("work_items_target_pair_check", fn ->
+          update!("work_items", item.id, "#{column} = NULL")
+        end)
       end
+
+      assert %{num_rows: 1} =
+               update!("work_items", item.id, "target_system = NULL, target_path = NULL")
+
+      update!("work_items", item.id, "target_system = $2, target_path = $3", [
+        "forge.example.com",
+        "acme/shop"
+      ])
 
       for {column, value} <- [
             {"target_system", String.duplicate("a", 253)},
@@ -245,26 +256,24 @@ defmodule Apiary.WorkItems.WorkItemTest do
       end
     end
 
-    test "a target's system has no empty label, and no segment of its path starts with a dash",
+    test "a target's system has no empty label; a path's segments are the domain's to check",
          ctx do
       %{work_item: item} = ctx
 
-      for {column, value} <- [
-            {"target_system", "forge..example.com"},
-            {"target_system", ".example.com"},
-            {"target_system", "forge.example.com."},
-            {"target_path", "-acme/shop"},
-            {"target_path", "acme/-rf"}
-          ] do
+      for value <- ["forge..example.com", ".example.com", "forge.example.com."] do
         refused("work_items_target_shape_check", fn ->
-          update!("work_items", item.id, "#{column} = $2", [value])
+          update!("work_items", item.id, "target_system = $2", [value])
         end)
       end
 
+      # A segment led by a dash breaks the software domain's rule, which Take in checks
+      # in code; the database holds it in no domain.
       for {column, value} <- [
             {"target_system", "git.forge-1.example"},
             {"target_path", "acme/a-b"},
             {"target_path", "a-cme/shop"},
+            {"target_path", "-acme/shop"},
+            {"target_path", "acme/-rf"},
             {"target_path", "p"}
           ] do
         assert %{num_rows: 1} = update!("work_items", item.id, "#{column} = $2", [value])
@@ -686,6 +695,21 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert Apiary.PublicId.valid?("wi", get_change(changeset, :public_id))
       assert get_change(changeset, :take_in) == 1
       assert get_field(changeset, :first_instruction) == ""
+    end
+
+    test "takes a target's system and path both or neither", ctx do
+      assert %{target_path: ["can't be blank"]} =
+               errors_on(WorkItem.take_in_changeset(%WorkItem{}, snapshot(%{target_path: nil})))
+
+      assert %{target_system: ["can't be blank"]} =
+               errors_on(WorkItem.take_in_changeset(%WorkItem{}, snapshot(%{target_system: nil})))
+
+      assert {:ok, %WorkItem{target_system: nil, target_path: nil}} =
+               new_work_item(ctx.scope)
+               |> WorkItem.take_in_changeset(
+                 fresh_snapshot(ctx, %{target_system: nil, target_path: nil})
+               )
+               |> Repo.insert()
     end
 
     test "counts code points, as the database does, not graphemes" do
