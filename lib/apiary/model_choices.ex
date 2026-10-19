@@ -1,7 +1,7 @@
 defmodule Apiary.ModelChoices do
   # The model choices of an organisation: which model provider, key, model, effort and tier
-  # map its runs use (`Apiary.ModelChoices.ModelChoice`), set at levels 2 to 6 here and
-  # resolved for each run by `Apiary.ModelChoices.Resolution`.
+  # map its runs use (`Apiary.ModelChoices.ModelChoice`, `Apiary.ModelChoices.TakeInChoice`),
+  # set at six levels and resolved for each run by `Apiary.ModelChoices.Resolution`.
   #
   # ## Places
   #
@@ -12,20 +12,22 @@ defmodule Apiary.ModelChoices do
   #   * a target of the scope's workspace (`Apiary.Runs.Target`, level 3), or
   #     `{target, run_kind}` (level 2).
   #
-  # A run kind is a step of the queue that runs a model: `run_kinds/0`.
+  # Level 1 is the choice a person sends with a take in (`Apiary.WorkItems.take_in/3`,
+  # `model_choice`). A run kind is a step of the queue that runs a model: `run_kinds/0`.
   #
   # ## Who
   #
   # Levels 2 to 5 are written under `model_choice.write`, asked of the workspace or the
-  # target; level 6 under `connection.write`, asked of the organisation. Reading is
-  # `connection.read`.
+  # target; level 6 under `connection.write`, asked of the organisation; level 1 by the
+  # person who takes the work item in (`work_item.take_in`). Reading is `connection.read`.
   # Every write leaves one entry in its transaction, about the choice, of the action it was
   # asked under: `details.change` is `choice_set`, `choice_changed`, `choice_locked`,
   # `choice_unlocked` or `choice_removed`, with the `level`, the `run_kind`, the target's
   # `target_id`, and `name`, the place's name.
   #
   # Everything here needs the features `factory` and `secrets`, shown to the scope: with
-  # either off, every function answers `{:error, :not_found}`.
+  # either off, every function answers `{:error, :not_found}`, and a take in stores no
+  # choice.
   #
   # ## Refused on save
   #
@@ -44,8 +46,10 @@ defmodule Apiary.ModelChoices do
   # policy is asked of it: a run whose workspace the default's provider does not reach is
   # ended at its handover.
   #
-  # Only the organisation's chain is written here; an edition writes the operator's chain
-  # (`c:Apiary.Edition.model_choice_chain/1`).
+  # A take in's choice is also refused while a choice of the workspace is locked, with the
+  # workspace's name; and, where the organisation runs on an operator's chain
+  # (`c:Apiary.Edition.model_choice_chain/1`), any choice at all, `:forbidden`. Only the
+  # organisation's chain is written here; an edition writes the operator's chain.
   #
   # ## Locks
   #
@@ -54,9 +58,10 @@ defmodule Apiary.ModelChoices do
   # `FOR SHARE`, then the provider's row `FOR SHARE`, then the choice's row `FOR UPDATE`.
   # A write of level 6 takes the organisation's rows and the membership, then the
   # organisation's integrations lock (`Apiary.Connections.lock/1`), then the provider's
-  # row and the choice's row. A provider's change takes the provider's row `FOR UPDATE`, so
-  # a save and a change of the same provider take turns, and each sees what the other
-  # wrote.
+  # row and the choice's row. A take in takes the provider's row `FOR KEY SHARE`, then the
+  # row of its keys' secret `FOR SHARE`, after the work item's counter. A provider's change
+  # takes the provider's row `FOR UPDATE`, so a save and a change of the same provider take
+  # turns, and each sees what the other wrote.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -68,11 +73,12 @@ defmodule Apiary.ModelChoices do
   alias Apiary.Accounts.Scope
   alias Apiary.Connections.{Connection, ConnectionWorkspace, ProviderModel}
   alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtimes}
-  alias Apiary.ModelChoices.{ModelChoice, Resolution}
+  alias Apiary.ModelChoices.{ModelChoice, Resolution, TakeInChoice}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Policy.{Entry, Grammar}
   alias Apiary.Runs.Target
-  alias Apiary.Secrets.Value
+  alias Apiary.Secrets.{Secret, Value}
+  alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Format
 
   # The steps of the queue whose runs use a model.
@@ -138,27 +144,37 @@ defmodule Apiary.ModelChoices do
   end
 
   @doc false
-  # resolve/3 is what the choices come to for the runs of `run_kind` at `holder`, the
+  # resolve/4 is what the choices come to for the runs of `run_kind` at `holder`, the
   # scope's workspace or a target of it, as `Apiary.ModelChoices.Resolution.resolve/1`
-  # answers, with no take in's choice: `{:ok, {:ok, resolution}}`, `{:ok, :none}` or
-  # `{:ok, {:error, :provider_removed}}`, for a reader who may `connection.read`; else
-  # `{:error, reason}`.
-  @spec resolve(Scope.t(), :workspace | Target.t(), String.t()) ::
+  # answers: `{:ok, {:ok, resolution}}`, `{:ok, :none}` or `{:ok, {:error, :provider_removed}}`,
+  # for a reader who may `connection.read`; else `{:error, reason}`. `take_in` is the
+  # choice of the take in the runs belong to (`take_in_choice/2`), level 1, or nil.
+  @spec resolve(Scope.t(), :workspace | Target.t(), String.t(), TakeInChoice.t() | nil) ::
           {:ok, {:ok, Resolution.t()} | :none | {:error, :provider_removed}}
           | {:error, Access.reason()}
-  def resolve(%Scope{workspace: %Workspace{} = workspace} = scope, holder, run_kind) do
+  def resolve(scope, holder, run_kind, take_in \\ nil)
+
+  def resolve(%Scope{workspace: %Workspace{} = workspace} = scope, holder, run_kind, take_in) do
     with :ok <- shown(scope),
          {:ok, _organisation} <- may_read(scope),
          true <- run_kind in @run_kinds,
          {:ok, target} <- target(scope, holder) do
-      {:ok, Resolution.resolve(input(workspace, target, run_kind, nil))}
+      {:ok, Resolution.resolve(input(workspace, target, run_kind, take_in))}
     else
       false -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  def resolve(%Scope{}, _holder, _run_kind), do: {:error, :not_found}
+  def resolve(%Scope{}, _holder, _run_kind, _take_in), do: {:error, :not_found}
+
+  @doc false
+  # take_in_choice/2 is the choice sent with the take in `take_in` of the work item
+  # `work_item_id`, level 1: the row, or nil for a take in that sent none. Read without a
+  # lock.
+  @spec take_in_choice(Ecto.UUID.t(), pos_integer) :: TakeInChoice.t() | nil
+  def take_in_choice(work_item_id, take_in),
+    do: Repo.get_by(TakeInChoice, work_item_id: work_item_id, take_in: take_in)
 
   # What a resolution reads for the runs of `run_kind` of `workspace` at `target`, nil for
   # none, with the take in's choice `take_in`: the choices of the organisation's chain
@@ -491,6 +507,122 @@ defmodule Apiary.ModelChoices do
 
   defp target_name(%Target{system: system, path: path}), do: "#{system}/#{path}"
 
+  ## A take in's choice
+
+  @doc false
+  # take_in_input/2 is the choice `params` sends with a take in of the scope's workspace,
+  # checked as far as a check without a lock and without the work item's target goes:
+  # `{:ok, nil}` for none, or where the features are not shown to the scope;
+  # `{:ok, changeset}`; or `{:error, {:model_choice, refusal}}`. The take in's
+  # transaction stores it with `store_take_in/4`, which checks it again.
+  @spec take_in_input(Scope.t(), term) ::
+          {:ok, Ecto.Changeset.t() | nil}
+          | {:error, {:model_choice, :forbidden | Ecto.Changeset.t()}}
+  def take_in_input(%Scope{workspace: %Workspace{} = workspace} = scope, params) do
+    if shown(scope) == :ok and not blank?(params) do
+      at = take_in_place(scope, workspace)
+      changeset = input(params, at)
+
+      with :ok <- organisation_chain(workspace),
+           {:ok, provider} <- hold_provider(changeset, scope.organisation, nil),
+           {:ok, _values} <- checked(changeset, provider, %{at | deny: false}) do
+        {:ok, changeset}
+      else
+        {:error, refusal} -> {:error, {:model_choice, refusal}}
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
+  def take_in_input(%Scope{}, _params), do: {:ok, nil}
+
+  @doc false
+  # store_take_in/4 stores `input`, a choice `take_in_input/2` gave, as the choice of the
+  # take in `take_in` of `work_item`, inside the take in's transaction and after the work
+  # item's counter: the provider's row `FOR KEY SHARE`, then its keys' secret
+  # `FOR SHARE`, every check again, the deny rules of the work item's target included,
+  # then the row. `:ok`, or `{:error, {:model_choice, refusal}}`.
+  @spec store_take_in(Scope.t(), WorkItem.t(), pos_integer, Ecto.Changeset.t() | nil) ::
+          :ok | {:error, {:model_choice, :forbidden | Ecto.Changeset.t()}}
+  def store_take_in(_scope, _work_item, _take_in, nil), do: :ok
+
+  def store_take_in(%Scope{} = scope, %WorkItem{} = work_item, take_in, changeset) do
+    workspace = scope.workspace
+    at = %{take_in_place(scope, workspace) | target: work_item_target(work_item)}
+
+    with :ok <- organisation_chain(workspace),
+         {:ok, provider} <- hold_provider(changeset, scope.organisation, "FOR KEY SHARE"),
+         :ok <- hold_keys(provider),
+         {:ok, values} <- checked(changeset, provider, at),
+         {:ok, _row} <-
+           Repo.insert(%TakeInChoice{
+             organisation_id: work_item.organisation_id,
+             workspace_id: work_item.workspace_id,
+             work_item_id: work_item.id,
+             take_in: take_in,
+             provider_chosen: not is_nil(provider),
+             connection_id: provider && provider.id,
+             value_id: values.value_id,
+             model_id: values.model_id,
+             effort: values.effort,
+             tiers: values.tiers,
+             created_by_id: scope.user && scope.user.id
+           }) do
+      :ok
+    else
+      {:error, %Ecto.Changeset{} = refused} -> {:error, {:model_choice, refused}}
+      {:error, refusal} -> {:error, {:model_choice, refusal}}
+    end
+  end
+
+  defp take_in_place(scope, workspace),
+    do: %{
+      level: 1,
+      organisation: scope.organisation,
+      workspace: workspace,
+      target: nil,
+      run_kind: nil,
+      deny: true,
+      scope: scope
+    }
+
+  # The target of the work item's workspace that the work item's target labels name; nil
+  # for none, as a work item with no target, or one whose target no run has named yet,
+  # has.
+  defp work_item_target(%WorkItem{target_system: system, target_path: path} = work_item)
+       when is_binary(system) and is_binary(path) do
+    Repo.one(
+      from t in Target,
+        where:
+          t.workspace_id == ^work_item.workspace_id and t.system == ^system and t.path == ^path
+    )
+  end
+
+  defp work_item_target(%WorkItem{}), do: nil
+
+  # A take in that sends no choice: no map, or one whose every value is empty.
+  defp blank?(%{} = params),
+    do: Enum.all?(params, fn {_key, value} -> value in [nil, "", %{}] end)
+
+  defp blank?(_params), do: true
+
+  # A take in's choice holds only in the organisation's chain: an operator's chain is
+  # the whole chain of its client.
+  defp organisation_chain(%Workspace{organisation_id: id}) do
+    if Edition.model_choice_chain(id) == "organisation",
+      do: :ok,
+      else: {:error, :forbidden}
+  end
+
+  # The row of the keys' secret of `provider`, `FOR SHARE`, so no key goes meanwhile.
+  defp hold_keys(nil), do: :ok
+
+  defp hold_keys(%Connection{secret_id: secret_id}) do
+    Repo.one(from s in Secret, where: s.id == ^secret_id, lock: "FOR SHARE", select: s.id)
+    :ok
+  end
+
   ## The checks
 
   # The changeset of what `attrs` sends for a choice at `at`: the formats, and what goes
@@ -654,6 +786,9 @@ defmodule Apiary.ModelChoices do
       |> check_model(provider)
       |> check_tiers(provider)
 
+    changeset =
+      if changeset.valid? and at.level == 1, do: check_unlocked(changeset, at), else: changeset
+
     if changeset.valid? do
       {:ok,
        %{
@@ -744,8 +879,10 @@ defmodule Apiary.ModelChoices do
        ), runtime: runtime.title, provider: name}
 
   # Whether a deny rule in force at the place, its workspace's or its target's, covers a
-  # host the provider's runs reach. The organisation's default has no workspace to ask.
+  # host the provider's runs reach. The organisation's default has no workspace to ask;
+  # a take in's first check, before its transaction, has no target yet.
   defp not_denied(_provider, _description, %{workspace: nil}), do: :ok
+  defp not_denied(_provider, _description, %{deny: false}), do: :ok
 
   defp not_denied(%Connection{} = provider, %Provider{} = description, at) do
     effective = Policy.effective(%{at.scope | workspace: at.workspace}, at.target)
@@ -892,6 +1029,30 @@ defmodule Apiary.ModelChoices do
 
   defp effort_bindings(%ProviderModel{model_id: model_id, effort: effort}),
     do: [model: model_id, values: Enum.join(effort || [], ", ")]
+
+  # A take in's choice while a choice of the workspace is locked.
+  defp check_unlocked(changeset, %{workspace: %Workspace{} = workspace}) do
+    locked =
+      Repo.exists?(
+        from c in ModelChoice,
+          where:
+            c.organisation_id == ^workspace.organisation_id and c.chain == "organisation" and
+              c.workspace_id == ^workspace.id and is_nil(c.target_id) and c.locked
+      )
+
+    if locked,
+      do:
+        add_error(
+          changeset,
+          :provider,
+          dgettext_noop(
+            "errors",
+            "Leave the model choice empty. %{workspace}'s model choice is locked, and every run in the workspace uses it."
+          ),
+          workspace: workspace.name
+        ),
+      else: changeset
+  end
 
   ## What uses a provider
 

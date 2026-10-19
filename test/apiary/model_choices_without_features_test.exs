@@ -6,9 +6,10 @@ defmodule Apiary.ModelChoicesWithoutFeaturesTest do
 
   import Apiary.ConnectionsFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, ModelChoices}
-  alias Apiary.ModelChoices.ModelChoice
+  alias Apiary.{Connections, ModelChoices, WorkItems}
+  alias Apiary.ModelChoices.{ModelChoice, TakeInChoice}
 
   # Choices written while every feature was on, then the features switched.
   defp written!(scope, target, features) do
@@ -60,5 +61,23 @@ defmodule Apiary.ModelChoicesWithoutFeaturesTest do
       assert Repo.aggregate(ModelChoice, :count) == 1
       assert Repo.get_by!(ModelChoice, workspace_id: scope.workspace.id).locked
     end
+  end
+
+  # With `factory` off a take in is not there at all; with `secrets` off it goes on and
+  # stores no choice.
+  @tag with_features: [:observability, :security, :factory]
+  test "without secrets, a take in that sends a choice stores none" do
+    %{scope: scope} = sign_up_fixture()
+    target = target!(scope, "acme/shop")
+    ticket = backlog_ticket_fixture(scope)
+    {provider, _target} = written!(scope, target, Apiary.Features.enabled())
+
+    assert {:ok, work_item} =
+             WorkItems.take_in(scope, ticket.public_id, %{
+               model_choice: %{provider: provider.public_id, model: "claude-sonnet-5-5"}
+             })
+
+    assert ModelChoices.take_in_choice(work_item.id, 1) == nil
+    assert Repo.aggregate(TakeInChoice, :count) == 0
   end
 end
