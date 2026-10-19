@@ -122,7 +122,7 @@ and its machines run under the policy of their `forager.yaml`, as the contract h
 for a server with no policy. So an upgrade, or a workspace nobody has looked at, never
 replaces a machine's local enforcement with an empty policy. A workspace has a policy once
 somebody makes it, by the first rule or the first change of mode, in the workspace or in
-any one repository: the first change anywhere starts serving every repository of the
+any one target: the first change anywhere starts serving every target of the
 workspace, the others the workspace's baseline. From that change the answers to a run's
 batches carry `X-Qory-Run-Configuration`: a run in flight that was registered with no
 policy holds another digest, reloads its run configuration and applies it, narrowed by the
@@ -172,7 +172,7 @@ Every answer after the `401` is signed.
 
 Every `202`, and the `410` of a run whose events were pruned, carries the digests in force: `X-Qory-Configuration`, the digest the
 workspace's discovery answer carries, and, for a workspace whose policy somebody has made,
-`X-Qory-Run-Configuration`, the digest of the run configuration for the repository the
+`X-Qory-Run-Configuration`, the digest of the run configuration for the target the
 run registered with, composed for the run as its reload is (The image, under The run
 endpoint) (see "Assumed" for a run that did not register). A workspace nobody has
 given a policy is never answered the second. No other status carries it. No error body
@@ -527,7 +527,7 @@ time, a pool up to its limit, and an instance counts while one of its runs is al
 registrations of one run
 at once store it once: the other is a repeat when its bytes and key are the first's, and
 `run_id_used` otherwise. A repeat whose run configuration is no longer stored, because its
-repository was deleted, is given the configuration in force now for its labels. An
+target was deleted, is given the configuration in force now for its labels. An
 exception while the registration is read or stored is logged as "a registration could not
 be stored: <Module>", the exception's module and nothing of the request; a `503` because
 the run configuration could not be read logs nothing.
@@ -569,15 +569,15 @@ before it consults `allow` or the mode:
 
 The body is the bytes that were stored when the policy was last changed; nothing is rendered
 for a request, so the digest is of exactly what is sent. It is the configuration of the
-key's workspace for the repository the registration's labels name, by the workspace's
+key's workspace for the target the registration's labels name, by the workspace's
 domain (`Apiary.Lingo.Domain`), whose software domain reads `forge` and `repository`. A
-repository the workspace has not seen, one with neither rules nor a mode override, and
+target the workspace has not seen, one with neither rules nor a mode override, and
 labels that name none (or one label of the two) get the workspace's baseline.
-`egress.mode` is the workspace's, unless the repository overrides it, with `observe` or
-`enforce`; a repository that does not follows the workspace, later changes of the
-workspace's mode included, and a repository the workspace has not seen gets the
+`egress.mode` is the workspace's, unless the target overrides it, with `observe` or
+`enforce`; a target that does not follows the workspace, later changes of the
+workspace's mode included, and a target the workspace has not seen gets the
 workspace's. The rules resolve the same under either mode: a locked rule of the workspace
-holds in a repository's document whatever its mode, and a deny holds in either mode, since
+holds in a target's document whatever its mode, and a deny holds in either mode, since
 `egress.deny` is decided first: under `observe` the gateway denies what `deny` names and
 nothing else, and `allow` says what `enforce` would reach. `about` never selects a policy:
 the policy is chosen by the registration's labels alone.
@@ -588,9 +588,9 @@ run configuration: a registration is answered `{"version":1}`, the document of n
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
 **The image.** A run of a workspace's queue that is not a prebuild (A run of the queue,
-above) is given the image the node pool that claimed it recorded for the run's repository,
+above) is given the image the node pool that claimed it recorded for the run's target,
 the one its registration's labels name (`Apiary.Environments.image_for/2`): the newest
-build of the pool that is not retired and was built for that repository; with none, no
+build of the pool that is not retired and was built for that target; with none, no
 image, and the run starts in the pool's default. The image is chosen once, at the attach,
 and kept on the run (`runs.configured_image`). The run's configuration is then composed
 for it (`Apiary.Policy.ComposedConfiguration`), `image` beside `security_policy` and never
@@ -1133,18 +1133,18 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   answer to a registration but `200` is no run, a `5xx` or a `429` once its tries are
   spent, and any answer to a reload but `200` a reload that failed. The `ETag` is there
   for a person with `curl`.
-- A `forge` or a `repository` label names a repository when it is a string of valid UTF-8,
-  not empty, at most 256 bytes, with no control character: C0, DEL, C1 (U+0085 among them),
+- A label that names a target (`forge` or `repository` in the software domain) names one
+  when it is a string of valid UTF-8, not empty, at most 256 bytes, with no control character: C0, DEL, C1 (U+0085 among them),
   U+2028 and U+2029, anything that ends a line somewhere. A label that fails this is neither
-  cleaned nor cut, since either would file the run under a repository it did not name. The
-  run is kept with its labels as sent, belongs to no repository (the console lists it as
+  cleaned nor cut, since either would file the run under a target it did not name. The
+  run is kept with its labels as sent, belongs to no target (the console lists it as
   unassigned), and is served the workspace's baseline. One function decides this for the
-  projector, which makes repositories from the labels of `run.started`, and for the wire, so
-  a registration, a reload and the digest in an answer always pick the same repository as
+  projector, which makes targets from the labels of `run.started`, and for the wire, so
+  a registration, a reload and the digest in an answer always pick the same target as
   the projector, or none. On the wire the labels are the registration's, compared to the
   stored ones byte for byte; labels the contract's rules refuse are `400
-  invalid_request`, and a `forge` or `repository` that passes them but cannot name a
-  repository, one with a control character, is the baseline and not an error. Nothing of
+  invalid_request`, and a target's label that passes them but cannot name a
+  target, one with a control character, is the baseline and not an error. Nothing of
   the labels is logged.
 - The run's other labels are kept as sent. A `task` label is an ordinary label, shown
   under Labels with the others; it neither titles nor filters a run.
@@ -1183,20 +1183,20 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   `{"version":1}` for a read that failed, which would start the run without its policy.
 - The digests in an answer to a batch are read after the commit, never rendered: one read
   that says whether the workspace's policy is managed (an index on `run_configurations`),
-  then, for a managed workspace, the newest configuration of the run's repository (one
-  read of an index), and the baseline's after it when the repository has none;
-  while the run's repository is not known yet, a lookup of the repository by its labels or
+  then, for a managed workspace, the newest configuration of the run's target (one
+  read of an index), and the baseline's after it when the target has none;
+  while the run's target is not known yet, a lookup of the target by its labels or
   of the reported digest comes before. Three to four small reads, not one. If a read fails
   the header it decides is absent, which means nothing to the gateway, and the delivery is
   still `202`.
-- A run that registered is answered the digest for the repository its registration's
+- A run that registered is answered the digest for the target its registration's
   labels name, the baseline's when they name none, whatever its events say
-  (`Apiary.Policy.Serving.digest_for/4`). A run that did not register has its repository
+  (`Apiary.Policy.Serving.digest_for/4`). A run that did not register has its target
   known to the server once its `run.started` is projected, which is after the receiver
-  answers. Until then the answer's digest is, in this order: that of the repository the
+  answers. Until then the answer's digest is, in this order: that of the target the
   batch's `run.started` labels name; else, when the request's
   `X-Qory-Run-Configuration` is a digest in force in the workspace (the baseline's newest,
-  or any repository's newest), that digest; else the baseline's. A gateway told a digest it
+  or any target's newest), that digest; else the baseline's. A gateway told a digest it
   does not hold reloads once and remembers the answer it tried, so the worst case is one
   reload that changes nothing.
 - The `cost_usd` of `dev.qory.session.result` is the runtime's total for the session:
@@ -1259,7 +1259,7 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
     those hosts by the deny anyway), so the document lists what is reachable and nothing
     else, and a policy's count of hosts allowed is the truth. The one shape the document
     cannot say is a `*.` deny with an allow below it that outranks the deny (the workspace's
-    unlocked `*.example`, a repository rule allowing `api.example`): the allow wins by precedence
+    unlocked `*.example`, a target's rule allowing `api.example`): the allow wins by precedence
     and is rendered, and the deny is not written to `deny`, since an entry there would
     deny the winning host too; it still takes out the allow entries it outranks, so under
     `enforce` those hosts are denied by having no allow, and under `observe` they are
