@@ -687,6 +687,23 @@ defmodule Apiary.DispatchesTest do
       assert Dispatch.public_id?(dispatch.public_id)
     end
 
+    test "never takes a run whose work item has no target: it waits, at revisions 1 and 2",
+         ctx do
+      scope = with_domain(ctx.scope, "general")
+      none = scope |> work_item_fixture(%{target_system: nil, target_path: nil}) |> queue!()
+      next = queued!(scope)
+
+      for revision <- [1, 2] do
+        assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now(), revision)
+        assert id == next.id
+        assert Dispatches.claim(ctx.key, Dispatches.now(), revision) == {:ok, :none}
+        assert %DispatchRun{state: :waiting} = run!(none)
+
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^next.id), set: [state: :waiting])
+        Repo.delete_all(from d in Dispatch, where: d.dispatch_run_id == ^next.id)
+      end
+    end
+
     test "ends a waiting run whose work item's connection ended, and takes the next", ctx do
       gone = work_item_fixture(ctx.scope)
       gone_run = queue!(gone)

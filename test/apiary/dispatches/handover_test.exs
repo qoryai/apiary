@@ -640,6 +640,20 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert dispatched(ctx.key, dispatch) == {:error, :gone}
     end
 
+    test "whose work item lost its target after the claim ends inputs_invalid, gone", ctx do
+      {work_item, queued} = queued!(ctx)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [target_system: nil, target_path: nil]
+        )
+
+      assert handover(ctx.key, dispatch) == {:error, :gone}
+      ended!(ctx, queued, dispatch, :inputs_invalid)
+    end
+
     test "whose work item's ticket is gone ends ticket_gone, gone", ctx do
       {work_item, queued} = queued!(ctx)
       dispatch = claimed!(ctx)
@@ -713,6 +727,31 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert handover(ctx.key, dispatch) == {:error, :gone}
       ended!(ctx, queued, dispatch, :ticket_gone)
       assert %Dispatch{end_cause: :run_ended} = dispatch!(stale)
+    end
+  end
+
+  describe "a handover in a workspace of the general domain" do
+    test "labels the run with the domain's target labels, and gives it no run variables",
+         ctx do
+      with_domain(ctx.scope, "general")
+
+      {_work_item, _queued} =
+        queued!(ctx, %{target_system: "ads.example.com", target_path: "accounts/1234/-a"})
+
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      assert {:ok, handed} = handover(ctx.key, dispatch)
+      assert handed.target == %{system: "ads.example.com", path: "accounts/1234/-a"}
+
+      run = Repo.get!(Run, handed.run.id)
+
+      assert run.registration_labels == %{
+               "system" => "ads.example.com",
+               "path" => "accounts/1234/-a"
+             }
+
+      assert run.registration_variables == nil
     end
   end
 

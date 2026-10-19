@@ -7,8 +7,10 @@ defmodule Apiary.Runs.RunVariables do
   # repositories are on, and QORY_RUN_REPOSITORIES, the repositories its preparation
   # fetches, comma-separated with no space, the run's target first.
   #
-  # The rules, on every system alike: the system a host name, 1 to 253 of a-z, 0-9, dot
-  # and dash, with no empty label: not starting or ending in a dot, no two dots together;
+  # These are the software domain's run variables and its rules for a target
+  # (`Apiary.Lingo.Domain.Software`), the only caller of `for_target/2`. The rules, on
+  # every system alike: the system a host name, 1 to 253 of a-z, 0-9, dot and dash, with
+  # no empty label: not starting or ending in a dot, no two dots together;
   # the list at most 256 bytes; every entry exactly owner/name, two segments, each of A-Z,
   # a-z, 0-9, dot, underscore and dash, not starting with a dash, and neither being `.`,
   # `..` or `.git` in any case, at most 200 characters; every entry of the first

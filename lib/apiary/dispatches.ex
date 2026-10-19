@@ -93,7 +93,8 @@ defmodule Apiary.Dispatches do
   #      take, locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
   #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by a
   #      claim at revision 2 or later, and only by the pool it is held for; a claim at
-  #      revision 1 never sees one. A run whose work item is no longer live (closed,
+  #      revision 1 never sees one. A run whose work item has no target is not taken,
+  #      and waits (`waiting/2`). A run whose work item is no longer live (closed,
   #      declined, undone, its connection ended, or gone) or no longer in the run's
   #      workspace is not handed out: it ends, `undone` for a work item undone and
   #      `closed` otherwise; nor is a prebuild whose collection ended, is assigned to no
@@ -756,10 +757,22 @@ defmodule Apiary.Dispatches do
     )
   end
 
+  # A run whose work item has no target waits and is never offered: revisions 1 and 2 of
+  # the provisioner contract, the ones a claim is served at, require a target in the
+  # claim answer, in the handover answer and in Explore's input. The piece that serves
+  # revision 3, where the target is optional, offers it there, and removes this comment.
   defp waiting(organisation_id, workspace_id) do
     from r in DispatchRun,
+      as: :run,
       where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
-      where: fragment("? = 'waiting'", r.state)
+      where: fragment("? = 'waiting'", r.state),
+      where:
+        r.step == ^@prebuild or
+          exists(
+            from w in WorkItem,
+              where: w.id == parent_as(:run).work_item_id and not is_nil(w.target_system),
+              select: 1
+          )
   end
 
   ## The starter on a dispatch
