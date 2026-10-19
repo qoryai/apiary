@@ -4057,7 +4057,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token."
+msgid "Anthropic's coding agent."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
