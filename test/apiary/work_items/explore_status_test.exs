@@ -87,7 +87,6 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
       {:cancelled, [[end_cause: :closed]], []},
       {:cancelled, [[end_cause: :undone]], []},
       {:cancelled, [[run: %{state: "cancelled"}]], []},
-      {:cancelled, [[run: %{state: "timed_out"}]], []},
       {:used_up, at_limit(result: questions_result()), []},
       {:used_up, at_limit([]), []},
       {:used_up, at_limit(end_cause: :lost), []},

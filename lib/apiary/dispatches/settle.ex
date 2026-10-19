@@ -126,7 +126,7 @@ defmodule Apiary.Dispatches.Settle do
       where: fragment("? <> 'prebuild'", d.step),
       where:
         is_nil(r.id) or not is_nil(r.exit_state) or not is_nil(r.lost_at) or
-          r.state in ^Run.with_old_names(["lost"]) or not is_nil(r.events_pruned_at) or
+          r.state == "lost" or not is_nil(r.events_pruned_at) or
           is_nil(r.outcome_received_at) or r.outcome_received_at <= ^since,
       order_by: d.id,
       limit: @batch,

@@ -66,22 +66,6 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute html =~ "-soft"
     end
 
-    test "a state stored under its earlier name reads as the state that took it in" do
-      for {earlier, now} <- [
-            {"succeeded", "completed"},
-            {"timed_out", "cancelled"},
-            {"ended", "cancelled"}
-          ] do
-        assert RunComponents.state_label(earlier) == RunComponents.state_label(now)
-
-        assert RunComponents.state_label(String.to_atom(earlier)) ==
-                 RunComponents.state_label(now)
-
-        assert render_component(&RunComponents.run_state/1, state: earlier) ==
-                 render_component(&RunComponents.run_state/1, state: now)
-      end
-    end
-
     test "a failed run shows its exit code, or its signal instead" do
       assert text(render_component(&RunComponents.run_state/1, state: "failed", exit_code: 1)) ==
                "Failed exit 1"
@@ -102,14 +86,14 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
 
     test "a row's mark: a completed run's word is for a screen reader, a cancelled run's is grey" do
-      for state <- ~w(completed succeeded) do
+      for state <- ~w(completed) do
         html = render_component(&RunComponents.run_mark/1, state: state)
         assert html =~ "q-st-#{state}"
         assert html =~ ~s(class="q-st-w sr-only")
         assert text(html) == "Completed"
       end
 
-      for state <- ~w(cancelled timed_out ended) do
+      for state <- ~w(cancelled) do
         html = render_component(&RunComponents.run_mark/1, state: state)
         assert html =~ "q-st-#{state}"
         refute html =~ "sr-only"
@@ -120,11 +104,8 @@ defmodule ApiaryWeb.RunComponentsTest do
     test "an ended run's sentence says its state" do
       for {state, run, sentence} <- [
             {"completed", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
-            {"succeeded", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
             {"completed", %{}, "Completed"},
             {"cancelled", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
-            {"timed_out", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
-            {"ended", %{}, "Cancelled"},
             {"failed", %{exit_code: 1}, "Failed with exit 1"}
           ] do
         html = render_component(&RunComponents.alive/1, state: state, run: run)
@@ -148,13 +129,13 @@ defmodule ApiaryWeb.RunComponentsTest do
             {"credential_check_invalid",
              "couldn't check whether the run may go on: unreadable answer"}
           ] do
-        assert RunComponents.reason_words(%{reason: reason, quiet_seconds: nil}) == words
+        assert RunComponents.reason_words(%{reason: reason}) == words
         # Forager's words are a message to translate, not a starter's code shown as given.
         assert pot =~ ~s(\nmsgid "#{words}"\n), reason
       end
 
-      assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
-      assert RunComponents.reason_words(%{reason: nil, quiet_seconds: nil}) == nil
+      assert RunComponents.reason_words(%{reason: "run_closed"}) == nil
+      assert RunComponents.reason_words(%{reason: nil}) == nil
     end
 
     test "a refused batch reads events refused, whatever the state" do
@@ -165,14 +146,14 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
 
     test "a run stopped where it was started reads interrupted, whatever the state" do
-      for state <- [nil, "cancelled", :cancelled, "failed", "completed", "succeeded"] do
+      for state <- [nil, "cancelled", :cancelled, "failed", "completed"] do
         assert RunComponents.reason_words(%{reason: "interrupted", state: state}) ==
                  "interrupted"
       end
     end
 
     test "stopped beside an outcome says only that the run was stopped" do
-      for state <- ["completed", :completed, "succeeded", "failed", :failed] do
+      for state <- ["completed", :completed, "failed", :failed] do
         assert RunComponents.reason_words(%{reason: "stopped", state: state}) == "stopped"
       end
 
@@ -236,7 +217,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
 
       # The earlier name came with no outcome, whatever state its exit said.
-      for state <- [nil, "failed", "cancelled", "ended"] do
+      for state <- [nil, "failed", "cancelled"] do
         assert RunComponents.reason_words(%{reason: "run_ended_at_issuer", state: state}) ==
                  "stopped, no outcome given"
       end
@@ -258,25 +239,6 @@ defmodule ApiaryWeb.RunComponentsTest do
       for value <- ["Checks failed", "checks-failed", "_x", "", String.duplicate("a", 65)] do
         assert RunComponents.reason_words(%{reason: value, state: "failed"}) == nil, value
       end
-    end
-
-    test "the quiet period reads as no activity, as a duration reads" do
-      for {seconds, words} <- [
-            {1800, "no activity for 30 minutes"},
-            {60, "no activity for 1 minute"},
-            {600, "no activity for 10 minutes"},
-            {3600, "no activity for 1 hour"},
-            {7200, "no activity for 2 hours"},
-            {5400, "no activity for 90 minutes"},
-            {45, "no activity for 45 seconds"},
-            {1, "no activity for 1 second"},
-            {1830, "no activity for 1,830 seconds"}
-          ] do
-        assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: seconds}) == words
-      end
-
-      assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: nil}) == nil
-      assert RunComponents.reason_words(%{reason: "quiet"}) == nil
     end
 
     test "a run stored as refused, failed with no exit and the code as its reason, did not start" do
@@ -315,16 +277,15 @@ defmodule ApiaryWeb.RunComponentsTest do
               state <-
                 member_of(
                   [nil] ++
-                    ~w(pending running completed failed cancelled lost succeeded timed_out ended) ++
+                    ~w(pending running completed failed cancelled lost) ++
                     [:completed, :failed, :cancelled]
                 ),
-              seconds <- one_of([constant(nil), positive_integer()]),
               refused? <- boolean()
             ) do
         run =
           if refused?,
             do: %{refused: code},
-            else: %{reason: code, state: state, quiet_seconds: seconds}
+            else: %{reason: code, state: state}
 
         words = RunComponents.reason_words(run)
         refute words && words =~ ~r/issuer/i, inspect({run, words})
@@ -351,7 +312,6 @@ defmodule ApiaryWeb.RunComponentsTest do
                  "reason" => code,
                  "exit_code" => exit_code,
                  "signal" => signal,
-                 "quiet_seconds" => 1800,
                  "duration_ms" => 720_000
                }}
 
@@ -379,7 +339,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "every reason of Forager's that reaches Qory Apiary has words" do
       for reason <- (@reserved -- ["run_closed"]) ++ @earlier do
-        assert is_binary(RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})),
+        assert is_binary(RunComponents.reason_words(%{reason: reason})),
                reason
       end
     end
@@ -405,13 +365,13 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
 
       for reason <- reasons -- ["run_closed", "batch_refused"] do
-        words = RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})
+        words = RunComponents.reason_words(%{reason: reason})
         assert is_binary(words) and not (words =~ "issuer"), reason
       end
     end
 
     test "the preview says why a run ended, else its exit" do
-      run = %{state: "failed", reason: nil, quiet_seconds: nil, exit_code: 1, signal: nil}
+      run = %{state: "failed", reason: nil, exit_code: 1, signal: nil}
 
       assert RunComponents.exit_note(run) == "exit 1"
       assert RunComponents.exit_note(%{run | reason: "checks_failed"}) == "checks failed"
@@ -1656,7 +1616,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert badge.(failed ++ [signal: "\u202E\u200B"]) == "Failed exit 137"
       assert badge.(failed ++ [signal: " \u200B "]) == "Failed exit 137"
 
-      run = %{state: "failed", reason: nil, quiet_seconds: nil, exit_code: 137}
+      run = %{state: "failed", reason: nil, exit_code: 137}
       signalled = Map.put(run, :signal, "SIG\u202EKILL\a")
       blank = Map.put(run, :signal, "\u202E\u200B")
       assert RunComponents.exit_note(signalled) == "SIGKILL\uFFFD"
@@ -1665,7 +1625,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       differs = %{
         outcome_state: "succeeded",
-        state: "succeeded",
+        state: "completed",
         exit_state: "failed",
         exited_at: DateTime.utc_now(),
         exit_code: 137,

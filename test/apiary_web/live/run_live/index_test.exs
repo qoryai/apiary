@@ -241,13 +241,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
-    test "a run that ended quiet: Cancelled, its word shown, counted with the cancelled runs",
+    test "a run cancelled at its time limit: Cancelled, its word shown, counted with the cancelled runs",
          %{conn: conn, scope: scope} do
       ended =
         started_run(
           scope,
           %{"forge" => "git.example.com", "repository" => "example-org/example-repo"},
-          exit: %{"reason" => "quiet", "quiet_seconds" => 600, "duration_ms" => 635_000}
+          exit: %{"state" => "cancelled", "reason" => "timeout", "duration_ms" => 635_000}
         )
 
       failed = started_run(scope, shop(), exit: %{"state" => "failed", "exit_code" => 1})
@@ -917,12 +917,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
     end
 
-    test "the State section and the views count every state in its family, an old name in its new state's",
+    test "the State section and the views count every state in its family",
          %{conn: conn, scope: scope} do
       # Beside the setup's running and failed runs.
       at = DateTime.add(DateTime.utc_now(), -60, :second)
 
-      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+      for state <- ~w(pending running completed failed cancelled lost),
           do: run_fixture(scope, %{state: state, started_at: at})
 
       view = open(conn, scope)
@@ -937,15 +937,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert headings == ["Alive", "Ended well", "Cancelled", "Ended badly"]
 
       assert text(view, form) =~
-               "Alive Pending 1 Running 2 Ended well Completed 2 Cancelled Cancelled 3 Ended badly Failed 2 Lost 1"
+               "Alive Pending 1 Running 2 Ended well Completed 1 Cancelled Cancelled 1 Ended badly Failed 2 Lost 1"
 
       for state <- ~w(pending running completed failed cancelled lost),
           do: assert(has_element?(view, "#{form} input[name='state[]'][value=#{state}]"))
 
-      for old <- ~w(succeeded timed_out ended),
-          do: refute(has_element?(view, "#{form} input[name='state[]'][value=#{old}]"))
-
-      assert text(view, "#runs-view-all") == "All 11"
+      assert text(view, "#runs-view-all") == "All 8"
       assert text(view, "#runs-view-alive") == "Alive 3"
       assert text(view, "#runs-view-ended-badly") == "Ended badly 3"
     end

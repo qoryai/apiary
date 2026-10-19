@@ -46,9 +46,7 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
-  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start). An
-  exit with the reason `quiet`, which an older Forager wrote, says the quiet period,
-  `quiet_seconds`.
+  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start).
 
   How the run ended is its exit's `state` and `reason` (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
   any other value is absent; the reason is a code, a lower-case letter then up to 63
@@ -148,22 +146,13 @@ defmodule Apiary.Runs.Fold do
   @max_cells 65_535
   @statuses 100..599
 
-  # The states no start or heartbeat folded later changes, with the old names an older
-  # release stored them under (`Apiary.Runs.Run.old_states/0`).
-  @terminal ~w(completed failed cancelled succeeded ended timed_out)
+  # The states no start or heartbeat folded later changes.
+  @terminal ~w(completed failed cancelled)
   # A reason: an open code of Forager's or of the run's starter.
   @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
-  # The reasons of the failed exit an older Forager, under the contract before the outcome,
-  # wrote when it stopped a run itself, a session's run or a gateway's: its time limit, no
-  # activity, its run credential expired, or its starter ended it. Such an exit is stored,
-  # and a rebuild folds it again.
-  @stopped_reasons ~w(timeout quiet credential_expired run_ended_at_issuer)
-  # The reasons of an exit without a state, stored under that contract, that cancel the run:
-  # its time limit, no activity, its run credential expired, or its starter ended it.
-  @cancelled_reasons ~w(timeout quiet credential_expired stopped run_ended_at_issuer)
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
@@ -402,7 +391,6 @@ defmodule Apiary.Runs.Fold do
         reason: reason,
         exit_reason: reason,
         refused_at: nil,
-        quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
         duration_ms: integer(data, "duration_ms", 0..@int8),
         lost_at: if(state == "lost", do: event.time)
       })
@@ -488,25 +476,18 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies:
 
-    1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
-       cancelled: the exit an older Forager, under the contract before the outcome, wrote
-       when it stopped a run itself.
-    2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
-    3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
-    4. Without a state, as an older Forager wrote a gateway's exit, the reason decides:
-       `timeout`, `quiet`, `credential_expired`, `stopped` and `run_ended_at_issuer` are
-       cancelled, `session_lost` and `gateway_lost` lost, and any other reason, or none,
-       failed.
+    1. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
+    2. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
+    3. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
+       lost, and any other reason, or none, failed.
 
   A state other than the three is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state("failed", reason) when reason in @stopped_reasons, do: "cancelled"
   def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
   def exit_state("succeeded", _reason), do: "completed"
   def exit_state("failed", _reason), do: "failed"
   def exit_state("cancelled", _reason), do: "cancelled"
-  def exit_state(_state, reason) when reason in @cancelled_reasons, do: "cancelled"
   def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 

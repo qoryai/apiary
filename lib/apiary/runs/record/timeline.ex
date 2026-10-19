@@ -819,7 +819,7 @@ defmodule Apiary.Runs.Record.Timeline do
   # the item's mark and words follow.
   defp body(%{kind: :run_exited}, event, _events, _limit) do
     event
-    |> Map.take([:exit_code, :signal, :reason, :quiet_seconds, :duration_ms])
+    |> Map.take([:exit_code, :signal, :reason, :duration_ms])
     |> Map.put(:state, Fold.exit_state(event.state, event.reason))
   end
 
@@ -1009,7 +1009,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall
     mode source model cwd kind outcome reason state code signal method request_method path decision rule
-    path_rule credential request_id port exit_code quiet_seconds duration_ms turns status cost_usd interrupted in_background allow
+    path_rule credential request_id port exit_code duration_ms turns status cost_usd interrupted in_background allow
     allow_count deny deny_count run_configuration terminated terminated_count tools summary text
     text_bytes error error_bytes error_lines details details_bytes details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
     stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
@@ -1068,7 +1068,7 @@ defmodule Apiary.Runs.Record.Timeline do
       end
     )
     |> Map.merge(
-      for key <- ~w(port exit_code quiet_seconds duration_ms turns status)a,
+      for key <- ~w(port exit_code duration_ms turns status)a,
           into: %{},
           do: {key, integer(data, Atom.to_string(key))}
     )

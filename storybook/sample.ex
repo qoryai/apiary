@@ -84,7 +84,7 @@ defmodule ApiaryWeb.Storybook.Sample do
 
   @doc """
   Runs of the workspace, as the runs list holds them (`ApiaryWeb.RunComponents.runs_table/1`):
-  running, succeeded, failed with denials, and pending, which says nothing about itself.
+  running, completed, failed with denials, and pending, which says nothing about itself.
   Their times are this minute's.
   """
   @spec runs() :: [map()]
@@ -102,7 +102,7 @@ defmodule ApiaryWeb.Storybook.Sample do
         elapsed_seconds: 236,
         last_heartbeat_at: DateTime.add(now, -4)
       ),
-      run(2, "succeeded", "Fix the rounding of order totals", now, -3_600,
+      run(2, "completed", "Fix the rounding of order totals", now, -3_600,
         about_kind: "Review",
         about_subjects: [%{"type" => "pull request", "ref" => "#418"}],
         duration_ms: 1_122_000

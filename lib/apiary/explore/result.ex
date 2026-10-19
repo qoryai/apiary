@@ -146,7 +146,7 @@ defmodule Apiary.Explore.Result do
   def settled?(%Run{} = run, %DateTime{} = now) do
     cond do
       is_binary(run.exit_state) -> true
-      not is_nil(run.lost_at) or Run.current_state(run.state) == "lost" -> true
+      not is_nil(run.lost_at) or run.state == "lost" -> true
       not is_nil(run.events_pruned_at) -> true
       is_nil(run.outcome_received_at) -> true
       true -> DateTime.diff(now, run.outcome_received_at, :second) >= @settle_seconds

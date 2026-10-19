@@ -17858,27 +17858,6 @@ msgstr ""
 msgid "next and previous item"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "no activity for %{number} hour"
-msgid_plural "no activity for %{number} hours"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "no activity for %{number} minute"
-msgid_plural "no activity for %{number} minutes"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "no activity for %{number} second"
-msgid_plural "no activity for %{number} seconds"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "no day"

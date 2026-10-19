@@ -22,7 +22,7 @@ defmodule Apiary.RunsTest do
       scope: scope,
       other: other
     } do
-      for state <- ~w(pending running running succeeded failed timed_out lost) do
+      for state <- ~w(pending running running completed failed cancelled lost) do
         run_fixture(scope, %{state: state})
       end
 
