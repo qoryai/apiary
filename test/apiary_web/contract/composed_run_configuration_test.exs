@@ -11,7 +11,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
-  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, dispatched!: 2]
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, dispatched!: 1]
   import Apiary.NodesFixtures, only: [collection_fixture: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -98,26 +98,25 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   defp explore!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), 1)
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
     assert pool_post(ctx, dispatch, "dispatched").status == 204
     handover = pool_post(ctx, dispatch, "handover")
     assert %{"run_id" => run_id, "run_key" => run_key} = json_response(handover, 200)
     {run_id, run_key}
   end
 
-  # A prebuild of a fresh collection, queued by the trigger, claimed by the pool at
-  # revision 2 and handed over: its id and run key.
+  # A prebuild of a fresh collection, queued by the trigger, claimed by the pool and
+  # handed over: its id and run key.
   defp prebuild!(ctx) do
     collection = collection_fixture(ctx.scope, target_path: "acme/shop")
 
     {:ok, _queued} =
       Repo.transact(fn -> {:ok, Apiary.Environments.trigger([collection], Dispatches.now())} end)
 
-    %{dispatch: dispatch} = dispatched!(ctx.key, 2)
+    %{dispatch: dispatch} = dispatched!(ctx.key)
 
     {:ok, %{run: run, run_key: run_key}} =
       Dispatches.handover(ctx.key, dispatch.public_id, %{
-        revision: 2,
         body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
       })
 
@@ -160,7 +159,8 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     signed_post(build_conn(), ctx.key.key_id, ctx.seed, %{"version" => 1, "time" => now_time()},
       target: "/v1/dispatches/#{dispatch.public_id}/#{action}",
       content_type: "application/json",
-      delivery: nil
+      delivery: nil,
+      contract_version: "3"
     )
   end
 

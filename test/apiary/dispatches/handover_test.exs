@@ -50,16 +50,16 @@ defmodule Apiary.Dispatches.HandoverTest do
     {collection, run}
   end
 
-  defp claimed!(ctx, revision \\ 1) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), revision)
+  defp claimed!(ctx) do
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
     dispatch
   end
 
-  defp handover(key, dispatch_id, revision \\ 1),
-    do: Dispatches.handover(key, id(dispatch_id), %{revision: revision, body: @body})
+  defp handover(key, dispatch_id),
+    do: Dispatches.handover(key, id(dispatch_id), %{body: @body})
 
-  defp dispatched(key, dispatch_id, revision \\ 1, external \\ nil),
-    do: Dispatches.dispatched(key, id(dispatch_id), %{revision: revision, external: external})
+  defp dispatched(key, dispatch_id, external \\ nil),
+    do: Dispatches.dispatched(key, id(dispatch_id), %{external: external})
 
   defp id(%Dispatch{public_id: public_id}), do: public_id
   defp id(public_id), do: public_id
@@ -116,6 +116,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert {:ok, handed} = handover(ctx.key, dispatch)
       assert handed.dispatch_run.id == queued.id
       assert handed.work_item.id == work_item.id
+      assert handed.domain == "software"
       assert handed.target == %{system: "forge.example.com", path: "acme/shop"}
 
       run = Repo.get!(Run, handed.run.id)
@@ -256,18 +257,20 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert inputs["comments_omitted"] == 0
       assert inputs["answers"] == []
       assert inputs["target"] == %{"system" => "forge.example.com", "path" => "acme/shop"}
+      assert inputs["domain"] == "software"
     end
   end
 
   describe "a prebuild's handover" do
-    test "is served at revision 2: its collection's target, its input exactly the ref it was queued for",
+    test "is served: its collection's target, its input exactly the ref it was queued for",
          ctx do
       {collection, queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx, 2)
-      :ok = dispatched(ctx.key, dispatch, 2)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
 
-      assert {:ok, handed} = handover(ctx.key, dispatch, 2)
+      assert {:ok, handed} = handover(ctx.key, dispatch)
       assert handed.work_item == nil
+      assert handed.domain == "software"
       assert handed.target == %{system: collection.target_system, path: collection.target_path}
       assert Jason.encode!(handed.inputs) == ~s({"version":1,"environment_ref":"env-1"})
 
@@ -289,23 +292,6 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert [%Entry{details: %{"step" => "prebuild"}}] = entries()
     end
 
-    test "at revision 1 is not found, before a dispatch that ended", ctx do
-      {_collection, _queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx, 2)
-      :ok = dispatched(ctx.key, dispatch, 2)
-
-      assert handover(ctx.key, dispatch, 1) == {:error, :not_found}
-      assert dispatched(ctx.key, dispatch, 1) == {:error, :not_found}
-
-      {1, _rows} =
-        Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
-          set: [ended_at: DateTime.utc_now(), end_cause: :released]
-        )
-
-      assert handover(ctx.key, dispatch, 1) == {:error, :not_found}
-      assert handover(ctx.key, dispatch, 2) == {:error, :gone}
-    end
-
     test "ends the run collection_ended when its collection ended, was unassigned, moved or lost its target",
          ctx do
       other = workspace_fixture(ctx.scope.organisation)
@@ -317,58 +303,58 @@ defmodule Apiary.Dispatches.HandoverTest do
             [target_system: nil, target_path: nil]
           ] do
         {collection, queued} = prebuild!(ctx)
-        dispatch = claimed!(ctx, 2)
-        :ok = dispatched(ctx.key, dispatch, 2)
+        dispatch = claimed!(ctx)
+        :ok = dispatched(ctx.key, dispatch)
 
         {1, _rows} =
           Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^collection.id),
             set: change
           )
 
-        assert handover(ctx.key, dispatch, 2) == {:error, :gone}
+        assert handover(ctx.key, dispatch) == {:error, :gone}
         ended!(ctx, queued, dispatch, :collection_ended)
-        assert handover(ctx.key, dispatch, 2) == {:error, :gone}
+        assert handover(ctx.key, dispatch) == {:error, :gone}
       end
     end
 
     test "is served with its Backlog switch off, or a collection with no items", ctx do
       {collection, _queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx, 2)
-      :ok = dispatched(ctx.key, dispatch, 2)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
 
       {1, _rows} =
         Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^collection.id),
           set: [backlog: false, items: false]
         )
 
-      assert {:ok, _handed} = handover(ctx.key, dispatch, 2)
+      assert {:ok, _handed} = handover(ctx.key, dispatch)
     end
 
     test "gives the ref it was claimed for, while a newer one waits", ctx do
       {collection, _queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx, 2)
-      :ok = dispatched(ctx.key, dispatch, 2)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
 
       # The collection's ref changes after the claim: another prebuild waits for the new
       # one, and the claimed run keeps the ref it was queued for.
       {:ok, _waiting} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
 
-      assert {:ok, handed} = handover(ctx.key, dispatch, 2)
+      assert {:ok, handed} = handover(ctx.key, dispatch)
       assert Jason.encode!(handed.inputs) == ~s({"version":1,"environment_ref":"env-1"})
     end
 
     test "superseded while its lease lapsed is gone", ctx do
       {collection, queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx, 2)
-      :ok = dispatched(ctx.key, dispatch, 2)
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
 
       # Another prebuild of the collection and pool waits while the first is claimed.
       {:ok, _waiting} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
 
       lapse!(dispatch)
-      assert handover(ctx.key, dispatch, 2) == {:error, :gone}
+      assert handover(ctx.key, dispatch) == {:error, :gone}
       assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(queued)
       assert %Dispatch{end_cause: :run_ended, stale_at: %DateTime{}} = dispatch!(dispatch)
       assert runs() == 0
@@ -640,7 +626,8 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert dispatched(ctx.key, dispatch) == {:error, :gone}
     end
 
-    test "whose work item lost its target after the claim ends inputs_invalid, gone", ctx do
+    test "whose software work item lost its target after the claim ends inputs_invalid, gone",
+         ctx do
       {work_item, queued} = queued!(ctx)
       dispatch = claimed!(ctx)
       :ok = dispatched(ctx.key, dispatch)
@@ -753,6 +740,26 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert run.registration_variables == nil
     end
+
+    test "hands over a run whose work item has no target: its domain, no target, an input without one",
+         ctx do
+      with_domain(ctx.scope, "general")
+      {work_item, queued} = queued!(ctx, %{target_system: nil, target_path: nil})
+      dispatch = claimed!(ctx)
+      :ok = dispatched(ctx.key, dispatch)
+
+      assert {:ok, handed} = handover(ctx.key, dispatch)
+      assert {handed.dispatch_run.id, handed.work_item.id} == {queued.id, work_item.id}
+      assert {handed.domain, handed.target} == {"general", nil}
+
+      inputs = handed.inputs |> Jason.encode!() |> Jason.decode!()
+      assert inputs["domain"] == "general"
+      refute Map.has_key?(inputs, "target")
+
+      run = Repo.get!(Run, handed.run.id)
+      assert {run.registration_labels, run.registration_variables} == {%{}, nil}
+      assert queue_run!(queued).state == :handed_over
+    end
   end
 
   describe "the explore input" do
@@ -860,7 +867,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       dispatch = claimed!(ctx)
       external = %{type: "batch", ref: "job-1", url: "https://jobs.example.com/job-1"}
 
-      assert dispatched(ctx.key, dispatch, 1, external) == :ok
+      assert dispatched(ctx.key, dispatch, external) == :ok
 
       assert %Dispatch{
                dispatched_at: %DateTime{} = at,
@@ -870,7 +877,7 @@ defmodule Apiary.Dispatches.HandoverTest do
              } = dispatch!(dispatch)
 
       other = %{type: "other", ref: "job-2", url: "https://jobs.example.com/job-2"}
-      assert dispatched(ctx.key, dispatch, 1, other) == :ok
+      assert dispatched(ctx.key, dispatch, other) == :ok
       assert %Dispatch{dispatched_at: ^at, external_ref: "job-1"} = dispatch!(dispatch)
     end
 

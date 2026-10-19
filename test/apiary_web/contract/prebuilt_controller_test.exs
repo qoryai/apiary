@@ -80,7 +80,7 @@ defmodule ApiaryWeb.Contract.PrebuiltControllerTest do
       target: "/v1/dispatches/#{id(dispatch)}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: Keyword.get(opts, :revision, "2")
+      contract_version: "3"
     )
   end
 
@@ -149,7 +149,7 @@ defmodule ApiaryWeb.Contract.PrebuiltControllerTest do
   defp entries,
     do: Repo.aggregate(from(e in Entry, where: e.action == "dispatch.prebuilt"), :count)
 
-  test "a prebuilt at revision 2 after the handover is 204, signed, with no body: the image recorded and the run ended",
+  test "a prebuilt after the handover is 204, signed, with no body: the image recorded and the run ended",
        ctx do
     %{collection: collection, dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
     body = body(queued)
@@ -214,16 +214,6 @@ defmodule ApiaryWeb.Contract.PrebuiltControllerTest do
       assert entries() == 0
     end
 
-    test "at revision 1 is 404 not_found, before the dispatch is asked, signed", ctx do
-      %{dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
-
-      for id <- [dispatch, "dp_0000000000000000", "not-a-dispatch"] do
-        assert refused?(prebuilt(ctx, id, body(queued), revision: "1"), 404, "not_found")
-      end
-
-      assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, queued.id)
-    end
-
     test "an unknown dispatch, another pool's, or of no dispatch's shape is 403 forbidden, one answer",
          ctx do
       %{dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
@@ -254,25 +244,26 @@ defmodule ApiaryWeb.Contract.PrebuiltControllerTest do
       {:ok, [lapsed]} =
         Repo.transact(fn -> {:ok, Environments.trigger([collection], Dispatches.now())} end)
 
-      {:ok, %{dispatch: lapsed_dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), 2)
+      {:ok, %{dispatch: lapsed_dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
       lapse!(lapsed_dispatch)
       assert refused?(prebuilt(ctx, lapsed_dispatch, body(lapsed)), 409, "lease_expired")
 
-      # not_prebuild: an explore run's dispatch.
-      {:ok, explore} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
-      {:ok, %{dispatch: explore_dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), 1)
-      conn = prebuilt(ctx, explore_dispatch, body(explore, %{"environment_ref" => "env-1"}))
-      assert refused?(conn, 409, "not_prebuild")
-      assert json_response(conn, 409) == fixture("refusal/not-prebuild.json")
-
-      # not_handed_over: a prebuild claimed, not handed over.
+      # not_handed_over: the prebuild, waiting again once its lease lapsed, claimed again
+      # and not handed over.
       {:ok, %{dispatch: claimed_dispatch, run: claimed}} =
-        Dispatches.claim(ctx.key, Dispatches.now(), 2)
+        Dispatches.claim(ctx.key, Dispatches.now())
 
       assert claimed.step == "prebuild"
       conn = prebuilt(ctx, claimed_dispatch, body(claimed))
       assert refused?(conn, 409, "not_handed_over")
       assert json_response(conn, 409) == fixture("refusal/not-handed-over.json")
+
+      # not_prebuild: an explore run's dispatch.
+      {:ok, explore} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+      {:ok, %{dispatch: explore_dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+      conn = prebuilt(ctx, explore_dispatch, body(explore, %{"environment_ref" => "env-1"}))
+      assert refused?(conn, 409, "not_prebuild")
+      assert json_response(conn, 409) == fixture("refusal/not-prebuild.json")
 
       # run_mismatch: handed over, another run_id.
       %{dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)

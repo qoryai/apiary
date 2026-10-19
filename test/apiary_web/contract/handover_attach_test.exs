@@ -39,7 +39,8 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
     signed_post(build_conn(), ctx.key.key_id, ctx.seed, %{"version" => 1, "time" => now_time()},
       target: "/v1/dispatches/#{dispatch.public_id}/#{action}",
       content_type: "application/json",
-      delivery: nil
+      delivery: nil,
+      contract_version: "3"
     )
   end
 
@@ -72,7 +73,7 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
        ctx do
     work_item = work_item_fixture(ctx.scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), 1)
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
 
     assert pool_post(ctx, dispatch, "dispatched").status == 204
     handover = pool_post(ctx, dispatch, "handover")
@@ -152,7 +153,7 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
 
     work_item = work_item_fixture(ctx.scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now(), 1)
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
 
     assert pool_post(ctx, dispatch, "dispatched").status == 204
     handover = pool_post(ctx, dispatch, "handover")

@@ -97,10 +97,10 @@ defmodule Apiary.EnvironmentsTest do
     )
   end
 
-  # Claims the oldest run `pool` may take, at revision 2: the run and its dispatch.
+  # Claims the oldest run `pool` may take: the run and its dispatch.
   defp claim!(ctx, pool) do
     %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
-    {:ok, %{run: run, dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+    {:ok, %{run: run, dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
     %{run: run, dispatch: dispatch}
   end
 
@@ -406,9 +406,9 @@ defmodule Apiary.EnvironmentsTest do
       back = DateTime.add(Dispatches.now(), -700, :second)
 
       shop = list(ctx, 1, %{environment_ref: "env-1"})
-      {:ok, %{run: older, dispatch: older_dispatch}} = Dispatches.claim(key, back, 2)
+      {:ok, %{run: older, dispatch: older_dispatch}} = Dispatches.claim(key, back)
       list(ctx, 2, %{environment_ref: "env-2"})
-      {:ok, %{run: newer, dispatch: newer_dispatch}} = Dispatches.claim(key, back, 2)
+      {:ok, %{run: newer, dispatch: newer_dispatch}} = Dispatches.claim(key, back)
       assert {older.environment_ref, newer.environment_ref} == {"env-1", "env-2"}
 
       # Another organisation's explore run, claimed, lapses in the same sweep.
@@ -437,7 +437,7 @@ defmodule Apiary.EnvironmentsTest do
 
       # The next sweep and claims go on as before.
       Dispatches.sweep(Dispatches.now())
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(key, Dispatches.now(), 2)
+      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(key, Dispatches.now())
       assert id == newer.id
       assert {:ok, %{run: %{id: id}}} = Dispatches.claim(other_key, Dispatches.now())
       assert id == explore.id
@@ -449,9 +449,9 @@ defmodule Apiary.EnvironmentsTest do
       back = DateTime.add(Dispatches.now(), -700, :second)
 
       shop = list(ctx, 1, %{environment_ref: "env-1"})
-      {:ok, %{run: older}} = Dispatches.claim(key, back, 2)
+      {:ok, %{run: older}} = Dispatches.claim(key, back)
       list(ctx, 2, %{environment_ref: "env-2"})
-      {:ok, %{run: newer}} = Dispatches.claim(key, back, 2)
+      {:ok, %{run: newer}} = Dispatches.claim(key, back)
 
       {1, _rows} =
         Repo.update_all(from(r in Record, where: r.source_collection_id == ^shop.id),
@@ -472,9 +472,9 @@ defmodule Apiary.EnvironmentsTest do
       %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.pool)
 
       shop = list(ctx, 1, %{environment_ref: "env-1"})
-      {:ok, %{run: older, dispatch: older_dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+      {:ok, %{run: older, dispatch: older_dispatch}} = Dispatches.claim(key, Dispatches.now())
       list(ctx, 2, %{environment_ref: "env-2"})
-      {:ok, %{run: newer, dispatch: newer_dispatch}} = Dispatches.claim(key, Dispatches.now(), 2)
+      {:ok, %{run: newer, dispatch: newer_dispatch}} = Dispatches.claim(key, Dispatches.now())
 
       later = DateTime.add(older_dispatch.lease_until, 3600, :second)
 
@@ -505,7 +505,7 @@ defmodule Apiary.EnvironmentsTest do
          ctx do
       %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.pool)
       shop = list(ctx, 1, %{environment_ref: "env-1"})
-      {:ok, %{run: claimed}} = Dispatches.claim(key, Dispatches.now(), 2)
+      {:ok, %{run: claimed}} = Dispatches.claim(key, Dispatches.now())
       list(ctx, 2, %{environment_ref: "env-2"})
 
       [%DispatchRun{} = queued] =
@@ -521,7 +521,7 @@ defmodule Apiary.EnvironmentsTest do
       assert %DispatchRun{state: :claimed} = Repo.get!(DispatchRun, claimed.id)
       assert waiting(shop) == []
       assert %Record{retired_at: %DateTime{}} = Environments.fetch(ctx.pool.id, shop.id)
-      assert Dispatches.claim(key, Dispatches.now(), 2) == {:ok, :none}
+      assert Dispatches.claim(key, Dispatches.now()) == {:ok, :none}
     end
 
     test "an environment_ref removed and named again queues each time it comes back", ctx do

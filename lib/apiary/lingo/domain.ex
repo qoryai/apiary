@@ -131,6 +131,13 @@ defmodule Apiary.Lingo.Domain do
   def for_workspace(%Workspace{domain: name}), do: Map.get(@domains, name, @default)
   def for_workspace(nil), do: @default
 
+  @doc """
+  The name of a workspace's domain: `c:name/0` of the domain `for_workspace/1` reads, so a
+  stored name no domain has any more reads as the default's.
+  """
+  @spec name(%Workspace{} | nil) :: String.t()
+  def name(workspace), do: for_workspace(workspace).name()
+
   @doc "The target a run's labels name in the workspace: `target/1` of the workspace's domain."
   @spec target(%Workspace{} | nil, term) :: {:ok, target} | :none
   def target(workspace, %{} = labels), do: for_workspace(workspace).target(labels)

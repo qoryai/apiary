@@ -29,7 +29,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #     turns one repository's Backlog off (`set_collection_backlog/4`);
   #   * members take tickets in, decline, close and undo (`Apiary.WorkItems`), each under
   #     their scope; the pool spot-runners claims and gives back the first run of some of
-  #     them, without a retry (`Apiary.Dispatches.claim/3`, `release/3`), so that run
+  #     them, without a retry (`Apiary.Dispatches.claim/2`, `release/3`), so that run
   #     ends cancelled.
   #
   # The key pair each adapter enrols is made here and kept in memory only: its secret
@@ -755,7 +755,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
     {:ok, release} = DispatchWire.release(body)
     :ok = AccessKeys.touch_delivery(pool_key, %{})
-    :ok = Dispatches.release(pool_key, dispatch.public_id, Map.put(release, :revision, 1))
+    :ok = Dispatches.release(pool_key, dispatch.public_id, release)
   end
 
   defp pool_key!(main) do

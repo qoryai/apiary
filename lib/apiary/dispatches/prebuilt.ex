@@ -8,9 +8,7 @@ defmodule Apiary.Dispatches.Prebuilt do
   #
   # ## What it asks first
   #
-  # A prebuilt at revision 1, which does not serve its route, is `{:error, :not_found}`,
-  # before anything that depends on the dispatch is asked, the shape of its id included. A
-  # `dispatch_id` not of a dispatch's shape is `{:error, :forbidden}`, looked up nowhere.
+  # A `dispatch_id` not of a dispatch's shape is `{:error, :forbidden}`, looked up nowhere.
   # Then, in one transaction, as a release asks (`Apiary.Dispatches.Handover.transact/5`):
   #
   #   1. the key read again as a request's verification reads it: revoked, of a pool
@@ -95,7 +93,6 @@ defmodule Apiary.Dispatches.Prebuilt do
   @type refusal ::
           :unauthorized
           | :forbidden
-          | :not_found
           | :gone
           | :lease_expired
           | :not_prebuild
@@ -104,7 +101,6 @@ defmodule Apiary.Dispatches.Prebuilt do
           | :unavailable
 
   @type prebuilt :: %{
-          revision: pos_integer,
           run_id: String.t(),
           image: String.t(),
           size: pos_integer,
@@ -113,11 +109,9 @@ defmodule Apiary.Dispatches.Prebuilt do
         }
 
   # prebuilt/3 records the image the job for the dispatch `dispatch_id` of the pool of
-  # `access_key` built, at the provisioner contract's `revision`: the moduledoc.
+  # `access_key` built: the moduledoc.
   @doc false
   @spec prebuilt(AccessKey.t(), term, prebuilt) :: :ok | {:error, refusal}
-  def prebuilt(%AccessKey{}, _dispatch_id, %{revision: 1}), do: {:error, :not_found}
-
   def prebuilt(%AccessKey{key_id: key_id}, dispatch_id, %{run_id: run_id} = prebuilt)
       when is_binary(run_id) do
     if Dispatch.public_id?(dispatch_id) do

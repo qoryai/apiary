@@ -578,7 +578,7 @@ defmodule Apiary.AuditChanges do
     before = entries()
 
     {:ok, %{run: run}} =
-      Apiary.Dispatches.handover(key, dispatch.public_id, %{revision: 1, body: "{}"})
+      Apiary.Dispatches.handover(key, dispatch.public_id, %{body: "{}"})
 
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
@@ -601,7 +601,6 @@ defmodule Apiary.AuditChanges do
 
     :ok =
       Apiary.Dispatches.release(key, dispatch.public_id, %{
-        revision: 1,
         reason: "The job could not start.",
         retry: false
       })
@@ -892,7 +891,7 @@ defmodule Apiary.AuditChanges do
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
     %{dispatch: dispatch} = dispatched!(claimer)
     before = entries()
-    {before, Apiary.Dispatches.handover(other, dispatch.public_id, %{revision: 1, body: "{}"})}
+    {before, Apiary.Dispatches.handover(other, dispatch.public_id, %{body: "{}"})}
   end
 
   # A dispatch another pool of the workspace claimed is not the key's to give back.
@@ -905,7 +904,6 @@ defmodule Apiary.AuditChanges do
 
     {before,
      Apiary.Dispatches.release(other, dispatch.public_id, %{
-       revision: 1,
        reason: "The job could not start.",
        retry: false
      })}

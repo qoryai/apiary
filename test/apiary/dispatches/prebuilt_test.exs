@@ -54,14 +54,14 @@ defmodule Apiary.Dispatches.PrebuiltTest do
           select: r.id
       )
 
-  # A prebuild queued by the trigger, claimed at revision 2 and started, not handed over.
+  # A prebuild queued by the trigger, claimed and started, not handed over.
   defp started!(ctx, attrs \\ %{}) do
     collection = collection_fixture(ctx.scope, attrs)
 
     {:ok, _queued} =
       Repo.transact(fn -> {:ok, Environments.trigger([collection], Dispatches.now())} end)
 
-    %{dispatch: dispatch, run: queued} = dispatched!(ctx.key, 2)
+    %{dispatch: dispatch, run: queued} = dispatched!(ctx.key)
     {collection, dispatch, queued}
   end
 
@@ -264,7 +264,6 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     defp release(key, %{dispatch: dispatch}),
       do:
         Dispatches.release(key, id(dispatch), %{
-          revision: 2,
           reason: "The build failed.",
           retry: false
         })
@@ -375,7 +374,6 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     defp hand_over!(key, %Dispatch{} = dispatch) do
       {:ok, %{run: _run}} =
         Dispatches.handover(key, dispatch.public_id, %{
-          revision: 2,
           body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
         })
 
@@ -388,7 +386,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
     defp waits_again!(ctx) do
       {collection, d1, p1} = started!(ctx)
       set_ref!(collection, "env-2")
-      %{dispatch: d2} = dispatched!(ctx.key, 2)
+      %{dispatch: d2} = dispatched!(ctx.key)
       p2 = hand_over!(ctx.key, d2)
 
       Dispatches.sweep(DateTime.add(d1.lease_until, 1, :second))
@@ -403,7 +401,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
     # P1 claimed again and handed over.
     defp claimed_again!(ctx, p1) do
-      %{dispatch: dispatch, run: run} = dispatched!(ctx.key, 2)
+      %{dispatch: dispatch, run: run} = dispatched!(ctx.key)
       assert run.id == p1.id
       {dispatch, hand_over!(ctx.key, dispatch)}
     end
@@ -458,27 +456,6 @@ defmodule Apiary.Dispatches.PrebuiltTest do
   end
 
   describe "the refusals, in the contract's order" do
-    test "revision 1 is not_found first, before the id, the key or the dispatch is asked", ctx do
-      %{collection: collection, dispatch: dispatch, dispatch_run: queued} = handed_over!(ctx)
-      %{access_key: other} = enrolled_key_fixture(ctx.scope, pool_fixture(ctx.scope))
-      meta = prebuilt_meta(queued, revision: 1)
-      before = unchanged(collection, dispatch, queued)
-
-      for {key, id} <- [
-            {ctx.key, dispatch},
-            {ctx.key, "not-a-dispatch"},
-            {ctx.key, "dp_0000000000000000"},
-            {other, dispatch}
-          ] do
-        assert prebuilt(key, id, meta) == {:error, :not_found}
-      end
-
-      {:ok, _revoked} = AccessKeys.revoke_access_key(ctx.scope, ctx.key)
-      assert prebuilt(ctx.key, dispatch, meta) == {:error, :not_found}
-      assert unchanged(collection, dispatch, queued) == before
-      assert entries() == []
-    end
-
     test "an id not of a dispatch's shape, unknown, or another pool's is forbidden, before any lock, writing nothing",
          ctx do
       {collection, dispatch, queued} = started!(ctx)
@@ -564,7 +541,7 @@ defmodule Apiary.Dispatches.PrebuiltTest do
 
       # Handed over, the same.
       {:ok, %{run: _run}} =
-        Dispatches.handover(ctx.key, dispatch.public_id, %{revision: 2, body: "{}"})
+        Dispatches.handover(ctx.key, dispatch.public_id, %{body: "{}"})
 
       assert prebuilt(ctx.key, dispatch, prebuilt_meta(explore)) == {:error, :not_prebuild}
       assert %DispatchRun{state: :handed_over} = queue_run!(explore)

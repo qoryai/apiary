@@ -1,9 +1,10 @@
 defmodule Apiary.Explore.Result do
   # Result reads an Explore run's result: the JSON document of the explore contract's
   # `result.schema.json` (`priv/contract/explore/v1/`, vendored from the integrations at
-  # 2564006) that the run's last `dev.qory.session.result` event carries in its `result`
-  # string. The document is untrusted: whatever fails a check below is no result, `:none`,
-  # never an error and never a raise.
+  # the commit in `test/fixtures/contract/explore/v1/.contract-ref`) that the run's last
+  # `dev.qory.session.result` event carries in its `result` string. The document is
+  # untrusted: whatever fails a check below is no result, `:none`, never an error and
+  # never a raise.
   #
   # `from_events/1` picks the event: among the run's events of type
   # `dev.qory.session.result`, the one with the highest `sequence` (a run's sequences are

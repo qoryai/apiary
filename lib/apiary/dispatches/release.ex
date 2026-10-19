@@ -26,10 +26,8 @@ defmodule Apiary.Dispatches.Release do
   #      whatever follows: its run waits again, or a prebuild ends `superseded`;
   #   5. the run of the queue locked `FOR UPDATE` (`Apiary.Dispatches.RunEnd.lock/1`), then
   #      the dispatch, and the clock read once both are held;
-  #   6. a dispatch of a prebuild asked at revision 1, which does not know the step, is
-  #      `{:error, :not_found}`;
-  #   7. a dispatch that ended, or of a run that ended, is `{:error, :gone}`;
-  #   8. a dispatch that was not handed over, and is stale or whose `lease_until` the clock
+  #   6. a dispatch that ended, or of a run that ended, is `{:error, :gone}`;
+  #   7. a dispatch that was not handed over, and is stale or whose `lease_until` the clock
   #      is at or past, is `{:error, :lease_expired}`. A dispatch handed over is never
   #      refused so, whatever its `lease_until`: after the handover the release is answered
   #      as a success.
@@ -101,27 +99,24 @@ defmodule Apiary.Dispatches.Release do
 
   @prebuild DispatchRun.prebuild()
 
-  @type refusal ::
-          :unauthorized | :forbidden | :not_found | :gone | :lease_expired | :unavailable
+  @type refusal :: :unauthorized | :forbidden | :gone | :lease_expired | :unavailable
 
-  @type release :: %{revision: pos_integer, reason: String.t(), retry: boolean}
+  @type release :: %{reason: String.t(), retry: boolean}
 
   # release/3 gives back the run of the dispatch `dispatch_id` of the pool of
-  # `access_key`, at the provisioner contract's `revision`, with the starter's `reason`
-  # and `retry`: the moduledoc.
+  # `access_key`, with the starter's `reason` and `retry`: the moduledoc.
   @doc false
   @spec release(AccessKey.t(), term, release) :: :ok | {:error, refusal}
   def release(
         %AccessKey{key_id: key_id},
         dispatch_id,
-        %{revision: revision, reason: reason, retry: retry} = release
+        %{reason: reason, retry: retry} = release
       )
       when is_binary(reason) and is_boolean(retry) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
       |> Handover.transact(dispatch_id, :"dispatch.release", &hold/1, fn locked ->
-        with :ok <- Handover.step_known(locked, revision),
-             :ok <- Handover.not_ended(locked),
+        with :ok <- Handover.not_ended(locked),
              :ok <- lease_held(locked) do
           give_back(locked, release)
         end

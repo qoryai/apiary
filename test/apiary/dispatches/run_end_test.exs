@@ -323,8 +323,8 @@ defmodule Apiary.Dispatches.RunEndTest do
 
   describe "a prebuild after its handover" do
     # A collection, the pool's environment record of it, `env-1` queued and a good build
-    # kept, and a prebuild of it queued for a pool with a gateway, claimed at revision 2,
-    # said started and handed over: its registered run, its gateway not yet attached.
+    # kept, and a prebuild of it queued for a pool with a gateway, claimed, said started
+    # and handed over: its registered run, its gateway not yet attached.
     setup ctx do
       place = handover_place_fixture(ctx.scope)
       collection = collection_fixture(ctx.scope)
@@ -347,10 +347,10 @@ defmodule Apiary.Dispatches.RunEndTest do
       {:ok, queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, place.pool, "env-1") end)
 
-      %{dispatch: dispatch} = dispatched!(place.key, 2)
+      %{dispatch: dispatch} = dispatched!(place.key)
 
       {:ok, %{run: run, run_key: run_key}} =
-        Dispatches.handover(place.key, dispatch.public_id, %{revision: 2, body: @body})
+        Dispatches.handover(place.key, dispatch.public_id, %{body: @body})
 
       {gateway_key, _seed} = place.gateway_key
       {:ok, body} = Attach.parse(attach_body(run_key))
@@ -474,7 +474,6 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert :ok =
                Dispatches.release(ctx.place.key, ctx.handed.dispatch.public_id, %{
-                 revision: 2,
                  reason: "The build failed.",
                  retry: false
                })
@@ -538,11 +537,11 @@ defmodule Apiary.Dispatches.RunEndTest do
           Dispatches.queue_prebuild(ctx.collection, ctx.place.pool, "env-2")
         end)
 
-      %{dispatch: dispatch} = dispatched!(ctx.place.key, 2)
+      %{dispatch: dispatch} = dispatched!(ctx.place.key)
       assert dispatch.dispatch_run_id == queued.id
 
       {:ok, %{run: run, run_key: run_key}} =
-        Dispatches.handover(ctx.place.key, dispatch.public_id, %{revision: 2, body: @body})
+        Dispatches.handover(ctx.place.key, dispatch.public_id, %{body: @body})
 
       {gateway_key, _seed} = ctx.place.gateway_key
       {:ok, body} = Attach.parse(attach_body(run_key))
