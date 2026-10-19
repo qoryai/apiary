@@ -8,9 +8,16 @@ defmodule Apiary.Kinds.Providers do
   fails stops the compile; a provider is added by a release.
 
   `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`.
+
+  `ref/0` is the integrations commit the descriptions were vendored from, which a provider
+  connection records with the description's digest. The release image is built without
+  `.integration-contract-ref`, so the commit is written here too, and a test checks that
+  the two agree.
   """
 
   alias Apiary.Kinds.{Provider, Runtime, Runtimes}
+
+  @ref "72d3e2233ef7d1f2cba95885512633abeeb04741"
 
   @dir Path.expand("../../../priv/contract/integration/descriptions", __DIR__)
 
@@ -26,6 +33,10 @@ defmodule Apiary.Kinds.Providers do
   def __mix_recompile__? do
     @dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort() != @paths
   end
+
+  @doc "ref/0 is the integrations commit the descriptions were vendored from."
+  @spec ref() :: String.t()
+  def ref, do: @ref
 
   @doc "list/0 is every provider of the catalogue, in the order of its name."
   @spec list() :: [Provider.t()]

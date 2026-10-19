@@ -34,6 +34,17 @@ defmodule Apiary.Kinds.ProvidersTest do
       assert Providers.fetch("nothing") == :error
     end
 
+    test "ref/0 is the commit in .integration-contract-ref" do
+      ref =
+        Path.expand("../../../.integration-contract-ref", __DIR__)
+        |> File.read!()
+        |> String.split("\n", trim: true)
+        |> Enum.reject(&String.starts_with?(&1, "#"))
+
+      assert ref == [Providers.ref()]
+      assert Providers.ref() =~ ~r/\A[0-9a-f]{40}\z/
+    end
+
     test "each provider has the members of its description's model_provider role" do
       for provider <- Providers.list() do
         document = provider.description.document
@@ -102,6 +113,48 @@ defmodule Apiary.Kinds.ProvidersTest do
 
       File.write!(path, Jason.encode!(program))
       assert_raise ArgumentError, ~r/not a data description/, fn -> Provider.load!(path) end
+    end
+
+    test "load!/1 raises for an address setting whose default the endpoint rule refuses", %{
+      tmp_dir: dir
+    } do
+      path = Path.join(dir, "litellm.json")
+
+      for {default, _why} <- [
+            {"https://localhost.localdomain", :localhost},
+            {"https://127.0.0.1:4000", :loopback},
+            {"http://litellm.example.com", :scheme}
+          ] do
+        with_default =
+          description("litellm")
+          |> Jason.decode!()
+          |> put_in(["settings", "properties", "address", "default"], default)
+
+        File.write!(path, Jason.encode!(with_default))
+
+        assert_raise ArgumentError, ~r/has an address that Apiary.Kinds.Endpoint refuses/, fn ->
+          Provider.load!(path)
+        end
+      end
+
+      passing =
+        description("litellm")
+        |> Jason.decode!()
+        |> put_in(["settings", "properties", "address", "default"], "https://10.0.0.12:4000")
+
+      File.write!(path, Jason.encode!(passing))
+
+      assert {:ok, "https://10.0.0.12:4000"} =
+               path |> Provider.load!() |> Provider.setting_default("address")
+    end
+
+    test "load!/1 records the SHA-256 of the file's bytes", %{tmp_dir: dir} do
+      path = Path.join(dir, "anthropic.json")
+      bytes = description("anthropic")
+      File.write!(path, bytes)
+
+      assert Provider.load!(path).sha256 ==
+               Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
     end
 
     test "load!/1 raises for a file named other than the description", %{tmp_dir: dir} do
