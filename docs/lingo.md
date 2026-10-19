@@ -66,7 +66,10 @@ This is done with Gettext, not with a list of word swaps:
 
 A target is what a run's change request is applied to. A collection is what an adapter
 reports work from, which an organisation assigns to a workspace. The software domain calls
-both a repository, and their msgids stay apart in the engine words.
+a target a repository. A collection stays "collection" and "collections" there when its
+adapter has no word for it, except in "Turned on taking a collection's %{items} into the
+Backlog" and the same sentence with "Turned off": the software domain writes "a
+repository's" in both.
 
 Everything else (run, task, work item, gate, evidence, member, access key, policy) is the
 same word in the engine and in the software domain. Qory Apiary is the product's name and
