@@ -39,7 +39,7 @@ defmodule Apiary.Policy.Export do
   defp policy_file(effective) do
     IO.iodata_to_binary([
       "# ",
-      gettext("A file outside the checkout, given with: %{command}",
+      gettext("A file outside the folder the runs work in, given with: %{command}",
         command: "qory run --policy <file>"
       ),
       "\n",

@@ -406,7 +406,7 @@ defmodule Apiary.WorkItems do
   @doc false
   # list_filter_values/3 is what the Work items list's Filter menu offers for `kind`
   # (`Apiary.WorkItems.WorkList.filter_values/3`).
-  @spec list_filter_values(Scope.t(), :owner | :repository, String.t() | nil) ::
+  @spec list_filter_values(Scope.t(), :owner | :collection, String.t() | nil) ::
           [WorkList.value()]
   def list_filter_values(%Scope{} = scope, kind, query \\ nil),
     do: WorkList.filter_values(scope, kind, query)

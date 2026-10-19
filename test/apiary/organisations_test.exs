@@ -52,6 +52,34 @@ defmodule Apiary.OrganisationsTest do
       assert Repo.reload!(workspace).domain == "software"
     end
 
+    test "with domain: :required, a sign-up without a domain is refused, creating nothing" do
+      organisations = Repo.aggregate(Organisation, :count)
+      attrs = %{"email" => unique_user_email(), "organisation_name" => "Acme Care"}
+
+      for domain <- [nil, "", " "] do
+        attrs = if domain, do: Map.put(attrs, "domain", domain), else: attrs
+
+        assert %{domain: ["Choose a type."]} =
+                 errors_on(Organisations.change_sign_up(attrs, domain: :required))
+
+        assert {:error, changeset} =
+                 Organisations.sign_up_user(attrs, nil, open: true, domain: :required)
+
+        assert %{domain: ["Choose a type."]} = errors_on(changeset)
+      end
+
+      assert Repo.aggregate(Organisation, :count) == organisations
+      refute Map.has_key?(errors_on(Organisations.change_sign_up(attrs)), :domain)
+
+      assert {:ok, %{workspace: workspace}} =
+               Organisations.sign_up_user(Map.put(attrs, "domain", "general"), nil,
+                 open: true,
+                 domain: :required
+               )
+
+      assert Repo.reload!(workspace).domain == "general"
+    end
+
     test "a domain no registry has is refused on the form's domain, creating nothing" do
       organisations = Repo.aggregate(Organisation, :count)
 
@@ -591,10 +619,19 @@ defmodule Apiary.OrganisationsTest do
       scope = mark_only_workspace(scope)
 
       assert {:error, changeset} = Organisations.create_workspace(scope, %{"name" => "Data"})
-      assert %{domain: ["can't be blank"]} = errors_on(changeset)
+      assert %{domain: ["Choose a type."]} = errors_on(changeset)
 
       changeset = Organisations.change_new_workspace(scope, %{"name" => "Data"})
-      assert %{domain: ["can't be blank"]} = errors_on(changeset)
+      assert %{domain: ["Choose a type."]} = errors_on(changeset)
+
+      # An empty choice is no choice: never the schema's default.
+      changeset = Organisations.change_new_workspace(scope, %{"name" => "Data", "domain" => ""})
+      assert %{domain: ["Choose a type."]} = errors_on(changeset)
+
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{"name" => "Data", "domain" => " "})
+
+      assert %{domain: ["Choose a type."]} = errors_on(changeset)
 
       assert {:error, changeset} =
                Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "unknown"})
@@ -605,6 +642,64 @@ defmodule Apiary.OrganisationsTest do
                Organisations.create_workspace(scope, %{"name" => "Ops", "domain" => "general"})
 
       assert Repo.reload!(workspace).domain == "general"
+    end
+
+    test "a domain the form has not sent, or not used yet, is no used field of the form" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      form =
+        Phoenix.Component.to_form(Organisations.change_new_workspace(scope, %{"name" => "D"}))
+
+      refute Phoenix.Component.used_input?(form[:domain])
+      assert Phoenix.Component.used_input?(form[:name])
+      assert Phoenix.Component.used_input?(form[:slug])
+
+      form =
+        scope
+        |> Organisations.change_new_workspace(%{
+          "name" => "D",
+          "domain" => "",
+          "_unused_domain" => "",
+          "slug" => "",
+          "_unused_slug" => ""
+        })
+        |> Phoenix.Component.to_form()
+
+      refute Phoenix.Component.used_input?(form[:domain])
+      assert Phoenix.Component.used_input?(form[:slug])
+
+      form =
+        Phoenix.Component.to_form(
+          Organisations.change_new_workspace(scope, %{"name" => "D", "domain" => ""})
+        )
+
+      assert Phoenix.Component.used_input?(form[:domain])
+    end
+
+    test "with no domain, a name and a slug another workspace has are refused all the same" do
+      %{scope: scope, workspace: main} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+      taken = %{"name" => main.name, "slug" => main.slug}
+
+      assert {:error, changeset} = Organisations.create_workspace(scope, taken)
+
+      assert %{
+               domain: ["Choose a type."],
+               name: ["is already the name of a workspace in this organisation"],
+               slug: ["is already the slug of a workspace in this organisation"]
+             } = errors_on(changeset)
+
+      assert %{domain: [_], name: [_], slug: [_]} =
+               errors_on(Organisations.change_new_workspace(scope, taken))
+
+      # With a domain, the same: the check reads the database before the insert, and the
+      # unique indexes stay behind it.
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, Map.put(taken, "domain", "software"))
+
+      assert %{name: [_], slug: [_]} = errors_on(changeset)
+      refute Map.has_key?(errors_on(changeset), :domain)
     end
 
     test "the slug is the form's where it gives one, and checked as a slug" do

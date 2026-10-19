@@ -190,9 +190,9 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
           <:owner>
             <p>owners</p>
           </:owner>
-          <:repository>
+          <:collection>
             <p>repositories</p>
-          </:repository>
+          </:collection>
           <:updated>
             <p>days</p>
           </:updated>
@@ -210,8 +210,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
         render_component(&L.work_item_tokens/1,
           collection_label: "Project",
           filters: [
-            %{key: :owner, value: "Priya", patch: "/8wonders/main/work?repository=acme%2Fshop"},
-            %{key: :repository, value: "acme/shop", patch: "/8wonders/main/work?owner=Priya"}
+            %{key: :owner, value: "Priya", patch: "/8wonders/main/work?collection=acme%2Fshop"},
+            %{key: :collection, value: "acme/shop", patch: "/8wonders/main/work?owner=Priya"}
           ],
           clear: "/8wonders/main/work",
           match: 5
@@ -492,6 +492,19 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
     assert text(html, "#work-items-open-backlog") == "Open the Backlog"
     assert attr(html, "#work-items-open-backlog", "href") == ["/8wonders/main/backlog"]
+  end
+
+  test "in a general workspace, the stages and the empty list name no code" do
+    # A general workspace reads the source texts; the tests above read the software
+    # catalogue's, the default locale's.
+    Gettext.with_locale(ApiaryWeb.Gettext, "en@general", fn ->
+      assert texts(strip(exploring: 1), ".q-wl-st-what") |> hd() == "Qory reads the ticket"
+
+      html = render_component(&L.work_items_empty/1, backlog_path: "/8wonders/main/backlog")
+
+      assert text(html, ".q-wl-empty") =~
+               "A work item starts when someone takes in one of the Backlog's tickets. Qory then explores it and proposes what to do."
+    end)
   end
 
   describe "the words the sources share for their items" do

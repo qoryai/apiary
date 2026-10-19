@@ -17,6 +17,8 @@ defmodule Apiary.Lingo.Domain.Software do
   # which the documentation leaves out.
   @behaviour Apiary.Lingo.Domain
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Runs.{RunVariables, Target}
 
   @system_label "forge"
@@ -41,6 +43,19 @@ defmodule Apiary.Lingo.Domain.Software do
 
   @impl true
   def name, do: "software"
+
+  @impl true
+  def label, do: gettext("Software workspace")
+
+  # A person reads the line where they pick a type, in any locale, so it says repository in
+  # every domain: the `workspace type` context lets it keep the software words.
+  @impl true
+  def description,
+    do:
+      pgettext(
+        "workspace type",
+        "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
+      )
 
   @impl true
   def target_required?, do: true

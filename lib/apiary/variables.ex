@@ -281,7 +281,7 @@ defmodule Apiary.Variables do
     change(scope, variable, Map.take(attrs, ["name", "value"]), "updated")
   end
 
-  @doc "lock_variable/2 locks a workspace's variable against the repositories (`variable.edit`)."
+  @doc "lock_variable/2 locks a workspace's variable against the targets (`variable.edit`)."
   @spec lock_variable(Scope.t(), Variable.t()) :: {:ok, Variable.t()} | {:error, refusal}
   def lock_variable(%Scope{} = scope, %Variable{} = variable),
     do: change(scope, variable, %{"locked" => true}, "locked")
@@ -350,7 +350,7 @@ defmodule Apiary.Variables do
       :locked,
       dgettext_noop(
         "errors",
-        "only a workspace's variable can be locked: a lock holds it against the repositories"
+        "lock only a workspace's variable: a locked workspace variable replaces the same variable on every target"
       )
     )
   end

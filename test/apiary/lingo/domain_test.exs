@@ -159,6 +159,40 @@ defmodule Apiary.Lingo.DomainTest do
         assert domain.name() == name
       end
     end
+
+    test "offers the domains as choices, the default first, then the others by name" do
+      assert Domain.choices() == [Software, Example, General]
+      assert Enum.sort(Enum.map(Domain.choices(), & &1.name())) == Domain.names()
+    end
+  end
+
+  describe "a domain's label and description" do
+    test "the software domain is a software workspace, for work on code" do
+      assert Software.label() == "Software workspace"
+
+      assert Software.description() ==
+               "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
+    end
+
+    test "the general domain is a general workspace, for any other work" do
+      assert General.label() == "General workspace"
+
+      assert General.description() ==
+               "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
+    end
+
+    test "each reads the same in a software workspace's locale and in a general one's" do
+      for domain <- [Software, General] do
+        words =
+          for locale <- ["en@software", "en@general"],
+              do:
+                Gettext.with_locale(ApiaryWeb.Gettext, locale, fn ->
+                  {domain.label(), domain.description()}
+                end)
+
+        assert words == List.duplicate({domain.label(), domain.description()}, 2)
+      end
+    end
   end
 
   describe "a workspace's domain" do

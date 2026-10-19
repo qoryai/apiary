@@ -117,7 +117,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   @doc false
   # stage_line/2 is what a stage is, in a line; `item_noun` as the strip's.
   def stage_line(:explore, item_noun),
-    do: gettext("Qory reads the %{item} and the code", item: SourceComponents.item(item_noun))
+    do: gettext("Qory reads the %{item}", item: SourceComponents.item(item_noun))
 
   def stage_line(:confirm, _item_noun), do: gettext("A member confirms what Qory proposes")
   def stage_line(:shape, _item_noun), do: gettext("The plan and its acceptance criteria")
@@ -284,7 +284,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
 
   @doc """
   The list's Filter: by Owner, the collections the work items' tickets came from, and
-  Updated, each a section the page fills (the `owner`, `repository` and `updated` slots: a
+  Updated, each a section the page fills (the `owner`, `collection` and `updated` slots: a
   form that sets the filter); what each is set to, where it is (`values`, by section),
   beside its name. `count` is how many are on. The collections' section is named
   `collection_label`, the sources' word for one of them.
@@ -299,7 +299,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   attr :count, :integer, default: 0, doc: "how many filters are on"
   attr :values, :map, default: %{}, doc: "what each filter is set to, by section"
   slot :owner, required: true
-  slot :repository, required: true
+  slot :collection, required: true
   slot :updated, required: true
 
   def work_item_filter(assigns) do
@@ -314,12 +314,12 @@ defmodule ApiaryWeb.WorkItemListComponents do
         {render_slot(@owner)}
       </:section>
       <:section
-        key="repository"
+        key="collection"
         label={@collection_label}
         icon="hero-folder"
-        value={@values[:repository]}
+        value={@values[:collection]}
       >
-        {render_slot(@repository)}
+        {render_slot(@collection)}
       </:section>
       <:section
         key="updated"
@@ -337,7 +337,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   The filters in force, under the bar: a token for each ("Owner **Priya**") with the link
   that takes it away, Clear (`clear`), and how many work items they keep (`match`).
 
-  `filters` is a list of `%{key: :owner | :repository | :updated, value: words, patch:
+  `filters` is a list of `%{key: :owner | :collection | :updated, value: words, patch:
   path}`, the path the list without that filter.
   """
   attr :id, :string, default: "work-items-tokens"
@@ -377,7 +377,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   end
 
   defp filter_name(:owner, _collection_label), do: pgettext("work item", "Owner")
-  defp filter_name(:repository, collection_label), do: collection_label
+  defp filter_name(:collection, collection_label), do: collection_label
   defp filter_name(:updated, _collection_label), do: gettext("Updated")
 
   @doc """
@@ -610,7 +610,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
       class="q-wl-empty"
     >
       {gettext(
-        "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes how to build it.",
+        "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
         items: SourceComponents.items(@item_noun)
       )}
       <:actions>

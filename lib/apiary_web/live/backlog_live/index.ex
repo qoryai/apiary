@@ -22,10 +22,10 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # match, a page of rows (`BacklogComponents.ticket_row/1`, each with its integration's
   # tile), and the pager, Newer and Older. Everything the list shows is in the address, so
   # a narrowed list can be linked and Back works:
-  # `view`, `q`, `repository`, `filed_by`, `label`, `updated`, `sort`, and a page's
+  # `view`, `q`, `collection`, `filed_by`, `label`, `updated`, `sort`, and a page's
   # cursor, `after` or `before`. The page hands each to
   # `Apiary.Sources.Backlog.list_tickets/3`, which checks it: a value it does not know
-  # matches nothing, or is its default, and breaks nothing. A repository is named by Qory
+  # matches nothing, or is its default, and breaks nothing. A collection is named by Qory
   # Apiary's id for it and a ticket by Qory Apiary's id for it (`tk_…`), never by the
   # source's id, number or ref.
   #
@@ -66,7 +66,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   @views [:open, :taken, :declined, :closed]
   @most_values 100
   @sorts [:updated, :created, :comments]
-  @lists [:repository, :filed_by, :label]
+  @lists [:collection, :filed_by, :label]
   @filters @lists ++ [:updated]
 
   @impl true
@@ -184,7 +184,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
               id="backlog-tokens"
               clear={
                 list_path(@current_scope, @params,
-                  repository: [],
+                  collection: [],
                   filed_by: [],
                   label: [],
                   updated: nil
@@ -200,7 +200,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
                 <%!-- The space after the key is in its text: a token is a flex row, which
                 drops the white space between its elements. --%>
                 <span class="q-tok-k">{token.label}{" "}</span>
-                <b class={["q-tok-v", token.key == :repository && "q-mono"]} title={token.value}>
+                <b class={["q-tok-v", token.key == :collection && "q-mono"]} title={token.value}>
                   <span :for={{value, i} <- Enum.with_index(token.values)}>{if i > 0,
                     do: ", "}<bdi>{value}</bdi></span>
                 </b>
@@ -397,7 +397,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
     %{
       view: params.view,
       search: params.search,
-      repository: none_if_empty(params.repository),
+      collection: none_if_empty(params.collection),
       filed_by: none_if_empty(params.filed_by),
       label: none_if_empty(params.label),
       updated: params.updated,
@@ -423,7 +423,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
       view: choice(params["view"], @views, :open),
       q: if(is_binary(q) and String.trim(q) != "", do: q),
       search: if(not is_binary(q) or String.trim(q) != "", do: q),
-      repository: many(params["repository"]),
+      collection: many(params["collection"]),
       filed_by: many(params["filed_by"]),
       label: many(params["label"]),
       updated: one(params["updated"]),
@@ -475,7 +475,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
         [
           view: params.view != :open && params.view,
           q: params.q,
-          repository: params.repository,
+          collection: params.collection,
           filed_by: params.filed_by,
           label: params.label,
           updated: params.updated,
@@ -508,7 +508,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   # A filter's name; the collections' is in their sources' words for one of them, joined
   # with "or" where they differ (`collection_nouns`, `{noun, count}` pairs).
-  defp filter_label(:repository, collection_nouns),
+  defp filter_label(:collection, collection_nouns),
     do: SourceComponents.collection_label(nouns(collection_nouns))
 
   defp filter_label(:filed_by, _collection_nouns), do: gettext("Filed by")
@@ -517,12 +517,12 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   defp nouns(collection_nouns), do: Enum.map(collection_nouns, &elem(&1, 0))
 
-  defp filter_icon(:repository), do: "hero-folder"
+  defp filter_icon(:collection), do: "hero-folder"
   defp filter_icon(:filed_by), do: "hero-user-circle"
   defp filter_icon(:label), do: "hero-tag"
   defp filter_icon(:updated), do: "hero-calendar"
 
-  defp filter_key("repository"), do: :repository
+  defp filter_key("collection"), do: :collection
   defp filter_key("filed_by"), do: :filed_by
   defp filter_key("label"), do: :label
   defp filter_key("updated"), do: :updated
@@ -553,15 +553,15 @@ defmodule ApiaryWeb.BacklogLive.Index do
           do: {words(options, key, value), value, nil}
   end
 
-  # A filter's value as the page says it: a repository by its title, a filer's name or a
+  # A filter's value as the page says it: a collection by its title, a filer's name or a
   # label as it is, each shown as a text the integration sent
   # (`Apiary.ExternalText.present/1`), or marked (`Apiary.ExternalText.marked/1`) where
   # nothing is left of it, since the filter matches it as sent; a window by its words; a
   # value that is not a string as nothing.
-  defp words(options, :repository, id),
+  defp words(options, :collection, id),
     do:
       options
-      |> Map.fetch!(:repository)
+      |> Map.fetch!(:collection)
       |> Enum.find_value(id, &(&1.key == id && &1.label))
       |> sent_words()
 
@@ -608,7 +608,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   end
 
   # The collections' in their sources' words for one of them, as their token names them.
-  defp remove_words(:repository, collection_nouns),
+  defp remove_words(:collection, collection_nouns),
     do:
       gettext("Remove the %{collection} filter",
         collection: SourceComponents.collection(nouns(collection_nouns), :or)

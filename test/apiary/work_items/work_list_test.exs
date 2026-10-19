@@ -171,7 +171,7 @@ defmodule Apiary.WorkItems.WorkListTest do
   end
 
   describe "the filters" do
-    test "by owner, by repository and by the window of the last change", %{scope: scope} do
+    test "by owner, by collection and by the window of the last change", %{scope: scope} do
       %{user: member} = member_fixture(scope)
       mine = item!(scope, collection_title: "acme/basket")
       theirs = item!(scope, owner_id: member.id)
@@ -182,9 +182,9 @@ defmodule Apiary.WorkItems.WorkListTest do
       assert Enum.sort(ids(list(scope, owner: [member.id, scope.user.id]))) ==
                Enum.sort([mine.public_id, theirs.public_id, old.public_id])
 
-      # The repository is the title of the collection that holds the ticket now.
-      assert length(list(scope, repository: "acme/shop").rows) == 3
-      assert list(scope, repository: "acme/basket").rows == []
+      # The collection is named by its title: of the collection that holds the ticket now.
+      assert length(list(scope, collection: "acme/shop").rows) == 3
+      assert list(scope, collection: "acme/basket").rows == []
 
       assert Enum.sort(ids(list(scope, updated: "24h"))) ==
                Enum.sort([mine.public_id, theirs.public_id])
@@ -199,8 +199,8 @@ defmodule Apiary.WorkItems.WorkListTest do
       for params <- [
             [owner: "not an id"],
             [owner: List.duplicate(Ecto.UUID.generate(), 101)],
-            [repository: [""]],
-            [repository: [String.duplicate("a", 1025)]],
+            [collection: [""]],
+            [collection: [String.duplicate("a", 1025)]],
             [updated: "1y"],
             [updated: 7]
           ] do
@@ -673,17 +673,17 @@ defmodule Apiary.WorkItems.WorkListTest do
                %{key: member.id, count: 1}
              ]
 
-      # The repository is the title of the collection that holds the ticket now.
-      assert WorkItems.list_filter_values(scope, :repository) == [
+      # The collection is named by its title: of the collection that holds the ticket now.
+      assert WorkItems.list_filter_values(scope, :collection) == [
                %{key: "acme/shop", count: 3}
              ]
 
-      assert WorkItems.list_filter_values(scope, :repository, "SHOP") == [
+      assert WorkItems.list_filter_values(scope, :collection, "SHOP") == [
                %{key: "acme/shop", count: 3}
              ]
 
-      assert WorkItems.list_filter_values(scope, :repository, "api") == []
-      assert WorkItems.list_filter_values(scope, :repository, <<0xFF>>) == []
+      assert WorkItems.list_filter_values(scope, :collection, "api") == []
+      assert WorkItems.list_filter_values(scope, :collection, <<0xFF>>) == []
 
       %{scope: stranger} = sign_up_fixture()
       foreign = %{stranger | organisation: scope.organisation, workspace: scope.workspace}

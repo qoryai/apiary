@@ -14,7 +14,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # search and no filter, shows why and how a work item starts.
   #
   # Everything the list shows is in the address, so a narrowed list can be linked and
-  # Back works: `view`, `stage`, `q`, `owner`, `repository`, `updated`, `sort`, and a
+  # Back works: `view`, `stage`, `q`, `owner`, `collection`, `updated`, `sort`, and a
   # page's cursor, `after` or `before`. The page hands each to `Apiary.WorkItems`
   # (`list_work_items/3`, `list_bands/3`), which checks it: a value it does not know
   # matches nothing, or is its default, and breaks nothing. An owner is named by Qory
@@ -50,9 +50,9 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   @views [:open, :you, :declined, :closed]
   @stages [:explore, :confirm, :shape]
-  @filters [:owner, :repository, :updated]
+  @filters [:owner, :collection, :updated]
   @sorts [:updated, :created]
-  @lists [:owner, :repository]
+  @lists [:owner, :collection]
 
   @impl true
   def render(assigns) do
@@ -117,17 +117,17 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   </:tile>
                 </.filter_options>
               </:owner>
-              <:repository>
+              <:collection>
                 <.filter_options
-                  id="work-items-filter-repository"
-                  name="repository"
+                  id="work-items-filter-collection"
+                  name="collection"
                   label={@collection_label}
                   multiple
-                  values={@params.repository}
-                  options={options(@options, @narrowed, @params, :repository)}
-                  query={@narrow["repository"]}
+                  values={@params.collection}
+                  options={options(@options, @narrowed, @params, :collection)}
+                  query={@narrow["collection"]}
                 />
-              </:repository>
+              </:collection>
               <:updated>
                 <.filter_options
                   id="work-items-filter-updated"
@@ -159,7 +159,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
           <.work_item_tokens
             collection_label={@collection_label}
             filters={tokens(@current_scope, @params, @options)}
-            clear={list_path(@current_scope, @params, owner: [], repository: [], updated: nil)}
+            clear={list_path(@current_scope, @params, owner: [], collection: [], updated: nil)}
             match={total(@list, @params)}
           />
 
@@ -306,7 +306,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   def handle_event("filter", _params, socket), do: {:noreply, socket}
 
-  # The box above a section's values: the repositories whose title holds the words,
+  # The box above a section's values: the collections whose title holds the words,
   # searched on the server; the owners whose name holds them, among those offered.
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket) when is_binary(q) do
     case filter_key(name) do
@@ -386,7 +386,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
     options = %{
       owner: Enum.map(owners, &%{key: &1.key, label: Map.fetch!(names, &1.key), count: &1.count}),
-      repository: repositories(scope, nil)
+      collection: collections(scope, nil)
     }
 
     socket = assign(socket, :options, options)
@@ -399,12 +399,12 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     assign(socket, :narrowed, narrowed)
   end
 
-  defp repositories(scope, q) do
-    for value <- WorkItems.list_filter_values(scope, :repository, q),
+  defp collections(scope, q) do
+    for value <- WorkItems.list_filter_values(scope, :collection, q),
         do: %{key: value.key, label: ExternalText.line(value.key), count: value.count}
   end
 
-  defp narrowed(socket, :repository, q), do: repositories(socket.assigns.current_scope, q)
+  defp narrowed(socket, :collection, q), do: collections(socket.assigns.current_scope, q)
 
   defp narrowed(socket, :owner, q) do
     words = q |> String.trim() |> String.downcase()
@@ -430,7 +430,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       stage: params.stage,
       search: params.search,
       owner: none_if_empty(params.owner),
-      repository: none_if_empty(params.repository),
+      collection: none_if_empty(params.collection),
       updated: params.updated,
       sort: params.sort,
       after: params.after,
@@ -561,7 +561,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       q: if(is_binary(q) and String.trim(q) != "", do: q),
       search: if(not is_binary(q) or String.trim(q) != "", do: q),
       owner: many(params["owner"]),
-      repository: many(params["repository"]),
+      collection: many(params["collection"]),
       updated: one(params["updated"]),
       sort: choice(params["sort"], @sorts, :updated),
       after: one(params["after"]),
@@ -609,7 +609,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
           stage: params.view == :open && params.stage,
           q: params.q,
           owner: params.owner,
-          repository: params.repository,
+          collection: params.collection,
           updated: params.updated,
           sort: params.sort != :updated && params.sort,
           after: params.after,
@@ -642,7 +642,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp sort_label(:created), do: gettext("Newest")
 
   defp filter_key("owner"), do: :owner
-  defp filter_key("repository"), do: :repository
+  defp filter_key("collection"), do: :collection
   defp filter_key("updated"), do: :updated
   defp filter_key(_name), do: nil
 
@@ -662,12 +662,12 @@ defmodule ApiaryWeb.WorkItemLive.Index do
           do: {words(options, key, value), value, nil}
   end
 
-  # A filter's value as the page says it: an owner by name, a repository by its title, a
+  # A filter's value as the page says it: an owner by name, a collection by its title, a
   # window by its words; a value that is not one as nothing.
   defp words(options, :owner, id),
     do: Enum.find_value(Map.fetch!(options, :owner), "", &(&1.key == id && &1.label))
 
-  defp words(_options, :repository, title), do: ExternalText.line(title)
+  defp words(_options, :collection, title), do: ExternalText.line(title)
   defp words(_options, :updated, :invalid), do: ""
 
   defp words(_options, :updated, window),

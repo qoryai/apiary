@@ -62,7 +62,7 @@ defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
            }
 
     assert WorkItems.list_filter_values(scope, :owner) == []
-    assert WorkItems.list_filter_values(scope, :repository) == []
+    assert WorkItems.list_filter_values(scope, :collection) == []
     assert WorkItems.count_waiting_on(scope) == 0
   end
 end

@@ -178,6 +178,56 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "a radio group" do
+    test "a choice with a line is a card, its radio described by the line" do
+      form = Phoenix.Component.to_form(%{"domain" => "b"}, as: :workspace)
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:domain],
+          type: "radio",
+          label: "Type",
+          options: [{"A", "a", "For a."}, {"B", "b", "For b."}]
+        )
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert ["workspace_domain-0", "workspace_domain-1"] =
+               doc
+               |> LazyHTML.query("label.q-choice > input[type=radio]")
+               |> LazyHTML.attribute("id")
+
+      assert doc |> LazyHTML.query("#workspace_domain-1") |> LazyHTML.attribute("checked") != []
+
+      assert doc
+             |> LazyHTML.query("#workspace_domain-0")
+             |> LazyHTML.attribute("aria-describedby") ==
+               ["workspace_domain-0-line"]
+
+      assert doc |> LazyHTML.query("#workspace_domain-1-line") |> LazyHTML.text() |> String.trim() ==
+               "For b."
+
+      assert doc |> LazyHTML.query("label.q-choice .q-choice-h") |> Enum.map(&LazyHTML.text/1) ==
+               ["A", "B"]
+    end
+
+    test "a choice without a line stays a plain label" do
+      form = Phoenix.Component.to_form(%{}, as: :workspace)
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:kind],
+          type: "radio",
+          label: "Create",
+          options: [{"An organisation", "organisation"}]
+        )
+
+      refute html =~ "q-choice"
+      refute html =~ "aria-describedby"
+      assert html =~ "An organisation"
+    end
+  end
+
   describe "an input with more than one error" do
     test "shows each, with a separate id, and is described by all of them" do
       form =

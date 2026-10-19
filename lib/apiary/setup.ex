@@ -191,7 +191,10 @@ defmodule Apiary.Setup do
 
   `password: :required` asks for a password, as the set-up page does; by default it is
   required while the instance sends no email (`Apiary.Mail.configured?/0`), as a
-  person's sign-up's is, and optional once it does; a password given is kept either way. `origin:` is where the set-up comes from, for its entry
+  person's sign-up's is, and optional once it does; a password given is kept either way.
+  `domain: :required` asks for Main's domain, as the set-up page does; without it, a
+  sign-up with no domain makes Main of the default domain. `origin:` is where the set-up
+  comes from, for its entry
   (`Apiary.Accounts.Scope.put_origin/2`); `Apiary.Setup` when none is given.
   """
   @spec set_up(String.t(), map, keyword) ::
@@ -215,6 +218,7 @@ defmodule Apiary.Setup do
                actor: :instance,
                setup_code: code,
                password: password,
+               domain: Keyword.get(opts, :domain, :optional),
                origin: Keyword.get(opts, :origin) || %{worker: "Apiary.Setup"}
              ) do
           {:ok, _signed_up} = done -> done

@@ -490,7 +490,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-muted">
         <span :for={note <- @export.notes}>{note}{" "}</span>
-        {gettext("Keep a policy file outside the checkout.")}
+        {gettext("Keep a policy file outside the folder the runs work in.")}
         {pgettext(
           "plain",
           "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."

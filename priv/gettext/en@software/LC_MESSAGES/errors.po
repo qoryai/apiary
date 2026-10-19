@@ -41,6 +41,11 @@ msgstr ""
 msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
 msgstr ""
 
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a type."
+msgstr ""
+
 #: lib/apiary/connections.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another default key for %{provider} first: %{value} is its default key."
@@ -416,6 +421,11 @@ msgstr ""
 msgid "is too long"
 msgstr ""
 
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "lock only a workspace's variable: a locked workspace variable replaces the same variable on every target"
+msgstr "lock only a workspace's variable: a locked workspace variable replaces the same variable on every repository"
+
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
@@ -570,11 +580,6 @@ msgstr ""
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "names beginning QORY_ are reserved for Forager"
-msgstr ""
-
-#: lib/apiary/variables.ex
-#, elixir-autogen, elixir-format
-msgid "only a workspace's variable can be locked: a lock holds it against the repositories"
 msgstr ""
 
 msgid "should be %{count} byte(s)"

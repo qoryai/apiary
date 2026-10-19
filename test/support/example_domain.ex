@@ -27,6 +27,12 @@ defmodule Apiary.Lingo.Domain.Example do
   def name, do: "example"
 
   @impl true
+  def label, do: "Example workspace"
+
+  @impl true
+  def description, do: "For the tests only."
+
+  @impl true
   def target_required?, do: false
 
   @impl true

@@ -12,6 +12,8 @@ defmodule Apiary.Lingo.Domain.General do
   """
   @behaviour Apiary.Lingo.Domain
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Lingo.Domain
   alias Apiary.Runs.Target
 
@@ -34,6 +36,17 @@ defmodule Apiary.Lingo.Domain.General do
 
   @impl true
   def name, do: "general"
+
+  @impl true
+  def label, do: gettext("General workspace")
+
+  @impl true
+  def description,
+    do:
+      pgettext(
+        "workspace type",
+        "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
+      )
 
   @impl true
   def target_required?, do: false

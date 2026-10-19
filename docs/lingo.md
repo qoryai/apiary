@@ -3,8 +3,9 @@
 The engine behind Qory Apiary is generic: a work item enters, a run does it, and the result
 is a **change request** that is **applied** to a **target** in a **system**, in a
 **workspace** of an **organisation**. A **domain** (`Apiary.Lingo.Domain`) names the
-engine for one kind of work. The software domain says repository, forge, pull request and
-merge. Engine English is never shown. Every page is written in a domain's words.
+engine for one kind of work. There are two. The software domain says repository, forge,
+pull request and merge. The general domain, for any other kind of work, says the engine's
+words. Every page is written in a domain's words.
 
 This is done with Gettext, not with a list of word swaps:
 
@@ -25,8 +26,9 @@ This is done with Gettext, not with a list of word swaps:
   (`users.language`, one of `Apiary.Accounts.Preferences.languages/0`: English, and the
   language of every catalogue under `priv/gettext`). The domain is the workspace's
   (`workspaces.domain`, chosen when the workspace is created), read through the registry
-  of domains (`Apiary.Lingo.Domain.domains/0`, `for_workspace/1`); software is the only
-  one and the default. Every page of a signed-in person who reaches a workspace has one in
+  of domains (`Apiary.Lingo.Domain.domains/0`, `for_workspace/1`): software, the default,
+  or general, whose locale `en@general` has no catalogue and reads the source text. Every
+  page of a signed-in person who reaches a workspace has one in
   its scope, the person's settings included, and reads that workspace's domain. A
   scope without a workspace (a person with no membership, on `/users/organisations`, or
   one who reaches no workspace yet, on their organisation's pages) reads the person's
@@ -50,19 +52,20 @@ This is done with Gettext, not with a list of word swaps:
   word (`@engine_words` in `test/support/lingo_catalogue_case.ex`) and a domain's catalogue
   has no translation for it, and, for a language other than English, when a sentence has a
   translation neither in the domain's catalogue nor in the language's. It also fails when a
-  catalogue shows a word such as apiary, hive, bee, flower, nectar, honey or jar.
+  catalogue shows a word such as apiary, hive, bee, flower, nectar, honey or jar, and when
+  a source string uses a software word (Domains and their words, below).
 
 ## The words
 
-| Engine (msgid) | Software domain (`en@software`) |
-|---|---|
-| target, targets | repository, repositories |
-| collection, collections | same, except "Turned on/off taking a repository's %{items}…" |
-| system, systems | forge, forges |
-| change request | pull request |
-| apply, applied | merge, merged |
-| organisation | organisation |
-| workspace, workspaces | workspace, workspaces |
+| Engine (msgid) | Software domain (`en@software`) | General domain (`en@general`) |
+|---|---|---|
+| target, targets | repository, repositories | same |
+| collection, collections | same, except "Turned on/off taking a repository's %{items}…" | same |
+| system, systems | forge, forges | same |
+| change request | pull request | same |
+| apply, applied | merge, merged | same |
+| organisation | organisation | same |
+| workspace, workspaces | workspace, workspaces | same |
 
 A target is what a run's change request is applied to. A collection is what an adapter
 reports work from, which an organisation assigns to a workspace. The software domain calls
@@ -80,6 +83,27 @@ hover. It is not a way to show hive or apiary.
 
 Contracts, wire bodies, JSON errors for machines, the schema, code and logs use engine words
 and do not go through Gettext.
+
+## Domains and their words
+
+A workspace's domain is its **type**, chosen when the workspace is created and fixed
+after: on the set-up page for the instance's first workspace, and on an edition's form
+for any other. Each domain has a label and a line under it, which the forms and the
+workspace's settings show (`c:Apiary.Lingo.Domain.label/0`, `description/0`): "Software
+workspace", for work on code, and "General workspace", for any other work.
+`Apiary.Lingo.Domain.choices/0` lists the domains in the order a form offers them.
+
+- **No source string uses a software word**: repository, forge, pull request, branch,
+  commit, checkout, or "the code". A general workspace reads the source text, so a
+  software word there would be false. The catalogue test refuses one, except in the
+  context `"plain"`, in the context `"workspace type"` (a type's line, which a person
+  reads where they pick a type), and in the form that adds an integration from a
+  repository on a forge.
+- **A domain may say a whole sentence in its words** where a word swap would not do. The
+  Explore texts are an example: the msgid "Qory proposed what to do, after %{duration}."
+  reads "Qory proposed how to build it, after %{duration}." in `en@software`. The catalogue test lists these sentences (`@software_sentences` in
+  `test/apiary_web/lingo_catalogue_test.exs`), and each must be translated in the
+  domain's catalogue.
 
 ## Writing a string
 
@@ -225,8 +249,9 @@ mix gettext.extract --merge         # new strings into priv/gettext/*.pot and ev
 
 Then open `priv/gettext/en@software/LC_MESSAGES/*.po`. Fill in `msgstr` for every new
 message that has an engine word, in the software domain's words. A message without an
-engine word may keep an empty `msgstr`, because the source text is already the software
-domain's English. Clear any `fuzzy` flag that a merge sets after you check the
+engine word keeps an empty `msgstr`, because the source text is already the software
+domain's English, unless the catalogue test lists it as a sentence the domain says in
+its words. Clear any `fuzzy` flag that a merge sets after you check the
 translation. A fuzzy translation does not count.
 
 The catalogues have no line numbers and are sorted by msgid, so moving code does not change
