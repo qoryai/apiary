@@ -37,7 +37,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 96
+      assert length(names) == 98
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -263,10 +263,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "3b63cb4deda20a2af5590798d5234e57f542a628"
+  @integrations_ref "a22946819868503a62d5855bd2c664d9e339527f"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "04b4ec3159f5a8bdf6107a273adc62056d984f48ee9e757d4d69dde4f1235bc9",
+      "016283cff012f7becd936d642e730149ac24787ec6a5fa9c2c82782ca2cd0b8e",
     "priv/contract/integration/definitions.schema.json" =>
       "dccf00468dc180a63a116b6fa823e04358b94d3b0b79678843f8f49ae9056e0b",
     "priv/contract/integration/descriptions/anthropic.json" =>
@@ -409,6 +409,25 @@ defmodule Apiary.Integrations.DescriptionTest do
       for host <- ["localhost", "api.localhost", "127.0.0.1", "169.254.169.254", "intranet"] do
         assert {:error, {:description_invalid, [{:schema, _}]}} =
                  anthropic |> Map.put("egress_hosts", [host]) |> encode() |> Description.parse(),
+               host
+      end
+    end
+
+    test "is refused with an egress host or a credential host that is a *. suffix" do
+      for name <- ~w(egress-hosts-wildcard credential-hosts-wildcard) do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 parse_fixture("invalid/description-#{name}.json"),
+               name
+      end
+
+      anthropic = vendored_description("anthropic")
+
+      for host <- ["*.example.com", "*.anthropic.com", "api.example.com\n"] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 anthropic
+                 |> Map.update!("egress_hosts", &[host | &1])
+                 |> encode()
+                 |> Description.parse(),
                host
       end
     end
@@ -1577,6 +1596,95 @@ defmodule Apiary.Integrations.DescriptionTest do
         assert {:error, {:integration_settings_invalid, _}} =
                  Description.check_settings(description, %{"url" => "abcdefgh"})
       end
+    end
+  end
+
+  describe "egress_hosts/2" do
+    defp with_address(egress_hosts, default \\ nil) do
+      address =
+        %{"title" => "Address", "type" => "string"}
+        |> then(&if(default, do: Map.put(&1, "default", default), else: &1))
+
+      {:ok, description} =
+        tracker_description(%{
+          "settings" => %{
+            "type" => "object",
+            "properties" => %{
+              "address" => address,
+              "api_key" => %{"title" => "API key", "type" => "string", "writeOnly" => true},
+              "api_key_file" => %{"title" => "API key file", "type" => "string"}
+            }
+          },
+          "egress_hosts" => egress_hosts
+        })
+        |> parse()
+
+      description
+    end
+
+    test "is the host entries, and the host of a setting's address" do
+      description = with_address(["api.example.com", %{"setting" => "address"}])
+
+      assert Description.egress_hosts(description, %{
+               "address" => "https://models.example.com:8443/v1"
+             }) == {["api.example.com", "models.example.com"], []}
+
+      assert Description.egress_hosts(description, %{"address" => "https://api.example.com"}) ==
+               {["api.example.com"], []}
+    end
+
+    test "leaves out an address that the endpoint rule refuses, and names its setting" do
+      description = with_address(["api.example.com", %{"setting" => "address"}])
+
+      for address <- ["http://models.example.com", "https://localhost", "https://127.0.0.1"] do
+        assert Description.egress_hosts(description, %{"address" => address}) ==
+                 {["api.example.com"], ["address"]},
+               address
+      end
+
+      assert Description.egress_hosts(description, %{}) == {["api.example.com"], []}
+    end
+
+    test "takes a setting's host only when it is exact" do
+      description = with_address([%{"setting" => "address"}])
+
+      for address <- [
+            "https://*.example.com",
+            "https://*.example.com/v1",
+            "https://api.example.com\n",
+            "https://api.example.com/v1\n",
+            "https://010.0.0.12",
+            "https://10.0.0.012",
+            "https://10.1",
+            "https://0x0a.0.0.12",
+            "https://127.0.0.1"
+          ] do
+        assert Description.egress_hosts(description, %{"address" => address}) ==
+                 {[], ["address"]},
+               inspect(address)
+      end
+
+      # An address `a.b.c.d` is exact: it matches that address alone.
+      assert Description.egress_hosts(description, %{"address" => "https://10.0.0.12/v1"}) ==
+               {["10.0.0.12"], []}
+    end
+
+    test "reads the setting's default where the connection has no value" do
+      description =
+        with_address([%{"setting" => "address"}], "https://gateway.example.com/v1")
+
+      assert Description.egress_hosts(description, %{}) == {["gateway.example.com"], []}
+
+      assert Description.egress_hosts(description, %{"address" => "https://edge.example.com"}) ==
+               {["edge.example.com"], []}
+
+      description = with_address([%{"setting" => "address"}], "https://*.example.com")
+      assert Description.egress_hosts(description, %{}) == {[], ["address"]}
+    end
+
+    test "is empty for a description without the member" do
+      {:ok, description} = parse(tracker_description())
+      assert Description.egress_hosts(description, %{}) == {[], []}
     end
   end
 end

@@ -63,6 +63,12 @@ defmodule Apiary.Policy.Grammar do
   def in_pattern?(_host), do: false
 
   @doc """
+  Whether `host` is an exact entry: one that `host?/1` takes, with no `*.` in front. That
+  is a lower-case host name or an address `a.b.c.d`, and it matches that host alone.
+  """
+  def exact_host?(host), do: host?(host) and not wildcard?(host)
+
+  @doc """
   Whether `host` ends in a number, as WHATWG's URL host parser asks it: its last label (a
   final empty one left out) is all ASCII digits, or `0x` and hex digits. Such a host is an
   address, whatever its other labels are.

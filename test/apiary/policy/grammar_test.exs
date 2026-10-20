@@ -11,6 +11,15 @@ defmodule Apiary.Policy.GrammarTest do
     refute Grammar.path?("/a\n")
   end
 
+  test "exact_host?/1 is a host name or an address a.b.c.d, with no *. and no final newline" do
+    assert Grammar.exact_host?("api.example.com")
+    assert Grammar.exact_host?("10.0.0.12")
+
+    for host <- ["*.example.com", "api.example.com\n", "10.0.0.12\n", "010.0.0.12", "10.1", ""] do
+      refute Grammar.exact_host?(host), inspect(host)
+    end
+  end
+
   test "a path holds no space or control character of any script" do
     for bad <- [
           "/a\u2028b",

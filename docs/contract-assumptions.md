@@ -1258,12 +1258,14 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
 - What the gateway does with the policy document, read from `gateway/internal/proxy`,
   `policy` and `session` of Forager at the pinned ref, and what Qory Apiary
   renders for it:
-  - A connection is decided by `egress.deny` first (`Proxy.decide`), in either mode and
-    with the first matching deny entry as the rule, then by `egress.allow` and the mode,
-    and only a connection that was allowed is terminated and held to `egress.paths`. A
-    host that is only in `paths` is denied under `enforce`. So a host held to paths is
-    rendered in **both** `allow` and `paths`, always, and a denied host is never in
-    `paths`: it is never reached.
+  - A connection whose host equals an entry of `egress.allow_first` is allowed first, in
+    either mode. Any other connection is decided by `egress.deny`
+    (`Proxy.decide`), in either mode and with the first matching deny entry as the rule,
+    then by `egress.allow` and the mode. Only a connection that was allowed is
+    terminated and held to `egress.paths`. A host that is only in `paths` is denied under
+    `enforce`. So a host held to paths is rendered in **both** `allow` and `paths`, or,
+    for an integration's host, in `allow_first` and `paths`, and a denied host is never
+    in `paths`: it is never reached.
   - A host several keys of `paths` cover is held to the most specific one: its name
     itself, else the `*.` key with the longest suffix (`policy.HostPaths`). A `*.` key of
     `paths` also holds every allowed host below it that no more specific key names. Qory

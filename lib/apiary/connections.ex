@@ -61,6 +61,16 @@ defmodule Apiary.Connections do
   workspace where both apply, the same runtime, the same integration, or a host in
   common, is refused, `{:error, {:overlap, public_ids}}` (`Apiary.Connections.Overlap`).
 
+  ## The security policy
+
+  The hosts that an integration other than a model provider requires (`egress_hosts/1`)
+  are allowed in the policy of every workspace it reaches (`Apiary.Policy`). A write to
+  such an integration locks every workspace of the organisation before it writes
+  (docs/access.md, The lock order), then renders again the policy of each workspace it
+  reached before the write or reaches after it, in the write's transaction
+  (`Apiary.Policy.rerender_in/3`). A render that fails rolls the write back, with
+  `{:error, %Apiary.Policy.Error{}}`.
+
   ## Integrity
 
   Every connection, release and custom definition carries an integrity code
@@ -113,6 +123,8 @@ defmodule Apiary.Connections do
   alias Apiary.Kinds.{CanonicalJSON, Coded, Endpoint, Provider, Providers, Runtimes, Services}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.Kinds.ServiceDefinition, as: Definition
+  alias Apiary.Policy
+  alias Apiary.Policy.Grammar
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
 
@@ -126,9 +138,11 @@ defmodule Apiary.Connections do
   for a definition, `{:definition_invalid, problems}`; for a provider,
   `:provider_unknown`, `:provider_changed`, `{:model_in_use, places}`,
   `{:provider_in_use, %{places: places, runs: run_public_ids}}` and `Apiary.Secrets`'
-  refusals of its keys.
+  refusals of its keys; for an integration, an `Apiary.Policy.Error` when a render of
+  the security policy fails.
   """
-  @type refusal :: Access.reason() | Ecto.Changeset.t() | atom | {atom, term}
+  @type refusal ::
+          Access.reason() | Ecto.Changeset.t() | Apiary.Policy.Error.t() | atom | {atom, term}
 
   ## Reading
 
@@ -334,6 +348,183 @@ defmodule Apiary.Connections do
     end
   end
 
+  @doc """
+  egress_hosts/1 is the hosts that the integrations reaching `workspace` require, each
+  with its connection: the `egress_hosts` of every integration connection of the
+  organisation that applies to every workspace or lists `workspace`, read for its
+  settings (`Apiary.Integrations.Description.egress_hosts/2`). Each host is exact
+  (`Apiary.Policy.Grammar.exact_host?/1`). `Apiary.Policy` renders them into the
+  workspace's policy (`Apiary.Policy.Resolution`).
+
+  Model providers are left out: a run whose handover set a model provider gets the
+  provider's hosts in the document composed for the run
+  (`Apiary.Policy.ComposedConfiguration`), and `provider_hosts/1` has the hosts of their
+  API endpoints. A connection that fails its integrity code, or
+  whose release does, is left out, with an error in the log, and so is one whose
+  description fails to parse. A setting whose address fails the endpoint rule, or whose
+  host is not exact, adds no host, with a line in the log that contains the setting's
+  name and not its value. `[]` where the `secrets` feature is off, since the
+  organisation's integrations are absent there. It asks nothing of `Apiary.Access`.
+  """
+  @spec egress_hosts(%Workspace{}) :: [Apiary.Policy.Resolution.integration_host()]
+  def egress_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}),
+    do: reaching_hosts(organisation_id, &reaching_workspace(&1, workspace_id))
+
+  @doc """
+  organisation_egress_hosts/1 is `egress_hosts/1` for every workspace of the
+  organisation at once: the hosts of each integration connection that applies to every
+  workspace or lists at least one workspace, each with its connection.
+  """
+  @spec organisation_egress_hosts(%Organisation{} | Ecto.UUID.t()) ::
+          [Apiary.Policy.Resolution.integration_host()]
+  def organisation_egress_hosts(%Organisation{id: id}), do: organisation_egress_hosts(id)
+
+  def organisation_egress_hosts(organisation_id) when is_binary(organisation_id),
+    do: reaching_hosts(organisation_id, &reaching_any/1)
+
+  @doc """
+  provider_hosts/1 is the hosts of the API endpoints of the model providers reaching
+  `workspace`, each with its connection: every provider connection of the organisation
+  that applies to every workspace or lists `workspace`, the reach the model choice
+  checks. An endpoint that is a setting is the provider's value of that setting. Each
+  host is exact and passes the rule of `Apiary.Kinds.Endpoint`; any other is left out,
+  and so is a provider that fails its integrity code or is no longer in the catalogue as
+  it was added. `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are
+  in no workspace's policy, only in the document composed for a run
+  (`Apiary.Policy.ComposedConfiguration`). `[]` unless the features `factory` and
+  `secrets` are both on. It asks nothing of `Apiary.Access`.
+  """
+  @spec provider_hosts(%Workspace{}) :: [Apiary.Policy.Resolution.integration_host()]
+  def provider_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}),
+    do: reaching_provider_hosts(organisation_id, &reaching_workspace(&1, workspace_id))
+
+  @doc """
+  organisation_provider_hosts/1 is `provider_hosts/1` for every workspace of the
+  organisation at once: the hosts of each provider connection that applies to every
+  workspace or lists at least one workspace, each with its connection.
+  """
+  @spec organisation_provider_hosts(%Organisation{} | Ecto.UUID.t()) ::
+          [Apiary.Policy.Resolution.integration_host()]
+  def organisation_provider_hosts(%Organisation{id: id}), do: organisation_provider_hosts(id)
+
+  def organisation_provider_hosts(organisation_id) when is_binary(organisation_id),
+    do: reaching_provider_hosts(organisation_id, &reaching_any/1)
+
+  defp reaching_workspace(query, workspace_id) do
+    from [c] in query,
+      left_join: w in ConnectionWorkspace,
+      on: w.connection_id == c.id and w.workspace_id == ^workspace_id,
+      where: c.applies_to == "all" or not is_nil(w.workspace_id)
+  end
+
+  defp reaching_any(query) do
+    from [c] in query,
+      where:
+        c.applies_to == "all" or
+          exists(from w in ConnectionWorkspace, where: w.connection_id == parent_as(:c).id)
+  end
+
+  defp reaching_hosts(organisation_id, reach) do
+    if Features.on?(:secrets) do
+      from(c in connections(organisation_id),
+        as: :c,
+        where: c.kind == "integration" and is_nil(c.provider_kind),
+        order_by: [asc: c.id],
+        preload: [:release]
+      )
+      |> reach.()
+      |> Repo.all()
+      |> with_hosts(&connection_egress_hosts/1)
+    else
+      []
+    end
+  end
+
+  defp reaching_provider_hosts(organisation_id, reach) do
+    if Features.on?(:factory) and Features.on?(:secrets) do
+      from(c in connections(organisation_id),
+        as: :c,
+        where: c.kind == "integration" and not is_nil(c.provider_kind),
+        order_by: [asc: c.id]
+      )
+      |> reach.()
+      |> Repo.all()
+      |> with_hosts(&api_hosts/1)
+    else
+      []
+    end
+  end
+
+  defp with_hosts(connections, hosts) do
+    for connection <- connections,
+        host <- hosts.(connection),
+        do: %{
+          host: host,
+          connection: %{
+            id: connection.id,
+            public_id: connection.public_id,
+            name: connection.name
+          }
+        }
+  end
+
+  # The exact hosts of the provider's API endpoints, each once, as the document composed
+  # for a run checks them (`Apiary.Runs.ProviderCredential`). A provider that fails its
+  # integrity code, or is no longer in the catalogue as it was added, has none here: a
+  # run of it is given no run configuration.
+  defp api_hosts(%Connection{} = provider) do
+    with true <- intact?(provider),
+         {:ok, %Provider{apis: apis}} <- provider(provider) do
+      settings = Connection.settings_map(provider)
+
+      apis
+      |> Enum.flat_map(fn
+        %{"endpoint" => address} when is_binary(address) -> [address]
+        %{"endpoint" => %{"setting" => name}} -> [settings[name]]
+        _api -> []
+      end)
+      |> Enum.flat_map(fn address ->
+        case Endpoint.host(address) do
+          {:ok, host} -> [host]
+          :error -> []
+        end
+      end)
+      |> Enum.filter(&Grammar.exact_host?/1)
+      |> Enum.uniq()
+    else
+      _not_read -> []
+    end
+  end
+
+  defp connection_egress_hosts(%Connection{} = connection) do
+    with true <- intact?(connection) || :not_intact,
+         {:ok, description} <- description(connection) do
+      {hosts, refused} =
+        Description.egress_hosts(description, Connection.settings_map(connection))
+
+      for name <- refused do
+        Logger.warning(
+          "the setting #{name} of the integration connection #{connection.public_id} is " <>
+            "not an address with an exact host: its host is not added to the security policy",
+          LogMetadata.metadata(connection.organisation_id, nil)
+        )
+      end
+
+      Enum.filter(hosts, &Grammar.exact_host?/1)
+    else
+      :not_intact ->
+        Logger.error(
+          "an integration connection fails its integrity code, and its hosts are not rendered: #{connection.public_id}",
+          LogMetadata.metadata(connection.organisation_id, nil)
+        )
+
+        []
+
+      {:error, _not_ready} ->
+        []
+    end
+  end
+
   ## Connections
 
   @doc """
@@ -448,6 +639,7 @@ defmodule Apiary.Connections do
 
       with :ok <- Access.check(scope, :"connection.write", organisation),
            {:ok, connection} <- built(build, new, organisation.id),
+           workspaces = lock_rendered(connection, organisation.id),
            changeset = connection |> change() |> attrs_changeset(connection, attrs),
            :ok <- valid(changeset),
            {:ok, workspace_ids} <-
@@ -465,7 +657,7 @@ defmodule Apiary.Connections do
                  name: inserted.name
                }
              }) do
-        {:ok, inserted}
+        rendered(scope, workspaces, nil, inserted)
       end
     end)
     |> reload()
@@ -1869,7 +2061,8 @@ defmodule Apiary.Connections do
   # A write to the scope's organisation, in the lock order of docs/access.md: the
   # organisation `FOR SHARE` (`Access.lock_places/1`), the membership read again under its
   # lock (`Access.reload/2`), then the organisation's integrations lock (`lock/1`); then
-  # `fun`, which asks its question first.
+  # `fun`, which asks its question first. The changes of the security policy that `fun`
+  # made (`rendered/4`) are announced once the write has committed.
   defp write(%Scope{organisation: %Organisation{id: id}} = scope, fun) do
     Repo.transact(fn ->
       :ok = Access.lock_places(scope)
@@ -1881,6 +2074,14 @@ defmodule Apiary.Connections do
         nil -> {:error, :not_found}
       end
     end)
+    |> case do
+      {:ok, {:rendered, value, changes}} ->
+        Policy.announce(changes)
+        {:ok, value}
+
+      result ->
+        result
+    end
   end
 
   defp write(_scope, _fun), do: {:error, :not_found}
@@ -1917,13 +2118,71 @@ defmodule Apiary.Connections do
            :ok <- provider_shown(scope, current),
            :ok <- Access.check(scope, :"connection.write", current),
            :ok <- organisation_chain(current) do
-        fun.(scope, organisation, Repo.preload(current, preloads(current)))
+        current = Repo.preload(current, preloads(current))
+        workspaces = lock_rendered(current, organisation.id)
+
+        with {:ok, value} <- fun.(scope, organisation, current),
+             do: rendered(scope, workspaces, current, value)
       else
         nil -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
       end
     end)
   end
+
+  ## The security policy of the workspaces an integration reaches
+
+  # An integration's hosts are in the policy of every workspace it reaches
+  # (`egress_hosts/1`), so a change to an integration other than a provider renders those
+  # workspaces again. Before the change writes, every workspace of the organisation is
+  # locked `FOR NO KEY UPDATE`, in the order of their ids, as a write of their policy
+  # locks them (`Apiary.Policy`): a write of a workspace's rules then comes wholly before
+  # the change, and the render sees it, or wholly after it, and its render sees the change.
+  # The locks come after the integrations lock and the connection's row: no write that
+  # holds a workspace waits for either (docs/access.md, The lock order).
+  defp lock_rendered(%Connection{kind: "integration", provider_kind: nil}, organisation_id) do
+    Repo.all(
+      from w in Workspace,
+        where: w.organisation_id == ^organisation_id and is_nil(w.purge_started_at),
+        order_by: [asc: w.id],
+        lock: "FOR NO KEY UPDATE"
+    )
+  end
+
+  defp lock_rendered(%Connection{}, _organisation_id), do: []
+
+  # Once the change is written: every managed workspace the integration reached before it,
+  # `before` (nil for a new one), or reaches after it, rendered again
+  # (`Apiary.Policy.rerender_in/3`). `{:ok, {:rendered, value, changes}}` for `write/2` to
+  # announce, or the first render's failure, which rolls the change back.
+  defp rendered(_scope, [], _before, value), do: {:ok, value}
+
+  defp rendered(scope, workspaces, before, %Connection{id: id} = value) do
+    reached = reach(before) ++ reach(Repo.get(Connection, id))
+    all = :all in reached
+
+    workspaces
+    |> Enum.filter(&(all or &1.id in reached))
+    |> Enum.reduce_while({:ok, []}, fn workspace, {:ok, changes} ->
+      case Policy.rerender_in(workspace, scope) do
+        {:ok, more} -> {:cont, {:ok, changes ++ more}}
+        {:error, _error} = refusal -> {:halt, refusal}
+      end
+    end)
+    |> case do
+      {:ok, changes} -> {:ok, {:rendered, value, changes}}
+      refusal -> refusal
+    end
+  end
+
+  # The workspaces a connection reaches: `[:all]`, or the ids it lists; `[]` for none.
+  defp reach(nil), do: []
+  defp reach(%Connection{applies_to: "all"}), do: [:all]
+
+  defp reach(%Connection{workspaces: workspaces}) when is_list(workspaces),
+    do: Enum.map(workspaces, & &1.workspace_id)
+
+  defp reach(%Connection{} = connection), do: workspace_ids_of(connection)
 
   defp reload({:ok, %Connection{id: id} = connection}) do
     connection =

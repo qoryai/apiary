@@ -989,6 +989,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           queued={length(@queue)}
           editing={@rule_edit && @rule_edit.host}
           error={@write_error}
+          error_field={@write_error_field}
           cancel={Common.cancel_path(assigns)}
           paths={@path_rules}
         >

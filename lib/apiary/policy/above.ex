@@ -21,8 +21,11 @@ defmodule Apiary.Policy.Above do
       reach every workspace below it, and one it locks is set by no workspace or
       repository. `Apiary.Variables.Resolution` resolves them first in every chain.
 
-  Its denies hold everywhere; its allows reach every workspace and can be narrowed by a
-  lower deny, never widened: how they meet the workspace's and a target's rules is
+  Its denies hold in every workspace, on every host but the hosts of the integrations
+  that reach the workspace (`Apiary.Policy.Resolution`, point 7). A deny of such a host
+  is refused before the edition saves it (`Apiary.Policy.check_deny/3` with `:above`);
+  a `*.` deny that covers one saves. Its allows reach every workspace and can be narrowed
+  by a lower deny, never widened: how they meet the workspace's and a target's rules is
   `Apiary.Policy.Resolution`'s to say.
 
   A level with `policy: false` is no level of the security policy: `Apiary.Policy`, its

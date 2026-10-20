@@ -82,6 +82,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       fresh: %{},
       announce: nil,
       write_error: nil,
+      write_error_field: nil,
       dialog: nil,
       mode_pick: nil,
       queue: [],
@@ -1143,9 +1144,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> put_flash(:info, sentence <> tail)
   end
 
-  @doc "A refused write: the domain's sentence above the composer, as an alert; the list is read again."
-  def refused(socket, %Policy.Error{message: message}) do
-    socket.assigns.reload.(socket) |> assign(:write_error, message)
+  @doc """
+  A refused write: the domain's sentence above the composer, as an alert; the list is read
+  again. A deny of an integration's host is refused with the sentence under the Host
+  field (`write_error_field: :host`).
+  """
+  def refused(socket, %Policy.Error{message: message} = error) do
+    field = if error.reason == :integration_host, do: error.field
+
+    socket.assigns.reload.(socket)
+    |> assign(write_error: message, write_error_field: field)
   end
 
   def focus(socket, id), do: push_event(socket, "policy:focus", %{id: id})

@@ -14,6 +14,12 @@ defmodule Apiary.Policy.Effective do
   `enforce`. `above` is the level above the workspace the rules were resolved under, nil
   where there is none or where it carries variables only (`Apiary.Policy.Above`'s
   `policy: false`).
+
+  `allow_first` is the hosts of the integrations that reach the workspace, each exact,
+  sorted, each once (`Apiary.Policy.Resolution`, point 7): the document's
+  `egress.allow_first` (`Apiary.Policy.Render.allow_first/2`), which the gateway allows
+  before `deny` and `allow`, in either mode. Such a host is in `allow` only when a rule's
+  allow on the same host is in force.
   """
 
   alias Apiary.Policy.{Above, Entry}
@@ -26,7 +32,8 @@ defmodule Apiary.Policy.Effective do
           entries: [Entry.t()],
           allow: [String.t()],
           deny: [String.t()],
-          paths: %{optional(String.t()) => [String.t()]}
+          paths: %{optional(String.t()) => [String.t()]},
+          allow_first: [String.t()]
         }
 
   defstruct mode: "observe",
@@ -36,5 +43,6 @@ defmodule Apiary.Policy.Effective do
             entries: [],
             allow: [],
             deny: [],
-            paths: %{}
+            paths: %{},
+            allow_first: []
 end

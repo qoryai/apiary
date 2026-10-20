@@ -4,7 +4,8 @@ defmodule Apiary.Runs.ProviderCredential do
   # The model key of a run that the handover set a model provider for
   # (`Apiary.Dispatches.RunSettings`), as its run configuration contains it: one entry of the
   # contract's `credentials`, an API credential, and the hosts the provider needs, which
-  # the run's `egress.allow` gains (`Apiary.Policy.ComposedConfiguration`). Both come from
+  # the run's `egress.allow` and `egress.allow_first` gain
+  # (`Apiary.Policy.ComposedConfiguration`). Both come from
   # the run's stored provider columns and the provider's row, so a choice changed after
   # the handover changes neither.
   #

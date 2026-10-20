@@ -475,14 +475,30 @@ for each other and never on each other at once:
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
    (`c:Apiary.Edition.above_workspace/1`): it takes every workspace of the organisation,
-   then renders each again (`Apiary.Policy.rerender_in/3`).
+   then renders each again (`Apiary.Policy.rerender_in/3`). A write to an integration
+   takes them later, in step 5.
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
 5. **Everything else**: the organisation's integrations lock, a transaction-level advisory
    lock that every write to its runtimes, integrations and services takes
    (`Apiary.Connections.lock/1`), then the rows it changes; invitations, access keys,
-   nodes, then runs. A change to a model provider takes the integrations lock, then the
+   nodes, then runs. A write to an integration other than a model provider takes the
+   integrations lock and the connection's row `FOR UPDATE`, then every workspace row of
+   the organisation `FOR NO KEY UPDATE`, in the order of their ids, before it writes, and
+   then renders again the policy of each workspace the integration reached before the
+   write or reaches after it (`Apiary.Policy.rerender_in/3`). That write is the one
+   change that takes workspace rows after the integrations lock. No change that holds a
+   workspace row takes the integrations lock or locks the row of an integration other
+   than a model provider, so the two never wait on each other. A save of a deny rule
+   reads the integrations' hosts while it holds its workspace's row, with no lock of
+   theirs (`Apiary.Policy.check_deny/3`): a write to an integration holds every workspace
+   row before it writes, so the save reads that write whole or not at all. It reads the
+   hosts of the model providers' API endpoints the same way. A change to a model provider
+   takes no workspace row, so a save at the same moment may read the provider as it was
+   before the change; the document composed for a run has the provider's hosts in
+   `allow_first` either way (`Apiary.Policy.ComposedConfiguration`). A write of a model choice
+   at levels 2 to 5 holds the workspace row and then takes a provider's row `FOR SHARE`. A change to a model provider takes the integrations lock, then the
    provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes
    the organisation's advisory lock for its secrets and the row of the keys' secret
    `FOR UPDATE`; to choose the default key, that row `FOR SHARE`. It reads what uses the

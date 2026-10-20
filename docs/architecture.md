@@ -337,8 +337,9 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   (`above_workspace/1`, an `Apiary.Policy.Above`: host rules, a required mode, and whether
   the workspace may allow more hosts). The core asks for it in the
   reads and writes of `Apiary.Policy` that need it, resolves it with the workspace's and
-  a target's rules (`Apiary.Policy.Resolution`: its deny above everything, its allow
-  narrowed by a lower deny and never widened), renders it into every document, counts it
+  a target's rules (`Apiary.Policy.Resolution`: its deny above every rule, below an
+  integration's host only, its allow narrowed by a lower deny and never widened), renders
+  it into every document, counts it
   in the record, and draws its rows and lines on the policy pages and Network access,
   saying the level's `name` and nothing else about it. A change of the level
   renders every workspace again through `Apiary.Policy.rerender_in/3`, inside the
