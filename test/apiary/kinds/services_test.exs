@@ -272,7 +272,10 @@ defmodule Apiary.Kinds.ServicesTest do
                                   sealed/plaintext-other-digest.json sealed/run-configuration.json
                                   sealed/sealed-plaintext.json sealed/secrets-answer.json
                                   sealed/secrets-request.json sealed/vectors.json
-                                  known-answers/keys.json known-answers/small-order.json),
+                                  known-answers/keys.json known-answers/small-order.json
+                                  policy/observe-allow-first.yaml
+                                  invalid/policy-allow-first-pattern.yaml
+                                  invalid/policy-allow-first-too-many.yaml),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

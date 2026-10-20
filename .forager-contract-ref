@@ -18,13 +18,14 @@
 # Code runtime that requires no model key; a gateway that opens its machine only for an
 # exact entry of the node's policy, never for an entry of a server's policy; a runtime's
 # `model.keys`, the variables it reads a model key from, each for one API format and
-# auth, an OAuth token marked `oauth`; and the sealed answer to the secrets request, with
-# its known answers under fixtures/sealed.
+# auth, an OAuth token marked `oauth`; the sealed answer to the secrets request, with
+# its known answers under fixtures/sealed; and a policy's `egress.allow_first`, at most
+# 64 exact hosts that the gateway allows before `deny` and `allow`.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-b672408ecf75b07c6724d0df8c7c69e8f0debb83
+b5bfbc15aa56481c696c00140570d41dac6b0892
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json
@@ -35,6 +36,9 @@ priv/contract/secrets-answer.schema.json
 priv/contract/sealed-plaintext.schema.json
 test/fixtures/forager-contract/known-answers/keys.json
 test/fixtures/forager-contract/known-answers/small-order.json
+test/fixtures/forager-contract/policy/observe-allow-first.yaml
+test/fixtures/forager-contract/invalid/policy-allow-first-pattern.yaml
+test/fixtures/forager-contract/invalid/policy-allow-first-too-many.yaml
 test/fixtures/forager-contract/sealed/invalid/bad-signature.json
 test/fixtures/forager-contract/sealed/invalid/expired.json
 test/fixtures/forager-contract/sealed/invalid/other-digest.json
