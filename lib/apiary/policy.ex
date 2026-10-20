@@ -21,8 +21,11 @@ defmodule Apiary.Policy do
 
   Every document of a workspace also allows the hosts that the integrations reaching the
   workspace require (`Apiary.Connections.egress_hosts/1`), each on every path. They come
-  from no rule, and no deny takes them out (`Apiary.Policy.Resolution`, source
-  `:integration`). A change of such an integration renders the workspaces it reaches
+  from no rule, and no rule takes them out of `allow` (`Apiary.Policy.Resolution`, point
+  7). A deny rule of such a host is refused at save (`check_deny/3`). A `*.` deny that
+  covers one saves and is written to `deny`; the document does not contain
+  `allow_first` (`Apiary.Policy.Render.allow_first/2`), so the gateway denies that host.
+  A change of such an integration renders the workspaces it reaches
   again, inside the change's transaction (`rerender_in/3`). `effective/2`, which the pages
   read, leaves those hosts out; `effective/3` has them.
 
@@ -1405,6 +1408,8 @@ defmodule Apiary.Policy do
         )
       )
 
+  defp in_workspace(%Error{message: nil} = error, %Workspace{}), do: error
+
   defp in_workspace(%Error{} = error, %Workspace{name: name}),
     do: %{
       error
@@ -1557,10 +1562,58 @@ defmodule Apiary.Policy do
 
     with :ok <- may_change(scope, existing),
          :ok <- may_lock(scope, existing, attrs),
-         :ok <- room(workspace.id, target_id, existing) do
+         :ok <- room(workspace.id, target_id, existing),
+         :ok <- deny_allowed(candidate, Connections.egress_hosts(workspace)) do
       store(workspace, scope.user, target_id, existing, candidate, attrs)
     end
   end
+
+  @doc """
+  check_deny/3 says whether a deny rule of `host` may be saved at `place`: `:ok`, or
+  `{:error, %Error{reason: :integration_host}}` when `host` equals a host that an
+  integration reaching the place requires. The error's `details` contain that
+  integration's connection and the host (`Apiary.Policy.Error`). A `*.` host is never
+  refused: a `*.` deny saves, and the integration's host beats it in the resolution
+  (`Apiary.Policy.Resolution`, point 7).
+
+  `place` is `:workspace`, for the scope's workspace and each of its targets, which
+  `allow/3`, `deny/3` and the other writes of this module ask under the workspace's lock;
+  or `:above`, for the level above the workspace (`Apiary.Policy.Above`), whose denies
+  hold in every workspace of the scope's organisation. An edition that keeps a level above
+  asks it with `:above` before it saves a deny there, inside the transaction that holds the
+  organisation's workspaces (`lock_workspaces/2`), so a write to an integration, which
+  locks every workspace of the organisation first, comes wholly before or wholly after it.
+  """
+  @spec check_deny(Scope.t(), :workspace | :above, String.t()) :: :ok | refusal
+  def check_deny(%Scope{workspace: %Workspace{} = workspace}, :workspace, host),
+    do: deny_allowed(%Rule{action: "deny", host: host}, Connections.egress_hosts(workspace))
+
+  def check_deny(%Scope{organisation: %Organisation{} = organisation}, :above, host) do
+    deny_allowed(
+      %Rule{action: "deny", host: host},
+      Connections.organisation_egress_hosts(organisation)
+    )
+  end
+
+  # A deny rule on an integration's host, exactly, is refused; the first connection that
+  # lists the host is the one the refusal contains.
+  defp deny_allowed(%Rule{action: "deny", host: host}, integrations) when is_binary(host) do
+    case Enum.find(integrations, &(&1.host == host)) do
+      nil ->
+        :ok
+
+      %{connection: connection} ->
+        {:error,
+         %Error{
+           reason: :integration_host,
+           message: nil,
+           field: :host,
+           details: %{connection: connection, host: host}
+         }}
+    end
+  end
+
+  defp deny_allowed(%Rule{}, _integrations), do: :ok
 
   defp room(_workspace_id, _target_id, %Rule{}), do: :ok
 
@@ -2184,10 +2237,26 @@ defmodule Apiary.Policy do
              above,
              integrations
            ),
-         document = Render.document(effective),
+         {:ok, document, _allow_first} <- rendered(effective),
          :ok <- small(document),
          :ok <- valid(document) do
       {:ok, document}
+    end
+  end
+
+  # More integration hosts than `egress.allow_first` takes is no document the contract
+  # accepts.
+  defp rendered(effective) do
+    case Render.render(effective) do
+      {:ok, _document, _allow_first} = rendered ->
+        rendered
+
+      {:error, {:allow_first_too_long, count}} ->
+        Logger.error(
+          "a rendered run configuration was refused: the integrations reaching the workspace require #{count} hosts, more than the 64 of allow_first"
+        )
+
+        {:error, not_in_contract()}
     end
   end
 
@@ -2242,14 +2311,17 @@ defmodule Apiary.Policy do
           "a rendered run configuration was refused by the contract's schema or the host grammar: #{inspect(reason, limit: 20)}"
         )
 
-        {:error,
-         Error.new(
-           :invalid_document,
-           gettext(
-             "The change was not made: the run configuration it renders is not one Forager's contract accepts."
-           )
-         )}
+        {:error, not_in_contract()}
     end
+  end
+
+  defp not_in_contract do
+    Error.new(
+      :invalid_document,
+      gettext(
+        "The change was not made: the run configuration it renders is not one Forager's contract accepts."
+      )
+    )
   end
 
   # The schema's host pattern takes an address in any form; the gateway takes one only as

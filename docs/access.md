@@ -490,7 +490,10 @@ for each other and never on each other at once:
    write or reaches after it (`Apiary.Policy.rerender_in/3`). That write is the one
    change that takes workspace rows after the integrations lock. No change that holds a
    workspace row takes the integrations lock or locks the row of an integration other
-   than a model provider, so the two never wait on each other. A write of a model choice
+   than a model provider, so the two never wait on each other. A save of a deny rule
+   reads the integrations' hosts while it holds its workspace's row, with no lock of
+   theirs (`Apiary.Policy.check_deny/3`): a write to an integration holds every workspace
+   row before it writes, so the save reads that write whole or not at all. A write of a model choice
    at levels 2 to 5 holds the workspace row and then takes a provider's row `FOR SHARE`. A change to a model provider takes the integrations lock, then the
    provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes
    the organisation's advisory lock for its secrets and the row of the keys' secret

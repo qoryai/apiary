@@ -20,6 +20,24 @@ defmodule Apiary.Policy.Render do
 
   @version 1
 
+  # The most entries the field `egress.allow_first` takes.
+  @allow_first_max 64
+
+  @doc """
+  render/1 is the document of `effective` (`document/1`) and the hosts of its
+  `allow_first` (`Apiary.Policy.Effective`): `{:ok, document, allow_first}`, or
+  `{:error, {:allow_first_too_long, count}}` when there are more than 64 hosts, the most
+  entries the field `egress.allow_first` takes.
+  """
+  @spec render(Effective.t()) ::
+          {:ok, binary, [String.t()]} | {:error, {:allow_first_too_long, pos_integer}}
+  def render(%Effective{allow_first: hosts} = effective) do
+    case length(hosts) do
+      count when count > @allow_first_max -> {:error, {:allow_first_too_long, count}}
+      _count -> {:ok, document(effective), hosts}
+    end
+  end
+
   @doc "The document's bytes."
   @spec document(Effective.t()) :: binary
   def document(%Effective{} = effective) do
@@ -53,8 +71,18 @@ defmodule Apiary.Policy.Render do
           else: []
         )
 
-    ordered(version: @version, egress: ordered(egress))
+    ordered(version: @version, egress: ordered(allow_first(egress, effective.allow_first)))
   end
+
+  @doc """
+  allow_first/2 is the one place that writes `egress.allow_first`: it takes the members
+  of `egress`, in the document's order, and the hosts of `Apiary.Policy.Effective`'s
+  `allow_first`, and returns the members to write. It returns `egress` as it is: the
+  vendored `policy.schema.json` (`Apiary.Policy.Schema`) has no `allow_first` member and
+  refuses a member of `egress` it does not define.
+  """
+  @spec allow_first(keyword, [String.t()]) :: keyword
+  def allow_first(egress, _hosts) when is_list(egress), do: egress
 
   defp ordered(pairs), do: Jason.OrderedObject.new(pairs)
 end

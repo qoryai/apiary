@@ -1,8 +1,9 @@
 defmodule Apiary.Policy.IntegrationResolutionTest do
   @moduledoc """
   The hosts an integration requires, as `Apiary.Policy.Resolution` takes them in: each
-  an allow on every path that no deny takes out, the lowest allow among allows. Every
-  case that resolves is rendered, and the render validated against the contract's schema.
+  an allow on every path that no rule takes out, the lowest allow among allows, and each
+  in `allow_first`. Every case that resolves is rendered, and the render validated
+  against the contract's schema.
   """
   use ExUnit.Case, async: true
 
@@ -26,7 +27,10 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
     {:ok, effective} =
       Resolution.resolve("enforce", workspace, target, target_id, above, integrations)
 
-    assert :ok = Schema.validate(Render.document(effective))
+    assert {:ok, document, allow_first} = Render.render(effective)
+    assert :ok = Schema.validate(document)
+    assert allow_first == effective.allow_first
+    refute document =~ "allow_first"
     effective
   end
 
@@ -80,17 +84,30 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
     refute entry(effective, :organisation, "api.example.com").in_force
   end
 
-  test "a *. deny that covers it stays in force and is left out of deny" do
+  test "a *. deny that covers it stays in force, in deny, and denies a sibling host" do
+    for mode <- ["observe", "enforce"] do
+      {:ok, effective} =
+        Resolution.resolve(
+          mode,
+          [deny("*.example.com"), allow("cdn.example.com")],
+          [],
+          nil,
+          nil,
+          hosts(@tracker, ["api.example.com"])
+        )
+
+      # cdn.example.com, a sibling, is denied by the deny in either mode.
+      assert effective.allow == ["api.example.com"]
+      assert effective.deny == ["*.example.com"]
+      assert effective.allow_first == ["api.example.com"]
+    end
+
     effective =
       resolve(
         [deny("*.example.com"), allow("cdn.example.com")],
         [],
         hosts(@tracker, ["api.example.com"])
       )
-
-    # cdn.example.com, a sibling, is not reached under enforce: it has no allow.
-    assert effective.allow == ["api.example.com"]
-    assert effective.deny == []
 
     wildcard = entry(effective, :workspace, "*.example.com")
     assert wildcard.in_force
@@ -101,14 +118,77 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
     assert [%Entry{host: "*.example.com", action: :deny}] = integration.overrides
   end
 
-  test "a *. host of an integration beats a deny below it" do
-    effective = resolve([deny("api.example.com")], [], hosts(@tracker, ["*.example.com"]))
+  test "a *. deny of the level above, locked or not, stays in deny" do
+    above = %Above{name: "Acme", rules: [deny("*.example.com")]}
 
-    assert effective.allow == ["*.example.com"]
-    assert effective.deny == []
+    for workspace <- [[], [deny("*.example.com", locked: true)]] do
+      effective = resolve(workspace, [], hosts(@tracker, ["api.example.com"]), above)
 
-    assert %Entry{source: :integration} =
-             entry(effective, :workspace, "api.example.com").overridden_by
+      assert effective.deny == ["*.example.com"]
+      assert effective.allow == ["api.example.com"]
+      assert effective.allow_first == ["api.example.com"]
+    end
+  end
+
+  test "a host that is not exact is left out, and adds nothing to allow_first" do
+    effective =
+      resolve(
+        [deny("api.example.com")],
+        [],
+        hosts(@tracker, ["*.example.com", "api.example.com\n", "010.0.0.1"])
+      )
+
+    assert effective.allow == []
+    assert effective.deny == ["api.example.com"]
+    assert effective.allow_first == []
+    refute Enum.any?(effective.entries, &(&1.source == :integration))
+  end
+
+  test "allow_first is the exact hosts, sorted, each once, and no host below them" do
+    effective =
+      resolve(
+        [deny("*.example.com"), allow("a.api.example.com")],
+        [deny("*.example.org")],
+        hosts(@tracker, ["files.example.org", "api.example.com", "10.0.0.12"]) ++
+          hosts(@chat, ["api.example.com", "chat.example.net"])
+      )
+
+    assert effective.allow_first ==
+             ["10.0.0.12", "api.example.com", "chat.example.net", "files.example.org"]
+
+    refute "a.api.example.com" in effective.allow_first
+    refute "a.api.example.com" in effective.allow
+    refute entry(effective, :workspace, "a.api.example.com").in_force
+    assert effective.deny == ["*.example.com", "*.example.org"]
+  end
+
+  test "an allow of a rule on the host stays in force under a *. deny, and the deny in deny" do
+    effective =
+      resolve(
+        [deny("*.example.com"), allow("api.example.com", paths: ["/v1/*"])],
+        [],
+        hosts(@tracker, ["api.example.com"])
+      )
+
+    assert effective.allow == ["api.example.com"]
+    assert effective.paths == %{"api.example.com" => ["/v1/*"]}
+    assert effective.deny == ["*.example.com"]
+    assert effective.allow_first == ["api.example.com"]
+    assert entry(effective, :workspace, "api.example.com").in_force
+  end
+
+  test "more than 64 hosts is no render" do
+    many = for n <- 1..65, do: "host#{n}.example.com"
+    {:ok, effective} = Resolution.resolve("enforce", [], [], nil, nil, hosts(@tracker, many))
+
+    assert length(effective.allow_first) == 65
+    assert Render.render(effective) == {:error, {:allow_first_too_long, 65}}
+
+    {:ok, effective} =
+      Resolution.resolve("enforce", [], [], nil, nil, hosts(@tracker, Enum.take(many, 64)))
+
+    assert {:ok, _document, [_ | _] = allow_first} = Render.render(effective)
+    assert length(allow_first) == 64
   end
 
   test "an allow of a rule on the same host decides it, and the host stays allowed" do

@@ -18,13 +18,15 @@ defmodule Apiary.Policy.Resolution do
      allows the host; an integration's host is above it, point 7), and its **allow**
      reaches every workspace but may be narrowed: a lower deny on the same host, or a
      lower `*.` deny that covers it, beats it; against lower allows on the same host it
-     holds, paths included, so its allow is never widened. An allow of the workspace or of the target is struck without a winner
+     holds, paths included, so its allow is never widened. An allow of the workspace or
+     of the target is struck without a winner
      (`Apiary.Policy.Entry`'s `reason: :only_above_allows`) where the level above allows
      only the hosts on its list (`own_allows` off); denies still count. Where it requires
      `enforce` (`floor`), the mode in force is `enforce` whatever the workspace or the
      target set, `mode_source: :organisation`.
   2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
-     `api.example` and `*.eu.example`), unless the allow has the higher precedence. The
+     `api.example` and `*.eu.example`), unless the allow has the higher precedence or its
+     host is an integration's host (point 7). The
      gateway would deny those hosts by the deny anyway, deny being decided first; they are
      taken out of `allow` all the same so the document lists what is reachable and nothing
      else, and the page's count of hosts allowed is the truth.
@@ -54,17 +56,22 @@ defmodule Apiary.Policy.Resolution do
      (`docs/contract-assumptions.md`). A denied host is never reached, so its paths never
      apply.
   7. **An integration's host** (source `:integration`, `integrations` of `resolve/6`) is
-     an allow on every path, and no deny takes it out: it beats a deny of any rank on the
-     same host, the level above's included, and a deny below it when it is a `*.` suffix.
-     A `*.` deny that covers it stays in force, takes out the allows below it that it
-     covers, and is in the integration's entry's `overrides`; it is not written to `deny`,
-     as in point 3, so under `observe` the other hosts it covers are reached and recorded,
-     and under `enforce` they are reached where an allow covers them. Among allows it has the lowest
-     rank: an allow of the workspace, of a target or of the level above on the same host
-     decides the host, and the integration's entry is overridden. Two integrations that
-     list one host stay in force together. Where the level above allows only the hosts on
-     its list, an integration's host is not struck. A `*.` allow held to paths, of any
-     level, leaves it on every path: the document has the host in `paths` with `/*`.
+     an exact host (`Apiary.Policy.Grammar.exact_host?/1`; any other is left out),
+     allowed on every path, and no deny takes it out: it beats a deny of any rank on the
+     same host, the level above's included, and a `*.` deny that covers it takes out
+     neither its entry nor an allow of a rule on the same host. `allow_first` lists every
+     integration's host, sorted, each once. A `*.` deny that covers an integration's host
+     stays in force, is written to `deny`, takes out the other allows it covers (point
+     2), and is in the integration's entry's `overrides`. The rendered document does not
+     contain `allow_first`: the vendored `policy.schema.json` has no such member
+     (`Apiary.Policy.Render.allow_first/2`). So the gateway denies an integration's host
+     that a `*.` deny covers, and reaches every other integration's host. Among allows an
+     integration's host has the lowest rank: an allow of the workspace, of a target or of
+     the level above on the same host decides the host, paths included, and the
+     integration's entry is overridden. Two integrations that list one host stay in
+     force together. Where the level above allows only the hosts on its list, an
+     integration's host is not struck. A `*.` allow held to paths, of any level, leaves
+     it on every path: the document has the host in `paths` with `/*`.
 
   `allow` and `deny` are sorted with names before `*.` suffixes, each alphabetically, so
   the rule the gateway reports for a connection is the most exact one; `paths` is sorted by
@@ -168,7 +175,11 @@ defmodule Apiary.Policy.Resolution do
       (Enum.map(above_rules(above), &entry(&1, :organisation)) ++
          Enum.map(workspace_rules, &entry(&1, :workspace)) ++
          Enum.map(target_rules, &entry(&1, :target)) ++
-         Enum.map(integrations, &integration_entry/1))
+         for(
+           %{host: host} = integration <- integrations,
+           Grammar.exact_host?(host),
+           do: integration_entry(integration)
+         ))
       |> Enum.with_index()
       |> Map.new(fn {entry, index} -> {index, entry} end)
 
@@ -308,26 +319,41 @@ defmodule Apiary.Policy.Resolution do
     end
   end
 
-  # A `*.` deny removes the allow entries it covers, unless the allow outranks it.
+  # A `*.` deny removes the allow entries it covers, unless the allow outranks it, or its
+  # host is an integration's host: no deny takes that host out (point 7).
   defp covered_by_deny(entries) do
     denies = for {index, %{action: :deny} = entry} <- in_force(entries, :host), do: {index, entry}
+    integration_hosts = integration_hosts(entries)
 
     Enum.reduce(in_force(entries, :host), entries, fn
       {index, %{action: :allow} = allow}, entries ->
-        denies
-        |> Enum.filter(fn {_index, deny} ->
-          deny.host != allow.host and Grammar.covers?(deny.host, allow.host) and
-            rank_vs_deny(deny) >= rank_vs_deny(allow)
-        end)
-        |> Enum.max_by(fn {_index, deny} -> rank_vs_deny(deny) end, fn -> nil end)
-        |> case do
-          nil -> entries
-          {deny, _entry} -> override(entries, index, deny)
-        end
+        if MapSet.member?(integration_hosts, allow.host),
+          do: entries,
+          else: covered(entries, denies, index, allow)
 
       _deny, entries ->
         entries
     end)
+  end
+
+  defp covered(entries, denies, index, allow) do
+    denies
+    |> Enum.filter(fn {_index, deny} ->
+      deny.host != allow.host and Grammar.covers?(deny.host, allow.host) and
+        rank_vs_deny(deny) >= rank_vs_deny(allow)
+    end)
+    |> Enum.max_by(fn {_index, deny} -> rank_vs_deny(deny) end, fn -> nil end)
+    |> case do
+      nil -> entries
+      {deny, _entry} -> override(entries, index, deny)
+    end
+  end
+
+  # The hosts of every integration entry, in force or not.
+  defp integration_hosts(entries) do
+    for {_index, %Entry{source: :integration, host: host}} <- entries,
+        into: MapSet.new(),
+        do: host
   end
 
   # A deny below an allowed `*.` suffix is lost to the allow when the allow outranks it (a
@@ -385,8 +411,9 @@ defmodule Apiary.Policy.Resolution do
     end)
   end
 
-  # A `*.` deny that covers an integration's host stays in force here, and the
-  # integration's entry lists it in `overrides`; `effective/4` leaves it out of `deny`.
+  # A `*.` deny that covers an integration's host stays in force and is written to
+  # `deny`. The integration's entry lists it in `overrides`: the host is in
+  # `allow_first` (point 7).
   defp integration_under_deny(entries) do
     denies =
       for {index, %{action: :deny} = entry} <- in_force(entries, :host),
@@ -618,14 +645,19 @@ defmodule Apiary.Policy.Resolution do
   defp effective(mode, target_id, entries, above) do
     hosts = for {_index, %{action: :allow} = entry} <- in_force(entries, :host), do: entry
     denies = for {_index, %{action: :deny} = entry} <- in_force(entries, :host), do: entry
+    allow_first = entries |> integration_hosts() |> Enum.sort()
 
     # A deny with an allow in force below it (one that outranks the deny, or it would have
-    # been taken out) cannot be written: the gateway would deny the winning host too. So a
-    # `*.` deny is left out of `deny` when an integration's host sits under it; writing it
-    # waits for a change to Forager's policy document.
+    # been taken out) cannot be written: the gateway would deny the winning host too. An
+    # integration's host below a `*.` deny does not keep the deny out of `deny`: the host
+    # is in `allow_first` (point 7).
     said =
       Enum.reject(denies, fn deny ->
-        Enum.any?(hosts, &(&1.host != deny.host and Grammar.covers?(deny.host, &1.host)))
+        Enum.any?(
+          hosts,
+          &(&1.host != deny.host and &1.host not in allow_first and
+              Grammar.covers?(deny.host, &1.host))
+        )
       end)
 
     held =
@@ -653,7 +685,8 @@ defmodule Apiary.Policy.Resolution do
         |> Enum.sort_by(&{sort_key(&1.host), source_order(&1.source)}),
       allow: hosts |> Enum.map(& &1.host) |> Enum.uniq() |> Enum.sort_by(&sort_key/1),
       deny: said |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
-      paths: Map.merge(held, every_path)
+      paths: Map.merge(held, every_path),
+      allow_first: allow_first
     }
   end
 

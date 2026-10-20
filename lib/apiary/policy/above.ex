@@ -22,10 +22,10 @@ defmodule Apiary.Policy.Above do
       repository. `Apiary.Variables.Resolution` resolves them first in every chain.
 
   Its denies hold in every workspace, on every host but the hosts of the integrations
-  that reach the workspace; a `*.` deny that covers such a host is not written to the
-  document's `deny`, so it blocks the other hosts it covers only under `enforce` and only
-  where no allow covers them (`Apiary.Policy.Resolution`, point 7). Its allows reach every workspace and can be narrowed by a
-  lower deny, never widened: how they meet the workspace's and a target's rules is
+  that reach the workspace (`Apiary.Policy.Resolution`, point 7). A deny of such a host
+  is refused before the edition saves it (`Apiary.Policy.check_deny/3` with `:above`);
+  a `*.` deny that covers one saves. Its allows reach every workspace and can be narrowed
+  by a lower deny, never widened: how they meet the workspace's and a target's rules is
   `Apiary.Policy.Resolution`'s to say.
 
   A level with `policy: false` is no level of the security policy: `Apiary.Policy`, its

@@ -13,7 +13,7 @@ defmodule Apiary.Policy.IntegrationHostsTest do
 
   alias Apiary.{Connections, Policy}
   alias Apiary.Connections.Connection
-  alias Apiary.Policy.{Change, Entry, RunConfiguration}
+  alias Apiary.Policy.{Change, Entry, Error, Render, RunConfiguration}
 
   @moduletag needs: :secrets
 
@@ -56,6 +56,14 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   defp served(scope, holder) do
     {:ok, %RunConfiguration{document: document}} = Policy.current_configuration(scope, holder)
     Jason.decode!(document)["security_policy"]["egress"]
+  end
+
+  # The hosts the render keeps beside the holder's document.
+  defp allow_first(scope, holder) do
+    {:ok, _document, allow_first} =
+      Render.render(Policy.effective(scope, holder, integrations: true))
+
+    allow_first
   end
 
   defp integration_entries(scope, holder) do
@@ -146,20 +154,22 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   describe "a deny rule" do
     test "of the workspace, locked or not, and of a target loses to the integration's host",
          %{scope: scope} do
-      integration!(scope, "acme-tracker", ["api.example.com"])
+      # The denies are saved before the integration is added: once it is, a deny of its
+      # host is refused at save.
       target = target!(scope, "acme/site")
       {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
-
       {:ok, rule} = Policy.deny(scope, nil, %{host: "api.example.com"})
+      {:ok, _rule} = Policy.deny(scope, target, %{host: "api.example.com"})
+
+      integration!(scope, "acme-tracker", ["api.example.com"])
       assert served(scope, nil) == %{"mode" => "enforce", "allow" => ["api.example.com"]}
+      assert served(scope, target) == %{"mode" => "enforce", "allow" => ["api.example.com"]}
 
       {:ok, _rule} = Policy.lock(scope, rule)
       assert served(scope, nil)["allow"] == ["api.example.com"]
       refute Map.has_key?(served(scope, nil), "deny")
-
-      {:ok, _rule} = Policy.deny(scope, target, %{host: "api.example.com"})
-      assert served(scope, target)["allow"] == ["api.example.com"]
-      refute Map.has_key?(served(scope, target), "deny")
+      assert allow_first(scope, nil) == ["api.example.com"]
+      assert allow_first(scope, target) == ["api.example.com"]
 
       denies =
         for %Entry{action: :deny} = entry <-
@@ -182,8 +192,15 @@ defmodule Apiary.Policy.IntegrationHostsTest do
 
       assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "*.example.com"})
 
-      # Under enforce the sibling is not reached: it has no allow.
-      assert served(scope, nil)["allow"] == ["api.example.com"]
+      # The sibling is denied by the deny. The integration's host is in allow_first, which
+      # the document does not contain.
+      assert served(scope, nil) == %{
+               "mode" => "enforce",
+               "allow" => ["api.example.com"],
+               "deny" => ["*.example.com"]
+             }
+
+      assert allow_first(scope, nil) == ["api.example.com"]
 
       entries = Policy.effective(scope, nil, integrations: true).entries
       assert %Entry{in_force: true} = Enum.find(entries, &(&1.host == "*.example.com"))
@@ -195,11 +212,12 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   end
 
   test "two integrations that list one host both stay in force", %{scope: scope} do
+    {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.example.com"})
     integration!(scope, "acme-tracker", ["api.example.com"])
     integration!(scope, "acme-chat", ["api.example.com", "chat.example.com"])
-    {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.example.com"})
 
     assert served(scope, nil)["allow"] == ["api.example.com", "chat.example.com"]
+    assert allow_first(scope, nil) == ["api.example.com", "chat.example.com"]
 
     assert scope
            |> integration_entries(nil)
@@ -208,7 +226,96 @@ defmodule Apiary.Policy.IntegrationHostsTest do
            |> Enum.sort() == [{"acme-chat", true}, {"acme-tracker", true}]
   end
 
+  describe "saving a deny rule of an integration's host" do
+    test "is refused at the workspace, at a target and at the level above", %{scope: scope} do
+      connection = integration!(scope, "acme-tracker", ["api.example.com"])
+      target = target!(scope, "acme/site")
+      {:ok, allowed} = Policy.allow(scope, nil, %{host: "api.example.com"})
+
+      expected = %{
+        connection: %{
+          id: connection.id,
+          public_id: connection.public_id,
+          name: connection.name
+        },
+        host: "api.example.com"
+      }
+
+      for holder <- [nil, target] do
+        assert {:error, %Error{reason: :integration_host, details: ^expected, message: nil}} =
+                 Policy.deny(scope, holder, %{host: "api.example.com"})
+      end
+
+      # A rule there already is not turned into a deny either.
+      assert {:error, %Error{reason: :integration_host}} =
+               Policy.deny(scope, nil, %{host: allowed.host, locked: true})
+
+      assert {:error, %Error{reason: :integration_host, details: ^expected}} =
+               Policy.check_deny(scope, :above, "api.example.com")
+
+      assert {:error, %Error{reason: :integration_host, details: ^expected}} =
+               Policy.check_deny(scope, :workspace, "api.example.com")
+
+      assert [%{host: "api.example.com", action: "allow"}] = Policy.list_rules(scope, nil)
+      assert Policy.list_rules(scope, target) == []
+    end
+
+    test "saves a *. deny, a deny of another host, and an allow", %{scope: scope} do
+      integration!(scope, "acme-tracker", ["api.example.com"])
+
+      assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "*.example.com"})
+      assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "a.api.example.com"})
+      assert {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example.com"})
+      assert Policy.check_deny(scope, :above, "*.example.com") == :ok
+      assert Policy.check_deny(scope, :above, "a.api.example.com") == :ok
+      assert allow_first(scope, nil) == ["api.example.com"]
+    end
+
+    test "is refused only where the connection reaches", %{scope: scope, user: user} do
+      site = workspace!(scope, "Site")
+      at_site = workspace_scope(user, site)
+
+      integration!(scope, "acme-tracker", ["api.example.com"], %{
+        applies_to: "selected",
+        workspace_ids: [site.id]
+      })
+
+      assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.example.com"})
+
+      assert {:error, %Error{reason: :integration_host}} =
+               Policy.deny(at_site, nil, %{host: "api.example.com"})
+
+      # The level above holds in every workspace, the site included.
+      assert {:error, %Error{reason: :integration_host}} =
+               Policy.check_deny(scope, :above, "api.example.com")
+
+      assert allow_first(scope, nil) == []
+      assert allow_first(at_site, nil) == ["api.example.com"]
+    end
+  end
+
+  test "more than 64 hosts is refused with the write that would render them", %{scope: scope} do
+    {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
+    many = for n <- 1..65, do: "host#{n}.example.com"
+
+    log =
+      capture_log(fn ->
+        assert {:error, %Error{reason: :invalid_document}} =
+                 Connections.create_integration(
+                   scope,
+                   release!(scope, "acme-tracker", many).id,
+                   %{}
+                 )
+      end)
+
+    assert log =~ "65 hosts"
+    assert served(scope, nil)["allow"] == ["docs.example.com"]
+    assert Connections.egress_hosts(scope.workspace) == []
+  end
+
   describe "a host from a setting" do
+    @describetag :capture_log
+
     test "is left out when the address fails the endpoint rule, and a setting change renders it",
          %{scope: scope} do
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
@@ -233,6 +340,43 @@ defmodule Apiary.Policy.IntegrationHostsTest do
         })
 
       assert served(scope, nil)["allow"] == ["docs.example.com"]
+    end
+
+    test "is left out unless it is exact, with a log line without the address",
+         %{scope: scope} do
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
+
+      connection =
+        integration!(scope, "acme-models", ["api.example.com", %{"setting" => "address"}], %{
+          settings: %{"address" => "https://models.example.com"}
+        })
+
+      for address <- [
+            "https://*.example.com",
+            "https://010.0.0.12",
+            "https://models.example.com\n"
+          ] do
+        log =
+          capture_log(fn ->
+            {:ok, _connection} =
+              Connections.update_connection(scope, connection, %{
+                settings: %{"address" => address}
+              })
+          end)
+
+        assert served(scope, nil)["allow"] == ["api.example.com", "docs.example.com"]
+        assert allow_first(scope, nil) == ["api.example.com"]
+        assert log =~ "the setting address of the integration connection #{connection.public_id}"
+        refute log =~ "example.com"
+      end
+
+      {:ok, _connection} =
+        Connections.update_connection(scope, connection, %{
+          settings: %{"address" => "https://10.0.0.12/v1"}
+        })
+
+      assert served(scope, nil)["allow"] == ["10.0.0.12", "api.example.com", "docs.example.com"]
+      assert allow_first(scope, nil) == ["10.0.0.12", "api.example.com"]
     end
   end
 

@@ -8,7 +8,7 @@ defmodule Apiary.Policy.IntegrationHostsRacesTest do
   # The rule under test (docs/access.md, The lock order): the integration's write takes
   # the integrations lock, then every workspace of the organisation, then renders the
   # workspaces it reaches; a rule's save takes its workspace. Whichever comes second waits
-  # for the first, and its render has what the first wrote.
+  # for the first, and its render, or its check of a deny, has what the first wrote.
   use ExUnit.Case, async: false
 
   import Apiary.DescriptionFixtures
@@ -53,6 +53,23 @@ defmodule Apiary.Policy.IntegrationHostsRacesTest do
 
     assert {:ok, _rule} = Task.await(second.task)
     assert served(scope)["allow"] == ["api.example.com"]
+    assert served(scope)["deny"] == ["*.example.com"]
+  end
+
+  test "an integration's write first: a deny of its host waits, and is refused",
+       %{scope: scope, release: release} do
+    {first, first_pid} = hold(fn -> Connections.create_integration(scope, release.id, %{}) end)
+    assert {:ok, %Connection{}} = first.result
+
+    second = start(fn -> Policy.deny(scope, nil, %{host: "api.example.com"}) end)
+    await_blocked(second.backend, first_pid)
+    commit(first)
+
+    assert {:error, %Policy.Error{reason: :integration_host, details: %{host: "api.example.com"}}} =
+             Task.await(second.task)
+
+    assert served(scope)["allow"] == ["api.example.com", "docs.example.com"]
+    assert scope |> Policy.list_rules(nil) |> Enum.map(& &1.host) == ["docs.example.com"]
   end
 
   test "a rule's save first: the integration's write waits, and its render has the rule",
