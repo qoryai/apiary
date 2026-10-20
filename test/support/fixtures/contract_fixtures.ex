@@ -384,10 +384,19 @@ defmodule Apiary.ContractFixtures do
   def pinned_ref, do: hd(ref_lines())
 
   @doc """
-  The files core copies byte for byte from Forager's contract directory, each a path
-  under `priv/contract/`: the lines of `.forager-contract-ref` after the commit.
+  The files core copies byte for byte from Forager's contract directory, each a path from
+  the project's root: the lines of `.forager-contract-ref` after the commit. A schema or
+  `runtimes.json` is under `priv/contract/`; a fixture, `fixtures/<path>` of the contract,
+  is under `test/fixtures/forager-contract/<path>`, so no fixture key is in a release.
   """
   def vendored, do: tl(ref_lines())
+
+  @doc """
+  contract_path/1 is the path in Forager's contract directory of `path`, a vendored file
+  (`vendored/0`).
+  """
+  def contract_path("priv/contract/" <> file), do: file
+  def contract_path("test/fixtures/forager-contract/" <> file), do: "fixtures/" <> file
 
   # The lines of `.forager-contract-ref` that are not empty and no comment.
   defp ref_lines do

@@ -36,9 +36,15 @@ defmodule Apiary.ModelChoices do
   #     (`Apiary.Kinds.Providers.serve/2`), and none of whose hosts a deny rule of the
   #     security policy in force covers;
   #   * `key`: a value id of the provider's keys;
-  #   * `model` and `effort`: a model on the provider's list, and one of its effort values;
+  #   * `model` and `effort`: a model on the provider's list, and one of its offered effort
+  #     values;
   #   * `tiers`: tiers among `light`, `fast` and `thinking`, each a model id, or a map of
-  #     `model` and `effort`; with a provider, each on the provider's list.
+  #     `model` and `effort`; with a provider, each model on the provider's list and each
+  #     effort one of that model's offered effort values.
+  #
+  # A model's **offered effort values** are the values that both the model's list and the
+  # runtime's (`Apiary.Kinds.Runtime`, `effort_values`) contain, in the model's order. A
+  # resolution reads only these.
   #
   # The organisation's default has no workspace, so neither the workspace nor the security
   # policy is asked of it: a run whose workspace the default's provider does not reach is
@@ -202,7 +208,16 @@ defmodule Apiary.ModelChoices do
         {provider.id,
          %{
            default_value_id: provider.default_value_id,
-           models: Enum.map(provider.models, &Map.take(&1, [:model_id, :effort, :is_default]))
+           models:
+             Enum.map(provider.models, fn model ->
+               offered = offered(model)
+
+               %{
+                 model_id: model.model_id,
+                 effort: if(offered == [], do: nil, else: offered),
+                 is_default: model.is_default
+               }
+             end)
          }}
       end)
 
@@ -839,7 +854,7 @@ defmodule Apiary.ModelChoices do
           model ->
             effort = get_field(changeset, :effort)
 
-            if is_nil(effort) or effort in (model.effort || []),
+            if is_nil(effort) or effort in offered(model),
               do: changeset,
               else: add_error(changeset, :effort, effort_not_listed(), effort_bindings(model))
         end
@@ -862,7 +877,7 @@ defmodule Apiary.ModelChoices do
            add_error(changeset, :tiers, not_listed(), provider: provider.name, model: model_id)}
 
         model ->
-          if is_nil(entry["effort"]) or entry["effort"] in (model.effort || []),
+          if is_nil(entry["effort"]) or entry["effort"] in offered(model),
             do: {:cont, changeset},
             else:
               {:halt, add_error(changeset, :tiers, effort_not_listed(), effort_bindings(model))}
@@ -879,8 +894,13 @@ defmodule Apiary.ModelChoices do
   defp effort_not_listed,
     do: dgettext_noop("errors", "Choose one of %{model}'s effort values: %{values}.")
 
-  defp effort_bindings(%ProviderModel{model_id: model_id, effort: effort}),
-    do: [model: model_id, values: Enum.join(effort || [], ", ")]
+  defp effort_bindings(%ProviderModel{model_id: model_id} = model),
+    do: [model: model_id, values: Enum.join(offered(model), ", ")]
+
+  # The model's offered effort values: those of its list that the runtime's list contains
+  # too, in the model's order.
+  defp offered(%ProviderModel{effort: effort}),
+    do: Enum.filter(effort || [], &(&1 in runtime().effort_values))
 
   ## What uses a provider
 

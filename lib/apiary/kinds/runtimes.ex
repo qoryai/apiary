@@ -8,10 +8,13 @@ defmodule Apiary.Kinds.Runtimes do
   `credential_files`, its `declares` (each with its `id`, `title`, the variable `name` it
   sets, its `hosts`, its `auth`, as the contract's `auth.schema.json` has it, and its
   `paths`, which may be absent), its `one_of` groups (each with `id`, `required` and
-  `of`), and its `model`, when it has one: the model API formats it sends and where a
-  run's model id, effort and endpoint go. The loader keeps `model` as it is; a `model`
-  without a list of `formats` fails the compile. A test compares the file with Forager's
-  contract directory.
+  `of`), and its `model`, when it has one: the model API formats it sends, where a run's
+  model id, effort and endpoint go, the effort values it accepts, and the variables it
+  reads a model key from (`keys`). The loader keeps `model` as it is and reads its
+  `keys`, its run's effort values and its endpoint's variable into the fields of
+  `Apiary.Kinds.Runtime`; a `model` without a list of `formats`, or with a key that has
+  no `format`, `auth` and `variable`, fails the compile. A test compares the file with
+  Forager's contract directory.
 
   The catalogue is read when the application is compiled: a runtime is added by a
   release. Every list of a runtime is read with `Map.fetch!/2`, since Forager always
@@ -19,9 +22,8 @@ defmodule Apiary.Kinds.Runtimes do
   empty list.
 
   A runtime connection (`Apiary.Connections`) names its runtime by `name`. It offers
-  none of the runtime's declarations and stores no secret: by Forager's contract, a
-  variable a runtime declares is a variable of the run's model credential (its README,
-  "The model endpoint"), and a runtime connection holds no model key.
+  none of the runtime's declarations and stores no secret: by Forager's contract, the
+  run's model key comes from a model provider, and a runtime connection holds none.
   """
 
   @path Path.join([__DIR__, "..", "..", "..", "priv", "contract", "runtimes.json"])
@@ -33,7 +35,23 @@ defmodule Apiary.Kinds.Runtimes do
                %{"version" => 1, "runtimes" => runtimes} =
                  @path |> File.read!() |> Jason.decode!()
 
+               # A key without its three members raises a CaseClauseError here, which
+               # stops the compile.
+               key = fn key ->
+                 case key do
+                   %{"format" => format, "auth" => %{} = auth, "variable" => variable}
+                   when is_binary(format) and is_binary(variable) ->
+                     %{"format" => format, "auth" => auth, "variable" => variable}
+                 end
+               end
+
                for runtime <- runtimes do
+                 model =
+                   case Map.get(runtime, "model") do
+                     nil -> nil
+                     %{"formats" => formats} = model when is_list(formats) -> model
+                   end
+
                  %Runtime{
                    name: Map.fetch!(runtime, "name"),
                    title: Map.fetch!(runtime, "title"),
@@ -42,11 +60,10 @@ defmodule Apiary.Kinds.Runtimes do
                    credential_files: Map.fetch!(runtime, "credential_files"),
                    declares: Map.fetch!(runtime, "declares"),
                    one_of: Map.fetch!(runtime, "one_of"),
-                   model:
-                     case Map.get(runtime, "model") do
-                       nil -> nil
-                       %{"formats" => formats} = model when is_list(formats) -> model
-                     end
+                   model: model,
+                   model_keys: Enum.map(get_in(model || %{}, ["keys"]) || [], key),
+                   effort_values: get_in(model || %{}, ["effort", "run", "values"]) || [],
+                   endpoint_variable: get_in(model || %{}, ["endpoint", "variable"])
                  }
                end
              end).()
@@ -78,14 +95,16 @@ defmodule Apiary.Kinds.Runtimes do
     do: declares |> Enum.flat_map(&Map.get(&1, "hosts", [])) |> Enum.uniq()
 
   @doc """
-  variables/0 is every variable a runtime of the catalogue declares or reserves: the
-  names no other connection may take for a placeholder (`Apiary.Kinds.Placeholders`).
+  variables/0 is every variable a runtime of the catalogue declares, reserves or reads a
+  model key from (`model_keys`): the names no other connection may take for a placeholder
+  (`Apiary.Kinds.Placeholders`).
   """
   @spec variables() :: [String.t()]
   def variables do
     @runtimes
     |> Enum.flat_map(fn runtime ->
-      Enum.flat_map(runtime.declares, &List.wrap(&1["name"])) ++ runtime.reserves
+      Enum.flat_map(runtime.declares, &List.wrap(&1["name"])) ++
+        runtime.reserves ++ Enum.map(runtime.model_keys, & &1["variable"])
     end)
     |> Enum.uniq()
   end

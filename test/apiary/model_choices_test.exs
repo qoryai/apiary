@@ -322,19 +322,30 @@ defmodule Apiary.ModelChoicesTest do
                })
     end
 
-    test "for a provider whose key variable the runtime lacks (T21)", %{scope: scope} do
+    test "for a provider whose key the runtime has no variable for (T21)" do
+      {:ok, runtime} = Runtimes.fetch("claude")
+      {:ok, anthropic} = Providers.fetch("anthropic")
+      basic = %{anthropic | auth: %{"scheme" => "basic", "username" => "runner"}}
+
+      assert {:error, {message, bindings}} = ModelChoices.serves(basic, runtime, "Team models")
+
+      assert message ==
+               "Choose another provider for %{runtime}. %{runtime} has no environment variable for %{provider}'s key with the same authentication."
+
+      assert bindings == [runtime: runtime.title, provider: "Team models"]
+    end
+
+    test "for a provider of a bearer key, which the runtime reads from its variable", %{
+      scope: scope
+    } do
       {:ok, router} =
         Connections.create_provider(scope, %{
           provider: "openrouter",
           keys: [%{value_id: "main", value: "x"}]
         })
 
-      assert errors(ModelChoices.put_choice(scope, :workspace, %{provider: router.public_id})) ==
-               %{
-                 provider: [
-                   "Choose another provider for Claude Code. Claude Code has no environment variable for OpenRouter's key with the same authentication."
-                 ]
-               }
+      assert {:ok, _choice} =
+               ModelChoices.put_choice(scope, :workspace, %{provider: router.public_id})
     end
 
     test "for a provider that serves no format the runtime sends (T20)" do
@@ -374,6 +385,45 @@ defmodule Apiary.ModelChoicesTest do
                  scope,
                  :workspace,
                  attrs(provider, %{model: "tiny", effort: "low"})
+               )
+    end
+
+    test "for an effort the model lists and the runtime does not", ctx do
+      %{scope: scope, provider: provider} = ctx
+      {:ok, runtime} = Runtimes.fetch("claude")
+      refute "turbo" in runtime.effort_values
+
+      {:ok, provider} =
+        Connections.add_provider_model(scope, provider, %{
+          model_id: "tiny",
+          effort: ["turbo", "low", "high"]
+        })
+
+      assert errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{model: "tiny", effort: "turbo"})
+               )
+             ) == %{effort: ["Choose one of tiny's effort values: low, high."]}
+
+      assert errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{tiers: %{"fast" => %{"model" => "tiny", "effort" => "turbo"}}})
+               )
+             ) == %{tiers: ["Choose one of tiny's effort values: low, high."]}
+
+      assert {:ok, _} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{
+                   model: "tiny",
+                   effort: "high",
+                   tiers: %{"fast" => %{"model" => "tiny", "effort" => "low"}}
+                 })
                )
     end
 
@@ -504,6 +554,37 @@ defmodule Apiary.ModelChoicesTest do
   end
 
   describe "resolve/3" do
+    test "leaves out a tier whose effort the runtime does not accept", ctx do
+      %{scope: scope, provider: provider} = ctx
+
+      {:ok, provider} =
+        Connections.add_provider_model(scope, provider, %{
+          model_id: "tiny",
+          effort: ["turbo", "low"]
+        })
+
+      {:ok, choice} =
+        ModelChoices.put_choice(
+          scope,
+          :workspace,
+          attrs(provider, %{tiers: %{"fast" => %{"model" => "tiny", "effort" => "low"}}})
+        )
+
+      assert {:ok,
+              {:ok, %Resolution{tiers: %{"fast" => %{"model" => "tiny", "effort" => "low"}}}}} =
+               ModelChoices.resolve(scope, :workspace, "explore")
+
+      # A row saved when the runtime accepted "turbo"; a save refuses it.
+      choice
+      |> Ecto.Changeset.change(tiers: %{"fast" => %{"model" => "tiny", "effort" => "turbo"}})
+      |> Repo.update!()
+
+      assert {:ok, {:ok, %Resolution{tiers: tiers}}} =
+               ModelChoices.resolve(scope, :workspace, "explore")
+
+      assert tiers == %{}
+    end
+
     test "reads the choices of the workspace's chain for a target", ctx do
       %{scope: scope, provider: provider, target: target} = ctx
 

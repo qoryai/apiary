@@ -71,11 +71,12 @@ defmodule Apiary.Kinds.Providers do
 
     1. the provider's `formats` and the runtime's model formats (`Runtimes.formats/1`)
        share a value, or else `{:error, :format}`;
-    2. the runtime's `declares` has an entry whose `name` is one of the provider's
-       `key_variables` and whose `auth` equals the provider's `auth`, or else
-       `{:error, :key_variable}`. A variable the runtime only reserves does not count.
+    2. the runtime's `model_keys` has an entry whose `format` is one of the provider's
+       `formats` and whose `auth` equals the provider's `auth`, or else
+       `{:error, :key_variable}`: the runtime has no variable for the provider's key.
 
-  The result is `:ok` when both hold.
+  The result is `:ok` when both hold. The provider's `key_variables` and the runtime's
+  `declares` take no part.
   """
   @spec serve(Provider.t(), Runtime.t()) :: :ok | {:error, :format | :key_variable}
   def serve(%Provider{} = provider, %Runtime{} = runtime) do
@@ -83,7 +84,7 @@ defmodule Apiary.Kinds.Providers do
       not Enum.any?(provider.formats, &(&1 in Runtimes.formats(runtime))) ->
         {:error, :format}
 
-      not Enum.any?(runtime.declares, &declared_key?(&1, provider)) ->
+      not Enum.any?(runtime.model_keys, &key?(&1, provider)) ->
         {:error, :key_variable}
 
       true ->
@@ -96,6 +97,8 @@ defmodule Apiary.Kinds.Providers do
   def serves?(%Provider{} = provider, %Runtime{} = runtime),
     do: serve(provider, runtime) == :ok
 
-  defp declared_key?(declare, %Provider{key_variables: variables, auth: auth}),
-    do: Map.get(declare, "name") in variables and Map.get(declare, "auth") == auth
+  defp key?(%{"format" => format, "auth" => auth}, %Provider{formats: formats, auth: auth}),
+    do: format in formats
+
+  defp key?(_key, _provider), do: false
 end
