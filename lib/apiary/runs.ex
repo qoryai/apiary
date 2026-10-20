@@ -26,6 +26,7 @@ defmodule Apiary.Runs do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Days
+  alias Apiary.Edition
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
@@ -1064,6 +1065,20 @@ defmodule Apiary.Runs do
 
   def fetch_target(%Scope{}, _system, _path), do: nil
 
+  # The connections joined to their runs, the connection the first binding and the run
+  # the second, as the edition narrows what the scope's person reads of them.
+  defp client_connections(scope),
+    do:
+      Edition.client_reads(
+        scope,
+        :workspace_connections,
+        nil,
+        from(c in Connection,
+          join: r in Run,
+          on: r.id == c.run_id and r.workspace_id == c.workspace_id
+        )
+      )
+
   @doc """
   One connection of the scope's workspace by its row id, whole. `:error` for an id that is
   not a UUID and for a connection of another workspace.
@@ -1072,14 +1087,14 @@ defmodule Apiary.Runs do
         %Scope{
           organisation: %Organisation{id: organisation_id},
           workspace: %Workspace{id: workspace_id}
-        },
+        } = scope,
         id
       ) do
     with <<_::binary-size(36)>> <- id,
          {:ok, id} <- Ecto.UUID.cast(id),
          %Connection{} = connection <-
            Repo.one(
-             from c in Connection,
+             from [c, _r] in client_connections(scope),
                where:
                  c.id == ^id and c.organisation_id == ^organisation_id and
                    c.workspace_id == ^workspace_id
@@ -1174,13 +1189,17 @@ defmodule Apiary.Runs do
        ) do
     {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
-    from(c in Connection,
-      join: r in Run,
-      as: :run,
-      on: r.id == c.run_id and r.workspace_id == c.workspace_id,
-      where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
-      where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
-    )
+    connections =
+      from(c in Connection,
+        join: r in Run,
+        as: :run,
+        on: r.id == c.run_id and r.workspace_id == c.workspace_id,
+        where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
+        where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
+      )
+
+    scope
+    |> Edition.client_reads(:workspace_connections, nil, connections)
     |> where_if(f.host, dynamic([c], c.host == ^f.host))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))

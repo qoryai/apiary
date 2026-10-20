@@ -218,7 +218,8 @@ defmodule Apiary.Dispatches.SchemaTest do
                    run.id,
                    "state = 'ended', end_cause = $2, result_outcome = CASE WHEN $2 IN " <>
                      "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
-                     "'runtime_unserved', 'key_gone', 'model_gone') THEN 'error' END",
+                     "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed') " <>
+                     "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
 

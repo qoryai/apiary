@@ -26,7 +26,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    Map.put(handover_place_fixture(scope), :scope, scope)
+    Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 
   # The anthropic provider with 200 models, the most a provider has, each id 200
@@ -182,7 +182,8 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
   describe "with the feature secrets off" do
     @tag with_features: [:observability, :security, :factory]
-    test "the answer has no run settings, and the run keeps none", ctx do
+    test "the answer has no run settings, and the run keeps none, whatever the gateway's keys",
+         ctx do
       off = Application.get_env(:apiary, :features)
 
       # The provider and the choice are made with every feature on, as on an instance that
@@ -199,6 +200,10 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
         ModelChoices.put_choice(ctx.scope, :workspace, %{provider: provider.public_id})
 
       Application.put_env(:apiary, :features, off)
+
+      # A second key of the gateway, without the stored-secrets flag: no credential is
+      # written with `secrets` off, so the run does not end `secrets_not_allowed`.
+      Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
 
       work_item = work_item_fixture(ctx.scope)
       {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)

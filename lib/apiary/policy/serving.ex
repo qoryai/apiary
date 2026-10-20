@@ -145,7 +145,10 @@ defmodule Apiary.Policy.Serving do
             :configured_image,
             :started_image_from,
             :started_image,
-            :dispatch_run_id
+            :dispatch_run_id,
+            :registration_variables,
+            :provider_connection_id,
+            :provider_api
           ])
     )
   end

@@ -132,7 +132,8 @@ defmodule Apiary.AuditChanges do
       :"dispatch.release",
       :"target.set_further_repositories",
       :"dispatch.prebuilt",
-      :"target.rebuild_environment"
+      :"target.rebuild_environment",
+      :"secret.seal"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -591,6 +592,26 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # A gateway's secrets request seals a run's model key to its access key, in the trail of
+  # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
+  # the entry keeps nothing of the key's value.
+  def make(:"secret.seal", %{scope: scope}) do
+    {ctx, key, now} = sealed_run(scope)
+    body = secrets_request(ctx.run, ctx.attached.digest, [ctx.provider.public_id], now)
+    before = entries()
+
+    {:ok, _answer} =
+      Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"run", ctx.run.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: Apiary.SealedRunsFixtures.model_key()
+    }
+  end
+
   # A node pool's starter gives back the run of a dispatch its pool claimed, before its
   # handover, in the trail of the workspace's organisation, about the pool; the entry's
   # actor is the pool's key.
@@ -902,6 +923,16 @@ defmodule Apiary.AuditChanges do
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
     before = entries()
     {before, Adapters.declare(Scope.for_access_key(key), declaration())}
+  end
+
+  # A request with a credential the run does not have seals nothing.
+  def refuse(:"secret.seal", %{scope: scope}) do
+    {ctx, key, now} = sealed_run(scope)
+    body = secrets_request(ctx.run, ctx.attached.digest, ["forge"], now)
+    before = entries()
+
+    {before,
+     Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)}
   end
 
   # A dispatch another pool of the workspace claimed is not the key's to hand over.
@@ -1400,4 +1431,13 @@ defmodule Apiary.AuditChanges do
 
   defp subject_of(%Apiary.WorkItems.WorkItem{id: id}), do: {"work_item", id}
   defp subject_of(%Apiary.WorkItems.Comment{work_item_id: id}), do: {"work_item", id}
+
+  defp sealed_run(scope) do
+    ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
+    {key, _seed} = ctx.secrets_key
+    {ctx, key, ApiaryWeb.Contract.SignedRequest.now()}
+  end
+
+  defp secrets_request(run, digest, credentials, now),
+    do: Apiary.SealedRunsFixtures.secrets_request(run, digest, credentials, now)
 end

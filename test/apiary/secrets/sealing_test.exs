@@ -69,7 +69,7 @@ defmodule Apiary.Secrets.SealingTest do
     do: Enum.find(vectors()["invalid"], &(&1["file"] == "fixtures/sealed/invalid/#{name}.json"))
 
   defp sealed_bytes do
-    {:ok, answer} = Sealing.seal(fixture_plaintext(), recipient(), opts())
+    {:ok, answer} = Sealing.seal_with(fixture_plaintext(), recipient(), opts())
     answer
   end
 
@@ -108,9 +108,9 @@ defmodule Apiary.Secrets.SealingTest do
       assert byte_size(bytes) == vectors()["plaintext_length"]
     end
 
-    test "seal/3 writes secrets-answer.json, compacted, byte for byte" do
+    test "seal_with/3 writes secrets-answer.json, compacted, byte for byte" do
       vectors = vectors()
-      assert {:ok, answer} = Sealing.seal(fixture_plaintext(), recipient(), opts())
+      assert {:ok, answer} = Sealing.seal_with(fixture_plaintext(), recipient(), opts())
       assert answer == compact(read("fixtures/sealed/secrets-answer.json"))
 
       %{"sealed" => sealed} = Jason.decode!(answer)
@@ -142,20 +142,76 @@ defmodule Apiary.Secrets.SealingTest do
       assert Ed25519.verify(signed, sig, key("signing_key").public_key)
     end
 
-    test "seal/3 takes a fresh ephemeral key unless given one" do
+    test "seal_with/3 takes a fresh ephemeral key unless given one" do
       plaintext = fixture_plaintext()
       recipient = recipient()
       signing_key = SigningKey.new(key("signing_key").seed)
 
-      assert {:ok, one} = Sealing.seal(plaintext, recipient, signing_key: signing_key)
-      assert {:ok, two} = Sealing.seal(plaintext, recipient, signing_key: signing_key)
+      assert {:ok, one} = Sealing.seal_with(plaintext, recipient, signing_key: signing_key)
+      assert {:ok, two} = Sealing.seal_with(plaintext, recipient, signing_key: signing_key)
       assert Jason.decode!(one)["sealed"]["enc"] != Jason.decode!(two)["sealed"]["enc"]
+    end
+  end
+
+  describe "seal/2, the production entry point" do
+    test "takes no key of a caller: it has no third argument" do
+      assert function_exported?(Sealing, :seal, 2)
+      refute function_exported?(Sealing, :seal, 3)
+    end
+
+    test "seals to the access key with a fresh ephemeral key, signed under the instance's key" do
+      recipient = recipient()
+      access_key = key("access_key")
+      {:ok, x25519_private_key} = Ed25519.decode(access_key.entry["x25519_private_key"], 32)
+
+      expected = %{
+        access_key_id: recipient.access_key_id,
+        run_id: recipient.run_id,
+        run_configuration: recipient.run_configuration,
+        signing_public_key: SigningKey.current().public_key,
+        x25519_private_key: x25519_private_key
+      }
+
+      assert {:ok, one} = Sealing.seal(fixture_plaintext(), recipient)
+      assert {:ok, two} = Sealing.seal(fixture_plaintext(), recipient)
+      assert Jason.decode!(one)["sealed"]["enc"] != Jason.decode!(two)["sealed"]["enc"]
+
+      assert {:ok, plaintext, _sealed} = Apiary.SealedOpen.open(one, expected)
+      assert plaintext == read("fixtures/sealed/sealed-plaintext.json")
+
+      # Not under the contract's fixture signing key.
+      assert Apiary.SealedOpen.open(one, %{
+               expected
+               | signing_public_key: key("signing_key").public_key
+             }) == {:error, :sig}
+    end
+
+    test "returns :recipient for a recipient that is not a map" do
+      for recipient <- [nil, "ak_f1xt0re000000000", [access_key_id: "ak_f1xt0re000000000"]] do
+        assert Sealing.seal(fixture_plaintext(), recipient) == {:error, :recipient}
+      end
+    end
+
+    test "returns :key for each key of small-order.json" do
+      %{"small_order" => small, "non_canonical" => non_canonical, "torsion" => torsion} =
+        json("fixtures/known-answers/small-order.json")
+
+      encodings = Enum.map(small ++ non_canonical ++ [torsion], & &1["encoding"])
+      assert length(encodings) == 15
+
+      for encoding <- encodings do
+        {:ok, public_key} = Base.url_decode64(encoding, padding: false)
+
+        assert Sealing.seal(fixture_plaintext(), %{recipient() | public_key: public_key}) ==
+                 {:error, :key},
+               encoding
+      end
     end
   end
 
   describe "the invalid cases of the sealer's inputs are never produced" do
     # Each case is sealed with an info, an aad or a plaintext other than the request's.
-    # seal/3 builds info and aad from the request's values alone, so it writes other
+    # The seal builds info and aad from the request's values alone, so it writes other
     # bytes, or refuses the plaintext.
 
     test "wrong info, wrong aad and another run: the request's values give other bytes" do
@@ -185,7 +241,7 @@ defmodule Apiary.Secrets.SealingTest do
       digest = recipient().run_configuration
       assert plaintext["run_configuration"] != digest
 
-      assert Sealing.seal(plaintext, recipient(), opts()) == {:error, :digest}
+      assert Sealing.seal_with(plaintext, recipient(), opts()) == {:error, :digest}
       assert Sealing.plaintext(plaintext, digest) == {:error, :digest}
       refute sealed_bytes() == compact(read(vector["file"]))
     end
@@ -195,11 +251,11 @@ defmodule Apiary.Secrets.SealingTest do
       plaintext = json(vector["plaintext"])
 
       assert Enum.sort(plaintext["credentials"]) == Enum.sort(request()["credentials"])
-      assert Sealing.seal(plaintext, recipient(), opts()) == {:error, :values}
+      assert Sealing.seal_with(plaintext, recipient(), opts()) == {:error, :values}
     end
   end
 
-  describe "what seal/3 refuses" do
+  describe "the errors of the seal" do
     test "identifiers outside their forms" do
       for {field, value} <- [
             access_key_id: "ak_F1XT0RE000000000",
@@ -208,7 +264,7 @@ defmodule Apiary.Secrets.SealingTest do
             exp: Integer.pow(2, 53),
             exp: -1
           ] do
-        assert Sealing.seal(fixture_plaintext(), Map.put(recipient(), field, value), opts()) ==
+        assert Sealing.seal_with(fixture_plaintext(), Map.put(recipient(), field, value), opts()) ==
                  {:error, :identifiers},
                inspect(field)
       end
@@ -216,7 +272,11 @@ defmodule Apiary.Secrets.SealingTest do
 
     test "an access key that fails a key check" do
       for public_key <- [<<1, 0::248>>, <<0::256>>, <<1, 2, 3>>] do
-        assert Sealing.seal(fixture_plaintext(), %{recipient() | public_key: public_key}, opts()) ==
+        assert Sealing.seal_with(
+                 fixture_plaintext(),
+                 %{recipient() | public_key: public_key},
+                 opts()
+               ) ==
                  {:error, :key}
       end
     end
@@ -230,7 +290,7 @@ defmodule Apiary.Secrets.SealingTest do
             ["Forge", "model"],
             Enum.map(1..9, &"c#{&1}")
           ] do
-        assert Sealing.seal(%{plaintext | "credentials" => credentials}, recipient(), opts()) ==
+        assert Sealing.seal_with(%{plaintext | "credentials" => credentials}, recipient(), opts()) ==
                  {:error, :credentials},
                inspect(credentials)
       end
@@ -241,7 +301,7 @@ defmodule Apiary.Secrets.SealingTest do
       [forge, model] = plaintext["values"]
 
       for values <- [[forge], [forge, model, model], [forge, %{model | "credential" => "other"}]] do
-        assert Sealing.seal(%{plaintext | "values" => values}, recipient(), opts()) ==
+        assert Sealing.seal_with(%{plaintext | "values" => values}, recipient(), opts()) ==
                  {:error, :values}
       end
     end
@@ -253,13 +313,13 @@ defmodule Apiary.Secrets.SealingTest do
       for value <- ["", "a\0b", <<0xFF>>, String.duplicate("a", 16_385), 7] do
         values = [forge, %{model | "value" => value}]
 
-        assert Sealing.seal(%{plaintext | "values" => values}, recipient(), opts()) ==
+        assert Sealing.seal_with(%{plaintext | "values" => values}, recipient(), opts()) ==
                  {:error, :value}
       end
 
       long = String.duplicate("a", 16_384)
       values = [forge, %{model | "value" => long}]
-      assert {:ok, _} = Sealing.seal(%{plaintext | "values" => values}, recipient(), opts())
+      assert {:ok, _} = Sealing.seal_with(%{plaintext | "values" => values}, recipient(), opts())
     end
 
     test "any other plaintext" do
@@ -272,7 +332,7 @@ defmodule Apiary.Secrets.SealingTest do
             %{plaintext | "values" => [%{"credential" => "forge"}, hd(plaintext["values"])]},
             "not a map"
           ] do
-        assert Sealing.seal(other, recipient(), opts()) == {:error, :plaintext}
+        assert Sealing.seal_with(other, recipient(), opts()) == {:error, :plaintext}
       end
     end
   end
@@ -319,14 +379,18 @@ defmodule Apiary.Secrets.SealingTest do
 
       log =
         capture_log([level: :debug], fn ->
-          {:ok, answer} = Sealing.seal(plaintext, recipient(), opts())
+          {:ok, answer} = Sealing.seal_with(plaintext, recipient(), opts())
           send(self(), {:answer, answer})
 
           for result <- [
-                Sealing.seal(bad_value, recipient(), opts()),
-                Sealing.seal(plaintext, %{recipient() | public_key: <<0::256>>}, opts()),
-                Sealing.seal(plaintext, %{recipient() | run_id: "fixture-model-key"}, opts()),
-                Sealing.seal(Map.put(plaintext, "x", 1), recipient(), opts())
+                Sealing.seal_with(bad_value, recipient(), opts()),
+                Sealing.seal_with(plaintext, %{recipient() | public_key: <<0::256>>}, opts()),
+                Sealing.seal_with(
+                  plaintext,
+                  %{recipient() | run_id: "fixture-model-key"},
+                  opts()
+                ),
+                Sealing.seal_with(Map.put(plaintext, "x", 1), recipient(), opts())
               ] do
             assert {:error, refusal} = result
             assert is_atom(refusal)
@@ -348,7 +412,7 @@ defmodule Apiary.Secrets.SealingTest do
 
       error =
         assert_raise ArgumentError, fn ->
-          Sealing.seal(fixture_plaintext(), recipient(), ephemeral_private_key: key)
+          Sealing.seal_with(fixture_plaintext(), recipient(), ephemeral_private_key: key)
         end
 
       refute Exception.message(error) =~ key

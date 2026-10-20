@@ -84,6 +84,10 @@ config :apiary, Apiary.KeyDerivation,
 # Forager's contract, which the instance refuses. Not a secret.
 config :apiary, Apiary.SigningKey, seed: "qory apiary test signing seed 01"
 
+# The entry point of the sealed answer's known-answer tests, which seals with the
+# contract's fixture keys (`Apiary.Secrets.Sealing`): compiled in the test build alone.
+config :apiary, Apiary.Secrets.Sealing, known_answers: true
+
 # Every enrolment test posts from the same address; the limits' own tests set their own.
 config :apiary, ApiaryWeb.Contract.EnrolmentController,
   rate: 1000,

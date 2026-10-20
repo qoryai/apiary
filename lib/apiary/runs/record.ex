@@ -18,6 +18,7 @@ defmodule Apiary.Runs.Record do
 
   import Ecto.Query, warn: false
 
+  alias Apiary.Edition
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
@@ -185,28 +186,31 @@ defmodule Apiary.Runs.Record do
   run has none.
   """
   def policy(%Scope{} = scope, %Run{} = run) do
-    Repo.one(
-      from e in events(scope, run),
-        where: e.type == ^@policy_applied,
-        order_by: [desc: e.sequence],
-        limit: 1,
-        select: %{
-          sequence: e.sequence,
-          time: e.time,
-          mode: fragment("left(? ->> 'mode', 40)", e.data),
-          source: fragment("left(? ->> 'source', 40)", e.data),
-          allow: strings(e.data, "allow", 50, 255),
-          allow_count: array_length(e.data, "allow"),
-          deny: strings(e.data, "deny", 50, 255),
-          deny_count: array_length(e.data, "deny"),
-          terminated: strings(e.data, "terminated", 50, 255),
-          terminated_count: array_length(e.data, "terminated"),
-          credentials: named_hosts(e.data, "credentials"),
-          credentials_count: named_count(e.data, "credentials"),
-          tools: named_hosts(e.data, "tools"),
-          tools_count: named_count(e.data, "tools")
-        }
-    )
+    policy =
+      Repo.one(
+        from e in events(scope, run),
+          where: e.type == ^@policy_applied,
+          order_by: [desc: e.sequence],
+          limit: 1,
+          select: %{
+            sequence: e.sequence,
+            time: e.time,
+            mode: fragment("left(? ->> 'mode', 40)", e.data),
+            source: fragment("left(? ->> 'source', 40)", e.data),
+            allow: strings(e.data, "allow", 50, 255),
+            allow_count: array_length(e.data, "allow"),
+            deny: strings(e.data, "deny", 50, 255),
+            deny_count: array_length(e.data, "deny"),
+            terminated: strings(e.data, "terminated", 50, 255),
+            terminated_count: array_length(e.data, "terminated"),
+            credentials: named_hosts(e.data, "credentials"),
+            credentials_count: named_count(e.data, "credentials"),
+            tools: named_hosts(e.data, "tools"),
+            tools_count: named_count(e.data, "tools")
+          }
+      )
+
+    Edition.client_reads(scope, :run_policy, run, policy)
   end
 
   @doc "The runtime's session id, from the run's last `session.started`; nil without one."
@@ -585,10 +589,14 @@ defmodule Apiary.Runs.Record do
   defp cast_uuid(_other), do: :error
 
   defp connections_of(scope, run) do
-    from c in Connection,
-      where:
-        c.organisation_id == ^organisation_id(scope) and c.workspace_id == ^workspace_id(scope),
-      where: c.run_id == ^run.id
+    query =
+      from c in Connection,
+        where:
+          c.organisation_id == ^organisation_id(scope) and
+            c.workspace_id == ^workspace_id(scope),
+        where: c.run_id == ^run.id
+
+    Edition.client_reads(scope, :run_connections, run, query)
   end
 
   ## The log
@@ -858,11 +866,15 @@ defmodule Apiary.Runs.Record do
         r.organisation_id == ^organisation_id(scope) and r.workspace_id == ^workspace_id(scope)
   end
 
-  defp events(%Scope{} = scope, %Run{id: id}) do
-    from e in Event,
-      where:
-        e.organisation_id == ^organisation_id(scope) and e.workspace_id == ^workspace_id(scope),
-      where: e.run_id == ^id
+  defp events(%Scope{} = scope, %Run{id: id} = run) do
+    query =
+      from e in Event,
+        where:
+          e.organisation_id == ^organisation_id(scope) and
+            e.workspace_id == ^workspace_id(scope),
+        where: e.run_id == ^id
+
+    Edition.client_reads(scope, :run_events, run, query)
   end
 
   defp log_chunks(%Scope{} = scope, %Run{id: id}) do

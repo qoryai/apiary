@@ -52,6 +52,11 @@ defmodule ApiaryWeb.Contract.RawBody do
   # does not know, and answered as one.
   @gated [:adapter, :pool]
   @gate_feature :factory
+  # A gateway's secrets request, `POST /v1/secrets`, of the `factory` and `secrets`
+  # features both, which the documentation leaves out: at most 32 KiB, the contract's
+  # limit, read the same way where both are on or where the request has a signature.
+  @secrets_path ["v1", "secrets"]
+  @secrets_max_bytes 32 * 1024
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
@@ -69,6 +74,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   def max_bytes(:enrolment), do: @enrolment_max_bytes
   def max_bytes(:adapter), do: @adapter_max_bytes
   def max_bytes(:pool), do: @pool_max_bytes
+  def max_bytes(:secrets), do: @secrets_max_bytes
 
   def init(opts), do: opts
 
@@ -79,6 +85,9 @@ defmodule ApiaryWeb.Contract.RawBody do
 
       endpoint when endpoint in @gated ->
         if served?(conn), do: keep(conn, max_bytes(endpoint)), else: conn
+
+      :secrets ->
+        if secrets_served?(conn), do: keep(conn, max_bytes(:secrets)), else: conn
 
       endpoint ->
         keep(conn, max_bytes(endpoint))
@@ -94,6 +103,7 @@ defmodule ApiaryWeb.Contract.RawBody do
       @events_path -> :events
       @registration_path -> :registration
       @enrolment_path -> :enrolment
+      @secrets_path -> :secrets
       path when path in @adapter_paths -> :adapter
       _other -> nil
     end
@@ -120,6 +130,11 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   defp served?(conn) do
     Apiary.Features.on?(@gate_feature) or get_req_header(conn, "x-qory-signature-ed25519") != []
+  end
+
+  defp secrets_served?(conn) do
+    (Apiary.Features.on?(@gate_feature) and Apiary.Features.on?(:secrets)) or
+      get_req_header(conn, "x-qory-signature-ed25519") != []
   end
 
   defp decode(segment) do

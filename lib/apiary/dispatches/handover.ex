@@ -66,7 +66,14 @@ defmodule Apiary.Dispatches.Handover do
   #       or whose work item has no target in a domain that requires one
   #       (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`; an explore run
   #       whose model choice cannot be formed (`Apiary.Dispatches.RunSettings`):
-  #       `provider_gone`, `runtime_unserved`, `key_gone` or `model_gone`;
+  #       `provider_gone`, `runtime_unserved`, `key_gone` or `model_gone`; and, checked
+  #       last, with the features `factory` and `secrets` on, an explore run whose model
+  #       choice has a provider, while one of the gateway's active keys the run key lists
+  #       was made without the stored-secrets flag (`allow_secrets`), or the provider's
+  #       key may not be sealed for a gateway of the gateway's organisation
+  #       (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as
+  #       such a gateway never receives the run's model key, and the run never starts on
+  #       a model nobody chose;
   #   11. the run key cannot be made for the gateway's address
   #       (`Apiary.Runs.Registration.issue_through/5`), the run settings take more than 64
   #       KiB, the answer takes more than 1 MiB with every comment left out of its input,
@@ -145,13 +152,14 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{About, Registration, Run, RunVariables, Target}
+  alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunVariables, Target}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
 
   @prebuild DispatchRun.prebuild()
   # The causes a claimed run ends for when its handover cannot form what it is made from.
-  @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++ RunSettings.causes()
+  @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++
+              RunSettings.causes() ++ [:secrets_not_allowed]
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
@@ -408,7 +416,7 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   defp hand_over(locked, {gateway, workspace}, keys, body) do
-    case formed(locked, workspace) do
+    case locked |> formed(workspace) |> sealable(gateway, workspace, keys) do
       {:end, cause} ->
         {:ended, end_claimed(locked.run, cause, locked.now)}
 
@@ -440,6 +448,27 @@ defmodule Apiary.Dispatches.Handover do
         end
     end
   end
+
+  # A run formed with a model provider, with the features under which it is given its
+  # credential (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed`
+  # when one of `keys`, the gateway's keys its run key lists, was made without
+  # `allow_secrets`, as either key may attach the run; or when the provider's key may not
+  # be sealed for the gateway's organisation.
+  defp sealable(
+         {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
+         %Node{organisation_id: gateway_organisation_id},
+         %Workspace{organisation_id: organisation_id},
+         keys
+       ) do
+    cond do
+      not ProviderCredential.applies?() -> ok
+      not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
+      ProviderCredential.sealable_to?(chain, gateway_organisation_id, organisation_id) -> ok
+      true -> {:end, :secrets_not_allowed}
+    end
+  end
+
+  defp sealable(formed, _gateway, _workspace, _keys), do: formed
 
   # What the run is formed from, or the cause its run of the queue ends for.
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do

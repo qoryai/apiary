@@ -4,7 +4,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   workspace's stored one (`Apiary.Policy.RunConfiguration`), or of none, when it needs
   another. Immutable, like the configuration it is composed from.
 
-  `shape/4` decides, for the run configuration in force (its bytes, or nil where the
+  `shape/5` decides, for the run configuration in force (its bytes, or nil where the
   workspace serves none), the image a run is given, whether the run must build on its
   pool's default image, and whether the image is already fixed, as it is for every answer after a run's attach
   (`fixed?`). Before the attach, the image is the one the run is given at the top level
@@ -35,7 +35,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   A composed document's bytes are canonical, encoded as `Apiary.Policy.Render` encodes a
   document, and its `digest` is `sha256=` and the hex of them
-  (`Apiary.Policy.Render.digest/1`). `serve/6` keeps it, one row per document of a
+  (`Apiary.Policy.Render.digest/1`). `serve/7` keeps it, one row per document of a
   workspace and run configuration it was composed from (`run_configuration_id`, nil for
   none), written once and read after (insert or read), with the image it names: leaving
   the policy's `image` out can make two run configurations give the same bytes, and each
@@ -50,6 +50,23 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # With the `factory` feature, which the documentation leaves out, a run that must build
   # on its pool's default image is a prebuild: a run of a workspace's queue for the step
   # `prebuild` (`prebuild?/1`). No other run is one.
+  #
+  # Also with the `factory` feature: the members of a run (`members/1`), which every
+  # document of a run of the queue is composed with, after the image is decided:
+  #
+  # - `variables`, the run variables Qory set for the run (`runs.registration_variables`,
+  #   `Apiary.Runs.RunVariables.document/1`);
+  # - with the `secrets` feature too, for a run the handover set a model provider for:
+  #   `credentials`, the provider's API credential, and `model_credential`, its name
+  #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
+  #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
+  #   the entries there. An exact entry of `egress.deny` for one of those hosts is left
+  #   out; a `*.` entry that covers one stays, and denies the host.
+  #
+  # The members come after the document's last member, in the schema's order:
+  # `variables`, `credentials`, `model_credential`. A document composed with them is
+  # composed for the run and kept as any other (`serve/7`), so its digest is the SHA-256
+  # of the bytes the run is sent, and a document composed from no policy gains them too.
   use Ecto.Schema
 
   import Ecto.Query, only: [from: 2]
@@ -57,7 +74,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Policy.{Render, RunConfiguration}
   alias Apiary.Repo
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{ProviderCredential, Run, RunVariables}
 
   @type t :: %__MODULE__{}
 
@@ -93,13 +110,28 @@ defmodule Apiary.Policy.ComposedConfiguration do
   when it matters), and whether the image is fixed for the run, as after its
   attach (`fixed?`, false unless given): `:as_is`, the document as stored, or
   `{:composed, bytes, image}`, with the image the bytes name at the top level, nil for
-  none. See the moduledoc.
+  none. See the moduledoc. `members`, nil unless given, is what else the run's document
+  is composed with: its run variables, nil for none.
   """
-  @spec shape(binary | nil, image, prebuild, boolean) ::
+  @spec shape(binary | nil, image, prebuild, boolean, map | nil) ::
           :as_is | {:composed, binary, String.t() | nil}
         when image: image | (-> image),
              prebuild: boolean | (-> boolean)
-  def shape(document, image, prebuild?, fixed? \\ false) do
+  def shape(document, image, prebuild?, fixed? \\ false, members \\ nil) do
+    case {imaged(document, image, prebuild?, fixed?), members?(members)} do
+      {shaped, false} ->
+        shaped
+
+      {:as_is, true} ->
+        {:composed, with_members(document, members), nil}
+
+      {{:composed, bytes, image}, true} ->
+        {:composed, with_members(bytes, members), image}
+    end
+  end
+
+  # What `shape/5` returns for the image alone.
+  defp imaged(document, image, prebuild?, fixed?) do
     if is_binary(document) and names_image?(document) do
       cond do
         value(prebuild?) -> {:composed, without_image(document), nil}
@@ -141,20 +173,20 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp value(value), do: value
 
   @doc """
-  The digest of what `shape/4` gives, nil where it gives the document as it is: a read,
-  nothing stored.
+  The digest of what `shape/5` returns, nil where it returns the document as it is: a
+  read, nothing stored.
   """
-  @spec digest(binary | nil, image, boolean | (-> boolean), boolean) ::
+  @spec digest(binary | nil, image, boolean | (-> boolean), boolean, map | nil) ::
           String.t() | nil
-  def digest(document, image, prebuild?, fixed? \\ false) do
-    case shape(document, image, prebuild?, fixed?) do
+  def digest(document, image, prebuild?, fixed? \\ false, members \\ nil) do
+    case shape(document, image, prebuild?, fixed?, members) do
       {:composed, bytes, _image} -> Render.digest(bytes)
       :as_is -> nil
     end
   end
 
   @doc """
-  What a run started in, as `shape/4` reads it once its image is fixed: the image it was
+  What a run started in, as `shape/5` reads it once its image is fixed: the image it was
   given at the top level (`configured_image`), `{:policy, image}` for the image its
   policy named, `:none` for none; nil for a run whose start was not kept, nor given an
   image, and for nil.
@@ -262,7 +294,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     do: Jason.encode!(Jason.OrderedObject.new(members), escape: :json)
 
   @doc """
-  What a run is given, as `shape/4` decides it, for the run configuration in force of the
+  What a run receives, as `shape/5` composes it, for the run configuration in force of the
   workspace (`configuration`, nil where it serves none): `:as_is`, or `{:ok, row}`, the
   composed document kept, made now or read when it was made before. Inside or outside a
   transaction: a second writer of the same document reads the first's row.
@@ -273,12 +305,21 @@ defmodule Apiary.Policy.ComposedConfiguration do
           RunConfiguration.t() | nil,
           image | (-> image),
           boolean | (-> boolean),
-          boolean
+          boolean,
+          map | nil
         ) :: :as_is | {:ok, t}
-  def serve(organisation_id, workspace_id, configuration, image, prebuild?, fixed? \\ false) do
+  def serve(
+        organisation_id,
+        workspace_id,
+        configuration,
+        image,
+        prebuild?,
+        fixed? \\ false,
+        members \\ nil
+      ) do
     document = configuration && configuration.document
 
-    case shape(document, image, prebuild?, fixed?) do
+    case shape(document, image, prebuild?, fixed?, members) do
       :as_is ->
         :as_is
 
@@ -333,16 +374,129 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   @doc """
   The digest a run is answered on a reload under the run configuration `configuration`:
-  the document composed for it as `shape/4` decides, with what the run started in
+  the document composed for it as `shape/5` composes it, with what the run started in
   (`started/1`), whether it must build on its pool's default image or not, its image
   fixed; the digest `configuration` is stored under where nothing is composed. A run that
-  is nil is one the caller does not know: no image, and no build on the default image. A
+  is nil is one the caller does not know: no image, and no build on the default image.
+  Nil when the run's document cannot be composed, and its reload then returns none. A
   read, nothing stored.
   """
-  @spec run_digest(RunConfiguration.t(), Run.t() | nil) :: String.t()
+  @spec run_digest(RunConfiguration.t(), Run.t() | nil) :: String.t() | nil
   def run_digest(%RunConfiguration{document: document, digest: digest}, run) do
-    digest(document, started(run), fn -> not is_nil(run) and prebuild?(run) end, true) ||
-      digest
+    case members(run) do
+      {:ok, members} ->
+        digest(
+          document,
+          started(run),
+          fn -> not is_nil(run) and prebuild?(run) end,
+          true,
+          members
+        ) || digest
+
+      {:error, :unavailable} ->
+        nil
+    end
+  end
+
+  # members/1 is what the documents of `run` are composed with beside the image (see the
+  # comment after the moduledoc): `{:ok, members}`, nil for none, or
+  # `{:error, :unavailable}` when its model provider cannot be read
+  # (`Apiary.Runs.ProviderCredential.for_run/1`). A run that is nil has none.
+  @doc false
+  @spec members(Run.t() | map | nil) :: {:ok, map | nil} | {:error, :unavailable}
+  def members(nil), do: {:ok, nil}
+
+  def members(run) do
+    with {:ok, credential} <- ProviderCredential.for_run(run) do
+      members = %{variables: Map.get(run, :registration_variables), credential: credential}
+      {:ok, if(members?(members), do: members)}
+    end
+  end
+
+  defp members?(%{variables: variables, credential: credential}),
+    do: (is_map(variables) and map_size(variables) > 0) or not is_nil(credential)
+
+  defp members?(nil), do: false
+
+  # `document`, or the document of no policy for nil, with the run's members after its
+  # last member and the provider's hosts in its `egress`; canonical bytes.
+  defp with_members(document, %{variables: variables, credential: credential}) do
+    hosts = if credential, do: credential.hosts, else: []
+
+    added =
+      if(is_map(variables) and map_size(variables) > 0,
+        do: [{"variables", RunVariables.document(variables)}],
+        else: []
+      ) ++
+        if(credential,
+          do: [{"credentials", [credential.entry]}, {"model_credential", credential.name}],
+          else: []
+        )
+
+    names = Enum.map(added, &elem(&1, 0))
+
+    (document || Render.no_policy_document())
+    |> decode()
+    |> Enum.reject(fn {name, _value} -> name in names end)
+    |> Enum.map(fn
+      {@security_policy, %Jason.OrderedObject{} = policy} ->
+        {@security_policy, with_hosts(policy, hosts)}
+
+      member ->
+        member
+    end)
+    |> Kernel.++(added)
+    |> encode()
+  end
+
+  # The policy with `hosts` added to its `egress.allow` after its entries, each once, and
+  # an exact entry of `egress.deny` for one of them left out, the member too once empty.
+  defp with_hosts(policy, []), do: policy
+
+  defp with_hosts(%Jason.OrderedObject{values: values}, hosts) do
+    values =
+      Enum.map(values, fn
+        {"egress", %Jason.OrderedObject{values: egress}} ->
+          {"egress", Jason.OrderedObject.new(egress_with(egress, hosts))}
+
+        member ->
+          member
+      end)
+
+    Jason.OrderedObject.new(values)
+  end
+
+  defp egress_with(egress, hosts) do
+    allow =
+      case List.keyfind(egress, "allow", 0) do
+        {"allow", allow} when is_list(allow) -> allow
+        _none -> []
+      end
+
+    allow = allow ++ Enum.reject(Enum.uniq(hosts), &(&1 in allow))
+
+    egress =
+      if List.keymember?(egress, "allow", 0),
+        do: List.keyreplace(egress, "allow", 0, {"allow", allow}),
+        else: after_mode(egress, {"allow", allow})
+
+    case List.keyfind(egress, "deny", 0) do
+      {"deny", deny} when is_list(deny) ->
+        case Enum.reject(deny, &(&1 in hosts)) do
+          [] -> List.keydelete(egress, "deny", 0)
+          kept -> List.keyreplace(egress, "deny", 0, {"deny", kept})
+        end
+
+      _none ->
+        egress
+    end
+  end
+
+  defp after_mode(egress, member) do
+    case Enum.split_while(egress, fn {name, _value} -> name != "mode" end) do
+      {before, [mode | rest]} -> before ++ [mode, member | rest]
+      {all, []} -> [member | all]
+    end
   end
 
   # Whether `run` is a run of a workspace's queue for the step `prebuild`: one read, and

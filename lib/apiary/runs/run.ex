@@ -143,13 +143,15 @@ defmodule Apiary.Runs.Run do
     # `key_prefixes`). Written once with the registration and never changed; nil for every
     # other run, and for an explore run with `factory` or `secrets` off. The provider
     # fields are nil where no provider was chosen, and the two rows become nil should they
-    # be deleted. Not folded: a rebuild keeps them.
+    # be deleted. Not folded: a rebuild keeps them. The secret's row id, the key's value
+    # id and the API are left out of the struct's inspection.
     field :run_settings, :map
     belongs_to :provider_connection, Apiary.Connections.Connection
-    belongs_to :provider_secret, Apiary.Secrets.Secret
-    field :provider_value_id, :string
+    field :provider_secret_id, :binary_id, redact: true
+    belongs_to :provider_secret, Apiary.Secrets.Secret, define_field: false
+    field :provider_value_id, :string, redact: true
     field :provider_chain, :string
-    field :provider_api, :map
+    field :provider_api, :map, redact: true
 
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the

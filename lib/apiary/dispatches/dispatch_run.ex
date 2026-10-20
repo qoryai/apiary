@@ -65,7 +65,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   # the provider was added, or has an endpoint address the endpoint rule refuses
   # (`provider_gone`); no longer serves the runtime (`runtime_unserved`); no longer has
   # the chosen key (`key_gone`); or no longer lists the chosen model or effort value
-  # (`model_gone`) (`Apiary.Dispatches.RunSettings`), 410 gone.
+  # (`model_gone`) (`Apiary.Dispatches.RunSettings`), 410 gone; `secrets_not_allowed`, a
+  # claimed explore run whose model choice has a provider, whose gateway has an active key
+  # made without the stored-secrets flag (`allow_secrets`), so the gateway may not get
+  # the run's model key (`Apiary.Dispatches.Handover`), 410 gone.
   @end_causes [
     :released,
     :closed,
@@ -81,7 +84,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :provider_gone,
     :runtime_unserved,
     :key_gone,
-    :model_gone
+    :model_gone,
+    :secrets_not_allowed
   ]
 
   # What a run gave (`Apiary.Explore.Result.outcome/1`).
