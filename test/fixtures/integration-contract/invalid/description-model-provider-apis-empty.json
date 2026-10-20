@@ -6,11 +6,9 @@
   "settings": {"type": "object"},
   "roles": {
     "model_provider": {
-      "endpoint": "https://api.acme-cloud.example",
-      "formats": ["anthropic-messages"],
-      "hosts": ["api.acme-cloud.example"],
-      "auth": {"scheme": "header", "header": "x-api-key"},
-      "key_variables": ["anthropic_api_key"],
+      "apis": [
+
+      ],
       "models": [{"id": "acme-large-2", "title": "Acme Large 2"}]
     }
   }

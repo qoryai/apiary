@@ -86,31 +86,51 @@ defmodule Apiary.Dispatches.Inputs do
   def prebuild(environment_ref) when is_binary(environment_ref),
     do: Jason.OrderedObject.new([{"version", @version}, {"environment_ref", environment_ref}])
 
-  # explore/3 is the input of the explore run `dispatch_run` of `work_item`, for the run's
-  # `target`, nil for none, and the name of its workspace's `domain` (the moduledoc).
+  # explore/4 is the input of the explore run `dispatch_run` of `work_item`, for the run's
+  # `target`, nil for none, and the name of its workspace's `domain` (the moduledoc), within
+  # `budget` bytes encoded, `max_bytes/0` at most: the handover gives the budget the
+  # handover answer's limit leaves (`Apiary.Dispatches.Handover`). An input that cannot be
+  # within a budget below `max_bytes/0`, with every comment left out, is
+  # `{:error, :answer_too_large}`, and within `max_bytes/0`, `{:error, :inputs_invalid}`.
   @doc false
-  @spec explore(WorkItem.t(), DispatchRun.t(), %{
-          domain: String.t(),
-          target: %{system: String.t(), path: String.t()} | nil
-        }) ::
-          {:ok, Jason.OrderedObject.t()} | {:error, :ticket_gone | :inputs_invalid}
+  @spec explore(
+          WorkItem.t(),
+          DispatchRun.t(),
+          %{
+            domain: String.t(),
+            target: %{system: String.t(), path: String.t()} | nil
+          },
+          pos_integer
+        ) ::
+          {:ok, Jason.OrderedObject.t()}
+          | {:error, :ticket_gone | :inputs_invalid | :answer_too_large}
   def explore(
         %WorkItem{} = work_item,
         %DispatchRun{} = dispatch_run,
-        %{domain: domain, target: target} = run
+        %{domain: domain, target: target} = run,
+        budget \\ @max_bytes
       )
-      when is_binary(domain) and (is_nil(target) or is_map(target)) do
+      when is_binary(domain) and (is_nil(target) or is_map(target)) and is_integer(budget) and
+             budget > 0 do
+    budget = min(budget, @max_bytes)
+
     with {:ok, item} <- ticket(work_item),
          {:ok, by} <- taken_in_by(work_item),
          :ok <- valid(work_item),
          {:ok, answers} <- answers(work_item, dispatch_run) do
       comments = Enum.map(comments(item), &comment/1)
       document = &document(work_item, dispatch_run, item, by, answers, run, &1, &2)
-      inputs = bounded(document, comments)
+      inputs = bounded(document, comments, budget)
 
-      # Every comment left out, the rest is within the bound by the columns' bounds; held all
-      # the same.
-      if encoded_size(inputs) <= @max_bytes, do: {:ok, inputs}, else: {:error, :inputs_invalid}
+      # Every comment left out, the rest is within `max_bytes/0` by the columns' bounds; held
+      # all the same, and within a smaller budget only when the rest fits it.
+      size = encoded_size(inputs)
+
+      cond do
+        size <= budget -> {:ok, inputs}
+        size <= @max_bytes -> {:error, :answer_too_large}
+        true -> {:error, :inputs_invalid}
+      end
     end
   end
 
@@ -228,10 +248,10 @@ defmodule Apiary.Dispatches.Inputs do
     do: [{"target", Jason.OrderedObject.new([{"system", system}, {"path", path}])}]
 
   # The document with every comment that fits, the newest kept: the fewest oldest left out
-  # for the whole to be at most `@max_bytes` encoded. Each comment's size is counted once;
+  # for the whole to be at most `max` bytes encoded. Each comment's size is counted once;
   # the document is then encoded again to hold the count, which only adds a comment more
   # left out should a digit of `comments_omitted` tip it over.
-  defp bounded(document, comments) do
+  defp bounded(document, comments, max) do
     sizes = Enum.map(comments, &encoded_size/1)
     empty = encoded_size(document.([], 0))
     count = length(comments)
@@ -241,21 +261,21 @@ defmodule Apiary.Dispatches.Inputs do
     omitted =
       sizes
       |> Enum.reduce_while({0, total}, fn size, {k, kept} ->
-        if empty + digits(k) - 1 + kept <= @max_bytes,
+        if empty + digits(k) - 1 + kept <= max,
           do: {:halt, {k, kept}},
           else: {:cont, {k + 1, kept - size - if(k + 1 < count, do: 1, else: 0)}}
       end)
       |> elem(0)
 
-    fit(document, comments, omitted)
+    fit(document, comments, omitted, max)
   end
 
-  defp fit(document, comments, omitted) do
+  defp fit(document, comments, omitted, max) do
     built = document.(Enum.drop(comments, omitted), omitted)
 
-    if encoded_size(built) <= @max_bytes or omitted >= length(comments),
+    if encoded_size(built) <= max or omitted >= length(comments),
       do: built,
-      else: fit(document, comments, omitted + 1)
+      else: fit(document, comments, omitted + 1, max)
   end
 
   defp encoded_size(term), do: term |> Jason.encode_to_iodata!() |> IO.iodata_length()

@@ -217,12 +217,17 @@ defmodule Apiary.Dispatches.SchemaTest do
                    "dispatch_runs",
                    run.id,
                    "state = 'ended', end_cause = $2, result_outcome = CASE WHEN $2 IN " <>
-                     "('variables_invalid', 'ticket_gone', 'inputs_invalid') THEN 'error' END",
+                     "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
+                     "'runtime_unserved', 'key_gone', 'model_gone') THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
 
         assert %DispatchRun{state: :ended, end_cause: ^cause} = Repo.get!(DispatchRun, run.id)
       end
+
+      # Back to a cause without an outcome, so each refusal below is its check's alone.
+      assert %{num_rows: 1} =
+               update!("dispatch_runs", run.id, "end_cause = 'released', result_outcome = NULL")
 
       refused("dispatch_runs_state_check", fn ->
         update!("dispatch_runs", run.id, "state = 'paused', end_cause = NULL")

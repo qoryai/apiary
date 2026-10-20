@@ -72,11 +72,14 @@ defmodule Apiary.Dispatches.Slots do
   #      lock; a claim takes a waiting run `FOR UPDATE SKIP LOCKED`, which waits on none;
   #   6. the dispatches.
   #
-  # A handover (`Apiary.Dispatches.Handover`) keeps the order: the free of its run
-  # (`{:runs, [id]}`), which locks a lapsed prebuild's environment record before its run,
-  # then its run of the queue `FOR UPDATE` (`Apiary.Dispatches.RunEnd`), then its
-  # dispatch, and only then, beyond these, the gateway's row `FOR SHARE` and the run it
-  # registers, as a run of the queue is locked before the run registered for it.
+  # A handover (`Apiary.Dispatches.Handover`) keeps the order: for an explore run, first
+  # the rows of the model providers its choices name and of their keys' secrets, each
+  # `FOR SHARE` (`Apiary.Dispatches.RunSettings`), which come before every lock above;
+  # then the free of its run (`{:runs, [id]}`), which locks a lapsed prebuild's
+  # environment record before its run, then its run of the queue `FOR UPDATE`
+  # (`Apiary.Dispatches.RunEnd`), then its dispatch, and only then, beyond these, the
+  # gateway's row `FOR SHARE` and the run it registers, as a run of the queue is locked
+  # before the run registered for it.
   #
   # A release (`Apiary.Dispatches.Release`) keeps it as well, and holds one row before
   # the free of its run: for an explore run, its work item `FOR UPDATE`, as a close

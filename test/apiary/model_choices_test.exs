@@ -325,7 +325,8 @@ defmodule Apiary.ModelChoicesTest do
     test "for a provider whose key the runtime has no variable for (T21)" do
       {:ok, runtime} = Runtimes.fetch("claude")
       {:ok, anthropic} = Providers.fetch("anthropic")
-      basic = %{anthropic | auth: %{"scheme" => "basic", "username" => "runner"}}
+      auth = %{"scheme" => "basic", "username" => "runner"}
+      basic = %{anthropic | apis: Enum.map(anthropic.apis, &%{&1 | "auth" => auth})}
 
       assert {:error, {message, bindings}} = ModelChoices.serves(basic, runtime, "Team models")
 
@@ -351,7 +352,11 @@ defmodule Apiary.ModelChoicesTest do
     test "for a provider that serves no format the runtime sends (T20)" do
       {:ok, runtime} = Runtimes.fetch("claude")
       {:ok, anthropic} = Providers.fetch("anthropic")
-      other_format = %{anthropic | formats: ["openai-chat"]}
+
+      other_format = %{
+        anthropic
+        | apis: Enum.map(anthropic.apis, &%{&1 | "format" => "openai-chat"})
+      }
 
       assert {:error, {message, bindings}} =
                ModelChoices.serves(other_format, runtime, "Team models")
@@ -510,46 +515,21 @@ defmodule Apiary.ModelChoicesTest do
 
       assert Repo.aggregate(ModelChoice, :count) == 0
     end
+  end
 
+  describe "a deny rule" do
     @tag needs: :security
-    test "for a deny rule that covers a host of the provider (T25)", ctx do
+    test "that covers a host of the provider refuses no save", ctx do
       %{scope: scope, provider: provider, target: target} = ctx
-      words = "The rule covers api.anthropic.com, which runs of Anthropic API key reach."
 
       {:ok, rule} = Policy.deny(scope, nil, %{host: "*.anthropic.com"})
-
-      assert errors(ModelChoices.put_choice(scope, :workspace, attrs(provider))) ==
-               %{
-                 provider: [
-                   "Choose another provider, or change the deny rule *.anthropic.com in the workspace. " <>
-                     words
-                 ]
-               }
-
       {:ok, _} = Policy.lock(scope, rule)
-
-      assert %{provider: [message]} =
-               errors(ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider)))
-
-      assert message =~ "in the workspace (locked). "
-
-      # A deny is no reason to refuse a tier map that names no provider, nor the default.
-      assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, %{tiers: %{"fast" => @model}})
-      assert {:ok, _} = ModelChoices.put_choice(scope, :organisation, attrs(provider))
-    end
-
-    @tag needs: :security
-    test "for a deny rule of the target, named by the target (T25)", ctx do
-      %{scope: scope, provider: provider, target: target} = ctx
       {:ok, _} = Policy.deny(scope, target, %{host: "api.anthropic.com"})
 
-      assert %{provider: [message]} =
-               errors(ModelChoices.put_choice(scope, target, attrs(provider)))
-
-      assert message =~ "change the deny rule api.anthropic.com in github.example/acme/shop. "
-
-      # The workspace's choice reads the workspace's rules, which the target's rule is not in.
       assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      assert {:ok, _} = ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider))
+      assert {:ok, _} = ModelChoices.put_choice(scope, target, attrs(provider))
+      assert {:ok, _} = ModelChoices.put_choice(scope, :organisation, attrs(provider))
     end
   end
 

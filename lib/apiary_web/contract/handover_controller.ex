@@ -25,8 +25,9 @@ defmodule ApiaryWeb.Contract.HandoverController do
   # schema's order, its `revision` the request's, its `domain` the name of the run's
   # workspace's domain, its `access` and `target` both present for a run with a target
   # and both left out for an explore run without one, its `work_item` an explore run's
-  # alone, and its `inputs` as Qory wrote them (`Apiary.Dispatches.Inputs`). The answer
-  # has no `run_settings`. The run key is given
+  # alone, its `run_settings` an explore run's alone, with both features `factory` and
+  # `secrets` on (`Apiary.Dispatches.RunSettings`), and its `inputs` as Qory wrote them
+  # (`Apiary.Dispatches.Inputs`). The run key is given
   # once, in this answer; nothing here logs it, the body or the input.
 
   use ApiaryWeb, :controller
@@ -77,26 +78,18 @@ defmodule ApiaryWeb.Contract.HandoverController do
   end
 
   defp answer(conn, %{run: run, run_key: run_key, dispatch_run: dispatch_run} = handed_over) do
-    work_item =
-      if handed_over.work_item,
-        do: [{"work_item", DispatchAnswer.work_item(handed_over.work_item)}],
-        else: []
-
     body =
-      Jason.encode!(
-        Jason.OrderedObject.new(
-          [
-            {"version", 1},
-            {"revision", conn.assigns.contract_version},
-            {"run_id", run.node_run_id},
-            {"run_key", run_key},
-            {"step", dispatch_run.step},
-            {"domain", handed_over.domain}
-          ] ++
-            DispatchAnswer.reach(dispatch_run.step, handed_over.target) ++
-            work_item ++ [{"inputs", handed_over.inputs}]
-        )
-      )
+      DispatchAnswer.handover_body(%{
+        revision: conn.assigns.contract_version,
+        run_id: run.node_run_id,
+        run_key: run_key,
+        step: dispatch_run.step,
+        domain: handed_over.domain,
+        target: handed_over.target,
+        work_item: handed_over.work_item,
+        run_settings: handed_over.run_settings,
+        inputs: handed_over.inputs
+      })
 
     conn
     |> put_resp_content_type("application/json")

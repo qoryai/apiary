@@ -18,10 +18,9 @@
   "egress_hosts": [{"setting": "address"}],
   "roles": {
     "model_provider": {
-      "endpoint": {"setting": "address"},
-      "formats": ["anthropic-messages"],
-      "auth": {"scheme": "bearer"},
-      "key_variables": ["ANTHROPIC_AUTH_TOKEN"],
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": {"setting": "address"}, "auth": {"scheme": "bearer"}}
+      ],
       "models": []
     }
   }

@@ -186,7 +186,9 @@ defmodule Apiary.Kinds.EndpointTest do
     # files.
     test "every URL endpoint and every default of an address setting passes" do
       for provider <- Providers.list() do
-        if is_binary(provider.endpoint), do: assert(Endpoint.check(provider.endpoint) == :ok)
+        for %{"endpoint" => endpoint} <- provider.apis,
+            is_binary(endpoint),
+            do: assert(Endpoint.check(endpoint) == :ok, provider.name)
 
         for name <- Provider.address_settings(provider),
             {:ok, default} <- [Provider.setting_default(provider, name)],

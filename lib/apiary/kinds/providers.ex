@@ -7,7 +7,8 @@ defmodule Apiary.Kinds.Providers do
   `Apiary.Kinds.Provider.load!/1` when the application is compiled, so a description that
   fails stops the compile; a provider is added by a release.
 
-  `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`.
+  `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`, and
+  `api/2` picks the API of the provider that a run of that runtime uses.
 
   `ref/0` is the integrations commit the descriptions were vendored from, which a provider
   connection records with the description's digest. It is read from
@@ -69,26 +70,21 @@ defmodule Apiary.Kinds.Providers do
   @doc """
   serve/2 checks whether `provider` can serve `runtime`, in this order:
 
-    1. the provider's `formats` and the runtime's model formats (`Runtimes.formats/1`)
-       share a value, or else `{:error, :format}`;
-    2. the runtime's `model_keys` has an entry whose `format` is one of the provider's
-       `formats` and whose `auth` equals the provider's `auth`, or else
-       `{:error, :key_variable}`: the runtime has no variable for the provider's key.
+    1. an API of the provider has a `format` among the runtime's model formats
+       (`Runtimes.formats/1`), or else `{:error, :format}`;
+    2. an API of the provider has the `format` and the `auth` of an entry of the
+       runtime's `model_keys`, or else `{:error, :key_variable}`: the runtime has no
+       variable for a key of the provider.
 
-  The result is `:ok` when both hold. The provider's `key_variables` and the runtime's
-  `declares` take no part.
+  The result is `:ok` when both hold. Two auths are the same when their `scheme` is the
+  same, their `header` is the same with case ignored, as HTTP header names are, and both
+  or neither are marked `oauth`, as Forager compares them when it starts a run.
   """
   @spec serve(Provider.t(), Runtime.t()) :: :ok | {:error, :format | :key_variable}
   def serve(%Provider{} = provider, %Runtime{} = runtime) do
-    cond do
-      not Enum.any?(provider.formats, &(&1 in Runtimes.formats(runtime))) ->
-        {:error, :format}
-
-      not Enum.any?(runtime.model_keys, &key?(&1, provider)) ->
-        {:error, :key_variable}
-
-      true ->
-        :ok
+    case api(provider, runtime) do
+      {:ok, _api} -> :ok
+      {:error, _reason} = refused -> refused
     end
   end
 
@@ -97,8 +93,35 @@ defmodule Apiary.Kinds.Providers do
   def serves?(%Provider{} = provider, %Runtime{} = runtime),
     do: serve(provider, runtime) == :ok
 
-  defp key?(%{"format" => format, "auth" => auth}, %Provider{formats: formats, auth: auth}),
-    do: format in formats
+  @doc """
+  api/2 is the API of `provider` that a run of `runtime` uses: the first in the
+  description's order whose `format` and `auth` an entry of the runtime's `model_keys`
+  has, as `serve/2` compares them. `{:ok, api}`, or the refusal of `serve/2`.
+  """
+  @spec api(Provider.t(), Runtime.t()) ::
+          {:ok, Provider.api()} | {:error, :format | :key_variable}
+  def api(%Provider{apis: apis}, %Runtime{} = runtime) do
+    formats = Runtimes.formats(runtime)
+    spoken = Enum.filter(apis, &(&1["format"] in formats))
 
-  defp key?(_key, _provider), do: false
+    case Enum.find(spoken, fn api -> Enum.any?(runtime.model_keys, &key?(&1, api)) end) do
+      %{} = api -> {:ok, api}
+      nil when spoken == [] -> {:error, :format}
+      nil -> {:error, :key_variable}
+    end
+  end
+
+  defp key?(%{"format" => format, "auth" => key_auth}, %{"format" => format, "auth" => auth}),
+    do: same_auth?(key_auth, auth)
+
+  defp key?(_key, _api), do: false
+
+  defp same_auth?(%{"scheme" => scheme} = a, %{"scheme" => scheme} = b) do
+    header(a) == header(b) and Map.get(a, "oauth", false) == Map.get(b, "oauth", false)
+  end
+
+  defp same_auth?(_a, _b), do: false
+
+  defp header(%{"header" => header}) when is_binary(header), do: String.downcase(header, :ascii)
+  defp header(_auth), do: nil
 end
