@@ -42,6 +42,7 @@ defmodule Apiary.Policy.Activity do
   import Ecto.Query, warn: false
 
   alias Apiary.Accounts.Scope
+  alias Apiary.Edition
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{Above, Effective, Grammar, Resolution, Rule}
   alias Apiary.Repo
@@ -59,8 +60,8 @@ defmodule Apiary.Policy.Activity do
   def cap, do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :cap, @default_cap)
 
   @doc false
-  def uncovered(%Scope{workspace: %Workspace{} = workspace}, target_id, since, opts \\ []) do
-    with {:ok, rows} <- rows(workspace.id, target_id, since, opts) do
+  def uncovered(%Scope{workspace: %Workspace{} = workspace} = scope, target_id, since, opts \\ []) do
+    with {:ok, rows} <- rows(scope, workspace.id, target_id, since, opts) do
       {:ok, uncovered_from(workspace, rows, policies(workspace, rows), target_id)}
     end
   end
@@ -97,8 +98,8 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def denied_destinations(%Scope{workspace: %Workspace{} = workspace}, since, opts \\ []) do
-    with {:ok, rows} <- rows(workspace.id, nil, since, opts) do
+  def denied_destinations(%Scope{workspace: %Workspace{} = workspace} = scope, since, opts \\ []) do
+    with {:ok, rows} <- rows(scope, workspace.id, nil, since, opts) do
       {:ok, denied_from(workspace, rows, policies(workspace, rows))}
     end
   end
@@ -108,8 +109,8 @@ defmodule Apiary.Policy.Activity do
   # over the wider window: the denied destinations held to today's rules and what enforce
   # would deny, both since `since`, and how many destinations were denied since `window`
   # (the earlier moment). See `Apiary.Policy.overview_activity/3`.
-  def overview(%Scope{workspace: %Workspace{} = workspace}, since, window, opts \\ []) do
-    with {:ok, rows} <- rows(workspace.id, nil, window, opts) do
+  def overview(%Scope{workspace: %Workspace{} = workspace} = scope, since, window, opts \\ []) do
+    with {:ok, rows} <- rows(scope, workspace.id, nil, window, opts) do
       recent = Enum.filter(rows, &(DateTime.compare(&1.last_seen_at, since) != :lt))
       policies = policies(workspace, recent)
 
@@ -229,8 +230,8 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def denied_summary(%Scope{workspace: %Workspace{} = workspace}, since, opts \\ []) do
-    with {:ok, rows} <- rows(workspace.id, nil, since, opts) do
+  def denied_summary(%Scope{workspace: %Workspace{} = workspace} = scope, since, opts \\ []) do
+    with {:ok, rows} <- rows(scope, workspace.id, nil, since, opts) do
       denied = Enum.filter(rows, &(&1.denied > 0))
 
       {:ok,
@@ -242,8 +243,13 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def rule_activity(%Scope{workspace: %Workspace{} = workspace}, target_id, since, opts \\ []) do
-    with {:ok, rows} <- rows(workspace.id, target_id, since, opts) do
+  def rule_activity(
+        %Scope{workspace: %Workspace{} = workspace} = scope,
+        target_id,
+        since,
+        opts \\ []
+      ) do
+    with {:ok, rows} <- rows(scope, workspace.id, target_id, since, opts) do
       policies = policies(workspace, rows)
 
       counts =
@@ -273,13 +279,19 @@ defmodule Apiary.Policy.Activity do
   # Newest first through `connections (workspace_id, last_seen_at)`; one row over the cap
   # says there is more than is read.
   # `cap:` is for the tests, which cannot afford the real one.
-  defp rows(workspace_id, target_id, since, opts) do
+  defp rows(scope, workspace_id, target_id, since, opts) do
     cap = Keyword.get(opts, :cap, cap())
 
+    connections =
+      Edition.client_reads(
+        scope,
+        :workspace_connections,
+        nil,
+        from(c in Connection, join: r in Run, on: r.id == c.run_id)
+      )
+
     query =
-      from c in Connection,
-        join: r in Run,
-        on: r.id == c.run_id,
+      from [c, r] in connections,
         where: c.workspace_id == ^workspace_id and c.last_seen_at >= ^since,
         order_by: [desc: c.last_seen_at],
         limit: ^(cap + 1),

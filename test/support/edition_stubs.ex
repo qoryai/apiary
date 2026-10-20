@@ -891,4 +891,16 @@ defmodule Apiary.EditionStubs do
     def organisation_secrets(scope, verb),
       do: GrantsOrganisationSecrets.organisation_secrets(scope, verb)
   end
+
+  defmodule HidesRuns do
+    @moduledoc """
+    A client is shown nothing of the runs and the connections of its workspace
+    (`c:Apiary.Edition.client_reads/4`), as an edition hides what an operator's model
+    provider did: every query narrowed to no row, and no policy.
+    """
+    import Ecto.Query, only: [where: 2]
+
+    def client_reads(_scope, :run_policy, _run, _policy), do: nil
+    def client_reads(_scope, _kind, _run, query), do: where(query, false)
+  end
 end

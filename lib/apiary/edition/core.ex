@@ -57,6 +57,9 @@ defmodule Apiary.Edition.Core do
   @impl true
   def model_choice_chain(_organisation_id), do: "organisation"
 
+  @impl true
+  def client_reads(_scope, _kind, _run, subject), do: subject
+
   # The core keeps no secret at an organisation.
   @impl true
   def organisation_secrets(_scope, _verb), do: {:error, :not_found}

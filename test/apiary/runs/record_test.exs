@@ -180,6 +180,28 @@ defmodule Apiary.Runs.RecordTest do
     end
   end
 
+  describe "what the edition leaves out" do
+    test "the core leaves out nothing; an edition narrows each read", %{scope: scope} do
+      run = demo(scope, "session-with-subagents")
+      assert %{total: total} = Record.connections(scope, run)
+      assert total > 0
+      assert Record.timeline(scope, run).items != []
+      assert %{} = Record.policy(scope, run)
+
+      assert Apiary.Edition.Core.client_reads(scope, :run_policy, run, %{a: 1}) == %{a: 1}
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesRuns)
+
+      assert %{rows: [], total: 0} = Record.connections(scope, run)
+      assert %{all: 0, attempts: 0} = Record.connection_counts(scope, run)
+      assert Record.timeline(scope, run).items == []
+      assert Record.policy(scope, run) == nil
+
+      since = DateTime.add(DateTime.utc_now(), -365, :day)
+      assert {:ok, []} = Apiary.Policy.Activity.denied_destinations(scope, since)
+    end
+  end
+
   describe "tool invocations" do
     test "a connection names the tool whose host its last attempt was for and what answered", %{
       scope: scope

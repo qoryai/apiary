@@ -26,6 +26,7 @@ defmodule Apiary.Runs do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Days
+  alias Apiary.Edition
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
@@ -1174,13 +1175,17 @@ defmodule Apiary.Runs do
        ) do
     {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
-    from(c in Connection,
-      join: r in Run,
-      as: :run,
-      on: r.id == c.run_id and r.workspace_id == c.workspace_id,
-      where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
-      where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
-    )
+    connections =
+      from(c in Connection,
+        join: r in Run,
+        as: :run,
+        on: r.id == c.run_id and r.workspace_id == c.workspace_id,
+        where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
+        where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
+      )
+
+    scope
+    |> Edition.client_reads(:workspace_connections, nil, connections)
     |> where_if(f.host, dynamic([c], c.host == ^f.host))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))
