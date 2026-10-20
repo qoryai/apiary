@@ -376,10 +376,14 @@ defmodule Apiary.Policy.IntegrationHostsTest do
           settings: %{"address" => "https://models.example.com"}
         })
 
+      # Other tests log at the same time; a token in each value keeps
+      # the refute to this test's values.
+      token = "t#{System.unique_integer([:positive])}"
+
       for address <- [
-            "https://*.example.com",
-            "https://010.0.0.12",
-            "https://models.example.com\n"
+            "https://*.#{token}.example.com",
+            "https://010.0.0.12/#{token}",
+            "https://models.#{token}.example.com\n"
           ] do
         log =
           capture_log(fn ->
@@ -392,7 +396,7 @@ defmodule Apiary.Policy.IntegrationHostsTest do
         assert served(scope, nil)["allow_first"] == ["api.example.com"]
         assert allow_first(scope, nil) == ["api.example.com"]
         assert log =~ "the setting address of the integration connection #{connection.public_id}"
-        refute log =~ "example.com"
+        refute log =~ token
       end
 
       {:ok, _connection} =
