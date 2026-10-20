@@ -17,8 +17,8 @@ defmodule Apiary.Policy.Entry do
       covers it, a `*.` allow above it, an integration's host), without that entry's
       `overridden_by` and `overrides`;
     * `overrides`: the entries this one beat, likewise; for an `:integration` entry, also
-      each `*.` deny that covers its host and stays in force for the other hosts it
-      covers;
+      each `*.` deny that covers its host, which stays in force but is not written to the
+      document's `deny` (`Apiary.Policy.Resolution`, point 7);
     * `reason`: why it is not in force when nothing beat it: `:only_above_allows`, a host
       allow of the workspace or of a target where the level above allows only the hosts on
       its list; `:out_of_grammar`, a rule stored before the grammar refused its host (an

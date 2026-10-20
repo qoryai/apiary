@@ -56,8 +56,10 @@ defmodule Apiary.Policy.Resolution do
   7. **An integration's host** (source `:integration`, `integrations` of `resolve/6`) is
      an allow on every path, and no deny takes it out: it beats a deny of any rank on the
      same host, the level above's included, and a deny below it when it is a `*.` suffix.
-     A `*.` deny that covers it stays in force for every other host it covers, and the
-     integration's entry has the deny in its `overrides`. Among allows it has the lowest
+     A `*.` deny that covers it stays in force, takes out the allows below it that it
+     covers, and is in the integration's entry's `overrides`; it is not written to `deny`,
+     as in point 3, so under `observe` the other hosts it covers are reached and recorded,
+     and under `enforce` they are reached where an allow covers them. Among allows it has the lowest
      rank: an allow of the workspace, of a target or of the level above on the same host
      decides the host, and the integration's entry is overridden. Two integrations that
      list one host stay in force together. Where the level above allows only the hosts on
@@ -383,8 +385,8 @@ defmodule Apiary.Policy.Resolution do
     end)
   end
 
-  # A `*.` deny that covers an integration's host stays in force for every other host it
-  # covers: the integration's entry lists it among the entries it overrides.
+  # A `*.` deny that covers an integration's host stays in force here, and the
+  # integration's entry lists it in `overrides`; `effective/4` leaves it out of `deny`.
   defp integration_under_deny(entries) do
     denies =
       for {index, %{action: :deny} = entry} <- in_force(entries, :host),
@@ -618,7 +620,9 @@ defmodule Apiary.Policy.Resolution do
     denies = for {_index, %{action: :deny} = entry} <- in_force(entries, :host), do: entry
 
     # A deny with an allow in force below it (one that outranks the deny, or it would have
-    # been taken out) cannot be written: the gateway would deny the winning host too.
+    # been taken out) cannot be written: the gateway would deny the winning host too. So a
+    # `*.` deny is left out of `deny` when an integration's host sits under it; writing it
+    # waits for a change to Forager's policy document.
     said =
       Enum.reject(denies, fn deny ->
         Enum.any?(hosts, &(&1.host != deny.host and Grammar.covers?(deny.host, &1.host)))

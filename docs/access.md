@@ -488,8 +488,9 @@ for each other and never on each other at once:
    then renders again the policy of each workspace the integration reached before the
    write or reaches after it (`Apiary.Policy.rerender_in/3`). That write is the one
    change that takes workspace rows after the integrations lock. No change that holds a
-   workspace row takes the integrations lock or locks an integration's row, so the two
-   never wait on each other. A change to a model provider takes the integrations lock, then the
+   workspace row takes the integrations lock or locks the row of an integration other
+   than a model provider, so the two never wait on each other. A write of a model choice
+   at levels 2 to 5 holds the workspace row and then takes a provider's row `FOR SHARE`. A change to a model provider takes the integrations lock, then the
    provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes
    the organisation's advisory lock for its secrets and the row of the keys' secret
    `FOR UPDATE`; to choose the default key, that row `FOR SHARE`. It reads what uses the

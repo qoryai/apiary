@@ -80,7 +80,7 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
     refute entry(effective, :organisation, "api.example.com").in_force
   end
 
-  test "a *. deny that covers it stays in force for every other host it covers" do
+  test "a *. deny that covers it stays in force and is left out of deny" do
     effective =
       resolve(
         [deny("*.example.com"), allow("cdn.example.com")],
@@ -90,6 +90,7 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
 
     # cdn.example.com, a sibling, is not reached under enforce: it has no allow.
     assert effective.allow == ["api.example.com"]
+    assert effective.deny == []
 
     wildcard = entry(effective, :workspace, "*.example.com")
     assert wildcard.in_force

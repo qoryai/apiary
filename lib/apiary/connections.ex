@@ -354,7 +354,8 @@ defmodule Apiary.Connections do
   `Apiary.Policy.Grammar.host?/1` takes. `Apiary.Policy` renders them into the workspace's
   policy (`Apiary.Policy.Resolution`).
 
-  Model providers are left out: a run reaches a provider's hosts by its choice of model.
+  Model providers are left out, and no host of a model provider is added to a run's
+  policy.
   A connection that fails its integrity code, or whose release does, is left out, with an
   error in the log, and so is one whose description fails to parse. `[]` where the
   `secrets` feature is off, since the organisation's integrations are absent there. It
