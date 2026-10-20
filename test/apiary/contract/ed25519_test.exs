@@ -119,6 +119,35 @@ defmodule Apiary.Contract.Ed25519Test do
     end
   end
 
+  describe "the X25519 public key" do
+    test "is the Montgomery u-coordinate :crypto derives from the same seed" do
+      # An X25519 key pair whose private key is the clamped first half of SHA-512(seed)
+      # has the public key that the conversion gives the Ed25519 key of that seed.
+      seed = :crypto.strong_rand_bytes(32)
+      {public, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+      <<scalar::binary-size(32), _::binary>> = :crypto.hash(:sha512, seed)
+      {x25519, _private} = :crypto.generate_key(:ecdh, :x25519, scalar)
+      assert Ed25519.x25519_public_key(public) == {:ok, x25519}
+    end
+
+    test "converts a fixture key, and refuses what fails the other key checks" do
+      {:ok, fixture} = Ed25519.decode(@fixture_access_key, 32)
+      assert {:ok, <<_::binary-size(32)>>} = Ed25519.x25519_public_key(fixture)
+
+      {:ok, identity} = Ed25519.decode(hd(@small_order), 32)
+      assert Ed25519.x25519_public_key(identity) == {:error, :y_is_one}
+
+      {:ok, torsion} = Ed25519.decode(@torsion_key, 32)
+      assert Ed25519.x25519_public_key(torsion) == {:error, :not_prime_order}
+
+      {:ok, non_canonical} = Ed25519.decode(hd(@non_canonical), 32)
+      assert Ed25519.x25519_public_key(non_canonical) == {:error, :non_canonical}
+
+      assert Ed25519.x25519_public_key(<<2, 0::248>>) == {:error, :not_on_curve}
+      assert Ed25519.x25519_public_key(<<1, 2, 3>>) == {:error, :length}
+    end
+  end
+
   describe "the strict base64url" do
     test "padding, the standard alphabet and bits after the last byte are refused" do
       {public, _secret} = key_pair()
