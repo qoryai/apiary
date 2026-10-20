@@ -20,14 +20,15 @@ defmodule Apiary.Policy do
   `Apiary.Policy.Resolution`'s to say.
 
   Every document of a workspace also allows the hosts that the integrations reaching the
-  workspace require (`Apiary.Connections.egress_hosts/1`), each on every path, in
-  `egress.allow_first`, which the gateway decides before `deny` and `allow`. They come
-  from no rule, and no rule takes them out (`Apiary.Policy.Resolution`, point 7). A deny
-  rule of such a host is refused at save (`check_deny/3`). A `*.` deny that covers one
-  saves and is written to `deny`: the gateway reaches the integration's host and denies
-  every other host the deny covers. A change of such an integration renders the
-  workspaces it reaches again, inside the change's transaction (`rerender_in/3`).
-  `effective/2`, which the pages read, leaves those hosts out; `effective/3` has them.
+  workspace require (`Apiary.Connections.egress_hosts/1`), in `egress.allow_first`, which
+  the gateway decides before `deny` and `allow`. Each is on every path, unless a rule's
+  allow on the same host holds it to paths. They come from no rule, and no rule takes
+  them out (`Apiary.Policy.Resolution`, point 7). A deny rule of such a host is refused
+  at save (`check_deny/3`). A `*.` deny that covers one saves and is written to `deny`:
+  the gateway reaches the integration's host and denies every other host the deny
+  covers. A change of such an integration renders the workspaces it reaches again,
+  inside the change's transaction (`rerender_in/3`). `effective/2`, which the pages
+  read, leaves those hosts out; `effective/3` has them.
 
   An edition may keep a level above the workspace's policy
   (`c:Apiary.Edition.above_workspace/1`, an `Apiary.Policy.Above`; the core keeps none):
