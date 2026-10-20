@@ -16,9 +16,10 @@ defmodule Apiary.Policy.Effective do
   `policy: false`).
 
   `allow_first` is the hosts of the integrations that reach the workspace, each exact,
-  sorted, each once (`Apiary.Policy.Resolution`, point 7): the list for the document's
-  field `egress.allow_first`, which `Apiary.Policy.Render.render/1` returns beside the
-  document. The document does not contain it (`Apiary.Policy.Render.allow_first/2`).
+  sorted, each once (`Apiary.Policy.Resolution`, point 7): the document's
+  `egress.allow_first` (`Apiary.Policy.Render.allow_first/2`), which the gateway allows
+  before `deny` and `allow`, in either mode. Such a host is in `allow` only when a rule's
+  allow on the same host is in force.
   """
 
   alias Apiary.Policy.{Above, Entry}

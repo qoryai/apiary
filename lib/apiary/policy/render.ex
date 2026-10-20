@@ -5,10 +5,10 @@ defmodule Apiary.Policy.Render do
 
   Deterministic: members in a fixed order, lists sorted by `Apiary.Policy.Resolution`, no
   insignificant whitespace, so the same rules give the same bytes and the same digest.
-  `allow` is always written, empty when nothing is allowed; `deny` and `paths` only when
-  they hold something, so a policy without a deny renders the bytes it always did. The
-  document selects no credential: a policy never writes the contract's `credentials`
-  member.
+  `allow` is always written, empty when nothing is allowed; `allow_first`, `deny` and
+  `paths` only when they have an entry, so a policy without an integration's host or a
+  deny renders the bytes it always did. The document selects no credential: a policy
+  never writes the contract's `credentials` member.
   """
 
   # With the features `factory` and `secrets`, which the documentation leaves out:
@@ -77,12 +77,19 @@ defmodule Apiary.Policy.Render do
   @doc """
   allow_first/2 is the one place that writes `egress.allow_first`: it takes the members
   of `egress`, in the document's order, and the hosts of `Apiary.Policy.Effective`'s
-  `allow_first`, and returns the members to write. It returns `egress` as it is: the
-  vendored `policy.schema.json` (`Apiary.Policy.Schema`) has no `allow_first` member and
-  refuses a member of `egress` it does not define.
+  `allow_first`, and returns the members to write. The hosts go right after `allow`,
+  which `security_policy/1` always writes, in the schema's order. An empty list adds no
+  member.
   """
   @spec allow_first(keyword, [String.t()]) :: keyword
-  def allow_first(egress, _hosts) when is_list(egress), do: egress
+  def allow_first(egress, []) when is_list(egress), do: egress
+
+  def allow_first(egress, hosts) when is_list(egress) and is_list(hosts) do
+    Enum.flat_map(egress, fn
+      {:allow, _allow} = allow -> [allow, {:allow_first, hosts}]
+      member -> [member]
+    end)
+  end
 
   defp ordered(pairs), do: Jason.OrderedObject.new(pairs)
 end

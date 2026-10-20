@@ -176,8 +176,9 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The policy in force, from the run's last `run.policy_applied`: `%{sequence, time, mode,
-  source, allow, allow_count, deny, deny_count, terminated, terminated_count,
-  credentials, credentials_count, tools, tools_count}`; the lists hold at most fifty
+  source, allow, allow_count, allow_first, allow_first_count, deny, deny_count,
+  terminated, terminated_count, credentials, credentials_count, tools, tools_count}`;
+  `allow_first` is empty where the event has none. The lists hold at most fifty
   strings, the credentials and the tools at most twenty `%{"name", "argument", "hosts"}`
   each, with ten hosts at most and the argument whole up to the contract's 4096 code
   points, nil when the entry has none. One entry per entry of the event: the uses of one
@@ -199,6 +200,8 @@ defmodule Apiary.Runs.Record do
             source: fragment("left(? ->> 'source', 40)", e.data),
             allow: strings(e.data, "allow", 50, 255),
             allow_count: array_length(e.data, "allow"),
+            allow_first: strings(e.data, "allow_first", 50, 255),
+            allow_first_count: array_length(e.data, "allow_first"),
             deny: strings(e.data, "deny", 50, 255),
             deny_count: array_length(e.data, "deny"),
             terminated: strings(e.data, "terminated", 50, 255),

@@ -60,16 +60,17 @@ defmodule Apiary.Policy.Resolution do
      allowed on every path, and no deny takes it out: it beats a deny of any rank on the
      same host, the level above's included, and a `*.` deny that covers it takes out
      neither its entry nor an allow of a rule on the same host. `allow_first` lists every
-     integration's host, sorted, each once. A `*.` deny that covers an integration's host
-     stays in force, is written to `deny`, takes out the other allows it covers (point
-     2), and is in the integration's entry's `overrides`. The rendered document does not
-     contain `allow_first`: the vendored `policy.schema.json` has no such member
-     (`Apiary.Policy.Render.allow_first/2`). So the gateway denies an integration's host
-     that a `*.` deny covers, and reaches every other integration's host. Among allows an
-     integration's host has the lowest rank: an allow of the workspace, of a target or of
-     the level above on the same host decides the host, paths included, and the
-     integration's entry is overridden. Two integrations that list one host stay in
-     force together. Where the level above allows only the hosts on its list, an
+     integration's host, sorted, each once, and the document writes it to
+     `egress.allow_first` (`Apiary.Policy.Render.allow_first/2`), which the gateway
+     decides before `deny` and `allow`, in either mode. An integration's host is not in
+     `allow`, unless a rule's allow on the same host is in force. A `*.` deny that covers
+     an integration's host stays in force, is written to `deny`, takes out the other
+     allows it covers (point 2), and is in the integration's entry's `overrides`: the
+     gateway reaches the integration's host and denies every other host the deny covers.
+     Among allows an integration's host has the lowest rank: an allow of the workspace,
+     of a target or of the level above on the same host decides the host, paths included,
+     and the integration's entry is overridden. Two integrations that list one host stay
+     in force together. Where the level above allows only the hosts on its list, an
      integration's host is not struck. A `*.` allow held to paths, of any level, leaves
      it on every path: the document has the host in `paths` with `/*`.
 
@@ -683,7 +684,12 @@ defmodule Apiary.Policy.Resolution do
         |> Enum.sort_by(fn {index, _entry} -> index end)
         |> Enum.map(fn {_index, entry} -> entry end)
         |> Enum.sort_by(&{sort_key(&1.host), source_order(&1.source)}),
-      allow: hosts |> Enum.map(& &1.host) |> Enum.uniq() |> Enum.sort_by(&sort_key/1),
+      allow:
+        hosts
+        |> Enum.reject(&integration?/1)
+        |> Enum.map(& &1.host)
+        |> Enum.uniq()
+        |> Enum.sort_by(&sort_key/1),
       deny: said |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
       paths: Map.merge(held, every_path),
       allow_first: allow_first

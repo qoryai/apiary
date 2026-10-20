@@ -52,7 +52,7 @@ defmodule Apiary.Policy.IntegrationHostsRacesTest do
     commit(first)
 
     assert {:ok, _rule} = Task.await(second.task)
-    assert served(scope)["allow"] == ["api.example.com"]
+    assert served(scope)["allow_first"] == ["api.example.com"]
     assert served(scope)["deny"] == ["*.example.com"]
   end
 
@@ -68,7 +68,7 @@ defmodule Apiary.Policy.IntegrationHostsRacesTest do
     assert {:error, %Policy.Error{reason: :integration_host, details: %{host: "api.example.com"}}} =
              Task.await(second.task)
 
-    assert served(scope)["allow"] == ["api.example.com", "docs.example.com"]
+    assert served(scope)["allow_first"] == ["api.example.com"]
     assert scope |> Policy.list_rules(nil) |> Enum.map(& &1.host) == ["docs.example.com"]
   end
 
@@ -82,7 +82,8 @@ defmodule Apiary.Policy.IntegrationHostsRacesTest do
     commit(first)
 
     assert {:ok, %Connection{}} = Task.await(second.task)
-    assert served(scope)["allow"] == ["api.example.com"]
+    assert served(scope)["allow_first"] == ["api.example.com"]
+    assert served(scope)["deny"] == ["*.example.com"]
 
     assert scope |> Policy.list_rules(nil) |> Enum.map(& &1.host) |> Enum.sort() ==
              ["*.example.com", "docs.example.com"]

@@ -2,8 +2,8 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
   @moduledoc """
   The hosts an integration requires, as `Apiary.Policy.Resolution` takes them in: each
   an allow on every path that no rule takes out, the lowest allow among allows, and each
-  in `allow_first`. Every case that resolves is rendered, and the render validated
-  against the contract's schema.
+  in `allow_first`, outside `allow`. Every case that resolves is rendered, and the render
+  validated against the contract's schema.
   """
   use ExUnit.Case, async: true
 
@@ -30,7 +30,12 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
     assert {:ok, document, allow_first} = Render.render(effective)
     assert :ok = Schema.validate(document)
     assert allow_first == effective.allow_first
-    refute document =~ "allow_first"
+    egress = Jason.decode!(document)["security_policy"]["egress"]
+
+    if allow_first == [],
+      do: refute(Map.has_key?(egress, "allow_first")),
+      else: assert(egress["allow_first"] == allow_first)
+
     effective
   end
 
@@ -41,7 +46,8 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
   test "an integration's host is allowed on every path, with its connection" do
     effective = resolve([allow("docs.example.com")], hosts(@tracker, ["api.example.com"]))
 
-    assert effective.allow == ["api.example.com", "docs.example.com"]
+    assert effective.allow == ["docs.example.com"]
+    assert effective.allow_first == ["api.example.com"]
     assert effective.paths == %{}
 
     assert %Entry{
@@ -65,7 +71,8 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
         ] do
       effective = resolve(workspace, target, integrations)
 
-      assert effective.allow == ["api.example.com"]
+      assert effective.allow == []
+      assert effective.allow_first == ["api.example.com"]
       assert effective.deny == []
 
       denied = Enum.find(effective.entries, &(&1.action == :deny and &1.source == source))
@@ -79,7 +86,8 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
     above = %Above{name: "Acme", rules: [deny("api.example.com")]}
     effective = resolve([], [], hosts(@tracker, ["api.example.com"]), above)
 
-    assert effective.allow == ["api.example.com"]
+    assert effective.allow == []
+    assert effective.allow_first == ["api.example.com"]
     assert effective.deny == []
     refute entry(effective, :organisation, "api.example.com").in_force
   end
@@ -97,7 +105,7 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
         )
 
       # cdn.example.com, a sibling, is denied by the deny in either mode.
-      assert effective.allow == ["api.example.com"]
+      assert effective.allow == []
       assert effective.deny == ["*.example.com"]
       assert effective.allow_first == ["api.example.com"]
     end
@@ -125,7 +133,7 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
       effective = resolve(workspace, [], hosts(@tracker, ["api.example.com"]), above)
 
       assert effective.deny == ["*.example.com"]
-      assert effective.allow == ["api.example.com"]
+      assert effective.allow == []
       assert effective.allow_first == ["api.example.com"]
     end
   end
@@ -215,7 +223,8 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
         hosts(@tracker, ["api.example.com"]) ++ hosts(@chat, ["api.example.com"])
       )
 
-    assert effective.allow == ["api.example.com"]
+    assert effective.allow == []
+    assert effective.allow_first == ["api.example.com"]
 
     in_force =
       for %Entry{source: :integration, in_force: true, connection: c} <- effective.entries,
@@ -230,7 +239,8 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
     effective =
       resolve([allow("docs.example.com")], [], hosts(@tracker, ["api.example.com"]), above)
 
-    assert effective.allow == ["api.example.com", "models.example.com"]
+    assert effective.allow == ["models.example.com"]
+    assert effective.allow_first == ["api.example.com"]
     assert entry(effective, :integration, "api.example.com").in_force
     assert entry(effective, :workspace, "docs.example.com").reason == :only_above_allows
   end
@@ -243,7 +253,8 @@ defmodule Apiary.Policy.IntegrationResolutionTest do
         hosts(@tracker, ["api.example.com"])
       )
 
-    assert effective.allow == ["api.example.com", "*.example.com"]
+    assert effective.allow == ["*.example.com"]
+    assert effective.allow_first == ["api.example.com"]
     assert effective.paths == %{"*.example.com" => ["/docs/*"], "api.example.com" => ["/*"]}
 
     above = %Above{name: "Acme", rules: [allow("*.example.com", paths: ["/docs/*"])]}

@@ -20,14 +20,14 @@ defmodule Apiary.Policy do
   `Apiary.Policy.Resolution`'s to say.
 
   Every document of a workspace also allows the hosts that the integrations reaching the
-  workspace require (`Apiary.Connections.egress_hosts/1`), each on every path. They come
-  from no rule, and no rule takes them out of `allow` (`Apiary.Policy.Resolution`, point
-  7). A deny rule of such a host is refused at save (`check_deny/3`). A `*.` deny that
-  covers one saves and is written to `deny`; the document does not contain
-  `allow_first` (`Apiary.Policy.Render.allow_first/2`), so the gateway denies that host.
-  A change of such an integration renders the workspaces it reaches
-  again, inside the change's transaction (`rerender_in/3`). `effective/2`, which the pages
-  read, leaves those hosts out; `effective/3` has them.
+  workspace require (`Apiary.Connections.egress_hosts/1`), each on every path, in
+  `egress.allow_first`, which the gateway decides before `deny` and `allow`. They come
+  from no rule, and no rule takes them out (`Apiary.Policy.Resolution`, point 7). A deny
+  rule of such a host is refused at save (`check_deny/3`). A `*.` deny that covers one
+  saves and is written to `deny`: the gateway reaches the integration's host and denies
+  every other host the deny covers. A change of such an integration renders the
+  workspaces it reaches again, inside the change's transaction (`rerender_in/3`).
+  `effective/2`, which the pages read, leaves those hosts out; `effective/3` has them.
 
   An edition may keep a level above the workspace's policy
   (`c:Apiary.Edition.above_workspace/1`, an `Apiary.Policy.Above`; the core keeps none):
@@ -2248,8 +2248,8 @@ defmodule Apiary.Policy do
     end
   end
 
-  # More integration hosts than `egress.allow_first` takes is no document the contract
-  # accepts.
+  # More integration hosts than the 64 `egress.allow_first` takes is no document the
+  # contract accepts.
   defp rendered(effective) do
     case Render.render(effective) do
       {:ok, _document, _allow_first} = rendered ->
@@ -2330,7 +2330,8 @@ defmodule Apiary.Policy do
 
   # The schema's host pattern takes an address in any form; the gateway takes one only as
   # `a.b.c.d`, and refuses the whole document for another. Every host of the document is
-  # held to the grammar again, so no render ever carries one.
+  # held to the grammar again, so no render ever writes one; an entry of `allow_first`
+  # also has no `*.`.
   defp in_grammar(document) do
     egress = get_in(Jason.decode!(document), ["security_policy", "egress"]) || %{}
 
@@ -2338,7 +2339,11 @@ defmodule Apiary.Policy do
       Map.get(egress, "allow", []) ++
         Map.get(egress, "deny", []) ++ Map.keys(Map.get(egress, "paths", %{}))
 
-    case Enum.reject(hosts, &Grammar.host?/1) do
+    refused =
+      Enum.reject(hosts, &Grammar.host?/1) ++
+        Enum.reject(Map.get(egress, "allow_first", []), &Grammar.exact_host?/1)
+
+    case refused do
       [] -> :ok
       refused -> {:error, {:out_of_grammar, refused}}
     end

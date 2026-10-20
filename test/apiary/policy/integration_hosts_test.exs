@@ -52,11 +52,16 @@ defmodule Apiary.Policy.IntegrationHostsTest do
     connection
   end
 
-  # The egress of the document served to the holder.
-  defp served(scope, holder) do
+  # The document served to the holder, which the contract's schema takes.
+  defp document(scope, holder) do
     {:ok, %RunConfiguration{document: document}} = Policy.current_configuration(scope, holder)
-    Jason.decode!(document)["security_policy"]["egress"]
+    assert Policy.valid_document(document) == :ok
+    document
   end
+
+  # The egress of the document served to the holder.
+  defp served(scope, holder),
+    do: Jason.decode!(document(scope, holder))["security_policy"]["egress"]
 
   # The hosts the render keeps beside the holder's document.
   defp allow_first(scope, holder) do
@@ -73,16 +78,18 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   end
 
   describe "a connection that applies to every workspace" do
-    test "adds its hosts to the baseline's egress.allow, once the workspace is managed", %{
-      scope: scope
-    } do
+    test "adds its hosts to the baseline's egress.allow_first, once the workspace is managed",
+         %{scope: scope} do
       connection = integration!(scope, "acme-tracker", ["api.example.com"])
 
       # A workspace nobody has changed is not served a policy: its machines use theirs.
       refute Policy.managed?(scope)
 
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
-      assert served(scope, nil)["allow"] == ["api.example.com", "docs.example.com"]
+
+      assert document(scope, nil) ==
+               ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe",) <>
+                 ~s("allow":["docs.example.com"],"allow_first":["api.example.com"]}}})
 
       assert [%Entry{in_force: true, connection: %{public_id: public_id}}] =
                integration_entries(scope, nil)
@@ -99,10 +106,13 @@ defmodule Apiary.Policy.IntegrationHostsTest do
 
       integration!(scope, "acme-tracker", ["api.example.com"])
 
-      assert served(scope, nil)["allow"] == ["api.example.com", "docs.example.com"]
+      assert %{"allow" => ["docs.example.com"], "allow_first" => ["api.example.com"]} =
+               served(scope, nil)
 
-      assert served(scope, target)["allow"] ==
-               ["api.example.com", "cdn.example.com", "docs.example.com"]
+      assert %{
+               "allow" => ["cdn.example.com", "docs.example.com"],
+               "allow_first" => ["api.example.com"]
+             } = served(scope, target)
 
       assert %{items: [%Change{action: "rerendered", changed_by_id: by} | _]} =
                Policy.list_changes(scope, nil)
@@ -131,23 +141,28 @@ defmodule Apiary.Policy.IntegrationHostsTest do
           workspace_ids: [site.id]
         })
 
-      assert served(at_site, nil)["allow"] == ["api.example.com", "docs.example.com"]
-      assert served(scope, nil)["allow"] == ["docs.example.com"]
+      assert served(at_site, nil)["allow_first"] == ["api.example.com"]
+      refute Map.has_key?(served(scope, nil), "allow_first")
 
       {:ok, connection} = Connections.put_workspace(scope, connection, scope.workspace.id)
-      assert served(scope, nil)["allow"] == ["api.example.com", "docs.example.com"]
+      assert served(scope, nil)["allow_first"] == ["api.example.com"]
 
       {:ok, connection} = Connections.remove_workspace(scope, connection, site.id)
-      assert served(at_site, nil)["allow"] == ["docs.example.com"]
-      assert served(scope, nil)["allow"] == ["api.example.com", "docs.example.com"]
+      refute Map.has_key?(served(at_site, nil), "allow_first")
+      assert served(scope, nil)["allow_first"] == ["api.example.com"]
 
       # Switching to every workspace reaches the site again; deleting it reaches none.
       {:ok, connection} = Connections.update_connection(scope, connection, %{applies_to: "all"})
-      assert served(at_site, nil)["allow"] == ["api.example.com", "docs.example.com"]
+      assert served(at_site, nil)["allow_first"] == ["api.example.com"]
 
       {:ok, _deleted} = Connections.delete_connection(scope, connection)
-      assert served(at_site, nil)["allow"] == ["docs.example.com"]
-      assert served(scope, nil)["allow"] == ["docs.example.com"]
+
+      # With no integration's host, a document is the bytes it was before the integration.
+      for at <- [at_site, scope] do
+        assert document(at, nil) ==
+                 ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe",) <>
+                   ~s("allow":["docs.example.com"]}}})
+      end
     end
   end
 
@@ -162,12 +177,12 @@ defmodule Apiary.Policy.IntegrationHostsTest do
       {:ok, _rule} = Policy.deny(scope, target, %{host: "api.example.com"})
 
       integration!(scope, "acme-tracker", ["api.example.com"])
-      assert served(scope, nil) == %{"mode" => "enforce", "allow" => ["api.example.com"]}
-      assert served(scope, target) == %{"mode" => "enforce", "allow" => ["api.example.com"]}
+      expected = %{"mode" => "enforce", "allow" => [], "allow_first" => ["api.example.com"]}
+      assert served(scope, nil) == expected
+      assert served(scope, target) == expected
 
       {:ok, _rule} = Policy.lock(scope, rule)
-      assert served(scope, nil)["allow"] == ["api.example.com"]
-      refute Map.has_key?(served(scope, nil), "deny")
+      assert served(scope, nil) == expected
       assert allow_first(scope, nil) == ["api.example.com"]
       assert allow_first(scope, target) == ["api.example.com"]
 
@@ -192,11 +207,12 @@ defmodule Apiary.Policy.IntegrationHostsTest do
 
       assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "*.example.com"})
 
-      # The sibling is denied by the deny. The integration's host is in allow_first, which
-      # the document does not contain.
+      # The sibling is denied by the deny; the gateway allows the integration's host
+      # before it reads the deny.
       assert served(scope, nil) == %{
                "mode" => "enforce",
-               "allow" => ["api.example.com"],
+               "allow" => [],
+               "allow_first" => ["api.example.com"],
                "deny" => ["*.example.com"]
              }
 
@@ -216,7 +232,8 @@ defmodule Apiary.Policy.IntegrationHostsTest do
     integration!(scope, "acme-tracker", ["api.example.com"])
     integration!(scope, "acme-chat", ["api.example.com", "chat.example.com"])
 
-    assert served(scope, nil)["allow"] == ["api.example.com", "chat.example.com"]
+    assert served(scope, nil)["allow"] == []
+    assert served(scope, nil)["allow_first"] == ["api.example.com", "chat.example.com"]
     assert allow_first(scope, nil) == ["api.example.com", "chat.example.com"]
 
     assert scope
@@ -333,21 +350,21 @@ defmodule Apiary.Policy.IntegrationHostsTest do
           settings: %{"address" => "http://models.example.com"}
         })
 
-      assert served(scope, nil)["allow"] == ["docs.example.com"]
+      refute Map.has_key?(served(scope, nil), "allow_first")
 
       {:ok, connection} =
         Connections.update_connection(scope, connection, %{
           settings: %{"address" => "https://models.example.com:8443/v1"}
         })
 
-      assert served(scope, nil)["allow"] == ["docs.example.com", "models.example.com"]
+      assert served(scope, nil)["allow_first"] == ["models.example.com"]
 
       {:ok, _connection} =
         Connections.update_connection(scope, connection, %{
           settings: %{"address" => "https://localhost/v1"}
         })
 
-      assert served(scope, nil)["allow"] == ["docs.example.com"]
+      refute Map.has_key?(served(scope, nil), "allow_first")
     end
 
     test "is left out unless it is exact, with a log line without the address",
@@ -372,7 +389,7 @@ defmodule Apiary.Policy.IntegrationHostsTest do
               })
           end)
 
-        assert served(scope, nil)["allow"] == ["api.example.com", "docs.example.com"]
+        assert served(scope, nil)["allow_first"] == ["api.example.com"]
         assert allow_first(scope, nil) == ["api.example.com"]
         assert log =~ "the setting address of the integration connection #{connection.public_id}"
         refute log =~ "example.com"
@@ -383,7 +400,8 @@ defmodule Apiary.Policy.IntegrationHostsTest do
           settings: %{"address" => "https://10.0.0.12/v1"}
         })
 
-      assert served(scope, nil)["allow"] == ["10.0.0.12", "api.example.com", "docs.example.com"]
+      assert served(scope, nil)["allow"] == ["docs.example.com"]
+      assert served(scope, nil)["allow_first"] == ["10.0.0.12", "api.example.com"]
       assert allow_first(scope, nil) == ["10.0.0.12", "api.example.com"]
     end
   end
