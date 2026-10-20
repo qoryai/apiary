@@ -78,13 +78,13 @@ defmodule Apiary.DispatchedRunsFixtures do
   `https://gateway.example`, its default, with an active key, and a node pool made after
   it, whose choice is the default and so leads to it, with a key enrolled on it. Returns
   `%{gateway: gateway, gateway_key: {key, seed}, pool: pool, key: key, seed: seed}`, each
-  seed the raw secret that signs as its key.
+  seed the raw secret that signs as its key. With `allow_secrets: true` in `opts`, the
+  gateway's key is enrolled with the stored-secrets flag, as a run with a model provider
+  needs; else it is made in a browser, without the flag.
   """
-  def handover_place_fixture(%Scope{} = scope) do
+  def handover_place_fixture(%Scope{} = scope, opts \\ []) do
     gateway = Apiary.NodesFixtures.gateway_fixture(scope)
-
-    %{access_key: gateway_key, secret: gateway_seed} =
-      Apiary.ContractFixtures.contract_key_fixture(scope, node: gateway)
+    {gateway_key, gateway_seed} = gateway_key(scope, gateway, opts[:allow_secrets] == true)
 
     pool = Apiary.NodesFixtures.pool_fixture(scope)
     :default = pool.gateway_choice
@@ -97,6 +97,21 @@ defmodule Apiary.DispatchedRunsFixtures do
       key: key,
       seed: pair.secret
     }
+  end
+
+  defp gateway_key(scope, gateway, false) do
+    %{access_key: key, secret: seed} =
+      Apiary.ContractFixtures.contract_key_fixture(scope, node: gateway)
+
+    {key, seed}
+  end
+
+  defp gateway_key(scope, gateway, true) do
+    %{access_key: key, pair: pair} =
+      Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, gateway, %{allow_secrets: true})
+
+    {:ok, key} = Apiary.AccessKeys.fetch_for_verification(key.key_id)
+    {key, pair.secret}
   end
 
   @doc """

@@ -6,7 +6,7 @@ defmodule Apiary.SealedRunsFixtures do
   key of the gateway allowed stored secrets.
   """
 
-  alias Apiary.{AccessKeys, AccessKeysFixtures, Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.{Attach, Run}
 
@@ -19,7 +19,7 @@ defmodule Apiary.SealedRunsFixtures do
   @doc """
   A run handed over with an `anthropic` provider of the scope's organisation, whose one key
   is `model_key/0` under the value id `main`, and attached by the gateway of
-  `Apiary.DispatchedRunsFixtures.handover_place_fixture/1`, under a key of the gateway
+  `Apiary.DispatchedRunsFixtures.handover_place_fixture/2`, under the gateway's one key,
   allowed stored secrets. Returns the place's map with `provider`, `run` (as stored after
   the attach), `attached` (the attach's answer: `settings`, its bytes, and `digest`) and
   `secrets_key: {key, seed}`.
@@ -33,12 +33,8 @@ defmodule Apiary.SealedRunsFixtures do
 
     {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
 
-    place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope)
-
-    %{access_key: key, pair: pair} =
-      AccessKeysFixtures.enrolled_key_fixture(scope, place.gateway, %{allow_secrets: true})
-
-    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope, allow_secrets: true)
+    {key, seed} = place.gateway_key
 
     work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
@@ -57,7 +53,7 @@ defmodule Apiary.SealedRunsFixtures do
       provider: provider,
       run: Repo.get!(Run, handed.run.id),
       attached: attached,
-      secrets_key: {key, pair.secret}
+      secrets_key: {key, seed}
     })
   end
 

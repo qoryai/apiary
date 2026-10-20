@@ -144,7 +144,11 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
 
     test "409 secrets_not_allowed for a key not allowed stored secrets", ctx do
-      conn = post_secrets(ctx, request(ctx), key: ctx.gateway_key)
+      # A key of the gateway made in a browser after the handover, without the flag.
+      %{access_key: plain, secret: seed} =
+        Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      conn = post_secrets(ctx, request(ctx), key: {plain, seed})
       assert conn.status == 409
       assert code(conn) == "secrets_not_allowed"
       assert signed_answer?(conn)

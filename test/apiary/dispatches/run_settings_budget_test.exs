@@ -26,7 +26,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    Map.put(handover_place_fixture(scope), :scope, scope)
+    Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 
   # The anthropic provider with 200 models, the most a provider has, each id 200

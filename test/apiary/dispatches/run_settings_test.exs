@@ -40,7 +40,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       })
 
     scope
-    |> handover_place_fixture()
+    |> handover_place_fixture(allow_secrets: true)
     |> Map.merge(%{scope: scope, provider: provider})
   end
 
@@ -86,6 +86,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   end
 
   describe "a handover with no choice at any level" do
+    test "hands over through a gateway key without the stored-secrets flag", ctx do
+      Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      assert settings(handed) == %{"runtime" => "claude"}
+    end
+
     test "sends the runtime alone, and the run keeps no provider", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
@@ -238,6 +245,19 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   end
 
   describe "a handover ends the run" do
+    test "secrets_not_allowed for a provider and a gateway key without the stored-secrets flag",
+         ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+
+      # A second active key of the gateway, made in a browser, without the flag: the run
+      # key lists both, and either may attach the run.
+      Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
+
+      {answer, queued, dispatch} = handover!(ctx)
+      assert answer == {:error, :gone}
+      ended!(queued, dispatch, :secrets_not_allowed)
+    end
+
     test "model_gone for a main effort outside the runtime's list", ctx do
       {:ok, provider} =
         Connections.add_provider_model(ctx.scope, ctx.provider, %{

@@ -41,7 +41,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
     started = DateTime.utc_now()
     %{scope: scope} = sign_up()
     {:ok, made} = Agent.start(fn -> [] end)
-    place = handover_place_fixture(scope)
+    place = handover_place_fixture(scope, allow_secrets: true)
     {gateway_key, _seed} = place.gateway_key
 
     # Before the clean up of `setup_races`: the organisation, then what outlives it, the
