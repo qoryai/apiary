@@ -23,7 +23,9 @@ defmodule Apiary.Dispatches.RunEnd do
   #   (`Apiary.Runs.Ingest`). Its gateway's attach is refused `410` from then on, as for any
   #   run that ended (`Apiary.Runs.Attach`). A release that finds the registered run's
   #   outcome or exit folded and its end not yet written, or its exit projected and not
-  #   folded, is too late: it changes nothing, and that end is written `run_ended`;
+  #   folded, is too late: it changes nothing, and that end is written `run_ended`. A
+  #   release that finds the run's refusal folded and its end not yet written is too late
+  #   too, and that end is written `run_refused`;
   # - its gateway's refusal, once folded (`refused/1`, from `Apiary.Runs.Projector`):
   #   `run_refused`, for a run that is not a prebuild. The run did not start
   #   (`dev.qory.run.refused`), so no retry can help: it is not queued again, whatever its
@@ -76,7 +78,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # which may set it failed and is never refused as given (`Apiary.Runs.Outcome`).
   #
   # The end by a refusal, as the end by an exit, is written after the projection's pass
-  # has committed, in a transaction of its own (`refused/1`): the pass holds the registered
+  # has committed, in a separate transaction (`refused/1`): the pass holds the registered
   # run, and the run of the queue is locked before it.
   #
   # **Locks.** For a prebuild, the lost-run check, an outcome and a projection's end first
@@ -232,9 +234,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # none) for the caller to broadcast, and the workspaces whose slots changed, for the
   # caller to tell, both once its transaction commits; `{:error, :ended}` for one that
   # ended already, whatever its cause, or whose registered run has its outcome or its exit
-  # folded and its end not yet written, or its exit projected and not folded: the first to
-  # come decides, and the projection that folded the exit, or the lost-run check, writes
-  # that end (`run_ended/1`, `lose/1`);
+  # folded and its end not yet written, or its exit projected and not folded, or its
+  # refusal folded and its end not yet written: the first to come decides, and the
+  # projection that folded the exit or the refusal, or the lost-run check, writes that end
+  # (`run_ended/1`, `refused/1`, `lose/1`);
   # `{:error, :not_handed_over}` for one waiting or claimed; `{:error, :not_found}` for
   # none. Nothing is written but on `:ok`.
   @doc false
@@ -292,13 +295,13 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # A registered run whose outcome or exit came first, an exit its projection skipped
-  # unfolded among them; for a prebuild, whose exit ends nothing of the queue, its outcome
-  # alone.
+  # unfolded among them, or whose refusal was folded first; for a prebuild, whose exit and
+  # refusal end nothing of the queue, its outcome alone.
   defp too_late?(_dispatch_run, nil), do: false
   defp too_late?(%DispatchRun{step: @prebuild}, %Run{} = run), do: not is_nil(run.outcome_state)
 
   defp too_late?(%DispatchRun{}, %Run{} = run),
-    do: outcome_or_exit?(run) or exit_stored(run) == :projected
+    do: outcome_or_exit?(run) or exit_stored(run) == :projected or refused?(run)
 
   # Cancelled, with the reason `released`, and no outcome: the fold applies it after every
   # pass until an outcome decides (`Apiary.Runs.Fold.settle/1`).
@@ -474,8 +477,10 @@ defmodule Apiary.Dispatches.RunEnd do
   defp ends?(%DispatchRun{step: @prebuild}, %Run{} = run), do: not is_nil(run.outcome_state)
   defp ends?(%DispatchRun{}, %Run{} = run), do: outcome_or_exit?(run)
 
-  # A refusal folded and no exit or outcome, stored or folded: it came first. An exit that
-  # is stored and not yet projected decides over it when its projection folds it.
+  # A refusal folded, and no outcome or exit, stored or folded, when the run of the queue
+  # is locked: the refusal ends the run of the queue. An outcome or an exit that comes
+  # after the fold and before that end decides over the refusal, and the run ends
+  # `run_ended`; an exit stored and not yet projected ends it when its projection folds it.
   defp refused?(%Run{} = run),
     do: not is_nil(run.refused_at) and not outcome_or_exit?(run) and is_nil(exit_stored(run))
 

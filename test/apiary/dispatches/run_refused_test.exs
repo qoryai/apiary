@@ -106,6 +106,27 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert Liveness.check(DateTime.add(now, 60, :second)) == []
     end
 
+    test "folded and not yet ended, is not queued again by the starter's release", ctx do
+      handed = handed_over!(ctx)
+      now = Dispatches.now()
+
+      # The pass committed the refusal on the run; the end that follows it has not run yet.
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "failed", reason: "model_key_missing", refused_at: now]
+      )
+
+      assert {:error, :gone} =
+               Dispatches.release(ctx.key, handed.dispatch.public_id, %{
+                 reason: "The job could not start.",
+                 retry: true
+               })
+
+      assert_live(handed)
+      Liveness.check(now)
+      assert_ended(handed, :run_refused, "model_key_missing")
+      assert [%DispatchRun{attempt: 1, end_cause: :run_refused}] = runs_of(handed.work_item)
+    end
+
     test "keeps the code when the starter's outcome later replaces the run's reason", ctx do
       handed = handed_over!(ctx)
       refuse!(handed.run, "variable_reserved")
