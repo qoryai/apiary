@@ -190,8 +190,8 @@
           }
         },
         "auth": {
-          "description": "How the gateway sets the key on a request, as $defs/auth defines it.",
-          "$ref": "#/$defs/auth"
+          "description": "How the gateway sets the key on a request, as Forager's auth.schema.json defines it. bearer sets Authorization: Bearer and the value. header sets the header in header to the value. basic sets Authorization: Basic with the username in username and the value as the password. oauth, only with bearer, marks the value as an OAuth access token, such as the subscription token of a Claude subscription: the gateway sets it as any bearer value, and the session reads oauth to choose the runtime's variable for the key.",
+          "$ref": "https://qory.dev/contracts/forager/v1/auth.schema.json"
         },
         "key_prefixes": {
           "description": "The prefixes a key must start with, such as acme-key-: 1 to 4 literal prefixes, each 1 to 32 characters of printable ASCII without a space, none twice, as in Forager's run-configuration.schema.json. The gateway refuses a key that starts with none of them. Absent, any key is taken.",
@@ -208,23 +208,6 @@
       "type": "string",
       "maxLength": 2048,
       "pattern": "^https://[^/?#@\\s]+(/[^?#\\s]*)?$"
-    },
-    "auth": {
-      "description": "How a secret value is set on a request, as Forager's auth.schema.json defines it. bearer sets Authorization: Bearer and the value. header sets the header in header to the value. basic sets Authorization: Basic with the username in username and the value as the password. oauth, only with bearer, marks the value as an OAuth access token, such as the subscription token of a Claude subscription: the gateway sets it as any bearer value, and the session reads oauth to choose the runtime's variable for the key.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["scheme"],
-      "properties": {
-        "scheme": {"enum": ["bearer", "header", "basic"]},
-        "header": {"type": "string", "maxLength": 64, "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"},
-        "username": {"type": "string", "minLength": 1, "pattern": "^[^:\\s]+$"},
-        "oauth": {"const": true}
-      },
-      "allOf": [
-        {"if": {"properties": {"scheme": {"const": "header"}}}, "then": {"required": ["header"]}, "else": {"not": {"required": ["header"]}}},
-        {"if": {"properties": {"scheme": {"const": "basic"}}}, "then": {"required": ["username"]}, "else": {"not": {"required": ["username"]}}},
-        {"if": {"properties": {"scheme": {"const": "bearer"}}}, "then": {}, "else": {"not": {"required": ["oauth"]}}}
-      ]
     },
     "no_secret": {"description": "A value of a data description's settings: it has no member writeOnly, and no value inside it has one, at any depth.", "properties": {"writeOnly": false}, "additionalProperties": {"$ref": "#/$defs/no_secret"}, "items": {"$ref": "#/$defs/no_secret"}},
     "host": {"description": "A host: lower-case labels joined by dots, each label 1 to 63 lower-case letters, digits and hyphens that starts and ends with a letter or a digit, with an optional *. in front for every host under it.", "type": "string", "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"},
