@@ -18408,7 +18408,6 @@ msgstr ""
 msgid "the top"
 msgstr ""
 
-#: lib/apiary/model_choices.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
@@ -18419,11 +18418,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "the workspace %{name}"
-msgstr ""
-
-#: lib/apiary/model_choices.ex
-#, elixir-autogen, elixir-format
-msgid "the workspace (locked)"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

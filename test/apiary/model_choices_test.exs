@@ -460,46 +460,20 @@ defmodule Apiary.ModelChoicesTest do
 
       assert Repo.aggregate(ModelChoice, :count) == 0
     end
+  end
 
+  describe "a deny rule" do
     @tag needs: :security
-    test "for a deny rule that covers a host of the provider (T25)", ctx do
+    test "that covers a host of the provider refuses no choice", ctx do
       %{scope: scope, provider: provider, target: target} = ctx
-      words = "The rule covers api.anthropic.com, which runs of Anthropic API key reach."
 
       {:ok, rule} = Policy.deny(scope, nil, %{host: "*.anthropic.com"})
-
-      assert errors(ModelChoices.put_choice(scope, :workspace, attrs(provider))) ==
-               %{
-                 provider: [
-                   "Choose another provider, or change the deny rule *.anthropic.com in the workspace. " <>
-                     words
-                 ]
-               }
+      assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
 
       {:ok, _} = Policy.lock(scope, rule)
-
-      assert %{provider: [message]} =
-               errors(ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider)))
-
-      assert message =~ "in the workspace (locked). "
-
-      # A deny is no reason to refuse a tier map that names no provider, nor the default.
-      assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, %{tiers: %{"fast" => @model}})
-      assert {:ok, _} = ModelChoices.put_choice(scope, :organisation, attrs(provider))
-    end
-
-    @tag needs: :security
-    test "for a deny rule of the target, named by the target (T25)", ctx do
-      %{scope: scope, provider: provider, target: target} = ctx
       {:ok, _} = Policy.deny(scope, target, %{host: "api.anthropic.com"})
-
-      assert %{provider: [message]} =
-               errors(ModelChoices.put_choice(scope, target, attrs(provider)))
-
-      assert message =~ "change the deny rule api.anthropic.com in github.example/acme/shop. "
-
-      # The workspace's choice reads the workspace's rules, which the target's rule is not in.
-      assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      assert {:ok, _} = ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider))
+      assert {:ok, _} = ModelChoices.put_choice(scope, target, attrs(provider))
     end
   end
 
