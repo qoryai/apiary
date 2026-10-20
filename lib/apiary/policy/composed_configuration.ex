@@ -60,8 +60,12 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   `credentials`, the provider's API credential, and `model_credential`, its name
   #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
-  #   the entries there. An exact entry of `egress.deny` for one of those hosts is left
-  #   out; a `*.` entry that covers one stays, and denies the host.
+  #   the entries there, and each exact one (`Apiary.Policy.Grammar.exact_host?/1`) in its
+  #   `egress.allow_first`, with the workspace's entries, sorted, each once. The gateway
+  #   allows a host of `allow_first` before it reads `deny`, so no entry of `egress.deny`,
+  #   exact or `*.`, blocks such a host. More than 64 entries, the most `allow_first`
+  #   takes, compose no document: the run is given no run configuration (`serve/7`), as
+  #   when its provider cannot be read.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`. A document composed with them is
@@ -71,8 +75,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   import Ecto.Query, only: [from: 2]
 
+  require Logger
+
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Policy.{Render, RunConfiguration}
+  alias Apiary.Policy.{Grammar, Render, RunConfiguration}
   alias Apiary.Repo
   alias Apiary.Runs.{ProviderCredential, Run, RunVariables}
 
@@ -88,6 +94,9 @@ defmodule Apiary.Policy.ComposedConfiguration do
   @version 1
   @image "image"
   @security_policy "security_policy"
+
+  # The most entries the contract's `egress.allow_first` takes.
+  @allow_first_max 64
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -112,9 +121,13 @@ defmodule Apiary.Policy.ComposedConfiguration do
   `{:composed, bytes, image}`, with the image the bytes name at the top level, nil for
   none. See the moduledoc. `members`, nil unless given, is what else the run's document
   is composed with: its run variables, nil for none.
+  `{:error, {:allow_first_too_long, count}}` when the members would give
+  `egress.allow_first` more than 64 entries.
   """
   @spec shape(binary | nil, image, prebuild, boolean, map | nil) ::
-          :as_is | {:composed, binary, String.t() | nil}
+          :as_is
+          | {:composed, binary, String.t() | nil}
+          | {:error, {:allow_first_too_long, pos_integer}}
         when image: image | (-> image),
              prebuild: boolean | (-> boolean)
   def shape(document, image, prebuild?, fixed? \\ false, members \\ nil) do
@@ -123,12 +136,15 @@ defmodule Apiary.Policy.ComposedConfiguration do
         shaped
 
       {:as_is, true} ->
-        {:composed, with_members(document, members), nil}
+        document |> with_members(members) |> composed(nil)
 
       {{:composed, bytes, image}, true} ->
-        {:composed, with_members(bytes, members), image}
+        bytes |> with_members(members) |> composed(image)
     end
   end
+
+  defp composed({:ok, bytes}, image), do: {:composed, bytes, image}
+  defp composed({:error, _reason} = error, _image), do: error
 
   # What `shape/5` returns for the image alone.
   defp imaged(document, image, prebuild?, fixed?) do
@@ -173,15 +189,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp value(value), do: value
 
   @doc """
-  The digest of what `shape/5` returns, nil where it returns the document as it is: a
-  read, nothing stored.
+  The digest of what `shape/5` returns, nil where it returns the document as it is, and
+  its error where it composes none: a read, nothing stored.
   """
   @spec digest(binary | nil, image, boolean | (-> boolean), boolean, map | nil) ::
-          String.t() | nil
+          String.t() | nil | {:error, {:allow_first_too_long, pos_integer}}
   def digest(document, image, prebuild?, fixed? \\ false, members \\ nil) do
     case shape(document, image, prebuild?, fixed?, members) do
       {:composed, bytes, _image} -> Render.digest(bytes)
       :as_is -> nil
+      {:error, _reason} = error -> error
     end
   end
 
@@ -298,6 +315,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   workspace (`configuration`, nil where it serves none): `:as_is`, or `{:ok, row}`, the
   composed document kept, made now or read when it was made before. Inside or outside a
   transaction: a second writer of the same document reads the first's row.
+  `{:error, {:allow_first_too_long, count}}`, with a line in the log, where `shape/5`
+  composes none.
   """
   @spec serve(
           Ecto.UUID.t(),
@@ -307,7 +326,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
           boolean | (-> boolean),
           boolean,
           map | nil
-        ) :: :as_is | {:ok, t}
+        ) :: :as_is | {:ok, t} | {:error, {:allow_first_too_long, pos_integer}}
   def serve(
         organisation_id,
         workspace_id,
@@ -325,6 +344,15 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
       {:composed, bytes, image} ->
         {:ok, kept(organisation_id, workspace_id, configuration, image, bytes)}
+
+      {:error, {:allow_first_too_long, count}} = error ->
+        Logger.error(
+          "a run's run configuration was not composed: its allow_first would have " <>
+            "#{count} hosts, more than the 64 the contract takes: the run is given no " <>
+            "run configuration"
+        )
+
+        error
     end
   end
 
@@ -383,18 +411,20 @@ defmodule Apiary.Policy.ComposedConfiguration do
   """
   @spec run_digest(RunConfiguration.t(), Run.t() | nil) :: String.t() | nil
   def run_digest(%RunConfiguration{document: document, digest: digest}, run) do
-    case members(run) do
-      {:ok, members} ->
-        digest(
-          document,
-          started(run),
-          fn -> not is_nil(run) and prebuild?(run) end,
-          true,
-          members
-        ) || digest
-
-      {:error, :unavailable} ->
-        nil
+    with {:ok, members} <- members(run) do
+      case digest(
+             document,
+             started(run),
+             fn -> not is_nil(run) and prebuild?(run) end,
+             true,
+             members
+           ) do
+        composed when is_binary(composed) -> composed
+        nil -> digest
+        {:error, _reason} -> nil
+      end
+    else
+      {:error, :unavailable} -> nil
     end
   end
 
@@ -419,7 +449,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp members?(nil), do: false
 
   # `document`, or the document of no policy for nil, with the run's members after its
-  # last member and the provider's hosts in its `egress`; canonical bytes.
+  # last member and the provider's hosts in its `egress`: `{:ok, bytes}`, canonical, or
+  # `{:error, {:allow_first_too_long, count}}`.
   defp with_members(document, %{variables: variables, credential: credential}) do
     hosts = if credential, do: credential.hosts, else: []
 
@@ -435,35 +466,38 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
     names = Enum.map(added, &elem(&1, 0))
 
-    (document || Render.no_policy_document())
-    |> decode()
-    |> Enum.reject(fn {name, _value} -> name in names end)
-    |> Enum.map(fn
-      {@security_policy, %Jason.OrderedObject{} = policy} ->
-        {@security_policy, with_hosts(policy, hosts)}
+    members =
+      (document || Render.no_policy_document())
+      |> decode()
+      |> Enum.reject(fn {name, _value} -> name in names end)
 
-      member ->
-        member
-    end)
-    |> Kernel.++(added)
-    |> encode()
+    with {:ok, members} <- policy_with_hosts(members, hosts),
+         do: {:ok, encode(members ++ added)}
   end
 
-  # The policy with `hosts` added to its `egress.allow` after its entries, each once, and
-  # an exact entry of `egress.deny` for one of them left out, the member too once empty.
-  defp with_hosts(policy, []), do: policy
+  # The members with the provider's `hosts` in the `security_policy`'s `egress`, where
+  # there is one: added to `egress.allow` after its entries, each once, and each exact one
+  # to `egress.allow_first`, with the entries there, sorted, each once.
+  defp policy_with_hosts(members, []), do: {:ok, members}
 
-  defp with_hosts(%Jason.OrderedObject{values: values}, hosts) do
-    values =
-      Enum.map(values, fn
-        {"egress", %Jason.OrderedObject{values: egress}} ->
-          {"egress", Jason.OrderedObject.new(egress_with(egress, hosts))}
+  defp policy_with_hosts(members, hosts) do
+    with {@security_policy, %Jason.OrderedObject{values: policy}} <-
+           List.keyfind(members, @security_policy, 0),
+         {"egress", %Jason.OrderedObject{values: egress}} <- List.keyfind(policy, "egress", 0),
+         {:ok, egress} <- egress_with(egress, hosts) do
+      policy = List.keyreplace(policy, "egress", 0, {"egress", Jason.OrderedObject.new(egress)})
 
-        member ->
-          member
-      end)
-
-    Jason.OrderedObject.new(values)
+      {:ok,
+       List.keyreplace(
+         members,
+         @security_policy,
+         0,
+         {@security_policy, Jason.OrderedObject.new(policy)}
+       )}
+    else
+      {:error, _reason} = error -> error
+      _none -> {:ok, members}
+    end
   end
 
   defp egress_with(egress, hosts) do
@@ -478,23 +512,32 @@ defmodule Apiary.Policy.ComposedConfiguration do
     egress =
       if List.keymember?(egress, "allow", 0),
         do: List.keyreplace(egress, "allow", 0, {"allow", allow}),
-        else: after_mode(egress, {"allow", allow})
+        else: after_member(egress, "mode", {"allow", allow})
 
-    case List.keyfind(egress, "deny", 0) do
-      {"deny", deny} when is_list(deny) ->
-        case Enum.reject(deny, &(&1 in hosts)) do
-          [] -> List.keydelete(egress, "deny", 0)
-          kept -> List.keyreplace(egress, "deny", 0, {"deny", kept})
-        end
+    first =
+      case List.keyfind(egress, "allow_first", 0) do
+        {"allow_first", first} when is_list(first) -> first
+        _none -> []
+      end
 
-      _none ->
-        egress
+    case Enum.sort(Enum.uniq(first ++ Enum.filter(hosts, &Grammar.exact_host?/1))) do
+      [] ->
+        {:ok, egress}
+
+      first when length(first) > @allow_first_max ->
+        {:error, {:allow_first_too_long, length(first)}}
+
+      first ->
+        if List.keymember?(egress, "allow_first", 0),
+          do: {:ok, List.keyreplace(egress, "allow_first", 0, {"allow_first", first})},
+          else: {:ok, after_member(egress, "allow", {"allow_first", first})}
     end
   end
 
-  defp after_mode(egress, member) do
-    case Enum.split_while(egress, fn {name, _value} -> name != "mode" end) do
-      {before, [mode | rest]} -> before ++ [mode, member | rest]
+  # `egress` with `member` right after its member named `name`, else first.
+  defp after_member(egress, name, member) do
+    case Enum.split_while(egress, fn {key, _value} -> key != name end) do
+      {before, [found | rest]} -> before ++ [found, member | rest]
       {all, []} -> [member | all]
     end
   end

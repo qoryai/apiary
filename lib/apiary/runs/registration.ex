@@ -524,7 +524,8 @@ defmodule Apiary.Runs.Registration do
 
   `opts` also take `run`, the run whose document it is, nil unless given: its document is
   composed with the run variables Qory set for it (`Apiary.Policy.ComposedConfiguration`),
-  and is `{:error, :unavailable}` when what it is composed with cannot be read.
+  and is `{:error, :unavailable}` when what it is composed with cannot be read, or when
+  its `egress.allow_first` would have more than the 64 entries the contract takes.
   """
   @spec configuration(AccessKey.t(), term, keyword) ::
           {:ok, settings, String.t() | nil} | {:error, :unavailable}
@@ -561,9 +562,10 @@ defmodule Apiary.Runs.Registration do
   # The run configuration in force for the labels, composed with the image for a run
   # (`Apiary.Policy.ComposedConfiguration.serve/7`), the composed document kept: `{:ok,
   # settings, image}`; `:unmanaged` where the workspace serves none and nothing is
-  # composed. Where it serves none, a document is composed from no policy only when
-  # `from_no_policy?` is true (a boolean, or a function that reads it). `members` are the
-  # run's (`Apiary.Policy.ComposedConfiguration.members/1`), nil for none.
+  # composed; `{:error, reason}` where the configuration cannot be read or the document
+  # cannot be composed. Where it serves none, a document is composed from no policy only
+  # when `from_no_policy?` is true (a boolean, or a function that reads it). `members` are
+  # the run's (`Apiary.Policy.ComposedConfiguration.members/1`), nil for none.
   defp composed(access_key, labels, image, prebuild?, fixed?, from_no_policy?, members) do
     %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
 
@@ -583,6 +585,9 @@ defmodule Apiary.Runs.Registration do
 
           {:ok, composed} ->
             {:ok, settings(composed.document, composed.digest, true), composed.image}
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       {:error, :unmanaged} ->
@@ -599,6 +604,7 @@ defmodule Apiary.Runs.Registration do
                ) do
           {:ok, settings(composed.document, composed.digest, false), composed.image}
         else
+          {:error, reason} -> {:error, reason}
           _none -> :unmanaged
         end
 

@@ -1,12 +1,14 @@
 defmodule Apiary.Runs.ProviderCredentialTest do
   # A run the handover set a model provider for receives its model key's credential in its
-  # run configuration, and the provider's hosts in its allow list
+  # run configuration, and the provider's hosts in its allow list and its allow_first list
   # (`Apiary.Runs.ProviderCredential`, `Apiary.Policy.ComposedConfiguration`); every digest
   # sent for it is the SHA-256 of the bytes sent.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [with_log: 1]
+  import Apiary.ConnectionsFixtures, only: [ready_release!: 3]
+  import Apiary.DescriptionFixtures, only: [tracker_description: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
 
@@ -18,6 +20,20 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   @moduletag needs: :factory
 
   defp sha256(bytes), do: Render.digest(bytes)
+
+  # An integration of the scope's organisation for every workspace, whose `egress_hosts`
+  # are `hosts`.
+  defp integration!(scope, name, hosts) do
+    release =
+      ready_release!(
+        scope,
+        tracker_description(%{"name" => name, "egress_hosts" => hosts}),
+        "codeberg.org/acme/#{name}"
+      )
+
+    {:ok, connection} = Connections.create_integration(scope, release.id, %{})
+    connection
+  end
 
   defp reload(ctx) do
     {key, _seed} = ctx.secrets_key
@@ -71,6 +87,9 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
       assert Jason.decode!(document)["security_policy"]["egress"]["allow"] ==
                ["git.example", "api.anthropic.com"]
+
+      assert Jason.decode!(document)["security_policy"]["egress"]["allow_first"] ==
+               ["api.anthropic.com"]
 
       assert Apiary.Policy.Schema.validate(document) == :ok
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
@@ -131,23 +150,16 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       %{scope: scope}
     end
 
-    test "an exact deny of a provider's host is left out of the run's deny", %{scope: scope} do
+    test "an exact deny of a provider's host stays in the deny, and allow_first lists the host",
+         %{scope: scope} do
       {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.anthropic.com"})
       {:ok, _rule} = Policy.deny(scope, nil, %{host: "tracker.example"})
       ctx = sealed_run_fixture(scope)
 
       egress = Jason.decode!(document(ctx))["security_policy"]["egress"]
       assert egress["allow"] == ["git.example", "api.anthropic.com"]
-      assert egress["deny"] == ["tracker.example"]
-    end
-
-    test "the deny is dropped once it has nothing else", %{scope: scope} do
-      {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.anthropic.com"})
-      ctx = sealed_run_fixture(scope)
-
-      egress = Jason.decode!(document(ctx))["security_policy"]["egress"]
-      assert egress["allow"] == ["git.example", "api.anthropic.com"]
-      refute Map.has_key?(egress, "deny")
+      assert egress["allow_first"] == ["api.anthropic.com"]
+      assert egress["deny"] == ["api.anthropic.com", "tracker.example"]
       assert Apiary.Policy.Schema.validate(document(ctx)) == :ok
     end
 
@@ -157,7 +169,37 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
       egress = Jason.decode!(document(ctx))["security_policy"]["egress"]
       assert egress["allow"] == ["git.example", "api.anthropic.com"]
+      assert egress["allow_first"] == ["api.anthropic.com"]
       assert egress["deny"] == ["*.anthropic.com"]
+    end
+
+    test "the provider's hosts join the workspace's allow_first, sorted, each once",
+         %{scope: scope} do
+      integration!(scope, "acme-tracker", ["zeta.example.com", "api.anthropic.com"])
+      ctx = sealed_run_fixture(scope)
+      document = document(ctx)
+
+      egress = Jason.decode!(document, objects: :ordered_objects)["security_policy"]["egress"]
+      assert Enum.map(egress.values, &elem(&1, 0)) == ~w(mode allow allow_first)
+
+      egress = Jason.decode!(document)["security_policy"]["egress"]
+      assert egress["allow"] == ["git.example", "api.anthropic.com"]
+      assert egress["allow_first"] == ["api.anthropic.com", "zeta.example.com"]
+      assert Apiary.Policy.Schema.validate(document) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+      assert {:ok, %{settings: ^document}} = reload(ctx)
+    end
+
+    test "more than 64 entries leave the run without a run configuration", %{scope: scope} do
+      ctx = sealed_run_fixture(scope)
+      integration!(scope, "acme-tracker", for(n <- 1..64, do: "host#{n}.example.com"))
+
+      {answer, log} = with_log(fn -> reload(ctx) end)
+      assert answer == {:error, :unavailable}
+      assert log =~ "its allow_first would have 65 hosts, more than the 64 the contract takes"
+
+      {:ok, configuration} = Policy.current_configuration(scope, nil)
+      assert ComposedConfiguration.run_digest(configuration, ctx.run) == nil
     end
   end
 
