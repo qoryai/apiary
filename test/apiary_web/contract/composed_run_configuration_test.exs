@@ -5,8 +5,9 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   # and its batches carry the same image and digest, a policy change moving the digest and
   # never the image. A prebuild under a policy that names an image is given the policy
   # without it, and no run is given an image beside a policy that names one. Every other
-  # run is answered byte for byte as before. Not async, as the other contract tests of a
-  # pool: the features are the whole node's.
+  # run is answered the bytes it was before. A run of the queue is given its run variables
+  # after the document's last member, and every digest is that of the bytes sent. Not
+  # async, as the other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -187,24 +188,28 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
   ## What a run is answered
 
+  # `document` as the run is given it: with the run variables Qory set for a run of the
+  # queue after its last member (`Apiary.Policy.ComposedConfiguration`); any other run's
+  # as it is.
+  defp for_run(document, %Run{registration_variables: nil}), do: document
+
+  defp for_run(document, %Run{registration_variables: variables}),
+    do: Answer.append_members(document, [{"variables", RunVariables.document(variables)}])
+
+  # The digest of `document` as the run `run_id` is given it.
+  defp digest_of(document, run_id), do: Render.digest(for_run(document, run(run_id)))
+
   # The attach's bytes and the reload's of `document`, as the run is answered them: the
-  # document, then the run's variables, labels and what it is about.
+  # document with the run's variables, then its labels and what it is about.
   defp attach_bytes(document, run),
     do:
       Attach.answer_body(
-        document,
-        run.registration_variables,
+        for_run(document, run),
         run.registration_labels,
         run.registration_about
       )
 
-  defp reload_bytes(document, run),
-    do:
-      Answer.append_members(document, [
-        {"variables",
-         run.registration_variables &&
-           RunVariables.document(run.registration_variables)}
-      ])
+  defp reload_bytes(document, run), do: for_run(document, run)
 
   # Never an image both at the top level and in the security_policy: Forager's rule that
   # the two agree never has anything to decide.
@@ -216,17 +221,16 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   end
 
   # The run is answered as before this change: the attach, the reload and a batch carry
-  # `document` (nil for a workspace that serves none) under its digest, the run keeps no
-  # image, and nothing is composed.
+  # `document` (nil for a workspace that serves none), with the variables of a run of the
+  # queue, under the digest of those bytes, and the run keeps no image. Nothing is
+  # composed for a run with no variables.
   defp assert_as_before(ctx, {run_id, run_key}, document) do
     attached = attach(ctx, run_id, run_key)
     assert attached.status == 200
     run = run(run_id)
-
-    {document, digest} =
-      if document,
-        do: {document, Render.digest(document)},
-        else: {Render.no_policy_document(), Render.digest(Render.no_policy_document())}
+    unmanaged? = is_nil(document)
+    document = document || Render.no_policy_document()
+    digest = Render.digest(for_run(document, run))
 
     assert attached.resp_body == attach_bytes(document, run)
     assert digest_header(attached) == [digest]
@@ -236,18 +240,32 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
     reloaded = reload(ctx, run_id)
 
-    if document == Render.no_policy_document() do
-      assert json_response(reloaded, 404) == %{"error" => "not_found"}
-      assert batch_digest(ctx, run_id, 2) == nil
-    else
-      assert reloaded.status == 200
-      assert reloaded.resp_body == reload_bytes(document, run)
-      assert digest_header(reloaded) == [digest]
-      assert get_resp_header(reloaded, "etag") == [~s("#{digest}")]
-      assert batch_digest(ctx, run_id, 2) == digest
+    cond do
+      unmanaged? and is_nil(run.registration_variables) ->
+        assert json_response(reloaded, 404) == %{"error" => "not_found"}
+        assert batch_digest(ctx, run_id, 2) == nil
+
+      unmanaged? ->
+        # Its variables were composed from no policy at its attach: the reload gives
+        # them again, and the workspace's batches carry no digest.
+        assert reloaded.status == 200
+        assert reloaded.resp_body == reload_bytes(document, run)
+        assert digest_header(reloaded) == [digest]
+        assert batch_digest(ctx, run_id, 2) == nil
+
+      true ->
+        assert reloaded.status == 200
+        assert reloaded.resp_body == reload_bytes(document, run)
+        assert digest_header(reloaded) == [digest]
+        assert get_resp_header(reloaded, "etag") == [~s("#{digest}")]
+        assert batch_digest(ctx, run_id, 2) == digest
     end
 
-    assert composed_rows(ctx) == []
+    if is_nil(run.registration_variables) do
+      assert composed_rows(ctx) == []
+    else
+      assert Enum.all?(composed_rows(ctx), &is_nil(&1.image))
+    end
   end
 
   describe "a run of the queue with a recorded image" do
@@ -262,7 +280,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       run = run(run_id)
 
       composed = ComposedConfiguration.compose(policy.document, @image)
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
       refute digest == policy.digest
 
       assert composed ==
@@ -284,7 +302,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
       assert [%ComposedConfiguration{} = row] = composed_rows(ctx)
       assert row.digest == digest
-      assert row.document == composed
+      assert row.document == for_run(composed, run)
       assert row.image == @image
       assert row.run_configuration_id == policy.id
 
@@ -315,7 +333,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       {:ok, _rule} = Policy.allow(ctx.scope, nil, %{host: "cdn.example"})
       newer = current!(ctx)
       composed = ComposedConfiguration.compose(newer.document, @image)
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
 
       # The batch tells the run its configuration moved; the reload gives the new policy
       # with the same image.
@@ -372,7 +390,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       run = run(run_id)
 
       composed = ~s({"version":1,"image":"#{@image}"})
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
       assert attached.resp_body == attach_bytes(composed, run)
       assert digest_header(attached) == [digest]
       assert Schema.validate(attached.resp_body) == :ok
@@ -400,7 +418,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
       policy = managed!(ctx)
       composed = ComposedConfiguration.compose(policy.document, @image)
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
 
       assert batch_digest(ctx, run_id, 2) == digest
       reloaded = reload(ctx, run_id)
@@ -539,13 +557,14 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       composed =
         ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example"]}}})
 
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
       assert attached.resp_body == attach_bytes(composed, run)
       assert digest_header(attached) == [digest]
       refute Map.has_key?(Jason.decode!(attached.resp_body), "image")
       assert run.configured_image == nil
+      served = for_run(composed, run)
 
-      assert [%ComposedConfiguration{image: nil, document: ^composed} = row] =
+      assert [%ComposedConfiguration{image: nil, document: ^served} = row] =
                composed_rows(ctx)
 
       assert row.run_configuration_id == naming.id
@@ -569,7 +588,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       run = run(run_id)
 
       assert attached.resp_body == attach_bytes(@naming, run)
-      assert digest_header(attached) == [Render.digest(@naming)]
+      assert digest_header(attached) == [digest_of(@naming, run_id)]
       refute Map.has_key?(Jason.decode!(attached.resp_body), "image")
       refute_two_images(attached.resp_body)
       assert run.configured_image == nil
@@ -577,8 +596,8 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       reloaded = reload(ctx, run_id)
       assert reloaded.resp_body == reload_bytes(@naming, run)
       refute_two_images(reloaded.resp_body)
-      assert batch_digest(ctx, run_id, 2) == Render.digest(@naming)
-      assert composed_rows(ctx) == []
+      assert batch_digest(ctx, run_id, 2) == digest_of(@naming, run_id)
+      assert Enum.all?(composed_rows(ctx), &is_nil(&1.image))
     end
 
     test "made mid-run keeps the run's image on its reloads, and applies the rest",
@@ -598,7 +617,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       composed =
         ComposedConfiguration.compose(ComposedConfiguration.without_image(@naming), @image)
 
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
       refute digest == run(run_id).attach_answer_digest
 
       # The batch tells the run its policy moved; the reload is the policy in force without
@@ -640,7 +659,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       attached = attach(ctx, next_id, next_key)
       assert attached.status == 200
       assert attached.resp_body == attach_bytes(@naming, run(next_id))
-      assert digest_header(attached) == [naming.digest]
+      assert digest_header(attached) == [digest_of(@naming, next_id)]
       refute Map.has_key?(Jason.decode!(attached.resp_body), "image")
       assert run(next_id).configured_image == nil
     end
@@ -732,7 +751,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       composed =
         ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
 
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
       assert batch_digest(ctx, run_id, 2) == digest
 
       reloaded = reload(ctx, run_id)
@@ -771,7 +790,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       composed =
         ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
 
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
 
       reloaded = reload(ctx, run_id)
       assert_gateway_takes(attached, reloaded)
@@ -816,7 +835,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       composed =
         ComposedConfiguration.compose(ComposedConfiguration.without_image(@renaming), @image)
 
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
 
       reloaded = reload(ctx, run_id)
       assert_gateway_takes(attached, reloaded)
@@ -840,7 +859,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
       renaming = version!(ctx, @renaming)
       composed = ComposedConfiguration.without_image(@renaming)
-      digest = Render.digest(composed)
+      digest = digest_of(composed, run_id)
       assert batch_digest(ctx, run_id, 2) == digest
 
       reloaded = reload(ctx, run_id)
@@ -868,7 +887,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       {run_id, run_key} = explore!(ctx)
       attached = attach(ctx, run_id, run_key)
       assert attached.status == 200
-      assert digest_header(attached) == [Render.digest(Render.no_policy_document())]
+      assert digest_header(attached) == [digest_of(Render.no_policy_document(), run_id)]
       assert run(run_id).started_image_from == "none"
 
       managed!(ctx)
@@ -879,7 +898,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert_gateway_takes(attached, reloaded)
       assert reloaded.resp_body == reload_bytes(composed, run(run_id))
       assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
-      assert_not_behind(ctx, run_id, Render.digest(composed), renaming)
+      assert_not_behind(ctx, run_id, digest_of(composed, run_id), renaming)
 
       without_security(fn ->
         assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
@@ -896,17 +915,19 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       # Unchanged: the attach's document again.
       reloaded = reload(ctx, run_id)
       assert reloaded.resp_body == reload_bytes(@naming, run(run_id))
-      assert digest_header(reloaded) == [Render.digest(@naming)]
+      assert digest_header(reloaded) == [digest_of(@naming, run_id)]
 
-      # Changed, its image the same: the version as stored, nothing composed.
+      # Changed, its image the same: the version as stored, with the run's variables, and
+      # no image composed.
       keeping = version!(ctx, @keeping)
       reloaded = reload(ctx, run_id)
       assert_gateway_takes(attached, reloaded)
       assert reloaded.resp_body == reload_bytes(@keeping, run(run_id))
-      assert digest_header(reloaded) == [keeping.digest]
-      assert batch_digest(ctx, run_id, 2) == keeping.digest
-      assert composed_rows(ctx) == []
-      assert_not_behind(ctx, run_id, keeping.digest, keeping)
+      digest = digest_of(@keeping, run_id)
+      assert digest_header(reloaded) == [digest]
+      assert batch_digest(ctx, run_id, 2) == digest
+      assert Enum.all?(composed_rows(ctx), &is_nil(&1.image))
+      assert_not_behind(ctx, run_id, digest, keeping)
     end
   end
 end

@@ -68,13 +68,15 @@ defmodule Apiary.Runs.Attach do
   attach itself is held to the answers above, an outcome's end included.
 
   The answer is the run configuration in force for the run's target, read under the
-  run's place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
-  the run variables Qory set for the run (`Apiary.Runs.Run`, `registration_variables`),
-  then `labels` and `about` of the run's registration, added after its last member, each
-  left out when the run has none; and its digest, which is the configuration's as
-  stored, for `X-Qory-Run-Configuration` and `ETag`. The variables are fixed when the run
-  starts, so they change no digest: a run is never told its configuration moved because
-  of them.
+  run's place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, then
+  `labels` and `about` of the run's registration, added after its last member, each left
+  out when the run has none; and its digest, for `X-Qory-Run-Configuration` and `ETag`:
+  the SHA-256 of the document's bytes without `labels` and `about`, the document a reload
+  of the run answers. A run Qory set run variables for (`Apiary.Runs.Run`,
+  `registration_variables`) is given a document composed for it with them after its last
+  member (`Apiary.Policy.ComposedConfiguration`), and the digest is that document's. The
+  variables are fixed when the run starts, so its reloads name the same ones, and a run
+  is never told its configuration moved because of them.
 
   A run given an image at the attach (`runs.configured_image`) has its configuration
   composed with that image at the top level, beside the `security_policy`
@@ -119,7 +121,7 @@ defmodule Apiary.Runs.Attach do
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.ComposedConfiguration
-  alias Apiary.Runs.{Answer, Batch, Registration, Run, RunKey, RunVariables, Sender}
+  alias Apiary.Runs.{Answer, Batch, Registration, Run, RunKey, Sender}
 
   @version "version"
   @run_key "run_key"
@@ -429,7 +431,8 @@ defmodule Apiary.Runs.Attach do
     with {:ok, settings, image} <-
            Registration.configuration(Sender.place_key(run, access_key), run.registration_labels,
              image: fn -> image(run, workspace, dispatched) end,
-             prebuild: prebuild?(dispatched)
+             prebuild: prebuild?(dispatched),
+             run: run
            ) do
       {started_from, started_image} = started(settings.settings, image)
 
@@ -521,42 +524,20 @@ defmodule Apiary.Runs.Attach do
   defp kept_version(version),
     do: version |> binary_part(0, 255) |> String.chunk(:valid) |> List.first("")
 
-  # The answer's bytes, under the digest of the configuration as stored.
+  # The answer's bytes, under the digest of the document without `labels` and `about`.
   defp answer(run, %{settings: document} = settings, repeated) do
-    body =
-      answer_body(
-        document,
-        run.registration_variables,
-        run.registration_labels,
-        run.registration_about
-      )
-
+    body = answer_body(document, run.registration_labels, run.registration_about)
     Map.merge(settings, %{settings: body, run: run, repeated: repeated})
   end
 
   @doc """
   The bytes of an attach's answer: the run configuration `document`, with `labels` and
   `about` added after its last member, each only when it holds something. Its digest
-  stays the configuration's.
+  stays the document's.
   """
   @spec answer_body(binary, map | nil, map | nil) :: binary
-  def answer_body(document, labels, about), do: answer_body(document, nil, labels, about)
-
-  @doc """
-  The bytes of an attach's answer to a run Qory set run variables for
-  (`Apiary.Runs.Run`, `registration_variables`): the run configuration `document`, with
-  `variables`, each name in order with an object holding its value, `labels` and `about`
-  added after its last member, in that order, each only when it holds something. Its
-  digest stays the configuration's.
-  """
-  @spec answer_body(binary, map | nil, map | nil, map | nil) :: binary
-  def answer_body(document, variables, labels, about) when is_binary(document) do
-    Answer.append_members(document, [
-      {"variables", variables && RunVariables.document(variables)},
-      {"labels", labels},
-      {"about", about}
-    ])
-  end
+  def answer_body(document, labels, about) when is_binary(document),
+    do: Answer.append_members(document, [{"labels", labels}, {"about", about}])
 
   # Bookkeeping after the commit: it never fails the attach.
   defp attached(access_key, run, now) do

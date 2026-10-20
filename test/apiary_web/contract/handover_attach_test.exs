@@ -2,8 +2,9 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
   # A run of the queue from its handover to its end, through the endpoints alone: the
   # starter says it started the job and asks for the handover; the gateway the run key
   # names attaches the run and is given the run configuration in force with the run
-  # variables, the labels and what the run is about, as the handover stored them; a
-  # reload gives the same; a batch is answered the same digest; and the run's outcome,
+  # variables, the labels and what the run is about, as the handover stored them, under
+  # the digest of the configuration with the variables; a reload gives the same; a batch
+  # is answered the same digest; and the run's outcome,
   # under the pool's key, ends the run of the queue and frees its slot. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -85,11 +86,14 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
     assert stored.attached_at == nil
 
     # The attach: the configuration in force, then the variables, the labels and what the
-    # run is about, as the handover stored them, under the configuration's digest.
+    # run is about, as the handover stored them, under the digest of the configuration with
+    # the variables, the document a reload gives.
     attached = gateway_attach(ctx, run_id, run_key)
     assert attached.status == 200
     assert signed_answer?(attached)
-    assert get_resp_header(attached, "x-qory-run-configuration") == [ctx.digest]
+    [digest] = get_resp_header(attached, "x-qory-run-configuration")
+    refute digest == ctx.digest
+    assert Policy.policy_digest(ctx.scope, digest) == ctx.digest
 
     answer = Jason.decode!(attached.resp_body)
 
@@ -113,22 +117,23 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
            }
 
     run = Repo.get!(Run, stored.id)
-    assert run.attach_answer_digest == ctx.digest
+    assert run.attach_answer_digest == digest
     assert %DateTime{} = run.attached_at
     assert DateTime.diff(run.backstop_at, run.attached_at) == 1200
 
-    # A reload gives the same answer, the same digest.
+    # A reload gives the same answer, the same digest: the SHA-256 of its bytes.
     reload = gateway_reload(ctx, run_id)
     assert reload.status == 200
     assert signed_answer?(reload)
-    assert get_resp_header(reload, "x-qory-run-configuration") == [ctx.digest]
+    assert get_resp_header(reload, "x-qory-run-configuration") == [digest]
+    assert Policy.Render.digest(reload.resp_body) == digest
     assert Jason.decode!(reload.resp_body)["variables"] == answer["variables"]
 
-    # A batch is answered the digest in force.
+    # A batch is answered the digest the run is given now.
     {_subject, [started]} = first_events(run_id)
     batch = gateway_batch(ctx, [started])
     assert response(batch, 202) == ""
-    assert get_resp_header(batch, "x-qory-run-configuration") == [ctx.digest]
+    assert get_resp_header(batch, "x-qory-run-configuration") == [digest]
 
     # The outcome, the pool's, ends the run of the queue and frees its slot.
     assert json_response(outcome(ctx, run_id), 200) == %{"version" => 1}
@@ -161,7 +166,8 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
 
     attached = gateway_attach(ctx, run_id, run_key)
     assert attached.status == 200
-    assert get_resp_header(attached, "x-qory-run-configuration") == [ctx.digest]
+    [digest] = get_resp_header(attached, "x-qory-run-configuration")
+    assert Policy.policy_digest(ctx.scope, digest) == ctx.digest
 
     answer = Jason.decode!(attached.resp_body)
     assert answer["variables"]["QORY_RUN_REPOSITORIES"]["value"] == "acme/shop,acme/docs"
