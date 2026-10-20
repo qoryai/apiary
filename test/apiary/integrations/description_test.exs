@@ -1627,36 +1627,64 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       assert Description.egress_hosts(description, %{
                "address" => "https://models.example.com:8443/v1"
-             }) == ["api.example.com", "models.example.com"]
+             }) == {["api.example.com", "models.example.com"], []}
 
       assert Description.egress_hosts(description, %{"address" => "https://api.example.com"}) ==
-               ["api.example.com"]
+               {["api.example.com"], []}
     end
 
-    test "leaves out an address that the endpoint rule refuses, or none" do
+    test "leaves out an address that the endpoint rule refuses, and names its setting" do
       description = with_address(["api.example.com", %{"setting" => "address"}])
 
       for address <- ["http://models.example.com", "https://localhost", "https://127.0.0.1"] do
         assert Description.egress_hosts(description, %{"address" => address}) ==
-                 ["api.example.com"]
+                 {["api.example.com"], ["address"]},
+               address
       end
 
-      assert Description.egress_hosts(description, %{}) == ["api.example.com"]
+      assert Description.egress_hosts(description, %{}) == {["api.example.com"], []}
+    end
+
+    test "takes a setting's host only when it is exact" do
+      description = with_address([%{"setting" => "address"}])
+
+      for address <- [
+            "https://*.example.com",
+            "https://*.example.com/v1",
+            "https://api.example.com\n",
+            "https://api.example.com/v1\n",
+            "https://010.0.0.12",
+            "https://10.0.0.012",
+            "https://10.1",
+            "https://0x0a.0.0.12",
+            "https://127.0.0.1"
+          ] do
+        assert Description.egress_hosts(description, %{"address" => address}) ==
+                 {[], ["address"]},
+               inspect(address)
+      end
+
+      # An address `a.b.c.d` is exact: it matches that address alone.
+      assert Description.egress_hosts(description, %{"address" => "https://10.0.0.12/v1"}) ==
+               {["10.0.0.12"], []}
     end
 
     test "reads the setting's default where the connection has no value" do
       description =
         with_address([%{"setting" => "address"}], "https://gateway.example.com/v1")
 
-      assert Description.egress_hosts(description, %{}) == ["gateway.example.com"]
+      assert Description.egress_hosts(description, %{}) == {["gateway.example.com"], []}
 
       assert Description.egress_hosts(description, %{"address" => "https://edge.example.com"}) ==
-               ["edge.example.com"]
+               {["edge.example.com"], []}
+
+      description = with_address([%{"setting" => "address"}], "https://*.example.com")
+      assert Description.egress_hosts(description, %{}) == {[], ["address"]}
     end
 
     test "is empty for a description without the member" do
       {:ok, description} = parse(tracker_description())
-      assert Description.egress_hosts(description, %{}) == []
+      assert Description.egress_hosts(description, %{}) == {[], []}
     end
   end
 end

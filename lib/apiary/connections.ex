@@ -352,30 +352,58 @@ defmodule Apiary.Connections do
   egress_hosts/1 is the hosts that the integrations reaching `workspace` require, each
   with its connection: the `egress_hosts` of every integration connection of the
   organisation that applies to every workspace or lists `workspace`, read for its
-  settings (`Apiary.Integrations.Description.egress_hosts/2`), each host one that
-  `Apiary.Policy.Grammar.host?/1` takes. `Apiary.Policy` renders them into the workspace's
-  policy (`Apiary.Policy.Resolution`).
+  settings (`Apiary.Integrations.Description.egress_hosts/2`). Each host is exact
+  (`Apiary.Policy.Grammar.exact_host?/1`). `Apiary.Policy` renders them into the
+  workspace's policy (`Apiary.Policy.Resolution`).
 
-  Model providers are left out, and no host of a model provider is added to a run's
-  policy.
-  A connection that fails its integrity code, or whose release does, is left out, with an
-  error in the log, and so is one whose description fails to parse. `[]` where the
-  `secrets` feature is off, since the organisation's integrations are absent there. It
-  asks nothing of `Apiary.Access`.
+  Model providers are left out: a run whose handover set a model provider gets the
+  provider's hosts in the document composed for the run
+  (`Apiary.Policy.ComposedConfiguration`). A connection that fails its integrity code, or
+  whose release does, is left out, with an error in the log, and so is one whose
+  description fails to parse. A setting whose address fails the endpoint rule, or whose
+  host is not exact, adds no host, with a line in the log that contains the setting's
+  name and not its value. `[]` where the `secrets` feature is off, since the
+  organisation's integrations are absent there. It asks nothing of `Apiary.Access`.
   """
   @spec egress_hosts(%Workspace{}) :: [Apiary.Policy.Resolution.integration_host()]
   def egress_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}) do
+    reaching_hosts(organisation_id, fn query ->
+      from [c] in query,
+        left_join: w in ConnectionWorkspace,
+        on: w.connection_id == c.id and w.workspace_id == ^workspace_id,
+        where: c.applies_to == "all" or not is_nil(w.workspace_id)
+    end)
+  end
+
+  @doc """
+  organisation_egress_hosts/1 is `egress_hosts/1` for every workspace of the
+  organisation at once: the hosts of each integration connection that applies to every
+  workspace or lists at least one workspace, each with its connection.
+  """
+  @spec organisation_egress_hosts(%Organisation{} | Ecto.UUID.t()) ::
+          [Apiary.Policy.Resolution.integration_host()]
+  def organisation_egress_hosts(%Organisation{id: id}), do: organisation_egress_hosts(id)
+
+  def organisation_egress_hosts(organisation_id) when is_binary(organisation_id) do
+    reaching_hosts(organisation_id, fn query ->
+      from [c] in query,
+        where:
+          c.applies_to == "all" or
+            exists(from w in ConnectionWorkspace, where: w.connection_id == parent_as(:c).id)
+    end)
+  end
+
+  defp reaching_hosts(organisation_id, reach) do
     if Features.on?(:secrets) do
       reaching =
-        Repo.all(
-          from c in connections(organisation_id),
-            left_join: w in ConnectionWorkspace,
-            on: w.connection_id == c.id and w.workspace_id == ^workspace_id,
-            where: c.kind == "integration" and is_nil(c.provider_kind),
-            where: c.applies_to == "all" or not is_nil(w.workspace_id),
-            order_by: [asc: c.id],
-            preload: [:release]
+        from(c in connections(organisation_id),
+          as: :c,
+          where: c.kind == "integration" and is_nil(c.provider_kind),
+          order_by: [asc: c.id],
+          preload: [:release]
         )
+        |> reach.()
+        |> Repo.all()
 
       for connection <- reaching,
           host <- connection_egress_hosts(connection),
@@ -395,9 +423,18 @@ defmodule Apiary.Connections do
   defp connection_egress_hosts(%Connection{} = connection) do
     with true <- intact?(connection) || :not_intact,
          {:ok, description} <- description(connection) do
-      description
-      |> Description.egress_hosts(Connection.settings_map(connection))
-      |> Enum.filter(&Grammar.host?/1)
+      {hosts, refused} =
+        Description.egress_hosts(description, Connection.settings_map(connection))
+
+      for name <- refused do
+        Logger.warning(
+          "the setting #{name} of the integration connection #{connection.public_id} is " <>
+            "not an address with an exact host: its host is not added to the security policy",
+          LogMetadata.metadata(connection.organisation_id, nil)
+        )
+      end
+
+      Enum.filter(hosts, &Grammar.exact_host?/1)
     else
       :not_intact ->
         Logger.error(
