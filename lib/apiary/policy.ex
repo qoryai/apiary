@@ -1408,8 +1408,6 @@ defmodule Apiary.Policy do
         )
       )
 
-  defp in_workspace(%Error{message: nil} = error, %Workspace{}), do: error
-
   defp in_workspace(%Error{} = error, %Workspace{name: name}),
     do: %{
       error
@@ -1572,7 +1570,8 @@ defmodule Apiary.Policy do
   check_deny/3 says whether a deny rule of `host` may be saved at `place`: `:ok`, or
   `{:error, %Error{reason: :integration_host}}` when `host` equals a host that an
   integration reaching the place requires. The error's `details` contain that
-  integration's connection and the host (`Apiary.Policy.Error`). A `*.` host is never
+  integration's connection and the host (`Apiary.Policy.Error`), and its `message` says
+  to remove the host, with the connection's name. A `*.` host is never
   refused: a `*.` deny saves, and the integration's host beats it in the resolution
   (`Apiary.Policy.Resolution`, point 7).
 
@@ -1606,7 +1605,12 @@ defmodule Apiary.Policy do
         {:error,
          %Error{
            reason: :integration_host,
-           message: nil,
+           message:
+             gettext(
+               "Remove %{host} from the rule. %{integration} needs this host, so no rule can deny it.",
+               host: host,
+               integration: connection.name
+             ),
            field: :host,
            details: %{connection: connection, host: host}
          }}

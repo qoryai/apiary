@@ -12074,6 +12074,11 @@ msgstr ""
 msgid "Remove %{filter}: %{value}"
 msgstr ""
 
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{host} from the rule. %{integration} needs this host, so no rule can deny it."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{name}"

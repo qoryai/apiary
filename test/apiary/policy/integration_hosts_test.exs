@@ -241,19 +241,27 @@ defmodule Apiary.Policy.IntegrationHostsTest do
         host: "api.example.com"
       }
 
+      sentence =
+        "Remove api.example.com from the rule. acme-tracker needs this host, so no rule can deny it."
+
       for holder <- [nil, target] do
-        assert {:error, %Error{reason: :integration_host, details: ^expected, message: nil}} =
-                 Policy.deny(scope, holder, %{host: "api.example.com"})
+        assert {:error,
+                %Error{
+                  reason: :integration_host,
+                  field: :host,
+                  details: ^expected,
+                  message: ^sentence
+                }} = Policy.deny(scope, holder, %{host: "api.example.com"})
       end
 
       # A rule there already is not turned into a deny either.
       assert {:error, %Error{reason: :integration_host}} =
                Policy.deny(scope, nil, %{host: allowed.host, locked: true})
 
-      assert {:error, %Error{reason: :integration_host, details: ^expected}} =
+      assert {:error, %Error{reason: :integration_host, details: ^expected, message: ^sentence}} =
                Policy.check_deny(scope, :above, "api.example.com")
 
-      assert {:error, %Error{reason: :integration_host, details: ^expected}} =
+      assert {:error, %Error{reason: :integration_host, details: ^expected, message: ^sentence}} =
                Policy.check_deny(scope, :workspace, "api.example.com")
 
       assert [%{host: "api.example.com", action: "allow"}] = Policy.list_rules(scope, nil)

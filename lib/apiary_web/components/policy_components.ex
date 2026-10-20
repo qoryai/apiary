@@ -1086,6 +1086,10 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :error, :string, default: nil, doc: "the domain's refusal of the last save"
 
+  attr :error_field, :atom,
+    default: nil,
+    doc: "`:host` draws `error` under the Host field; nil draws it above Save"
+
   attr :host_placeholder, :string,
     default: nil,
     doc: "nil says \"api.example.com\""
@@ -1206,6 +1210,9 @@ defmodule ApiaryWeb.PolicyComponents do
             <.rich text={ApiaryWeb.PolicyLive.Reading.host_hint()} />
           </p>
           <.rule_field_error :if={@host_error} id={"#{@id}-host-error"} error={@host_error} />
+          <.notice :if={@error && @error_field == :host} kind={:error}>
+            <span id={"#{@id}-write-error"} role="alert">{@error}</span>
+          </.notice>
         </div>
 
         <%!-- The Paths row, drawn only with `paths`. Paths, optional, for an allow: left
@@ -1270,7 +1277,7 @@ defmodule ApiaryWeb.PolicyComponents do
             </span>
           </.notice>
         </div>
-        <.notice :if={@error} kind={:error}>
+        <.notice :if={@error && @error_field != :host} kind={:error}>
           <span id={"#{@id}-write-error"} role="alert">{@error}</span>
         </.notice>
 

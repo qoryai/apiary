@@ -7,8 +7,7 @@ defmodule Apiary.Policy.Error do
 
   `:integration_host` refuses a deny rule whose host is a host that an integration
   reaching the place requires (`Apiary.Policy.check_deny/3`). Its `details` are
-  `%{connection: %{id:, public_id:, name:}, host: host}`. Its `message` is nil, so a page
-  that shows an error's message shows no sentence for it.
+  `%{connection: %{id:, public_id:, name:}, host: host}`.
   """
 
   @type reason ::
@@ -25,7 +24,7 @@ defmodule Apiary.Policy.Error do
 
   @type t :: %__MODULE__{
           reason: reason,
-          message: String.t() | nil,
+          message: String.t(),
           field: atom | nil,
           details: map | nil
         }
