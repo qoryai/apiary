@@ -121,7 +121,7 @@ defmodule Apiary.Dispatches.WireTest do
   test "the vendored contracts are the commit their refs name" do
     for dir <- ["provisioner/v1", "integration/v1", "explore/v1"] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) ==
-               "92f7df5a8a9488b8ecaaa31e83c23ddbe4b9ddfe\n",
+               "3b63cb4deda20a2af5590798d5234e57f542a628\n",
              dir
     end
   end
@@ -194,7 +194,7 @@ defmodule Apiary.Dispatches.WireTest do
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
     assert length(requests) == 7
     assert length(invalid_requests) == 15
-    assert length(answers) == 47
+    assert length(answers) == 45
     assert length(refusals) == 6
   end
 

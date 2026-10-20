@@ -26,6 +26,8 @@ defmodule Apiary.PublicId.CallersTest do
   end
 
   describe "a secret" do
+    @describetag needs: :secrets
+
     test "whose id is taken is stored under a fresh id", %{scope: scope} do
       PublicIdSource.force([@taken])
       {:ok, first} = Secrets.create_secret(scope, %{name: "FIRST", value: "one"})

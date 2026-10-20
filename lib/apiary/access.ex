@@ -319,6 +319,13 @@ defmodule Apiary.Access do
       roles: [:access_key, :pool_key],
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
+    # A gateway's secrets request: a run's model key, sealed to the gateway's access key
+    # (`Apiary.Runs.SecretsRequest`). No other rule applies here: the secrets request
+    # checks the run and the key it verified under.
+    Action.new(:"secret.seal", "seal a run's model key to the gateway's access key",
+      feature: :factory,
+      roles: [:access_key]
+    ),
     # The instance's adapters: an organisation's people read them and connect them; an
     # instance admin makes, renames and deletes them and sets how often they pull, which no
     # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`). The

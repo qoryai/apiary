@@ -145,9 +145,6 @@
         "effort": [
           "model"
         ],
-        "endpoint": [
-          "model"
-        ],
         "tiers": [
           "model"
         ],
@@ -170,10 +167,6 @@
         "effort": {
           "description": "The effort value the run uses with model. Present only with model.",
           "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/effort_value"
-        },
-        "endpoint": {
-          "description": "The provider's API endpoint. Present only with model. When endpoint is absent, the run uses the runtime's default endpoint.",
-          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/endpoint_url"
         },
         "provider_models": {
           "description": "The models of the run's provider, 1 to 256, each with the effort values it accepts. Present exactly when model is present. When provider_models is absent, the agents run on the provider of the gateway's key, and for a run with a target, the job applies the tier map set at the run's target as written, as on a local run. A run with no target has no such tier map: without provider_models, no tier map applies, and the run uses the runtime's default model. When provider_models is present and the run has a target, an entry of the tier map set at the run's target applies only when its model id is listed in provider_models, and its effort only when that effort is listed for that model.",

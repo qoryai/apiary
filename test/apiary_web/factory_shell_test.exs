@@ -71,8 +71,11 @@ defmodule ApiaryWeb.FactoryShellTest do
   # `ApiaryWeb.Contract.ChangesControllerTest`,
   # `ApiaryWeb.Contract.SourceCollectionsControllerTest`,
   # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest` and
-  # their fixtures' tests, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them.
+  # their fixtures' tests, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them. A
+  # gateway's secrets request is no page either: `ApiaryWeb.Contract.SecretsControllerTest`
+  # and `ApiaryWeb.Contract.SecretsDiscoveryTest` answer for it.
   @signed_routes [
+    ApiaryWeb.Contract.SecretsController,
     ApiaryWeb.Contract.AdapterController,
     ApiaryWeb.Contract.ChangesController,
     ApiaryWeb.Contract.SourceCollectionsController,
@@ -394,6 +397,7 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"adapter.install", "Adapter installed"} in options
       assert {"adapter.setup", "Adapter set-up started"} in options
+      assert {"model_choice.write", "Model choice changed"} in options
 
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
@@ -417,7 +421,8 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"target.set_further_repositories",
             :"target.rebuild_environment",
             :"adapter.install",
-            :"adapter.setup"
+            :"adapter.setup",
+            :"model_choice.write"
           ],
           do: refute(action in offered, "#{action}")
     end

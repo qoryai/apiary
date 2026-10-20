@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "acme-cloud",
+  "title": "Acme cloud",
+  "program_version": "0.1.0",
+  "settings": {"type": "object"},
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": "https://api.acme-cloud.example", "auth": {"scheme": "header", "header": "x-api-key"}, "key_prefixes": ["acme-key-", "acme-key-"]}
+      ],
+      "models": [{"id": "acme-large-2", "title": "Acme Large 2"}]
+    }
+  }
+}

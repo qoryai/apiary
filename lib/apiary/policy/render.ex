@@ -7,8 +7,14 @@ defmodule Apiary.Policy.Render do
   insignificant whitespace, so the same rules give the same bytes and the same digest.
   `allow` is always written, empty when nothing is allowed; `deny` and `paths` only when
   they hold something, so a policy without a deny renders the bytes it always did. The
-  document selects no credential: the contract's `credentials` member is never written.
+  document selects no credential: a policy never writes the contract's `credentials`
+  member.
   """
+
+  # With the features `factory` and `secrets`, which the documentation leaves out:
+  # `credentials` and `model_credential` are written in the document composed for a run
+  # that the handover set a model provider for (`Apiary.Policy.ComposedConfiguration`,
+  # `Apiary.Runs.ProviderCredential`), never in a policy's.
 
   alias Apiary.Policy.Effective
 

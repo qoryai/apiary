@@ -468,6 +468,7 @@ defmodule ApiaryWeb.RefusalsRows do
       contract: [
         :"run.post_events",
         :"run_configuration.fetch",
+        :"secret.seal",
         :"adapter.declare",
         :"source_item.post",
         :"work_item.read_changes",

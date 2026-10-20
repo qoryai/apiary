@@ -730,9 +730,9 @@ defmodule Apiary.Policy do
           hosts: non_neg_integer,
           targets: non_neg_integer
         }
-  def suggestion_counts(%Scope{workspace: %Workspace{} = workspace}, since \\ nil) do
+  def suggestion_counts(%Scope{workspace: %Workspace{} = workspace} = scope, since \\ nil) do
     since = since || DateTime.add(DateTime.utc_now(), -14, :day)
-    Suggestions.counts(workspace, since, above(workspace))
+    Suggestions.counts(scope, since, above(workspace))
   end
 
   @doc """
@@ -760,7 +760,7 @@ defmodule Apiary.Policy do
 
     case holder_id(scope, target) do
       {:ok, target_id} ->
-        Suggestions.report(scope.workspace.id, target_id, effective(scope, target), since)
+        Suggestions.report(scope, target_id, effective(scope, target), since)
 
       {:error, _not_found} ->
         %{suggested: [], covered: []}
