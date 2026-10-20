@@ -8,8 +8,10 @@ defmodule Apiary.DeletionTest do
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
+  import Apiary.WorkItemsFixtures
 
   alias Apiary.{AccessKeys, Deletion, Features, Organisations, Policy, Retention}
+  alias Apiary.Adapters.{Collection, Collections}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
 
@@ -272,6 +274,7 @@ defmodule Apiary.DeletionTest do
 
       held = counts(workspace_id: workspace.id)
       assert Enum.count(held, fn {_table, n} -> n > 0 end) >= 10, inspect(held)
+      assert held["work_item_comments"] == 2
       kept_here = counts(workspace_id: scope.workspace.id)
       kept_there = counts(organisation_id: other.organisation.id)
 
@@ -305,6 +308,54 @@ defmodule Apiary.DeletionTest do
                  "organisation_id" => scope.organisation.id,
                  "workspace_id" => workspace.id
                })
+    end
+
+    @tag needs: :factory
+    test "a workspace's leaves the organisation's collections in place, linked to none", ctx do
+      %{scope: scope} = ctx
+      workspace = workspace_fixture(scope.organisation)
+      %{adapter: adapter, access_key: key} = Apiary.NodesFixtures.connectable_adapter_fixture()
+      {connection, _nonce} = Apiary.NodesFixtures.connection_fixture(scope, adapter, :connected)
+      {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+      {:ok, :accepted} =
+        Collections.post_listing(Scope.for_access_key(key), %{
+          time: DateTime.utc_now(:second),
+          connection_id: connection.public_id,
+          collections:
+            for ref <- ["GOES", "STAYS"] do
+              %{ref: ref, url: "https://tracker.acme.example/" <> ref, title: ref, target: nil}
+            end,
+          listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
+        })
+
+      ids = Map.new(Repo.all(from c in Collection, select: {c.external_ref, c.id}))
+
+      {:ok, 1} =
+        Collections.assign_collections(scope, connection, [ids["GOES"]], workspace)
+
+      {:ok, 1} =
+        Collections.assign_collections(scope, connection, [ids["STAYS"]], scope.workspace)
+
+      refute "source_collections" in Tables.workspace_tables()
+      assert "source_collections" in Tables.tables()
+
+      {:ok, _} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
+      overdue!(Workspace, workspace.id)
+      instance = Scope.for_instance(scope.organisation, workspace)
+      assert {:ok, :purged} = Deletion.purge_workspace(instance)
+
+      assert Repo.get(Workspace, workspace.id) == nil
+      assert %Collection{workspace_id: nil, ended_at: nil} = Repo.get!(Collection, ids["GOES"])
+      stays = Repo.get!(Collection, ids["STAYS"])
+      assert stays.workspace_id == scope.workspace.id
+
+      assert [%{"collection_ref" => "GOES", "status" => "unlinked"}] =
+               for(
+                 %{kind: "collection", data: %{"status" => "unlinked"} = data} <-
+                   Apiary.Adapters.Feed.entries(adapter),
+                 do: data
+               )
     end
 
     test "an organisation's: every row, its trail, and one line at the instance", ctx do
@@ -511,6 +562,33 @@ defmodule Apiary.DeletionTest do
     end
   end
 
+  describe "the grace period saved in Instance settings › Configuration" do
+    test "a marking takes it; one made before keeps its purge date", %{scope: scope} do
+      previous = Application.fetch_env!(:apiary, :deletion_grace_days)
+      Application.put_env(:apiary, :deletion_grace_days, nil)
+      on_exit(fn -> Application.put_env(:apiary, :deletion_grace_days, previous) end)
+
+      before = workspace_fixture(scope.organisation, "Before")
+      {:ok, first} = Deletion.delete_workspace(scope, before.id, before.slug)
+      assert DateTime.diff(first.purge_after, first.deletion_marked_at, :day) == 30
+
+      Repo.insert_all(
+        Apiary.InstanceConfig.Row,
+        [%{id: true, deletion_grace_days: 7, updated_at: DateTime.utc_now()}],
+        on_conflict: {:replace, [:deletion_grace_days]},
+        conflict_target: :id
+      )
+
+      assert Deletion.grace_days() == 7
+      assert ApiaryWeb.SettingsComponents.workspace_lost() =~ "It is purged after 7 days;"
+
+      later = workspace_fixture(scope.organisation, "Later")
+      {:ok, second} = Deletion.delete_workspace(scope, later.id, later.slug)
+      assert DateTime.diff(second.purge_after, second.deletion_marked_at, :day) == 7
+      assert Repo.get!(Workspace, before.id).purge_after == first.purge_after
+    end
+  end
+
   describe "DELETION_GRACE_DAYS" do
     test "30 when unset, a number of days from 1 to 90" do
       assert Deletion.parse_grace_days(nil) == {:ok, 30}
@@ -571,8 +649,18 @@ defmodule Apiary.DeletionTest do
 
   # What a workspace holds, made the way the product makes it where it can: a key, an
   # invitation, a policy rule with its run configuration, a run delivered through the
-  # receiver with its events, log and connections, and a retention run.
+  # receiver with its events, log and connections, a retention run, a work item with its
+  # event and the workspace's counter, a work item whose questions a member answered and
+  # one whose proposal a member confirmed, with a comment and a deleted one, and a runtime
+  # of the organisation that lists it.
   defp fill!(%Scope{} = scope) do
+    {:ok, _} =
+      Apiary.Connections.create_runtime(scope, %{
+        runtime: "claude",
+        applies_to: "selected",
+        workspace_ids: [scope.workspace.id]
+      })
+
     %{access_key: key} = access_key_fixture(scope)
     invitation_fixture(scope)
     {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
@@ -586,12 +674,26 @@ defmodule Apiary.DeletionTest do
         delivery_id: Ecto.UUID.generate()
       })
 
-    run = Repo.one!(from r in Apiary.Runs.Run, where: r.run_id == ^subject)
+    run = Repo.one!(from r in Apiary.Runs.Run, where: r.node_run_id == ^subject)
     events_fixture(run, Enum.drop(record(), 2))
     {:ok, _} = Projector.project(run)
 
     {:ok, workspace} = Retention.update_retention(scope, %{events_retention_days: 3650})
     Retention.prune_workspace(workspace)
+    _work_item = work_item_fixture(scope)
+
+    asked = work_item_fixture(scope)
+    explore_run_fixture(asked, result: questions_result(["Which basket?"]))
+    {:ok, _} = Apiary.WorkItems.answer(scope, asked, 1, %{"1" => "The one at checkout."})
+
+    proposed = work_item_fixture(scope)
+    explore_run_fixture(proposed, result: understood_result())
+    {:ok, _} = Apiary.WorkItems.confirm(scope, proposed, 1)
+
+    {:ok, _} = Apiary.WorkItems.comment(scope, proposed, "Seen on staging")
+    {:ok, gone} = Apiary.WorkItems.comment(scope, proposed, "Wrong work item, sorry")
+    {:ok, _} = Apiary.WorkItems.delete_comment(scope, gone.public_id)
+
     :ok = Apiary.Organisations.remember_workspace(scope)
   end
 

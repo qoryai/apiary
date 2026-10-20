@@ -371,6 +371,8 @@ defmodule Apiary.Deletion do
          :ok <- refuse(:purge, workspace),
          :claimed <- claim(Workspace, workspace_id) do
       _retired = AccessKeys.retire_public_keys(organisation_id, workspace_id)
+      # The collections linked to it stay with their organisation, linked to none.
+      _unlinked = Apiary.Adapters.Collections.unlink_workspace(organisation_id, workspace_id)
       deleted = delete_rows(Tables.workspace_tables(), organisation_id, workspace_id)
 
       Repo.transact(fn ->
@@ -430,6 +432,9 @@ defmodule Apiary.Deletion do
          :ok <- refuse(:purge, organisation),
          :claimed <- claim(Organisation, id) do
       _retired = AccessKeys.retire_public_keys(id, nil)
+      # Its connections to the instance's adapters end once its deletion can no longer be
+      # cancelled; while it is marked they are only out of use.
+      _ended = Apiary.Adapters.Connections.end_for_organisation(id)
       deleted = delete_rows(Tables.tables(), id, nil)
 
       Repo.transact(fn ->
@@ -712,16 +717,21 @@ defmodule Apiary.Deletion do
 
   @doc """
   grace_days/0 is how many days a workspace or an organisation marked for deletion is
-  kept before it is purged: `DELETION_GRACE_DAYS`, checked at boot (`boot!/0`),
-  #{@default_grace_days} when unset.
+  kept before it is purged: `DELETION_GRACE_DAYS`, checked at boot (`boot!/0`), or the
+  value saved in Instance settings › Configuration (`Apiary.InstanceConfig`),
+  #{@default_grace_days} when neither sets it. A marking takes it then: a later change
+  leaves the purge date of what is already marked as it is.
   """
   @spec grace_days() :: pos_integer
-  def grace_days do
-    case Application.fetch_env(:apiary, :deletion_grace_days) do
-      {:ok, days} -> days
-      :error -> boot!()
-    end
-  end
+  def grace_days, do: Apiary.InstanceConfig.value(:deletion_grace_days)
+
+  @doc "grace_min_days/0 is the shortest grace period: #{@grace_min} day."
+  @spec grace_min_days() :: pos_integer
+  def grace_min_days, do: @grace_min
+
+  @doc "grace_max_days/0 is the longest grace period: #{@grace_max} days."
+  @spec grace_max_days() :: pos_integer
+  def grace_max_days, do: @grace_max
 
   @doc """
   parse_grace_days/1 reads a value of `DELETION_GRACE_DAYS`: `{:ok, days}`, a whole number
@@ -750,15 +760,22 @@ defmodule Apiary.Deletion do
   end
 
   @doc """
-  boot!/0 reads `DELETION_GRACE_DAYS` as `config/runtime.exs` left it, checks it and fixes
-  the grace period for the life of the node; it returns it. Called at boot; raises on a
+  boot!/0 reads `DELETION_GRACE_DAYS` as `config/runtime.exs` left it, checks it, and
+  keeps its value for the life of the node, under `:deletion_grace_days`: the number of
+  days where the variable is set and not blank, nil otherwise, so the value saved in
+  Instance settings › Configuration applies (`Apiary.InstanceConfig`). It reads no saved
+  value, since it runs before the database is reached. It returns the grace period the
+  variable gives, #{@default_grace_days} where it is not set. Called at boot; raises on a
   value `parse_grace_days/1` refuses, so the instance does not start.
   """
   @spec boot!() :: pos_integer
   def boot! do
-    case parse_grace_days(Application.get_env(:apiary, :deletion_grace_setting)) do
+    setting = Application.get_env(:apiary, :deletion_grace_setting)
+
+    case parse_grace_days(setting) do
       {:ok, days} ->
-        Application.put_env(:apiary, :deletion_grace_days, days)
+        set = is_binary(setting) and String.trim(setting) != ""
+        Application.put_env(:apiary, :deletion_grace_days, if(set, do: days))
         days
 
       {:error, reason} ->

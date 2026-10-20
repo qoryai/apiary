@@ -9,7 +9,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
 
   alias Apiary.Policy
 
@@ -187,11 +187,16 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert read(view, "#policy-rule-host-hint") ==
                "The name runs connect to, in lower case, without https:// or a port. Start it with *. to cover every host below a domain, such as *.example.com."
 
-      assert read(view, "label[for=policy-rule-paths]") == "PathsOptional"
-      assert has_element?(view, "#policy-rule-paths[placeholder='Every path']")
+      # Paths, where the instance has path_rules (rule_form_paths_test.exs).
+      if Apiary.Features.on?(:path_rules) do
+        assert read(view, "label[for=policy-rule-paths]") == "PathsOptional"
+        assert has_element?(view, "#policy-rule-paths[placeholder='Every path']")
 
-      assert read(view, "#policy-rule-paths-hint") ==
-               "Leave it empty to allow every path. Separate paths with spaces; end one with * for everything below it, such as /v1/*."
+        assert read(view, "#policy-rule-paths-hint") ==
+                 "Leave it empty to allow every path. Separate paths with spaces; end one with * for everything below it, such as /v1/*."
+      else
+        refute has_element?(view, "#policy-rule-paths")
+      end
 
       assert has_element?(
                view,
@@ -215,6 +220,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert_push_event(view, "policy:focus", %{id: "policy-rule-allow"})
     end
 
+    @tag needs: :path_rules
     test "reads the rule back in plain words as it is typed", %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/rules/new")
 
@@ -230,6 +236,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
                "Allow every host below internal.example, on every path. It does not allow internal.example itself."
     end
 
+    @tag needs: :path_rules
     test "a deny takes no paths, and reads back what it takes out", %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/rules/new")
 
@@ -264,6 +271,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert has_element?(view, "#policy-rule-host-hint")
     end
 
+    @tag needs: :path_rules
     test "a URL is said under Host, with the repair as a link that fills the fields",
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/rules/new")
@@ -298,6 +306,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
                "Allow api.example on 1 path: /v1/messages exactly."
     end
 
+    @tag needs: :path_rules
     test "each error of the grammar is said under its own field", %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/rules/new")
 
@@ -334,7 +343,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/rules/new")
 
-      type(view, %{host: "registry.example", paths: ""})
+      type(view, %{host: "registry.example"})
 
       assert text(view, "#policy-rule-host-error") =~
                "registry.example is already allowed for the workspace"
@@ -365,6 +374,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert text(view, "#flash-info") =~ "registry.example is denied for the workspace. Version"
     end
 
+    @tag needs: :path_rules
     test "an allow held to paths is not opened without saying so; Every path does it",
          %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example", paths: ["/v1/*"]})
@@ -399,7 +409,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
                "#policy-rule-save-cancel[href='#{workspace_path(scope, "/policy?sort=host&view=allowed")}']"
              )
 
-      type(view, %{host: "api.partner.example.com", paths: "/v1/*"})
+      type(view, %{host: "api.partner.example.com"})
       add(view)
 
       %{id: id} = rule(scope, "api.partner.example.com")
@@ -426,7 +436,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy?view=denied")
       new_rule(view)
-      type(view, %{host: "api.partner.example.com", paths: ""})
+      type(view, %{host: "api.partner.example.com"})
       add(view)
 
       assert_patch(
@@ -441,7 +451,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy?sort=host")
       new_rule(view)
-      type(view, %{host: "api.partner.example.com", paths: ""})
+      type(view, %{host: "api.partner.example.com"})
 
       view |> element("#policy-rule-save-cancel") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy?sort=host"))
@@ -486,6 +496,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert rule(scope, "c.example")
     end
 
+    @tag needs: :path_rules
     test "the address fills the form: an action, a host, paths, and the field to focus",
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/rules/new?action=deny&host=telemetry.example")
@@ -501,6 +512,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert_push_event(view, "policy:focus", %{id: "policy-rule-paths"})
     end
 
+    @tag needs: :path_rules
     test "what the domain refuses stays on the page, above the foot", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example", paths: ["/v1/*"]})
       view = open(conn, scope, "/policy/rules/new")
@@ -573,6 +585,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
   end
 
   describe "the Edit rule page" do
+    @tag needs: :path_rules
     test "Edit opens the rule: its host kept, its paths in the field; Change paths saves",
          %{conn: conn, scope: scope} do
       {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example", paths: ["/v1/*", "/health"]})
@@ -623,7 +636,10 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       view = open(conn, scope, "/policy/rules/#{rule.id}/edit")
 
       assert has_element?(view, "#policy-rule-deny[checked]")
-      assert text(view, "#policy-rule-paths-deny") == "A deny covers every path of the host."
+
+      if Apiary.Features.on?(:path_rules) do
+        assert text(view, "#policy-rule-paths-deny") == "A deny covers every path of the host."
+      end
 
       type(view, %{action: "allow"})
       assert text(view, "#policy-rule-add") == "Replace with allow"
@@ -697,7 +713,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       started_run(scope, shop())
       [%{target: target}] = Policy.list_targets(scope)
       {:ok, own} = Policy.allow(scope, target, %{host: "mcp.acme.example"})
-      path = target_path(scope, target.system, target.path, ["policy"])
+      path = target_path(scope, target, ["policy"])
       as_reader(context)
 
       for rest <- ["/rules/new", "/rules/#{own.id}/edit"] do
@@ -769,7 +785,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       own = stored_rule(scope, target, "0x7f.0.0.1")
       workspace = stored_rule(scope, nil, "010.0.0.1")
       {:ok, _} = Policy.allow(scope, target, %{host: "api.example"})
-      path = target_path(scope, target.system, target.path, ["policy"])
+      path = target_path(scope, target, ["policy"])
       {:ok, view, _html} = live(conn, path)
       render_async(view, 5_000)
 
@@ -787,7 +803,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
       {:ok, _} = Policy.deny(scope, nil, %{host: "*.paste.example", locked: true})
 
-      %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
+      %{target: target, path: target_path(scope, target, ["policy"])}
     end
 
     test "opens from Add rule, the form alone under the target's breadcrumb",
@@ -805,7 +821,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
 
       assert crumbs(view) == [
                {"Repositories", workspace_path(scope, "/targets")},
-               {target.path, String.replace_suffix(path, "/-/policy", "")},
+               {target.path, String.replace_suffix(path, "/policy", "")},
                {"Policy", path},
                {"New rule", nil}
              ]
@@ -855,6 +871,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       refute rule(scope, "files.paste.example", target)
     end
 
+    @tag needs: :path_rules
     test "a target rule's Edit opens its page", %{
       conn: conn,
       scope: scope,
@@ -887,6 +904,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert has_element?(view, "#policy-rules")
     end
 
+    @tag needs: :path_rules
     test "a suggestion's Allow with paths… opens the page with the host, Paths focused",
          %{conn: conn, scope: scope, target: target, path: path} do
       run = run_fixture(scope)

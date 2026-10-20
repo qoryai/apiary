@@ -40,21 +40,26 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  The mark with the wordmark "Qory Apiary", as a link to `/`. `xs` is the
-  sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
-  the `/users/organisations` top bar and the auth header strip (22 px mark),
-  `lg` the auth panel (28 px mark).
+  The mark with the product's name on this instance (`name`, by default
+  `Apiary.ProductName.name/0`: the name an instance admin set, else Qory Apiary), as a
+  link to `/`; a name too long for its place ends in an ellipsis and shows whole on hover.
+  `sm` is the auth layout's header strip (22 px mark), `lg` its brand panel (28 px mark)
+  (`ApiaryWeb.Layouts.auth/1`); `xs` is an 18 px mark with a grey wordmark, a signature
+  rather than a heading.
   """
   attr :class, :any, default: nil
   attr :href, :string, default: "/"
   attr :size, :string, default: "sm", values: ~w(xs sm lg)
+  attr :name, :string, default: nil, doc: "the product's name; nil reads it"
 
   def brand(assigns) do
+    assigns = assign(assigns, :name, assigns.name || Apiary.ProductName.name())
+
     ~H"""
     <a
       href={@href}
       class={[
-        "inline-flex items-center gap-2 rounded-field",
+        "inline-flex max-w-full min-w-0 items-center gap-2 rounded-field",
         if(@size == "xs",
           do: "text-muted transition-colors hover:text-base-content",
           else: "text-base-content"
@@ -69,15 +74,18 @@ defmodule ApiaryWeb.CoreComponents do
           "lg" -> "size-7"
         end
       } />
-      <span class={[
-        "whitespace-nowrap tracking-[-0.03em]",
-        case @size do
-          "xs" -> "text-[13px]/[18px] font-medium"
-          "sm" -> "text-base/5 font-semibold"
-          "lg" -> "text-[19px]/6 font-semibold"
-        end
-      ]}>
-        Qory Apiary
+      <span
+        title={@name}
+        class={[
+          "min-w-0 truncate tracking-[-0.03em]",
+          case @size do
+            "xs" -> "text-[13px]/[18px] font-medium"
+            "sm" -> "text-base/5 font-semibold"
+            "lg" -> "text-[19px]/6 font-semibold"
+          end
+        ]}
+      >
+        {@name}
       </span>
     </a>
     """
@@ -568,7 +576,8 @@ defmodule ApiaryWeb.CoreComponents do
       <.input field={@form[:slug]} type="text" label="Address" prefix="qory.example/acme/" />
 
   A `radio` input is a group: its label is the group's legend, and each of `options`, a
-  `{label, value}`, one choice. A text input with a `prefix` shows it in mono before the
+  `{label, value}`, one choice. A choice given as `{label, value, line}` is a card, with
+  its line under its label. A text input with a `prefix` shows it in mono before the
   value, as one field: the path a slug completes.
   """
   attr :id, :any, default: nil
@@ -691,20 +700,30 @@ defmodule ApiaryWeb.CoreComponents do
     >
       <legend :if={@label} class="mb-1 text-[13px]/[18px] font-medium">{@label}</legend>
       <label
-        :for={{{label, value}, index} <- Enum.with_index(@options)}
+        :for={{option, index} <- Enum.with_index(@options)}
         for={"#{@id}-#{index}"}
-        class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+        class={
+          if tuple_size(option) == 3,
+            do: "q-choice",
+            else:
+              "inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+        }
       >
         <input
           type="radio"
           id={"#{@id}-#{index}"}
           name={@name}
-          value={value}
-          checked={to_string(@value) == to_string(value)}
+          value={elem(option, 1)}
+          checked={to_string(@value) == to_string(elem(option, 1))}
           class={["radio radio-sm radio-primary", @class]}
+          aria-describedby={tuple_size(option) == 3 && "#{@id}-#{index}-line"}
           {@rest}
         />
-        {label}
+        <span :if={tuple_size(option) == 3} class="q-choice-h">{elem(option, 0)}</span>
+        <span :if={tuple_size(option) == 3} id={"#{@id}-#{index}-line"} class="q-choice-p">
+          {elem(option, 2)}
+        </span>
+        <span :if={tuple_size(option) == 2}>{elem(option, 0)}</span>
       </label>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
       <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
@@ -1242,12 +1261,81 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   A placeholder avatar: the first letter of a name. People are round, an
-  organisation is square. Decorative: the name is always beside it.
+  organisation is square.
+
+  Without `email` it is decorative and hidden from screen readers: the name is always
+  beside it, as in a list of people.
+
+  With `email` it stands for a person in a line of text, in place of their name:
+
+    * an address shows its first character, upper-cased by Unicode rules, a digit or a
+      symbol as it is, in an `<abbr>` whose tooltip and accessible name are the address;
+      the address is also in visually hidden text where the letter is, and the letter is
+      hidden from screen readers;
+    * the `<abbr>` is a tab stop, except with `in_link`, inside a link or a row that
+      opens, which may hold no focusable element;
+    * the reader's address (`reader`, or `kind` `self`) has the account menu's colour,
+      and its tooltip and accessible name read "dana@example.com (you)";
+    * "Former member", the words `ApiaryWeb.People` gives for a deleted account, is those
+      words, with no letter and no tooltip;
+    * nil is nothing.
+
+      <.avatar email={@email} reader={@current_scope.user.email} size="xs" />
   """
   attr :name, :string, default: nil
+
+  attr :email, :string,
+    doc:
+      "the address of the person it stands for in a line of text: an address draws the `<abbr>`, \"Former member\" draws those words, and nil draws nothing"
+
+  attr :reader, :string, default: nil, doc: "with `email`: the reader's address"
+
+  attr :in_link, :boolean,
+    default: false,
+    doc: "with `email`: inside a link or a row that opens, so it is no tab stop"
+
   attr :kind, :string, default: "person", values: ~w(person self organisation pending)
   attr :size, :string, default: "sm", values: ~w(xs sm md lg)
   attr :class, :any, default: nil
+
+  def avatar(%{email: email} = assigns) when email in [nil, ""], do: ~H""
+
+  def avatar(%{email: email} = assigns) do
+    if email == ApiaryWeb.People.former_member() do
+      ~H"{@email}"
+    else
+      you = assigns.kind == "self" or email == assigns.reader
+
+      assigns =
+        assign(assigns,
+          you: you,
+          hint: if(you, do: gettext("%{email} (you)", email: email), else: email),
+          letter: email |> String.first() |> String.upcase()
+        )
+
+      ~H"""
+      <abbr
+        class={["term tooltip inline-flex flex-none rounded-full align-middle !no-underline", @class]}
+        tabindex={!@in_link && "0"}
+        data-tip={@hint}
+        aria-label={@hint}
+      ><span
+        aria-hidden="true"
+        class={[
+          "grid place-items-center rounded-full font-semibold uppercase leading-none",
+          @size == "xs" && "size-[18px] text-[10.5px]",
+          @size == "sm" && "size-6 text-[11px]",
+          @size == "md" && "size-7 text-xs",
+          @size == "lg" && "size-8 text-[13px]",
+          if(@you,
+            do: "bg-primary-soft text-primary-soft-content",
+            else: "bg-base-300 text-muted ring-1 ring-inset ring-line"
+          )
+        ]}
+      >{@letter}</span><span class="sr-only">{@hint}</span></abbr>
+      """
+    end
+  end
 
   def avatar(assigns) do
     ~H"""
@@ -1433,11 +1521,26 @@ defmodule ApiaryWeb.CoreComponents do
   `inline_confirm/1`, in one cell across the row; where the table is wider than its box,
   the confirmation stays in the box's view however far the table is scrolled sideways.
 
+  A column's header cell holds its `label`, as text. Where it holds a control instead, as
+  a leading column of checkboxes holds one that selects every row, the column takes a
+  `key` and a `header` slot with that key as its `col` gives the cell's content in place
+  of the label.
+
   ## Examples
 
       <.table id="users" label="Users" rows={@users}>
         <:col :let={user} label="Name" kind="title">{user.name}</:col>
         <:col :let={user} label="Joined" from="sm">{Format.date(user.inserted_at)}</:col>
+      </.table>
+
+      <.table id="keys" label="Access keys" rows={@keys}>
+        <:header col="pick">
+          <input type="checkbox" aria-label="Select every key" phx-click="select_all" />
+        </:header>
+        <:col :let={key} key="pick">
+          <input type="checkbox" aria-label={key.name} phx-click="select" phx-value-id={key.id} />
+        </:col>
+        <:col :let={key} label="Name" kind="title">{key.name}</:col>
       </.table>
   """
   attr :id, :string, required: true
@@ -1458,6 +1561,12 @@ defmodule ApiaryWeb.CoreComponents do
     attr :class, :string
     attr :kind, :string, doc: "title, hot, faint or num"
     attr :from, :string, doc: "sm, md or lg: the table width from which the column shows"
+    attr :key, :string, doc: "the name a `header` slot gives the column by"
+  end
+
+  slot :header,
+    doc: "the content of a column's header cell in place of its label, as a checkbox" do
+    attr :col, :string, required: true, doc: "the `key` of the column"
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -1491,7 +1600,9 @@ defmodule ApiaryWeb.CoreComponents do
               scope="col"
               class={[head_class(col), col[:class]]}
             >
-              {col[:label]}<span :if={col[:sr_label]} class="sr-only">{col[:sr_label]}</span>
+              {if header = col_header(@header, col),
+                do: render_slot(header),
+                else: col[:label]}<span :if={col[:sr_label]} class="sr-only">{col[:sr_label]}</span>
             </th>
             <th :if={@action != []} scope="col" class="w-px">
               <span class="sr-only">{gettext("Actions")}</span>
@@ -1538,6 +1649,11 @@ defmodule ApiaryWeb.CoreComponents do
     </div>
     """
   end
+
+  defp col_header(headers, %{key: key}) when is_binary(key),
+    do: Enum.find(headers, &(&1[:col] == key))
+
+  defp col_header(_headers, _col), do: nil
 
   defp confirming?(nil, _row_id, _row), do: false
   defp confirming?(_id, nil, _row), do: false
@@ -1662,6 +1778,7 @@ defmodule ApiaryWeb.CoreComponents do
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the trigger's accessible name, naming the row"
+  attr :title, :string, default: nil, doc: "the trigger's tooltip, where it has one"
   attr :class, :any, default: nil
   slot :inner_block
 
@@ -1684,6 +1801,7 @@ defmodule ApiaryWeb.CoreComponents do
         aria-haspopup="menu"
         aria-expanded="false"
         aria-label={@label}
+        title={@title}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.icon name="hero-ellipsis-horizontal-micro" class="size-4" />
@@ -1904,8 +2022,9 @@ defmodule ApiaryWeb.CoreComponents do
 
   `suggest` makes the field a combobox (the ARIA list autocomplete, manual selection): the
   form sends `suggest` 150 ms after the reader stops typing, and the page answers with
-  `suggestions`, `%{value:, detail:}` each, at most a handful, listed under the field as
-  options of the listbox `<id>-hosts`, and `status`, what a screen reader is told of them.
+  `suggestions`, `%{value:, label:, detail:}` each, at most a handful, listed under the
+  field as options of the listbox `<id>-hosts`, and `status`, what a screen reader is told
+  of them. An option shows its `label`, else its `value`; the value is what is chosen.
   The `HostSuggest` hook moves among them with ↑ and ↓; Enter or a click puts the chosen
   one in place of the word being typed, as `host:<value>`, and sends the query; Escape,
   Tab and leaving the field close the list.
@@ -1919,7 +2038,11 @@ defmodule ApiaryWeb.CoreComponents do
   attr :live, :boolean, default: true
   attr :class, :any, default: nil
   attr :suggest, :string, default: nil, doc: "the event that asks for suggestions; nil for none"
-  attr :suggestions, :list, default: [], doc: "`%{value:, detail:}` each, as the page answered"
+
+  attr :suggestions, :list,
+    default: [],
+    doc: "`%{value:, label:, detail:}` each, as the page answered; `label` is optional"
+
   attr :suggestions_label, :string, default: nil, doc: "the listbox's accessible name"
   attr :status, :string, default: nil, doc: "what the answer is, for a screen reader"
 
@@ -1970,7 +2093,7 @@ defmodule ApiaryWeb.CoreComponents do
           aria-selected="false"
           data-value={suggestion.value}
         >
-          <span class="q-suggest-v"><bdi>{suggestion.value}</bdi></span>
+          <span class="q-suggest-v"><bdi>{suggestion[:label] || suggestion.value}</bdi></span>
           <span :if={suggestion[:detail]} class="q-suggest-d">{suggestion.detail}</span>
         </li>
       </ul>
@@ -1993,9 +2116,16 @@ defmodule ApiaryWeb.CoreComponents do
   the browser (`Phoenix.LiveView.JS`), so a section opens at once and stays open while
   the page patches. A section marked `rail` is one the page's rail does from 1280 px, and
   shows only below it.
+
+  `label` is what the button says and what names the menu; it is Filter unless given.
   """
   attr :id, :string, required: true
   attr :count, :integer, default: 0
+
+  attr :label, :string,
+    default: nil,
+    doc: "what the button says, and the menu's name; Filter unless given"
+
   slot :inner_block
 
   slot :section do
@@ -2027,13 +2157,13 @@ defmodule ApiaryWeb.CoreComponents do
           |> JS.hide(to: "##{@id}-panel .q-fm-section")
         }
       >
-        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Filter")}
+        <.icon name="hero-funnel" class="size-4 text-faint" />{filter_label(@label)}
         <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
       </button>
       <div
         id={"#{@id}-panel"}
         role="group"
-        aria-label={gettext("Filter")}
+        aria-label={filter_label(@label)}
         class="dropdown-content q-fm-panel"
         tabindex="-1"
       >
@@ -2112,13 +2242,13 @@ defmodule ApiaryWeb.CoreComponents do
         aria-expanded="false"
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Filter")}
+        <.icon name="hero-funnel" class="size-4 text-faint" />{filter_label(@label)}
         <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
       </button>
       <ul
         class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"
         role="menu"
-        aria-label={gettext("Filter")}
+        aria-label={filter_label(@label)}
         popover="manual"
         phx-mounted={JS.ignore_attributes(["style"])}
       >
@@ -2127,6 +2257,9 @@ defmodule ApiaryWeb.CoreComponents do
     </div>
     """
   end
+
+  defp filter_label(nil), do: gettext("Filter")
+  defp filter_label(label), do: label
 
   @doc """
   A list's Sort: the orders it can be read in, as `menu_item/1`s with `checked`; the
@@ -2229,10 +2362,17 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   A timestamp as people say it, up to seven days back ("2 minutes ago",
-  "Yesterday, 17:20"), then the date (`ApiaryWeb.Format.time_ago/2`). The full time with
-  its zone is in the `title`.
+  "Yesterday, 17:20"), then the date (`ApiaryWeb.Format.time_ago/3`). The full time with
+  its zone is in the `title`. With `case={:inline}`, it is the form for a time that follows
+  other words in a sentence: "just now", "yesterday, 17:20".
   """
   attr :at, :any, required: true
+
+  attr :case, :atom,
+    default: :start,
+    values: [:start, :inline],
+    doc: "`:inline` for a time that follows other words in a sentence"
+
   attr :class, :any, default: nil
 
   def time_ago(assigns) do
@@ -2242,7 +2382,7 @@ defmodule ApiaryWeb.CoreComponents do
       title={Format.datetime(@at, zone: true)}
       class={@class}
     >
-      {Format.time_ago(@at)}
+      {Format.time_ago(@at, DateTime.utc_now(), case: @case)}
     </time>
     """
   end

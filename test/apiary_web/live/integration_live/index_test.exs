@@ -67,8 +67,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     test "starts empty, with a card to add each thing by name", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
 
-      assert has_element?(lv, "#set-up-part h2", "Set up in this workspace")
-      assert has_element?(lv, "#connections-empty", "Nothing is set up in this workspace yet.")
+      assert has_element?(lv, "#set-up-part h2", "Set up")
+      assert has_element?(lv, "#connections-empty", "Nothing is set up yet.")
       assert has_element?(lv, "#add-part h2", "Add an integration")
 
       assert has_element?(lv, "#add-card-runtime-claude h4", "Claude Code")
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-runtime-claude",
-               "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token."
+               "Anthropic's coding agent."
              )
 
       assert has_element?(lv, "#add-card-api-sentry h4", "Sentry")
@@ -386,16 +386,22 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
              ]
 
       assert has_element?(lv, "#set-up-part thead th", "Applies to")
+
+      # Kind shows from 600 px of the table; on a phone the name leads to the page that
+      # names it.
+      assert has_element?(lv, "#set-up-part thead th.q-from-sm", "Kind")
+      refute has_element?(lv, "#set-up-part thead th.q-from-sm", "Applies to")
       refute render(lv) =~ "For runs in"
 
       assert has_element?(lv, "#set-up-part .q-part-n", "3")
       refute has_element?(lv, "#connections-empty")
 
       row = "#connections #connection-#{runtime.public_id}"
-      assert has_element?(lv, row, "Every repository")
+      assert has_element?(lv, row, "Every workspace")
       assert has_element?(lv, "#{row} a", "Claude Code")
       assert has_element?(lv, "#{row} a .q-mono", "(claude)")
       assert has_element?(lv, row, "Agent")
+      assert has_element?(lv, "#{row} td.q-from-sm", "Agent")
       refute has_element?(lv, row, "Runtime")
 
       row = "#connections #connection-#{integration.public_id}"
@@ -498,7 +504,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#settings-section-integrations header",
-               "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's settings. Each applies to every repository or to the ones you choose."
+               "The agents, outside APIs and programs this organisation sets up, each with its settings. Not Qory Apiary's settings. Each applies to every workspace or to the ones you choose."
              )
 
       assert page_title(lv) =~
@@ -531,7 +537,12 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
       assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
       refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
-      assert has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
+      # The form offers none of the runtime's variables of a model key, and the runtime
+      # declares no secret, so it lists no host.
+      refute has_element?(lv, "#runtime-catalogue", "Its hosts")
+      refute has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
+      refute has_element?(lv, "#runtime-catalogue", "CLAUDE_CODE_OAUTH_TOKEN")
+      refute has_element?(lv, "#runtime-catalogue", "It declares")
       assert has_element?(lv, "#connection_runtime[aria-describedby=runtime-catalogue]")
 
       {:error, {:live_redirect, %{to: to}}} =
@@ -559,14 +570,14 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert html =~ "It would overlap with Claude Code (claude)"
     end
 
-    test "Set up an API sets one up from a built-in API, chosen targets at once",
+    test "Set up an API sets one up from a built-in API, chosen workspaces at once",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-service"))
 
       assert has_element?(
                lv,
                "#new-service-page",
-               "Choose an outside API: a built-in one, or a custom API of this workspace."
+               "Choose an outside API: a built-in one, or a custom API of this organisation."
              )
 
       assert has_element?(lv, "#new-service-form fieldset legend", "Applies to")

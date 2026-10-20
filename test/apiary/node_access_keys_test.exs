@@ -73,6 +73,15 @@ defmodule Apiary.NodeAccessKeysTest do
       refute key.allow_secrets
     end
 
+    test "its label is refused with a control character or a bidirectional control" do
+      for cp <- [0x7, 0x85, 0x202E, 0x2069, 0x200E] do
+        changeset = AccessKey.changeset(%AccessKey{}, %{label: "build#{<<cp::utf8>>}01"})
+        assert errors_on(changeset) == %{label: ["must not contain control characters"]}
+      end
+
+      assert AccessKey.changeset(%AccessKey{}, %{label: "👩#{<<0x200D::utf8>>}💻 laptop"}).valid?
+    end
+
     test "is refused with one message, whatever is wrong with it", ctx do
       %{scope: scope, node: node} = ctx
       pair = ed25519_key_pair()
@@ -495,7 +504,8 @@ defmodule Apiary.NodeAccessKeysTest do
                  label_hint: "build-01"
                })
 
-      assert code =~ ~r/\Aqec_[0-9A-HJKMNP-TV-Z]{26}\z/
+      prefix = Regex.escape(EnrolmentCode.prefix(:node))
+      assert code =~ ~r/\A#{prefix}[0-9A-HJKMNP-TV-Z]{26}\z/
       assert row.code_sha256 == :crypto.hash(:sha256, code)
       assert row.allow_secrets and row.label_hint == "build-01"
       assert DateTime.diff(row.expires_at, row.inserted_at, :second) in (15 * 60 - 1)..(15 * 60)
@@ -511,6 +521,30 @@ defmodule Apiary.NodeAccessKeysTest do
       refute inspect(entry) =~ code
     end
 
+    test "a code of a node, a node pool or a gateway carries the prefix of its node's kind",
+         ctx do
+      %{scope: scope, node: node} = ctx
+      pool = pool_fixture(scope, %{name: "spot-runners"})
+      gateway = organisation_gateway_fixture(scope)
+
+      prefixes =
+        for {target, kind} <- [{node, :node}, {pool, :pool}, {gateway, :gateway}] do
+          {:ok, _row, code} = AccessKeys.create_enrolment_code(scope, target, %{})
+          prefix = EnrolmentCode.prefix(kind)
+          assert String.starts_with?(code, prefix)
+          assert byte_size(code) == byte_size(prefix) + 26
+          assert EnrolmentCode.of_kind?(code, kind)
+          prefix
+        end
+
+      assert length(Enum.uniq(prefixes)) == 3
+
+      # Every kind's prefix is the contract's pattern's, and no two kinds share one.
+      all = EnrolmentCode.prefixes() |> Map.values()
+      assert length(Enum.uniq(all)) == map_size(EnrolmentCode.prefixes())
+      for prefix <- all, do: assert(prefix =~ ~r/\Aqec[npgi]_\z/)
+    end
+
     test "a label hint is a name Forager would send", ctx do
       assert {:error, changeset} =
                AccessKeys.create_enrolment_code(ctx.scope, ctx.node, %{label_hint: "-bad name"})
@@ -518,27 +552,34 @@ defmodule Apiary.NodeAccessKeysTest do
       assert errors_on(changeset).label_hint
     end
 
-    test "a code is read as a person may type it" do
-      code = EnrolmentCode.generate()
-      "qec_" <> body = code
+    test "a code is read as a person may type it, every kind's prefix in either case" do
+      for {kind, prefix} <- EnrolmentCode.prefixes() do
+        code = EnrolmentCode.generate(kind)
+        body = String.replace_prefix(code, prefix, "")
 
-      grouped =
-        "QEC_" <>
-          (body
-           |> String.downcase()
-           |> String.graphemes()
-           |> Enum.chunk_every(4)
-           |> Enum.join("-"))
+        grouped =
+          String.upcase(prefix) <>
+            (body
+             |> String.downcase()
+             |> String.graphemes()
+             |> Enum.chunk_every(4)
+             |> Enum.join("-"))
 
-      assert EnrolmentCode.normalise(grouped) == {:ok, code}
+        assert EnrolmentCode.normalise(grouped) == {:ok, code}
 
-      assert EnrolmentCode.normalise(
-               "qec_" <> String.duplicate("o", 13) <> String.duplicate("l", 13)
-             ) ==
-               {:ok, "qec_" <> String.duplicate("0", 13) <> String.duplicate("1", 13)}
+        assert EnrolmentCode.normalise(
+                 prefix <> String.duplicate("o", 13) <> String.duplicate("l", 13)
+               ) ==
+                 {:ok, prefix <> String.duplicate("0", 13) <> String.duplicate("1", 13)}
 
-      assert EnrolmentCode.normalise("qec_" <> String.duplicate("U", 26)) == :error
-      assert EnrolmentCode.normalise("qec_" <> String.duplicate("A", 25)) == :error
+        assert EnrolmentCode.normalise(prefix <> String.duplicate("U", 26)) == :error
+        assert EnrolmentCode.normalise(prefix <> String.duplicate("A", 25)) == :error
+
+        # Letters outside ASCII that a Unicode upper case would read as the alphabet's.
+        assert EnrolmentCode.normalise(prefix <> String.duplicate("ſ", 26)) == :error
+        assert EnrolmentCode.normalise(prefix <> String.duplicate("ı", 26)) == :error
+      end
+
       assert EnrolmentCode.normalise("qrk_" <> String.duplicate("A", 26)) == :error
     end
 
@@ -935,7 +976,7 @@ defmodule Apiary.NodeAccessKeysTest do
       text = inspect(announced)
       refute text =~ code
       refute text =~ pair.encoded
-      refute text =~ ~r/qak_|qec_/i
+      refute text =~ ~r/qak_|qec[a-z]?_/i
       assert AccessKeys.topic(scope.workspace.id, node.id) =~ node.id
     end
 
@@ -993,7 +1034,7 @@ defmodule Apiary.NodeAccessKeysTest do
       # The ids alone: not the code, nor its hash.
       text = inspect(announced, limit: :infinity, printable_limit: :infinity)
       refute text =~ code
-      refute text =~ ~r/qec_/i
+      refute text =~ ~r/qec[a-z]?_/i
       refute text =~ inspect(row.code_sha256)
     end
 

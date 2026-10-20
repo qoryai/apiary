@@ -218,15 +218,11 @@ defmodule ApiaryWeb.JumpController do
   defp targets(%{workspace: %{} = workspace} = scope, text) when text != "" do
     items =
       if Access.can?(scope, :"run.read", workspace) do
-        targets = Runs.search_targets(scope, text, @per_group)
-        # Each at its address: one read of the paths listed.
-        shared = Runs.shared_paths(scope, Enum.map(targets, & &1.path))
-
-        for target <- targets do
+        for target <- Runs.search_targets(scope, text, @per_group) do
           item(
-            target.path,
-            target.system,
-            ApiaryWeb.TargetComponents.target_path(scope, target.system, target.path, [], shared),
+            Apiary.ExternalText.sent(target.path),
+            Apiary.ExternalText.sent(target.system),
+            ApiaryWeb.TargetComponents.target_path(scope, target),
             "hero-folder"
           )
         end
@@ -245,8 +241,8 @@ defmodule ApiaryWeb.JumpController do
         for run <- Runs.search_runs(scope, text, @per_group) do
           item(
             run_label(run),
-            run.target_path || ApiaryWeb.RunComponents.state_label(run.state),
-            ~p"/#{scope.organisation}/#{workspace}/runs/#{run.run_id}",
+            run_detail(run),
+            ~p"/#{scope.organisation}/#{workspace}/runs/#{run.public_id}",
             "hero-play-circle"
           )
         end
@@ -259,10 +255,21 @@ defmodule ApiaryWeb.JumpController do
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
-  defp run_label(run) do
-    short_id = ApiaryWeb.RunComponents.short_id(run.run_id)
+  # Where a run ran, else its state's word: a path sent with nothing left to show is
+  # marked, since it was sent (`Apiary.ExternalText.sent/1`).
+  defp run_detail(run) do
+    case Apiary.ExternalText.sent(run.target_path) do
+      nil -> ApiaryWeb.RunComponents.state_label(run.state)
+      path -> path
+    end
+  end
 
-    case ApiaryWeb.RunComponents.given_title(run) do
+  defp run_label(run) do
+    short_id = ApiaryWeb.RunComponents.short_id(run.public_id)
+
+    # A title with nothing left to show, or only whitespace, is no title
+    # (`Apiary.ExternalText.present/1`).
+    case Apiary.ExternalText.present(ApiaryWeb.RunComponents.given_title(run)) do
       nil -> short_id
       title -> "#{short_id} · #{title}"
     end

@@ -12,8 +12,8 @@ defmodule Apiary.Runs.Outcome do
   the caller's to ask (`fresh?/2`).
 
   `reason` is an open code: a lower-case letter, then lower-case letters, digits and `_`,
-  64 at most. A reason that is not one, or that is one of the codes Forager keeps for
-  itself (`reserved_reasons/0`), is dropped, and the outcome is kept without it. An
+  64 at most. A reason that is not one, or that is one of the codes Forager or Qory keeps
+  for itself (`reserved_reasons/0`), is dropped, and the outcome is kept without it. An
   outcome with no `state` is `cancelled` with the reason `stopped`.
 
   `give/4` stores it on the run. A key `Apiary.Access` does not let post
@@ -44,9 +44,10 @@ defmodule Apiary.Runs.Outcome do
 
   require Logger
 
-  alias Apiary.{Access, Repo, Runs}
+  alias Apiary.{Access, Dispatches, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.RunEnd
   alias Apiary.Runs.{Batch, Fold, Projector, Run, Sender}
 
   @version "version"
@@ -59,11 +60,12 @@ defmodule Apiary.Runs.Outcome do
   @states ~w(succeeded failed cancelled)
   @code ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons Forager writes for itself in `dev.qory.run.exited`, and the old names it
-  # never writes: a starter's outcome may not give one.
+  # never writes, and `released`, which Qory sets itself for a run its starter released
+  # (`Apiary.Runs.Fold.settle/1`): a starter's outcome may not give one.
   @reserved ~w(
     timeout interrupted quiet credential_expired stopped session_lost gateway_lost
     batch_refused credential_check_unreachable credential_check_invalid run_closed
-    run_ended_at_issuer issuer_unreachable issuer_answer_invalid
+    run_ended_at_issuer issuer_unreachable issuer_answer_invalid released
   )
   @max_skew_seconds 300
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
@@ -77,7 +79,10 @@ defmodule Apiary.Runs.Outcome do
   @doc "The most seconds an outcome's `time` may be from the server's clock."
   def max_skew_seconds, do: @max_skew_seconds
 
-  @doc "The reasons a starter may not give: Forager's reasons, and the old names it never writes."
+  @doc """
+  The reasons a starter may not give: Forager's reasons, the old names it never writes, and
+  `released`, which Qory sets itself.
+  """
   def reserved_reasons, do: @reserved
 
   @doc "Reads an outcome's decoded body: see the moduledoc for the rules."
@@ -147,11 +152,12 @@ defmodule Apiary.Runs.Outcome do
 
     with :ok <- may_post(Scope.for_access_key(access_key)),
          true <- Batch.uuid?(run_id) || {:error, :not_found},
-         %Run{id: id} <- held(access_key, run_id) || {:error, :not_found},
-         {:ok, %{run: run, repeated: repeated}} = given <-
-           store(id, access_key, outcome, digest, now) do
+         %Run{} = held <- held(access_key, run_id) || {:error, :not_found},
+         {:ok, %{run: run, repeated: repeated, changed: changed}} <-
+           store(held, access_key, outcome, digest, now) do
       if not repeated, do: Runs.broadcast_changed(run)
-      given
+      Dispatches.broadcast(changed)
+      {:ok, %{run: run, repeated: repeated}}
     end
   rescue
     exception ->
@@ -173,15 +179,23 @@ defmodule Apiary.Runs.Outcome do
   defp held(access_key, run_id) do
     Repo.one(
       from r in Run,
-        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^run_id,
-        select: struct(r, [:id])
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^run_id,
+        select: struct(r, [:id, :dispatch_run_id])
     )
   end
 
   # Under the run's projection lock and its row's, as a projection writes it, so a pass
   # and the outcome never write over each other: whichever comes second reads the other's.
-  defp store(id, access_key, outcome, digest, now) do
+  # A run a workspace's queue handed over has the queue's run locked before them, as every
+  # path that locks the two does, a prebuild's environment record before that, and ends it
+  # with the outcome (`run_ended`) unless it ended before, lost, released or, for a
+  # prebuild, by its prebuilt, a prebuild so ended recording its last build as failed
+  # (`Apiary.Dispatches.RunEnd`): the workspaces whose slots that changed are told once the
+  # transaction commits.
+  defp store(%Run{id: id, dispatch_run_id: dispatch_run_id}, access_key, outcome, digest, now) do
     Repo.transact(fn ->
+      held = RunEnd.hold(dispatch_run_id)
+      dispatch_run = RunEnd.lock(dispatch_run_id)
       Projector.lock(id)
       run = Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
 
@@ -193,7 +207,7 @@ defmodule Apiary.Runs.Outcome do
           {:error, :not_found}
 
         same?(run, outcome) ->
-          {:ok, %{run: run, repeated: true}}
+          {:ok, %{run: run, repeated: true, changed: []}}
 
         not is_nil(run.events_pruned_at) ->
           {:error, :not_found}
@@ -202,7 +216,9 @@ defmodule Apiary.Runs.Outcome do
           {:error, :outcome_given}
 
         true ->
-          {:ok, %{run: put(run, outcome, digest, now), repeated: false}}
+          run = put(run, outcome, digest, now)
+          changed = RunEnd.finish(dispatch_run, run, :run_ended, now, held)
+          {:ok, %{run: run, repeated: false, changed: changed}}
       end
     end)
   end

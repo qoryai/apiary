@@ -264,7 +264,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_patch(view, workspace_path(scope, "/policy/rules/new"))
       assert has_element?(view, "#policy-rule-form")
 
-      type(view, %{host: "api.example", paths: ""})
+      type(view, %{host: "api.example"})
       add(view)
 
       assert has_element?(view, "#policy-rules tr.q-fresh", "api.example")
@@ -301,6 +301,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#policy-rule-form")
     end
 
+    @tag needs: :path_rules
     test "reads a host, a suffix and paths back before saving", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
@@ -321,6 +322,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "Allow api.example on 2 paths : everything below /v1/ , and /health exactly."
     end
 
+    @tag needs: :path_rules
     test "a deny reads back, and takes no paths", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
@@ -341,7 +343,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
 
-      type(view, %{host: "https://API.Example:443/v1/messages", paths: ""})
+      type(view, %{host: "https://API.Example:443/v1/messages"})
 
       assert text(view, "#policy-rule-host-error") =~
                "A rule names a host and nothing else: lower case, no scheme, no port, no path."
@@ -356,6 +358,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-rule-reads") =~ "Allow api.example on 1 path"
     end
 
+    @tag needs: :path_rules
     test "says what is wrong in the contract's grammar", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
@@ -376,7 +379,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
 
-      type(view, %{host: "registry.example", paths: ""})
+      type(view, %{host: "registry.example"})
 
       assert text(view, "#policy-rule-host-error") =~
                "registry.example is already allowed for the workspace"
@@ -402,6 +405,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-rule-add") == "Replace with deny"
     end
 
+    @tag needs: :path_rules
     test "a host held to paths is not opened without saying so", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example", paths: ["/v1/*"]})
       view = open(conn, scope)
@@ -425,7 +429,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.internal.example"})
       view = open(conn, scope)
 
-      type(view, %{host: "tax.internal.example", paths: ""})
+      type(view, %{host: "tax.internal.example"})
       assert text(view, "#policy-rule-reads") =~ "Already allowed by *.internal.example"
       assert has_element?(view, "#policy-rule-preview.q-rule-preview-note")
       add(view)
@@ -469,7 +473,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example", paths: ["/v1/*"]})
       view = open(conn, scope)
 
-      type(view, %{host: "files.cdn.example", paths: ""})
+      type(view, %{host: "files.cdn.example"})
       add(view)
 
       assert text(view, "#policy-rule-write-error") =~ "held to paths"
@@ -762,7 +766,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#rule-#{id}.q-confirming #lock-confirm")
       refute has_element?(view, "dialog#lock-confirm")
       assert text(view, "#lock-confirm") =~ "1 repository rule stops being in force"
-      # A target is named as it is addressed: its path, where no other system has it.
+      # A target is named by its path, with its system where another system shares the
+      # path: here no other system has it. The host in brackets is the rule's.
       assert text(view, "#lock-confirm") =~ ": acme/shop (github.example)"
       refute rule(scope, "github.example").locked
 
@@ -837,6 +842,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
     end
 
+    @tag needs: :path_rules
     test "Edit opens the rule's page, its paths in the field", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       id = rule(scope, "api.example").id
@@ -941,7 +947,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     test "edits what is not locked", %{scope: scope} = context do
       view = open(as_member(context), scope)
 
-      type(view, %{host: "api.example", paths: ""})
+      type(view, %{host: "api.example"})
       add(view)
       assert rule(scope, "api.example")
     end
@@ -962,7 +968,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert attribute(view, known, "data-tip") =~
                ~r/\A#{by}[^.]+\. Only an owner can change or unlock it\.\z/
 
-      type(view, %{host: "*.paste.example", paths: ""})
+      type(view, %{host: "*.paste.example"})
 
       assert text(view, "#policy-rule-refusal") ==
                "Only an owner can lock, unlock or change a locked rule."
@@ -975,14 +981,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert attribute(view, known, "data-tip") =~
                ~r/\A#{by}[^.]+\. #{Regex.escape(sentence)}\z/
 
-      type(view, %{host: "*.paste.example", paths: ""})
+      type(view, %{host: "*.paste.example"})
       assert text(view, "#policy-rule-refusal") == sentence
     end
 
     test "is refused on the New rule page on a locked rule", %{scope: scope} = context do
       view = open(as_member(context), scope)
 
-      type(view, %{host: "*.paste.example", paths: ""})
+      type(view, %{host: "*.paste.example"})
 
       assert text(view, "#policy-rule-refusal") =~
                "Only an owner can lock, unlock or change a locked rule."
@@ -1164,7 +1170,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#mode-would .q-dest-tool") =~ "files.tools.internal"
     end
 
-    test "what enforce would deny isolates each host, a tool's too, so a bidi override reorders nothing",
+    test "what enforce would deny cleans and isolates each host, a tool's too, so nothing is reordered",
          %{conn: conn, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"
 
@@ -1178,10 +1184,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope)
       pick_mode(view, "enforce")
 
-      assert has_element?(view, "#mode-would .q-dest:not(.q-dest-tool) > bdi", host)
-      assert has_element?(view, "#mode-would .q-dest-tool .text-faint > bdi", "tool." <> host)
-      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>"
-      refute render(view) =~ "elpmaxe.<script>"
+      # The override is dropped (`Apiary.ExternalText.sent/1`), the rest isolated.
+      shown = "evillpmaxe.<script>"
+      assert has_element?(view, "#mode-would .q-dest:not(.q-dest-tool) > bdi", shown)
+      assert has_element?(view, "#mode-would .q-dest-tool .text-faint > bdi", "tool." <> shown)
+      assert render(view) =~ ~r{<bdi[^>]*>evillpmaxe.&lt;script&gt;</bdi>}
+      refute view |> element("#mode-would") |> render() =~ "\u202E"
     end
 
     test "going to enforce asks, lists what would be denied, and allows from the list",
@@ -1472,6 +1480,22 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "1 repository overrides the mode and does not change."
     end
 
+    test "the targets list names a target's system and path cleaned, in its row and its title",
+         %{conn: conn, scope: scope} do
+      path = "acme/\u202Ewiki\u200B"
+      started_run(scope, %{"forge" => "git\u202E.example", "repository" => path})
+      started_run(scope, %{"forge" => "lab.example", "repository" => path})
+
+      view = open(conn, scope, "/policy/targets")
+      list = view |> element("#policy-targets") |> render()
+      assert list =~ ~s(title="git.example/acme/wiki")
+
+      assert list =~
+               ~r{<bdi[^>]*>git.example</bdi>/</span><span[^>]*class="q-target-path"><bdi[^>]*>acme/wiki</bdi>}
+
+      refute list |> String.replace(~r/ (id|href)="[^"]*"/, "") =~ ~r/[\x{202E}\x{200B}]/u
+    end
+
     test "the targets list has a Mode column, and ?mode=own keeps those with their own",
          %{conn: conn, docs: docs, scope: scope} do
       view = open(conn, scope, "/policy/targets")
@@ -1523,18 +1547,21 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#policy-targets") =~ "Follows the workspace"
 
+      # The repository's name is cut to its column, whole in its title.
+      assert has_element?(view, "#target-#{target.id} a.q-target-name.q-cut[title$='/acme/shop']")
+
       assert has_element?(
                view,
-               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy")}']"
+               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/#{target.public_id}/policy")}']"
              )
 
       assert has_element?(
                view,
-               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy/versions/1")}']"
+               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/#{target.public_id}/policy/versions/1")}']"
              )
     end
 
-    test "a target whose path another system has is linked at its address, with its system",
+    test "a target whose path another system has is linked by its id, named with its system",
          %{conn: conn, scope: scope} do
       started_run(scope, shop())
       started_run(scope, shop("gitlab.example"))
@@ -1545,8 +1572,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.deny(scope, target, %{host: "registry.example"})
 
       view = open(conn, scope, "/policy/targets")
-      base = workspace_path(scope, "/targets/gitlab.example/acme/shop/-/policy")
-      assert has_element?(view, "#target-#{target.id} a[href='#{base}']")
+      base = workspace_path(scope, "/targets/#{target.public_id}/policy")
+
+      assert has_element?(
+               view,
+               "#target-#{target.id} a[href='#{base}']",
+               "gitlab.example/acme/shop"
+             )
+
       assert has_element?(view, "#target-#{target.id} a[href='#{base}/versions/1']")
     end
   end
@@ -1574,7 +1607,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Apiary.Accounts.delete_user(member)
 
       view = open(conn, scope)
-      type(view, %{host: "registry.example", paths: ""})
+      type(view, %{host: "registry.example"})
 
       assert text(view, "#policy-rule-host-error") =~
                "registry.example is already allowed for the workspace, by Former member on"
@@ -1593,13 +1626,91 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#rule-#{rule.id} .q-pr-by") =~ local
       refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
 
-      type(view, %{host: "registry.example", paths: ""})
+      type(view, %{host: "registry.example"})
 
       assert text(view, "#policy-rule-host-error") =~
                "registry.example is already allowed for the workspace, by #{local} on"
 
       view = open(conn, scope, "/policy/history")
-      assert text(view, "#history-list") =~ "#{user.email} allowed registry.example"
+
+      assert text(view, "#history-list") =~
+               "#{String.upcase(String.first(user.email))} #{user.email} allowed registry.example"
+
+      assert has_element?(view, ~s{#history-list summary abbr[data-tip="#{user.email}"]})
+      refute has_element?(view, "#history-list summary abbr[tabindex]")
+    end
+  end
+
+  describe "who made a rule, not a member of the organisation at all" do
+    test "is named beside the rule by their account", %{conn: conn, scope: scope} do
+      user = Apiary.AccountsFixtures.user_fixture()
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "registry.example"})
+      rule |> Ecto.Changeset.change(created_by_id: user.id) |> Apiary.Repo.update!()
+
+      view = open(conn, scope)
+
+      assert text(view, "#rule-#{rule.id} .q-pr-by") =~
+               Apiary.Accounts.User.short_name(user.email)
+
+      refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
+    end
+  end
+
+  describe "who made a version" do
+    # The version page of the workspace's version that `member` made by allowing a host,
+    # once `change` ran on that version: its strip's text and its line in Versions.
+    defp version_of(conn, scope, member, change) do
+      {:ok, _rule} = Policy.allow(member, nil, %{host: "registry.example"})
+      %{items: [latest | _]} = Policy.list_configurations(scope, nil, 1)
+      assert latest.changed_by_id == member.user.id
+      change.(latest)
+
+      view = open(conn, scope, "/policy/versions/#{latest.version}")
+      {text(view, "#version-strip"), text(view, "#ver-#{latest.version}")}
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+
+      {strip, line} =
+        version_of(conn, scope, member.scope, fn _version ->
+          {:ok, _} = Apiary.Organisations.remove_member(scope, member.membership.id)
+        end)
+
+      letter = "#{String.upcase(String.first(member.user.email))} #{member.user.email}"
+      assert strip =~ "Changed by #{letter} "
+      assert line =~ "#{letter} ·"
+      refute strip <> line =~ "Former member"
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+
+      {strip, line} =
+        version_of(conn, scope, member.scope, fn _version ->
+          {:ok, _} = Apiary.Accounts.delete_user(member.scope)
+        end)
+
+      assert strip =~ "Changed by Former member "
+      assert line =~ "Former member"
+      refute strip <> line =~ Apiary.Accounts.User.short_name(member.user.email)
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      member = member_fixture(scope, :member)
+      user = Apiary.AccountsFixtures.user_fixture()
+
+      {strip, line} =
+        version_of(conn, scope, member.scope, fn version ->
+          version |> Ecto.Changeset.change(changed_by_id: user.id) |> Apiary.Repo.update!()
+        end)
+
+      letter = "#{String.upcase(String.first(user.email))} #{user.email}"
+      assert strip =~ "Changed by #{letter} "
+      assert line =~ "#{letter} ·"
+      refute strip <> line =~ "Former member"
     end
   end
 
@@ -1624,7 +1735,21 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-summary") =~ "3 versions"
 
       assert text(view, "#history-list") =~
-               "#{user.email} switched the workspace's default mode from observe to enforce"
+               "#{String.upcase(String.first(user.email))} #{user.email} (you) switched the workspace's default mode from observe to enforce"
+
+      # One letter a row: the sentence's subject, with no letter column beside it.
+      summaries =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#history-list details > summary")
+
+      assert Enum.count(summaries) == 4
+
+      for summary <- summaries do
+        assert summary |> LazyHTML.query("abbr[data-tip]") |> Enum.count() == 1
+        assert summary |> LazyHTML.query(".avatar") |> Enum.count() == 0
+      end
 
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"
@@ -1708,6 +1833,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#ver-2[href='#{document}'][aria-current=page]")
       assert has_element?(view, "#ver-1[href='#{older}']")
       refute has_element?(view, "#ver-1[aria-current]")
+
+      # Who made each version: the letter, the address its hint, no tab stop in the link.
+      who = scope.user.email
+      assert has_element?(view, ~s{#ver-2 small abbr[data-tip="#{who} (you)"]})
+      refute has_element?(view, "#ver-2 small abbr[tabindex]")
+      refute has_element?(view, "#ver-2 small[title]")
 
       # On the version in force's own page, its entry is the version shown, not the page.
       view = open(conn, scope, "/policy/versions/2")

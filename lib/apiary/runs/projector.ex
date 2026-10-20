@@ -51,7 +51,7 @@ defmodule Apiary.Runs.Projector do
     dir interactive terminal_cols terminal_rows host wall image labels
     about_kind about_title about_subjects about_details
     target_system target_path started_at exited_at exit_code exit_state exit_reason refused_at
-    signal reason quiet_seconds duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
+    signal reason duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
     clock_offset_ms
     policy_digest run_configuration_digest lost_at cost_usd
   )a
@@ -62,6 +62,9 @@ defmodule Apiary.Runs.Projector do
 
   @pass_size 1000
   @heartbeat "dev.qory.run.heartbeat"
+  # The events whose fold may decide what a run of a workspace's queue gave: its exit and
+  # its result.
+  @settling ["dev.qory.run.exited", "dev.qory.session.result"]
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,
@@ -75,6 +78,9 @@ defmodule Apiary.Runs.Projector do
 
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
+        end_handed_over(run)
+        end_refused(run)
+        settle_dispatched(run, first, last)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
 
@@ -164,11 +170,12 @@ defmodule Apiary.Runs.Projector do
 
     blank = Map.take(%Run{}, @rebuilt_fields)
     # The starter's outcome is not folded: it decides the state the run starts again from,
-    # as it decides it after every pass (`Apiary.Runs.Fold.outcome/1`).
+    # as it decides it after every pass (`Apiary.Runs.Fold.outcome/1`), and so does an end
+    # Qory recorded without one (`Apiary.Runs.Fold.settle/1`).
     blank =
       Map.merge(
         blank,
-        Fold.outcome(%{current | state: "pending", reason: nil, lost_at: nil})
+        Fold.settle(%{current | state: "pending", reason: nil, lost_at: nil})
         |> Map.take([:state, :reason, :lost_at])
       )
 
@@ -412,7 +419,7 @@ defmodule Apiary.Runs.Projector do
         Event
 
       instance_id ->
-        from e in Event, where: is_nil(e.instance_id) or e.instance_id == ^instance_id
+        from e in Event, where: is_nil(e.node_instance_id) or e.node_instance_id == ^instance_id
     end
   end
 
@@ -429,6 +436,69 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp touch_heartbeat(_run), do: :ok
+
+  # A run a workspace's queue handed over whose pass folded its exit ends the queue's run
+  # with it, once its passes have committed, in a separate transaction that locks the
+  # queue's run first (`Apiary.Dispatches.RunEnd.run_ended/1`); the workspaces whose slots
+  # changed are told. A failure is logged and the lost-run check ends it at its next
+  # tick (`Apiary.Dispatches.RunEnd.lose/1`).
+  defp end_handed_over(%Run{dispatch_run_id: id, exited_at: %DateTime{}} = run)
+       when is_binary(id) do
+    run |> Apiary.Dispatches.RunEnd.run_ended() |> Apiary.Dispatches.broadcast()
+  rescue
+    error -> log_failure(run, {:run_end, error.__struct__})
+  end
+
+  defp end_handed_over(_run), do: :ok
+
+  # A run a workspace's queue handed over whose passes folded a refusal, `dev.qory.run.refused`,
+  # and no exit, ends the queue's run with it, `run_refused`, once its passes have
+  # committed, in a separate transaction that locks the queue's run first
+  # (`Apiary.Dispatches.RunEnd.refused/1`). A failure is logged and the lost-run check ends
+  # it at its next tick (`Apiary.Dispatches.RunEnd.lose/1`).
+  defp end_refused(%Run{dispatch_run_id: id, refused_at: %DateTime{}} = run)
+       when is_binary(id) do
+    run |> Apiary.Dispatches.RunEnd.refused() |> Apiary.Dispatches.broadcast()
+  rescue
+    error -> log_failure(run, {:run_refused, error.__struct__})
+  end
+
+  defp end_refused(_run), do: :ok
+
+  # A run a workspace's queue handed over whose passes folded an exit or a result event
+  # has what it gave stored on the queue's run, once its passes and its end committed, in
+  # a separate transaction (`Apiary.Dispatches.Settle.settle/1`): a result that came
+  # after its outcome, or after it settled, counts so. The work item is told. A failure is
+  # logged, and what the queue's run holds is cleared (`Apiary.Dispatches.Settle.clear/1`),
+  # so the sweep of the lost-run check stores it at a tick after, once the run is settled;
+  # a clear that fails too is logged, and what was stored stays until the run's next
+  # settle.
+  defp settle_dispatched(%Run{id: id, dispatch_run_id: dispatch_run_id} = run, first, last)
+       when is_binary(dispatch_run_id) do
+    settling? =
+      Repo.exists?(
+        from e in Event,
+          where: e.run_id == ^id and e.sequence >= ^first and e.sequence <= ^last,
+          where: e.type in ^@settling
+      )
+
+    if settling?,
+      do: dispatch_run_id |> Apiary.Dispatches.Settle.settle() |> Apiary.Dispatches.broadcast()
+
+    :ok
+  rescue
+    error ->
+      log_failure(run, {:settle, error.__struct__})
+      clear_settled(run)
+  end
+
+  defp settle_dispatched(_run, _first, _last), do: :ok
+
+  defp clear_settled(%Run{dispatch_run_id: dispatch_run_id} = run) do
+    dispatch_run_id |> Apiary.Dispatches.Settle.clear() |> Apiary.Dispatches.broadcast()
+  rescue
+    error -> log_failure(run, {:settle_clear, error.__struct__})
+  end
 
   defp log_touch_failure(%Run{id: id}, what) do
     Logger.error("key heartbeat not recorded run=#{id} error=#{inspect(what)}")
@@ -457,26 +527,10 @@ defmodule Apiary.Runs.Projector do
   defp put_target(changeset, %{target_system: system, target_path: path})
        when is_binary(system) and is_binary(path) and system != "" and path != "" do
     run = changeset.data
-    now = DateTime.utc_now()
 
-    Repo.insert_all(
-      Target,
-      [
-        %{
-          id: Ecto.UUID.generate(),
-          organisation_id: run.organisation_id,
-          workspace_id: run.workspace_id,
-          system: system,
-          path: path,
-          first_seen_at: now,
-          inserted_at: now,
-          updated_at: now
-        }
-      ],
-      on_conflict: :nothing,
-      conflict_target: [:workspace_id, :system, :path],
-      log: false
-    )
+    # A target seen before keeps its row, and so its public id.
+    :ok =
+      Target.insert_new(run.organisation_id, run.workspace_id, [%{system: system, path: path}])
 
     target_id =
       Repo.one!(

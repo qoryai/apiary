@@ -10,20 +10,56 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ## [Unreleased]
 
-<!-- feature: secrets -->
-### Fixed
+### Added
 
-- Checking an integration's settings, and any other JSON Schema check, no longer creates
-  atoms or runs a cast a schema names: every schema is built without atom casts, and
-  values are only checked.
-- An integration description is refused before its schema is checked when it holds a
-  list of more than 1024 entries, an object of more than 1024 members, more than 4096
-  values, a string of more than 16 KiB or more than 64 levels of nesting, and an
-  integration's settings are held to the same limits apart from the string length: a
-  deeply nested description no longer keeps a processor busy for seconds.
-- An integration's settings are checked within a limit on work and heap memory: settings
-  whose check against the schema in the integration's description would need more are
-  refused as invalid, instead of keeping a processor busy while the connection is saved.
+- An instance admin can rename the product in Instance settings › General: the browser
+  tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
+  Apiary” beside it.
+- `deploy/aws/delete-kept.sh` deletes what a deleted test stack of the AWS template kept:
+  its key secrets, its log groups, and the snapshots its database left when the stack was
+  deleted and when an update replaced it. Without `--yes` it lists them and deletes
+  nothing; it refuses a stack that is not deleted and anything a stack that is not
+  deleted still uses, and says what is left after a delete.
+- An instance admin can change, in Instance settings › Configuration, how long the audit
+  log keeps an entry and the IP address it came from, the grace period before a deleted
+  workspace or organisation is purged, and the invitations an organisation makes a day:
+  each part a form with its Save, after a recent sign-in. A variable of the server's
+  environment that is set, `AUDIT_RETENTION_DAYS`, `AUDIT_ADDRESS_RETENTION_DAYS`,
+  `DELETION_GRACE_DAYS` or `INVITATIONS_PER_DAY`, still wins, and the page shows its value
+  read only; one set empty counts as not set. A shorter retention applies at the next
+  daily job, a new grace period to what is deleted after it, and a new number of
+  invitations at once. Each change is an `instance.configure` entry in the trail of the
+  instance's organisation, with the values before and after.
+- The AWS template's Advanced group has Features (optional), `Features`, passed as
+  `QORY_FEATURES` only when set. An Update with a new value starts a new task with it, and
+  a name Qory Apiary does not know rolls the update back. As with every field but the
+  download key, with Version empty, changing it also looks up the newest release.
+
+### Changed
+
+- An enrolment code starts with the prefix of its node's kind: `qecn_` for a node, `qecp_`
+  for a node pool and `qecg_` for a gateway, then its 26 characters as before. A code
+  enrols a key only on a node of the kind its prefix names; a code with another kind's
+  prefix is refused as an unknown code is. A code made before the upgrade, `qec_`, no
+  longer enrols: get a new command.
+- Network access: a destination's row that shows “Rule added”, “Rule changed” or “In
+  force in this run” gives its reason in the past tense, such as “No rule matched.
+  Enforce mode denied it.”
+- The organisation slug `integrations` is reserved as well: a slug made from a name skips
+  it, to the first free one of `-2`, `-3`, …; a new organisation named Integrations gets
+  the slug `integrations-2`.
+- An account's email address, at sign-up and when it is changed, and an invitation's
+  address refuse a control or format character (a right-to-left override, a zero-width
+  space and the like), a Unicode space, and bytes that are not UTF-8 text. Their 160
+  characters are counted in code points, so a letter's accent marks count too. An account
+  whose address already holds such a character still logs in with it. An invitation to an
+  address with a NUL in it is refused with the address's error, not a server error.
+<!-- feature: secrets -->
+- An integration description is refused when it goes past the limits the integration
+  contract states (1024 list entries, 1024 members in an object, 4096 values, strings of
+  16 KiB, 64 levels of nesting) or when an object in it repeats a member. An integration's
+  settings are checked within a time and memory limit, and schemas no longer create atoms
+  or apply casts.
 - An integration's settings check counts large text toward its memory limit.
 - An integration's settings check refuses a schema, or settings checked as regular
   expressions, whose patterns would take more than 16 MiB of memory once compiled.
@@ -37,6 +73,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `RELEASE_COOKIE` must be set, the same secret on every node, or Qory Apiary stops at
   start. Without `RELEASE_COOKIE`, each start makes a new random cookie, so the cookie in
   the image is never used.
+
+### Migrations
+
+- `instance_settings`: four columns for Instance settings › Configuration,
+  `audit_retention_days`, `audit_address_retention_days`, `deletion_grace_days` and
+  `invitations_per_day`, all NULL, with checks on their ranges that hold in every edition:
+  at least 30, at least 1, 1 to 90, and at least 1. It changes no existing row.
+<!-- feature: secrets -->
+- A stored secret can now belong to an organisation instead of a workspace, with a data
+  key for each organisation.
+<!-- /feature -->
 
 ## [0.1.0] - 2026-10-13
 

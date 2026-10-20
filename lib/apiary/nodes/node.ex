@@ -34,13 +34,19 @@ defmodule Apiary.Nodes.Node do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
+  alias Apiary.Integrations.Description
+
   @typedoc "A node or a node pool of a workspace."
   @type t :: %__MODULE__{}
 
   @typedoc """
   A node's kind: one permanent machine, a pool of short-lived instances, or a gateway.
   """
-  @type kind :: :node | :pool | :gateway
+  @type kind :: :node | :pool | :gateway | feature_kind()
+
+  # The kind a feature the documentation does not differ by adds (`docs: false`): an
+  # adapter. A private type, so the served docs show its name alone.
+  @typep feature_kind :: :adapter
 
   @typedoc """
   A node's or a pool's choice of gateway: direct, its workspace's default gateway, or the
@@ -50,10 +56,17 @@ defmodule Apiary.Nodes.Node do
 
   @kinds [:node, :pool]
   @all_kinds [:node, :pool, :gateway]
+  # The kinds the schema reads and writes: those of `all_kinds/0`, and an adapter, which is
+  # the instance's and is made through `Apiary.Adapters` alone (`adapter_changeset/2`).
+  @schema_kinds @all_kinds ++ [:adapter]
   @choices [:direct, :default, :named]
   @max_limit 10_000
   @max_url 2048
-  @prefixes %{node: "nd", pool: "np", gateway: "ng"}
+  @max_adapter_name 64
+  # An adapter's intervals, in seconds: a minute to a day (`nodes_sync_check`).
+  @min_interval 60
+  @max_interval 86_400
+  @prefixes %{node: "nd", pool: "np", gateway: "ng", adapter: "na"}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -61,7 +74,7 @@ defmodule Apiary.Nodes.Node do
   schema "nodes" do
     field :public_id, :string
     field :name, :string
-    field :kind, Ecto.Enum, values: @all_kinds
+    field :kind, Ecto.Enum, values: @schema_kinds
     field :instance_limit, :integer
     field :url, :string
     field :default_gateway, :boolean, default: false
@@ -71,6 +84,47 @@ defmodule Apiary.Nodes.Node do
     field :instance_ids_over_bound, :integer, default: 0
     field :instance_ids_over_bound_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
+    # An adapter's alone (`nodes_adapter_check`): the address a person is sent to when they
+    # connect it, and its periodic check's intervals, in seconds, as it declares them and
+    # as a person sets it.
+    field :connect_url, :string
+    field :sync_interval, :integer
+    field :sync_default_interval, :integer
+    field :sync_minimum_interval, :integer
+    field :sync_sends_changes, :boolean
+    # An adapter's alone (`nodes_setup_url_check`): where an instance admin is sent to set
+    # it up at the system it reads from, as its latest start-up declared it; nil while it
+    # declares none.
+    field :setup_url, :string
+    # An adapter's alone (`nodes_items_check`): what its description's source role says of
+    # its items, its words for one and for many, both or neither (nil for the default),
+    # and whether it reports items, false for a source that reports collections and no
+    # items, with no words beside it; true on every other node.
+    field :item_noun_one, :string
+    field :item_noun_other, :string
+    field :items, :boolean, default: true
+    # An adapter's alone (`nodes_collection_noun_check`): its description's source role's
+    # words for one collection and for many, both or neither (nil for the default,
+    # "collection" and "collections"), beside `items` false too.
+    field :collection_noun_one, :string
+    field :collection_noun_other, :string
+    # An adapter's alone (`nodes_source_access_check`): its description's source role's
+    # line on how to change, at the source, which collections it reaches; nil before its
+    # first start and where its description has no source role. Set at each start from
+    # the description, once its schema has checked it (`source_role_changeset/2`), and
+    # never cast.
+    field :source_access, :string
+    # An adapter's alone (`nodes_domains_check`): the domains its latest start's
+    # description lists, each a domain's name (`Apiary.Lingo.Domain`); nil where it lists
+    # none, which serves every domain, and before its first start. Set at each start
+    # (`domains_changeset/2`) and never cast. A person picks among the adapters that serve
+    # a workspace's domain (`Apiary.Lingo.Domain.serves?/2`).
+    field :domains, {:array, :string}
+    # An adapter's alone (`nodes_installed_as_check`): the name an adapter installed with
+    # Qory Apiary is listed as (`Apiary.Adapters.Installed`), unique among the adapters in
+    # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
+    # by `Apiary.Adapters.install/2`, and never cast from what a person or an adapter sends.
+    field :installed_as, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -134,9 +188,7 @@ defmodule Apiary.Nodes.Node do
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 80)
-    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
-      message: dgettext_noop("errors", "must not contain control characters")
-    )
+    |> Apiary.Names.validate_characters(:name)
     |> unique_constraint([:organisation_id, :workspace_id, :name],
       name: :nodes_live_name_index,
       error_key: :name,
@@ -154,6 +206,201 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:gateway_choice, name: :nodes_gateway_choice_check)
     |> check_constraint(:gateway_id, name: :nodes_gateway_is_a_gateway)
     |> foreign_key_constraint(:gateway_id, name: :nodes_gateway_id_fkey)
+  end
+
+  # An adapter is no node a run runs on, nor a gateway: it is the instance's, with no
+  # organisation and no workspace, is made, renamed and deleted through `Apiary.Adapters`,
+  # and its changesets are these below. Their documentation stays out of the module
+  # reference.
+
+  @doc false
+  # The changeset of an adapter's name, as it is made or renamed: 1 to 64 characters
+  # without control characters, unique among the instance's adapters in use. A new one
+  # (no public id yet) is given its kind's public id, `na_`; its place, no organisation and
+  # no workspace, is the caller's to set, and nothing here casts it, its kind, its limit,
+  # its choice of gateway, its address or the name it is installed as (`installed_as`).
+  @spec adapter_changeset(t, map) :: Ecto.Changeset.t()
+  def adapter_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
+    adapter
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 1, max: @max_adapter_name)
+    |> Apiary.Names.validate_characters(:name)
+    |> unique_constraint(:name,
+      name: :nodes_adapter_name_index,
+      error_key: :name,
+      message: dgettext_noop("errors", "has already been taken")
+    )
+    |> check_constraint(:name, name: :nodes_adapter_name_check)
+    |> check_constraint(:workspace_id, name: :nodes_place_check)
+    |> check_constraint(:installed_as, name: :nodes_installed_as_check)
+    |> then(&if(is_nil(adapter.public_id), do: put_public_id(&1), else: &1))
+  end
+
+  # `https://`, an authority with no `@` and no whitespace, then nothing, or a path, a
+  # query or a fragment without whitespace: as `nodes_connect_url_check` has it.
+  @connect_url ~r{\Ahttps://[^/?#@[:space:]]+(?:[/?#][^[:space:]]*)?\z}u
+
+  @doc false
+  # The changeset of an adapter's connect address, `connect_url`: `https://`, an authority
+  # without user information, then an optional path, query or fragment, no whitespace
+  # anywhere, at most `max_url/0` characters; nil clears it. The database holds it to the
+  # same (`nodes_connect_url_check`), and to adapters (`nodes_adapter_check`).
+  @spec connect_url_changeset(t, map) :: Ecto.Changeset.t()
+  def connect_url_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
+    adapter
+    |> cast(attrs, [:connect_url])
+    |> validate_length(:connect_url, max: @max_url)
+    |> validate_change(:connect_url, fn :connect_url, url ->
+      cond do
+        not String.starts_with?(url, "https://") ->
+          [connect_url: dgettext_noop("errors", "must start with https://")]
+
+        not (url =~ @connect_url) ->
+          [connect_url: dgettext_noop("errors", "has invalid format")]
+
+        true ->
+          []
+      end
+    end)
+    |> check_constraint(:connect_url, name: :nodes_connect_url_check)
+    |> check_constraint(:connect_url, name: :nodes_adapter_check)
+  end
+
+  # `https://`, an authority with no `@` and no whitespace, then nothing, or a path or a
+  # query without whitespace, and no fragment: as `nodes_setup_url_check` has it.
+  @setup_url ~r{\Ahttps://[^/?#@[:space:]]+(?:[/?][^#[:space:]]*)?\z}u
+
+  @doc false
+  # The changeset of what an adapter declares each time it starts
+  # (`Apiary.Adapters.declare/2`): its connect address (`connect_url_changeset/2`) and how
+  # it pulls changes, `sync_default_interval` and `sync_minimum_interval`, whole seconds
+  # from 60 to 86,400, the minimum at most the default, and `sync_sends_changes`. Each is
+  # required. The database holds the intervals it has to the same range, and the minimum
+  # to at most the default (`nodes_sync_check`). And where an instance admin is sent to
+  # set it up, `setup_url`, which it declares only while it is not set up: as a connect
+  # address is, but with no fragment, at most `max_url/0` characters; nil clears it
+  # (`nodes_setup_url_check`).
+  @spec declaration_changeset(t, map) :: Ecto.Changeset.t()
+  def declaration_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
+    adapter
+    |> connect_url_changeset(attrs)
+    |> cast(attrs, [
+      :setup_url,
+      :sync_default_interval,
+      :sync_minimum_interval,
+      :sync_sends_changes
+    ])
+    |> validate_length(:setup_url, max: @max_url)
+    |> validate_change(:setup_url, fn :setup_url, url ->
+      cond do
+        not String.starts_with?(url, "https://") ->
+          [setup_url: dgettext_noop("errors", "must start with https://")]
+
+        not (url =~ @setup_url) ->
+          [setup_url: dgettext_noop("errors", "has invalid format")]
+
+        true ->
+          []
+      end
+    end)
+    |> check_constraint(:setup_url, name: :nodes_setup_url_check)
+    |> validate_required([
+      :connect_url,
+      :sync_default_interval,
+      :sync_minimum_interval,
+      :sync_sends_changes
+    ])
+    |> validate_number(:sync_default_interval,
+      greater_than_or_equal_to: @min_interval,
+      less_than_or_equal_to: @max_interval
+    )
+    |> validate_number(:sync_minimum_interval,
+      greater_than_or_equal_to: @min_interval,
+      less_than_or_equal_to: @max_interval
+    )
+    |> validate_minimum_interval()
+    |> check_constraint(:sync_default_interval, name: :nodes_sync_check)
+  end
+
+  defp validate_minimum_interval(changeset) do
+    case get_field(changeset, :sync_default_interval) do
+      default when is_integer(default) ->
+        validate_number(changeset, :sync_minimum_interval, less_than_or_equal_to: default)
+
+      _none ->
+        changeset
+    end
+  end
+
+  @doc false
+  # The changeset of what the source role of an adapter's description says of its items
+  # and its collections (`Apiary.Integrations.Description.item_noun/1`, `items?/1`,
+  # `collection_noun/1` and `access/1`, which the description's schema has checked): its
+  # words for one item and for many, or none, whether it reports items, its words for one
+  # collection and for many, or none, and its line on how to change, at the source, which
+  # collections it reaches. A description with no source role gives the defaults: no
+  # words, items, and no line. The database holds the words and items to the same
+  # (`nodes_items_check`, `nodes_collection_noun_check`), and the line to adapters
+  # (`nodes_source_access_check`). `Apiary.Adapters.declare/2` calls it at each start, on
+  # the changeset of the declaration, so the latest start's description replaces what an
+  # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
+  # `items` changes whether the adapter's collections are linked, and whoever writes it
+  # writes the feed's entries for them in the same transaction
+  # (`Apiary.Adapters.Collections.relink_adapter/2`).
+  @spec source_role_changeset(t | Ecto.Changeset.t(), Description.t()) ::
+          Ecto.Changeset.t()
+  def source_role_changeset(%__MODULE__{kind: :adapter} = adapter, description),
+    do: adapter |> change() |> source_role_changeset(description)
+
+  def source_role_changeset(
+        %Ecto.Changeset{data: %__MODULE__{kind: :adapter}} = changeset,
+        description
+      ) do
+    item_noun = Description.item_noun(description)
+    collection_noun = Description.collection_noun(description)
+
+    changeset
+    |> change(
+      item_noun_one: item_noun && item_noun.one,
+      item_noun_other: item_noun && item_noun.other,
+      items: Description.items?(description),
+      collection_noun_one: collection_noun && collection_noun.one,
+      collection_noun_other: collection_noun && collection_noun.other,
+      source_access: Description.access(description)
+    )
+    |> check_constraint(:items, name: :nodes_items_check)
+    |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
+    |> check_constraint(:source_access, name: :nodes_source_access_check)
+  end
+
+  @doc false
+  # The changeset of the domains an adapter's description lists
+  # (`Apiary.Integrations.Description`, `domains`, which the description's schema has
+  # checked), or nil for none. `Apiary.Adapters.declare/2` calls it at each start, on the
+  # changeset of the declaration, so the latest start's description replaces what an
+  # earlier one said. It changes no collection's assignment: a restart never unassigns.
+  @spec domains_changeset(Ecto.Changeset.t(), Description.t()) :: Ecto.Changeset.t()
+  def domains_changeset(
+        %Ecto.Changeset{data: %__MODULE__{kind: :adapter}} = changeset,
+        %Description{domains: domains}
+      ) do
+    changeset
+    |> change(domains: domains)
+    |> check_constraint(:domains, name: :nodes_domains_check)
+  end
+
+  @doc false
+  # The changeset of the interval an instance admin sets for an adapter's pull,
+  # `sync_interval`, in seconds (`Apiary.Adapters.update_sync_interval/3`): one of
+  # `choices`, or nil (an empty value) for the adapter's declared default.
+  @spec sync_interval_changeset(t, map, [pos_integer]) :: Ecto.Changeset.t()
+  def sync_interval_changeset(%__MODULE__{kind: :adapter} = adapter, attrs, choices)
+      when is_list(choices) do
+    adapter
+    |> cast(attrs, [:sync_interval], empty_values: [""])
+    |> validate_inclusion(:sync_interval, choices)
+    |> check_constraint(:sync_interval, name: :nodes_sync_check)
   end
 
   @doc """
@@ -185,7 +432,7 @@ defmodule Apiary.Nodes.Node do
           less_than_or_equal_to: @max_limit
         )
 
-      :gateway ->
+      kind when kind in [:gateway, :adapter] ->
         put_change(changeset, :instance_limit, nil)
 
       nil ->
@@ -213,7 +460,7 @@ defmodule Apiary.Nodes.Node do
   # gateway is gone is still renamed.
   defp put_choice(changeset, attrs) do
     case get_field(changeset, :kind) do
-      :gateway ->
+      kind when kind in [:gateway, :adapter] ->
         changeset
         |> put_change(:gateway_choice, :direct)
         |> put_change(:gateway_id, nil)
@@ -307,7 +554,7 @@ defmodule Apiary.Nodes.Node do
 
   defp put_public_id(changeset) do
     case get_field(changeset, :kind) do
-      kind when kind in @all_kinds ->
+      kind when kind in @schema_kinds ->
         put_change(changeset, :public_id, Apiary.PublicId.generate(Map.fetch!(@prefixes, kind)))
 
       nil ->

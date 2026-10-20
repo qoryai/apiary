@@ -47,6 +47,14 @@ defmodule Apiary.EditionStubs do
       do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
   end
 
+  defmodule OperatorChain do
+    @moduledoc """
+    The operator's rows are the whole chain of model choices of every organisation
+    (`c:Apiary.Edition.model_choice_chain/1`).
+    """
+    def model_choice_chain(_organisation_id), do: "operator"
+  end
+
   @doc """
   rendezvous/0 pauses a change where a stub calls it, while the test that started it asks
   so (`Process.put(:level_refusal_rendezvous, true)` in the test's process): it says
@@ -688,9 +696,48 @@ defmodule Apiary.EditionStubs do
     defdelegate who_may_sentence(about, scope), to: GatewaysWorded
   end
 
+  defmodule NoRebuild do
+    @moduledoc """
+    Nobody asks for a build of a target's environment (`target.rebuild_environment`),
+    whoever asks: `{:error, :forbidden}`.
+    """
+    def check(_scope, :"target.rebuild_environment", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoClaim do
+    @moduledoc "No node pool's key claims a run (`dispatch.claim`): `{:error, :forbidden}`."
+    def check(_scope, :"dispatch.claim", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule HidesClaim do
+    @moduledoc "The queue is not found to any node pool's key (`dispatch.claim`): `{:error, :not_found}`."
+    def check(_scope, :"dispatch.claim", _subject), do: {:error, :not_found}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoLog do
     @moduledoc "Nobody reads a run's log (`run.read_log`), whoever asks."
     def check(_scope, :"run.read_log", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoRunPosting do
+    @moduledoc """
+    No key opens a run or posts its events (`run.post_events`), whoever holds it, as an
+    edition that narrows the rights of a key may.
+    """
+    def check(_scope, :"run.post_events", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoDisconnect do
+    @moduledoc """
+    No adapter's key ends a connection (`adapter.disconnect`), as an edition that narrows
+    the rights of an adapter's key may.
+    """
+    def check(_scope, :"adapter.disconnect", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
@@ -731,6 +778,77 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule AnotherName do
+    @moduledoc """
+    The product named Another Product (`c:ApiaryWeb.Edition.product_name/0`), as an
+    edition that names it otherwise than Qory Apiary would.
+    """
+    def product_name, do: "Another Product"
+  end
+
+  defmodule ShortRetention do
+    @moduledoc """
+    An audit trail kept at most 60 days (`c:Apiary.Edition.audit_retention_max_days/0`), as
+    an edition with a lower ceiling than the core's would.
+    """
+    def audit_retention_max_days, do: 60
+  end
+
+  defmodule ConfigurationPart do
+    @moduledoc """
+    A part of Instance settings › Configuration after the core's
+    (`c:ApiaryWeb.Edition.configuration_parts/1`), built from the core's
+    `ApiaryWeb.InstanceLive.ConfigurationComponents`: one row, read only, and a Save that
+    saves nothing. It asks `Apiary.InstanceConfig.authorize_save/1`, as an edition's part
+    would, and says it saved, or sends the page `{:configuration, :sudo}`.
+    """
+    def configuration_parts(_scope), do: [__MODULE__.Part]
+
+    defmodule Part do
+      @moduledoc false
+      use ApiaryWeb, :live_component
+
+      alias ApiaryWeb.InstanceLive.ConfigurationComponents
+
+      @impl true
+      def render(assigns) do
+        ~H"""
+        <section id="config-example" class="q-part">
+          <h2 class="q-part-h">Example</h2>
+          <form id="config-example-form" phx-submit="save" phx-target={@myself}>
+            <dl class="grid gap-4">
+              <ConfigurationComponents.setting
+                id="config-example-row"
+                label="Example setting"
+                value="On"
+                source={ConfigurationComponents.env_line("EXAMPLE_SETTING")}
+              >
+                What the example decides.
+              </ConfigurationComponents.setting>
+            </dl>
+            <button type="submit">Save</button>
+          </form>
+        </section>
+        """
+      end
+
+      @impl true
+      def handle_event("save", _params, socket) do
+        case Apiary.InstanceConfig.authorize_save(socket.assigns.current_scope) do
+          :ok ->
+            {:noreply, ConfigurationComponents.saved(socket, "Example saved.")}
+
+          {:error, :sudo} ->
+            send(self(), {:configuration, :sudo})
+            {:noreply, socket}
+
+          {:error, :forbidden} ->
+            {:noreply, socket}
+        end
+      end
+    end
+  end
+
   defmodule WithoutSecrets do
     @moduledoc """
     Every person is shown the instance's features but `secrets`
@@ -738,5 +856,71 @@ defmodule Apiary.EditionStubs do
     It reads nothing.
     """
     def hidden(_scope), do: [:secrets]
+  end
+
+  defmodule GrantsOrganisationSecrets do
+    @moduledoc """
+    Grants the stored secrets of an organisation (`c:Apiary.Edition.organisation_secrets/2`),
+    as an edition that grants organisation secrets would: every member of the organisation
+    reads them, its owners and admins change and link them, a person without a membership
+    is not shown them, and `:seal`, asked with a nil scope, is answered `:ok`. It reads
+    nothing.
+    """
+    alias Apiary.Accounts.Scope
+    alias Apiary.Organisations.Membership
+
+    def organisation_secrets(nil, :seal), do: :ok
+
+    def organisation_secrets(%Scope{membership: %Membership{}}, :read), do: :ok
+
+    def organisation_secrets(%Scope{membership: %Membership{level: level}}, verb)
+        when verb in [:write, :use] and level in [:owner, :admin],
+        do: :ok
+
+    def organisation_secrets(%Scope{membership: %Membership{}}, _verb), do: {:error, :forbidden}
+    def organisation_secrets(_scope, _verb), do: {:error, :not_found}
+  end
+
+  defmodule GrantsOrganisationSecretsWithoutSealing do
+    @moduledoc """
+    Grants the stored secrets of an organisation as `GrantsOrganisationSecrets` does, but
+    refuses `:seal`.
+    """
+    def organisation_secrets(nil, :seal), do: {:error, :not_found}
+
+    def organisation_secrets(scope, verb),
+      do: GrantsOrganisationSecrets.organisation_secrets(scope, verb)
+  end
+
+  defmodule ServesAcrossWithChain do
+    @moduledoc """
+    `ServesAcross`, with the chain of model choices of every organisation
+    (`c:Apiary.Edition.model_choice_chain/1`) that the test sets with `chain/1`:
+    "organisation" until it does, as the core's edition returns.
+    """
+
+    @doc "chain/1 sets the chain of model choices for the test's process."
+    def chain(chain) when chain in ["organisation", "operator"],
+      do: Process.put(:model_choice_chain, chain)
+
+    def model_choice_chain(_organisation_id), do: Process.get(:model_choice_chain, "organisation")
+
+    def serving_organisations(id), do: ServesAcross.serving_organisations(id)
+    def served_organisations(id), do: ServesAcross.served_organisations(id)
+
+    def active_organisations(query, binding),
+      do: ServesAcross.active_organisations(query, binding)
+  end
+
+  defmodule HidesRuns do
+    @moduledoc """
+    A client is shown nothing of the runs and the connections of its workspace
+    (`c:Apiary.Edition.client_reads/4`), as an edition hides what an operator's model
+    provider did: every query narrowed to no row, and no policy.
+    """
+    import Ecto.Query, only: [where: 2]
+
+    def client_reads(_scope, :run_policy, _run, _policy), do: nil
+    def client_reads(_scope, _kind, _run, query), do: where(query, false)
   end
 end

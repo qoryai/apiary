@@ -27,6 +27,13 @@ defmodule Apiary.Accounts.User do
   end
 
   @doc """
+  The short form of a name a page gives a person by: the local part of an email address,
+  dana of dana@example.com; a name with no `@` as it is.
+  """
+  @spec short_name(String.t()) :: String.t()
+  def short_name(name) when is_binary(name), do: name |> String.split("@") |> hd()
+
+  @doc """
   A user changeset for registering or changing the email.
 
   It requires the email to change otherwise an error is added.
@@ -43,19 +50,48 @@ defmodule Apiary.Accounts.User do
     |> validate_email(opts)
   end
 
+  # A control character (C0, DEL, C1) or a format character (the bidirectional controls,
+  # zero-width characters, the soft hyphen and the like), which Postgres may refuse to
+  # store or which make an address read otherwise than it is.
+  @unseen ~r/[\p{Cc}\p{Cf}]/u
+  # One `@` with text on each side, and no comma, semicolon or space, Unicode's included.
+  @shape ~r/^[^@,;\s]+@[^@,;\s]+$/u
+
+  @doc """
+  Refuses a `field`, `:email` unless another, that no address can be: bytes that are not
+  UTF-8 text, a control or format character (`must not contain control characters`), or
+  no single `@` with text on each side, or a comma, a semicolon or a space. An account's
+  address is checked so, an invitation's (`Apiary.Organisations.Invitation`), which
+  becomes the account's, and the address the instance's mail is sent from
+  (`Apiary.Mail.Settings`).
+  """
+  @spec validate_address(Ecto.Changeset.t(), atom) :: Ecto.Changeset.t()
+  def validate_address(changeset, field \\ :email) do
+    validate_change(changeset, field, fn ^field, address ->
+      cond do
+        not String.valid?(address) ->
+          [{field, dgettext_noop("errors", "must be UTF-8 text")}]
+
+        Regex.match?(@unseen, address) ->
+          [{field, dgettext_noop("errors", "must not contain control characters")}]
+
+        not Regex.match?(@shape, address) ->
+          [{field, dgettext_noop("errors", "must have the @ sign and no spaces")}]
+
+        true ->
+          []
+      end
+    end)
+  end
+
   defp validate_email(changeset, opts) do
     changeset =
       changeset
       |> validate_required([:email])
-      # A NUL or another control character, which Postgres may refuse to store, is no
-      # address's.
-      |> validate_format(:email, ~r/\A[^[:cntrl:]]*\z/,
-        message: dgettext_noop("errors", "must not contain control characters")
-      )
-      |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
-        message: dgettext_noop("errors", "must have the @ sign and no spaces")
-      )
-      |> validate_length(:email, max: 160)
+      |> validate_address()
+      # Code points, not graphemes: a letter with marks on it is one grapheme however long,
+      # which can be longer than the unique index takes.
+      |> validate_length(:email, max: 160, count: :codepoints)
 
     if Keyword.get(opts, :validate_unique, true) do
       changeset

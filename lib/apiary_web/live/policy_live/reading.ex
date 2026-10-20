@@ -14,8 +14,10 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
     * `kind`: `:hint`, `:ok`, `:note`, `:error` or `:refusal`; a rule is saved on `:ok`
       and `:note`;
-    * `text`: rich text, a list of binaries, `{:b, rich}`, `{:m, mono text}` and
-      `{:code, chip text}`, rendered by `ApiaryWeb.RichText.rich/1` (always escaped);
+    * `text`: rich text, a list of binaries, `{:b, rich}`, `{:m, mono text}`,
+      `{:code, chip text}` and the letter of who locked a rule
+      (`ApiaryWeb.CoreComponents.avatar/1`), rendered by `ApiaryWeb.RichText.rich/1`
+      (always escaped);
     * `fix`: `nil` or `{label, event, values}`, the repair offered as a link;
     * `acts`: more links of the same shape, under a refusal;
     * `invalid`: the fields that take `aria-invalid`;
@@ -32,6 +34,8 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.RichText
+  import Phoenix.Component, only: [sigil_H: 2]
+  import ApiaryWeb.CoreComponents, only: [avatar: 1]
 
   alias Apiary.Policy.Grammar
   alias ApiaryWeb.Format
@@ -86,7 +90,9 @@ defmodule ApiaryWeb.PolicyLive.Reading do
       `host`, `paths`, `locked`, and `by`, `at` when the page knows them;
     * `entries`: the entries of the effective policy (`Apiary.Policy.Entry`);
     * `owner`: whether the reader may change a locked rule;
-    * `locked_by`: `%{host => %{by:, at:}}`, who locked what, when the page knows;
+    * `locked_by`: `%{host => %{by:, at:}}`, who locked what, by address, when the page
+      knows;
+    * `reader`: the reader's address;
     * `who_locks`: the edition's sentence of who may change a locked rule
       (`c:ApiaryWeb.Edition.who_may_sentence/2` with `:"security_policy.lock"`), said in
       place of the core's to a reader who may not, or nil for the core's;
@@ -703,7 +709,10 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     who =
       case context[:locked_by] && context.locked_by[entry.host] do
         %{by: by, at: at} when is_binary(by) ->
-          [" ", gettext("Locked by %{by} on %{at}.", by: by, at: at)]
+          [
+            " ",
+            rich_gettext("Locked by %{by} on %{at}.", by: letter(by, context[:reader]), at: at)
+          ]
 
         _ ->
           []
@@ -735,6 +744,13 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   defp by(%{by: by, at: at}) when is_binary(by) and is_binary(at), do: {:by, by, at}
   defp by(%{at: at}) when is_binary(at), do: {:since, at}
   defp by(_rule), do: nil
+
+  # Who locked the rule: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
 
   defp refusal(text, acts), do: reading(:refusal, text, acts: acts, invalid: [:host])
 

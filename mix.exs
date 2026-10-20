@@ -65,6 +65,10 @@ defmodule Apiary.MixProject do
       # too, where every story is rendered. Never in a release.
       {:phoenix_storybook, "~> 1.5", only: [:dev, :test]},
       {:jsv, "~> 0.23"},
+      # A ticket's Markdown, parsed, rendered and sanitised (Apiary.Sources.Body): GitHub
+      # Flavored Markdown, and an allowlist sanitiser. A precompiled NIF, so no build
+      # needs Rust.
+      {:mdex, "~> 0.14.1"},
       {:phoenix_live_dashboard, "~> 0.9.1"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
@@ -130,8 +134,12 @@ defmodule Apiary.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
-        "gettext.extract --check-up-to-date",
-        "docs --warnings-as-errors",
+        # In a separate VM, still in test: the check recompiles the project, and in this VM
+        # that writes protocol consolidation warnings the next run's first compile fails on.
+        "cmd env MIX_ENV=test mix gettext.extract --check-up-to-date",
+        # In dev, as CI builds the documentation: the test env compiles test/support,
+        # whose docs name modules the documentation leaves out.
+        "cmd env MIX_ENV=dev mix docs --warnings-as-errors",
         "test"
       ],
       # The documentation is one tree per set of features (Mix.Tasks.Docs.All), so every
@@ -211,9 +219,10 @@ defmodule Apiary.MixProject do
       ],
       # Read by `mix docs.all`, not by ExDoc: what a tree for an instance without the feature
       # leaves out. A module that says `use ApiaryWeb.Features` needs its feature without
-      # being listed; a passage of a guide is marked in the guide,
-      # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature: the
-      # module reference names them all.
+      # being listed (with `any:`, one of its features); a passage of a guide is marked in the guide,
+      # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature the
+      # documentation differs by (`Apiary.Features.documented/0`): the module reference
+      # names them all.
       features: [
         security: [
           extras: ["guides/security-policy.md"],
@@ -232,10 +241,11 @@ defmodule Apiary.MixProject do
             ~r/^Apiary\.Integrations/
           ]
         ],
-        # The module reference names every feature, the prose of a shared module included,
-        # so only an instance with every feature serves it. The tasks the guides send a
-        # self-hoster to stay in every tree; their docs name no feature, and ExDoc warns of
-        # a `mix` span whose task a tree leaves out. The release notes are in every tree.
+        # The module reference names every feature the documentation differs by, the prose
+        # of a shared module included, so only an instance with all of them serves it. The
+        # tasks the guides send a self-hoster to stay in every tree; their docs name no
+        # feature, and ExDoc warns of a `mix` span whose task a tree leaves out. The release
+        # notes are in every tree.
         all: [
           modules: [~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune)$)/]
         ]

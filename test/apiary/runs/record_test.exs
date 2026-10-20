@@ -4,6 +4,7 @@ defmodule Apiary.Runs.RecordTest do
   import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias Apiary.Runs.{Projector, Record, Run}
   alias Apiary.Runs.Record.Timeline
@@ -27,20 +28,47 @@ defmodule Apiary.Runs.RecordTest do
     %{scope: scope_fixture()}
   end
 
+  # A target of the scope's workspace that `run` belongs to, with one of its connections
+  # denied once, written past the record's fold.
+  defp denied_target!(scope, run) do
+    target =
+      Repo.insert!(%Apiary.Runs.Target{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        system: "github.example",
+        path: "acme/record",
+        first_seen_at: DateTime.utc_now()
+      })
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [target_id: target.id])
+
+    [connection | _] = Repo.all(from c in Apiary.Runs.Connection, where: c.run_id == ^run.id)
+
+    {1, _rows} =
+      Repo.update_all(from(c in Apiary.Runs.Connection, where: c.id == ^connection.id),
+        set: [denied: 1, last_seen_at: DateTime.utc_now()]
+      )
+
+    target
+  end
+
   describe "fetch_run/2" do
-    test "finds a run of the workspace by its subject", %{scope: scope} do
+    test "finds a run of the workspace by its `rn_` id", %{scope: scope} do
       run = run_fixture(scope)
-      assert {:ok, %Run{id: id}} = Record.fetch_run(scope, run.run_id)
+      assert {:ok, %Run{id: id}} = Record.fetch_run(scope, run.public_id)
       assert id == run.id
     end
 
-    test "a run of another workspace, an unknown subject and a malformed id are not found", %{
-      scope: scope
-    } do
+    test "a run of another workspace, an unknown id, the node's run id and a malformed id are not found",
+         %{scope: scope} do
       other = run_fixture(scope_fixture())
+      run = run_fixture(scope)
 
-      assert Record.fetch_run(scope, other.run_id) == :error
-      assert Record.fetch_run(scope, Ecto.UUID.generate()) == :error
+      assert Record.fetch_run(scope, other.public_id) == :error
+      assert Record.fetch_run(scope, Run.new_public_id()) == :error
+      assert Record.fetch_run(scope, run.node_run_id) == :error
+      assert Record.fetch_run(scope, String.slice(run.public_id, 0, 11)) == :error
       assert Record.fetch_run(scope, "0191f2a4") == :error
       assert Record.fetch_run(scope, <<0::128>>) == :error
       assert Record.fetch_run(scope, nil) == :error
@@ -175,6 +203,44 @@ defmodule Apiary.Runs.RecordTest do
 
       assert %{outcome: "dial_failed", decision: "allowed"} =
                Enum.find(connections, &(&1.host == "cdn.packages.example.com"))
+    end
+  end
+
+  describe "what the edition leaves out" do
+    test "the core leaves out nothing; an edition narrows each read", %{scope: scope} do
+      run = demo(scope, "session-with-subagents")
+      assert %{total: total} = Record.connections(scope, run)
+      assert total > 0
+      assert Record.timeline(scope, run).items != []
+      assert %{} = Record.policy(scope, run)
+
+      assert Apiary.Edition.Core.client_reads(scope, :run_policy, run, %{a: 1}) == %{a: 1}
+
+      filters = Apiary.Runs.Filters.parse(%{}, :connections)
+      assert %{rows: [_ | _]} = Apiary.Runs.page_destinations(scope, filters)
+      [connection | _] = Repo.all(from c in Apiary.Runs.Connection, where: c.run_id == ^run.id)
+      assert {:ok, _connection} = Apiary.Runs.fetch_connection(scope, connection.id)
+
+      denied_target = denied_target!(scope, run)
+      since = DateTime.add(DateTime.utc_now(), -365, :day)
+
+      assert %{rows: [_ | _]} =
+               Apiary.Targets.denied_destinations(scope, denied_target, since)
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesRuns)
+
+      assert %{rows: [], destinations: 0, attempts: 0} =
+               Apiary.Targets.denied_destinations(scope, denied_target, since)
+
+      assert %{rows: []} = Apiary.Runs.page_destinations(scope, filters)
+      assert Apiary.Runs.fetch_connection(scope, connection.id) == :error
+
+      assert %{rows: [], total: 0} = Record.connections(scope, run)
+      assert %{all: 0, attempts: 0} = Record.connection_counts(scope, run)
+      assert Record.timeline(scope, run).items == []
+      assert Record.policy(scope, run) == nil
+
+      assert {:ok, []} = Apiary.Policy.Activity.denied_destinations(scope, since)
     end
   end
 
@@ -772,7 +838,7 @@ defmodule Apiary.Runs.RecordTest do
           workspace_id: Ecto.UUID.dump!(run.workspace_id),
           run_id: Ecto.UUID.dump!(run.id),
           sequence: sequence,
-          event_id: Ecto.UUID.bingenerate(),
+          node_event_id: Ecto.UUID.bingenerate(),
           type: type,
           time: now,
           data: data,

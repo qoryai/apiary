@@ -63,28 +63,54 @@ end
 # `Apiary.Features` checks it at boot and says what each feature covers and needs.
 config :apiary, :features_setting, System.get_env("QORY_FEATURES")
 
+# QORY_INSTALLED_ADAPTERS names the adapters installed with this instance, separated by
+# commas (tracker,wiki): each name a lower-case letter, then lower-case letters, digits and
+# hyphens, 32 characters at most, none twice. Unset or blank names none. Once the instance
+# is set up, Qory Apiary adds an adapter for each name, and, while it has no key in use,
+# writes a one-time code for it to QORY_ENROLMENT_DIR as <name>/code, where the adapter
+# reads it. Taking a name off removes nothing: the adapter stays until it is removed under
+# Instance settings › Adapters. Read in every environment, as QORY_FEATURES is;
+# `Apiary.Adapters.Installed.boot!/0` checks it at boot and stops a boot it refuses, a
+# list on an instance without the feature adapters belong to included.
+config :apiary, :installed_adapters_setting, System.get_env("QORY_INSTALLED_ADAPTERS")
+
+# QORY_ENROLMENT_DIR is the directory those codes are written to, an absolute path,
+# /run/qory/enrolment when unset or blank. Qory Apiary makes a folder in it per adapter
+# and writes there; each installed adapter mounts only its folder.
+config :apiary, :enrolment_dir_setting, System.get_env("QORY_ENROLMENT_DIR")
+
 # AUDIT_RETENTION_DAYS is how long the audit trail keeps an entry: a number of days from
 # 30 to the edition's ceiling (Apiary.Edition.audit_retention_max_days/0, 90 in the core),
-# 90 when unset. Read in every environment, as QORY_FEATURES is; `Apiary.Audit.boot!/0`
-# checks it at boot and stops a boot it refuses, one above the ceiling included.
+# 90 by default. Read in every environment, as QORY_FEATURES is; `Apiary.Audit.boot!/0`
+# checks it at boot and stops a boot it refuses, one above the ceiling included. Set and
+# not blank, it wins over the value an instance admin saves in Instance settings ›
+# Configuration (`Apiary.InstanceConfig`); unset or blank, that value applies, else the
+# default.
 config :apiary, :audit_retention_setting, System.get_env("AUDIT_RETENTION_DAYS")
 
 # AUDIT_ADDRESS_RETENTION_DAYS is how long an audit entry keeps the address and the client
-# it came from: 1 day up to AUDIT_RETENTION_DAYS, 90 when unset, or AUDIT_RETENTION_DAYS
-# when that is shorter. Checked with it.
+# it came from: 1 day up to the audit trail's period, 90 by default, or the trail's
+# period when that is shorter. Checked with AUDIT_RETENTION_DAYS. Set and not blank, it
+# wins over the value an instance admin saves in Instance settings › Configuration
+# (`Apiary.InstanceConfig`); unset or blank, that value applies, else the default.
 config :apiary,
        :audit_address_retention_setting,
        System.get_env("AUDIT_ADDRESS_RETENTION_DAYS")
 
 # DELETION_GRACE_DAYS is how long a workspace or an organisation marked for deletion is
-# kept before it is purged: a number of days from 1 to 90, 30 when unset. Read in every
+# kept before it is purged: a number of days from 1 to 90, 30 by default. Read in every
 # environment; `Apiary.Deletion.boot!/0` checks it at boot and stops a boot it refuses.
+# Set and not blank, it wins over the value an instance admin saves in Instance settings ›
+# Configuration (`Apiary.InstanceConfig`); unset or blank, that value applies, else the
+# default.
 config :apiary, :deletion_grace_setting, System.get_env("DELETION_GRACE_DAYS")
 
 # INVITATIONS_PER_DAY is how many invitations an organisation sends in 24 hours: a whole
-# number from 1, 20 when unset. `Apiary.Instance.boot!/0` checks it at boot and stops a
-# boot it refuses. Not read under test: the suite runs with the default, whatever the
-# shell running it has set.
+# number from 1, 20 by default. `Apiary.Instance.boot!/0` checks it at boot and stops a
+# boot it refuses. Set and not blank, it wins over the value an instance admin saves in
+# Instance settings › Configuration (`Apiary.InstanceConfig`); unset or blank, that value
+# applies, else the default. Not read under test: the suite runs with the default,
+# whatever the shell running it has set.
 if config_env() != :test do
   config :apiary, :invitations_per_day_setting, System.get_env("INVITATIONS_PER_DAY")
 end
@@ -424,5 +450,10 @@ if config_env() == :prod do
           :initial_call,
           :registered_name
         ]
-      )
+      ),
+    # No burst limit: past 500 events a second the handler would drop the rest unseen, and a
+    # first boot's migrations log more than that just before the set-up link. A burst makes
+    # the code logging it wait instead; the queue limits stay, and say when they drop
+    # events.
+    config: [burst_limit_enable: false]
 end

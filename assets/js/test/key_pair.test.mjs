@@ -1,5 +1,5 @@
 // The browser's access key (assets/js/hooks/key_pair.js), under Node's own WebCrypto:
-// `node --test assets/js/test/` (no npm). It proves the secret's form against Forager's
+// `node --test 'assets/js/test/*.test.mjs'` (no npm). It proves the secret's form against Forager's
 // contract, and that what the browser sends Qory is the label and the public key, never
 // the secret.
 

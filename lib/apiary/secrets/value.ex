@@ -2,8 +2,9 @@ defmodule Apiary.Secrets.Value do
   @moduledoc """
   One value of a stored secret: its value id, a lowercase slug unique in the secret, or
   none for a secret's one value, and the value itself, only ever stored encrypted
-  (`Apiary.Secrets.Cipher`): `nonce` and `ciphertext`, under the workspace's data key
-  (`data_key_id`).
+  (`Apiary.Secrets.Cipher`): `nonce` and `ciphertext`, under the data key of its secret's
+  level: its workspace's (`data_key_id`), or, for a secret of an organisation, which has
+  no workspace, its organisation's (`organisation_data_key_id`).
 
   The value is write-only. The virtual `value` carries a plaintext only into a changeset,
   and `Apiary.Secrets` takes it out before the row is written: no struct it returns holds
@@ -33,6 +34,7 @@ defmodule Apiary.Secrets.Value do
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :secret, Apiary.Secrets.Secret
     belongs_to :data_key, Apiary.Secrets.DataKey
+    belongs_to :organisation_data_key, Apiary.Secrets.OrganisationDataKey
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :updated_by, Apiary.Accounts.User
 

@@ -12,8 +12,9 @@ defmodule Apiary.Contract.Ed25519Test do
   # README names it among the keys every side refuses.
   @fixture_second_access_key "dSnEVtk40rj-kPpsz5FtNGdwpkvLt7UyO2h6zeIM0Aw"
 
-  # The contract's enrolment known answer: the proof, under the fixture access key, of the
-  # five lines of the example body.
+  # An Ed25519 known answer from the enrolment of Forager v0.7.0's contract, kept as a
+  # signature vector: the proof, under the fixture access key, of the five lines of that
+  # contract's example body.
   @enrol_lines Enum.join(
                  [
                    "qory-enrol-ed25519-v1",
@@ -115,6 +116,35 @@ defmodule Apiary.Contract.Ed25519Test do
       assert Ed25519.decode_public_key(Ed25519.encode(public <> <<0>>)) == {:error, :length}
       assert Ed25519.decode_public_key("") == {:error, :length}
       assert Ed25519.decode_public_key(nil) == {:error, :length}
+    end
+  end
+
+  describe "the X25519 public key" do
+    test "is the Montgomery u-coordinate :crypto derives from the same seed" do
+      # An X25519 key pair whose private key is the clamped first half of SHA-512(seed)
+      # has the public key that the conversion gives the Ed25519 key of that seed.
+      seed = :crypto.strong_rand_bytes(32)
+      {public, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+      <<scalar::binary-size(32), _::binary>> = :crypto.hash(:sha512, seed)
+      {x25519, _private} = :crypto.generate_key(:ecdh, :x25519, scalar)
+      assert Ed25519.x25519_public_key(public) == {:ok, x25519}
+    end
+
+    test "converts a fixture key, and refuses what fails the other key checks" do
+      {:ok, fixture} = Ed25519.decode(@fixture_access_key, 32)
+      assert {:ok, <<_::binary-size(32)>>} = Ed25519.x25519_public_key(fixture)
+
+      {:ok, identity} = Ed25519.decode(hd(@small_order), 32)
+      assert Ed25519.x25519_public_key(identity) == {:error, :y_is_one}
+
+      {:ok, torsion} = Ed25519.decode(@torsion_key, 32)
+      assert Ed25519.x25519_public_key(torsion) == {:error, :not_prime_order}
+
+      {:ok, non_canonical} = Ed25519.decode(hd(@non_canonical), 32)
+      assert Ed25519.x25519_public_key(non_canonical) == {:error, :non_canonical}
+
+      assert Ed25519.x25519_public_key(<<2, 0::248>>) == {:error, :not_on_curve}
+      assert Ed25519.x25519_public_key(<<1, 2, 3>>) == {:error, :length}
     end
   end
 
@@ -258,7 +288,7 @@ defmodule Apiary.Contract.Ed25519Test do
       refute Ed25519.canonical_signature?(r)
     end
 
-    test "verifies the contract's enrolment proof" do
+    test "verifies the enrolment proof of Forager v0.7.0's contract" do
       {:ok, key} = Ed25519.decode(@fixture_access_key, 32)
       {:ok, proof} = Ed25519.decode(@enrol_proof, 64)
 

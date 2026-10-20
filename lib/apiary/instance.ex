@@ -1,10 +1,11 @@
 defmodule Apiary.Instance do
   @moduledoc """
-  The instance's setting for how many invitations an organisation makes, read from the
-  environment at boot (`boot!/0`) and fixed for the life of the node.
+  The instance's setting for how many invitations an organisation makes:
+  `INVITATIONS_PER_DAY` when set, checked at boot (`boot!/0`), else the value saved in
+  Instance settings › Configuration (`Apiary.InstanceConfig`), else 20.
 
-  `INVITATIONS_PER_DAY`, a whole number from 1, 20 when unset: how many invitations an
-  organisation makes in 24 hours, emailed or copied (`Apiary.Organisations.invite_member/3`).
+  `INVITATIONS_PER_DAY` is a whole number from 1: how many invitations an organisation
+  makes in 24 hours, emailed or copied (`Apiary.Organisations.invite_member/3`).
 
   Who may sign up after the instance's first sign-up is the edition's to say
   (`c:Apiary.Edition.sign_up_open?/0`).
@@ -14,15 +15,11 @@ defmodule Apiary.Instance do
 
   @doc """
   invitations_per_day/0 is how many invitations an organisation makes in 24 hours:
-  `INVITATIONS_PER_DAY`, #{@default_invitations_per_day} when unset.
+  `INVITATIONS_PER_DAY` when set, else the value saved in Instance settings ›
+  Configuration (`Apiary.InstanceConfig`), else #{@default_invitations_per_day}.
   """
   @spec invitations_per_day() :: pos_integer
-  def invitations_per_day do
-    case Application.fetch_env(:apiary, :invitations_per_day) do
-      {:ok, limit} -> limit
-      :error -> boot!()
-    end
-  end
+  def invitations_per_day, do: Apiary.InstanceConfig.value(:invitations_per_day)
 
   @doc """
   parse_invitations_per_day/1 reads a value of `INVITATIONS_PER_DAY`: `{:ok, limit}`, a
@@ -49,15 +46,23 @@ defmodule Apiary.Instance do
   end
 
   @doc """
-  boot!/0 reads `INVITATIONS_PER_DAY` as `config/runtime.exs` left it, checks it and fixes
-  it for the life of the node; it returns it. Called at boot; raises on a value
-  `parse_invitations_per_day/1` refuses, so the instance does not start.
+  boot!/0 reads `INVITATIONS_PER_DAY` as `config/runtime.exs` left it, checks it, and
+  keeps its value for the life of the node, under `:invitations_per_day`: the number where
+  the variable is set and not blank, nil otherwise, so the value saved in Instance
+  settings › Configuration applies (`Apiary.InstanceConfig`). It reads no saved value,
+  since it runs before the database is reached. A test that puts the key sets the
+  variable. It returns the limit the variable gives, #{@default_invitations_per_day} where
+  it is not set. Called at boot; raises on a value `parse_invitations_per_day/1` refuses,
+  so the instance does not start.
   """
   @spec boot!() :: pos_integer
   def boot! do
-    case parse_invitations_per_day(Application.get_env(:apiary, :invitations_per_day_setting)) do
+    setting = Application.get_env(:apiary, :invitations_per_day_setting)
+
+    case parse_invitations_per_day(setting) do
       {:ok, limit} ->
-        Application.put_env(:apiary, :invitations_per_day, limit)
+        set = is_binary(setting) and String.trim(setting) != ""
+        Application.put_env(:apiary, :invitations_per_day, if(set, do: limit))
         limit
 
       {:error, reason} ->

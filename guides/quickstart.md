@@ -78,8 +78,9 @@ Set up Qory Apiary at http://localhost:4100/setup/<code>.
 
 Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
-same password again, and the **Organisation name**, usually your company's, `Acme` say,
-and select **Set up**. You are signed in, and land on the overview of your workspace.
+same password again, the **Organisation name**, usually your company's, `Acme` say, and
+the **Workspace type**: pick **Software workspace**, whose words this guide uses. Then
+select **Set up**. You are signed in, and land on the overview of your workspace.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
 Connect it, See runs here. Steps 5 to 7 below are those steps.
 
@@ -131,8 +132,9 @@ Your preferences are under **Your settings › Preferences**, in the menu of you
 time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
 and, once the instance has more than one, the language. They are yours, not the
 organisation's. Mail to you, once the instance sends mail, is written in your language. The words
-of the workspace's pages are its domain's, chosen when it was created: software, the one
-domain there is, which says repository, forge and pull request.
+of the workspace's pages are its type's, chosen when it was created and fixed after: a
+software workspace says repository, forge and pull request; a general workspace says
+target, system and collection.
 
 ## 5. Add a node, then connect it
 
@@ -155,7 +157,7 @@ Apiary keeps only its public half.
 3. On the machine, run the command:
 
    ```sh
-   qory access-key enrol http://localhost:4100 qec_…
+   qory access-key enrol http://localhost:4100 qecn_…
    ```
 
    `qory` makes the key, keeps its secret in `~/.config/qory/access-key-secret`, readable

@@ -32,6 +32,111 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "an avatar without an address" do
+    test "is decorative, its markup as before the avatar could stand for a person" do
+      assigns = %{}
+
+      assert rendered_to_string(~H|<CoreComponents.avatar name="dana@example.com" />|) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-6 text-[11px] rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line\">\n    \n      d\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(
+               ~H|<CoreComponents.avatar name="dana@example.com" kind="self" size="md" />|
+             ) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-7 text-xs rounded-full bg-primary-soft text-primary-soft-content\">\n    \n      d\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(
+               ~H|<CoreComponents.avatar name="Acme" kind="organisation" size="xs" />|
+             ) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-[18px] text-[10.5px] rounded-selector bg-neutral text-neutral-content\">\n    \n      A\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(~H|<CoreComponents.avatar kind="pending" />|) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-6 text-[11px] rounded-full border border-dashed border-line-field bg-transparent text-faint\">\n    \n      <span phx-r class=\"hero-envelope size-3.5\"></span>\n    \n  </div>\n</span>"
+
+      assert rendered_to_string(~H|<CoreComponents.avatar />|) ==
+               "<span phx-r class=\"avatar avatar-placeholder flex-none \" aria-hidden=\"true\">\n  <div class=\"size-6 text-[11px] rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line\">\n    \n      ?\n    \n  </div>\n</span>"
+    end
+  end
+
+  describe "an avatar for a person's address" do
+    defp avatar(attrs) do
+      LazyHTML.from_fragment(render_component(&CoreComponents.avatar/1, attrs))
+    end
+
+    test "is the first letter in an abbr of the address, a tab stop, read as the address" do
+      doc = avatar(email: "priya@example.com", size: "xs")
+      abbr = LazyHTML.query(doc, "abbr.term.tooltip")
+
+      assert LazyHTML.attribute(abbr, "tabindex") == ["0"]
+      assert LazyHTML.attribute(abbr, "data-tip") == ["priya@example.com"]
+      assert LazyHTML.attribute(abbr, "aria-label") == ["priya@example.com"]
+      assert LazyHTML.text(LazyHTML.query(abbr, "span[aria-hidden=true]")) == "P"
+      assert LazyHTML.text(LazyHTML.query(abbr, "span.sr-only")) == "priya@example.com"
+
+      assert LazyHTML.query(abbr, "span[aria-hidden=true].size-\\[18px\\].bg-base-300")
+             |> Enum.count() == 1
+    end
+
+    test "inside a link or a row that opens, is no tab stop" do
+      abbr = LazyHTML.query(avatar(email: "priya@example.com", in_link: true), "abbr")
+
+      assert LazyHTML.attribute(abbr, "tabindex") == []
+      assert LazyHTML.attribute(abbr, "data-tip") == ["priya@example.com"]
+    end
+
+    test "shows a digit or a symbol as it is, and upper-cases a letter by Unicode rules" do
+      letter = &(&1 |> avatar() |> LazyHTML.query("span[aria-hidden=true]") |> LazyHTML.text())
+
+      assert letter.(email: "7days@example.com") == "7"
+      assert letter.(email: "_ops@example.com") == "_"
+      assert letter.(email: "élodie@example.com") == "É"
+      assert letter.(email: "ørjan@example.com") == "Ø"
+    end
+
+    test "for the reader, has the account menu's colour and says you" do
+      for attrs <- [
+            [email: "dana@example.com", reader: "dana@example.com"],
+            [email: "dana@example.com", kind: "self"]
+          ] do
+        abbr = LazyHTML.query(avatar(attrs), "abbr")
+
+        assert LazyHTML.attribute(abbr, "data-tip") == ["dana@example.com (you)"]
+        assert LazyHTML.attribute(abbr, "aria-label") == ["dana@example.com (you)"]
+        assert LazyHTML.text(LazyHTML.query(abbr, "span.sr-only")) == "dana@example.com (you)"
+        assert Enum.count(LazyHTML.query(abbr, "span.bg-primary-soft")) == 1
+      end
+
+      other = avatar(email: "priya@example.com", reader: "dana@example.com")
+
+      assert LazyHTML.attribute(LazyHTML.query(other, "abbr"), "data-tip") == [
+               "priya@example.com"
+             ]
+
+      assert Enum.count(LazyHTML.query(other, "span.bg-base-300")) == 1
+    end
+
+    test "for two people of one letter, draws the same neutral circle; the hint differs" do
+      [sam, sofia] = Enum.map(["sam@example.com", "sofia@example.com"], &avatar(email: &1))
+      circle = &(&1 |> LazyHTML.query("span[aria-hidden=true]") |> LazyHTML.attribute("class"))
+
+      assert circle.(sam) == circle.(sofia)
+      assert hd(circle.(sam)) =~ "bg-base-300"
+      refute hd(circle.(sam)) =~ "primary"
+
+      assert LazyHTML.attribute(LazyHTML.query(sam, "abbr"), "data-tip") !=
+               LazyHTML.attribute(LazyHTML.query(sofia, "abbr"), "data-tip")
+    end
+
+    test "for a deleted account is the words Former member, with no letter and no hint" do
+      html = render_component(&CoreComponents.avatar/1, email: ApiaryWeb.People.former_member())
+
+      assert String.trim(html) == "Former member"
+    end
+
+    test "for no person is nothing" do
+      assert String.trim(render_component(&CoreComponents.avatar/1, email: nil)) == ""
+    end
+  end
+
   describe "an input with a prefix" do
     test "shows the prefix before the value as one field, read with it" do
       form = Phoenix.Component.to_form(%{"slug" => "data"}, as: :workspace)
@@ -73,8 +178,58 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "a radio group" do
+    test "a choice with a line is a card, its radio described by the line" do
+      form = Phoenix.Component.to_form(%{"domain" => "b"}, as: :workspace)
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:domain],
+          type: "radio",
+          label: "Type",
+          options: [{"A", "a", "For a."}, {"B", "b", "For b."}]
+        )
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert ["workspace_domain-0", "workspace_domain-1"] =
+               doc
+               |> LazyHTML.query("label.q-choice > input[type=radio]")
+               |> LazyHTML.attribute("id")
+
+      assert doc |> LazyHTML.query("#workspace_domain-1") |> LazyHTML.attribute("checked") != []
+
+      assert doc
+             |> LazyHTML.query("#workspace_domain-0")
+             |> LazyHTML.attribute("aria-describedby") ==
+               ["workspace_domain-0-line"]
+
+      assert doc |> LazyHTML.query("#workspace_domain-1-line") |> LazyHTML.text() |> String.trim() ==
+               "For b."
+
+      assert doc |> LazyHTML.query("label.q-choice .q-choice-h") |> Enum.map(&LazyHTML.text/1) ==
+               ["A", "B"]
+    end
+
+    test "a choice without a line stays a plain label" do
+      form = Phoenix.Component.to_form(%{}, as: :workspace)
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:kind],
+          type: "radio",
+          label: "Create",
+          options: [{"An organisation", "organisation"}]
+        )
+
+      refute html =~ "q-choice"
+      refute html =~ "aria-describedby"
+      assert html =~ "An organisation"
+    end
+  end
+
   describe "an input with more than one error" do
-    test "shows each, with an id of its own, and is described by all of them" do
+    test "shows each, with a separate id, and is described by all of them" do
       form =
         Phoenix.Component.to_form(%{"email" => "dana"},
           as: :user,
@@ -204,6 +359,86 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "a Filter menu's label" do
+    test "is Filter unless given, on the button and as the menu's name, in both kinds" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.filter_menu id="runs-filter">
+          <:section key="state" label="State" icon="hero-check-circle">
+            <p>options</p>
+          </:section>
+        </CoreComponents.filter_menu>
+        <CoreComponents.filter_menu id="network-filter">
+          <CoreComponents.menu_item checked={false}>Denied</CoreComponents.menu_item>
+        </CoreComponents.filter_menu>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      for id <- ~w(runs-filter network-filter) do
+        assert doc |> LazyHTML.query("##{id}-button") |> LazyHTML.text() |> String.trim() ==
+                 "Filter"
+      end
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#runs-filter-panel"), "aria-label") ==
+               ["Filter"]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#network-filter [role=menu]"), "aria-label") ==
+               ["Filter"]
+    end
+
+    test "is what the caller gives, on the button and as the menu's name, in both kinds" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.filter_menu id="runs-filter" label="Workspace" count={1}>
+          <:section key="state" label="State" icon="hero-check-circle">
+            <p>options</p>
+          </:section>
+        </CoreComponents.filter_menu>
+        <CoreComponents.filter_menu id="network-filter" label="Workspace">
+          <CoreComponents.menu_item checked={false}>Denied</CoreComponents.menu_item>
+        </CoreComponents.filter_menu>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      for id <- ~w(runs-filter network-filter) do
+        text = doc |> LazyHTML.query("##{id}-button") |> LazyHTML.text()
+        assert text =~ "Workspace"
+        refute text =~ "Filter"
+      end
+
+      assert doc |> LazyHTML.query("#runs-filter-button .q-listmenu-n") |> LazyHTML.text() == "1"
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#runs-filter-panel"), "aria-label") ==
+               ["Workspace"]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#network-filter [role=menu]"), "aria-label") ==
+               ["Workspace"]
+    end
+  end
+
+  describe "a list's bar with the Assign to workspace button" do
+    # Opt-in by a class on the bar: no other bar's search changes, and a phone keeps the
+    # search on a separate line.
+    test "narrows its search to 260px from 768px; the assign menu's search fills its item, up to 260px" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      assert css =~
+               ~r/@media \(min-width: 768px\) \{\s*\.q-bar\.q-int-assignbar > \.q-find \{\s*width: min\(260px, 100%\);\s*\}\s*\}/
+
+      assert css =~
+               ~r/\n  \.q-int-assign li > form \{\s*grid-template-columns: minmax\(0, 1fr\);\s*\}/
+
+      assert css =~
+               ~r/\n  \.q-int-assign \.q-filter-search \{\s*width: 100%;\s*max-width: 260px;\s*\}/
+    end
+  end
+
   describe "a page's header" do
     test "has a title that takes focus after a navigation, without a ring" do
       assigns = %{}
@@ -268,6 +503,75 @@ defmodule ApiaryWeb.CoreComponentsTest do
       assert doc |> LazyHTML.query("th .sr-only") |> LazyHTML.text() == "Pinned"
     end
 
+    # A column's header cell is its label as text, beside a screen reader's header; a
+    # header slot changes nothing for a table that gives none.
+    test "heads its columns with their labels when no header slot is given" do
+      assigns = %{rows: [%{id: 1, name: "build-01"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table id="keys" label="Access keys" rows={@rows}>
+          <:col :let={row} label="Name" kind="title">{row.name}</:col>
+          <:col label="Runs" kind="num" from="sm" class="w-24">3</:col>
+          <:col sr_label="Pinned"></:col>
+          <:action>x</:action>
+        </CoreComponents.table>
+        """)
+
+      [thead] = Regex.run(~r/<thead>.*<\/thead>/s, html)
+
+      assert thead <> "\n" == ~S"""
+             <thead>
+                   <tr>
+                     <th scope="col" class="">
+                       Name
+                     </th><th scope="col" class="q-num q-from-sm w-24">
+                       Runs
+                     </th><th scope="col" class="">
+                       <span class="sr-only">Pinned</span>
+                     </th>
+                     <th scope="col" class="w-px">
+                       <span class="sr-only">Actions</span>
+                     </th>
+                   </tr>
+                 </thead>
+             """
+    end
+
+    test "gives a column's header cell the header slot that names its key, in place of its label" do
+      assigns = %{rows: [%{id: 1, name: "build-01"}, %{id: 2, name: "build-02"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table id="keys" label="Access keys" rows={@rows}>
+          <:header col="pick">
+            <input id="keys-all" type="checkbox" aria-label="Select every key" />
+          </:header>
+          <:col :let={row} key="pick" label="Unused" class="q-int-cb">
+            <input type="checkbox" aria-label={row.name} />
+          </:col>
+          <:col :let={row} key="name" label="Name" kind="title">{row.name}</:col>
+        </CoreComponents.table>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+      [pick, name] = doc |> LazyHTML.query("thead th") |> Enum.to_list()
+
+      assert pick |> LazyHTML.query("input#keys-all[type=checkbox]") |> Enum.count() == 1
+      assert LazyHTML.attribute(pick, "class") == ["q-int-cb"]
+      refute LazyHTML.text(pick) =~ "Unused"
+
+      # A column whose key no header slot names keeps its label.
+      assert name |> LazyHTML.text() |> String.trim() == "Name"
+
+      # The rows keep their cells: a checkbox each, then the name.
+      assert doc |> LazyHTML.query("tbody input[type=checkbox]") |> Enum.count() == 2
+
+      assert doc
+             |> LazyHTML.query("tbody td.q-td-title")
+             |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim())) == ["build-01", "build-02"]
+    end
+
     # A table wider than its box scrolls sideways: the confirmation is one cell across the
     # row, its content in the block the stylesheet keeps in the box's view (`q-confirm-view`,
     # sticky), so the question and its buttons are never off to one side.
@@ -325,6 +629,57 @@ defmodule ApiaryWeb.CoreComponentsTest do
       # The other rows keep their cells.
       assert doc |> LazyHTML.query("tr#key-1 > td") |> Enum.count() == 3
       assert doc |> LazyHTML.query("tr#key-1 .q-confirm-view") |> Enum.to_list() == []
+    end
+
+    # The classes a cell's words take to fit the table's box: each scoped to a list table,
+    # so it outranks a nowrap a word's class sets and reaches no other part of a page.
+    test "a cell's words fit the box: q-cut, q-parts, q-stw-wrap and a titled q-side" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      rule = fn selector ->
+        [body] =
+          Regex.run(~r/\n  #{Regex.escape(selector)} \{([^}]*)\}/, css, capture: :all_but_first)
+
+        body
+      end
+
+      # One line, cut with an ellipsis down to a floor.
+      cut = rule.(".q-tbl .q-cut")
+
+      for declaration <- [
+            "display: -webkit-box;",
+            "-webkit-line-clamp: 1;",
+            "overflow: hidden;",
+            "white-space: normal;",
+            "word-break: break-all;",
+            "min-width: 5ch;"
+          ] do
+        assert cut =~ declaration
+      end
+
+      # A line that breaks between its parts, never inside one.
+      assert rule.(".q-tbl .q-parts") =~ "white-space: normal;"
+      assert rule.(".q-tbl .q-parts > *") =~ "white-space: nowrap;"
+
+      # The one state word that breaks onto further lines.
+      assert rule.(".q-stw.q-stw-wrap") =~ "white-space: normal;"
+
+      # A word beside a title that carries a title gives way, down to its floor; a cut
+      # title gives way last.
+      side = rule.(".q-tbl .q-nm > .q-side[title]")
+      assert side =~ "flex: 0 1 auto;"
+      assert side =~ "min-width: min(10ch, 14cqi);"
+      assert rule.(".q-tbl .q-nm > .q-cut") =~ "flex: 0 1 auto;"
+      assert rule.(".q-tbl .q-nm > .q-title.q-cut") =~ "min-width: min(24ch, 32cqi);"
+
+      # An id beside a title hides below 600 px of table, a titled one too.
+      assert css =~
+               ~r/@container \(max-width: 599px\) \{\s*\.q-tbl \.q-side\.q-mono,\s*\.q-tbl \.q-nm > \.q-side\.q-mono\[title\] \{\s*display: none;/
+
+      # None of them reaches outside a list table.
+      for unscoped <- [".q-cut", ".q-parts", ".q-stw-wrap", ".q-nm > .q-side[title]"] do
+        refute css =~ "\n  #{unscoped} {"
+      end
     end
   end
 

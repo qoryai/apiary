@@ -89,6 +89,41 @@ defmodule Apiary.OrganisationsFixtures do
     organisation
   end
 
+  @doc """
+  The scope of an instance admin (`Apiary.Access.instance_admin?/1`): the first owner of the
+  instance's organisation (`ensure_instance_organisation!/0`), as a page of theirs loads it,
+  signed in just now (`Apiary.Accounts.sudo_mode?/2`). Nothing is written: the instance's
+  admin is the suite's, which every test sees, so an async test asks with it too.
+  """
+  def instance_admin_scope do
+    organisation = ensure_instance_organisation!()
+
+    user =
+      Repo.one!(
+        from u in Apiary.Accounts.User,
+          join: m in Membership,
+          on: m.user_id == u.id,
+          where: m.organisation_id == ^organisation.id,
+          where: m.level == ^Apiary.Access.instance_admin_level() and is_nil(m.suspended_at),
+          where: is_nil(u.deleted_at),
+          order_by: [asc: m.inserted_at, asc: m.id],
+          limit: 1
+      )
+
+    %{user | authenticated_at: DateTime.utc_now(:second)}
+    |> Scope.for_user()
+    |> Organisations.load_scope()
+  end
+
+  @doc """
+  The scope of the instance acting by itself in the instance's organisation
+  (`Apiary.Accounts.Scope.for_instance/2`): the installer's of the adapters installed with
+  Qory Apiary (`Apiary.Adapters.Installer`).
+  """
+  def instance_scope do
+    ensure_instance_organisation!() |> Scope.for_instance()
+  end
+
   @doc "A pending invitation into the scope's workspace, with the URL token its link carries."
   def invitation_fixture(%Scope{} = scope, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{"email" => AccountsFixtures.unique_user_email()})
@@ -129,6 +164,17 @@ defmodule Apiary.OrganisationsFixtures do
     |> Workspace.create_changeset(%{name: name, domain: "software"})
     |> Workspace.put_slug(Slug.from_name(name, "workspace"))
     |> Repo.insert!()
+  end
+
+  @doc """
+  `scope` with its workspace of the domain `name`, written to its row directly: the product
+  sets a workspace's domain only when it creates the workspace, and a test that needs a
+  workspace of another domain makes it so after.
+  """
+  def with_domain(%Scope{workspace: %Workspace{id: id} = workspace} = scope, name)
+      when is_binary(name) do
+    {1, _rows} = Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [domain: name])
+    %{scope | workspace: %{workspace | domain: name}}
   end
 
   @doc """

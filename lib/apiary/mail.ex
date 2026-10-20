@@ -234,6 +234,24 @@ defmodule Apiary.Mail do
       end
   end
 
+  @doc """
+  shown/0 is the saved settings as a page shows them, read from the database now
+  (`settings/0`): `settings`, the row without its password
+  (`Apiary.Mail.Settings.without_password/1`), `nil` for none; their `state`
+  (`state/1`); and `password_saved`, whether a saved password can be read. Nothing of the
+  password, which only this module decrypts, reaches the page.
+  """
+  @spec shown() :: %{settings: Settings.t() | nil, state: state, password_saved: boolean}
+  def shown do
+    settings = settings()
+
+    %{
+      settings: settings && Settings.without_password(settings),
+      state: state(settings),
+      password_saved: match?({:ok, _password}, settings && Password.decrypt(settings))
+    }
+  end
+
   @doc "state/1 is the state of `settings`; see the module's documentation."
   @spec state(Settings.t() | nil) :: state
   def state(nil), do: :none
@@ -313,7 +331,7 @@ defmodule Apiary.Mail do
   and whether a username and a sender are set, never the password, the username or the
   sender's address. Returns `{:ok, settings, :sent}`, or
   `{:ok, settings, :not_sent}` when the test link could not be sent through them, the
-  settings saved all the same; `{:error, changeset}`, without the password given
+  settings saved all the same; `{:error, changeset}`, without a password, given or saved
   (`Apiary.Mail.Settings.without_password/1`); `{:error, :env}` while the environment
   sets mail, which wins whole; `{:error, :sudo}` for an instance admin who did not sign in
   recently (`Apiary.Accounts.sudo_mode?/2`), who signs in again first; or

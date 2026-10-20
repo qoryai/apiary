@@ -4,6 +4,11 @@ defmodule Apiary.Runs.NoClosedStateMigrationTest do
   # test, so it is not async.
   use Apiary.DataCase, async: false
 
+  # Running a migration up again while later ones are applied makes Ecto warn that an
+  # older migration ran after a newer one. The log is kept from the output and shown
+  # only when a test fails.
+  @moduletag :capture_log
+
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Runs.Run
@@ -40,7 +45,7 @@ defmodule Apiary.Runs.NoClosedStateMigrationTest do
     values = Enum.map_join(6..(5 + length(columns))//1, &", $#{&1}")
 
     Repo.query!(
-      "INSERT INTO runs (id, organisation_id, workspace_id, run_id, state, inserted_at, " <>
+      "INSERT INTO runs (id, organisation_id, workspace_id, node_run_id, state, inserted_at, " <>
         "updated_at#{names}) VALUES ($1, $2, $3, $4, $5, now(), now()#{values})",
       [
         Ecto.UUID.dump!(id),

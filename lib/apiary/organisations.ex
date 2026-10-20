@@ -38,8 +38,9 @@ defmodule Apiary.Organisations do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, Repo}
+  alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
+  alias Apiary.Lingo.Domain
 
   alias Apiary.Organisations.{
     Invitation,
@@ -720,7 +721,7 @@ defmodule Apiary.Organisations do
 
   ## Sign-up
 
-  @sign_up_types %{email: :string, organisation_name: :string}
+  @sign_up_types %{email: :string, organisation_name: :string, domain: :string}
   # The password and its confirmation are checked on the form (`change_sign_up/2`) and
   # hashed into the account (`sign_up_user/3`); never kept in the form's changes, and never
   # handed to the edition.
@@ -763,7 +764,11 @@ defmodule Apiary.Organisations do
   the organisation it creates, checked as an organisation's name is. `invited: true` for a
   sign-up with an invitation, which creates no organisation and asks for no name;
   `validate_unique: false` leaves out the read of whether the address is taken, as the
-  form does while it is typed in. An edition whose sign-up page asks more checks it on
+  form does while it is typed in. `domain`, where the form gives one, is the domain of the
+  organisation's first workspace, one of `Apiary.Lingo.Domain.names/0`; without one, the
+  workspace is of the default domain (`build_organisation/2`). `domain: :required` asks
+  for one, as the set-up page does: none is the error "Choose a type.". An edition whose
+  sign-up page asks more checks it on
   this changeset, and is given it when the organisation is created
   (`c:Apiary.Edition.organisation_created/2`, `sign_up_user/3`).
 
@@ -785,6 +790,8 @@ defmodule Apiary.Organisations do
       {%{}, @sign_up_types}
       |> Ecto.Changeset.cast(attrs, Map.keys(@sign_up_types))
       |> Ecto.Changeset.update_change(:organisation_name, &String.trim/1)
+      |> require_domain(Keyword.get(opts, :domain, :optional))
+      |> Ecto.Changeset.validate_inclusion(:domain, Domain.names())
       |> copy_errors(user)
       |> check_password(attrs, Keyword.get_lazy(opts, :password, &password_rule/0))
 
@@ -796,16 +803,22 @@ defmodule Apiary.Organisations do
     end
   end
 
-  # The errors of the account's or the organisation's changeset, on the form's fields: the
-  # address on `email`, the password and its confirmation on theirs, the organisation's
-  # name and slug on `organisation_name`, and anything else on `email`, which is where the
-  # form says it could not sign up.
+  defp require_domain(form, :required),
+    do: Ecto.Changeset.validate_required(form, :domain, message: Workspace.no_type())
+
+  defp require_domain(form, :optional), do: form
+
+  # The errors of the account's, the organisation's or its workspace's changeset, on the
+  # form's fields: the address on `email`, the password and its confirmation on theirs,
+  # the organisation's name and slug on `organisation_name`, the workspace's domain on
+  # `domain`, and anything else on `email`, which is where the form says it could not sign
+  # up.
   defp copy_errors(form, %Ecto.Changeset{errors: errors}) do
     Enum.reduce(errors, form, fn {field, {message, keys}}, form ->
       field =
         cond do
           field in [:name, :slug] -> :organisation_name
-          field in [:password, :password_confirmation] -> field
+          field in [:password, :password_confirmation, :domain] -> field
           true -> :email
         end
 
@@ -848,6 +861,13 @@ defmodule Apiary.Organisations do
         into: %{},
         do: {field, value}
   end
+
+  @doc """
+  default_workspace_name/0 is the name of the workspace a new organisation starts with:
+  "#{@default_workspace_name}".
+  """
+  @spec default_workspace_name() :: String.t()
+  def default_workspace_name, do: @default_workspace_name
 
   @doc """
   Registers a user and places them in an organisation, in one transaction.
@@ -900,6 +920,8 @@ defmodule Apiary.Organisations do
   none, and drops one sent all the same: the address is confirmed by a link before the
   account can sign in. `actor: :instance` needs none, and keeps one given, mail or not.
   `password: :required` asks for one whatever the mail, as the set-up page does.
+  `domain: :required` asks a sign-up that creates an organisation for the domain of its
+  first workspace, as the set-up page does (`change_sign_up/2`).
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
@@ -968,7 +990,12 @@ defmodule Apiary.Organisations do
 
     form =
       attrs
-      |> change_sign_up(invited: invited?, validate_unique: false, password: password)
+      |> change_sign_up(
+        invited: invited?,
+        validate_unique: false,
+        password: password,
+        domain: if(invited?, do: :optional, else: Keyword.get(opts, :domain, :optional))
+      )
       |> refuse_closed_sign_up(offered?)
 
     if form.valid? do
@@ -986,6 +1013,7 @@ defmodule Apiary.Organisations do
             fresh_sign_up_multi(
               user_changeset,
               Ecto.Changeset.get_field(form, :organisation_name),
+              Ecto.Changeset.get_field(form, :domain),
               extra(attrs),
               opts
             )
@@ -1061,7 +1089,7 @@ defmodule Apiary.Organisations do
         do: {key, value}
   end
 
-  defp fresh_sign_up_multi(user_changeset, name, extra, opts) do
+  defp fresh_sign_up_multi(user_changeset, name, domain, extra, opts) do
     origin = Keyword.get(opts, :origin)
     actor = Keyword.get(opts, :actor, :person)
 
@@ -1077,6 +1105,7 @@ defmodule Apiary.Organisations do
     |> Ecto.Multi.insert(:user, user_changeset)
     |> build_organisation(
       name: name,
+      domain: domain,
       how: & &1.how,
       scope: &sign_up_scope(&1, origin, actor),
       details: %{sign_up: true},
@@ -1211,7 +1240,10 @@ defmodule Apiary.Organisations do
     (`Apiary.Organisations.Slug`); `{:error, changeset}` for a name the organisation's
     changeset refuses, and `{:error, :slug_taken}` when every slug picked was taken by a
     concurrent creation, a few times over;
-  - `:workspace`, its workspace "#{@default_workspace_name}";
+  - `:workspace`, its workspace "#{@default_workspace_name}", of the domain `domain:`
+    names, one of `Apiary.Lingo.Domain.names/0`, or of the default domain
+    (`Apiary.Lingo.Domain.default/0`) for nil or none; `{:error, changeset}`, the
+    workspace's, with its error on `domain`, for a name no domain has;
   - `:membership`, its first owner, the person of the caller's change `owner:` names,
     `:user` unless it names another; nil with `owner: nil`, for an organisation whose
     first owner joins later;
@@ -1237,6 +1269,7 @@ defmodule Apiary.Organisations do
     action = Keyword.get(opts, :action, :"organisation.create")
     details = Keyword.get(opts, :details, %{})
     pick = Keyword.get(opts, :pick_slug) || (&organisation_slug/1)
+    domain = Keyword.get(opts, :domain) || Domain.default().name()
 
     # The caller's changes are given to the steps that need them: the edition's see the
     # organisation's own.
@@ -1246,7 +1279,9 @@ defmodule Apiary.Organisations do
 
       Ecto.Multi.new()
       |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert_organisation(name, pick) end)
-      |> Ecto.Multi.insert(:workspace, &main_workspace(&1.organisation))
+      |> Ecto.Multi.run(:workspace, fn _repo, %{organisation: organisation} ->
+        organisation |> main_workspace(domain) |> PublicId.Insert.insert()
+      end)
       |> Ecto.Multi.run(:membership, fn repo, %{organisation: organisation} ->
         if user,
           do: repo.insert(membership_changeset(organisation, user, :owner)),
@@ -1319,12 +1354,9 @@ defmodule Apiary.Organisations do
     end
   end
 
-  defp main_workspace(%Organisation{} = organisation) do
+  defp main_workspace(%Organisation{} = organisation, domain) do
     %Workspace{organisation_id: organisation.id}
-    |> Workspace.create_changeset(%{
-      name: @default_workspace_name,
-      domain: Apiary.Lingo.Domain.default().name()
-    })
+    |> Workspace.create_changeset(%{name: @default_workspace_name, domain: domain})
     |> Workspace.put_slug(workspace_slug(organisation, @default_workspace_name))
   end
 
@@ -1394,9 +1426,10 @@ defmodule Apiary.Organisations do
 
   @doc """
   change_new_workspace/2 is the changeset of a workspace the scope's organisation would
-  get from `attrs`, for the form that creates one (`create_workspace/2`): its name, and
-  its slug as `attrs` gives it, or made from the name where it gives none
-  (`suggest_workspace_slug/2`).
+  get from `attrs`, for the form that creates one (`create_workspace/2`): its name, its
+  slug as `attrs` gives it, or made from the name where it gives none
+  (`suggest_workspace_slug/2`), and its domain, which `attrs` must give, one of
+  `Apiary.Lingo.Domain.names/0`.
   """
   @spec change_new_workspace(Scope.t(), map) :: Ecto.Changeset.t()
   def change_new_workspace(%Scope{organisation: %Organisation{} = organisation}, attrs \\ %{}),
@@ -1415,14 +1448,16 @@ defmodule Apiary.Organisations do
   @doc """
   create_workspace/2 creates a workspace of the scope's organisation (`workspace.create`,
   an owner's, asked of the organisation), named `attrs["name"]`, at the slug
-  `attrs["slug"]` or one made from the name, in the default domain and with nothing in it:
+  `attrs["slug"]` or one made from the name, of the domain `attrs["domain"]`, one of
+  `Apiary.Lingo.Domain.names/0`, which never changes after, and with nothing in it:
   no key, no run, its policy in observe. The organisation's row is locked while its
   workspaces in use are counted against the edition's limit
   (`c:Apiary.Edition.limits/0`), the entry is written in the organisation's trail, and
   the edition is told (`c:Apiary.Edition.workspace_created/3`), all in one transaction.
 
   `{:ok, workspace}`; `{:error, changeset}` for a name or a slug the workspace refuses,
-  one another workspace of the organisation holds included; `{:error, :limit}` where the
+  one another workspace of the organisation holds included, and for a domain missing or
+  unknown; `{:error, :limit}` where the
   organisation has as many workspaces as the edition allows; `Apiary.Access`'s answer.
   """
   @spec create_workspace(Scope.t(), map) ::
@@ -1432,7 +1467,8 @@ defmodule Apiary.Organisations do
       with :ok <- Access.authorize(scope, :"workspace.create", organisation),
            :ok <- lock_allowance(organisation),
            :ok <- ensure_within_limit(organisation),
-           {:ok, workspace} <- organisation |> new_workspace_changeset(attrs) |> Repo.insert(),
+           {:ok, workspace} <-
+             organisation |> new_workspace_changeset(attrs) |> PublicId.Insert.insert(),
            {:ok, _entry} <-
              Audit.record(
                Repo,
@@ -1469,9 +1505,14 @@ defmodule Apiary.Organisations do
     end
   end
 
-  # A new workspace of the organisation: its name, as the form gives it, and its slug, the
-  # form's where it gives one, else one made from the name. The slug goes through the
-  # params too, so the form knows the field was used and shows what is wrong with it.
+  # A new workspace of the organisation: its name and its domain, as the form gives them,
+  # and its slug, the form's where it gives one, else one made from the name. The form's
+  # params go to the changeset as the form sent them, so a field the person has not used
+  # yet, the domain included, shows no error before the form is sent. The slug goes
+  # through the params too, as a used field, so the form shows what is wrong with a slug
+  # made from the name. A name or a slug another workspace of the organisation has is
+  # refused here as well as by the unique indexes, so the form shows it beside any other
+  # error, a missing domain included.
   defp new_workspace_changeset(%Organisation{id: organisation_id} = organisation, attrs) do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
     name = attrs["name"]
@@ -1482,13 +1523,20 @@ defmodule Apiary.Organisations do
         _none -> workspace_slug(organisation, if(is_binary(name), do: name, else: ""))
       end
 
-    %Workspace{organisation_id: organisation_id}
-    |> Workspace.create_changeset(%{
-      name: name,
-      slug: slug,
-      domain: Apiary.Lingo.Domain.default().name()
-    })
+    params = attrs |> Map.delete("_unused_slug") |> Map.put("slug", slug)
+
+    # No domain until the form gives one: the schema's default is no choice of the person's.
+    %Workspace{organisation_id: organisation_id, domain: nil}
+    |> Workspace.create_changeset(params)
     |> Workspace.put_slug(slug)
+    |> Ecto.Changeset.unsafe_validate_unique([:organisation_id, :name], Repo,
+      error_key: :name,
+      message: Workspace.taken_name()
+    )
+    |> Ecto.Changeset.unsafe_validate_unique([:organisation_id, :slug], Repo,
+      error_key: :slug,
+      message: Workspace.taken_slug()
+    )
   end
 
   @doc """
@@ -2994,6 +3042,10 @@ defmodule Apiary.Organisations do
         ),
       else: changeset
   end
+
+  # An address the changeset refuses is not looked up: Postgres refuses a NUL in text.
+  defp refuse_existing_member(%Ecto.Changeset{valid?: false} = changeset, _organisation),
+    do: changeset
 
   defp refuse_existing_member(changeset, %Organisation{id: organisation_id}) do
     case Ecto.Changeset.get_field(changeset, :email) do

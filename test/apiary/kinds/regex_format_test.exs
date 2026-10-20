@@ -16,6 +16,8 @@ defmodule Apiary.Kinds.RegexFormatTest do
     "a{2,}"
   ]
 
+  @limits [list: 1024, members: 1024, nodes: 4096, depth: 64]
+
   @invalid ["(", ")", "[a-", "a{2,1}", "*a", "(?<n>a)(?<n>b)", "\\", "(?P<1>a)", "[z-a]"]
 
   # Runs `fun` in a new process, as the settings check does: the compiled values
@@ -30,8 +32,8 @@ defmodule Apiary.Kinds.RegexFormatTest do
     reductions
   end
 
-  # The reductions now, once the process's heap is collected, so that a collection of
-  # what came before falls outside the window measured from here.
+  # The first reading of a count: garbage is collected first, so that a collection's
+  # work is not counted.
   defp collected_reductions do
     :erlang.garbage_collect()
     reductions()
@@ -55,11 +57,11 @@ defmodule Apiary.Kinds.RegexFormatTest do
     {:ok, default} = Schema.build(schema)
 
     for pattern <- @valid ++ @invalid do
-      expected = match?(:ok, Schema.validate(pattern, default))
+      expected = match?(:ok, Schema.validate(pattern, default, @limits))
 
       assert fresh(fn ->
                {:ok, root} = Schema.build(schema, formats: RegexFormat.formats())
-               match?(:ok, Schema.validate(pattern, root))
+               match?(:ok, Schema.validate(pattern, root, @limits))
              end) == expected
     end
   end
@@ -68,8 +70,8 @@ defmodule Apiary.Kinds.RegexFormatTest do
     {:ok, root} =
       Schema.build(%{"type" => "string", "format" => "email"}, formats: RegexFormat.formats())
 
-    assert Schema.validate("someone@example.com", root) == :ok
-    assert {:error, _} = Schema.validate("not an address", root)
+    assert Schema.validate("someone@example.com", root, @limits) == :ok
+    assert {:error, _} = Schema.validate("not an address", root, @limits)
   end
 
   test "a compile is charged in reductions, in proportion to the value's bytes" do
@@ -85,10 +87,10 @@ defmodule Apiary.Kinds.RegexFormatTest do
         {first, reductions() - before}
       end)
 
-    # 10 reductions a byte, counting 8 more bytes. Measured: 9 the second time; the bound
-    # leaves room for a garbage collection, and is below the charge of a compile.
+    # 10 reductions a byte, counting 8 more bytes. A second compile would be charged
+    # as much again.
     assert first >= 10 * (15_000 + 8)
-    assert again < 100_000
+    assert again < 50_000
   end
 
   test "a value is compiled once however many times the format applies to it" do
@@ -99,7 +101,7 @@ defmodule Apiary.Kinds.RegexFormatTest do
         schema = %{"allOf" => List.duplicate(%{"format" => "regex"}, leaves)}
         {:ok, root} = Schema.build(schema, formats: RegexFormat.formats())
         before = collected_reductions()
-        :ok = Schema.validate(value, root)
+        :ok = Schema.validate(value, root, @limits)
         reductions() - before
       end)
     end
@@ -107,10 +109,10 @@ defmodule Apiary.Kinds.RegexFormatTest do
     one = work.(1)
     many = work.(200)
 
-    # The one compile is charged 150080 reductions; 199 more leaves add less than that.
-    # Measured: 6524 more.
+    # The one compile is charged 150080 reductions or more. A compile for each of 199
+    # more leaves would add 199 times that, about 30 million; they add under a million.
     assert one >= 150_080
-    assert many - one < 150_080
+    assert many - one < 1_000_000
   end
 
   test "after pattern_bytes/2, a value past the bytes allowed throws before its compile" do

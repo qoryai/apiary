@@ -1,6 +1,7 @@
 defmodule Apiary.Kinds.BoundsTest do
-  # The walk of a decoded document against limits, and the schema check that walks first
-  # (`Apiary.Kinds.Schema.validate/3`).
+  # The walk of a decoded document against limits, the limits read from a schema, and the
+  # schema check that walks first (`Apiary.Kinds.Schema.validate/3`) with its summary of
+  # JSV's errors.
   use ExUnit.Case, async: true
 
   alias Apiary.Kinds.{Bounds, Schema}
@@ -57,7 +58,7 @@ defmodule Apiary.Kinds.BoundsTest do
       assert_raise ArgumentError, fn -> Bounds.within?([], items: 3) end
     end
 
-    test "nesting 200000 deep is read" do
+    test "nesting of any depth runs in constant stack" do
       deep = Enum.reduce(1..200_000, [], fn _, inner -> [inner] end)
       assert Bounds.within?(deep, list: 1)
       refute Bounds.within?(deep, depth: 199_999)
@@ -84,6 +85,107 @@ defmodule Apiary.Kinds.BoundsTest do
     end
   end
 
+  describe "from_schema/2" do
+    test "a schema whose arrays and objects are all bounded gives the largest" do
+      schema = %{
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => %{
+          "a" => %{
+            "type" => "array",
+            "maxItems" => 3,
+            "uniqueItems" => true,
+            "items" => %{"$ref" => "#/$defs/b"}
+          },
+          "c" => %{"type" => "array", "maxItems" => 7, "items" => %{"const" => 1}}
+        },
+        "$defs" => %{"b" => %{"type" => "string"}},
+        "anyOf" => [%{"required" => ["a"]}, %{"required" => ["c"]}],
+        "oneOf" => [%{"properties" => %{"a" => %{"const" => 1}}}, true],
+        "not" => %{"required" => ["d"]}
+      }
+
+      assert Bounds.from_schema(schema) == [list: 7, members: 2]
+    end
+
+    test "a $ref into another document is followed, and that document is read as a schema" do
+      url = "https://example.com/other.schema.json"
+
+      other = %{
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => %{
+          "name" => %{"type" => "string"},
+          "tags" => %{"type" => "array", "maxItems" => 9, "items" => %{"type" => "string"}}
+        },
+        "allOf" => [%{"if" => %{"required" => ["name"]}, "then" => %{"required" => ["tags"]}}]
+      }
+
+      schema = %{
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => %{
+          "name" => %{"$ref" => url <> "#/properties/name", "maxLength" => 10},
+          "tags" => %{"$ref" => url <> "#/properties/tags"}
+        },
+        "allOf" => [%{"$ref" => url <> "#/allOf/0"}]
+      }
+
+      assert Bounds.from_schema(schema, %{url => other}) == [list: 9, members: 2]
+    end
+
+    test "the service definition's schema gives lists of 32 and objects of 8 members" do
+      assert Apiary.Kinds.ServiceDefinition.bounds() == [list: 32, members: 8]
+    end
+
+    test "a schema whose bounds cannot be told raises" do
+      object = &%{"type" => "object", "additionalProperties" => false, "properties" => &1}
+      url = "https://example.com/other.schema.json"
+
+      for {schema, documents} <- [
+            {%{"type" => "array"}, %{}},
+            {%{"type" => "object", "additionalProperties" => %{"type" => "string"}}, %{}},
+            {%{"type" => "object", "additionalProperties" => false, "patternProperties" => %{}},
+             %{}},
+            {object.(%{"a" => %{"$ref" => url <> "#/properties/a"}}), %{}},
+            {object.(%{"a" => %{"$ref" => url}}), %{url => %{"type" => "string"}}},
+            {object.(%{"a" => %{"$ref" => url <> "#/properties/b"}}),
+             %{url => object.(%{"a" => %{"type" => "string"}})}},
+            {object.(%{"a" => %{"$ref" => url <> "#/$defs/a"}}),
+             %{url => %{"type" => "string", "$defs" => %{"a" => %{"type" => "array"}}}}},
+            {object.(%{"a" => %{"$ref" => url <> "#/$defs/a"}}),
+             %{
+               url => %{
+                 "type" => "string",
+                 "$defs" => %{"a" => %{"$ref" => "https://example.com/third.schema.json#/a"}}
+               }
+             }},
+            {object.(%{"a" => %{"$ref" => 1}}), %{}},
+            {object.(%{"a" => %{"type" => "string", "anyOf" => [%{"type" => "array"}]}}), %{}},
+            {object.(%{"a" => %{"type" => "string", "oneOf" => %{}}}), %{}},
+            {object.(%{"a" => %{"type" => "string", "not" => %{"type" => "object"}}}), %{}},
+            {%{"type" => "string"}, %{url => %{"type" => "array"}}},
+            # An array without items takes entries of any size.
+            {%{"type" => "array", "maxItems" => 2}, %{}},
+            {object.(%{"tags" => %{"type" => "array", "maxItems" => 4}}), %{}},
+            {%{"type" => "string", "$defs" => %{"a" => %{"type" => "array", "maxItems" => 4}}},
+             %{}},
+            # A $ref further into a member of $defs than the member, which could reach a
+            # schema read only as narrowing.
+            {Map.put(
+               object.(%{"p" => %{"$ref" => "#/$defs/a/allOf/0/properties/x"}}),
+               "$defs",
+               %{"a" => %{"type" => "string", "allOf" => [%{"properties" => %{"x" => true}}]}}
+             ), %{}},
+            {Map.put(object.(%{"p" => %{"$ref" => "#/$defs/a/items"}}), "$defs", %{
+               "a" => %{"type" => "array", "maxItems" => 1, "items" => %{"type" => "string"}}
+             }), %{}}
+          ] do
+        assert_raise ArgumentError, fn -> Bounds.from_schema(schema, documents) end
+      end
+    end
+  end
+
   describe "Schema.validate/3" do
     setup do
       {:ok, root} =
@@ -101,10 +203,23 @@ defmodule Apiary.Kinds.BoundsTest do
                {:error, %{valid: false, limits: %{list: 2, depth: 4}}}
     end
 
-    test "gives the schema's refusal as validate/2 does, within the limits", %{root: root} do
-      assert {:error, errors} = Schema.validate(["a", "b"], root, list: 2)
-      assert {:error, errors} == Schema.validate(["a", "b"], root)
-      refute Map.has_key?(errors, :limits)
+    test "sums up the schema's refusal: the count and the first 8 errors", %{root: root} do
+      assert {:error, %{valid: false, count: count, errors: errors}} =
+               Schema.validate(List.duplicate(1, 20), root, list: 20)
+
+      # Two errors for each entry: one at the list, `#`, for its items, and one at the entry.
+      assert count == 40
+      assert length(errors) == 8
+
+      for %{kind: kind, instanceLocation: location} <- errors do
+        assert is_atom(kind)
+        assert location =~ ~r{\A#(/[0-9]+)?\z}
+      end
+
+      assert {:error, %{count: 2, errors: [%{kind: :items, instanceLocation: "#"}, second]}} =
+               Schema.validate(["a", "b"], root, [])
+
+      assert second == %{kind: :pattern, instanceLocation: "#/1"}
     end
   end
 end

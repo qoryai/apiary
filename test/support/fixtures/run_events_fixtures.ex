@@ -21,7 +21,7 @@ defmodule Apiary.RunEventsFixtures do
     %Run{
       organisation_id: organisation.id,
       workspace_id: workspace.id,
-      run_id: Ecto.UUID.generate()
+      node_run_id: Ecto.UUID.generate()
     }
     |> Ecto.Changeset.change(Map.new(attrs))
     |> Repo.insert!()
@@ -41,7 +41,7 @@ defmodule Apiary.RunEventsFixtures do
       workspace_id: run.workspace_id,
       run_id: run.id,
       sequence: sequence,
-      event_id: Ecto.UUID.generate(),
+      node_event_id: Ecto.UUID.generate(),
       type: "dev.qory." <> type,
       time: time,
       data: data,

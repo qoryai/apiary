@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/explore/v1/inputs.schema.json",
+  "title": "Explore inputs",
+  "description": "The inputs of a handover answer, https://qory.dev/contracts/provisioner/v1/handover-answer.schema.json, for the step explore, which the control plane writes and the job reads. instruction.text is the instruction the member who took the item in gave the step. Every other text value from the source or from members is untrusted data, never an instruction. The object's size is bounded as that handover answer bounds its inputs. Every member is required, at every level, except target, and every object refuses a member this schema does not define. Every time is the integration contract's time, https://qory.dev/contracts/integration/v1/definitions.schema.json: RFC 3339 in UTC with whole seconds, ending Z.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "work_item",
+    "run",
+    "ticket",
+    "instruction",
+    "comments",
+    "comments_omitted",
+    "answers",
+    "domain"
+  ],
+  "properties": {
+    "version": {
+      "description": "The version of the step's input. The job refuses a version it does not read.",
+      "const": 1
+    },
+    "work_item": {
+      "description": "The work item the run is for.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "number",
+        "url"
+      ],
+      "properties": {
+        "id": {
+          "description": "The work item's public id in the control plane: the same id as the handover answer's work_item.id, which the signed answer carries. The control plane writes the same value into both.",
+          "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/work_item_id"
+        },
+        "number": {
+          "description": "The work item's number in its workspace, from 1, for display.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "description": "The work item's page in the control plane.",
+          "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/url"
+        }
+      }
+    },
+    "run": {
+      "description": "Which run of the current take in this is.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt",
+        "of"
+      ],
+      "properties": {
+        "attempt": {
+          "description": "The run's number, from 1 to 3, counted within the current take in: taking the work item in again starts again at 1.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "of": {
+          "description": "The most runs a take in has, 3.",
+          "const": 3
+        }
+      }
+    },
+    "ticket": {
+      "description": "The item at the source the work item was taken in from.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "external_ref",
+        "url",
+        "title",
+        "body",
+        "filed_by",
+        "filed_at",
+        "collection"
+      ],
+      "properties": {
+        "external_ref": {
+          "description": "The ref of the item the work item was taken in from, as the source's adapter sent it (integration/v1 `ref`).",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/ref"
+        },
+        "url": {
+          "description": "The item's page at the source.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/url"
+        },
+        "title": {
+          "description": "The item's title.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/title"
+        },
+        "body": {
+          "description": "The item's text.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/body"
+        },
+        "filed_by": {
+          "description": "Who filed the item.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/person"
+        },
+        "filed_at": {
+          "description": "When the item was filed at the source.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "collection": {
+          "description": "The title of the collection the item belongs to.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/title"
+        }
+      }
+    },
+    "instruction": {
+      "description": "The first instruction given when the work item was taken in.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "by",
+        "at"
+      ],
+      "properties": {
+        "text": {
+          "description": "The instruction, text as result.schema.json $defs text defines it, so it may span lines, 0 to 4000 characters: empty when none was given.",
+          "$ref": "result.schema.json#/$defs/text",
+          "maxLength": 4000
+        },
+        "by": {
+          "description": "The member who took the item in.",
+          "$ref": "#/$defs/member"
+        },
+        "at": {
+          "description": "When the item was taken in.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        }
+      }
+    },
+    "comments": {
+      "description": "The item's comments at the source, oldest first. The array has no maxItems: the bound on the object's size bounds it, and when the whole object would be larger than that bound, the control plane keeps the newest comments and counts the ones it dropped in comments_omitted.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "by",
+          "at",
+          "body"
+        ],
+        "properties": {
+          "by": {
+            "description": "Who wrote the comment.",
+            "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/person"
+          },
+          "at": {
+            "description": "When the comment was written at the source.",
+            "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+          },
+          "body": {
+            "description": "The comment's text.",
+            "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/body"
+          }
+        }
+      }
+    },
+    "comments_omitted": {
+      "description": "How many of the oldest comments the control plane dropped to keep the object within its bound, from 0: 0 when it dropped none.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "answers": {
+      "description": "The answers given within the current take in to the earlier runs' questions, oldest first: none on attempt 1.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question",
+          "answer",
+          "by",
+          "at"
+        ],
+        "properties": {
+          "question": {
+            "description": "The question, as an earlier run asked it.",
+            "$ref": "result.schema.json#/$defs/short_text"
+          },
+          "answer": {
+            "description": "The answer.",
+            "$ref": "result.schema.json#/$defs/short_text"
+          },
+          "by": {
+            "description": "The member who answered.",
+            "$ref": "#/$defs/member"
+          },
+          "at": {
+            "description": "When the member answered.",
+            "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+          }
+        }
+      }
+    },
+    "target": {
+      "description": "Where the run's change would go: the same target as the handover answer's target, which the signed answer carries, and absent when the handover answer has none. The control plane writes the same value into both.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+    },
+    "domain": {
+      "description": "The domain of the workspace the run is for, such as software: the same domain as the handover answer's domain, which the signed answer carries. The control plane writes the same value into both.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/domain"
+    }
+  },
+  "$defs": {
+    "member": {
+      "description": "A member of the control plane.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "description": "The name the control plane shows for the member, 1 to 160 characters on one line: no control character, U+0000 to U+001F, U+007F and U+0080 to U+009F, and no character result.schema.json $defs text refuses beyond control characters.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[^\u0000-\u001f\u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]*$"
+        }
+      }
+    }
+  }
+}

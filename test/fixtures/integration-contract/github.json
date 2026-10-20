@@ -104,5 +104,9 @@
         "api.github.com"
       ]
     }
-  }
+  },
+  "egress_hosts": [
+    "github.com",
+    "api.github.com"
+  ]
 }

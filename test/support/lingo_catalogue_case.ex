@@ -19,8 +19,17 @@ defmodule ApiaryWeb.LingoCatalogueCase do
         async: true,
         priv: Path.expand("../../priv/gettext", __DIR__)
 
+  A domain may say a sentence without an engine word in its words all the same, where a
+  word swap would not do: `sentences:`, a map of a domain's locale to the keys of those
+  sentences, lists them, and each must be translated there.
+
+      use ApiaryWeb.LingoCatalogueCase,
+        priv: Path.expand("../../priv/gettext", __DIR__),
+        sentences: %{"en@software" => ["Proposed what to do"]}
+
   The checks are functions of a folder of catalogues too, so a test can run them against
-  fixtures (`ApiaryWeb.LingoCatalogueTest`).
+  fixtures (`ApiaryWeb.LingoCatalogueTest`). `software_words_in/2` lists the source
+  strings that use a software word, which the core's test refuses.
   """
 
   use ExUnit.CaseTemplate
@@ -28,14 +37,25 @@ defmodule ApiaryWeb.LingoCatalogueCase do
   alias Expo.Message
 
   # The engine's surface words: the ones every domain renames. Whole words only, so
-  # "targeted" or "systemd" do not count. `organisation` is not here: it is the same word
+  # "targeted", "systemd" or "collected" do not count. `organisation` is not here: it is the same word
   # in the engine and the software domain. Nor is `workspace`: organisation and workspace
   # are the same words in every domain.
-  @engine_words ~r/\b(targets?|systems?|change[ -]requests?|appl(?:y|ies|ied|ying))\b/i
+  @engine_words ~r/\b(targets?|systems?|collections?|change[ -]requests?|appl(?:y|ies|ied|ying))\b/i
 
   # The words no source string or catalogue shows: apiary, hive, bee and the like.
   # `Qory Apiary`, the product's name, is taken out before the check.
   @apiary_words ~r/\b(apiary|apiaries|hives?|bees?|swarms?|flowers?|nectar|honey|jars?|beekeepers?|hivekeeping)\b/i
+
+  # The software domain's words: what only a software workspace says. A source string is
+  # in the engine's words, so it has none of them, unless its context is `plain` or
+  # `workspace type` (`software_words_in/2`). Whole words only, so "branched" or "coded"
+  # do not count, and "code" only as "the code" or "its code": an access key's one-time
+  # code is no software word.
+  @software_words ~r/\b(repositor(?:y|ies)|forges?|pull[ -]requests?|branch(?:es)?|commits?|checkouts?|(?:the|its) code)\b/i
+
+  # A workspace type's line says what the type is for, in its words, wherever a person
+  # picks a type (`c:Apiary.Lingo.Domain.description/0`).
+  @workspace_type_context "workspace type"
 
   # A source string whose engine word is the ordinary English word ("the operating system",
   # "apply the filters") says so with this context: pgettext("plain", "..."). The context
@@ -128,14 +148,35 @@ defmodule ApiaryWeb.LingoCatalogueCase do
         do: Message.key(message)
   end
 
+  # `sentences` are the keys of the sentences without an engine word that a domain says in
+  # its words all the same: a whole sentence, never a word swap alone.
   @doc false
-  def stray(po_messages) do
+  def stray(po_messages, sentences \\ []) do
+    sentences = keys(sentences)
+
     for message <- po_messages,
         not message.obsolete,
         not engine_word?(message),
+        Message.key(message) not in sentences,
         Enum.any?(translations(message), &(&1 != "")),
         do: Message.key(message)
   end
+
+  @doc false
+  def software_word?(message) do
+    {msgctxt, _msgid} = Message.key(message)
+
+    msgctxt not in [@plain_context, @workspace_type_context] and
+      message |> source_text() |> without_bindings() =~ @software_words
+  end
+
+  # A sentence's key, `{msgctxt, msgid}`, or its msgid alone for the empty context.
+  defp keys(sentences),
+    do:
+      Enum.map(sentences, fn
+        {_ctx, _msgid} = key -> key
+        msgid -> {"", msgid}
+      end)
 
   @doc false
   def fuzzy(messages), do: for(m <- messages, Message.has_flag?(m, "fuzzy"), do: Message.key(m))
@@ -166,12 +207,48 @@ defmodule ApiaryWeb.LingoCatalogueCase do
         do: "#{locale}/#{domain(pot)}: #{inspect(key)}"
   end
 
+  # `sentences` maps a domain's locale to the sentences without an engine word that its
+  # catalogue says in its words (`stray/2`).
   @doc false
-  def stray_in(priv) do
+  def stray_in(priv, sentences \\ %{}) do
     for locale <- domain_locales(priv),
         pot <- pot_files(priv),
-        key <- stray(messages(po_file(priv, locale, domain(pot)))),
+        key <- stray(messages(po_file(priv, locale, domain(pot))), Map.get(sentences, locale, [])),
         do: "#{locale}/#{domain(pot)}: #{inspect(key)}"
+  end
+
+  @doc """
+  The sentences of `sentences` (`stray_in/2`) that their domain's catalogue does not
+  translate: a list that keeps a domain's sentence whose msgid changed would let the
+  domain show the engine's sentence.
+  """
+  def untranslated_sentences_in(priv, sentences) do
+    for {locale, keys} <- sentences,
+        found =
+          for(
+            pot <- pot_files(priv),
+            message <- messages(po_file(priv, locale, domain(pot))),
+            translated?(message),
+            into: MapSet.new(),
+            do: Message.key(message)
+          ),
+        key <- keys(keys),
+        not MapSet.member?(found, key),
+        do: "#{locale}: #{inspect(key)}"
+  end
+
+  @doc """
+  The source strings with a software word (`software_word?/1`), but those of `exempt`,
+  keys or msgids alone: each would show a software word in every domain.
+  """
+  def software_words_in(priv, exempt \\ []) do
+    exempt = keys(exempt)
+
+    for pot <- pot_files(priv),
+        message <- messages(pot),
+        software_word?(message),
+        Message.key(message) not in exempt,
+        do: "#{domain(pot)}: #{inspect(Message.key(message))}"
   end
 
   @doc false
@@ -208,11 +285,13 @@ defmodule ApiaryWeb.LingoCatalogueCase do
 
   using opts do
     priv = Keyword.fetch!(opts, :priv)
+    sentences = Keyword.get(opts, :sentences, Macro.escape(%{}))
 
     quote do
       import ApiaryWeb.LingoCatalogueCase
 
       @priv unquote(priv)
+      @sentences unquote(sentences)
 
       describe "the catalogues" do
         test "every locale is a domain's catalogue or a language's, never plain English" do
@@ -258,11 +337,24 @@ defmodule ApiaryWeb.LingoCatalogueCase do
         end
 
         test "a domain's catalogue translates only the sentences with an engine word" do
-          failures = stray_in(@priv)
+          failures = stray_in(@priv, @sentences)
 
           assert failures == [], """
           A domain's catalogue holds only its own sentences; the rest comes from the language's
-          catalogue, or, in English, from the source text. Empty these msgstrs:
+          catalogue, or, in English, from the source text. Empty these msgstrs, or list a
+          sentence the domain says in its words in the `sentences:` of this test:
+
+          #{Enum.join(failures, "\n")}
+          """
+        end
+
+        test "every sentence a domain says in its words is translated in its catalogue" do
+          failures = untranslated_sentences_in(@priv, @sentences)
+
+          assert failures == [], """
+          These sentences are listed in `sentences:` and not translated in their domain's
+          catalogue, so the domain shows the engine's sentence. Translate them, or update
+          the list where the msgid changed:
 
           #{Enum.join(failures, "\n")}
           """

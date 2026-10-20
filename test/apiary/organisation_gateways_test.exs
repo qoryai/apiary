@@ -403,7 +403,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       {:ok, body} = Attach.parse(attach_body(run_key))
 
       assert {:ok, %{run: %Run{attached_at: %DateTime{}}}} =
-               Attach.attach(gateway_key, run.run_id, body, %{instance_id: instance_id()})
+               Attach.attach(gateway_key, run.node_run_id, body, %{instance_id: instance_id()})
 
       # No longer served: its attach of a fresh run is refused.
       {:ok, %{run: fresh, run_key: fresh_key}} =
@@ -413,7 +413,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       {:ok, body} = Attach.parse(attach_body(fresh_key))
 
       assert {:error, :workspace_not_served} =
-               Attach.attach(gateway_key, fresh.run_id, body, %{instance_id: instance_id()})
+               Attach.attach(gateway_key, fresh.node_run_id, body, %{instance_id: instance_id()})
     end
   end
 
@@ -433,11 +433,11 @@ defmodule Apiary.OrganisationGatewaysTest do
 
     defp attach(gateway_key, run, run_key) do
       {:ok, body} = Attach.parse(attach_body(run_key))
-      Attach.attach(gateway_key, run.run_id, body, %{instance_id: instance_id()})
+      Attach.attach(gateway_key, run.node_run_id, body, %{instance_id: instance_id()})
     end
 
     defp post(gateway_key, run) do
-      {_subject, [started]} = first_events(run.run_id)
+      {_subject, [started]} = first_events(run.node_run_id)
       {:ok, batch} = Batch.parse(Jason.encode!([started]))
       Ingest.ingest(gateway_key, batch, %{contract_version: 1, instance_id: instance_id()})
     end
@@ -458,7 +458,7 @@ defmodule Apiary.OrganisationGatewaysTest do
 
       # The run's reload is answered to it: the workspace serves no run configuration
       # here, so not found, as for any gateway.
-      assert Apiary.Runs.Registration.fetch(verified, run.run_id, instance_id()) ==
+      assert Apiary.Runs.Registration.fetch(verified, run.node_run_id, instance_id()) ==
                {:error, :not_found}
     end
 
@@ -482,7 +482,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       assert {:error, :unauthorized} = post(verified, attached)
       assert Repo.get!(Run, attached.id).event_count == 0
 
-      assert Apiary.Runs.Registration.fetch(verified, attached.run_id, instance_id()) ==
+      assert Apiary.Runs.Registration.fetch(verified, attached.node_run_id, instance_id()) ==
                {:error, :not_found}
 
       # The node of its own organisation's workspace is out of use: its key fails.
@@ -633,7 +633,7 @@ defmodule Apiary.OrganisationGatewaysTest do
 
       assert %Instance{workspace_id: nil} = Nodes.get_instance(scope, gateway, "i_edge-1")
 
-      assert %{last: %Instance{instance_id: "i_edge-1"}} =
+      assert %{last: %Instance{node_instance_id: "i_edge-1"}} =
                Map.fetch!(Nodes.activity(scope, [gateway]), gateway.id)
     end
   end
@@ -658,9 +658,9 @@ defmodule Apiary.OrganisationGatewaysTest do
       {:ok, body} = Attach.parse(attach_body(run_key))
 
       assert {:ok, %{run: %Run{attached_at: %DateTime{}}, repeated: false}} =
-               Attach.attach(gateway_key, run.run_id, body, %{instance_id: instance_id()})
+               Attach.attach(gateway_key, run.node_run_id, body, %{instance_id: instance_id()})
 
-      {_subject, [started]} = first_events(run.run_id)
+      {_subject, [started]} = first_events(run.node_run_id)
       {:ok, batch} = Batch.parse(Jason.encode!([started]))
 
       assert {:ok, %{status: 202, inserted: 1}} =
@@ -688,7 +688,7 @@ defmodule Apiary.OrganisationGatewaysTest do
                  instance_id: instance_id()
                })
 
-      refute Repo.exists?(from r in Run, where: r.run_id == ^subject)
+      refute Repo.exists?(from r in Run, where: r.node_run_id == ^subject)
     end
   end
 
@@ -805,7 +805,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       %{access_key: key} = node_key_fixture(scope, gateway)
 
       assert_raise Postgrex.Error,
-                   ~r/access_keys_node_organisation_fkey|access_keys_organisation_id_fkey/,
+                   ~r/node_place_matches|access_keys_node_organisation_fkey|access_keys_organisation_id_fkey/,
                    fn ->
                      Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
                        set: [organisation_id: stranger.organisation.id]

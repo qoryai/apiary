@@ -26,15 +26,15 @@ defmodule Apiary.Kinds.ServiceDefinition do
   where.
   """
 
-  alias Apiary.Kinds.{CanonicalJSON, Headers, Hosts, Placeholders, Schema}
+  alias Apiary.Kinds.{Bounds, CanonicalJSON, Headers, Hosts, Placeholders, Schema}
 
   @typedoc "A problem with a definition: a code, and the member it is about."
   @type problem :: {atom, String.t()}
 
   @doc """
   validate/1 checks the decoded definition `definition`: `{:ok, definition}`, or
-  `{:error, problems}`, `definition_invalid` for what the schema refuses, with JSV's
-  errors logged by the caller if it wants them.
+  `{:error, problems}`, `definition_invalid` for what the schema refuses, a list or an
+  object larger than it allows among them.
   """
   @spec validate(term) :: {:ok, map} | {:error, [problem]}
   def validate(definition) do
@@ -56,14 +56,27 @@ defmodule Apiary.Kinds.ServiceDefinition do
   def digest(definition), do: definition |> encode() |> CanonicalJSON.sha256()
 
   defp schema(definition) do
-    case Schema.validate(definition, root()) do
+    case Schema.validate(definition, root(), bounds()) do
       :ok -> :ok
       {:error, _errors} -> {:error, [{:definition_invalid, ""}]}
     end
   end
 
+  @schema ["schemas", "service-definition.schema.json"]
+
   @doc false
-  def root, do: Schema.file!(["schemas", "service-definition.schema.json"])
+  def root, do: Schema.file!(@schema)
+
+  # The limits the schema gives every list and object (`Apiary.Kinds.Bounds.from_schema/2`),
+  # with the Forager contract's `auth.schema.json` its `auth` refers to: lists of at most
+  # 32 entries and objects of at most 8 members. A definition over them is refused before
+  # the schema is applied.
+  @doc false
+  def bounds do
+    Bounds.file!(@schema, %{
+      "https://qory.dev/contracts/forager/v1/auth.schema.json" => ["contract", "auth.schema.json"]
+    })
+  end
 
   defp problems(%{"declares" => declares, "auth" => auth, "hosts" => hosts}) do
     ids = Enum.map(declares, & &1["id"])

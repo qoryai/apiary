@@ -29,7 +29,7 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
   end
 
   defp page(conn, scope, run),
-    do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+    do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
   test "the header says the starter's state and the runtime's exit", %{conn: conn, scope: scope} do
     run =
@@ -171,7 +171,6 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
           [session, {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0}}],
           [session, {2, "run.exited", %{"state" => "failed", "signal" => "SIGKILL"}}],
           [session, {2, "run.exited", %{"state" => "cancelled", "reason" => "stopped"}}],
-          [session, {2, "run.exited", %{"reason" => "quiet", "quiet_seconds" => 60}}],
           [{2, "run.refused", %{"code" => "image_unknown"}}]
         ] do
       run = projected(scope, events, given("cancelled", "stopped"))
@@ -247,9 +246,7 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
 
     for exit <- [
           %{"state" => "cancelled", "reason" => "stopped"},
-          %{"reason" => "stopped"},
-          %{"state" => "failed", "reason" => "run_ended_at_issuer"},
-          %{"reason" => "run_ended_at_issuer"}
+          %{"state" => "cancelled", "reason" => "run_ended_at_issuer"}
         ] do
       run = projected(scope, [started, {2, "run.exited", exit}], %{})
       assert %Run{state: "cancelled", outcome_state: nil} = run

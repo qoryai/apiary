@@ -33,12 +33,18 @@ defmodule Apiary.Deletion.TablesCase do
         assert Enum.uniq(Tables.tables()) == Tables.tables()
       end
 
-      test "the workspace's tables are every table with a workspace_id column, in the same order" do
-        assert Enum.sort(Tables.workspace_tables()) == Enum.sort(tables_with("workspace_id"))
+      test "the workspace's tables are every table with a workspace_id column, but those that outlive it, in the same order" do
+        with_workspace = tables_with("workspace_id") -- Tables.outliving_tables()
+        assert Enum.sort(Tables.workspace_tables()) == Enum.sort(with_workspace)
 
-        # The organisation's own tables, without a workspace_id, are the rest of the list,
-        # and the workspace's keep their places among them.
-        organisation_only = tables_with("organisation_id") -- tables_with("workspace_id")
+        for table <- Tables.outliving_tables() do
+          assert table in tables_with("workspace_id"), "#{table} has a workspace_id"
+          assert table in Tables.tables(), "#{table} is on the list"
+        end
+
+        # The organisation's tables, without a workspace_id or outliving it, are the rest
+        # of the list, and the workspace's keep their places among them.
+        organisation_only = tables_with("organisation_id") -- with_workspace
 
         assert Enum.sort(Tables.tables() -- Tables.workspace_tables()) ==
                  Enum.sort(organisation_only)

@@ -1,34 +1,19 @@
 defmodule ApiaryWeb.TargetLive.Show do
   @moduledoc """
-  One target's page, GitHub's repository page in the target's words.
+  One target's page, in the target's words.
 
-  **Its address** is the target's path alone, `/:org/:workspace/targets/acme/shop`, and the
-  path after its system, `…/targets/gitlab.com/acme/shop`, only where two targets of the
-  workspace share the path (question 9, answer A; `ApiaryWeb.TargetComponents.target_path/5`).
-  Its tabs follow a `-` segment: Overview is the bare address, and Policy (`…/-/policy`,
-  with more paths after it) is there where the reader may read the security policy.
-  The address is read in this order:
-
-    * the path and its system, where the path is shared: the target;
-    * the path alone, of one target of the workspace: that target;
-    * the path and its system, where the path is not shared: an old address, sent on to
-      the path alone with its tab and its query;
-    * the path alone, shared by two targets or more, or an address that reads both as one
-      target's system and path and as another's path alone: a page that names each, with
-      a link to it by an address that names it alone, since this one does not say which;
-      an old tab's address that reads as two targets comes there too, with its tab;
-    * anything else, and a tab the page does not know: not found.
-
-  A `-` first in the address is the system `-`, not the tab's separator.
+  **Its address** is the target's public id, `/:org/:workspace/targets/tg_…`
+  (`ApiaryWeb.TargetComponents.target_path/3`), never its system or its path, which are
+  Forager's labels. Overview is the bare address, and Policy (`…/tg_…/policy`, with more
+  paths after it) is there where the reader may read the security policy. An id of no
+  target of the workspace, and a tab the reader may not read, are not found.
 
   **The lists live once, at the workspace** (the narrowing ruling): the page has no Runs or
   Network access tab. Its Overview leads to the runs list and to Network access narrowed to
-  the target (`?target=acme/shop`, the system only where the path is shared,
-  `Apiary.Runs.Filters.target_params/3`), and the old tabs' addresses, `…/-/runs`,
-  `…/-/network` and `…/-/connections`, are sent on to those lists with their query.
+  the target, by its id (`?target=tg_…`, `Apiary.Runs.Filters.target_params/1`).
 
-  The header names the target as it is addressed, its path, `acme/shop`, and its system
-  before it only where the path is shared, `gitlab.com/acme/shop` (the title and the
+  The header names the target in its notation, its path, `acme/shop`, and its system
+  before it only where the path is shared, `git.example/acme/shop` (the title and the
   breadcrumb do too; its full `system/path` is the name's tooltip), with the reader's
   pin, one muted line (how many runs since it was first seen, its last run, and its
   policy mode only where it overrides the workspace's) and a link to it in its system when the system
@@ -46,74 +31,65 @@ defmodule ApiaryWeb.TargetLive.Show do
   topic: a run of the target on the page changes in place; a new one is counted, never
   inserted under the reader, and comes in when asked.
   """
+
+  # With the `factory` feature, which the documentation leaves out, Overview ends with
+  # three more parts. Where the target's collection is assigned to the workspace, and it
+  # and its adapter have items, the Backlog card: one switch, whether its tickets come
+  # into the workspace's Backlog, named with its source's word for them, which owners and
+  # admins turn at once (Apiary.Adapters.Collections.set_backlog/3) and anyone else reads,
+  # disabled, with who may change it. After it, where the reader may read the workspace's
+  # work items, the Environment card (Apiary.Environments.section/2): for each node pool
+  # of the workspace, the image a run of the target on the pool starts in, as
+  # Apiary.Environments.image_for/2 gives it, in mono, its digest cut to twelve characters
+  # and the whole reference its title, when it was built and from which commit, or that
+  # runs use the pool's default image and why, or, where the policy in force for the
+  # target sets an image, that runs use the image set in the policy; whether a build runs
+  # or waits; and the last build's failure, never the reason a starter gave. Where no pool
+  # serves the workspace, or the target names no environment, one line says so instead.
+  # Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for whoever
+  # may ask for one (`target.rebuild_environment`), where the target names an environment
+  # and a pool serves the workspace; a reader who may not sees no button. After it, under
+  # the same condition, where the workspace's domain has a label for a run's paths
+  # (`Apiary.Lingo.Domain.paths_label/1`), what its runs also read
+  # (`Apiary.Targets.further_repositories/1`), one path a line, with Change, for those who
+  # may change it (`target.set_further_repositories`), which leads to its form page
+  # (`ApiaryWeb.TargetLive.FurtherRepositories`).
+
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
   on_mount {ApiaryWeb.Access, :"run.read"}
 
-  import Ecto.Query, only: [from: 2]
   import ApiaryWeb.TargetComponents
 
-  alias Apiary.{Access, Repo, Runs, Targets}
+  alias Apiary.{Access, Environments, Runs, Targets}
+  alias Apiary.Adapters.Collections
+  alias Apiary.Lingo.Domain
   alias Apiary.Runs.{Filters, Target}
-  alias ApiaryWeb.PolicyLive
+  alias ApiaryWeb.{PolicyLive, SourceComponents}
 
   @recent 5
   @window_days 14
 
   @impl true
-  def mount(%{"glob" => glob}, _session, socket) do
+  def mount(%{"target_id" => public_id}, _session, socket) do
     scope = socket.assigns.current_scope
-    {segments, rest} = split_glob(glob)
-
     security = Access.can?(scope, :"security_policy.read", scope.workspace)
 
-    case {resolve(scope, segments), tab(rest, security)} do
-      # The old tabs: nothing is read; `handle_params/3` sends them on with their query.
-      {{:ok, target, shared, _form}, {:ok, {:moved, list}}} ->
-        {:ok,
-         assign(
-           socket,
-           :tab,
-           {:moved, list, Filters.target_params(target.system, target.path, shared)}
-         )}
-
-      # A shared path given alone: the lists narrowed to the path, on every system.
-      {{:choose, _targets, path}, {:ok, {:moved, list}}} ->
-        {:ok, assign(socket, :tab, {:moved, list, Filters.target_params(nil, path)})}
-
-      # An old address, with the system of a path no other target has: the path alone.
-      {{:ok, target, _shared, :old}, {:ok, _tab}} ->
-        {:ok, assign(socket, :tab, {:moved, target_path(scope, nil, target.path, rest)})}
-
-      {{:ok, target, shared, :current}, {:ok, tab}} ->
-        {:ok, mount_target(socket, target, shared, tab, security)}
-
-      # An old tab of an address that reads as two targets goes there too, with the tab:
-      # the lists narrowed to the path alone would be one of them only.
-      {{reading, targets, path}, {:ok, _tab}} when reading in [:choose, :ambiguous] ->
-        {:ok,
-         assign(socket,
-           tab: :choose,
-           reading: reading,
-           choices: choices(scope, targets),
-           chosen_path: path,
-           rest: rest,
-           query: nil,
-           page_title: path
-         )}
-
-      _not_found ->
-        raise Ecto.NoResultsError, queryable: Target
+    case {Targets.get_by_public_id(scope, public_id), tab(socket.assigns.live_action, security)} do
+      {%Target{} = target, {:ok, tab}} -> {:ok, mount_target(socket, target, tab, security)}
+      _not_found -> raise Ecto.NoResultsError, queryable: Target
     end
   end
 
-  defp mount_target(socket, target, shared, tab, security) do
+  # The target's name carries its system only where another target of the workspace has
+  # its path (`TargetComponents.with_system?/3`, given the page's `shared`).
+  defp mount_target(socket, target, tab, security) do
     scope = socket.assigns.current_scope
 
     socket
     |> assign(
       target: target,
-      shared: shared,
+      shared: Targets.shared?(scope, target.path),
       tab: elem(tab, 0),
       security: security,
       pinned: Targets.pinned?(scope, target),
@@ -121,128 +97,20 @@ defmodule ApiaryWeb.TargetLive.Show do
       runs: nil,
       new_runs: 0
     )
+    |> load_backlog()
+    |> load_environment()
+    |> load_further()
     |> load_summary()
     |> mount_tab(tab)
   end
 
-  # The glob's segments before the first `-`, and the tab's after it. A `-` first is the
-  # address's own, the system `-` (`target_path/5` writes it so): no address starts with
-  # its tab.
-  defp split_glob(["-" | glob]) do
-    {segments, rest} = Enum.split_while(glob, &(&1 != "-"))
-    {["-" | segments], Enum.drop(rest, 1)}
-  end
+  # The tab the route's action names. The Policy tab's actions are its paths
+  # (`ApiaryWeb.PolicyLive.Target`), there only where the reader may read the policy.
+  @policy_actions [:rules, :history, :document, :version, :export, :new_rule, :edit_rule]
 
-  defp split_glob(glob) do
-    {segments, rest} = Enum.split_while(glob, &(&1 != "-"))
-    {segments, Enum.drop(rest, 1)}
-  end
-
-  # The target an address names (the moduledoc's order): `{:ok, target, shared, form}`,
-  # `form` `:current` for the address the page writes and `:old` for one it sends on;
-  # `{:choose, targets, path}` for a path alone that two targets or more share;
-  # `{:ambiguous, targets, path}` for an address that reads as two targets; `:error`. A
-  # system and a path are Forager's labels, so an address can read both ways: a path
-  # alone, and a system with its path. Where both readings name a target, the address
-  # does not say which, and the page names each.
-  defp resolve(_scope, []), do: :error
-
-  defp resolve(scope, segments) do
-    path = Enum.join(segments, "/")
-
-    with_system =
-      case segments do
-        [system, _ | _] -> get(scope, system, Enum.join(tl(segments), "/"))
-        _one -> nil
-      end
-
-    by_path = if Target.label(path), do: with_path(scope, path), else: []
-
-    cond do
-      with_system && by_path != [] ->
-        {:ambiguous, Enum.uniq_by([with_system | by_path], & &1.id), path}
-
-      # The system stays in the address, and so in the name, where the path alone would
-      # not name this target.
-      with_system && with_system?(scope, with_system) ->
-        {:ok, with_system, true, :current}
-
-      match?([_], by_path) ->
-        {:ok, hd(by_path), false, :current}
-
-      with_system ->
-        {:ok, with_system, false, :old}
-
-      by_path != [] ->
-        {:choose, by_path, path}
-
-      true ->
-        :error
-    end
-  end
-
-  # A target by its system and path, labels as Forager may send them: anything else, such
-  # as bytes that are not UTF-8, names none.
-  defp get(scope, system, path) do
-    if Target.label(system) && Target.label(path), do: Targets.get(scope, system, path)
-  end
-
-  # Whether the target's address must carry its system, and so its name
-  # (`TargetComponents.with_system?/3`, given the page's `shared`): its path is shared by
-  # another target, or its path alone, as an address, reads as another target's system
-  # and path.
-  defp with_system?(scope, target),
-    do: Targets.shared?(scope, target.path) or read_with_system?(scope, target)
-
-  defp read_with_system?(scope, %Target{path: path}) do
-    case String.split(path, "/", parts: 2) do
-      [system, rest] -> get(scope, system, rest) != nil
-      _one -> false
-    end
-  end
-
-  # The workspace's targets with this path, one for each system: a read of the page's own.
-  defp with_path(%{organisation: organisation, workspace: workspace}, path) do
-    Repo.all(
-      from t in Target,
-        where:
-          t.organisation_id == ^organisation.id and t.workspace_id == ^workspace.id and
-            t.path == ^path,
-        order_by: [asc: t.system]
-    )
-  end
-
-  # Each target a chooser names, and whether its link writes its system: the path alone
-  # where that names the target alone, else the system and the path, which does unless
-  # another target's path starts with the system and a third shares the path.
-  defp choices(scope, targets) do
-    for %Target{id: id} = target <- targets do
-      alone? =
-        match?({:ok, %Target{id: ^id}, _, :current}, resolve(scope, path_segments(target.path)))
-
-      {target, not alone?}
-    end
-  end
-
-  # The tab the segments after `-` name, with what it needs of them. Runs and Network
-  # access are the workspace's lists now: their old tabs are sent on.
-  defp tab([], _security), do: {:ok, {:overview}}
-  defp tab(["runs"], _security), do: {:ok, {:moved, :runs}}
-
-  defp tab([moved], _security) when moved in ["network", "connections"],
-    do: {:ok, {:moved, :network}}
-
-  defp tab(["policy" | rest], true), do: policy_action(rest)
-  defp tab(_rest, _security), do: :error
-
-  defp policy_action([]), do: {:ok, {:policy, :rules, %{}}}
-  defp policy_action(["history"]), do: {:ok, {:policy, :history, %{}}}
-  defp policy_action(["document"]), do: {:ok, {:policy, :document, %{}}}
-  defp policy_action(["versions", n]), do: {:ok, {:policy, :version, %{"n" => n}}}
-  defp policy_action(["versions", n, "export"]), do: {:ok, {:policy, :export, %{"n" => n}}}
-  defp policy_action(["rules", "new"]), do: {:ok, {:policy, :new_rule, %{}}}
-  defp policy_action(["rules", id, "edit"]), do: {:ok, {:policy, :edit_rule, %{"id" => id}}}
-  defp policy_action(_rest), do: :error
+  defp tab(:overview, _security), do: {:ok, {:overview}}
+  defp tab(action, true) when action in @policy_actions, do: {:ok, {:policy, action}}
+  defp tab(_action, _security), do: :error
 
   defp mount_tab(socket, {:overview}) do
     if connected?(socket), do: Runs.subscribe(socket.assigns.current_scope)
@@ -252,8 +120,8 @@ defmodule ApiaryWeb.TargetLive.Show do
     |> load_overview()
   end
 
-  # The tab names the target, and writes its links (`base`), as the page's address does.
-  defp mount_tab(socket, {:policy, action, _params}) do
+  # The tab names the target as the page does, and writes its links (`base`) by its id.
+  defp mount_tab(socket, {:policy, action}) do
     %{target: target, shared: shared} = socket.assigns
 
     socket
@@ -265,38 +133,13 @@ defmodule ApiaryWeb.TargetLive.Show do
   end
 
   @impl true
-  # An old tab: the workspace's list narrowed to the target, with the old address's query.
-  def handle_params(_params, uri, %{assigns: %{tab: {:moved, list, target_params}}} = socket) do
-    %{organisation: organisation, workspace: workspace} = socket.assigns.current_scope
-
-    rest = Enum.reject(query(uri), fn {key, _value} -> key in ["system", "target"] end)
-
-    {:noreply,
-     redirect(socket, to: narrowed_path(organisation, workspace, list, target_params, rest))}
-  end
-
-  # An old address: the path alone, with its tab and its query.
-  def handle_params(_params, uri, %{assigns: %{tab: {:moved, to}}} = socket) do
-    query = URI.parse(uri).query
-    {:noreply, redirect(socket, to: if(query in [nil, ""], do: to, else: to <> "?" <> query))}
-  end
-
-  # The address's query goes with each choice.
-  def handle_params(_params, uri, %{assigns: %{tab: :choose}} = socket),
-    do: {:noreply, assign(socket, :query, URI.parse(uri).query)}
-
-  def handle_params(%{"glob" => glob}, uri, socket) do
+  def handle_params(%{"target_id" => public_id} = params, uri, socket) do
     %{target: target, tab: current} = socket.assigns
-    {segments, rest} = split_glob(glob)
 
-    # Both of the target's addresses name it here, so a link that could not tell the path
-    # is shared keeps the page.
-    same? = segments in [path_segments(target.path), [target.system | path_segments(target.path)]]
-
-    case {same?, tab(rest, socket.assigns.security)} do
-      {true, {:ok, {:policy, action, params}}} when current == :policy ->
+    case {public_id == target.public_id, tab(socket.assigns.live_action, socket.assigns.security)} do
+      {true, {:ok, {:policy, action}}} when current == :policy ->
         PolicyLive.Target.handle_params(
-          Map.merge(Map.new(query(uri)), params),
+          Map.delete(params, "target_id"),
           assign(socket, :action, action)
         )
 
@@ -308,9 +151,6 @@ defmodule ApiaryWeb.TargetLive.Show do
         {:noreply, push_navigate(socket, to: URI.parse(uri).path, replace: true)}
     end
   end
-
-  # The address's query, in its order.
-  defp query(uri), do: URI.query_decoder(URI.parse(uri).query || "") |> Enum.to_list()
 
   @impl true
   def handle_event("target_pin", _params, %{assigns: %{target: _}} = socket) do
@@ -327,6 +167,62 @@ defmodule ApiaryWeb.TargetLive.Show do
 
       {:error, _refused} ->
         {:noreply, socket}
+    end
+  end
+
+  # The Backlog card's switch: turned the other way from what the page shows, with a
+  # toast that says what is so now. A refusal says who may change it; a target whose
+  # collection went meanwhile loses its card.
+  def handle_event("set_backlog", _params, %{assigns: %{tab: :overview}} = socket) do
+    %{current_scope: scope, target: target, shared: shared, backlog: backlog} = socket.assigns
+    on = !(backlog && backlog.on)
+
+    case Collections.set_backlog(scope, target, on) do
+      {:ok, _count} ->
+        {:noreply,
+         socket
+         |> assign(:backlog, %{on: on, item_noun: backlog && backlog.item_noun})
+         |> put_flash(:info, backlog_words(on, name(target, shared), backlog))}
+
+      {:error, :not_found} ->
+        {:noreply, load_backlog(socket)}
+
+      {:error, _refused} ->
+        {:noreply,
+         socket
+         |> load_backlog()
+         |> put_flash(:error, only_admins_change(scope))}
+    end
+  end
+
+  # Rebuild: a build queued for each pool whose build of the target does not wait
+  # unclaimed, with a toast that says whether one was queued or every pool's waits
+  # already. A refusal, or a target that names no environment any more, reads the card
+  # again and says nothing.
+  def handle_event("rebuild_environment", _params, %{assigns: %{tab: :overview}} = socket) do
+    %{current_scope: scope, target: target, shared: shared} = socket.assigns
+
+    case Environments.rebuild(scope, target) do
+      {:ok, 0} ->
+        {:noreply,
+         socket
+         |> load_environment()
+         |> put_flash(
+           :info,
+           gettext("A build of %{target} is already waiting.", target: name(target, shared))
+         )}
+
+      {:ok, _queued} ->
+        {:noreply,
+         socket
+         |> load_environment()
+         |> put_flash(
+           :info,
+           gettext("A build of %{target} is queued.", target: name(target, shared))
+         )}
+
+      {:error, _refused} ->
+        {:noreply, load_environment(socket)}
     end
   end
 
@@ -377,6 +273,80 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   ## Reads
 
+  # Whether the target's tickets come into the Backlog, where its collection is assigned
+  # to the workspace and the reader may read its work items, and whether the reader may
+  # turn it.
+  defp load_backlog(socket) do
+    %{current_scope: scope, target: target} = socket.assigns
+
+    assign(socket,
+      backlog: Collections.backlog_switch(scope, target),
+      may_set_backlog: Access.can?(scope, :"collection.set_backlog", scope.organisation)
+    )
+  end
+
+  # What the target's environment is for each node pool of the workspace, where the reader
+  # may read its work items, and whether the reader may ask for a build of it: where it
+  # names an environment, which only a collection assigned to the workspace does, and a
+  # pool serves the workspace.
+  defp load_environment(socket) do
+    %{current_scope: scope, target: target} = socket.assigns
+    environment = Environments.section(scope, target)
+
+    assign(socket,
+      environment: environment,
+      may_rebuild: may_rebuild?(scope, target, environment)
+    )
+  end
+
+  defp may_rebuild?(scope, target, %{named: true, pools: [_ | _]}),
+    do: Access.can?(scope, :"target.rebuild_environment", target)
+
+  defp may_rebuild?(_scope, _target, _environment), do: false
+
+  # What the target's runs also read, where the reader is shown the work items and the
+  # workspace's domain has a label for a run's paths (`Apiary.Lingo.Domain.paths_label/1`),
+  # and whether the reader may change it.
+  defp load_further(socket) do
+    %{current_scope: scope, target: target} = socket.assigns
+
+    assign(socket,
+      further:
+        if(
+          Access.can?(scope, :"work_item.read", scope.workspace) and
+            Domain.paths_label(scope.workspace) != nil,
+          do: Targets.further_repositories(target)
+        ),
+      may_set_further: Access.can?(scope, :"target.set_further_repositories", target)
+    )
+  end
+
+  # `backlog` is the card's, with what the target's sources call their items.
+  defp backlog_words(true, target, backlog),
+    do:
+      gettext("The %{items} of %{target} now come into the Backlog.",
+        items: backlog_items(backlog),
+        target: target
+      )
+
+  defp backlog_words(false, target, backlog),
+    do:
+      gettext("The %{items} of %{target} no longer come into the Backlog.",
+        items: backlog_items(backlog),
+        target: target
+      )
+
+  defp backlog_items(backlog), do: SourceComponents.items(backlog && backlog.item_noun)
+
+  # Who may turn the switch, in the edition's words where it has some.
+  defp only_admins_change(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"collection.set_backlog",
+        gettext("Only owners and admins change this.")
+      )
+
   defp load_summary(socket) do
     if connected?(socket) do
       %{current_scope: scope, target: target} = socket.assigns
@@ -412,49 +382,6 @@ defmodule ApiaryWeb.TargetLive.Show do
   ## Render
 
   @impl true
-  # A path alone that two targets or more share, or an address that reads as two targets:
-  # the address does not say which, so the page names each, with a link to it at the same
-  # tab that names it alone.
-  def render(%{tab: :choose} = assigns) do
-    ~H"""
-    <Layouts.app
-      flash={@flash}
-      current_scope={@current_scope}
-      memberships={@memberships}
-      counts={@nav_counts}
-      nav={:targets}
-      width="read"
-    >
-      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/targets"}>
-        {gettext("Targets")}
-      </:crumb>
-      <:crumb>{@chosen_path}</:crumb>
-
-      <.page_header id="target-choose" title={@chosen_path}>
-        <:description>
-          {if @reading == :ambiguous,
-            do: gettext("This address can mean more than one target. Choose one:"),
-            else: gettext("This path is in more than one system. Choose one:")}
-        </:description>
-      </.page_header>
-
-      <ul id="target-choices" class="q-tgt-pl">
-        <li :for={{target, system?} <- @choices} id={"target-choice-#{target.id}"}>
-          <.link
-            navigate={
-              target_path(@current_scope, target.system, target.path, @rest, system?) <>
-                if(@query in [nil, ""], do: "", else: "?" <> @query)
-            }
-            class="q-tgt-pl-name"
-          >
-            <.target_name path={target.path} system={target.system} />
-          </.link>
-        </li>
-      </ul>
-    </Layouts.app>
-    """
-  end
-
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -469,7 +396,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/targets"}>
         {gettext("Targets")}
       </:crumb>
-      <:crumb navigate={@tab != :overview && page_path(@current_scope, @target, @shared, [])}>
+      <:crumb navigate={@tab != :overview && target_path(@current_scope, @target)}>
         <.target_name
           path={@target.path}
           system={@target.system}
@@ -509,7 +436,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       >
         <:tab
           key={:overview}
-          navigate={page_path(@current_scope, @target, @shared, [])}
+          navigate={target_path(@current_scope, @target)}
           icon="hero-book-open"
         >
           {gettext("Overview")}
@@ -517,7 +444,7 @@ defmodule ApiaryWeb.TargetLive.Show do
         <:tab
           :if={@security}
           key={:policy}
-          navigate={page_path(@current_scope, @target, @shared, ["policy"])}
+          navigate={target_path(@current_scope, @target, ["policy"])}
           icon="hero-shield-check"
         >
           {gettext("Policy")}
@@ -533,6 +460,12 @@ defmodule ApiaryWeb.TargetLive.Show do
         facts={@facts}
         new_runs={@new_runs}
         scope={@current_scope}
+        backlog={@backlog}
+        may_set_backlog={@may_set_backlog}
+        environment={@environment}
+        may_rebuild={@may_rebuild}
+        further={@further}
+        may_set_further={@may_set_further}
       />
 
       <PolicyLive.Target.content :if={@tab == :policy} {assigns} />
@@ -540,7 +473,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     """
   end
 
-  # The header: the target as it is addressed, the reader's pin, one muted line and the
+  # The header: the target in its notation, the reader's pin, one muted line and the
   # way to it in its system.
   attr :target, :map, required: true
   attr :shared, :boolean, required: true
@@ -615,6 +548,12 @@ defmodule ApiaryWeb.TargetLive.Show do
   attr :facts, :any, required: true
   attr :new_runs, :integer, required: true
   attr :scope, :any, required: true
+  attr :backlog, :map, default: nil
+  attr :may_set_backlog, :boolean, default: false
+  attr :environment, :map, default: nil
+  attr :may_rebuild, :boolean, default: false
+  attr :further, :list, default: nil
+  attr :may_set_further, :boolean, default: false
 
   defp overview(assigns) do
     assigns =
@@ -636,7 +575,7 @@ defmodule ApiaryWeb.TargetLive.Show do
             <.link
               :if={@facts && @facts.runs > 0}
               id="target-all-runs"
-              navigate={list_path(@scope, :runs, @target, @shared)}
+              navigate={list_path(@scope, :runs, @target)}
               class="q-tgt-more"
             >
               {ngettext("All %{number} run", "All %{number} runs", @facts.runs,
@@ -667,7 +606,7 @@ defmodule ApiaryWeb.TargetLive.Show do
             <span class="grow"></span>
             <.link
               id="target-denied-connections"
-              navigate={list_path(@scope, :network, @target, @shared, decision: "denied")}
+              navigate={list_path(@scope, :network, @target, decision: "denied")}
               class="q-tgt-more"
             >
               {gettext("Network access")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
@@ -681,19 +620,147 @@ defmodule ApiaryWeb.TargetLive.Show do
             <li
               :for={row <- @denied.rows}
               id={"target-denied-#{:erlang.phash2({row.host, row.port, row.path})}"}
-              title={"#{row.host}:#{row.port}#{row.path}"}
+              title={"#{sent(row.host)}:#{row.port}#{sent(row.path)}"}
             >
               <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
-              <span class="q-tgt-dn-dest"><bdi>{row.host}</bdi><span class="text-faint">:{row.port}</span><span
+              <span class="q-tgt-dn-dest"><bdi>{sent(row.host)}</bdi><span class="text-faint">:{row.port}</span><span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"
-              >{row.path}</span></span>
+              ><bdi>{sent(row.path)}</bdi></span></span>
               <span>{attempts_words(row)}</span>
               <span class="q-tgt-dn-t">
                 <.rich text={rich_gettext("last %{time}", time: {:part, :time})}>
                   <:part name={:time}><.relative_time at={row.last_at} /></:part>
                 </.rich>
               </span>
+            </li>
+          </ul>
+        </section>
+
+        <section
+          :if={@backlog}
+          id="target-backlog"
+          class="q-tgt-card"
+          aria-labelledby="target-backlog-h"
+        >
+          <div class="q-tgt-card-h">
+            <h2 id="target-backlog-h">{gettext("Backlog")}</h2>
+          </div>
+          <div class="q-tgt-card-b">
+            <.switch
+              id="target-backlog-switch"
+              label={gettext("Take its %{items} into the Backlog", items: backlog_items(@backlog))}
+              checked={@backlog.on}
+              disabled={!@may_set_backlog}
+              phx-click={@may_set_backlog && "set_backlog"}
+            >
+              {gettext(
+                "If its %{items} only track bugs, turn this off. Work items already taken in stay.",
+                items: backlog_items(@backlog)
+              )}
+            </.switch>
+            <p :if={!@may_set_backlog} id="target-backlog-read-only" class="q-tgt-card-ro">
+              {only_admins_change(@scope)}
+            </p>
+          </div>
+        </section>
+
+        <section
+          :if={@environment}
+          id="target-environment"
+          class="q-tgt-card"
+          aria-labelledby="target-environment-h"
+        >
+          <div class="q-tgt-card-h">
+            <h2 id="target-environment-h">{gettext("Environment")}</h2>
+            <span class="grow"></span>
+            <.button
+              :if={@may_rebuild}
+              id="target-environment-rebuild"
+              size="xs"
+              phx-click="rebuild_environment"
+              loading_text={gettext("Asking")}
+            >
+              {gettext("Rebuild")}
+            </.button>
+          </div>
+          <p
+            :if={@environment.state == :no_pool}
+            id="target-environment-no-pool"
+            class="q-tgt-card-empty"
+          >
+            {gettext("No pool serves the workspace of this target.")}
+          </p>
+          <p
+            :if={@environment.state == :no_environment}
+            id="target-environment-none"
+            class="q-tgt-card-empty"
+          >
+            {gettext("This target has no environment set, so runs use each pool's default image.")}
+          </p>
+          <ul :if={@environment.state == :pools} id="target-environment-pools" class="q-tgt-env">
+            <li :for={pool <- @environment.pools} id={"target-environment-pool-#{pool.id}"}>
+              <h3 class="q-tgt-env-pool">{pool.name}</h3>
+              <p class="q-tgt-env-line">
+                <.environment_image id={"target-environment-pool-#{pool.id}"} pool={pool} />
+                <span :if={pool.running} id={"target-environment-pool-#{pool.id}-running"}>
+                  {gettext("A build is running.")}
+                </span>
+                <span :if={pool.waiting} id={"target-environment-pool-#{pool.id}-waiting"}>
+                  {gettext("A build is waiting.")}
+                </span>
+              </p>
+              <p
+                :if={pool.serves == :image && pool.commit}
+                id={"target-environment-pool-#{pool.id}-commit"}
+                class="q-tgt-env-line"
+              >
+                <.rich text={
+                  rich_gettext("from %{commit}", commit: {:m, {:bdi, short_commit(pool.commit)}})
+                } />
+              </p>
+              <p
+                :if={pool.failure}
+                id={"target-environment-pool-#{pool.id}-failure"}
+                class="q-tgt-env-line q-hot"
+              >
+                {failure_words(pool.failure)}
+              </p>
+            </li>
+          </ul>
+        </section>
+
+        <section
+          :if={@further}
+          id="target-further-repositories"
+          class="q-tgt-card"
+          aria-labelledby="target-further-repositories-h"
+        >
+          <div class="q-tgt-card-h">
+            <h2 id="target-further-repositories-h">{gettext("Targets its runs also read")}</h2>
+            <span :if={@further != []} class="q-tgt-card-n">
+              {Format.number(length(@further))}
+            </span>
+            <span class="grow"></span>
+            <.link
+              :if={@may_set_further}
+              id="target-further-repositories-change"
+              navigate={target_path(@scope, @target, ["also-read"])}
+              class="q-tgt-more"
+            >
+              {gettext("Change")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+            </.link>
+          </div>
+          <p :if={@further == []} id="target-further-repositories-empty" class="q-tgt-card-empty">
+            {gettext("Its runs read no other target.")}
+          </p>
+          <ul :if={@further != []} id="target-further-repositories-rows" class="q-tgt-also">
+            <li
+              :for={{path, n} <- Enum.with_index(@further, 1)}
+              id={"target-further-repositories-row-#{n}"}
+              title={path}
+            >
+              {path}
             </li>
           </ul>
         </section>
@@ -704,9 +771,9 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("About")}</h3>
           <dl class="q-tgt-kv">
             <dt>{gettext("System")}</dt>
-            <dd class="font-mono">{@target.system}</dd>
+            <dd class="font-mono"><.external_text text={@target.system} /></dd>
             <dt>{gettext("Path")}</dt>
-            <dd class="break-all font-mono">{@target.path}</dd>
+            <dd class="break-all font-mono"><.external_text text={@target.path} /></dd>
             <dt>{gettext("First seen")}</dt>
             <dd>
               {Format.date(@target.first_seen_at)}
@@ -716,10 +783,10 @@ defmodule ApiaryWeb.TargetLive.Show do
                   <:part name={:id}>
                     <.link
                       navigate={
-                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.run_id}"
+                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.public_id}"
                       }
                       class="font-mono text-xs hover:underline"
-                    >{short_id(@facts.first.run_id)}</.link>
+                    >{short_id(@facts.first.public_id)}</.link>
                   </:part>
                 </.rich>
               </span>
@@ -731,7 +798,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("The same path elsewhere")}</h3>
           <ul class="q-tgt-pl">
             <li :for={{other, runs} <- @elsewhere}>
-              <.link navigate={page_path(@scope, other, true, [])} class="q-tgt-pl-name">
+              <.link navigate={target_path(@scope, other)} class="q-tgt-pl-name">
                 <.target_name path={other.path} system={other.system} />
               </.link>
               <span class="q-tgt-pl-c">
@@ -752,7 +819,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("Machines")}</h3>
           <ul class="q-tgt-pl">
             <li :for={{host, runs} <- @machines}>
-              <span class="q-tgt-pl-name font-mono">{host}</span>
+              <span class="q-tgt-pl-name font-mono"><.external_text text={host} /></span>
               <span class="q-tgt-pl-c">{Format.number(runs)}</span>
             </li>
           </ul>
@@ -762,13 +829,61 @@ defmodule ApiaryWeb.TargetLive.Show do
           <h3>{gettext("Runtimes")}</h3>
           <ul class="q-tgt-pl">
             <li :for={{runtime, runs} <- @runtimes}>
-              <span class="q-tgt-pl-name font-mono">{runtime}</span>
+              <span class="q-tgt-pl-name font-mono"><.external_text text={runtime} /></span>
               <span class="q-tgt-pl-c">{Format.number(runs)}</span>
             </li>
           </ul>
         </section>
       </aside>
     </div>
+    """
+  end
+
+  # What runs of a pool start in: the image the pool's last build for the target made,
+  # with when it was built, or the pool's default image, and why.
+  attr :id, :string, required: true
+  attr :pool, :map, required: true
+
+  defp environment_image(%{pool: %{serves: :image}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-image"} class="q-tgt-env-image" title={@pool.image}>
+      {short_image(@pool.image)}
+    </span>
+    <span id={"#{@id}-built"}>
+      <.rich text={rich_gettext("built %{time}", time: {:part, :time})}>
+        <:part name={:time}>
+          <time datetime={DateTime.to_iso8601(@pool.built_at)}>{built_time(@pool.built_at)}</time>
+        </:part>
+      </.rich>
+    </span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :default}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-default"}>{gettext("The pool's default image.")}</span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :other_target}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-other-target"}>
+      {gettext("Runs use the pool's default image until this target is built.")}
+    </span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :policy}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-policy"}>{gettext("Runs use the image set in this workspace's policy.")}</span>
+    """
+  end
+
+  defp environment_image(%{pool: %{serves: :retired}} = assigns) do
+    ~H"""
+    <span id={"#{@id}-retired"}>
+      {gettext("Runs use the pool's default image: this target no longer has an environment set.")}
+    </span>
     """
   end
 
@@ -813,19 +928,15 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   defp rule_form?(_assigns), do: false
 
-  defp page_path(scope, target, shared, rest),
-    do: target_path(scope, target.system, target.path, rest, shared)
-
-  # The workspace's runs list or Network access narrowed to the target: its path, and its
-  # system only where the path is shared, then the list's own parameters.
-  defp list_path(scope, list, target, shared, params \\ []) do
+  # The workspace's runs list or Network access narrowed to the target, by its id, then the
+  # list's parameters.
+  defp list_path(scope, list, target, params \\ []) do
     %{organisation: organisation, workspace: workspace} = scope
-    target_params = Filters.target_params(target.system, target.path, shared)
+    target_params = Filters.target_params([target.public_id])
     narrowed_path(organisation, workspace, list, target_params, params)
   end
 
-  # A list's path with the target's parameters first (`system`, then `target`), then the
-  # list's own, in their order.
+  # A list's path with the target's parameter first, then the list's, in their order.
   defp narrowed_path(organisation, workspace, list, target_params, params) do
     path =
       case list do
@@ -836,8 +947,12 @@ defmodule ApiaryWeb.TargetLive.Show do
     path <> "?" <> URI.encode_query(Enum.sort(target_params) ++ params)
   end
 
-  # The target in words, as it is addressed: its system only where its address has it.
+  # The target in words, in its notation: its system only where its path is shared.
   defp name(target, shared), do: target_label(target.system, target.path, shared)
+
+  # A text Forager sent, a denied destination's host or path, as the page shows it where
+  # markup cannot go or around a cut (`Apiary.ExternalText.sent/1`).
+  defp sent(text), do: Apiary.ExternalText.sent(text)
 
   # The target in its system, when the system is a host name: https, the path's segments
   # escaped.
@@ -854,6 +969,38 @@ defmodule ApiaryWeb.TargetLive.Show do
       "https://#{system}/" <> Enum.join(segments, "/")
     end
   end
+
+  # An image pinned by its digest, its digest cut to the twelve characters every page
+  # shows of one; a reference without a digest as it is.
+  defp short_image(reference) do
+    case String.split(reference, "@sha256:", parts: 2) do
+      [name, hex] when byte_size(hex) > 12 ->
+        name <> "@sha256:" <> String.slice(hex, 0, 12) <> "…"
+
+      _whole ->
+        reference
+    end
+  end
+
+  # The commit a build was made from, as a pool reported it, cleaned as a page shows a text
+  # a node sent (`Apiary.ExternalText.sent/1`), then cut to its first seven characters.
+  # The cut counts graphemes, so a control character shown as U+FFFD is one of the seven,
+  # and a character is never cut apart from what joins it.
+  defp short_commit(commit), do: commit |> Apiary.ExternalText.sent() |> String.slice(0, 7)
+
+  # When a build was made, its year only where it is not the current one.
+  defp built_time(at) do
+    if Format.local(at).year == Format.local(DateTime.utc_now()).year,
+      do: Format.datetime(at, year: false),
+      else: Format.datetime(at)
+  end
+
+  # The last build's failure, by its cause; the reason a starter gave is never shown.
+  defp failure_words(:released), do: gettext("The last build was given back.")
+  defp failure_words(:lost), do: gettext("The last build was lost before it finished.")
+
+  defp failure_words(:timed_out),
+    do: gettext("The last build failed: it ran past 35 minutes.")
 
   defp own_mode_words("observe"), do: gettext("overrides the mode: observe")
   defp own_mode_words("enforce"), do: gettext("overrides the mode: enforce")

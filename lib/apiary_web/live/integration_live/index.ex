@@ -3,10 +3,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   Workspace settings › Integrations (`/:org/:workspace/settings/integrations`), with the
   `secrets` feature, in two parts:
 
-    * **Set up in this workspace**: one list of what the workspace sets up, which
+    * **Set up**: one list of what the organisation sets up, which
       `Apiary.Connections` calls connections, in the order of the groups below, each row
       its name, its kind (Agent, API, or Program, one added from a release), a program's
-      version and where it applies (Applies to), every target or the chosen ones,
+      version and where it applies (Applies to), every workspace or the chosen ones,
       leading to its page (`ApiaryWeb.IntegrationLive.Show`);
     * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name,
       in three groups, each a heading, a sentence where it has one, and a separate list: Agent, the runtimes of Forager's catalogue (`Apiary.Kinds.Runtimes`);
@@ -84,8 +84,9 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         measure="list"
       >
         <:subtitle>
-          {gettext(
-            "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's settings. Each applies to every target or to the ones you choose."
+          {pgettext(
+            "plain",
+            "The agents, outside APIs and programs this organisation sets up, each with its settings. Not Qory Apiary's settings. Each applies to every workspace or to the ones you choose."
           )}
         </:subtitle>
 
@@ -96,13 +97,13 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
         <SettingsComponents.part
           id="set-up-part"
-          title={gettext("Set up in this workspace")}
+          title={gettext("Set up")}
           count={length(@connections)}
         >
           <.table
             :if={@connections != []}
             id="connections"
-            label={gettext("Set up in this workspace")}
+            label={gettext("Set up")}
             rows={@connections}
             row_id={&"connection-#{&1.public_id}"}
           >
@@ -117,7 +118,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
                 </span>
               </span>
             </:col>
-            <:col :let={connection} label={gettext("Kind")}>
+            <:col :let={connection} label={gettext("Kind")} from="sm">
               {Common.kind_word(connection.kind)}
             </:col>
             <:col :let={connection} label={gettext("Version")} from="sm">
@@ -128,7 +129,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             </:col>
           </.table>
           <p :if={@connections == []} id="connections-empty" class="text-[13px]/5 text-faint">
-            {gettext("Nothing is set up in this workspace yet.")}
+            {gettext("Nothing is set up yet.")}
           </p>
         </SettingsComponents.part>
 
@@ -320,7 +321,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   # The line under an agent's name: the catalogue has no description, so the console
   # says what each of its runtimes is; one it doesn't know, what it is.
   defp runtime_line(%{name: "claude"}),
-    do: gettext("Anthropic's coding agent, with an Anthropic API key or a Claude OAuth token.")
+    do: gettext("Anthropic's coding agent.")
 
   defp runtime_line(_runtime), do: gettext("A coding agent Forager can start.")
 
@@ -447,12 +448,9 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           options={for runtime <- Runtimes.list(), do: {runtime.title, runtime.name}}
           aria-describedby="runtime-catalogue"
         />
+        <%!-- A runtime connection offers none of its runtime's declarations
+             (`Apiary.Kinds.Runtimes`), so the form lists none. --%>
         <div :if={@runtime} id="runtime-catalogue" class="grid gap-1 text-[13px]/5 text-muted">
-          <p>
-            {gettext("It declares these secrets: %{names}.",
-              names: Enum.map_join(@runtime.declares, ", ", &"#{&1["title"]} (#{&1["name"]})")
-            )}
-          </p>
           <p :if={Runtimes.hosts(@runtime) != []}>
             {gettext("Its hosts: %{hosts}.", hosts: Enum.join(Runtimes.hosts(@runtime), ", "))}
           </p>
@@ -512,8 +510,8 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       field={@form[:applies_to]}
       type="radio"
       label={Common.applies_label()}
-      options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
-      hint={gettext("You choose the targets on its page, once it is set up.")}
+      options={[{gettext("Every workspace"), "all"}, {gettext("Chosen workspaces"), "selected"}]}
+      hint={gettext("You choose the workspaces on its page, once it is set up.")}
     />
     """
   end
@@ -579,7 +577,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     do: gettext("Choose a coding agent of Forager's catalogue.")
 
   defp form_sentence(:new_service),
-    do: gettext("Choose an outside API: a built-in one, or a custom API of this workspace.")
+    do: gettext("Choose an outside API: a built-in one, or a custom API of this organisation.")
 
   ## Mount, the list and the forms
 

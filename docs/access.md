@@ -194,10 +194,19 @@ one mail or not (`Apiary.Release.password_link/1`).
 Saving the instance's mail settings and turning them on by the test link
 (`instance.mail_save`, `Apiary.Mail.save_settings/3`; `instance.mail_on`,
 `Apiary.Mail.turn_on/2`) are no role's either: an instance admin, asked by
-`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Revoking
-the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a new
-instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its log
-shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
+`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Setting
+the product's name in Instance settings › General (`instance.rename`,
+`Apiary.ProductName.rename/2`) is an instance admin's too, asked by
+`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
+Changing the instance's settings in Instance settings › Configuration
+(`instance.configure`, `Apiary.InstanceConfig.save/3`) is an instance admin's too, asked
+by `Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in.
+Starting an adapter's set-up at the system it reads from (`adapter.setup`,
+`Apiary.Adapters.setup/2`) is an instance admin's too, asked by
+`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
+Revoking the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a
+new instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its
+log shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
 instance that has its organisation.
 
 The instance's organisation is never deleted nor purged: an instance without it is
@@ -269,6 +278,23 @@ is a separate action (`node.set_limit`), held by owners and admins as `node.edit
 an edition may keep it from some who change the rest, whose pools are made with a limit
 of 1; its change is recorded in the entry of the node's creation or edit. Everyone in the
 workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
+
+A key acts in the role its node's kind gives it (`Apiary.Access.role/1`): a node's key and
+a gateway's in `access_key`, a node pool's in `pool_key`, an adapter's in `adapter_key`.
+`pool_key` holds `run.post_events` and `run_configuration.fetch`, as `access_key` does,
+so a pool registers its runs, posts their events and their outcome and is served the run
+configuration as a node is; `access_key` alone holds `secret.seal`, a gateway's secrets
+request for a run's model key, of an opt-in feature the module's tables leave out; reading the configuration document asks no role, only the
+signed request (`ApiaryWeb.Contract.SignedRequest`). Beside them it holds the dispatch
+actions, `dispatch.claim`, `dispatch.dispatched`, `dispatch.handover`,
+`dispatch.release` and `dispatch.prebuilt`, of an opt-in feature the module's tables leave out (`docs: false`). A
+pool's key acts on its workspace and, there, on its pool: another node and the
+organisation are not found to it. A dispatch action is asked of the workspace, the one
+queue every pool of it claims a waiting run from, or of a dispatch of that workspace its
+pool claimed; another workspace's queue, or a dispatch another pool claimed or that names
+no pool, is not found to it. A handover, a release and a prebuilt that records its image
+leave an audit entry; a claim, the start of its machine, and a prebuilt whose
+`environment_ref` is older than the recorded image's do not.
 
 A gateway of an organisation, which has no workspace, is asked at the organisation: its
 making and listing (`node.create`, `node.read` of the organisation), its changes and
@@ -354,9 +380,11 @@ names, the workspace it names and what the edition says of their place there, an
 key at the server contract, or **the instance**, in a job no person enqueued
 (`Apiary.Accounts.Scope.for_instance/2`, which `Apiary.Job` gives such a job). The
 instance has a separate role in the role table, with only what its jobs need: pruning
-the audit trail, deleting the invitations expired for 30 days, and purging a workspace or
-an organisation whose deletion's grace period is over. Any other scope without a person
-may nothing, whatever it carries.
+the audit trail, deleting the invitations expired for 30 days, purging a workspace or
+an organisation whose deletion's grace period is over, and making the adapters its
+setting lists and giving them their one-time codes (`adapter.install`,
+`Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), in the instance's
+organisation. Any other scope without a person may nothing, whatever it carries.
 
 An action taken on the strength of something other than a role, signing up, accepting an
 invitation with its token, or a release command run on the release's machine, is in the
@@ -447,11 +475,57 @@ for each other and never on each other at once:
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
    (`c:Apiary.Edition.above_workspace/1`): it takes every workspace of the organisation,
-   then renders each again (`Apiary.Policy.rerender_in/3`).
+   then renders each again (`Apiary.Policy.rerender_in/3`). A write to an integration
+   takes them later, in step 5.
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
-5. **Everything else**: invitations, access keys, nodes, then runs.
+5. **Everything else**: the organisation's integrations lock, a transaction-level advisory
+   lock that every write to its runtimes, integrations and services takes
+   (`Apiary.Connections.lock/1`), then the rows it changes; invitations, access keys,
+   nodes, then runs. A write to an integration other than a model provider takes the
+   integrations lock and the connection's row `FOR UPDATE`, then every workspace row of
+   the organisation `FOR NO KEY UPDATE`, in the order of their ids, before it writes, and
+   then renders again the policy of each workspace the integration reached before the
+   write or reaches after it (`Apiary.Policy.rerender_in/3`). That write is the one
+   change that takes workspace rows after the integrations lock. No change that holds a
+   workspace row takes the integrations lock or locks the row of an integration other
+   than a model provider, so the two never wait on each other. A save of a deny rule
+   reads the integrations' hosts while it holds its workspace's row, with no lock of
+   theirs (`Apiary.Policy.check_deny/3`): a write to an integration holds every workspace
+   row before it writes, so the save reads that write whole or not at all. It reads the
+   hosts of the model providers' API endpoints the same way. A change to a model provider
+   takes no workspace row, so a save at the same moment may read the provider as it was
+   before the change; the document composed for a run has the provider's hosts in
+   `allow_first` either way (`Apiary.Policy.ComposedConfiguration`). A write of a model choice
+   at levels 2 to 5 holds the workspace row and then takes a provider's row `FOR SHARE`. A change to a model provider takes the integrations lock, then the
+   provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes
+   the organisation's advisory lock for its secrets and the row of the keys' secret
+   `FOR UPDATE`; to choose the default key, that row `FOR SHARE`. It reads what uses the
+   keys without a lock (`Apiary.Secrets.Usage`).
+   A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
+   policy's order, then the provider's row `FOR SHARE`, then the choice's row
+   `FOR UPDATE`. A write of the organisation's default takes the organisation's rows and
+   the membership, then the integrations lock, then the provider's row `FOR SHARE` and
+   the choice's row. A change to a provider or to one of its models takes the provider's
+   row `FOR UPDATE`, so it waits for a save of a choice of that provider, or is seen by
+   it: the change reads the choices that use the provider, or the model, without a lock,
+   and refuses while one does. No change to a provider takes a lock on an adapter's
+   connection.
+   The handover of an explore run (`Apiary.Dispatches.RunSettings`) reads the choices
+   without a lock, then takes the rows of the providers they name `FOR SHARE`, by id,
+   then the rows of those providers' keys' secrets `FOR SHARE`, by id, before the
+   environment records, the run of the queue, the dispatch and the gateway's row
+   (`Apiary.Dispatches.Slots`). A change to a provider or to its keys that came first is
+   seen by the handover; one that comes after waits for the handover to commit. A
+   deletion of the provider then reads the run the handover registered, and refuses while
+   that run is pending or running.
+   A gateway's secrets request for a run's model key takes no lock: it reads the run,
+   the provider's row and the row of its keys' secret without one, checks the
+   provider's integrity code, decrypts the key, whose row is bound to its secret, and
+   writes the audit entry `secret.seal` alone. A provider's deletion is refused while a
+   pending or running run uses it, so the run's provider columns are empty only on a run
+   that ended, and the request for such a run is refused.
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the
@@ -524,6 +598,15 @@ The modes keep a row that only names another out of it:
   `FOR SHARE` (`Apiary.Access.lock_places/1`),
   then locks its workspace's row `FOR NO KEY UPDATE`, then reads the membership again
   under `FOR SHARE` (`reload/2` with `lock: :share`): writes to one workspace take turns.
+- A write of an organisation's stored secrets, those without a workspace
+  (`Apiary.Secrets`), holds the organisation `FOR SHARE` (`Apiary.Access.lock_places/1`),
+  reads the membership again under `FOR SHARE` (`reload/2` with `lock: :share`), asks
+  the edition (`c:Apiary.Edition.organisation_secrets/2`), then takes the organisation's
+  advisory transaction lock for its secrets (`pg_advisory_xact_lock`), which locks no row
+  and which only these writes take, after every row lock above; then a change to a
+  secret locks the secret's row `FOR UPDATE`. The writes of one organisation's secrets
+  take turns, and its first secret makes its data key alone. A write of a workspace's
+  stored secrets takes the security policy's order above, then the secret's row.
 - A marking for deletion locks the organisation's row `FOR NO KEY UPDATE`, and a
   workspace's marking locks every workspace of the organisation in use: they wait for a
   write in flight, and one asked after them waits and then sees them. What an edition
@@ -583,7 +666,8 @@ organisation.
 
 The races are tested outside the sandbox, on connections that commit
 (`test/apiary/access_races_test.exs`, `deletion_races_test.exs`,
-`sign_up_races_test.exs`, `suspension_races_test.exs`, `nodes_races_test.exs`).
+`sign_up_races_test.exs`, `suspension_races_test.exs`, `nodes_races_test.exs`,
+`model_choices_races_test.exs`).
 
 ## The page asks the same question
 

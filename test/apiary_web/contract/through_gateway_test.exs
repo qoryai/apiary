@@ -54,15 +54,18 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
     )
   end
 
-  defp run(run_id), do: Repo.one!(from r in Run, where: r.run_id == ^run_id)
+  defp run(run_id), do: Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
 
   # Another running copy of the gateway, under a key of the same gateway node.
   @other_instance "i_another-copy-of-the-gateway"
 
   # The run as one attached before its attaching instance was kept is left.
   defp without_instance(run_id) do
-    Repo.update_all(from(r in Run, where: r.run_id == ^run_id), set: [attach_instance_id: nil])
-    assert run(run_id).attach_instance_id == nil
+    Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
+      set: [gateway_instance_id: nil]
+    )
+
+    assert run(run_id).gateway_instance_id == nil
   end
 
   defp now, do: ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!()
@@ -99,11 +102,48 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       attach_by: DateTime.add(now(), -1, :second)
     ]
 
-    Repo.update_all(from(r in Run, where: r.run_id == ^run_id), set: window ++ changes)
+    Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id), set: window ++ changes)
   end
 
   defp set_choice(%Node{id: id}, changes),
     do: Repo.update_all(from(n in Node, where: n.id == ^id), set: changes)
+
+  describe "the node's ids" do
+    test "keep the contract's words on the wire and are stored as the node's", ctx do
+      run_id = Ecto.UUID.generate()
+      conn = register(ctx.key, gateway_registration(run_id))
+
+      # The registration's answer and its run key say `run_id` and `instance_id`.
+      answer = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      assert Enum.map(answer.values, &elem(&1, 0)) == ["version", "run_id", "run_key"]
+      assert answer["run_id"] == run_id
+
+      {payload, _signature} = RunKey.parts(answer["run_key"])
+      assert %{"run_id" => ^run_id, "instance_id" => instance} = Jason.decode!(payload)
+      assert instance == instance_id()
+
+      assert attach(ctx.gateway_key, run_id, attach_body(answer["run_key"])).status == 200
+
+      delivery = Ecto.UUID.generate()
+      event = beat(run_id, 2)
+      assert response(deliver(ctx.gateway_key, [event], delivery: delivery), 202) == ""
+
+      run = run(run_id)
+      assert run.node_run_id == run_id
+      assert run.node_instance_id == instance_id()
+      assert run.gateway_instance_id == instance_id()
+      refute Map.has_key?(run, :run_id)
+
+      assert [stored] = Repo.all(from e in Event, where: e.run_id == ^run.id)
+      assert stored.node_event_id == event["id"]
+      assert stored.node_instance_id == instance_id()
+
+      assert [%Delivery{node_delivery_id: ^delivery, node_run_id: ^run_id} = sent] =
+               Repo.all(Delivery)
+
+      assert sent.node_instance_id == instance_id()
+    end
+  end
 
   describe "a registration through a gateway" do
     test "is given the run's id and a run key that names the gateway, with no run configuration",
@@ -380,7 +420,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert signed_answer?(conn)
 
       # A run whose record is gone has ended too.
-      Repo.delete_all(from(r in Run, where: r.run_id == ^run_id))
+      Repo.delete_all(from(r in Run, where: r.node_run_id == ^run_id))
       assert response(attach(ctx.gateway_key, run_id, attach_body(run_key)), 410) == ""
     end
 
@@ -478,7 +518,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert run.event_count == 2
       assert run.state == "running"
       assert run.node_id == ctx.node.id
-      assert run.instance_id == instance_id()
+      assert run.node_instance_id == instance_id()
       assert run.workspace_id == ctx.scope.workspace.id
       assert [%Delivery{workspace_id: workspace_id}] = Repo.all(Delivery)
       assert workspace_id == ctx.scope.workspace.id
@@ -515,7 +555,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
 
       assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
       assert signed_answer?(conn)
-      assert Repo.all(from r in Run, where: r.run_id == ^subject) == []
+      assert Repo.all(from r in Run, where: r.node_run_id == ^subject) == []
     end
 
     @tag needs: :security
@@ -600,7 +640,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
   describe "one instance of the gateway" do
     test "the attach keeps the instance it was signed with", ctx do
       run_id = attached(ctx)
-      assert run(run_id).attach_instance_id == instance_id()
+      assert run(run_id).gateway_instance_id == instance_id()
     end
 
     test "the same instance under another active key of the node is given the stored answer",
@@ -616,14 +656,14 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert [digest] = get_resp_header(again, "x-qory-run-configuration")
       assert get_resp_header(again, "etag") == [~s("#{digest}")]
       assert get_resp_header(again, "etag") == get_resp_header(first, "etag")
-      assert run(run_id).attach_instance_id == instance_id()
+      assert run(run_id).gateway_instance_id == instance_id()
     end
 
     test "another instance of the node is 409 run_attached while the run is live, under any key",
          ctx do
       {run_id, run_key} = registered(ctx)
       assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
-      attached = Map.take(run(run_id), [:attached_at, :attach_instance_id, :updated_at])
+      attached = Map.take(run(run_id), [:attached_at, :gateway_instance_id, :updated_at])
       %{access_key: second, secret: secret} = contract_key_fixture(ctx.scope, node: ctx.gateway)
 
       for key <- [ctx.gateway_key, {second, secret}] do
@@ -632,14 +672,14 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
         assert signed_answer?(conn)
       end
 
-      assert Map.take(run(run_id), [:attached_at, :attach_instance_id, :updated_at]) == attached
+      assert Map.take(run(run_id), [:attached_at, :gateway_instance_id, :updated_at]) == attached
     end
 
     test "after the run is lost or ended, any instance's attach is 410", ctx do
       {run_id, run_key} = registered(ctx)
       assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
 
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [state: "lost", lost_at: now()]
       )
 
@@ -715,7 +755,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
 
       run = run(run_id)
       assert run.event_count == 2
-      assert run.attach_instance_id == instance_id()
+      assert run.gateway_instance_id == instance_id()
     end
 
     test "a resend after the run is lost from another instance is answered as the attaching instance's",
@@ -724,7 +764,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       {_subject, [started]} = first_events(run_id)
       assert response(deliver(ctx.gateway_key, [started]), 202) == ""
 
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [state: "lost", lost_at: now()]
       )
 
@@ -746,7 +786,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
         {_subject, [started]} = first_events(run_id)
         assert response(deliver(ctx.gateway_key, [started]), 202) == ""
 
-        Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
           set: [state: "lost", lost_at: now()]
         )
 
@@ -756,7 +796,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       stored = fn run_id ->
         %Run{id: id, event_count: count} = run(run_id)
         event = Repo.one!(from e in Event, where: e.run_id == ^id and e.sequence == 2)
-        {count, event.event_id, event.type}
+        {count, event.node_event_id, event.type}
       end
 
       second = second_key(ctx)
@@ -792,7 +832,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       {_subject, [started]} = first_events(run_id)
       assert response(deliver(ctx.gateway_key, [started]), 202) == ""
 
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [events_pruned_at: now()]
       )
 
@@ -855,7 +895,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
         assert response(deliver(ctx.gateway_key, batch, instance_id: instance), 202) == ""
       end
 
-      assert run(run_id).attach_instance_id == nil
+      assert run(run_id).gateway_instance_id == nil
     end
   end
 
@@ -868,7 +908,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert response(deliver(ctx.gateway_key, [started, beat(run_id, 3)]), 202) == ""
       assert run(run_id).state == "running"
 
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [state: "lost", lost_at: now()]
       )
 
@@ -902,7 +942,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert Repo.one!(
                from e in Event,
                  where: e.run_id == ^run.id and e.sequence == 4,
-                 select: e.instance_id
+                 select: e.node_instance_id
              ) == @other_instance
 
       # Folded again from the stored events, its heartbeat still counts for nothing: the
@@ -968,7 +1008,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       {_subject, [started]} = first_events(run_id)
       assert response(deliver(ctx.gateway_key, [started, beat_at(run_id, 4, 0, 30)]), 202) == ""
 
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [state: "lost", lost_at: now()]
       )
 
@@ -1032,7 +1072,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       run = run(run_id)
       assert {run.state, run.lost_at} == {"running", nil}
       # Lost, its sending had ended, so the heartbeat gave it no instance.
-      assert run.attach_instance_id == nil
+      assert run.gateway_instance_id == nil
     end
   end
 
@@ -1045,7 +1085,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       again = attach(ctx.gateway_key, run_id, attach_body(run_key), instance_id: @other_instance)
       assert again.status == 200
       assert again.resp_body == first.resp_body
-      assert run(run_id).attach_instance_id == @other_instance
+      assert run(run_id).gateway_instance_id == @other_instance
 
       conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
       assert json_response(conn, 409) == %{"error" => "run_attached"}
@@ -1071,7 +1111,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
              ) ==
                ""
 
-      assert run(run_id).attach_instance_id == @other_instance
+      assert run(run_id).gateway_instance_id == @other_instance
 
       {_subject, [started]} = first_events(run_id)
 
@@ -1099,7 +1139,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
              }) ==
                {:error, :unauthorized}
 
-      assert run(run_id).attach_instance_id == nil
+      assert run(run_id).gateway_instance_id == nil
       assert Repo.aggregate(Event, :count) == 0
     end
 
@@ -1114,7 +1154,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
                "error" => "wrong_gateway"
              }
 
-      assert run(run_id).attach_instance_id == nil
+      assert run(run_id).gateway_instance_id == nil
     end
 
     @tag needs: :security
@@ -1127,7 +1167,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
         assert reload(ctx.gateway_key, run_id, instance_id: instance).status == 200
       end
 
-      assert run(run_id).attach_instance_id == nil
+      assert run(run_id).gateway_instance_id == nil
     end
   end
 
@@ -1145,7 +1185,10 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert {run.run_key_payload, run.run_key_signature} == {payload, signature}
 
       other = :crypto.strong_rand_bytes(64)
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id), set: [run_key_signature: other])
+
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
+        set: [run_key_signature: other]
+      )
 
       assert %{"run_key" => again} = json_response(register(ctx.key, body), 200)
       assert again == RunKey.assemble(payload, other)
@@ -1156,7 +1199,7 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       {run_id, run_key} = registered(ctx)
       # As the lost-run check leaves it at its attach_by, or a person's clearing of its
       # instance does, its window not yet past on the clock.
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [state: "lost", lost_at: now()]
       )
 

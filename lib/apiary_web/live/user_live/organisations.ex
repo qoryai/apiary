@@ -83,14 +83,22 @@ defmodule ApiaryWeb.UserLive.Organisations do
             <:col :let={membership} label={gettext("Organisation")} kind="title">
               <span class="q-nm">
                 <.avatar name={membership.organisation.name} kind="organisation" />
-                <.link href={organisation_path(membership)} class="q-title hover:underline">
+                <.link
+                  href={organisation_path(membership)}
+                  class="q-title hover:underline"
+                  title={membership.organisation.name}
+                >
                   {membership.organisation.name}
                 </.link>
               </span>
             </:col>
             <:col :let={membership} label={gettext("Workspaces")}>
-              <span class="block max-w-[40ch] truncate">
-                {Enum.map_join(membership.workspaces, ", ", & &1.name)}
+              <span
+                id={"organisation-#{membership.organisation.id}-workspaces"}
+                class="q-cut max-w-[40ch]"
+                title={workspace_names(membership)}
+              >
+                {workspace_names(membership)}
               </span>
             </:col>
             <:col :let={membership} label={gettext("Level")} from="sm">
@@ -115,7 +123,9 @@ defmodule ApiaryWeb.UserLive.Organisations do
               <:col :let={membership} label={gettext("Organisation")} kind="title">
                 <span class="q-nm">
                   <.avatar name={membership.organisation.name} kind="organisation" />
-                  <span class="q-title">{membership.organisation.name}</span>
+                  <span class="q-title" title={membership.organisation.name}>
+                    {membership.organisation.name}
+                  </span>
                 </span>
               </:col>
               <:col label={gettext("State")}>
@@ -140,11 +150,11 @@ defmodule ApiaryWeb.UserLive.Organisations do
               <:col :let={organisation} label={gettext("Organisation")} kind="title">
                 <span class="q-nm">
                   <.avatar name={organisation.name} kind="organisation" />
-                  <span class="q-title">{organisation.name}</span>
+                  <span class="q-title q-cut" title={organisation.name}>{organisation.name}</span>
                 </span>
               </:col>
               <:col :let={organisation} label={gettext("Purged")} kind="hot">
-                <span class="tabular-nums">
+                <span class="q-parts tabular-nums">
                   {gettext("Purged on %{date}", date: Format.date(organisation.purge_after))}
                 </span>
               </:col>
@@ -250,6 +260,10 @@ defmodule ApiaryWeb.UserLive.Organisations do
     do: ~p"/#{organisation}/#{workspace}"
 
   defp organisation_path(%{organisation: organisation}), do: ~p"/#{organisation}"
+
+  # The workspaces a membership reaches, as its Workspaces cell shows them and as its title
+  # holds them whole.
+  defp workspace_names(membership), do: Enum.map_join(membership.workspaces, ", ", & &1.name)
 
   # The memberships in use, which the switcher shows too, the suspended ones, and the
   # organisations pending deletion that the person owns: three short reads, the page's

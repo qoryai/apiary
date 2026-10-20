@@ -27,20 +27,20 @@ defmodule Apiary.Nodes.InstancesTest do
   describe "the columns that name a node and an instance" do
     test "every run and delivery today names neither", %{scope: scope} do
       run = Apiary.RunEventsFixtures.run_fixture(scope)
-      assert %Run{node_id: nil, instance_id: nil} = Repo.get!(Run, run.id)
-      assert %Delivery{}.instance_id == nil
+      assert %Run{node_id: nil, node_instance_id: nil} = Repo.get!(Run, run.id)
+      assert %Delivery{}.node_instance_id == nil
     end
 
     test "placement/2 is the node and the instance a run records", %{scope: scope} do
       node = node_fixture(scope)
 
-      assert Nodes.placement(nil, "i_1") == %{node_id: nil, instance_id: nil}
-      assert Nodes.placement(node, "i_1") == %{node_id: node.id, instance_id: "i_1"}
-      assert Nodes.placement(node, "") == %{node_id: node.id, instance_id: nil}
-      assert Nodes.placement(node, "a\nb") == %{node_id: node.id, instance_id: nil}
+      assert Nodes.placement(nil, "i_1") == %{node_id: nil, node_instance_id: nil}
+      assert Nodes.placement(node, "i_1") == %{node_id: node.id, node_instance_id: "i_1"}
+      assert Nodes.placement(node, "") == %{node_id: node.id, node_instance_id: nil}
+      assert Nodes.placement(node, "a\nb") == %{node_id: node.id, node_instance_id: nil}
 
       assert Nodes.placement(node, String.duplicate("i", 129)) ==
-               %{node_id: node.id, instance_id: nil}
+               %{node_id: node.id, node_instance_id: nil}
     end
 
     test "a run cannot name a node of another workspace", %{scope: scope} do
@@ -59,7 +59,7 @@ defmodule Apiary.Nodes.InstancesTest do
       instance = instance_fixture(node)
 
       for {assignments, constraint} <- [
-            {"instance_id = ''", "node_instances_instance_id_check"},
+            {"node_instance_id = ''", "node_instances_node_instance_id_check"},
             {"name = '-build'", "node_instances_name_check"},
             {"last_seen_at = first_seen_at - interval '1 second'", "node_instances_seen_check"},
             {"cleared_by_id = $2", "node_instances_cleared_check"}
@@ -81,7 +81,7 @@ defmodule Apiary.Nodes.InstancesTest do
       end
 
       assert_raise Ecto.ConstraintError, fn ->
-        instance_fixture(node, instance_id: instance.instance_id)
+        instance_fixture(node, instance_id: instance.node_instance_id)
       end
     end
 
@@ -90,8 +90,8 @@ defmodule Apiary.Nodes.InstancesTest do
       instance = instance_fixture(node)
       %{scope: stranger} = sign_up_fixture()
 
-      assert Nodes.get_instance(scope, node, instance.instance_id).id == instance.id
-      assert Nodes.get_instance(stranger, node, instance.instance_id) == nil
+      assert Nodes.get_instance(scope, node, instance.node_instance_id).id == instance.id
+      assert Nodes.get_instance(stranger, node, instance.node_instance_id) == nil
 
       assert Nodes.activity(stranger, [node]) ==
                %{node.id => %{running: [], last: nil, used: nil}}
@@ -125,7 +125,7 @@ defmodule Apiary.Nodes.InstancesTest do
 
       assert [
                %Instance{
-                 instance_id: "i_1",
+                 node_instance_id: "i_1",
                  name: "build-01.example.com",
                  first_seen_at: ^t,
                  last_seen_at: ^t,
@@ -209,7 +209,7 @@ defmodule Apiary.Nodes.InstancesTest do
             organisation_id: node.organisation_id,
             workspace_id: node.workspace_id,
             node_id: node.id,
-            instance_id: "i_#{n}",
+            node_instance_id: "i_#{n}",
             first_seen_at: ago(60, now),
             last_seen_at: ago(60, now)
           }
@@ -225,7 +225,7 @@ defmodule Apiary.Nodes.InstancesTest do
 
       assert %Instance{last_seen_at: ^now} =
                Repo.one!(
-                 from i in Instance, where: i.node_id == ^node.id and i.instance_id == "i_1"
+                 from i in Instance, where: i.node_id == ^node.id and i.node_instance_id == "i_1"
                )
 
       # A day on, the bound has room again.
@@ -297,7 +297,7 @@ defmodule Apiary.Nodes.InstancesTest do
       now = DateTime.utc_now()
 
       # Ended, lost, silent past three intervals, of another node, or of no instance.
-      node_run_fixture(node, "i_1", %{state: "succeeded"})
+      node_run_fixture(node, "i_1", %{state: "completed"})
       node_run_fixture(node, "i_2", %{state: "lost"})
       node_run_fixture(node, "i_3", %{state: "pending", inserted_at: ago(91, now)})
 
@@ -398,7 +398,7 @@ defmodule Apiary.Nodes.InstancesTest do
       node = node_fixture(scope)
       now = DateTime.utc_now()
 
-      assert {:ok, %Run{instance_id: "i_1"}} =
+      assert {:ok, %Run{node_instance_id: "i_1"}} =
                Nodes.admit(node, "i_1", fn -> {:ok, node_run_fixture(node, "i_1")} end, now)
 
       assert %Node{instance_limit_refused: 0, instance_limit_refused_at: nil} = reload(node)
@@ -409,7 +409,7 @@ defmodule Apiary.Nodes.InstancesTest do
       assert {:error, :instance_limit} =
                Nodes.admit(node, "i_2", fn -> {:ok, node_run_fixture(node, "i_2")} end, now)
 
-      assert Repo.aggregate(from(r in Run, where: r.instance_id == "i_2"), :count) == 0
+      assert Repo.aggregate(from(r in Run, where: r.node_instance_id == "i_2"), :count) == 0
       assert %Node{instance_limit_refused: 1, instance_limit_refused_at: ^now} = reload(node)
 
       # The store's own error rolls back what it stored, and is no refusal.
@@ -432,7 +432,7 @@ defmodule Apiary.Nodes.InstancesTest do
       instance = instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
       open = node_run_fixture(node, "i_1", %{state: "running", started_at: ago(30)})
       pending = node_run_fixture(node, "i_1")
-      ended = node_run_fixture(node, "i_1", %{state: "succeeded"})
+      ended = node_run_fixture(node, "i_1", %{state: "completed"})
       other = node_run_fixture(node, "i_2")
       Runs.subscribe(scope)
       Nodes.subscribe(scope)
@@ -442,7 +442,7 @@ defmodule Apiary.Nodes.InstancesTest do
                Nodes.clear_instance(scope, node, "i_1")
 
       assert Enum.sort(Enum.map(runs, & &1.id)) == Enum.sort([open.id, pending.id])
-      assert Enum.map([open, pending, ended, other], &state/1) == ~w(lost lost succeeded pending)
+      assert Enum.map([open, pending, ended, other], &state/1) == ~w(lost lost completed pending)
       assert cleared.id == instance.id
       assert cleared.cleared_by_id == scope.user.id
       assert %DateTime{} = cleared.cleared_at
@@ -513,6 +513,54 @@ defmodule Apiary.Nodes.InstancesTest do
     end
   end
 
+  describe "get_instance_by_id/3 and get_instance_run/3" do
+    test "an instance by its row's id, or by an open run of its, of the node alone", %{
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      sibling = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1")
+      sibling_instance = instance_fixture(sibling, instance_id: "i_1")
+      run = node_run_fixture(node, "i_1")
+      sibling_run = node_run_fixture(sibling, "i_1")
+      ended = node_run_fixture(node, "i_1", %{state: "completed"})
+      unnamed = node_run_fixture(node, nil)
+
+      assert Nodes.get_instance_by_id(scope, node, instance.id).id == instance.id
+      assert Nodes.get_instance_by_id(scope, node, sibling_instance.id) == nil
+      assert Nodes.get_instance_run(scope, node, run.public_id).id == run.id
+      assert Nodes.get_instance_run(scope, node, sibling_run.public_id) == nil
+      assert Nodes.get_instance_run(scope, node, ended.public_id) == nil
+      assert Nodes.get_instance_run(scope, node, unnamed.public_id) == nil
+
+      # The node's instance id addresses neither; nor does a malformed id.
+      for id <- ["i_1", "", "not-a-uuid", <<0xFF, 0xFE>>, nil, run.id, instance.id] do
+        assert Nodes.get_instance_run(scope, node, id) == nil
+      end
+
+      for id <- ["i_1", "", "not-a-uuid", <<0xFF, 0xFE>>, nil, run.public_id] do
+        assert Nodes.get_instance_by_id(scope, node, id) == nil
+      end
+
+      # Another organisation's scope reads none of them.
+      %{scope: stranger} = sign_up_fixture()
+      assert Nodes.get_instance_by_id(stranger, node, instance.id) == nil
+      assert Nodes.get_instance_run(stranger, node, run.public_id) == nil
+    end
+
+    test "a row's id only in its 36-character text form, in either case", %{scope: scope} do
+      node = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1")
+
+      # Ecto.UUID.cast/1 takes the 16 raw bytes as the same id; the address does not.
+      assert {:ok, _} = Ecto.UUID.cast(Ecto.UUID.dump!(instance.id))
+      assert Nodes.get_instance_by_id(scope, node, Ecto.UUID.dump!(instance.id)) == nil
+      assert Nodes.get_instance_by_id(scope, node, String.replace(instance.id, "-", "")) == nil
+
+      assert Nodes.get_instance_by_id(scope, node, String.upcase(instance.id)).id == instance.id
+    end
+  end
+
   describe "activity/3" do
     test "a node's running instances, oldest first, and the one seen last", %{scope: scope} do
       pool = pool_fixture(scope, instance_limit: 10)
@@ -520,7 +568,7 @@ defmodule Apiary.Nodes.InstancesTest do
       never = node_fixture(scope)
       now = DateTime.utc_now()
 
-      instance_fixture(pool, instance_id: "i_1", name: "spot-1", seen_at: ago(5, now))
+      spot = instance_fixture(pool, instance_id: "i_1", name: "spot-1", seen_at: ago(5, now))
       instance_fixture(pool, instance_id: "i_2", seen_at: ago(1, now))
       instance_fixture(idle, instance_id: "i_3", seen_at: ago(7200, now))
       instance_fixture(idle, instance_id: "i_4", seen_at: ago(3600, now))
@@ -537,17 +585,24 @@ defmodule Apiary.Nodes.InstancesTest do
 
       node_run_fixture(pool, "i_2", %{inserted_at: ago(10, now)})
       node_run_fixture(pool, "i_5", %{state: "failed"})
+      unrecorded = node_run_fixture(pool, "i_6", %{inserted_at: ago(5, now)})
 
       activity = Nodes.activity(scope, [pool, idle, never], now)
 
-      assert %{running: [one, two], last: %Instance{instance_id: "i_2"}} = activity[pool.id]
+      assert %{running: [one, two, three], last: %Instance{node_instance_id: "i_2"}} =
+               activity[pool.id]
 
       assert %{instance_id: "i_1", name: "spot-1", forager_version: "0.7.1"} = one
       assert one.since == first.inserted_at
-      assert one.run_id == newest.run_id
-      assert %{instance_id: "i_2", name: nil} = two
+      assert one.run_public_id == newest.public_id
+      # The id of its row, which a page addresses it by; one with no row has none.
+      assert one.row_id == spot.id
+      assert %{instance_id: "i_2", name: nil, row_id: row_id} = two
+      assert is_binary(row_id)
+      assert %{instance_id: "i_6", row_id: nil} = three
+      assert three.run_public_id == unrecorded.public_id
 
-      assert %{running: [], last: %Instance{instance_id: "i_4"}} = activity[idle.id]
+      assert %{running: [], last: %Instance{node_instance_id: "i_4"}} = activity[idle.id]
       assert activity[never.id] == %{running: [], last: nil, used: nil}
     end
 
@@ -607,8 +662,8 @@ defmodule Apiary.Nodes.InstancesTest do
         Repo.all(
           from i in Instance,
             where: i.node_id in ^[pool.id, node.id, lonely.id],
-            select: i.instance_id,
-            order_by: i.instance_id
+            select: i.node_instance_id,
+            order_by: i.node_instance_id
         )
 
       assert kept == ~w(l_only n_recent p_new)

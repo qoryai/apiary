@@ -37,6 +37,16 @@ defmodule ApiaryWeb.Activity.Describer do
   @callback label(action :: atom) :: String.t() | nil
 
   @doc """
+  The words of `action` in the Action filter for the reader of `scope`, where they name
+  what the organisation holds, such as the items of its sources. The page asks it, where
+  a describer has it, in the place of `c:label/1`. Nil for an action the describer does
+  not know.
+  """
+  @callback label(action :: atom, Scope.t()) :: String.t() | nil
+
+  @optional_callbacks label: 2
+
+  @doc """
   Whether the Action filter offers `action` to the reader of `scope`. An entry of an
   action it does not offer still shows; the filter does not name it.
   """

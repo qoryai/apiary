@@ -20,7 +20,10 @@ defmodule Apiary.Runs.Ingest do
   row: its batches are stored on that row and admitted by nothing again. A batch of a run
   the workspace does not hold creates it, on the node of the key it came with and the
   instance id it claimed (`Apiary.Nodes.placement/2`), both fixed from then on, and held
-  to no limit; each delivery records its instance id too.
+  to no limit; each delivery records its instance id too. A batch whose subject is a run
+  id the instance gave a run itself opens no run: from a key that does not reach a run
+  under that id, such as a key of another workspace, or a gateway that may not serve the
+  run's, it is refused whole, `{:error, :run_id_used}`, and nothing of it is stored.
 
   **Who may send.** A run's batches, its heartbeats among them, are taken only from the
   active keys of the node or node pool it is bound to (`Apiary.Runs.Sender`): the node
@@ -34,8 +37,8 @@ defmodule Apiary.Runs.Ingest do
   lost after its attach, or its events were pruned). From then on a batch from any
   instance of the gateway is answered as the attaching instance's would be: a resend is
   deduplicated, and a run whose events were pruned is answered 410. Each event is stored
-  with the instance id of the request that delivered it (`events.instance_id`), and after
-  a loss, only the attaching instance's heartbeat makes the run live again, once that
+  with the instance id of the request that delivered it (`events.node_instance_id`), and
+  after a loss, only the attaching instance's heartbeat makes the run live again, once that
   instance is known (`Apiary.Runs.Fold`). A run attached before
   its instance was known takes the instance of the first batch its gateway sends while
   its sending has not ended, under the run's row lock.
@@ -53,9 +56,11 @@ defmodule Apiary.Runs.Ingest do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Nodes}
+  alias Apiary.{Access, AccessKeys, Gateways, Nodes, PublicId}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Organisations.Workspace
   alias Apiary.Policy.Serving
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run, Sender}
@@ -68,8 +73,8 @@ defmodule Apiary.Runs.Ingest do
   @typedoc """
   What the request said beside its body: `contract_version`, the revision of
   `X-Qory-Contract-Version`, which the gateway sends on every request and the events
-  endpoint has checked; `delivery_id` (`X-Qory-Delivery`; one is made up when it is
-  absent or not a UUID), `forager_version`, `run_configuration`
+  endpoint has checked; `delivery_id` (`X-Qory-Delivery`; read as none when it is
+  not a UUID in its text form), `forager_version`, `run_configuration`
   (`X-Qory-Run-Configuration`) and `instance_id` (`X-Qory-Instance-Id`, as the request
   verified it), each nil when not sent.
   """
@@ -92,10 +97,12 @@ defmodule Apiary.Runs.Ingest do
   read); `end` is the run's outcome, `%{state: state, reason: reason}` (reason nil when it
   gave none), while the run has one and no `dev.qory.run.exited` has arrived, else nil.
   `{:error, :unavailable}` when the batch could not be stored, `{:error, :not_found}` when
-  the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :wrong_node}`
-  when the run is another node's, and `{:error, :wrong_gateway}` when the run goes
-  through a gateway and the batch is not from the gateway that attached it and its
-  attaching instance (`Apiary.Runs.Sender`), with nothing stored. Then, for a run through
+  the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :run_id_used}`
+  when the batch's subject is a run id the instance gave a run itself, which no batch
+  opens, and the key reaches no run under it, `{:error, :wrong_node}` when the run is
+  another node's, and `{:error, :wrong_gateway}` when the run goes through a gateway and
+  the batch is not from the gateway that attached it and its attaching instance
+  (`Apiary.Runs.Sender`), with nothing stored. Then, for a run through
   a gateway that may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`,
   asked under the run's lock), `{:error, :workspace_not_served}`, with nothing stored and
   nothing of the run told: before the pruned run's answer and before a delivery id
@@ -112,6 +119,7 @@ defmodule Apiary.Runs.Ingest do
           | {:error,
              :unavailable
              | :not_found
+             | :run_id_used
              | :wrong_node
              | :wrong_gateway
              | :unauthorized
@@ -179,6 +187,9 @@ defmodule Apiary.Runs.Ingest do
       nil ->
         {:error, :wrong_gateway}
 
+      {:error, :run_id_used} = refused ->
+        refused
+
       run ->
         with {:ok, run} <- sender(run, access_key, meta),
              do: stored(run, access_key, batch, meta, delivery_id, now)
@@ -197,6 +208,10 @@ defmodule Apiary.Runs.Ingest do
   end
 
   defp stored(run, access_key, batch, meta, delivery_id, now) do
+    # The delivery's row, by Qory's id: a batch that named no delivery id has none to
+    # find it by.
+    row_id = Ecto.UUID.generate()
+
     cond do
       # A run through a gateway is held to its own place, as a key of it would be.
       (refused = place_refusal(run, access_key)) != :ok ->
@@ -213,14 +228,14 @@ defmodule Apiary.Runs.Ingest do
       not is_nil(run.events_pruned_at) ->
         {:ok, gone(access_key, run, batch, meta, delivery_id, now)}
 
-      not new_delivery?(access_key, run, batch, meta, delivery_id, now) ->
+      not new_delivery?(row_id, access_key, run, batch, meta, delivery_id, now) ->
         {:ok, %{result(202, run) | repeated: true, end: run_end(run, batch)}}
 
       true ->
         {stored_batch, pruned} = without_pruned_log(run, batch)
-        instance_id = placement(access_key, meta).instance_id
+        instance_id = placement(access_key, meta).node_instance_id
         {inserted, duplicates, conflicts} = insert_events(run, stored_batch, instance_id, now)
-        record_delivery(access_key, delivery_id, inserted)
+        record_delivery(row_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
 
         {:ok,
@@ -261,7 +276,9 @@ defmodule Apiary.Runs.Ingest do
   # Retention has pruned the run's events: the delivery is recorded, nothing else is
   # kept.
   defp gone(access_key, run, batch, meta, delivery_id, now) do
-    repeated = not new_delivery?(access_key, run, batch, meta, delivery_id, now, 410)
+    repeated =
+      not new_delivery?(Ecto.UUID.generate(), access_key, run, batch, meta, delivery_id, now, 410)
+
     %{result(410, nil) | repeated: repeated}
   end
 
@@ -269,12 +286,78 @@ defmodule Apiary.Runs.Ingest do
   # gateway and the run's id, and opens none; it finds a run of its own workspace that is
   # not one through it only to be refused with that run's code. Any other key's batch
   # finds its workspace's run, or opens it.
-  defp held(%AccessKey{node: %Nodes.Node{kind: :gateway}} = access_key, batch, _meta, _now) do
-    Repo.one(Sender.run_query(access_key, batch.subject, lock: true)) ||
-      own_run(access_key, batch)
+  #
+  # A batch whose subject is the run id of a run of a workspace's queue
+  # (`dispatch_runs.run_id`, unique on the instance, in any of its states), from a key that
+  # does not reach a run under that id, is `{:error, :run_id_used}`, before or after the
+  # handover, as its registration would be (`Apiary.Runs.Registration.register/3`): such a
+  # run is registered only by its handover, so no batch opens it, and nothing of the batch,
+  # the delivery included, is stored. A key reaches the run when it is a key of the run's
+  # workspace, or a gateway's that may serve the run's workspace
+  # (`Apiary.Gateways.may_serve?/2`), at the workspace's level or the organisation's.
+  # Before the handover there is no run, so no key reaches one. After it, a key that
+  # reaches the run keeps the answer it had: the gateway that attached it is taken,
+  # another key of its workspace, the pool's included, and another gateway that may serve
+  # its workspace are `wrong_gateway`, and a run whose events were pruned is `410`. Left
+  # out of the moduledoc by name, as the queue is left out of the documentation at `/docs`
+  # (`Apiary.Dispatches.DispatchRun`): it says "a run id the instance gave a run itself".
+  defp held(
+         %AccessKey{node: %Nodes.Node{kind: :gateway} = gateway} = access_key,
+         batch,
+         _meta,
+         _now
+       ) do
+    run =
+      Repo.one(Sender.run_query(access_key, batch.subject, lock: true)) ||
+        own_run(access_key, batch)
+
+    if is_nil(run) and not reaches_queued?(gateway, batch.subject),
+      do: {:error, :run_id_used},
+      else: run
   end
 
-  defp held(access_key, batch, meta, now), do: upsert_run(access_key, batch, meta, now)
+  defp held(access_key, batch, meta, now) do
+    cond do
+      run = workspace_run(access_key, batch) -> run
+      queued?(batch.subject) -> {:error, :run_id_used}
+      true -> upsert_run(access_key, batch, meta, now)
+    end
+  end
+
+  # The run of this id the key's workspace holds, its row locked; nil for none.
+  defp workspace_run(access_key, batch) do
+    Repo.one(
+      from r in Run,
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  # Whether a run of a workspace's queue, on the whole instance, has this run id.
+  defp queued?(run_id), do: Repo.exists?(from d in DispatchRun, where: d.run_id == ^run_id)
+
+  # For a gateway's batch that finds no run: true when no run of the queue has this run id,
+  # so the batch is answered as before (`wrong_gateway`), and when the run registered for
+  # it by its handover is in a workspace the gateway may serve; false otherwise, the run
+  # not handed over yet among them.
+  defp reaches_queued?(gateway, run_id) do
+    held =
+      Repo.one(
+        from d in DispatchRun,
+          where: d.run_id == ^run_id,
+          left_join: r in Run,
+          on: r.dispatch_run_id == d.id,
+          left_join: w in Workspace,
+          on: w.id == r.workspace_id,
+          select: {d.id, w}
+      )
+
+    case held do
+      nil -> true
+      {_id, nil} -> false
+      {_id, %Workspace{} = workspace} -> Gateways.may_serve?(gateway, workspace)
+    end
+  end
 
   # A run of the gateway key's own workspace, none for a key with no workspace, an
   # organisation-level gateway's.
@@ -283,7 +366,7 @@ defmodule Apiary.Runs.Ingest do
   defp own_run(access_key, batch) do
     Repo.one(
       from r in Run,
-        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject
     )
   end
 
@@ -319,15 +402,16 @@ defmodule Apiary.Runs.Ingest do
   # for the one that wins and inserts nothing, and the read after it sees the row.
   # The read locks the row for the rest of the transaction.
   defp upsert_run(access_key, batch, meta, now) do
-    Repo.insert_all(
+    PublicId.Insert.insert_all(
       Run,
       [
         Map.merge(
           %{
             id: Ecto.UUID.generate(),
+            public_id: Run.new_public_id(),
             organisation_id: access_key.organisation_id,
             workspace_id: access_key.workspace_id,
-            run_id: batch.subject,
+            node_run_id: batch.subject,
             access_key_id: access_key.id,
             state: "pending",
             forager_version: meta[:forager_version],
@@ -339,55 +423,51 @@ defmodule Apiary.Runs.Ingest do
         )
       ],
       on_conflict: :nothing,
-      conflict_target: [:workspace_id, :run_id]
+      conflict_target: [:workspace_id, :node_run_id]
     )
 
     Repo.one!(
       from r in Run,
-        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject,
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject,
         lock: "FOR UPDATE"
     )
   end
 
   # The delivery is inserted first with nothing counted, so a delivery id seen
   # before is known before any event is touched. It is the run's workspace's, whichever
-  # key posted it.
-  defp new_delivery?(access_key, run, batch, meta, delivery_id, now, status \\ 202) do
+  # key posted it. A batch that named no delivery id is stored with none, and never
+  # conflicts: its events are deduplicated by their ids alone.
+  defp new_delivery?(row_id, access_key, run, batch, meta, delivery_id, now, status \\ 202) do
     {count, _} =
       Repo.insert_all(
         Delivery,
         [
           %{
-            id: Ecto.UUID.generate(),
+            id: row_id,
             organisation_id: run.organisation_id,
             workspace_id: run.workspace_id,
             access_key_id: access_key.id,
-            delivery_id: delivery_id,
-            run_id: batch.subject,
+            node_delivery_id: delivery_id,
+            node_run_id: batch.subject,
             received_at: now,
             event_count: length(batch.events),
             inserted_count: 0,
             status: status,
             run_configuration_digest: run_configuration(meta),
-            instance_id: placement(access_key, meta).instance_id
+            node_instance_id: placement(access_key, meta).node_instance_id
           }
         ],
         on_conflict: :nothing,
-        conflict_target: [:access_key_id, :delivery_id]
+        conflict_target: [:access_key_id, :node_delivery_id]
       )
 
     count == 1
   end
 
-  defp record_delivery(_access_key, _delivery_id, 0), do: :ok
+  defp record_delivery(_row_id, 0), do: :ok
 
-  defp record_delivery(access_key, delivery_id, inserted) do
-    Repo.update_all(
-      from(d in Delivery,
-        where: d.access_key_id == ^access_key.id and d.delivery_id == ^delivery_id
-      ),
-      set: [inserted_count: inserted]
-    )
+  defp record_delivery(row_id, inserted) do
+    Repo.update_all(from(d in Delivery, where: d.id == ^row_id), set: [inserted_count: inserted])
   end
 
   defp insert_events(run, batch, instance_id, now) do
@@ -399,12 +479,12 @@ defmodule Apiary.Runs.Ingest do
           workspace_id: run.workspace_id,
           run_id: run.id,
           sequence: event.sequence,
-          event_id: event.event_id,
+          node_event_id: event.event_id,
           type: event.type,
           time: event.time,
           data: event.data,
           received_at: now,
-          instance_id: instance_id
+          node_instance_id: instance_id
         }
       end)
 
@@ -418,7 +498,7 @@ defmodule Apiary.Runs.Ingest do
         {inserted, returned} =
           Repo.insert_all(Event, chunk,
             on_conflict: :nothing,
-            returning: [:event_id],
+            returning: [:node_event_id],
             log: false
           )
 
@@ -434,22 +514,22 @@ defmodule Apiary.Runs.Ingest do
   # in the same run at the same sequence, and a conflict otherwise: its id is
   # another run's, or its sequence is another event's.
   defp conflicts(run, rows, stored) do
-    stored = MapSet.new(stored, & &1.event_id)
-    skipped = Enum.reject(rows, &MapSet.member?(stored, &1.event_id))
-    ids = Enum.map(skipped, & &1.event_id)
+    stored = MapSet.new(stored, & &1.node_event_id)
+    skipped = Enum.reject(rows, &MapSet.member?(stored, &1.node_event_id))
+    ids = Enum.map(skipped, & &1.node_event_id)
 
     held =
       Repo.all(
         from(e in Event,
-          where: e.workspace_id == ^run.workspace_id and e.event_id in ^ids,
-          select: {e.event_id, {e.run_id, e.sequence}}
+          where: e.workspace_id == ^run.workspace_id and e.node_event_id in ^ids,
+          select: {e.node_event_id, {e.run_id, e.sequence}}
         ),
         log: false
       )
       |> Map.new()
 
     Enum.count(skipped, fn row ->
-      Map.get(held, row.event_id) != {row.run_id, row.sequence}
+      Map.get(held, row.node_event_id) != {row.run_id, row.sequence}
     end)
   end
 
@@ -480,12 +560,14 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
+  # The node's delivery id when it is a UUID in its text form, 36 characters; nil when the
+  # batch gave none or another value, a UUID's 16 raw bytes among them.
   defp delivery_id(meta) do
-    with id when is_binary(id) <- meta[:delivery_id],
+    with id when byte_size(id) == 36 <- meta[:delivery_id],
          {:ok, id} <- Ecto.UUID.cast(id) do
       id
     else
-      _ -> Ecto.UUID.generate()
+      _ -> nil
     end
   end
 

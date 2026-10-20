@@ -59,8 +59,7 @@ defmodule Apiary.Gateways do
   resolved to (`gateway_id` of `Apiary.Runs.Run`), and holds it while it is:
 
   - **live**: attached (`attached_at` set) and not ended. A run has ended when its state
-    is completed, failed or cancelled (or a name an older release stored for one of
-    them), or lost; when its exit arrived (`exited_at`); when its starter gave its outcome
+    is completed, failed, cancelled or lost; when its exit arrived (`exited_at`); when its starter gave its outcome
     (`outcome_state`); or when retention pruned its events (`events_pruned_at`);
   - **waiting**: registered for the gateway and not attached (`attached_at` nil), not
     ended as above, not lost, and its attach window still open (`attach_by` not before
@@ -606,10 +605,10 @@ defmodule Apiary.Gateways do
   defp holding_runs(gateway_id, now) do
     from(r in Run,
       where: r.gateway_id == ^gateway_id,
-      where: r.state not in ^Run.with_old_names(~w(completed failed cancelled lost)),
+      where: r.state not in ~w(completed failed cancelled lost),
       where: is_nil(r.exited_at) and is_nil(r.outcome_state) and is_nil(r.events_pruned_at),
       where: not is_nil(r.attached_at) or r.attach_by >= ^now,
-      order_by: [asc: r.registered_at, asc: r.run_id]
+      order_by: [asc: r.registered_at, asc: r.node_run_id]
     )
     |> Repo.all()
   end

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_00000046",
+  "changes": [
+    {
+      "kind": "sync",
+      "interval": null
+    },
+    {
+      "kind": "collection",
+      "collection_ref": "TRK",
+      "status": "linked"
+    },
+    {
+      "kind": "work_item",
+      "work_item_id": "wi_8Kx2mQ4vT9",
+      "ref": "TRK-1",
+      "status": "taken_in",
+      "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    },
+    {
+      "kind": "sync",
+      "interval": 1800
+    },
+    {
+      "kind": "work_item",
+      "work_item_id": "wi_8Kx2mQ4vT9",
+      "ref": "TRK-1",
+      "status": "undone",
+      "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    },
+    {
+      "kind": "collection",
+      "collection_ref": "OPS",
+      "status": "unlinked"
+    }
+  ]
+}

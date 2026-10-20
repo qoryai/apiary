@@ -2,13 +2,20 @@ defmodule Apiary.Runs.Run do
   @moduledoc """
   A run as the workspace knows it: the projection of the run's events.
 
-  `run_id` is the subject of the run's events, unique within the workspace. The row is
+  `public_id` is the run's id in Qory Apiary, `rn_` and sixteen characters
+  (`Apiary.PublicId`): the console names and addresses a run by it,
+  `/:org/:workspace/runs/:public_id`. The application sets it when it creates the row; the
+  column's default, `run_public_id()`, is the same shape.
+
+  `node_run_id` is the node's run id, an external id: the run's id as its node gave it,
+  `run_id` and the subject of the run's events in the server contract, unique within the
+  workspace. The row is
   created in state `pending` when the run registers (`Apiary.Runs.Registration`), or by
   the receiver on the first event of an unknown subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
-  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`)
-  are the registration's: written once, when the run registers,
+  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`,
+  `registration_variables`) are the registration's: written once, when the run registers,
   and kept by a rebuild. A run that registered is projected from sequence 1, which its
   registration stands for (`projected_from/1`). A run that registered through a gateway
   keeps its run key and its attach beside them (`through_gateway?/1`), kept by a rebuild
@@ -17,19 +24,21 @@ defmodule Apiary.Runs.Run do
   use Ecto.Schema
 
   @typedoc "A run of a workspace."
-  @type t :: %__MODULE__{}
+  @type t :: run()
+
+  # The struct, whose fields include one of a feature the documentation does not differ by
+  # (`docs: false`): the run of a workspace's queue a run is. A private type, so the served
+  # docs show its name alone.
+  @typep run :: %__MODULE__{}
 
   @states ~w(pending running completed failed cancelled lost)
 
-  # The names a release before this one wrote, each with the state it reads as. The `CHECK`
-  # on the column still allows them, so that rows an older release writes while a deploy
-  # rolls out are stored, and every family and filter counts them as their new state.
-  @old_states %{"succeeded" => "completed", "timed_out" => "cancelled", "ended" => "cancelled"}
-
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
+  @derive {Phoenix.Param, key: :public_id}
   schema "runs" do
-    field :run_id, Ecto.UUID
+    field :public_id, :string, read_after_writes: true
+    field :node_run_id, Ecto.UUID
 
     # The run's target as its labels named it (`Apiary.Lingo.Domain`): the system and the
     # path, kept on the run beside `target_id`, both nil when the labels name none.
@@ -65,9 +74,6 @@ defmodule Apiary.Runs.Run do
     field :exit_code, :integer
     field :signal, :string
     field :reason, :string
-    # The quiet period of an exit with the reason "quiet", which an older Forager wrote; nil
-    # otherwise.
-    field :quiet_seconds, :integer
     field :duration_ms, :integer
 
     field :last_event_at, :utc_datetime_usec
@@ -101,10 +107,11 @@ defmodule Apiary.Runs.Run do
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
-    # The node of the key the run's registration came with, and the instance id it claimed:
-    # copied when the run is created and never moved, both nil for a key that names no node.
+    # The node of the key the run's registration came with, and the node's instance id it
+    # claimed: copied when the run is created and never moved, both nil for a key that names
+    # no node.
     belongs_to :node, Apiary.Nodes.Node
-    field :instance_id, :string
+    field :node_instance_id, :string
     belongs_to :target, Apiary.Runs.Target
 
     # The run's registration, as `Apiary.Runs.Registration` stored it: when it registered;
@@ -119,6 +126,32 @@ defmodule Apiary.Runs.Run do
     field :registration_digest, :binary
     field :registration_interval_seconds, :integer
     field :registration_answer_digest, :string
+
+    # The run variables Qory set for a run of a workspace's queue when it registered it,
+    # each name with its value (`Apiary.Runs.RunVariables`): given to the run after its run
+    # configuration's last member at its attach and at every reload it is answered, under
+    # the stored configuration's digest (`Apiary.Runs.Attach`,
+    # `Apiary.Runs.Registration.fetch/3`). Written once with the registration and never
+    # changed; nil for every other run. Not folded: a rebuild keeps it.
+    field :registration_variables, :map
+
+    # The run settings Qory wrote for a run of a workspace's queue when it registered it
+    # (`Apiary.Dispatches.RunSettings`), as the handover answered them, with no key, and
+    # the model provider the run uses: its row, its keys' secret's row, the value id of
+    # its chosen key, its chain, and the API of the provider the run uses
+    # (`provider_api`: `format`, `endpoint`, `auth` and, when the description lists them,
+    # `key_prefixes`). Written once with the registration and never changed; nil for every
+    # other run, and for an explore run with `factory` or `secrets` off. The provider
+    # fields are nil where no provider was chosen, and the two rows become nil should they
+    # be deleted. Not folded: a rebuild keeps them. The secret's row id, the key's value
+    # id and the API are left out of the struct's inspection.
+    field :run_settings, :map
+    belongs_to :provider_connection, Apiary.Connections.Connection
+    field :provider_secret_id, :binary_id, redact: true
+    belongs_to :provider_secret, Apiary.Secrets.Secret, define_field: false
+    field :provider_value_id, :string, redact: true
+    field :provider_chain, :string
+    field :provider_api, :map, redact: true
 
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
@@ -154,16 +187,42 @@ defmodule Apiary.Runs.Run do
     # given, which a repeat of the attach is given again, and the instance id of the
     # gateway that attached it, the one instance that may attach it again and send for it
     # (`Apiary.Runs.Sender`), nil until it is known. All nil for a direct run. Not folded: a
-    # rebuild keeps them.
+    # rebuild keeps them. The run key's payload and signature are redacted when a run is
+    # inspected, so a log of a run never holds what its run key is assembled from.
     belongs_to :gateway, Apiary.Nodes.Node
-    field :run_key_payload, :binary
-    field :run_key_signature, :binary
+    field :run_key_payload, :binary, redact: true
+    field :run_key_signature, :binary, redact: true
     field :run_key_issued_at, :utc_datetime_usec
     field :attach_by, :utc_datetime_usec
     field :attached_at, :utc_datetime_usec
     field :attach_interval_seconds, :integer
     field :attach_answer_digest, :string
-    field :attach_instance_id, :string
+    field :gateway_instance_id, :string
+
+    # The run of a workspace's queue this run is, set when its dispatch is handed over and
+    # the run registered for it, unique; nil for every other run.
+    belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
+    # For such a run: when its starter released it after the handover, which the run reads
+    # as cancelled with the reason `released` until its starter's outcome decides
+    # (`Apiary.Runs.Fold`); and, set at its attach, when it is lost should it have neither
+    # an outcome nor an exit by then (`Apiary.Runs.Liveness`). Nil for every other run. Not
+    # folded: a rebuild keeps them.
+    field :released_at, :utc_datetime_usec
+    field :backstop_at, :utc_datetime_usec
+    # For such a run, not a prebuild: the image its attach gave it, its pool's recorded
+    # image for its target (`Apiary.Environments.image_for/2`), named at the top level of
+    # every run configuration it is answered from then on
+    # (`Apiary.Policy.ComposedConfiguration`). Nil for a run given none, and for every
+    # other run. Not folded: a rebuild keeps it.
+    field :configured_image, :string
+    # Set at its attach, for every run that attaches: what the run started in, which its
+    # reloads carry as the gateway checks it (`Apiary.Policy.ComposedConfiguration`).
+    # `started_image_from` is `top_level`, the image beside the `security_policy`, the one
+    # in `configured_image`; `policy`, the image the `security_policy` named; or `none`,
+    # the gateway's default. `started_image` is the image, nil for `none`. Both nil for a
+    # run that did not attach, whose reloads are answered as they were. Not folded.
+    field :started_image_from, :string
+    field :started_image, :string
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
@@ -174,28 +233,9 @@ defmodule Apiary.Runs.Run do
 
   @doc """
   Every state a run can be in: pending, running, completed, failed, cancelled and lost. The
-  `CHECK` on the column also allows the old names `old_states/0` lists.
+  `CHECK` on the column allows these six and no other.
   """
   def states, do: @states
-
-  @doc """
-  The names a release before this one stored a state under, which the `CHECK` on the column
-  still allows: `succeeded` reads as completed, `timed_out` and `ended` as cancelled
-  (`current_state/1`).
-  """
-  def old_states, do: Map.keys(@old_states)
-
-  @doc "The state a stored name reads as: an old name its new state, any other name itself."
-  @spec current_state(String.t()) :: String.t()
-  def current_state(state), do: Map.get(@old_states, state, state)
-
-  @doc """
-  `states` and every old name that reads as one of them, for a query of the stored column:
-  a run an older release stored as `succeeded` counts and lists as completed.
-  """
-  @spec with_old_names([String.t()]) :: [String.t()]
-  def with_old_names(states),
-    do: states ++ for({old, new} <- @old_states, new in states, do: old)
 
   @doc "The states of a run that has not ended: the workspace counts these as alive."
   def alive_states, do: ~w(pending running)
@@ -270,4 +310,12 @@ defmodule Apiary.Runs.Run do
   @spec projected_from(map) :: 0 | 1
   def projected_from(%{registered_at: %DateTime{}}), do: 1
   def projected_from(_run), do: 0
+
+  @doc "new_public_id/0 is a fresh `public_id` for a run: `rn_` and 16 characters."
+  @spec new_public_id() :: String.t()
+  def new_public_id, do: Apiary.PublicId.generate("rn")
+
+  @doc "public_id?/1 says whether `value` is a run's `public_id` in shape, `rn_…`."
+  @spec public_id?(term) :: boolean
+  def public_id?(value), do: Apiary.PublicId.valid?("rn", value)
 end

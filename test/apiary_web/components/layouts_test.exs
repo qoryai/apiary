@@ -687,6 +687,12 @@ defmodule ApiaryWeb.LayoutsTest do
                other.organisation.name
              )
 
+      # A name cut to the panel keeps the whole of it in its title.
+      assert has_element?(
+               view,
+               ~s{a#switch-#{other.organisation.slug} .truncate[title="#{other.organisation.name}"]}
+             )
+
       # Its ›, which shows its workspaces in the right panel.
       for {organisation, expanded} <- [
             {scope.organisation, "true"},
@@ -802,6 +808,11 @@ defmodule ApiaryWeb.LayoutsTest do
                "#workspace-menu a#workspace-menu-switch-#{platform.slug}:not([aria-current])[href='/#{org}/#{platform.slug}/switch/nodes']"
              )
 
+      assert has_element?(
+               view,
+               ~s{a#workspace-menu-switch-#{platform.slug} .truncate[title="#{platform.name}"]}
+             )
+
       refute text(html, "#workspace-menu") =~ other.organisation.name
 
       # Its foot holds the edition's entries for it, and is absent without one.
@@ -825,6 +836,11 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       assert has_element?(view, "#organisation-menu-of-#{org} #switch-#{org}_#{platform.slug}")
+
+      assert has_element?(
+               view,
+               ~s{#switch-#{org}_#{platform.slug} .truncate[title="#{platform.name}"]}
+             )
 
       assert has_element?(
                view,
@@ -865,6 +881,17 @@ defmodule ApiaryWeb.LayoutsTest do
                view,
                "#drawer-place button#drawer-workspace-menu-button[data-switcher-open][data-switcher-back='nav-drawer-open'][aria-controls='workspace-menu'][aria-expanded='false'][aria-label='Switch workspace, current: #{scope.workspace.name}']",
                scope.workspace.name
+             )
+
+      # Each name cut to the drawer's head keeps the whole of it in its title.
+      assert has_element?(
+               view,
+               ~s{#drawer-organisation-menu-button .truncate[title="#{scope.organisation.name}"]}
+             )
+
+      assert has_element?(
+               view,
+               ~s{#drawer-workspace-menu-button .truncate[title="#{scope.workspace.name}"]}
              )
 
       assert has_element?(
@@ -1123,10 +1150,10 @@ defmodule ApiaryWeb.LayoutsTest do
       scope: scope
     } do
       run = Apiary.RunListFixtures.started_run(scope, Apiary.RunListFixtures.shop())
-      short = String.slice(run.run_id, 0, 8)
+      short = String.slice(run.public_id, 0, 11)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope, "/runs")}']", "Runs")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{short}")
@@ -1142,7 +1169,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # A run: Runs is its parent, marked to stay on a phone, with the back chevron.
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       html = render(view)
       assert has_element?(view, "#breadcrumb li.q-trail-up a[href='#{runs}'] .q-trail-back")
@@ -1182,20 +1209,33 @@ defmodule ApiaryWeb.LayoutsTest do
       api = Ecto.UUID.generate()
 
       pins = [
-        %{id: shop, system: "github.example", path: "acme/shop", shared: true},
-        %{id: api, system: "github.example", path: "acme/api", shared: false}
+        %{
+          id: shop,
+          public_id: "tg_0000000000000001",
+          system: "github.example",
+          path: "acme/shop",
+          shared: true
+        },
+        %{
+          id: api,
+          public_id: "tg_0000000000000002",
+          system: "github.example",
+          path: "acme/api",
+          shared: false
+        }
       ]
 
       html = shell(scope, :runs, %{pins: pins})
       assert html =~ ~s(id="nav-group-pinned")
       assert html =~ ~s(id="nav-pin-#{shop}")
-      # A pin's address is its path, with its system only where the path is shared.
-      assert html =~ ~s(href="#{workspace_path(scope, "/targets/acme/api")}")
-      assert html =~ ~s(href="#{workspace_path(scope, "/targets/github.example/acme/shop")}")
+      # A pin's address is its public id; its name its path, with its system only where
+      # the path is shared.
+      assert html =~ ~s(href="#{workspace_path(scope, "/targets/tg_0000000000000002")}")
+      assert html =~ ~s(href="#{workspace_path(scope, "/targets/tg_0000000000000001")}")
       assert before?(html, "acme/shop", "acme/api")
       # The system shows where the same path is in another system, and nowhere else.
-      assert html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/shop}
-      refute html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/api}
+      assert html =~ ~r{q-nav-pin-sys"><bdi[^>]*>github.example</bdi>/</span><bdi[^>]*>acme/shop}
+      refute html =~ ~r{q-nav-pin-sys"><bdi[^>]*>github.example</bdi>/</span><bdi[^>]*>acme/api}
 
       refute shell(scope, :runs, %{}) =~ "nav-group-pinned"
       # an organisation's page lists none
@@ -1215,22 +1255,25 @@ defmodule ApiaryWeb.LayoutsTest do
   end
 
   describe "narrowing, carried by the sidebar" do
+    @tg_a "tg_0123456789abcdef"
+    @tg_b "tg_ghjkmnpqrstvwxyz"
+
     setup do
       %{scope: sign_up_fixture().scope}
     end
 
     test "on Runs narrowed to a target, Runs and Network access carry it; every other entry links plainly",
          %{scope: scope} do
-      narrowed = ApiaryWeb.Layouts.narrowed({"github.example", "acme/shop"}, MapSet.new())
+      narrowed = %{target: [@tg_a], system: nil, path: "acme/shop"}
 
       for nav <- [:runs, :network] do
         html = narrowed_shell(scope, nav, narrowed)
 
         assert attribute(html, "#nav-runs", "href") ==
-                 workspace_path(scope, "/runs?target=acme%2Fshop")
+                 workspace_path(scope, "/runs?target=#{@tg_a}")
 
         assert attribute(html, "#nav-network", "href") ==
-                 workspace_path(scope, "/network?target=acme%2Fshop")
+                 workspace_path(scope, "/network?target=#{@tg_a}")
 
         assert attribute(html, "#nav-runs", "aria-label") == "Runs, narrowed to acme/shop"
         assert attribute(html, "#nav-runs", "title") == "Runs, narrowed to acme/shop"
@@ -1249,27 +1292,29 @@ defmodule ApiaryWeb.LayoutsTest do
       end
     end
 
-    test "the system is carried only where two systems share the path", %{scope: scope} do
-      shared =
-        ApiaryWeb.Layouts.narrowed({"gitlab.example", "acme/shop"}, MapSet.new(["acme/shop"]))
-
+    test "the system is named only where two systems share the path; the ids are carried",
+         %{scope: scope} do
+      shared = %{target: [@tg_b], system: "gitlab.example", path: "acme/shop"}
       html = narrowed_shell(scope, :runs, shared)
 
       assert attribute(html, "#nav-network", "href") ==
-               workspace_path(scope, "/network?system=gitlab.example&target=acme%2Fshop")
+               workspace_path(scope, "/network?target=#{@tg_b}")
 
       assert attribute(html, "#nav-network", "aria-label") ==
                "Network access, narrowed to gitlab.example/acme/shop"
 
-      # A path on every system, as `?target=` alone reads it.
-      html = narrowed_shell(scope, :network, ApiaryWeb.Layouts.narrowed({nil, "acme/shop"}, true))
+      # The targets of one path on two systems, named by the path, carried by their ids.
+      both = %{target: [@tg_a, @tg_b], system: nil, path: "acme/shop"}
+      html = narrowed_shell(scope, :network, both)
 
       assert attribute(html, "#nav-runs", "href") ==
-               workspace_path(scope, "/runs?target=acme%2Fshop")
+               workspace_path(scope, "/runs?target=#{@tg_a}%2C#{@tg_b}")
+
+      assert attribute(html, "#nav-runs", "aria-label") == "Runs, narrowed to acme/shop"
     end
 
     test "nothing carries on any other page, or without a target", %{scope: scope} do
-      narrowed = ApiaryWeb.Layouts.narrowed({"github.example", "acme/shop"}, false)
+      narrowed = %{target: [@tg_a], system: nil, path: "acme/shop"}
 
       for nav <- [:overview, :targets, :policy, :settings] do
         html = narrowed_shell(scope, nav, narrowed)
@@ -1281,8 +1326,19 @@ defmodule ApiaryWeb.LayoutsTest do
       html = narrowed_shell(scope, :runs, nil)
       assert attribute(html, "#nav-network", "href") == workspace_path(scope, "/network")
 
-      assert ApiaryWeb.Layouts.narrowed(:none, MapSet.new()) == nil
-      assert ApiaryWeb.Layouts.narrowed(nil, MapSet.new()) == nil
+      assert ApiaryWeb.Narrowing.carried(nil, nil) == nil
+      assert ApiaryWeb.Narrowing.carried(nil, :none) == nil
+    end
+
+    test "a typed name that names no target is carried as the query keeps it", %{scope: scope} do
+      narrowed = ApiaryWeb.Narrowing.carried(nil, {:name, "acme/nowhere"})
+      html = narrowed_shell(scope, :runs, narrowed)
+
+      assert attribute(html, "#nav-network", "href") ==
+               workspace_path(scope, "/network?q=target%3Aacme%2Fnowhere")
+
+      assert attribute(html, "#nav-network", "aria-label") ==
+               "Network access, narrowed to acme/nowhere"
     end
 
     defp narrowed_shell(scope, nav, narrowed) do
@@ -1836,6 +1892,70 @@ defmodule ApiaryWeb.LayoutsTest do
       assert time.(~U[2026-09-19 16:40:03Z]) == "Yesterday, 16:40"
       assert time.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
       assert time.(~U[2026-09-01 10:00:00Z]) == "1 Sept 2026"
+    end
+
+    test "mid-sentence: just now and yesterday in lower case, every other form the same" do
+      now = ~U[2026-09-20 14:04:00Z]
+      start = &ApiaryWeb.Format.time_ago(&1, now, case: :start)
+      inline = &ApiaryWeb.Format.time_ago(&1, now, case: :inline)
+
+      assert inline.(~U[2026-09-20 14:03:30Z]) == "just now"
+      assert inline.(~U[2026-09-20 14:03:00Z]) == "1 minute ago"
+      assert inline.(~U[2026-09-20 14:02:00Z]) == "2 minutes ago"
+      assert inline.(~U[2026-09-20 13:00:00Z]) == "1 hour ago"
+      assert inline.(~U[2026-09-20 11:00:00Z]) == "3 hours ago"
+      assert inline.(~U[2026-09-19 16:40:03Z]) == "yesterday, 16:40"
+      assert inline.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
+      assert inline.(~U[2026-09-01 10:00:00Z]) == "1 Sept 2026"
+
+      assert start.(~U[2026-09-20 14:03:30Z]) == "Just now"
+      assert start.(~U[2026-09-20 14:03:00Z]) == "1 minute ago"
+      assert start.(~U[2026-09-20 14:02:00Z]) == "2 minutes ago"
+      assert start.(~U[2026-09-20 13:00:00Z]) == "1 hour ago"
+      assert start.(~U[2026-09-20 11:00:00Z]) == "3 hours ago"
+      assert start.(~U[2026-09-19 16:40:03Z]) == "Yesterday, 16:40"
+      assert start.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
+      assert start.(~U[2026-09-01 10:00:00Z]) == "1 Sept 2026"
+
+      for at <- [~U[2026-09-20 14:03:30Z], ~U[2026-09-19 16:40:03Z], ~U[2026-09-01 10:00:00Z]] do
+        assert ApiaryWeb.Format.time_ago(at, now) == start.(at)
+      end
+    end
+
+    test "each lower-case form is a sentence in the catalogues, the counterpart of its start" do
+      for path <- ["default.pot", "en@software/LC_MESSAGES/default.po"] do
+        catalogue = File.read!(Application.app_dir(:apiary, "priv/gettext/" <> path))
+
+        for {lower, upper} <- [
+              {"just now", "Just now"},
+              {"yesterday, %{time}", "Yesterday, %{time}"}
+            ] do
+          assert catalogue =~ ~s(msgid "#{lower}"\n), path
+          assert catalogue =~ ~s(msgid "#{upper}"\n), path
+        end
+      end
+
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@software", fn ->
+        now = ~U[2026-09-20 14:04:00Z]
+
+        assert ApiaryWeb.Format.time_ago(~U[2026-09-20 14:03:30Z], now, case: :inline) ==
+                 "just now"
+
+        assert ApiaryWeb.Format.time_ago(~U[2026-09-19 16:40:03Z], now, case: :inline) ==
+                 "yesterday, 16:40"
+      end)
+    end
+
+    test "the component: lower case with case={:inline}, the start form by default" do
+      at = DateTime.add(DateTime.utc_now(), -10, :second)
+
+      inline = render_component(&ApiaryWeb.CoreComponents.time_ago/1, at: at, case: :inline)
+      start = render_component(&ApiaryWeb.CoreComponents.time_ago/1, at: at)
+
+      assert text(inline, "time") == "just now"
+      assert text(start, "time") == "Just now"
+      assert attribute(inline, "time", "datetime") == DateTime.to_iso8601(at)
+      assert attribute(inline, "time", "title") == attribute(start, "time", "title")
     end
   end
 end

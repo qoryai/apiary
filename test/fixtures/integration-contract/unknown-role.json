@@ -17,5 +17,6 @@
   "roles": {
     "credential": {"argument": "[A-Z]+", "hosts": ["tracker.acme.example"]},
     "acme_role": {"events": ["issue.opened"]}
-  }
+  },
+  "egress_hosts": ["tracker.acme.example"]
 }

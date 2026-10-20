@@ -22,6 +22,15 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
   end
 
   defp flat(text) when is_binary(text), do: text
+  # A person's letter (`ApiaryWeb.CoreComponents.avatar/1`): its words.
+  defp flat(%Phoenix.LiveView.Rendered{} = rendered),
+    do:
+      rendered
+      |> Phoenix.HTML.Safe.to_iodata()
+      |> IO.iodata_to_binary()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+
   defp flat({_tag, inner}), do: flat(inner)
   defp flat(list) when is_list(list), do: Enum.map_join(list, &flat/1)
 
@@ -214,7 +223,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     assert refusal.kind == :refusal
 
     assert flat(refusal.text) ==
-             "A locked workspace rule denies *.paste.example. It holds against every repository, so no rule added here would change what happens. Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it."
+             "A locked workspace rule denies *.paste.example. It holds against every repository, so no rule added here would change what happens. Locked by Bbeekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it."
 
     assert flat(read(%{"host" => "github.example", "action" => "deny"}, context).text) =~
              "A locked workspace rule allows github.example. It holds against every repository, so a deny added here would change nothing."

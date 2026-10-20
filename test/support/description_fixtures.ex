@@ -76,6 +76,32 @@ defmodule Apiary.DescriptionFixtures do
     )
   end
 
+  @contract Path.expand("../fixtures/integration-contract", __DIR__)
+
+  @doc """
+  The integrations contract's description fixture `name`, under
+  `test/fixtures/integration-contract/`, decoded: by default `example-tracker.json`, a
+  source that names its items, issues, and its collections, projects. An adapter sends
+  one such in each `POST /v1/adapter`.
+  """
+  def contract_description(name \\ "example-tracker.json"),
+    do: @contract |> Path.join(name) |> File.read!() |> Jason.decode!()
+
+  @doc """
+  `contract_description/1`, or `document`, a description as a map, read
+  (`Apiary.Integrations.Description.parse/1`), as `Apiary.Adapters.Wire.declaration/1`
+  gives it to `Apiary.Adapters.declare/2`.
+  """
+  def read_description(name_or_document \\ "example-tracker.json")
+
+  def read_description(name) when is_binary(name),
+    do: name |> contract_description() |> read_description()
+
+  def read_description(%{} = document) do
+    {:ok, description} = document |> Jason.encode!() |> Apiary.Integrations.Description.parse()
+    description
+  end
+
   @doc "`description` encoded as a release would publish it."
   def encode(description), do: Jason.encode!(description)
 

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "revision": 3,
+  "dispatch_id": "dp_8w3k0q9t2v7m4r6x",
+  "run_id": "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+  "pool_id": "np_f1xt0re000000000",
+  "lease_until": "2026-10-15T12:05:00Z",
+  "step": "explore",
+  "target": {
+    "system": "code.example.com",
+    "path": "acme/shop"
+  },
+  "work_item": {
+    "id": "wi_8Kx2mQ4vT9",
+    "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
+    "title": "Checkout fails on an empty cart"
+  }
+}

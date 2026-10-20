@@ -5,22 +5,46 @@ defmodule Apiary.Application do
 
   use Application
 
-  # The jobs Oban's cron plugin enqueues, in UTC, each once a day: the audit trail's
-  # retention sweep (`Apiary.Audit.PruneSweep`), the sweep of invitations expired for 30
-  # days (`Apiary.Organisations.InvitationSweep`) and the purge of what was deleted and is
-  # past its grace period (`Apiary.Deletion.PurgeSweep`). The edition's follow
+  # The jobs Oban's cron plugin enqueues, in UTC: once a day, the audit trail's retention
+  # sweep (`Apiary.Audit.PruneSweep`), the sweep of invitations expired for 30 days
+  # (`Apiary.Organisations.InvitationSweep`) and the purge of what was deleted and is past
+  # its grace period (`Apiary.Deletion.PurgeSweep`); then, every ten minutes, the purge of
+  # the request signatures an adapter's replay check no longer needs
+  # (`Apiary.Adapters.SeenRequestsPurge`); then, every minute, the sweep of the claims of
+  # node pools whose lease lapsed (`Apiary.Dispatches.Sweep`). The edition's follow
   # (`Apiary.Edition.crontab/0`).
   @crontab [
     {"40 2 * * *", Apiary.Audit.PruneSweep},
     {"50 2 * * *", Apiary.Organisations.InvitationSweep},
-    {"20 3 * * *", Apiary.Deletion.PurgeSweep}
+    {"20 3 * * *", Apiary.Deletion.PurgeSweep},
+    {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge},
+    {"* * * * *", Apiary.Dispatches.Sweep}
   ]
+
+  @doc """
+  The time of day, in UTC, a daily job of the core's crontab runs at: `~T[02:40:00]` for
+  `Apiary.Audit.PruneSweep`. Read from the crontab, so a page that names the time says
+  the one Oban runs the job at.
+  """
+  @spec daily_at(module) :: Time.t()
+  def daily_at(worker) do
+    {expression, ^worker} = List.keyfind!(@crontab, worker, 1)
+    [minute, hour, "*", "*", "*"] = String.split(expression)
+    Time.new!(String.to_integer(hour), String.to_integer(minute), 0)
+  end
 
   @impl true
   def start(_type, _args) do
     # First, so a wrong QORY_FEATURES, or an edition's features that do not add up, stops
     # the boot before anything is started.
     Apiary.Features.boot!()
+    # Then the adapters installed with Qory Apiary, which need the features: a malformed
+    # QORY_INSTALLED_ADAPTERS, one that names adapters without their feature, or a
+    # QORY_ENROLMENT_DIR that is not an absolute path, stops the boot too. The folder of
+    # each adapter listed is made now, so that the adapter that mounts it finds it before
+    # the instance is set up; a folder that cannot be made is said and stops nothing.
+    Apiary.Adapters.Installed.boot!()
+    :ok = Apiary.Adapters.Installed.make_folders()
     # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY,
     # TRUSTED_PROXIES, APIARY_SIGNING_SECRET or integration setting stops the boot too, and
     # so does an edition's table or subject the core has already, or a page whose feature
@@ -42,6 +66,9 @@ defmodule Apiary.Application do
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()
+    # A page's debug lines (its mount, its parameters and its events) with every value
+    # `[FILTERED]`, in place of LiveView's.
+    ApiaryWeb.LiveViewLog.attach()
     attach_request_log()
     # A job's failure, cancellation or discard is one line, with its organisation and
     # workspace ids and without its arguments.
@@ -68,11 +95,19 @@ defmodule Apiary.Application do
       {Phoenix.PubSub, name: Apiary.PubSub},
       {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
       Apiary.Runs.RateLimit,
-      Apiary.Nodes.Throttle
+      Apiary.Nodes.Throttle,
+      # The holds of adapters' reads of their change feeds, a few per key
+      # (`ApiaryWeb.Contract.ChangesController`).
+      {Registry, keys: :unique, name: ApiaryWeb.Contract.ChangesController.Holds},
+      # The holds of node pools' claims, a few per key
+      # (`ApiaryWeb.Contract.PoolClaimController`).
+      {Registry, keys: :unique, name: ApiaryWeb.Contract.PoolClaimController.Holds}
     ] ++
       migrator() ++
       key_check() ++
       mail_cache() ++
+      instance_config_cache() ++
+      product_name_cache() ++
       [
         # The job queue, after the migrator so its tables exist when it
         # starts. `Apiary.Job` is what every job runs inside.
@@ -80,12 +115,28 @@ defmodule Apiary.Application do
       ] ++
       liveness() ++
       retention() ++
+      installer() ++
       Apiary.Edition.children() ++
       setup() ++
       [
         # Start to serve requests, typically the last entry
-        ApiaryWeb.Endpoint
+        endpoint()
       ]
+  end
+
+  # The endpoint, once an `https:` in its configuration has the bound on a fragmented
+  # message that config/config.exs gives `http:` (`ApiaryWeb.Endpoint.bound_https/1`).
+  # Kept in the application's environment, which the endpoint reads as it starts. Without
+  # an `https:`, the environment is left as it is.
+  defp endpoint do
+    config = Application.get_env(:apiary, ApiaryWeb.Endpoint, [])
+    bounded = ApiaryWeb.Endpoint.bound_https(config)
+
+    if bounded != config do
+      Application.put_env(:apiary, ApiaryWeb.Endpoint, bounded)
+    end
+
+    ApiaryWeb.Endpoint
   end
 
   # Oban's configuration with the crontab built here, the core's and the edition's, so an
@@ -141,13 +192,35 @@ defmodule Apiary.Application do
     if Apiary.Mail.Cache.enabled?(), do: [Apiary.Mail.Cache], else: []
   end
 
+  # The node's copy of the settings an instance admin saved in Instance settings ›
+  # Configuration, after the migrator so their columns exist, and before anything that
+  # reads them: the audit trail's job, a deletion or an invitation. Off in test, where
+  # `Apiary.InstanceConfig` reads them from each test's sandbox.
+  defp instance_config_cache do
+    if Apiary.InstanceConfig.Cache.enabled?(), do: [Apiary.InstanceConfig.Cache], else: []
+  end
+
+  # The node's copy of the product's name an instance admin set, after the migrator so its
+  # column exists, and before anything that shows a page or sends an email. Off in test,
+  # where `Apiary.ProductName` reads it from each test's sandbox.
+  defp product_name_cache do
+    if Apiary.ProductName.Cache.enabled?(), do: [Apiary.ProductName.Cache], else: []
+  end
+
   # The lost-run check, after the migrator so it never reads a schema it does not know.
   # Off in test, where the tests call `Apiary.Runs.Liveness.check/1` themselves.
   defp liveness do
     if Apiary.Runs.Liveness.enabled?(), do: [Apiary.Runs.Liveness], else: []
   end
 
-  # The nightly retention job, after the migrator like the lost-run check. Off in test,
+  # The installer of the adapters installed with Qory Apiary, after the migrator and the
+  # job queue, so the tables it writes exist. It waits until the instance is set up. Off in
+  # test, where the tests call `Apiary.Adapters.Installer.pass/0` themselves.
+  defp installer do
+    if Apiary.Adapters.Installer.enabled?(), do: [Apiary.Adapters.Installer], else: []
+  end
+
+  # The daily retention job, after the migrator like the lost-run check. Off in test,
   # where the tests call `Apiary.Retention.prune_all/1` themselves.
   defp retention do
     if Apiary.Retention.Scheduler.enabled?(), do: [Apiary.Retention.Scheduler], else: []

@@ -24,7 +24,13 @@ defmodule ApiaryWeb.Contract.Configuration do
   to it.
   """
 
+  # With the `factory` and `secrets` features both on, which the documentation leaves
+  # out: the document of an access key allowed stored secrets (`allow_secrets`) has
+  # `secrets`, `{url}`, the secrets endpoint (`ApiaryWeb.Contract.SecretsController`),
+  # after `run`; a key not allowed them, or either feature off, gets none.
+
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Features
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.SigningKey
@@ -32,12 +38,17 @@ defmodule ApiaryWeb.Contract.Configuration do
   @version 1
   @events_path "/v1/events"
   @run_path "/v1/runs"
+  @secrets_path "/v1/secrets"
 
   @doc "The path of the events endpoint, as the document names it under the public URL."
   def events_path, do: @events_path
 
   @doc "The path of the run endpoint, as the document names it under the public URL."
   def run_path, do: @run_path
+
+  # The path of the secrets endpoint, as the document lists it under the public URL.
+  @doc false
+  def secrets_path, do: @secrets_path
 
   @doc """
   document/1 is the document as sent to `access_key`, the JSON body and its digest. The
@@ -46,26 +57,36 @@ defmodule ApiaryWeb.Contract.Configuration do
   workspace.
   """
   @spec document(AccessKey.t()) :: {binary, String.t()}
-  def document(%AccessKey{node: %Node{kind: :gateway, public_id: node_id}}),
-    do: build(%{node_id: node_id})
+  def document(%AccessKey{node: %Node{kind: :gateway, public_id: node_id}} = key),
+    do: build(%{node_id: node_id}, key)
 
-  def document(%AccessKey{
-        node: %Node{public_id: node_id},
-        workspace: %Workspace{public_id: workspace_id}
-      }),
-      do: build(%{node_id: node_id, workspaces: [workspace_id]})
+  def document(
+        %AccessKey{
+          node: %Node{public_id: node_id},
+          workspace: %Workspace{public_id: workspace_id}
+        } = key
+      ),
+      do: build(%{node_id: node_id, workspaces: [workspace_id]}, key)
 
-  defp build(members) do
+  defp build(members, key) do
     body =
       members
       |> Map.merge(%{
         url: ApiaryWeb.Endpoint.url(),
         apiary_public_key: SigningKey.apiary_public_key()
       })
+      |> Map.merge(if secrets?(key), do: %{secrets: true}, else: %{})
       |> encode()
 
     {body, digest(body)}
   end
+
+  # Whether the key's document lists the secrets endpoint: both features on, and the key
+  # allowed stored secrets.
+  defp secrets?(%AccessKey{allow_secrets: true}),
+    do: Features.on?(:factory) and Features.on?(:secrets)
+
+  defp secrets?(_key), do: false
 
   @doc """
   encode/1 is the document's bytes for `node_id`, the `workspaces` it lists, in their
@@ -76,7 +97,8 @@ defmodule ApiaryWeb.Contract.Configuration do
           required(:node_id) => String.t(),
           optional(:workspaces) => [String.t(), ...],
           required(:url) => String.t(),
-          required(:apiary_public_key) => [map, ...]
+          required(:apiary_public_key) => [map, ...],
+          optional(:secrets) => boolean
         }) :: binary
   def encode(%{node_id: node_id, url: url, apiary_public_key: keys} = members) do
     workspaces =
@@ -91,7 +113,13 @@ defmodule ApiaryWeb.Contract.Configuration do
           workspaces ++
           [
             events: Jason.OrderedObject.new(url: url <> @events_path, types: ["*"]),
-            run: Jason.OrderedObject.new(url: url <> @run_path),
+            run: Jason.OrderedObject.new(url: url <> @run_path)
+          ] ++
+          if(members[:secrets],
+            do: [secrets: Jason.OrderedObject.new(url: url <> @secrets_path)],
+            else: []
+          ) ++
+          [
             apiary_public_key:
               Enum.map(
                 keys,

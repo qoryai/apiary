@@ -4,9 +4,10 @@ defmodule Apiary.Targets do
   page, and the targets a person pinned.
 
   A target is what the workspace's runs change, in the system it lives in
-  (`Apiary.Runs.Target`), created by the projector when a run first names it; nothing
-  here creates one. Every function takes the caller's scope first and reads only the
-  scope's workspace.
+  (`Apiary.Runs.Target`), created the first time the workspace names it
+  (`Apiary.Runs.Target.insert_new/3`), as the projector does when a run first names it;
+  nothing here creates one. Every function takes the caller's scope first and reads only
+  the scope's workspace.
 
   **Pins.** A person pins the targets they work in, in a workspace whose runs they read
   (`run.read`), and the sidebar lists the first of them in the order they were pinned. A
@@ -20,18 +21,32 @@ defmodule Apiary.Targets do
   **The index** (`page/3`) is read in one query, bounded by a window of fourteen days:
   the runs of the window grouped by target and day, which a range of the runs list's
   index yields, and each target's last run, one probe of the index of a target's runs by
-  when they started (`runs_workspace_id_target_id_started_index`). Days are UTC days, as
-  every count per day is (`docs/lingo.md`). The views' counts (`view_counts/2`) are the
+  when they started (`runs_workspace_id_target_id_started_index`). Days are the reader's,
+  in the scope's time zone, as every count per day is (`docs/lingo.md`). The views' counts (`view_counts/2`) are the
   workspace's, whatever the query.
   """
 
-  import Ecto.Query, warn: false
+  # With the `factory` feature, which the documentation leaves out:
+  #
+  # **What its runs also read.** A target's further repositories (`further_repositories/1`)
+  # are the paths in its system its runs read after it, in the order a person put them:
+  # owner/name each, no segment starting with a dash, of the target's owner, each once, the
+  # target's path and the list, joined with commas, at most 256 bytes.
+  # `set_further_repositories/3` writes the whole list at once
+  # (`target.set_further_repositories`, owners and admins, asked of the target's
+  # workspace, an action of the feature), and refuses a list that breaks a rule, so a
+  # saved list never does; nothing else writes it.
 
-  alias Apiary.Access
+  use Gettext, backend: ApiaryWeb.Gettext
+
+  import Ecto.Query, warn: false
+  import Apiary.Days, only: [sql_day: 2]
+
+  alias Apiary.{Access, Audit, Edition, PublicId}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Run, Target}
+  alias Apiary.Runs.{Connection, Run, RunVariables, Target}
   alias Apiary.Targets.Pin
 
   @page_size 50
@@ -42,7 +57,13 @@ defmodule Apiary.Targets do
   @activities ~w(quiet_30 quiet_90)a
 
   @typedoc "A pinned target as the sidebar lists it."
-  @type pinned :: %{id: Ecto.UUID.t(), system: String.t(), path: String.t(), shared: boolean}
+  @type pinned :: %{
+          id: Ecto.UUID.t(),
+          public_id: String.t(),
+          system: String.t(),
+          path: String.t(),
+          shared: boolean
+        }
 
   @typedoc """
   What the index asks for (`page/3`): the view (`:all`, `:active`, ran in the last seven
@@ -64,14 +85,14 @@ defmodule Apiary.Targets do
         }
 
   @typedoc """
-  A row of the index: the target, its last run (`state`, `at`, `run_id`) or nil, its runs
+  A row of the index: the target, its last run (`state`, `at`, `public_id`) or nil, its runs
   a day over fourteen days (oldest first, today last), how many of those ended well, were
   cancelled and ended badly, its denied attempts in those fourteen days, and whether its
   path is in another system too.
   """
   @type row :: %{
           target: Target.t(),
-          last: %{state: String.t(), at: DateTime.t(), run_id: Ecto.UUID.t()} | nil,
+          last: %{state: String.t(), at: DateTime.t(), public_id: String.t()} | nil,
           days: [non_neg_integer],
           runs: non_neg_integer,
           ended_well: non_neg_integer,
@@ -112,6 +133,16 @@ defmodule Apiary.Targets do
     end
   end
 
+  @doc """
+  get_by_public_id/2 is the target of the scope's workspace with this public id (`tg_…`,
+  `Apiary.PublicId`), or nil: one indexed read, none for anything not of that shape.
+  """
+  @spec get_by_public_id(Scope.t(), term) :: Target.t() | nil
+  def get_by_public_id(%Scope{} = scope, public_id) do
+    if PublicId.valid?("tg", public_id),
+      do: Repo.one(from t in in_scope(scope), where: t.public_id == ^public_id)
+  end
+
   @doc "shared?/2 says whether the target's path is also a path in another system of its workspace."
   @spec shared?(Scope.t(), String.t()) :: boolean
   def shared?(%Scope{} = scope, path) when is_binary(path),
@@ -133,14 +164,15 @@ defmodule Apiary.Targets do
         }
   def page(%Scope{} = scope, query, now \\ DateTime.utc_now()) do
     query = normalise(query)
-    {from, day0} = window(now)
+    zone = Scope.time_zone(scope)
+    {from, day0} = window(now, zone)
     week = DateTime.add(now, -7 * 86_400, :second)
     pinned = if query.pinned, do: MapSet.to_list(pinned_ids(scope)), else: []
 
     base =
       from t in in_scope(scope),
         as: :target,
-        left_join: s in subquery(window_stats(scope, from, day0)),
+        left_join: s in subquery(window_stats(scope, from, day0, zone)),
         as: :stats,
         on: s.target_id == t.id,
         left_lateral_join: l in subquery(last_run()),
@@ -158,7 +190,7 @@ defmodule Apiary.Targets do
             target: t,
             last_state: l.state,
             last_at: l.at,
-            last_run_id: l.run_id,
+            last_public_id: l.public_id,
             runs: s.runs,
             ended_well: s.ended_well,
             cancelled: s.cancelled,
@@ -226,7 +258,7 @@ defmodule Apiary.Targets do
         select: %{
           all: count(t.id),
           active: filter(count(t.id), l.at >= ^week),
-          never: filter(count(t.id), is_nil(l.run_id))
+          never: filter(count(t.id), is_nil(l.public_id))
         }
     )
   end
@@ -260,18 +292,18 @@ defmodule Apiary.Targets do
     }
   end
 
-  # The window: from the start of the UTC day thirteen days before `now`'s, so that its
-  # fourteen days end with today.
-  defp window(now) do
-    day0 = now |> DateTime.to_date() |> Date.add(1 - @window_days)
-    {DateTime.new!(day0, ~T[00:00:00.000000], "Etc/UTC"), day0}
+  # The window: from the start of the day thirteen days before `now`'s in `zone`, so that
+  # its fourteen days end with today there.
+  defp window(now, zone) do
+    {[day0 | _days], {from, _to}} = Apiary.Days.window(@window_days, zone, now)
+    {from, day0}
   end
 
   # The window's runs of each target: in all, ended well, cancelled and ended badly, their
   # denied attempts (over the same fourteen days, so the columns count one window), and the
   # runs of each day as `[day, runs]` pairs, day 0 the window's first. Two levels, by target
   # and day and then by target, over the range of the runs list's index the window is.
-  defp window_stats(scope, from, day0) do
+  defp window_stats(scope, from, day0, zone) do
     by_day =
       from r in Run,
         where: r.organisation_id == ^scope.organisation.id,
@@ -283,13 +315,12 @@ defmodule Apiary.Targets do
           target_id: r.target_id,
           day:
             selected_as(
-              fragment("(?)::date", coalesce(r.started_at, r.inserted_at)),
+              sql_day(coalesce(r.started_at, r.inserted_at), ^zone),
               :day
             ),
           runs: count(r.id),
-          ended_well:
-            filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
-          cancelled: filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
+          ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+          cancelled: filter(count(r.id), r.state in ^Run.cancelled_states()),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
           denied: sum(r.denied_count)
         }
@@ -324,7 +355,7 @@ defmodule Apiary.Targets do
       select: %{
         state: r.state,
         at: type(coalesce(r.started_at, r.inserted_at), :utc_datetime_usec),
-        run_id: r.run_id
+        public_id: r.public_id
       }
   end
 
@@ -343,7 +374,7 @@ defmodule Apiary.Targets do
 
   defp view_filter(:all, _week), do: nil
   defp view_filter(:active, week), do: dynamic([last: l], l.at >= ^week)
-  defp view_filter(:never, _week), do: dynamic([last: l], is_nil(l.run_id))
+  defp view_filter(:never, _week), do: dynamic([last: l], is_nil(l.public_id))
 
   defp text_filter(nil), do: nil
 
@@ -395,8 +426,8 @@ defmodule Apiary.Targets do
     %{
       target: found.target,
       last:
-        found.last_run_id &&
-          %{state: found.last_state, at: found.last_at, run_id: found.last_run_id},
+        found.last_public_id &&
+          %{state: found.last_state, at: found.last_at, public_id: found.last_public_id},
       days: days(found.days),
       runs: found.runs || 0,
       ended_well: found.ended_well || 0,
@@ -419,13 +450,14 @@ defmodule Apiary.Targets do
 
   @doc """
   summary/3 is what a target's header and its About say of it: how many runs it has
-  (`runs`), its first and its last run (`first`, `last`: `%{state:, at:, run_id:}` or
+  (`runs`), its first and its last run (`first`, `last`: `%{state:, at:, public_id:}` or
   nil), and the fourteen days of the window as `page/3` counts them (`days`, `window`:
   runs, ended well, cancelled and ended badly, denied attempts, over the fourteen days).
   """
   @spec summary(Scope.t(), Target.t(), DateTime.t()) :: map
   def summary(%Scope{} = scope, %Target{} = target, now \\ DateTime.utc_now()) do
-    {from, day0} = window(now)
+    zone = Scope.time_zone(scope)
+    {from, day0} = window(now, zone)
     runs = target_runs(scope, target)
 
     edge = fn direction ->
@@ -439,7 +471,7 @@ defmodule Apiary.Targets do
           select: %{
             state: r.state,
             at: type(coalesce(r.started_at, r.inserted_at), :utc_datetime_usec),
-            run_id: r.run_id
+            public_id: r.public_id
           }
       )
     end
@@ -452,14 +484,12 @@ defmodule Apiary.Targets do
           select: %{
             day:
               selected_as(
-                fragment("(?)::date", coalesce(r.started_at, r.inserted_at)),
+                sql_day(coalesce(r.started_at, r.inserted_at), ^zone),
                 :day
               ),
             runs: count(r.id),
-            ended_well:
-              filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
-            cancelled:
-              filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
+            ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
+            cancelled: filter(count(r.id), r.state in ^Run.cancelled_states()),
             ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
             denied: coalesce(sum(r.denied_count), 0)
           }
@@ -509,10 +539,19 @@ defmodule Apiary.Targets do
           attempts: non_neg_integer
         }
   def denied_destinations(%Scope{} = scope, %Target{} = target, since, limit \\ 6) do
+    connections =
+      Edition.client_reads(
+        scope,
+        :workspace_connections,
+        nil,
+        from(c in Connection,
+          join: r in Run,
+          on: r.id == c.run_id and r.workspace_id == c.workspace_id
+        )
+      )
+
     grouped =
-      from c in Connection,
-        join: r in Run,
-        on: r.id == c.run_id and r.workspace_id == c.workspace_id,
+      from [c, r] in connections,
         where: c.organisation_id == ^scope.organisation.id,
         where: c.workspace_id == ^scope.workspace.id,
         where: c.last_seen_at >= ^since and c.denied > 0,
@@ -647,6 +686,155 @@ defmodule Apiary.Targets do
   defp to_integer(n) when is_integer(n), do: n
   defp to_integer(nil), do: 0
 
+  ## What its runs also read
+
+  # further_repositories/1 is the further repositories of `target`: the paths in its system
+  # that its runs also read after it, in the order they were saved, `[]` for none. It reads
+  # the target as it was loaded; `set_further_repositories/3` checked every one of them.
+  # Of the `factory` feature, which the documentation leaves out.
+  @doc false
+  @spec further_repositories(Target.t()) :: [String.t()]
+  def further_repositories(%Target{further_repositories: paths}) when is_list(paths), do: paths
+  def further_repositories(%Target{}), do: []
+
+  # set_further_repositories/3 replaces the further repositories of `target`, a target of
+  # the scope's workspace, with `paths`: a text of one path a line, or a list, in order,
+  # each trimmed, blank ones left out. It asks `Apiary.Access`
+  # (`target.set_further_repositories`, of the target's workspace) before anything is read,
+  # holds the target's row, and writes the whole list in one update, with its entry in the
+  # audit trail, the list before and after, both in one transaction; a list the same as the
+  # saved one writes nothing. The answers:
+  #
+  #   * `{:ok, target}`, the target as saved;
+  #   * `{:error, changeset}` for a list that breaks a rule, the rules a run's
+  #     QORY_RUN_REPOSITORIES keeps, the first of them on
+  #     `further_repositories`, naming its line, and nothing written: owner/name, two
+  #     segments of letters, digits, `.`, `_` and `-`, neither starting with `-`, neither
+  #     `.` nor `..`, and neither `.git` in any case; at most 200 characters; of the
+  #     target's owner, and neither the target's path nor a line before it, all compared
+  #     without case; and the target's path and the list, joined with commas, at most 256
+  #     bytes;
+  #   * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
+  #     `{:error, :not_found}` for a target that is gone.
+  #
+  # Of the `factory` feature, which the documentation leaves out.
+  @doc false
+  @spec set_further_repositories(Scope.t(), Target.t(), String.t() | [String.t()] | nil) ::
+          {:ok, Target.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def set_further_repositories(%Scope{} = scope, %Target{} = target, paths) do
+    lines = lines(paths)
+
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"target.set_further_repositories", target),
+           %Target{} = held <- hold(target) || {:error, :not_found},
+           :ok <- check_further(held, lines) do
+        write_further(scope, held, Enum.map(lines, &elem(&1, 0)))
+      end
+    end)
+  end
+
+  # The paths, each with its line, counted from 1, blank lines among the count, so a
+  # refusal names the line the person sees.
+  defp lines(nil), do: []
+
+  defp lines(text) when is_binary(text),
+    do: text |> String.split(["\r\n", "\n", "\r"]) |> lines()
+
+  defp lines(paths) when is_list(paths) do
+    for {path, line} <- Enum.with_index(paths, 1),
+        path = if(is_binary(path), do: String.trim(path), else: path),
+        path != "",
+        do: {path, line}
+  end
+
+  defp hold(%Target{id: id, organisation_id: organisation_id, workspace_id: workspace_id}) do
+    Repo.one(
+      from t in Target,
+        where: t.id == ^id,
+        where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp check_further(%Target{} = target, lines) do
+    paths = Enum.map(lines, &elem(&1, 0))
+
+    case RunVariables.check_repositories(target.path, paths) do
+      :ok -> :ok
+      {:error, {reason, n}} -> {:error, further_error(target, lines, reason, n)}
+    end
+  end
+
+  defp write_further(_scope, %Target{further_repositories: paths} = target, paths),
+    do: {:ok, target}
+
+  defp write_further(scope, %Target{} = target, paths) do
+    {:ok, saved} = target |> Ecto.Changeset.change(further_repositories: paths) |> Repo.update()
+
+    {:ok, _entry} =
+      Audit.record(Repo, scope, :"target.set_further_repositories", saved, %{
+        before: %{further_repositories: target.further_repositories},
+        after: %{further_repositories: paths}
+      })
+
+    {:ok, saved}
+  end
+
+  # The target's owner, the first segment of its path, as the refusals name it.
+  defp owner(path), do: path |> String.split("/") |> hd()
+
+  # The changeset of a refused list: the reason of the path at place `n` of `lines`, in
+  # the words of a page, on `further_repositories`.
+  defp further_error(%Target{path: path} = target, lines, reason, n) do
+    {entry, line} = Enum.at(lines, n - 1)
+    owner = owner(path)
+
+    {message, keys} =
+      case reason do
+        :not_a_path ->
+          {dgettext_noop("errors", "Line %{line} is not a path such as %{owner}/docs."),
+           line: line, owner: owner}
+
+        :too_long ->
+          {dgettext_noop("errors", "Line %{line} is longer than 200 characters."), line: line}
+
+        :other_owner ->
+          {dgettext_noop(
+             "errors",
+             "Line %{line} is not a target of %{owner}; runs of %{target} read only targets of %{owner}."
+           ), line: line, owner: owner, target: path}
+
+        :itself ->
+          {dgettext_noop("errors", "Line %{line} is %{target} itself."), line: line, target: path}
+
+        :repeats ->
+          first = first_line(lines, entry)
+
+          {dgettext_noop("errors", "Line %{line} repeats line %{first}."),
+           line: line, first: first}
+
+        :too_long_together ->
+          # Not `count:`, which `translate_error/1` takes for a plural.
+          bytes = byte_size(Enum.join([path | Enum.map(lines, &elem(&1, 0))], ","))
+
+          {dgettext_noop(
+             "errors",
+             "Together with %{target}, these come to %{bytes} characters; the most is 256."
+           ), target: path, bytes: bytes}
+      end
+
+    target
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:further_repositories, message, keys)
+    |> Map.put(:action, :update)
+  end
+
+  # The line of the first path of `lines` that is `entry`, compared without case.
+  defp first_line(lines, entry) do
+    lowered = String.downcase(entry)
+    Enum.find_value(lines, fn {path, line} -> if String.downcase(path) == lowered, do: line end)
+  end
+
   ## Pins
 
   @doc """
@@ -725,6 +913,7 @@ defmodule Apiary.Targets do
           limit: ^limit,
           select: %{
             id: t.id,
+            public_id: t.public_id,
             system: t.system,
             path: t.path,
             shared:

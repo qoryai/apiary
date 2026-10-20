@@ -579,8 +579,9 @@ else is retried with backoff until the run ends.
   order of `sequence`, never of arrival.
 - **What a run is about.** `about` of `dev.qory.run.started`, its kind, title, subjects
   and details, is read within its bounds and shown in the console: its title is the run's
-  title. Without one, the run page says "Run" and the run's short id, the lists the short
-  id, and the Overview the run's command line, else its short id. A kind, title or
+  title. Without one, the run page's heading says "Run" and the run's whole `rn_` id, its
+  breadcrumb and title "Run" and the run's short id, the lists the short id, and the
+  Overview the run's command line, else its short id. A kind, title or
   details past its bound is dropped, never cut, and a subject past its bound is dropped
   alone.
 - **The rate** is per access key and per server node: 50 batches a second, 100 at once.
@@ -607,10 +608,13 @@ authenticate it. Its body, by the contract's `enrolment.schema.json`, holds the 
 name for the key, the new public key, a timestamp and `proof`, the new key's signature over
 the code, the public key, the name and the timestamp.
 
-The code is `qec_`, 26 characters, then `.` and the fingerprint of the server's key, so
-the machine knows which key's answer to trust before it has pinned any. It works once, for
-15 minutes. Nothing is signed until the code is accepted, the key passes the key checks and
-the proof verifies under it. The answers, in order:
+The code is the prefix of its node's kind, `qecn_` for a node, `qecp_` for a node pool
+and `qecg_` for a gateway, then 26 characters, then `.` and the fingerprint of the
+server's key, so the machine knows which key's answer to trust before it has pinned any.
+It works once, for 15 minutes, and only for a node of the kind its prefix names: a code
+with another kind's prefix is refused as an unknown code is. Nothing is signed until the
+code is accepted, the key passes the key checks and the proof verifies under it. The
+answers, in order:
 
 | Status | Signed | When |
 |---|---|---|

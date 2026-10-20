@@ -11,7 +11,8 @@ defmodule Apiary.Mailer do
 
   @doc """
   The sender of every email Qory Apiary sends, as `{name, address}` for `Swoosh.Email.from/2`:
-  `address`, or where it is `nil` the one `Apiary.Mail.sender/0` gives.
+  the product's name on this instance (`Apiary.ProductName.name/0`), the email's
+  signature, and `address`, or where it is `nil` the one `Apiary.Mail.sender/0` gives.
 
   That address is the sender saved in Instance settings › Mail while mail comes from
   there and it names one, else `config :apiary, :mail_from`, which production sets from
@@ -20,7 +21,7 @@ defmodule Apiary.Mailer do
   """
   @spec from(String.t() | nil) :: {String.t(), String.t()}
   def from(address \\ nil) do
-    {"Qory Apiary", address || Apiary.Mail.sender() || @default_from}
+    {Apiary.ProductName.name(), address || Apiary.Mail.sender() || @default_from}
   end
 
   @doc """

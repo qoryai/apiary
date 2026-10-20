@@ -47,9 +47,11 @@ defmodule Apiary.TargetsTest do
       assert [
                %{id: api_id, path: "acme/api", system: "github.example", shared: false},
                %{id: shop_id, path: "acme/shop", system: "gitlab.example", shared: true}
-             ] = Targets.list_pins(scope)
+             ] = pins = Targets.list_pins(scope)
 
       assert {api_id, shop_id} == {api.id, shop.id}
+      # Each with its public id, which addresses its page.
+      assert Enum.map(pins, & &1.public_id) == [api.public_id, shop.public_id]
       assert Targets.pinned?(scope, api)
       assert Targets.pinned_ids(scope) == MapSet.new([api.id, shop.id])
       assert [%{id: ^api_id}] = Targets.list_pins(scope, 1)
@@ -237,21 +239,21 @@ defmodule Apiary.TargetsTest do
   end
 
   describe "a target's page" do
-    test "every state counts in its family, an old name in its new state's" do
+    test "every state counts in its family" do
       %{scope: scope} = sign_up_fixture()
       ended(scope, repo("github.example", "acme/shop"), "succeeded", ago: 60)
       shop = target(scope, "github.example", "acme/shop")
       at = DateTime.add(@now, -120, :second)
 
-      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+      for state <- ~w(pending running completed failed cancelled lost),
           do: run_fixture(scope, %{state: state, started_at: at, target_id: shop.id})
 
       # Cancelled is neither ended well nor ended badly, so a page's share leaves it out.
       assert Targets.summary(scope, shop, @now).window ==
-               %{runs: 10, ended_well: 3, cancelled: 3, ended_badly: 2, denied: 0}
+               %{runs: 7, ended_well: 2, cancelled: 1, ended_badly: 2, denied: 0}
 
       assert %{rows: [row]} = Targets.page(scope, %{}, @now)
-      assert %{runs: 10, ended_well: 3, cancelled: 3, ended_badly: 2} = row
+      assert %{runs: 7, ended_well: 2, cancelled: 1, ended_badly: 2} = row
     end
 
     test "its summary, runs, denials, machines, runtimes and the same path elsewhere" do
@@ -286,13 +288,13 @@ defmodule Apiary.TargetsTest do
       summary = Targets.summary(scope, shop, @now)
 
       assert summary.runs == 3
-      assert summary.first.run_id == first.run_id
-      assert summary.last.run_id == last.run_id
+      assert summary.first.public_id == first.public_id
+      assert summary.last.public_id == last.public_id
       assert summary.window == %{runs: 2, ended_well: 1, cancelled: 0, ended_badly: 1, denied: 2}
       assert List.last(summary.days) == 2
 
-      assert [%{run_id: newest}, _, _] = Targets.recent_runs(scope, shop, 10)
-      assert newest == last.run_id
+      assert [%{node_run_id: newest}, _, _] = Targets.recent_runs(scope, shop, 10)
+      assert newest == last.node_run_id
       assert [_] = Targets.recent_runs(scope, shop, 1)
 
       since = DateTime.add(@now, -14 * @day, :second)
@@ -310,6 +312,198 @@ defmodule Apiary.TargetsTest do
       assert Targets.count_runs(scope, shop) == 3
       assert Targets.shared?(scope, "acme/shop")
       refute Targets.shared?(scope, "acme/api")
+    end
+  end
+
+  describe "days in the reader's zone" do
+    test "the index's and a target's fourteen days end with the reader's today" do
+      %{scope: scope} = sign_up_fixture()
+      # @now is 14:00 UTC on 20 September 2026, 02:00 on the 21st in Auckland (NZST, UTC+12),
+      # whose day turned at 12:00 UTC: one run before it, one after.
+      started_run(scope, repo("github.example", "acme/shop"), now: @now, ago: 2 * 3600 + 60)
+      started_run(scope, repo("github.example", "acme/shop"), now: @now, ago: 2 * 3600 - 60)
+      shop = target(scope, "github.example", "acme/shop")
+
+      days = fn scope ->
+        %{rows: [row]} = Targets.page(scope, %{}, @now)
+        summary = Targets.summary(scope, shop, @now)
+        assert row.days == summary.days
+        Enum.take(row.days, -2)
+      end
+
+      assert days.(scope) == [0, 2]
+      assert days.(%{scope | user: %{scope.user | time_zone: "Pacific/Auckland"}}) == [1, 1]
+    end
+  end
+
+  defp further_errors({:error, %Ecto.Changeset{} = changeset}),
+    do: errors_on(changeset).further_repositories
+
+  defp saved(scope, target),
+    do: Targets.further_repositories(target(scope, target.system, target.path))
+
+  defp entries_of(target) do
+    Apiary.Repo.all(
+      from e in Apiary.Audit.Entry,
+        where: e.action == "target.set_further_repositories" and e.subject_id == ^target.id,
+        order_by: [asc: e.inserted_at, asc: e.id]
+    )
+  end
+
+  describe "what a target's runs also read" do
+    @describetag needs: :factory
+
+    setup do
+      %{scope: scope} = sign_up_fixture()
+
+      :ok =
+        Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+          %{system: "code.example.com", path: "acme/shop"}
+        ])
+
+      %{scope: scope, shop: target(scope, "code.example.com", "acme/shop")}
+    end
+
+    test "none until somebody chooses them", %{shop: shop} do
+      assert Targets.further_repositories(shop) == []
+    end
+
+    test "a list saved is read back whole, in the order given, with its audit entry",
+         %{scope: scope, shop: shop} do
+      assert {:ok, saved} =
+               Targets.set_further_repositories(scope, shop, "acme/zeta\nacme/alpha\nacme/docs")
+
+      assert Targets.further_repositories(saved) == ["acme/zeta", "acme/alpha", "acme/docs"]
+      assert saved(scope, shop) == ["acme/zeta", "acme/alpha", "acme/docs"]
+
+      assert [entry] = entries_of(shop)
+      assert entry.before == %{"further_repositories" => []}
+      assert entry.after == %{"further_repositories" => ["acme/zeta", "acme/alpha", "acme/docs"]}
+
+      # A list replaces the whole list; the same list again writes nothing.
+      assert {:ok, _saved} = Targets.set_further_repositories(scope, saved, ["acme/docs"])
+      assert saved(scope, shop) == ["acme/docs"]
+      assert {:ok, _saved} = Targets.set_further_repositories(scope, saved, "acme/docs")
+      assert length(entries_of(shop)) == 2
+
+      # An empty text clears it.
+      assert {:ok, cleared} = Targets.set_further_repositories(scope, shop, "")
+      assert Targets.further_repositories(cleared) == []
+      assert saved(scope, shop) == []
+    end
+
+    test "white space around a line and blank lines are dropped", %{scope: scope, shop: shop} do
+      assert {:ok, _saved} =
+               Targets.set_further_repositories(
+                 scope,
+                 shop,
+                 "  acme/docs  \r\n\n\t\nacme/api\t\n   \n"
+               )
+
+      assert saved(scope, shop) == ["acme/docs", "acme/api"]
+    end
+
+    test "each broken rule is refused with the first one, naming its line, and nothing is written",
+         %{scope: scope, shop: shop} do
+      {:ok, shop} = Targets.set_further_repositories(scope, shop, "acme/docs")
+      set = &further_errors(Targets.set_further_repositories(scope, shop, &1))
+
+      for text <- [
+            "acme",
+            "acme/docs/extra",
+            "acme/",
+            "/docs",
+            "acme/.",
+            "acme/..",
+            "acme/.git",
+            "acme/.GIT",
+            ".Git/docs",
+            "acme/do cs",
+            "acme/dös",
+            "acme\\docs",
+            "acme/-rf"
+          ] do
+        assert set.("acme/api\n" <> text) == ["Line 2 is not a path such as acme/docs."],
+               inspect(text)
+      end
+
+      assert set.("acme/" <> String.duplicate("a", 196)) ==
+               ["Line 1 is longer than 200 characters."]
+
+      assert set.("other/docs") ==
+               ["Line 1 is not a target of acme; runs of acme/shop read only targets of acme."]
+
+      assert set.("ACME/Shop") == ["Line 1 is acme/shop itself."]
+      # A blank line counts: the line is the one the person sees.
+      assert set.("acme/docs\n\nacme/api\nACME/DOCS") == ["Line 4 repeats line 1."]
+      # The first broken rule only.
+      assert set.("acme/api\nother/docs\nnot a path") ==
+               ["Line 2 is not a target of acme; runs of acme/shop read only targets of acme."]
+
+      assert saved(scope, shop) == ["acme/docs"]
+      assert length(entries_of(shop)) == 1
+    end
+
+    test "the owner is compared without case", %{scope: scope, shop: shop} do
+      assert {:ok, _saved} = Targets.set_further_repositories(scope, shop, "ACME/Docs\nAcme/api")
+      assert saved(scope, shop) == ["ACME/Docs", "Acme/api"]
+    end
+
+    test "a path is at most 200 characters: 200 is saved, 201 refused",
+         %{scope: scope, shop: shop} do
+      at_most = "acme/" <> String.duplicate("a", 195)
+      assert byte_size(at_most) == 200
+      assert {:ok, _saved} = Targets.set_further_repositories(scope, shop, at_most)
+
+      assert further_errors(Targets.set_further_repositories(scope, shop, at_most <> "a")) ==
+               ["Line 1 is longer than 200 characters."]
+
+      assert saved(scope, shop) == [at_most]
+    end
+
+    test "the target and the list, joined with commas, are at most 256: 256 is saved, 257 refused",
+         %{scope: scope, shop: shop} do
+      first = "acme/" <> String.duplicate("a", 195)
+      second = "acme/" <> String.duplicate("b", 40)
+      assert byte_size(Enum.join(["acme/shop", first, second], ",")) == 256
+
+      assert {:ok, _saved} = Targets.set_further_repositories(scope, shop, [first, second])
+
+      assert further_errors(Targets.set_further_repositories(scope, shop, [first, second <> "b"])) ==
+               ["Together with acme/shop, these come to 257 characters; the most is 256."]
+
+      assert saved(scope, shop) == [first, second]
+    end
+
+    test "owners and admins choose them; a member is refused", %{scope: owner, shop: shop} do
+      admin = member_fixture(owner, :admin).scope
+      member = member_fixture(owner, :member).scope
+
+      assert {:ok, _saved} = Targets.set_further_repositories(owner, shop, "acme/docs")
+      assert {:ok, _saved} = Targets.set_further_repositories(admin, shop, "acme/api")
+
+      assert Targets.set_further_repositories(member, shop, "acme/web") == {:error, :forbidden}
+      # Refused before the list is read.
+      assert Targets.set_further_repositories(member, shop, "not a path") ==
+               {:error, :forbidden}
+
+      assert saved(owner, shop) == ["acme/api"]
+    end
+
+    test "another organisation's target is not reachable", %{scope: scope, shop: shop} do
+      %{scope: other} = sign_up_fixture()
+
+      assert Targets.set_further_repositories(other, shop, "acme/docs") == {:error, :not_found}
+      assert saved(scope, shop) == []
+      assert entries_of(shop) == []
+    end
+
+    test "not found where the reader is not shown the feature", %{scope: scope, shop: shop} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
+
+      assert Targets.set_further_repositories(scope, shop, "acme/docs") == {:error, :not_found}
+      assert saved(scope, shop) == []
     end
   end
 end

@@ -384,7 +384,11 @@ defmodule ApiaryWeb.RefusalsCase do
     error -> {:refused, {:raised, exception(error)}}
   end
 
+  # The page's async tasks finish first (`render_async/1`). A task still reading when the
+  # event fails the page is killed with it, holding the test's sandbox connection: the
+  # connection is closed, and the next query finds no owner (`DBConnection.OwnershipError`).
   defp send_event(lv, event, params) do
+    render_async(lv)
     {:ok, render_click(lv, event, params)}
   catch
     :exit, {{reason, stacktrace}, _call} ->

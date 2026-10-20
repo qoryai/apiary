@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "deepseek",
+  "title": "DeepSeek",
+  "description": "Runs use DeepSeek's API through its Anthropic-format endpoint, with a DeepSeek API key.",
+  "settings": {"type": "object", "properties": {}, "additionalProperties": false},
+  "egress_hosts": ["api.deepseek.com"],
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": "https://api.deepseek.com/anthropic", "auth": {"scheme": "header", "header": "x-api-key"}}
+      ],
+      "models": [
+        {"id": "deepseek-v4-pro", "title": "DeepSeek V4 Pro", "effort": ["low", "high", "max"]},
+        {"id": "deepseek-flash", "title": "DeepSeek Flash", "effort": ["low", "high", "max"]}
+      ]
+    }
+  }
+}

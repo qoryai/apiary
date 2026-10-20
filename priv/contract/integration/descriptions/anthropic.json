@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "anthropic",
+  "title": "Anthropic API key",
+  "description": "Runs use Anthropic's API with an API key from the Claude Console. Anthropic bills the key's account.",
+  "settings": {"type": "object", "properties": {}, "additionalProperties": false},
+  "egress_hosts": ["api.anthropic.com"],
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": "https://api.anthropic.com", "auth": {"scheme": "header", "header": "x-api-key"}}
+      ],
+      "models": [
+        {"id": "claude-opus-5-5", "title": "Claude Opus 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "claude-sonnet-5-5", "title": "Claude Sonnet 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "claude-haiku-5-5", "title": "Claude Haiku 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "claude-fable-5-1", "title": "Claude Fable 5.1", "effort": ["low", "medium", "high", "xhigh", "max"]}
+      ]
+    }
+  }
+}

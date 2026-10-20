@@ -40,6 +40,8 @@ defmodule ApiaryWeb.Edition do
     `c:who_may_sentence/2`, what the pages it lists say of who may take an action, where
     the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`).
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
+    `c:configuration_parts/1`, the parts the edition adds to Instance settings ›
+    Configuration, after the core's;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
     edition's actions in words on the Activity page; `c:activity_actor/2`, who made an
@@ -52,8 +54,12 @@ defmodule ApiaryWeb.Edition do
     organisation's gateways say of the workspaces whose nodes can use them;
     `c:nodes_managed_by_sentence/1`, what the nodes' pages say of who manages the nodes
     and their access keys, in place of the core's sentence of who may.
-  - **Words**: `c:product_name/0`, the product's name on the button of the Qory Apiary
-    menu and as the menu's name (`ApiaryWeb.Layouts.brand_menu/1`);
+  - **Words**: `c:product_name/0`, the product's name where no instance admin set one on
+    the button of the Qory Apiary menu and in the menu's names
+    (`ApiaryWeb.Layouts.brand_menu/1`, `Apiary.ProductName.button_name/0`), and as the
+    form of Instance settings › General, its toast and the Activity page say an empty
+    name; page titles, the log-in pages and emails show Qory Apiary there
+    (`Apiary.ProductName.name/0`);
     `c:gettext_backend/0`, the Gettext backend of the edition's sentences, beside the
     core's (`ApiaryWeb.Gettext.Backends`); `c:people_sentence/3`, what the People pages
     say of an invitation and of a level (`ApiaryWeb.Access.people_sentence/4`).
@@ -270,6 +276,15 @@ defmodule ApiaryWeb.Edition do
   @callback settings_tabs(Scope.t()) :: [Entry.t()]
 
   @doc """
+  The parts the edition adds to Instance settings › Configuration
+  (`ApiaryWeb.InstanceLive.Configuration`), after the core's, in order, for the scope's
+  instance admin: each a `Phoenix.LiveComponent`, which the page renders with an `id`,
+  `config-part-1` for the first, and the page's `current_scope`. Each holds its form, its
+  save and what it saves, and is built from `ApiaryWeb.InstanceLive.ConfigurationComponents`.
+  """
+  @callback configuration_parts(Scope.t()) :: [module]
+
+  @doc """
   What the edition renders in the named slot of a core page, given the slot's assigns
   (`ApiaryWeb.Extension`), or nil for nothing.
   """
@@ -319,10 +334,14 @@ defmodule ApiaryWeb.Edition do
             }
 
   @doc """
-  The product's name, as the edition names it: the button of the Qory Apiary menu and the
-  menu's name (`ApiaryWeb.Layouts.brand_menu/1`), "Qory Apiary" in the core's. A name, not
-  a sentence: it is not translated. The log-in pages, the page titles and the emails keep
-  "Qory Apiary".
+  The product's name, as the edition names it, "Qory Apiary" in the core's: where no
+  instance admin set one in Instance settings › General, the name on the button of the
+  Qory Apiary menu and in the menu's names (`ApiaryWeb.Layouts.brand_menu/1`,
+  `Apiary.ProductName.button_name/0`), and the name the form there, its placeholder and
+  hint, its toast and the Activity page give an empty name
+  (`Apiary.ProductName.edition_name/0`). Page titles, the log-in pages and emails show
+  Qory Apiary where no name is set, in every edition (`Apiary.ProductName.name/0`). A
+  name, not a sentence: it is not translated.
   """
   @callback product_name() :: String.t()
 
@@ -352,6 +371,7 @@ defmodule ApiaryWeb.Edition do
     refusal_sentence: 1,
     who_may_sentence: 2,
     settings_tabs: 1,
+    configuration_parts: 1,
     slot: 2,
     activity_describer: 0,
     activity_actor: 2,

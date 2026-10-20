@@ -12,8 +12,10 @@ defmodule ApiaryWeb.RunLive.Show do
   `/runs/:run_id/details` (the live action `:details`) lands on the Timeline with Details
   open.
 
-  `:run_id` in the URL is the run's subject, the id Forager prints. A run that is not
-  in the caller's workspace renders the not-found state, whatever else it may be.
+  `:run_id` in the URL is the run's `public_id`, `rn_…`, the id Qory Apiary gives it; the
+  node's run id, the run's subject, is on Details. A run that is not in the caller's
+  workspace renders the not-found state, whatever else it may be, and so does the node's
+  run id in the URL.
 
   The timeline is a stream over a window of the run's items (300 on mount, 200 more at
   either end, never more than 600 in the DOM); the layout of the whole run comes from
@@ -37,7 +39,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
-  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_label: 3, target_path: 5]
+  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 2]
 
   alias Apiary.Access
   alias Apiary.Lingo.Domain
@@ -105,7 +107,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {gettext("Runs")}
       </:crumb>
       <:crumb patch={@tab != :timeline && tab_path(@current_scope, @run, :timeline)}>
-        {gettext("Run %{id}", id: short_id(@run.run_id))}
+        {gettext("Run %{id}", id: short_id(@run.public_id))}
       </:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
@@ -117,13 +119,11 @@ defmodule ApiaryWeb.RunLive.Show do
            Details in place, above the tabs. --%>
       <div id="run-page" class="q-run">
         <header class="q-run-head">
-          <h1 :if={given_title(@run)} id="run-title" tabindex="-1">
-            <bdi>{given_title(@run)}</bdi>
+          <h1 :if={shown_run_title(@run)} id="run-title" tabindex="-1">
+            <.external_text text={shown_run_title(@run)} />
           </h1>
-          <h1 :if={!given_title(@run)} id="run-title" tabindex="-1">
-            <.rich text={
-              rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
-            } />
+          <h1 :if={!shown_run_title(@run)} id="run-title" tabindex="-1">
+            <.rich text={rich_gettext("Run %{id}", id: {:m, @run.public_id, "font-mono text-[18px]"})} />
           </h1>
           <.about_header run={@run} />
           <div class="q-run-sub">
@@ -151,9 +151,9 @@ defmodule ApiaryWeb.RunLive.Show do
                 />
                 <span :if={program_exit(@run)}>{program_exit(@run)}</span>
                 <.link
-                  :if={@run.target_id}
+                  :if={target_link(@target_page) && shown_target_path(@run)}
                   id="run-target"
-                  navigate={target_link(@current_scope, @run, @target_shared)}
+                  navigate={target_link(@target_page)}
                   class="q-run-target"
                 >
                   <.target_name
@@ -161,13 +161,22 @@ defmodule ApiaryWeb.RunLive.Show do
                     system={@target_shared && @run.target_system}
                   />
                 </.link>
-                <span :if={!@run.target_id && @run.target_path} id="run-target">
+                <span
+                  :if={!target_link(@target_page) && shown_target_path(@run)}
+                  id="run-target"
+                >
                   <.target_name path={@run.target_path} system={@run.target_system} />
                 </span>
                 <span :if={@run.runtime} id="run-runtime">
-                  {join([@run.runtime, @run.runtime_version])}
+                  <.external_text text={
+                    join([shown_sent(@run.runtime), shown_sent(@run.runtime_version)])
+                  } />
                 </span>
-                <span :if={@run.host} id="run-host" class="font-mono text-[12.5px]">{@run.host}</span>
+                <span
+                  :if={@run.host}
+                  id="run-host"
+                  class="font-mono text-[12.5px]"
+                ><.external_text text={@run.host} /></span>
                 <span :if={@run.started_at} id="run-started-at">
                   <span class="sr-only">{gettext("Started")}</span>
                   <.relative_time id="run-started" at={@run.started_at} />
@@ -213,7 +222,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 run={@run}
                 log={
                   Access.can?(@current_scope, :"run.read_log", @run) &&
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.run_id}/log"
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.public_id}/log"
                 }
               />
             </div>
@@ -251,15 +260,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <div class="mt-1">
               <.link
                 id="run-behind-diff"
-                navigate={
-                  behind_path(
-                    @current_scope,
-                    @target,
-                    @target_shared,
-                    @reported_version,
-                    @in_force
-                  )
-                }
+                navigate={behind_path(@current_scope, @target, @reported_version, @in_force)}
                 class="q-link"
               >
                 {if comparable?(@reported_version, @in_force),
@@ -298,7 +299,7 @@ defmodule ApiaryWeb.RunLive.Show do
         <.details_rail
           scope={@current_scope}
           run={@run}
-          target_shared={@target_shared}
+          target_page={target_link(@target_page)}
           policy={@policy}
           session_id={@session_id}
           quiet={@quiet_for != nil}
@@ -418,7 +419,7 @@ defmodule ApiaryWeb.RunLive.Show do
             role="menuitem"
             tabindex="-1"
             phx-hook="CopyToClipboard"
-            data-copy={@run.run_id}
+            data-copy={@run.public_id}
             data-copied-words={gettext("Copied")}
             data-menu-close
           >
@@ -517,7 +518,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.limits
         :if={@limit}
         reason={@limit}
-        runtime={@run.runtime}
+        runtime={shown_sent(@run.runtime)}
         registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and @index.session_items > 0}
         terminal={Access.can?(@current_scope, :"run.read_log", @run)}
@@ -616,7 +617,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.terminal
         :if={@log.chunks > 0}
         id="terminal"
-        src={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.run_id}/log"}
+        src={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.public_id}/log"}
         script={~p"/assets/js/terminal.js"}
         stylesheet={~p"/assets/js/terminal.css"}
         streams={@log.streams}
@@ -691,14 +692,14 @@ defmodule ApiaryWeb.RunLive.Show do
             } />
           </span>
           <span :if={@security && @policy}>
-            {gettext("policy")} <b>{@policy.mode}</b>
+            {gettext("policy")} <b>{shown_sent(@policy.mode)}</b>
             <.scoped_version :if={@version} version={@version} />
             <span
               :if={!@version && @run.policy_digest}
               class="font-mono text-[12.5px]"
-              title={@run.policy_digest}
+              title={shown_sent(@run.policy_digest)}
             >
-              {String.slice(@run.policy_digest, 0, 12)}
+              {String.slice(shown_sent(@run.policy_digest), 0, 12)}
             </span>
             <.drift
               :if={@in_force}
@@ -781,7 +782,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # under small headings; the run's labels are its own identifiers, in mono.
   attr :scope, :map, required: true
   attr :run, :map, required: true
-  attr :target_shared, :boolean, default: false, doc: "whether the run's target's path is shared"
+  attr :target_page, :string, default: nil, doc: "the path of the run's target's page"
   attr :policy, :any, required: true
   attr :session_id, :string, default: nil
   attr :quiet, :boolean, required: true
@@ -797,6 +798,7 @@ defmodule ApiaryWeb.RunLive.Show do
       assign(assigns,
         labels: ordered_labels(assigns.run.labels, assigns.scope.workspace),
         key_shown: Apiary.Features.visible?(assigns.scope, :nodes),
+        image_source: image_source(assigns.scope, assigns.run),
         # The terminal's size is the log's, as the Terminal tab is.
         terminal_size:
           assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run)
@@ -830,18 +832,21 @@ defmodule ApiaryWeb.RunLive.Show do
           </dd>
           <dt>{gettext("Runtime")}</dt>
           <dd>
-            {@run.runtime || na()}
-            <span :if={@run.runtime_version} class="font-mono">{@run.runtime_version}</span>
+            <.external_text text={@run.runtime} />{if !@run.runtime, do: na()}
+            <span
+              :if={@run.runtime_version}
+              class="font-mono"
+            ><.external_text text={@run.runtime_version} /></span>
           </dd>
           <dt>{gettext("Host")}</dt>
-          <dd class="font-mono">{@run.host || na()}</dd>
+          <dd class="font-mono"><.external_text text={@run.host} />{if !@run.host, do: na()}</dd>
           <dt>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>
           <dd>
             <%= cond do %>
               <% @run.wall -> %>
-                {@run.wall}
+                <.external_text text={@run.wall} />
               <% @run.state == "pending" -> %>
                 {na()}
               <% true -> %>
@@ -849,9 +854,36 @@ defmodule ApiaryWeb.RunLive.Show do
                   {gettext("None")}
                 </span>
             <% end %>
-            <span :if={@run.wall && @run.image} class="q-rail-sub font-mono" title={@run.image}>
-              {@run.image}
-            </span>
+            <%= case @image_source do %>
+              <% :configured -> %>
+                <span
+                  :if={@run.wall}
+                  id="run-image"
+                  class="q-rail-sub font-mono"
+                  title={@run.configured_image}
+                >
+                  {@run.configured_image}
+                </span>
+                <span :if={@run.wall} id="run-image-source" class="q-rail-sub">
+                  {gettext("Prebuilt for this target")}
+                </span>
+              <% source -> %>
+                <span
+                  :if={@run.wall && @run.image}
+                  id="run-image"
+                  class="q-rail-sub font-mono"
+                  title={Apiary.ExternalText.line(@run.image)}
+                >
+                  <.external_text text={@run.image} />
+                </span>
+                <span
+                  :if={@run.wall && @run.image && source == :pool_default}
+                  id="run-image-source"
+                  class="q-rail-sub"
+                >
+                  {gettext("The pool's default image.")}
+                </span>
+            <% end %>
           </dd>
           <%!-- The run's access key, where the reader is shown the nodes: their keys are the
           part `nodes` an edition may hide (`Apiary.Features.visible?/2`). --%>
@@ -868,11 +900,11 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.node_id} id="run-node">
             <.node_name scope={@scope} node={Ecto.assoc_loaded?(@run.node) && @run.node} />
           </dd>
-          <dt :if={@run.instance_id}>{gettext("Instance")}</dt>
-          <dd :if={@run.instance_id} id="run-instance">
+          <dt :if={@run.node_instance_id}>{gettext("Node's instance id")}</dt>
+          <dd :if={@run.node_instance_id} id="run-instance">
             <span :if={@instance && @instance.name}>{@instance.name}</span>
             <span class={["font-mono", @instance && @instance.name && "q-rail-sub"]}>
-              {@run.instance_id}
+              <.external_text text={@run.node_instance_id} />
             </span>
           </dd>
           <dt :if={@security}>{gettext("Policy")}</dt>
@@ -894,18 +926,16 @@ defmodule ApiaryWeb.RunLive.Show do
         <h3 id="rail-labels">{gettext("Labels")}</h3>
         <dl id="run-labels" class="q-rail-kv q-rail-kv-mono">
           <%= for {key, value} <- @labels do %>
-            <dt>{key}</dt>
-            <dd title={to_string(value)}>
+            <dt><.external_text text={to_string(key)} /></dt>
+            <dd title={Apiary.ExternalText.line(to_string(value))}>
               <.link
-                :if={
-                  path = label_path(@scope, @run, @target_shared, to_string(key), to_string(value))
-                }
+                :if={path = label_path(@scope, @target_page, to_string(key))}
                 navigate={path}
               >
-                {to_string(value)}
+                <.external_text text={to_string(value)} />
               </.link>
-              <span :if={!label_path(@scope, @run, @target_shared, to_string(key), to_string(value))}>
-                {to_string(value)}
+              <span :if={!label_path(@scope, @target_page, to_string(key))}>
+                <.external_text text={to_string(value)} />
               </span>
             </dd>
           <% end %>
@@ -916,17 +946,22 @@ defmodule ApiaryWeb.RunLive.Show do
         <h3 id="rail-command">{gettext("Command")}</h3>
         <dl class="q-rail-kv">
           <dt>{gettext("Command")}</dt>
-          <dd class="font-mono">{@run.command || na()}</dd>
+          <dd class="font-mono">
+            <.external_text text={@run.command} />{if !@run.command, do: na()}
+          </dd>
           <dt>{gettext("Arguments")}</dt>
           <dd class="font-mono">
             <span :if={@run.args == []} class="font-sans text-faint">{gettext("none")}</span>
-            <span :for={arg <- Enum.take(@run.args, 64)} class="q-arg">{middle(arg, 600)}</span>
+            <span
+              :for={arg <- Enum.take(@run.args, 64)}
+              class="q-arg"
+            ><.external_text text={middle(Apiary.ExternalText.line(arg), 600)} /></span>
             <span :if={length(@run.args) > 64} class="font-sans text-faint">
               {gettext("and %{number} more", number: Format.number(length(@run.args) - 64))}
             </span>
           </dd>
           <dt>{gettext("Directory")}</dt>
-          <dd class="font-mono">{@run.dir || na()}</dd>
+          <dd class="font-mono"><.external_text text={@run.dir} />{if !@run.dir, do: na()}</dd>
           <dt>{gettext("Interactive")}</dt>
           <dd>{interactive_words(@run.interactive)}</dd>
           <dt :if={@terminal_size}>{gettext("Terminal")}</dt>
@@ -943,7 +978,7 @@ defmodule ApiaryWeb.RunLive.Show do
         <dl class="q-rail-kv">
           <dt>{gettext("Run id")}</dt>
           <dd class="font-mono">
-            <span id="run-id">{@run.run_id}</span>
+            <span id="run-id">{@run.public_id}</span>
             <.copy_button
               id="copy-run-id"
               target="#run-id"
@@ -951,6 +986,8 @@ defmodule ApiaryWeb.RunLive.Show do
               label={gettext("Copy the run id")}
             />
           </dd>
+          <dt>{gettext("Node's run id")}</dt>
+          <dd id="run-node-run-id" class="font-mono">{@run.node_run_id}</dd>
           <dt>{gettext("Events")}</dt>
           <dd>
             <.rich text={
@@ -979,7 +1016,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.lost_at}><.clock at={@run.lost_at} id="lost-at" /></dd>
           <dt>{gettext("Session")}</dt>
           <dd class="font-mono">
-            {@session_id || gettext("n/a")}
+            {shown_sent(@session_id) || gettext("n/a")}
           </dd>
         </dl>
       </section>
@@ -992,7 +1029,9 @@ defmodule ApiaryWeb.RunLive.Show do
             <.term word={gettext("Digest")} standard={@tips.digest} class="q-tip-wide tooltip-right" />
           </dt>
           <dd class="font-mono">
-            {if @run.policy_digest, do: short_digest(@run.policy_digest), else: gettext("n/a")}
+            {if @run.policy_digest,
+              do: short_digest(shown_sent(@run.policy_digest)),
+              else: gettext("n/a")}
             <.copy_button
               :if={@run.policy_digest}
               id="copy-digest"
@@ -1004,10 +1043,9 @@ defmodule ApiaryWeb.RunLive.Show do
           <dt>{gettext("Run configuration")}</dt>
           <dd
             class="font-mono"
-            title={@run.run_configuration_digest || @run.reported_run_configuration_digest}
+            title={configuration_digest(@run)}
           >
-            {short_digest(@run.run_configuration_digest || @run.reported_run_configuration_digest) ||
-              gettext("n/a")}
+            {short_digest(configuration_digest(@run)) || gettext("n/a")}
           </dd>
           <dt :if={@version}>{gettext("Version")}</dt>
           <dd :if={@version} id="policy-version">
@@ -1061,12 +1099,35 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
-  # The Forager that reported the run, and the contract it spoke.
+  # Which image the rail shows under the Wall, and what it says of it. Only a run of the
+  # workspace's queue, which the `factory` feature makes, is given an image: where the
+  # reader is not shown the feature, every run shows the image it reported, with no line
+  # under it. Any attached run, one a node registered itself included, starts in its
+  # policy's image where its `security_policy` sets one; such a run shows the image it
+  # reported, with no line under it. `:configured` is the image Qory gave the run at its
+  # attach, which it started in whatever it reported; `:pool_default`, a run of the queue
+  # given none and not started in its policy's image, which starts in its pool's default
+  # image; `:reported`, any other run.
+  defp image_source(scope, run) do
+    if Apiary.Features.visible?(scope, :factory), do: image_source(run), else: :reported
+  end
+
+  defp image_source(%Run{configured_image: image}) when is_binary(image), do: :configured
+  defp image_source(%Run{started_image_from: "policy"}), do: :reported
+  defp image_source(%Run{dispatch_run_id: id}) when is_binary(id), do: :pool_default
+  defp image_source(%Run{}), do: :reported
+
+  # The Forager that reported the run, as it sent its version, and the contract it spoke;
+  # n/a for a version it did not send, or one with nothing left to show
+  # (`Apiary.ExternalText.present/1`).
   attr :run, :map, required: true
 
   defp forager_version(assigns) do
+    version = Apiary.ExternalText.present(assigns.run.forager_version)
+    assigns = assign(assigns, version: version, na: if(!version, do: gettext("n/a")))
+
     ~H"""
-    {@run.forager_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
+    <.external_text text={@version} />{@na}<span :if={@run.contract_version}> · {gettext(
       "contract %{version}",
       version: @run.contract_version
     )}</span>
@@ -1127,7 +1188,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp policy_value(assigns) do
     ~H"""
     <.term
-      word={@policy.mode || gettext("n/a")}
+      word={shown_sent(@policy.mode) || gettext("n/a")}
       standard={@tips.mode}
       class="q-tip-wide tooltip-left"
     />
@@ -1150,12 +1211,15 @@ defmodule ApiaryWeb.RunLive.Show do
         </small>
       <% @reported -> %>
         <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
-          <small class="ml-1 font-mono">{short_digest(@reported)}</small>
+          <small class="ml-1 font-mono">{short_digest(shown_sent(@reported))}</small>
           <small class="block">{gettext("Not a version made in this workspace")}</small>
         </span>
       <% @digest -> %>
-        <small class="ml-1 font-mono" title={gettext("sha256 %{digest}", digest: @digest)}>
-          {String.slice(@digest, 0, 12)}
+        <small
+          class="ml-1 font-mono"
+          title={gettext("sha256 %{digest}", digest: shown_sent(@digest))}
+        >
+          {String.slice(shown_sent(@digest), 0, 12)}
         </small>
       <% true -> %>
     <% end %>
@@ -1230,6 +1294,7 @@ defmodule ApiaryWeb.RunLive.Show do
        page_title: gettext("Run"),
        tips: tips(),
        target_shared: false,
+       target_page: {nil, nil},
        announcement: nil,
        announced_at: nil,
        at_end: false,
@@ -1336,6 +1401,7 @@ defmodule ApiaryWeb.RunLive.Show do
             run.target_id != nil and Targets.shared?(scope, run.target_path)
           )
           |> assign_run(run)
+          |> assign_target_page(run)
           |> assign(:instance, Nodes.instance_of(scope, run))
 
         if connected?(socket) do
@@ -1510,37 +1576,56 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp tab_path(scope, run, tab, query \\ %{})
 
-  defp tab_path(scope, %Run{run_id: id}, :timeline, query),
+  defp tab_path(scope, %Run{public_id: id}, :timeline, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}?#{query}"
 
-  defp tab_path(scope, %Run{run_id: id}, :terminal, query),
+  defp tab_path(scope, %Run{public_id: id}, :terminal, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/terminal?#{query}"
 
-  defp tab_path(scope, %Run{run_id: id}, :connections, query),
+  defp tab_path(scope, %Run{public_id: id}, :connections, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/network?#{query}"
 
   # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.
-  defp label_path(scope, %Run{target_id: id} = run, shared, key, _value) when is_binary(id) do
-    if key in Domain.target_labels(scope.workspace), do: target_link(scope, run, shared)
+  defp label_path(scope, page, key) when is_binary(page) do
+    if key in Domain.target_labels(scope.workspace), do: page
   end
 
-  defp label_path(_scope, _run, _shared, _key, _value), do: nil
+  defp label_path(_scope, _page, _key), do: nil
 
   # The short form of the id a run that is not here was asked by, when it is a run's id at
   # all; nil for an address that is none, whose breadcrumb ends with Runs.
-  defp missing_id(run_id) do
-    case Ecto.UUID.cast(run_id) do
-      {:ok, id} -> short_id(id)
-      :error -> nil
-    end
+  defp missing_id(run_id), do: if(Run.public_id?(run_id), do: short_id(run_id))
+
+  # The page of the target the run names, by the target's public id: `{target_id, path}`,
+  # read again only when the run names another target.
+  defp assign_target_page(%{assigns: %{target_page: {id, _path}}} = socket, %Run{target_id: id}),
+    do: socket
+
+  defp assign_target_page(socket, %Run{target_id: id}) do
+    scope = socket.assigns.current_scope
+    target = id && Targets.get_by_id(scope, id)
+    assign(socket, :target_page, {id, target && target_path(scope, target)})
   end
 
-  # The target's page: the run's own copy of its system and path, which the target's row
-  # holds too while the run names it, at its address: its system in it only where its
-  # path is `shared` (the page's `target_shared`).
-  defp target_link(scope, %Run{target_system: system, target_path: path}, shared),
-    do: target_path(scope, system, path, [], shared)
+  defp target_link({_id, path}), do: path
+
+  # The run's target path as a text Forager sent is shown (`shown_sent/1`): marked where
+  # nothing is left of it, since it was sent; nil for a run with none.
+  defp shown_target_path(run), do: shown_sent(run.target_path)
+
+  # A text Forager sent, as the page shows it (`Apiary.ExternalText.present/1`), or marked
+  # (`Apiary.ExternalText.marked/1`) where nothing is left of it, since it was sent; nil
+  # where it sent none. A value that is no text is shown as it is.
+  defp shown_sent(text) when is_binary(text) and text != "",
+    do: Apiary.ExternalText.present(text) || Apiary.ExternalText.marked(text)
+
+  defp shown_sent(""), do: nil
+  defp shown_sent(text), do: text
+
+  # The digest of the run configuration in force, else of the one the run reported.
+  defp configuration_digest(run),
+    do: shown_sent(run.run_configuration_digest || run.reported_run_configuration_digest)
 
   # The chips of the lane key: the first dozen, and the isolated one wherever it is.
   defp lane_chips(index, isolated) do
@@ -1697,25 +1782,41 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp ending_of(%{kind: :result, outcome: outcome, text: text} = item)
        when outcome != "success" and is_binary(text) and text != "",
-       do: %{seq: item.seq, text: one_line(text)}
+       do: ending(item, text)
 
   defp ending_of(%{kind: :turn_failed} = item) do
     case item[:error] || item[:message] do
-      text when is_binary(text) and text != "" -> %{seq: item.seq, text: one_line(text)}
+      text when is_binary(text) and text != "" -> ending(item, text)
       _ -> nil
     end
   end
 
   defp ending_of(%{kind: :tool, status: :failed} = item) do
+    tool = shown_sent(item.tool)
+
     text =
       if is_binary(item.summary) and item.summary != "",
-        do: gettext("%{tool} failed: %{summary}", tool: item.tool, summary: item.summary),
-        else: gettext("%{tool} failed", tool: item.tool)
+        do: gettext("%{tool} failed: %{summary}", tool: tool, summary: shown_sent(item.summary)),
+        else: gettext("%{tool} failed", tool: tool)
 
-    %{seq: item.seq, text: one_line(text)}
+    ending(item, text)
   end
 
   defp ending_of(_item), do: nil
+
+  # The item's words are texts the runtime sent, shown as one is
+  # (`Apiary.ExternalText.lines/1`), on one line. Words with nothing left to show are
+  # marked (`Apiary.ExternalText.marked/1`), since the item sent them: the ending names
+  # this item, never the one before it.
+  defp ending(item, text) do
+    line =
+      case text |> Apiary.ExternalText.lines() |> one_line() do
+        "" -> text |> Apiary.ExternalText.marked() |> one_line()
+        line -> line
+      end
+
+    %{seq: item.seq, text: line}
+  end
 
   defp one_line(text),
     do: text |> String.replace(~r/\s+/u, " ") |> String.trim() |> String.slice(0, 400)
@@ -1979,10 +2080,11 @@ defmodule ApiaryWeb.RunLive.Show do
     %{run: run, target: target, current_scope: scope, effective: effective} =
       socket.assigns
 
+    shared = socket.assigns.target_shared
     path = row.path || ""
     # The page holds the target's policy; the workspace's is read when a panel opens,
-    # since what a rule for the workspace would be is decided by the workspace's own
-    # paths.
+    # since what a rule for the workspace would be is decided by the paths of the
+    # workspace's policy.
     baseline = if target, do: Policy.effective(scope, nil), else: effective
 
     assign(socket,
@@ -1997,7 +2099,7 @@ defmodule ApiaryWeb.RunLive.Show do
         level: if(target, do: :target, else: :workspace),
         target:
           target &&
-            %{label: target_label(target.system, target.path, socket.assigns.target_shared)},
+            %{label: shown_target_label(target.system, target.path, shared)},
         targets: [],
         choice: nil,
         what: %{
@@ -2034,7 +2136,8 @@ defmodule ApiaryWeb.RunLive.Show do
           locked_at: locked && locked.inserted_at,
           owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
           who: ApiaryWeb.Edition.who_may_sentence(:"security_policy.lock", scope),
-          rule_path: Rules.rule_path(scope, nil, act.entry.host)
+          rule_path: Rules.rule_path(scope, nil, act.entry.host),
+          reader: scope.user.email
         }
       }
     )
@@ -2111,7 +2214,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp recheck_panel(socket), do: socket
 
   defp rule_toast(socket, panel, rule, level) do
-    %{current_scope: scope, target: target} = socket.assigns
+    %{current_scope: scope, target: target, target_shared: shared} = socket.assigns
     holder = if level == :target, do: target, else: nil
 
     where =
@@ -2120,7 +2223,7 @@ defmodule ApiaryWeb.RunLive.Show do
           :workspace
 
         target ->
-          {:target, target_label(target.system, target.path, socket.assigns.target_shared)}
+          {:target, shown_target_label(target.system, target.path, shared)}
 
         true ->
           :this_target
@@ -2269,15 +2372,16 @@ defmodule ApiaryWeb.RunLive.Show do
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder, entry.host, shared),
+      rule_path: Rules.rule_path(scope, holder, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
+        changed?: match?(%{action: "rule_changed"}, change),
         version:
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder, change.version, %{}, shared),
+              path: Rules.version_path(scope, holder, change.version),
               label: Rules.version_label(holder && holder.id, target, shared)
             },
         by: change && who(change, scope),
@@ -2298,18 +2402,13 @@ defmodule ApiaryWeb.RunLive.Show do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(
-            scope,
-            if(entry.source == :target and target, do: target),
-            entry.host,
-            socket.assigns.target_shared
-          ),
+          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
       after: nil
     })
   end
 
-  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: gettext("you")
-  defp who(%{by: name}, _scope) when is_binary(name), do: ApiaryWeb.People.short(name)
+  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: :you
+  defp who(%{by: email}, _scope) when is_binary(email), do: email
   defp who(_change, _scope), do: nil
 
   # A locked rule's row: the way to the rule, and who locked it when that is known.
@@ -2330,9 +2429,10 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  defp reloaded_at(%{assigns: %{run: run, digests: digests, policy: %{sequence: sequence}}})
+  # `applied` is the policy part of what the run applied (`Apiary.Policy.digests/2`).
+  defp reloaded_at(%{assigns: %{digests: digests, policy: %{sequence: sequence}}})
        when is_integer(sequence) do
-    if is_binary(digests.in_force) and run.run_configuration_digest == digests.in_force,
+    if is_binary(digests.in_force) and digests.applied == digests.in_force,
       do: sequence
   end
 
@@ -2343,15 +2443,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # A target's version is on the run's target's Policy tab: the only target a run's
   # versions are of.
-  defp behind_path(scope, target, shared, reported, in_force) do
+  defp behind_path(scope, target, reported, in_force) do
     if comparable?(reported, in_force) and (is_nil(in_force.target_id) or target != nil),
       do:
         Rules.version_path(
           scope,
           in_force.target_id && target,
           in_force.n,
-          %{"compare" => reported.n},
-          shared
+          %{"compare" => reported.n}
         ),
       else: in_force.path
   end
@@ -2446,6 +2545,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     socket
     |> assign_run(run)
+    |> assign_target_page(run)
     |> announce_change(old, run, was_quiet?)
     |> follow_digests(old, run)
   end
@@ -2483,10 +2583,9 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # A state its starter's outcome set, unlike what the exit said, is said as the header
-  # says it (`outcome_sentence/1`). A state stored under an earlier name is said as the
-  # state that took it in.
+  # says it (`outcome_sentence/1`).
   defp state_sentence(%Run{state: state} = run),
-    do: outcome_sentence(run) || state_sentence(Run.current_state(state), run)
+    do: outcome_sentence(run) || state_sentence(state, run)
 
   defp state_sentence("completed", %Run{duration_ms: ms}) when is_integer(ms),
     do: gettext("Run completed after %{duration}.", duration: format_duration_ms(ms))
@@ -2498,7 +2597,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp state_sentence("failed", run) do
     cond do
       is_nil(program_exit(run)) -> gettext("Run failed.")
-      signal?(run) -> gettext("Run failed with %{signal}.", signal: run.signal)
+      signal?(run) -> gettext("Run failed with %{signal}.", signal: shown_signal(run))
       true -> gettext("Run failed with exit %{code}.", code: run.exit_code)
     end
   end
@@ -2516,14 +2615,24 @@ defmodule ApiaryWeb.RunLive.Show do
       else: gettext("Run lost.")
   end
 
-  defp state_sentence("lost", %Run{heartbeat_interval_seconds: interval})
-       when is_integer(interval),
-       do:
-         gettext("Run lost. No heartbeat for %{seconds} s.", seconds: Format.number(interval * 3))
+  # A run lost at the deadline its attach set for its end (`backstop_at`) was lost however
+  # recently it beat: no heartbeat to count.
+  defp state_sentence("lost", %Run{heartbeat_interval_seconds: interval} = run)
+       when is_integer(interval) do
+    if lost_past_backstop?(run),
+      do: gettext("Run lost."),
+      else:
+        gettext("Run lost. No heartbeat for %{seconds} s.", seconds: Format.number(interval * 3))
+  end
 
   defp state_sentence("lost", _run), do: gettext("Run lost.")
   defp state_sentence("running", _run), do: gettext("Run started.")
   defp state_sentence(_state, _run), do: nil
+
+  defp lost_past_backstop?(%Run{lost_at: %DateTime{} = lost_at} = run),
+    do: Apiary.Runs.Liveness.past_backstop?(run, lost_at)
+
+  defp lost_past_backstop?(_run), do: false
 
   defp announce(socket, nil, _when), do: socket
 
@@ -2716,20 +2825,28 @@ defmodule ApiaryWeb.RunLive.Show do
   defp exited?(%Run{exited_at: exited_at}), do: exited_at != nil
 
   # The program's exit as recorded, whatever the run's state. `-1` with no signal is the
-  # gateway's placeholder for an exit it wrote: the program's own was not recorded.
-  defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "", do: signal
-  defp exit_value(%Run{exit_code: -1}), do: gettext("not recorded")
-  defp exit_value(%Run{exit_code: code}) when is_integer(code), do: Integer.to_string(code)
-  defp exit_value(_run), do: gettext("n/a")
+  # gateway's placeholder for an exit it wrote: the program's exit code was not
+  # recorded. A signal is shown as a text Forager sent is, and one with nothing left to
+  # show is none (`shown_signal/1`).
+  defp exit_value(%Run{} = run) do
+    if signal = shown_signal(run), do: signal, else: exit_code_value(run)
+  end
+
+  defp exit_code_value(%Run{exit_code: -1}), do: gettext("not recorded")
+
+  defp exit_code_value(%Run{exit_code: code}) when is_integer(code),
+    do: Integer.to_string(code)
+
+  defp exit_code_value(_run), do: gettext("n/a")
 
   # The program's exit after a failed run's state, when the program exited
   # non-zero by itself and no reason words stand: "exit 1", "SIGKILL". Nil otherwise.
   # A run whose outcome's sentence says the exit says it there.
   defp program_exit(%Run{} = run) do
-    if Run.current_state(run.state) == "failed" and is_nil(reason_words(run)) and
+    if run.state == "failed" and is_nil(reason_words(run)) and
          is_nil(outcome_sentence(run)) do
       cond do
-        signal?(run) -> run.signal
+        signal?(run) -> shown_signal(run)
         is_integer(run.exit_code) and run.exit_code not in [0, -1] -> exit_words(run.exit_code)
         true -> nil
       end
@@ -2738,7 +2855,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp exit_words(code), do: gettext("exit %{code}", code: code)
 
-  defp signal?(%Run{signal: signal}), do: is_binary(signal) and signal != ""
+  defp signal?(%Run{} = run), do: shown_signal(run) != nil
 
   defp connections_count(%{denied: denied}) when denied > 0,
     do: ngettext("%{number} denied", "%{number} denied", denied, number: Format.number(denied))
@@ -2757,7 +2874,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp strings(shown, count) when is_list(shown) do
     more = (count || 0) - length(shown)
-    list = Enum.join(shown, ", ")
+    list = Enum.map_join(shown, ", ", &shown_sent/1)
 
     if more > 0,
       do: gettext("%{list} and %{number} more", list: list, number: Format.number(more)),
@@ -2800,7 +2917,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
     for {name, argument} = key <- named |> Enum.map(by) |> Enum.uniq() do
       hosts = grouped[key] |> Enum.concat() |> Enum.uniq()
-      %{name: name, argument: argument, hosts: if(hosts != [], do: Enum.join(hosts, ", "))}
+
+      %{
+        name: shown_sent(name),
+        argument: shown_sent(argument),
+        hosts: if(hosts != [], do: Enum.map_join(hosts, ", ", &shown_sent/1))
+      }
     end
   end
 

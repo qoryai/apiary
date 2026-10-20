@@ -1,6 +1,6 @@
 <Layouts.auth flash={@flash}>
   <Layouts.auth_heading>
-    {gettext("Welcome to Qory Apiary")}
+    {gettext("Welcome to %{name}", name: Apiary.ProductName.name())}
     <:subtitle>
       {gettext(
         "Add your machines as nodes, connect each with a separate key, and every run they make lands here."

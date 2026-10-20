@@ -138,13 +138,18 @@ defmodule ApiaryWeb.JumpControllerTest do
     [target] = group(answer, "Repositories")["items"]
     assert target["label"] == "acme/shop"
     assert target["detail"] == "github.example"
-    # The path alone: no other system of the workspace has it (question 9, answer A).
-    assert target["href"] == workspace_path(scope, "/targets/acme/shop")
+    # Its page, by its public id.
+    assert target["href"] == target_page_path(scope, "github.example", "acme/shop")
 
-    short = String.slice(run.run_id, 0, 8)
-    href = workspace_path(scope, "/runs/#{run.run_id}")
+    short = String.slice(run.public_id, 0, 11)
+    href = workspace_path(scope, "/runs/#{run.public_id}")
 
-    for q <- [short, String.slice(run.run_id, 0, 4), run.run_id, "https://x.example#{href}"] do
+    for q <- [
+          short,
+          String.slice(run.node_run_id, 0, 4),
+          run.node_run_id,
+          "https://x.example#{href}"
+        ] do
       answer = jump(conn, workspace_path(scope, "/jump"), q)
       assert [%{"href" => ^href}] = group(answer, "Runs")["items"], q
     end
@@ -156,15 +161,72 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, workspace_path(scope, "/jump"), "nightly"), "Runs")
 
     # A run without a title is its short id.
-    task_short = String.slice(task.run_id, 0, 8)
+    task_short = String.slice(task.public_id, 0, 11)
     answer = jump(conn, workspace_path(scope, "/jump"), task_short)
     assert [%{"label" => ^task_short}] = group(answer, "Runs")["items"]
 
-    # three characters are not an id
+    # three characters are not an id, nor is `rn_` and three
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
+
+    refute group(
+             jump(conn, workspace_path(scope, "/jump"), String.slice(run.public_id, 0, 6)),
+             "Runs"
+           )
+
+    # An old address, by the node's run id, is no run page's address.
+    old = "https://x.example" <> workspace_path(scope, "/runs/#{run.node_run_id}")
+    refute group(jump(conn, workspace_path(scope, "/jump"), old), "Runs")
   end
 
-  test "a run with no target is said by its state's word, an old name by its new state's",
+  test "a run whose title is whitespace alone is said as a run with no title",
+       %{conn: conn, scope: scope} do
+    run = started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"})
+    short = String.slice(run.public_id, 0, 11)
+
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"label" => ^short}] = group(answer, "Runs")["items"]
+
+    for title <- [" ", "\u00A0", "\u200B\u00A0\u3000"] do
+      run |> Ecto.Changeset.change(about_title: title) |> Apiary.Repo.update!()
+      answer = jump(conn, workspace_path(scope, "/jump"), short)
+      assert [%{"label" => ^short}] = group(answer, "Runs")["items"], inspect(title)
+    end
+  end
+
+  test "a target's path and system are shown as texts Forager sent are", %{
+    conn: conn,
+    scope: scope
+  } do
+    started_run(scope, %{"forge" => "git\u202E.example", "repository" => "acme/docs\u200B"})
+
+    answer = jump(conn, workspace_path(scope, "/jump"), "docs")
+    [target] = group(answer, "Repositories")["items"]
+    assert target["label"] =~ ~r{^acme/(<b>)?docs(</b>)?$}
+    assert target["detail"] == "git.example"
+    assert target["href"] == target_page_path(scope, "git\u202E.example", "acme/docs\u200B")
+  end
+
+  test "a run's title and target path are shown as a text Forager sent is",
+       %{conn: conn, scope: scope} do
+    run =
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"},
+        about: %{"title" => "\u202E\u200B"}
+      )
+
+    run |> Ecto.Changeset.change(target_path: "acme/\u202Eshop") |> Apiary.Repo.update!()
+    short = String.slice(run.public_id, 0, 11)
+
+    # A title with nothing left to show is no title: the run is its short id.
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"label" => ^short, "detail" => "acme/shop"}] = group(answer, "Runs")["items"]
+
+    # A path sent with nothing left to show is marked, never the state's word.
+    run |> Ecto.Changeset.change(target_path: "\u202E\u200B") |> Apiary.Repo.update!()
+    answer = jump(conn, workspace_path(scope, "/jump"), short)
+    assert [%{"detail" => "\uFFFD\uFFFD"}] = group(answer, "Runs")["items"]
+  end
+
+  test "a run with no target is said by its state's word",
        %{conn: conn, scope: scope} do
     completed =
       started_run(scope, %{},
@@ -178,22 +240,16 @@ defmodule ApiaryWeb.JumpControllerTest do
         exit: %{"state" => "cancelled", "reason" => "no_longer_needed"}
       )
 
-    # Stored by an older release as timed out.
-    older = started_run(scope, %{}, about: %{"title" => "Weekly mirror"})
-
-    older |> Ecto.Changeset.change(state: "timed_out") |> Apiary.Repo.update!()
-
     answer = jump(conn, workspace_path(scope, "/jump"), "weekly")
     detail = Map.new(group(answer, "Runs")["items"], &{&1["href"], &1["detail"]})
 
     assert detail == %{
-             workspace_path(scope, "/runs/#{completed.run_id}") => "Completed",
-             workspace_path(scope, "/runs/#{cancelled.run_id}") => "Cancelled",
-             workspace_path(scope, "/runs/#{older.run_id}") => "Cancelled"
+             workspace_path(scope, "/runs/#{completed.public_id}") => "Completed",
+             workspace_path(scope, "/runs/#{cancelled.public_id}") => "Cancelled"
            }
   end
 
-  test "a target whose path another system has is at its address, with its system",
+  test "a target whose path another system has is found with its system, at its page",
        %{conn: conn, scope: scope} do
     started_run(scope, shop())
     started_run(scope, shop("gitlab.example"))
@@ -207,11 +263,11 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     assert hrefs == %{
              {"github.example", "acme/shop"} =>
-               workspace_path(scope, "/targets/github.example/acme/shop"),
+               target_page_path(scope, "github.example", "acme/shop"),
              {"gitlab.example", "acme/shop"} =>
-               workspace_path(scope, "/targets/gitlab.example/acme/shop"),
+               target_page_path(scope, "gitlab.example", "acme/shop"),
              {"github.example", "acme/shopfront"} =>
-               workspace_path(scope, "/targets/acme/shopfront")
+               target_page_path(scope, "github.example", "acme/shopfront")
            }
   end
 

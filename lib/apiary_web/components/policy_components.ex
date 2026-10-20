@@ -311,11 +311,12 @@ defmodule ApiaryWeb.PolicyComponents do
     doc: "the target's: the workspace's default"
 
   attr :workspace, :string, default: nil, doc: "the target's: the workspace's name"
-  attr :target, :string, default: nil, doc: "the target's: its name as it is addressed"
+  attr :target, :string, default: nil, doc: "the target's: its name in its notation"
 
   attr :set, :any,
     default: nil,
-    doc: "the target's: who overrode the mode and when, `%{by:, at:}`, or nil when unknown"
+    doc:
+      "the target's: who overrode the mode, by address, and when, `%{by:, at:}`, or nil when unknown"
 
   slot :effect, doc: "the question's sentence: what the pick does, and in whose runs"
   slot :inner_block, doc: "what follows the question's sentence: what enforce would deny"
@@ -389,12 +390,14 @@ defmodule ApiaryWeb.PolicyComponents do
                 )}
                 <.rich text={floor_own_sentence(@scope, @own, @following)} />
               <% @floor -> %>
-                <.rich text={floor_sentence(@setting, @set, @floor.name)} />
+                <.rich text={floor_sentence(@setting, @set, @floor.name, reader(@scope))} />
               <% @level == :workspace -> %>
                 {workspace_effect(@mode)}
                 <.rich text={own_sentence(@scope, @own, @following)} />
               <% true -> %>
-                <.rich text={whose_sentence(@setting, @workspace_default, @workspace, @set)} />
+                <.rich text={
+                  whose_sentence(@setting, @workspace_default, @workspace, @set, reader(@scope))
+                } />
                 {effect_sentence(@mode, @workspace)}
             <% end %>
             <span :if={!@floor && !@can_edit} id={"#{@id}-owners"}>
@@ -777,51 +780,62 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # Under a required mode: a target's own observe is kept and said to be out of force;
   # its own enforce, or following the workspace, is what holds anyway.
-  defp floor_sentence("observe", %{by: by, at: %DateTime{} = at}, name) when is_binary(by),
-    do:
-      rich_gettext(
-        "Its observe override, set by %{by} %{when}, is not in force: %{name} requires enforce.",
-        by: {:b, by},
-        when: when_words(at),
-        name: name
-      )
+  defp floor_sentence("observe", %{by: by, at: %DateTime{} = at}, name, reader)
+       when is_binary(by),
+       do:
+         rich_gettext(
+           "Its observe override, set by %{by} %{when}, is not in force: %{name} requires enforce.",
+           by: {:b, letter(by, reader)},
+           when: when_words(at),
+           name: name
+         )
 
-  defp floor_sentence("observe", _set, name),
+  defp floor_sentence("observe", _set, name, _reader),
     do: [gettext("Its observe override is not in force: %{name} requires enforce.", name: name)]
 
-  defp floor_sentence(_setting, _set, name),
+  defp floor_sentence(_setting, _set, name, _reader),
     do: [gettext("%{name} requires enforce in every workspace and target.", name: name)]
 
   # Whose the mode is: the workspace's, or the target's own with who set it and when; a
   # whole sentence per case, the workspace's mode a verb of its own.
-  defp whose_sentence("follow", "enforce", workspace, _set),
+  defp whose_sentence("follow", "enforce", workspace, _set, _reader),
     do: [gettext("It follows %{workspace}, which enforces.", workspace: workspace)]
 
-  defp whose_sentence("follow", _observe, workspace, _set),
+  defp whose_sentence("follow", _observe, workspace, _set, _reader),
     do: [gettext("It follows %{workspace}, which observes.", workspace: workspace)]
 
-  defp whose_sentence(_own, default, workspace, %{by: by, at: %DateTime{} = at})
+  defp whose_sentence(_own, default, workspace, %{by: by, at: %DateTime{} = at}, reader)
        when is_binary(by) do
     if default == "enforce",
       do:
         rich_gettext("Overridden by %{by} %{when}; %{workspace} enforces.",
-          by: {:b, by},
+          by: {:b, letter(by, reader)},
           when: when_words(at),
           workspace: workspace
         ),
       else:
         rich_gettext("Overridden by %{by} %{when}; %{workspace} observes.",
-          by: {:b, by},
+          by: {:b, letter(by, reader)},
           when: when_words(at),
           workspace: workspace
         )
   end
 
-  defp whose_sentence(_own, "enforce", workspace, _set),
+  defp whose_sentence(_own, "enforce", workspace, _set, _reader),
     do: [gettext("Overridden; %{workspace} enforces.", workspace: workspace)]
 
-  defp whose_sentence(_own, _observe, workspace, _set),
+  defp whose_sentence(_own, _observe, workspace, _set, _reader),
     do: [gettext("Overridden; %{workspace} observes.", workspace: workspace)]
+
+  # A person in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
+
+  defp reader(%{user: %{email: email}}), do: email
+  defp reader(_scope), do: nil
 
   defp when_words(at) do
     case Format.days_back(at, DateTime.utc_now()) do
@@ -1072,9 +1086,20 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :error, :string, default: nil, doc: "the domain's refusal of the last save"
 
+  attr :error_field, :atom,
+    default: nil,
+    doc: "`:host` draws `error` under the Host field; nil draws it above Save"
+
   attr :host_placeholder, :string,
     default: nil,
     doc: "nil says \"api.example.com\""
+
+  # Whether the form draws its Paths row, on Allow and on Deny: the page passes whether the
+  # instance has `path_rules` (`Apiary.Features.on?/1`), as a component does not ask
+  # `Apiary.Features` (docs/ui.md); a caller that does not pass it keeps the row. Without
+  # the row the form still carries the rule's paths: Edit fills them, and its save writes
+  # them unchanged.
+  attr :paths, :boolean, default: true
 
   slot :description, doc: "one sentence: what the page is for, and where the rule applies"
 
@@ -1185,15 +1210,25 @@ defmodule ApiaryWeb.PolicyComponents do
             <.rich text={ApiaryWeb.PolicyLive.Reading.host_hint()} />
           </p>
           <.rule_field_error :if={@host_error} id={"#{@id}-host-error"} error={@host_error} />
+          <.notice :if={@error && @error_field == :host} kind={:error}>
+            <span id={"#{@id}-write-error"} role="alert">{@error}</span>
+          </.notice>
         </div>
 
-        <div :if={@deny?} class="q-rule-field">
+        <%!-- The Paths row, drawn only with `paths`. Paths, optional, for an allow: left
+             empty, every path is allowed; separate paths with spaces, and end one with `*`
+             for everything below it, such as `/v1/*`. A deny covers every path of the host.
+             Host and Paths are each labelled with their help under them (a deny takes no
+             paths and says so); a path's error has the repair Every path. A target's
+             suggestion's Allow with paths… opens New rule with the host filled and the
+             focus in Paths (`?host=…&focus=paths`; `?action=deny` picks Deny). --%>
+        <div :if={@paths && @deny?} class="q-rule-field">
           <span class="q-rule-label">{gettext("Paths")}</span>
           <p id={"#{@id}-paths-deny"} class="q-rule-hint">
             {gettext("A deny covers every path of the host.")}
           </p>
         </div>
-        <div :if={!@deny?} class="q-rule-field">
+        <div :if={@paths && !@deny?} class="q-rule-field">
           <label for={"#{@id}-paths"} class="q-rule-label">
             {gettext("Paths")}<span class="q-rule-opt">{gettext("Optional")}</span>
           </label>
@@ -1242,7 +1277,7 @@ defmodule ApiaryWeb.PolicyComponents do
             </span>
           </.notice>
         </div>
-        <.notice :if={@error} kind={:error}>
+        <.notice :if={@error && @error_field != :host} kind={:error}>
           <span id={"#{@id}-write-error"} role="alert">{@error}</span>
         </.notice>
 
@@ -1504,7 +1539,7 @@ defmodule ApiaryWeb.PolicyComponents do
             </th>
             <th scope="col">{gettext("Host")}</th>
             <th scope="col">{gettext("Paths")}</th>
-            <th :if={@source} scope="col">{gettext("Source")}</th>
+            <th :if={@source} scope="col" class="q-from-sm">{gettext("Source")}</th>
             <th :if={@seen? or @off?} scope="col" class="q-from-sm">{@use_label}</th>
             <th scope="col" class="q-from-md">{gettext("Added")}</th>
             <th scope="col" class="q-pr-acts"><span class="sr-only">{gettext("Actions")}</span></th>
@@ -1517,7 +1552,7 @@ defmodule ApiaryWeb.PolicyComponents do
               <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-44", else: "w-36")]}></span>
             </td>
             <td><span class="skeleton q-skel w-16"></span></td>
-            <td :if={@source}><span class="skeleton q-skel w-20"></span></td>
+            <td :if={@source} class="q-from-sm"><span class="skeleton q-skel w-20"></span></td>
             <td :if={@seen? or @off?} class="q-from-sm">
               <span class="skeleton q-skel w-16"></span>
             </td>
@@ -1656,7 +1691,7 @@ defmodule ApiaryWeb.PolicyComponents do
         <span :if={@fresh} class="q-newdot">{gettext("New in v%{version}", version: @fresh)}</span>
       </td>
       <td class="q-pr-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
-      <td :if={@source} class="q-pr-src">
+      <td :if={@source} class="q-pr-src q-from-sm">
         <span :if={@tile && !@rule[:above]} class="q-tile" aria-hidden="true">{@tile}</span><span
           :if={@tile && @rule[:above]}
           id={"#{@id}-lock"}
@@ -2059,8 +2094,8 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The changes of a page of history, grouped by day, newest first. A change row is a
   native `<details>`; opening one patches `?change=`, and the page computes its diff.
-  `changes` are maps: `id`, `sentence` (rich), `origin` (a faint second line or nil),
-  `who`, `at`, `version`, `digest`, `navigate` (the version page), `workspace` (a change
+  `changes` are maps: `id`, `sentence` (rich, its subject the author's letter), `origin`
+  (a faint second line or nil), `at`, `version`, `digest`, `navigate` (the version page), `workspace` (a change
   of the workspace shown in a target's history), `patch`, `close`.
   """
   attr :id, :string, required: true
@@ -2107,7 +2142,6 @@ defmodule ApiaryWeb.PolicyComponents do
         phx-click={JS.patch(if @open, do: @change.close, else: @change.patch)}
       >
         <.icon name="hero-chevron-right-micro" class="q-chg-chev size-3" />
-        <.avatar name={@change.who} />
         <span class="q-chg-say">
           <.rich text={@change.sentence} />
           <small :if={@change.origin}>{@change.origin}</small>

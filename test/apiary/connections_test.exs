@@ -6,9 +6,11 @@ defmodule Apiary.ConnectionsTest do
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog
 
+  alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
-  alias Apiary.Connections
-  alias Apiary.Connections.{Connection, ServiceDefinition, Target}
+  alias Apiary.{Connections, Deletion}
+  alias Apiary.Connections.{Connection, ConnectionWorkspace, ServiceDefinition}
+  alias Apiary.Organisations.Workspace
 
   @moduletag needs: :secrets
 
@@ -40,7 +42,7 @@ defmodule Apiary.ConnectionsTest do
       )
 
   describe "a runtime" do
-    test "is set up from the catalogue, for every repository", %{scope: scope} do
+    test "is set up from the catalogue, for every workspace", %{scope: scope} do
       assert {:ok,
               %Connection{kind: "runtime", name: "claude", applies_to: "all", intact: true} =
                 connection} =
@@ -53,22 +55,22 @@ defmodule Apiary.ConnectionsTest do
                {:error, :runtime_unknown}
     end
 
-    test "is one per runtime where two would apply to a repository alike", %{scope: scope} do
-      shop = target!(scope, "acme/shop")
-      site = target!(scope, "acme/site")
+    test "is one per runtime where two would apply to a workspace alike", %{scope: scope} do
+      main = scope.workspace
+      site = workspace!(scope, "Site")
 
       {:ok, first} =
         Connections.create_runtime(scope, %{
           runtime: "claude",
           applies_to: "selected",
-          target_ids: [shop.id]
+          workspace_ids: [main.id]
         })
 
       assert {:ok, _} =
                Connections.create_runtime(scope, %{
                  runtime: "claude",
                  applies_to: "selected",
-                 target_ids: [site.id]
+                 workspace_ids: [site.id]
                })
 
       assert {:error, {:overlap, [_ | _] = ids}} =
@@ -80,19 +82,19 @@ defmodule Apiary.ConnectionsTest do
                Connections.create_runtime(scope, %{
                  runtime: "claude",
                  applies_to: "selected",
-                 target_ids: [shop.id]
+                 workspace_ids: [main.id]
                })
 
       assert id == first.public_id
     end
 
-    test "applies to a repository of its workspace", %{scope: scope} do
-      shop = target!(scope, "acme/shop")
+    test "applies to a workspace of its organisation", %{scope: scope} do
+      site = workspace!(scope, "Site")
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
 
-      assert {:ok, runtime} = Connections.put_target(scope, runtime, shop.id)
-      assert [%Target{target_id: target_id}] = runtime.targets
-      assert target_id == shop.id
+      assert {:ok, runtime} = Connections.put_workspace(scope, runtime, site.id)
+      assert [%ConnectionWorkspace{workspace_id: workspace_id}] = runtime.workspaces
+      assert workspace_id == site.id
     end
   end
 
@@ -173,7 +175,6 @@ defmodule Apiary.ConnectionsTest do
     test "is added with every top-level plain setting, its description's other roles as they are",
          %{scope: scope} do
       tracker = ready_release!(scope, tracker_description(), "github.com/acme/tracker")
-      shop = target!(scope, "acme/shop")
 
       {:ok, connection} =
         Connections.create_integration(scope, tracker.id, %{
@@ -183,11 +184,11 @@ defmodule Apiary.ConnectionsTest do
       assert {:ok, %{roles: ["acme_role", "credential"]}} = Connections.description(connection)
       assert Connection.settings_map(connection) == %{"url" => "https://tracker.example.com"}
 
-      assert {:ok, connection} = Connections.put_target(scope, connection, shop.id)
-      assert [%Target{}] = connection.targets
+      assert {:ok, connection} = Connections.put_workspace(scope, connection, scope.workspace.id)
+      assert [%ConnectionWorkspace{}] = connection.workspaces
     end
 
-    test "is one per name where two would apply to a repository alike", %{
+    test "is one per name where two would apply to a workspace alike", %{
       scope: scope,
       release: release
     } do
@@ -253,6 +254,23 @@ defmodule Apiary.ConnectionsTest do
   end
 
   describe "a service" do
+    test "its name is refused with a control character or a bidirectional control",
+         %{scope: scope} do
+      for cp <- [0x1B, 0x9F, 0x202D, 0x2066, 0x200F] do
+        name = "Sentry#{<<cp::utf8>>}EU"
+
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 Connections.create_service(scope, %{service: "sentry", name: name})
+
+        assert errors_on(changeset) == %{name: ["must not contain control characters"]}
+      end
+
+      name = "Sentry 👩#{<<0x200D::utf8>>}💻"
+
+      assert {:ok, %Connection{name: ^name}} =
+               Connections.create_service(scope, %{service: "sentry", name: name})
+    end
+
     test "names a built-in definition and holds no host or auth of its own", %{scope: scope} do
       assert {:ok,
               %Connection{kind: "service", name: "Sentry", service_builtin: "sentry"} = connection} =
@@ -265,7 +283,7 @@ defmodule Apiary.ConnectionsTest do
                {:error, :service_unknown}
     end
 
-    test "names a definition of the workspace's own, which is written, replaced and kept while in use",
+    test "names a definition of the organisation, which is written, replaced and kept while in use",
          %{scope: scope} do
       assert {:ok, %ServiceDefinition{key: "status-api", title: "Status API"} = definition} =
                Connections.create_service_definition(scope, status_definition())
@@ -326,16 +344,17 @@ defmodule Apiary.ConnectionsTest do
           status_definition(%{"key" => "model-api", "hosts" => ["api.anthropic.com"]})
         )
 
-      assert {:error, {:overlap, [_]}} =
+      # The claude runtime declares no secret, so its connection serves no host: the run's
+      # model key comes from a model provider.
+      assert {:ok, _} =
                Connections.create_service(scope, %{definition_id: definition.public_id})
 
-      shop = target!(scope, "acme/shop")
       ready = ready_release!(scope, github_description())
 
       {:ok, _github} =
         Connections.create_integration(scope, ready.id, %{
           applies_to: "selected",
-          target_ids: [shop.id]
+          workspace_ids: [scope.workspace.id]
         })
 
       {:ok, hub} =
@@ -347,71 +366,181 @@ defmodule Apiary.ConnectionsTest do
       assert {:error, {:overlap, [_]}} =
                Connections.create_service(scope, %{definition_id: hub.public_id})
 
-      site = target!(scope, "acme/site")
+      site = workspace!(scope, "Site")
 
       assert {:ok, _} =
                Connections.create_service(scope, %{
                  definition_id: hub.public_id,
                  applies_to: "selected",
-                 target_ids: [site.id]
+                 workspace_ids: [site.id]
                })
     end
   end
 
   describe "where a connection applies" do
-    test "selected keeps the repositories it names; a repository of another workspace is not found",
+    test "selected keeps the workspaces it lists; another organisation's, or one marked for deletion, is not found",
          %{scope: scope} do
-      shop = target!(scope, "acme/shop")
-
       {:ok, connection} =
         Connections.create_service(scope, %{
           service: "sentry",
           applies_to: "selected",
-          target_ids: [shop.id]
+          workspace_ids: [scope.workspace.id]
         })
 
-      assert [%Target{target_id: id}] = connection.targets
-      assert id == shop.id
+      assert [%ConnectionWorkspace{workspace_id: id}] = connection.workspaces
+      assert id == scope.workspace.id
 
-      other = sign_up_fixture().scope
-      elsewhere = target!(other, "acme/elsewhere")
+      elsewhere = sign_up_fixture().scope.workspace
 
       assert Connections.create_service(scope, %{
                service: "npm",
                applies_to: "selected",
-               target_ids: [elsewhere.id]
-             }) ==
-               {:error, :target_not_found}
+               workspace_ids: [elsewhere.id]
+             }) == {:error, :workspace_not_found}
 
-      assert Connections.put_target(scope, connection, elsewhere.id) ==
-               {:error, :target_not_found}
+      assert Connections.put_workspace(scope, connection, elsewhere.id) ==
+               {:error, :workspace_not_found}
 
-      {:ok, connection} = Connections.remove_target(scope, connection, shop.id)
-      assert connection.targets == []
-      assert Connections.remove_target(scope, connection, shop.id) == {:error, :target_not_found}
+      assert Connections.put_workspace(scope, connection, "not-an-id") ==
+               {:error, :workspace_not_found}
+
+      marked = workspace!(scope, "Marked")
+      {:ok, _} = Deletion.delete_workspace(scope, marked.id, marked.slug)
+
+      assert Connections.put_workspace(scope, connection, marked.id) ==
+               {:error, :workspace_not_found}
+
+      # A workspace it lists already is kept as it is.
+      assert {:ok, %{workspaces: [_]}} =
+               Connections.put_workspace(scope, connection, scope.workspace.id)
+
+      {:ok, connection} = Connections.remove_workspace(scope, connection, scope.workspace.id)
+      assert connection.workspaces == []
+
+      assert Connections.remove_workspace(scope, connection, scope.workspace.id) ==
+               {:error, :workspace_not_found}
     end
 
-    test "a change of applies_to is checked for overlap, and a repository's removal takes its rows",
+    test "all covers every workspace, one made later included; selected only those it lists",
          %{scope: scope} do
-      shop = target!(scope, "acme/shop")
+      site = workspace!(scope, "Site")
+      {:ok, every} = Connections.create_service(scope, %{service: "npm"})
 
+      {:ok, chosen} =
+        Connections.create_service(scope, %{
+          service: "sentry",
+          applies_to: "selected",
+          workspace_ids: [site.id]
+        })
+
+      later = workspace!(scope, "Later")
+
+      rendered = fn workspace ->
+        {:ok, connections} = Connections.list_for_rendering(workspace)
+        Enum.map(connections, & &1.public_id)
+      end
+
+      assert rendered.(scope.workspace) == [every.public_id]
+      assert Enum.sort(rendered.(site)) == Enum.sort([every.public_id, chosen.public_id])
+      assert rendered.(later) == [every.public_id]
+
+      # Every workspace reads the organisation's connections, those that do not apply to it
+      # too.
+      assert {:ok, listed} = Connections.list_connections(workspace_scope(scope.user, later))
+
+      assert Enum.sort(Enum.map(listed, & &1.public_id)) ==
+               Enum.sort([every.public_id, chosen.public_id])
+    end
+
+    test "the overlap check is per workspace where both apply", %{scope: scope} do
+      main = scope.workspace
+      site = workspace!(scope, "Site")
+      docs = workspace!(scope, "Docs")
+
+      {:ok, here} =
+        Connections.create_runtime(scope, %{
+          runtime: "claude",
+          applies_to: "selected",
+          workspace_ids: [main.id, docs.id]
+        })
+
+      {:ok, there} =
+        Connections.create_runtime(scope, %{
+          runtime: "claude",
+          applies_to: "selected",
+          workspace_ids: [site.id]
+        })
+
+      # Where both would apply, docs: refused, and nothing is written.
+      assert Connections.put_workspace(scope, there, docs.id) ==
+               {:error, {:overlap, [here.public_id]}}
+
+      assert Connections.workspace_ids_of(there) == [site.id]
+
+      # Each workspace has one claude; every workspace would meet both.
+      assert Connections.update_connection(scope, there, %{applies_to: "all"}) ==
+               {:error, {:overlap, [here.public_id]}}
+
+      {:ok, here} = Connections.remove_workspace(scope, here, docs.id)
+      assert {:ok, _} = Connections.put_workspace(scope, there, docs.id)
+
+      # A selected one that lists none meets nothing, not even every workspace.
+      {:ok, _} = Connections.remove_workspace(scope, here, main.id)
+      {:ok, there} = Connections.remove_workspace(scope, there, site.id)
+      {:ok, _} = Connections.remove_workspace(scope, there, docs.id)
+      assert {:ok, _} = Connections.create_runtime(scope, %{runtime: "claude"})
+    end
+
+    test "a workspace's purge takes it from every list, and a selected one may list none",
+         %{scope: scope} do
+      site = workspace!(scope, "Site")
+
+      {:ok, only_site} =
+        Connections.create_runtime(scope, %{
+          runtime: "claude",
+          applies_to: "selected",
+          workspace_ids: [site.id]
+        })
+
+      {:ok, both} =
+        Connections.create_service(scope, %{
+          service: "sentry",
+          applies_to: "selected",
+          workspace_ids: [scope.workspace.id, site.id]
+        })
+
+      {:ok, _} = Deletion.delete_workspace(scope, site.id, site.slug)
+
+      Repo.update_all(from(w in Workspace, where: w.id == ^site.id),
+        set: [purge_after: DateTime.add(DateTime.utc_now(), -60, :second)]
+      )
+
+      assert {:ok, :purged} =
+               Deletion.purge_workspace(
+                 Scope.for_instance(scope.organisation, Repo.get!(Workspace, site.id))
+               )
+
+      assert {:ok, %Connection{applies_to: "selected", workspaces: []}} =
+               Connections.get_connection(scope, only_site.public_id)
+
+      assert {:ok, %Connection{workspaces: [%ConnectionWorkspace{workspace_id: id}]}} =
+               Connections.get_connection(scope, both.public_id)
+
+      assert id == scope.workspace.id
+    end
+
+    test "a change of applies_to is checked for overlap", %{scope: scope} do
       {:ok, _all} =
         Connections.create_runtime(scope, %{
           runtime: "claude",
           applies_to: "selected",
-          target_ids: [shop.id]
+          workspace_ids: [scope.workspace.id]
         })
 
       {:ok, other} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
 
       assert {:error, {:overlap, _}} =
-               Connections.update_connection(scope, other, %{applies_to: "all"})
-
-      Repo.delete!(shop)
-      assert Repo.aggregate(Target, :count) == 0
-
-      assert {:ok, %Connection{applies_to: "all"}} =
                Connections.update_connection(scope, other, %{applies_to: "all"})
     end
 
@@ -495,13 +624,22 @@ defmodule Apiary.ConnectionsTest do
   end
 
   describe "who" do
-    test "a member reads and changes nothing", %{scope: scope} do
+    test "a member reads the organisation's and changes nothing", %{scope: scope} do
       {:ok, connection} = Connections.create_service(scope, %{service: "sentry"})
+      {:ok, definition} = Connections.create_service_definition(scope, status_definition())
       %{scope: member} = member_fixture(scope)
 
-      assert {:ok, [_]} = Connections.list_connections(member)
-      assert {:ok, _} = Connections.get_connection(member, connection.public_id)
+      for member <- [member, %{member | workspace: nil}] do
+        assert {:ok, [_]} = Connections.list_connections(member)
+        assert {:ok, _} = Connections.get_connection(member, connection.public_id)
+        assert {:ok, [_]} = Connections.list_service_definitions(member)
+        assert {:ok, _} = Connections.get_service_definition(member, definition.public_id)
+      end
+
       assert Connections.create_runtime(member, %{runtime: "claude"}) == {:error, :forbidden}
+
+      assert Connections.put_workspace(member, connection, scope.workspace.id) ==
+               {:error, :forbidden}
 
       assert Connections.update_connection(member, connection, %{name: "Other"}) ==
                {:error, :forbidden}
@@ -512,9 +650,27 @@ defmodule Apiary.ConnectionsTest do
                {:error, :forbidden}
     end
 
-    test "an admin changes them", %{scope: scope} do
-      %{scope: admin} = member_fixture(scope, :admin)
-      assert {:ok, _} = Connections.create_runtime(admin, %{runtime: "claude"})
+    test "an admin changes them, from the organisation or any of its workspaces", %{
+      scope: scope
+    } do
+      site = workspace!(scope, "Site")
+      %{scope: admin, user: user} = member_fixture(scope, :admin)
+      at_organisation = %{admin | workspace: nil}
+
+      assert {:ok, runtime} =
+               Connections.create_runtime(at_organisation, %{
+                 runtime: "claude",
+                 applies_to: "selected"
+               })
+
+      assert {:ok, _} = Connections.put_workspace(at_organisation, runtime, site.id)
+
+      at_site = workspace_scope(user, site)
+      assert {:ok, _} = Connections.remove_workspace(at_site, runtime, site.id)
+      assert {:ok, _} = Connections.create_service_definition(at_site, status_definition())
+
+      assert [%Entry{workspace_id: nil} | _] = trail(runtime.id)
+      assert Enum.all?(trail(runtime.id), &is_nil(&1.workspace_id))
     end
 
     test "another organisation's connection is out of reach", %{scope: scope} do
@@ -540,23 +696,25 @@ defmodule Apiary.ConnectionsTest do
   describe "the trail" do
     test "every change leaves one entry, and none carries a secret value", %{scope: scope} do
       release = ready_release!(scope, github_description())
-      shop = target!(scope, "acme/shop")
+      site = workspace!(scope, "Site")
 
       {:ok, connection} =
         Connections.create_integration(scope, release.id, %{settings: %{"app_id" => "7"}})
 
-      {:ok, connection} = Connections.put_target(scope, connection, shop.id)
-      {:ok, connection} = Connections.remove_target(scope, connection, shop.id)
+      {:ok, connection} = Connections.put_workspace(scope, connection, site.id)
+      {:ok, connection} = Connections.remove_workspace(scope, connection, site.id)
       {:ok, _} = Connections.delete_connection(scope, connection)
 
       entries = trail(connection.id)
 
       assert Enum.map(entries, & &1.details["change"]) == [
                "created",
-               "target_set",
-               "target_removed",
+               "workspace_added",
+               "workspace_removed",
                "deleted"
              ]
+
+      assert Enum.at(entries, 1).details["workspace_id"] == site.id
 
       assert Enum.all?(entries, &(&1.action == "connection.write"))
 

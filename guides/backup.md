@@ -144,9 +144,9 @@ It keys the integrity codes some rows carry, access keys and enrolment codes amo
 row changed outside the application no longer matches its code.
 <!-- feature: secrets -->
 
-It also encrypts the values of the workspaces' stored secrets, the table `secret_values`,
-each under its workspace's data key, which is kept in `workspace_data_keys` encrypted under
-a key derived from it.
+It also encrypts the stored secret values, the table `secret_values`, each under the data
+key of its workspace or of its organisation, which is kept encrypted under a key derived
+from it.
 <!-- /feature -->
 
 It also encrypts the SMTP password saved in Instance settings › Mail, which a restore keeps
@@ -157,8 +157,8 @@ on it.
 
 <!-- feature: secrets -->
 **Losing `APIARY_ENCRYPTION_SECRET` loses every stored secret value.** There is no other
-copy and no way to recover them: each value has to be entered again, in the workspace's
-secrets, from wherever it came from.
+copy and no way to recover them: each value has to be entered again, in the secret it
+belonged to, from wherever it came from.
 <!-- /feature -->
 
 Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, no access key's integrity

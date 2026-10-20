@@ -118,7 +118,7 @@ defmodule ApiaryWeb.UserSessionController do
     conn
     |> put_flash(
       :error,
-      gettext("This account cannot log in at the moment. Ask the admins of this Qory Apiary.")
+      ApiaryWeb.UserLive.Password.refused_line()
     )
     |> redirect(to: ~p"/users/log-in")
   end

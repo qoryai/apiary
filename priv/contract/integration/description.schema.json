@@ -2,10 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/description.schema.json",
   "title": "Integration description",
-  "description": "What <program> describe prints on its standard output, once, as one JSON document, and exits 0: the integration's name, the domains it works with, the settings it takes and the roles it plays. It takes no settings and reaches no network. A program that fails prints nothing on standard output, one line on standard error describing what failed, and exits non-zero. A reader expands any declared integration into its definitions from this document alone.",
+  "description": "An integration's description: its name, the domains it works with, the settings it takes and the roles it plays, in one of two forms. In the program form, it is what <program> describe prints on its standard output, once, as one JSON document, and exits 0. describe takes no settings and reaches no network. A program that fails prints nothing on standard output, one line on standard error describing what failed, and exits non-zero. In the data form, the description has no program_version: it is a file of data that no program prints, its one role is model_provider, and its settings have no member writeOnly, at any depth. A data description's revision is the integrations commit a reader pins it at, and the reader records that pin with what it made from the description. A reader expands any declared integration into its definitions from this document alone. The document is JSON in UTF-8: no string, a member name included, holds invalid UTF-8 or a \\u escape of a lone surrogate, one of U+D800 to U+DFFF that is not in a valid pair, and no object repeats a member, at any depth. Every value of the document, the settings schema included, is bounded: an array holds at most 1024 entries, an object at most 1024 members, and a string, a member name included, at most 16384 bytes of UTF-8; $defs.bounds states that limit only as 16384 characters, since a schema counts characters. The document holds at most 4096 JSON values in all, the document itself, each array entry and each member's value counting one, a container or not, and member names not counting; it nests arrays and objects at most 64 levels deep, the top-level object being level 1; and its raw bytes are at most 262144 (256 KiB). The control plane refuses a description that breaks any of these rules or goes past any of these limits.",
   "type": "object",
+  "allOf": [{"$ref": "#/$defs/bounds"}],
   "additionalProperties": false,
-  "required": ["version", "name", "title", "program_version", "settings", "roles"],
+  "required": ["version", "name", "title", "settings", "roles"],
+  "if": {"required": ["program_version"]},
+  "else": {"properties": {"roles": {"propertyNames": {"const": "model_provider"}}, "settings": {"$ref": "#/$defs/no_secret"}}},
   "properties": {
     "version": {"description": "The contract's version.", "const": 1},
     "name": {
@@ -20,18 +23,18 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}
+      "items": {"$ref": "definitions.schema.json#/$defs/domain"}
     },
-    "program_version": {"description": "The program's version, as it was built, such as 0.1.0.", "type": "string", "minLength": 1},
+    "program_version": {"description": "The program's version, as it was built, such as 0.1.0. Absent in the data form, which no program prints.", "type": "string", "minLength": 1},
     "settings": {
-      "description": "A JSON Schema, draft 2020-12, of the settings document: an object. A property marked writeOnly is a secret: a form shows it as one, written and never read back, a log leaves it out, and it stays off every command line. A secret is a property of the settings object itself, never a nested one, and a secret <name> has a setting <name>_file, a file that contains it, which is passed on a command line in its place.",
+      "description": "A JSON Schema, draft 2020-12, of the settings document: an object. In the data form, the settings are values an admin enters in the control plane, such as the address of a model gateway the admin runs, and no value of the settings, at any depth and under any keyword, has a member writeOnly: the key is never part of a data description's settings. In the program form, a property marked writeOnly is a secret: a form shows it as one, written and never read back, a log leaves it out, and it stays off every command line. A secret is a property of the settings object itself, never a nested one, and a secret <name> has a setting <name>_file, a file that contains it, which is passed on a command line in its place.",
       "allOf": [
         {"$ref": "https://json-schema.org/draft/2020-12/schema"},
         {"type": "object", "required": ["type"], "properties": {"type": {"const": "object"}}}
       ]
     },
     "roles": {
-      "description": "The roles the program plays, by name. A reader expands the roles it knows and leaves the others as they are.",
+      "description": "The roles the integration plays, by name. In the program form, a reader expands the roles it knows and leaves the others as they are. In the data form, the one role is model_provider, and the schema refuses any other role, known or unknown.",
       "type": "object",
       "minProperties": 1,
       "propertyNames": {"pattern": "^[a-z][a-z_]{0,63}$"},
@@ -44,15 +47,198 @@
           "properties": {
             "argument": {"description": "A regular expression, RE2, the policy's argument must match whole: the definition's argument.", "type": "string", "minLength": 1},
             "hosts": {
-              "description": "The hosts the adapter answers for: the definition's hosts, the most an answer may claim.",
+              "description": "The hosts the adapter answers for: the definition's hosts, the most an answer may claim. Each host has an equal entry in egress_hosts.",
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "items": {"type": "string", "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}
+              "items": {"$ref": "#/$defs/host"}
+            }
+          }
+        },
+        "source": {
+          "description": "The source adapter: the program that reads a source of work, such as a tracker, and speaks the integration contract to the control plane (adapter.schema.json). Every value here other than items is the integration's words, which the control plane shows verbatim as plain text, never as Markdown or HTML. Each value other than items is one line with no control characters, none of the format characters listed for a prose line ($defs.line) and no bidirectional controls, so no control character in a value overrides the order it is shown in, and each value other than items, item_noun and collection_noun names the system itself, with no placeholder. The source role is not one a reader starts: it is not started as <program> <role> --settings <json>, and it does not end by printing one document as those roles do: start runs the program as a server, and the enrol command prints only the settings to add, as program says. A person runs setup.command, then the enrol command under program, then start, and the program runs as a server. The rules for how a role is started and how it ends apply to describe and to the roles a reader starts, not to this one. A prose line is 1 to 300 characters, and a command 1 to 200 characters of printable ASCII.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "program", "setup", "start", "connect", "access", "disconnect"],
+          "properties": {
+            "description": {"description": "The catalogue line: one sentence on what the source adapter does.", "$ref": "#/$defs/line"},
+            "program": {
+              "description": "The source adapter program's name. Every such program takes the enrol command <program> access-key enrol --secret-file FILE <server> <code>, where FILE is the file the program writes the access key's secret to; the control plane fills in <server>, its origin, and <code>, the enrolment code, when it shows the command. The enrol command creates the secret file and refuses a FILE that already exists; nothing is overwritten. On success it writes the access key's secret to FILE and prints, on standard output, the settings to add to the program's settings file. The printed settings never include the access key's secret, which goes only to FILE. A program already running uses a new access key only after it is restarted.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "setup": {
+              "description": "The one step that prepares the source side.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["command", "help"],
+              "properties": {
+                "command": {"description": "The one command a person runs to prepare the source side, shown as a command.", "$ref": "#/$defs/command"},
+                "help": {"description": "One line on what the command asks and what it does.", "$ref": "#/$defs/line"}
+              }
+            },
+            "start": {"description": "The command that runs the program after enrolment, shown as a command.", "$ref": "#/$defs/command"},
+            "connect": {"description": "The line the control plane shows before its button that sends the person to the source, saying what happens at the source. The button's label is the control plane's text, not this line.", "$ref": "#/$defs/line"},
+            "access": {"description": "How to change, at the source, which collections the adapter reaches.", "$ref": "#/$defs/line"},
+            "disconnect": {"description": "How to remove the grant at the source.", "$ref": "#/$defs/line"},
+            "item_noun": {
+              "description": "The integration's words for one item and for many, shown verbatim as plain text where the control plane names this source's items; absent, the control plane says ticket and tickets. Each is 1 to 32 characters: lower-case letters, a to z, in words joined by single spaces or hyphens, starting and ending with a letter, and never work item or work items, with a space or a hyphen.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["one", "other"],
+              "properties": {
+                "one": {"description": "The word for one item, such as issue.", "$ref": "#/$defs/noun"},
+                "other": {"description": "The word for more than one item, such as issues.", "$ref": "#/$defs/noun"}
+              }
+            },
+            "collection_noun": {
+              "description": "The integration's words for one collection and for many, shown verbatim as plain text where the control plane names this source's collections; absent, the control plane uses its word for a collection. Each is 1 to 32 characters: lower-case letters, a to z, in words joined by single spaces or hyphens, starting and ending with a letter, and never work item or work items, with a space or a hyphen.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["one", "other"],
+              "properties": {
+                "one": {"description": "The word for one collection, such as project.", "$ref": "#/$defs/noun"},
+                "other": {"description": "The word for more than one collection, such as projects.", "$ref": "#/$defs/noun"}
+              }
+            },
+            "items": {
+              "description": "false: the source reports collections and no items. The adapter sends no POST /v1/source-items and no POST /v1/source-items/comments; the control plane never links the source's collections, so the change feed carries no linked entry for them (changes.schema.json), and a POST /v1/source-items for one of them, or a POST /v1/source-items/comments for an item of one of them, is refused, 409 collection_not_linked (refusal.schema.json). Absent, the source reports items.",
+              "const": false
+            }
+          },
+          "if": {"required": ["items"]},
+          "then": {"not": {"required": ["item_noun"]}}
+        },
+        "model_provider": {
+          "description": "A provider of models behind one or more APIs, in either form: the APIs it serves, each with its format, endpoint and auth, and the models a new provider of this kind starts with. A reader starts no program for this role. For each runtime a run uses, the control plane picks the API whose format that runtime speaks, and sends Forager that API's format, endpoint, auth and key_prefixes beside the key. When a credential role of an integration covers the host of an API's endpoint, the program of that credential role sets the key, for a key that must be minted; otherwise the API's auth applies. The key itself is never part of the description or of its settings.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["apis", "models"],
+          "properties": {
+            "apis": {
+              "description": "The APIs the provider serves: 1 to 4. No two entries have the same format, since the control plane picks the API by its format.",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {"$ref": "#/$defs/api"}
+            },
+            "models": {
+              "description": "The models a new provider of this kind starts with: at most 256, and possibly none, as for a provider whose models an admin enters by hand. The first entry is the default model of a new provider. No two entries have the same id.",
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "description": "One model.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "title"],
+                "properties": {
+                  "id": {"description": "The model's exact id, as the provider's API takes it, such as acme-large-2 or acme/small-1.", "$ref": "definitions.schema.json#/$defs/model_id"},
+                  "title": {"description": "A human name for the model, for a form or a listing.", "$ref": "#/$defs/line"},
+                  "effort": {
+                    "description": "The effort values the model accepts, exactly as the provider's API takes them, such as low, medium and high: 1 to 16 values, none twice. Absent when the model takes no effort value.",
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "uniqueItems": true,
+                    "items": {"$ref": "definitions.schema.json#/$defs/effort_value"}
+                  }
+                }
+              }
             }
           }
         }
       }
+    },
+    "egress_hosts": {
+      "description": "Every host that runs of this integration need to reach, each listed exactly. Each entry is a host as $defs/host defines it, or an object for a host from a setting. The control plane allows these hosts for the runs that use this integration, and no deny rule applies to these hosts; a *. deny stays in force for the other hosts it covers. Each host in the credential role's hosts, and the host of each model_provider API endpoint that is a URL, has an equal entry. A model_provider API endpoint that is a setting has an entry with the same setting. A host entry is never a single label, a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one, a loopback, link-local or 0.0.0.0/8 IPv4 address, or a number in any form other than a canonical IPv4 address; these rules do not apply to a host from a setting. Absent means no host.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "if": {"type": "string"},
+        "then": {"$ref": "#/$defs/egress_host"},
+        "else": {
+          "description": "A host from a setting. setting is the name of a property of settings whose type is string and that is not marked writeOnly. The setting's value follows endpoint_url (definitions.schema.json), and the host is that URL's host. Only whoever manages the integration may set this setting, since its value decides which host the runs reach.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["setting"],
+          "properties": {"setting": {"description": "The name of a property of settings.", "type": "string", "minLength": 1}}
+        }
+      }
     }
+  },
+  "$defs": {
+    "api": {
+      "description": "One API of a model provider: its format, its endpoint, how the gateway sets the key on a request, and the prefixes a key must start with.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "endpoint", "auth"],
+      "properties": {
+        "format": {
+          "description": "The API format the endpoint serves, one of the formats Forager's api-format.schema.json lists.",
+          "$ref": "https://qory.dev/contracts/forager/v1/api-format.schema.json"
+        },
+        "endpoint": {
+          "description": "Where the API is: a URL as $defs/endpoint defines it, or an object with the name of the setting whose value is that URL.",
+          "if": {"type": "string"},
+          "then": {"$ref": "#/$defs/endpoint"},
+          "else": {
+            "description": "The setting whose value is the endpoint, which an admin enters in the control plane, such as the address of a model gateway the admin runs. setting is the name of a property of settings whose type is string and that is not marked writeOnly. The setting's value follows endpoint_url (definitions.schema.json). Only whoever manages the provider may set this setting, since its value decides where the gateway sends the key.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["setting"],
+            "properties": {"setting": {"description": "The name of a property of settings.", "type": "string", "minLength": 1}}
+          }
+        },
+        "auth": {
+          "description": "How the gateway sets the key on a request, as Forager's auth.schema.json defines it. bearer sets Authorization: Bearer and the value. header sets the header in header to the value. basic sets Authorization: Basic with the username in username and the value as the password. oauth, only with bearer, marks the value as an OAuth access token, such as the subscription token of a Claude subscription: the gateway sets it as any bearer value, and the session reads oauth to choose the runtime's variable for the key.",
+          "$ref": "https://qory.dev/contracts/forager/v1/auth.schema.json"
+        },
+        "key_prefixes": {
+          "description": "The prefixes a key must start with, such as acme-key-: 1 to 4 literal prefixes, each 1 to 32 characters of printable ASCII without a space, none twice, as in Forager's run-configuration.schema.json. The gateway refuses a key that starts with none of them. Absent, any key is taken.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[!-~]{1,32}$"}
+        }
+      }
+    },
+    "endpoint": {
+      "description": "A model API's base URL, the grammar of Forager's run-configuration.schema.json: https://, a host, an optional port and path, and no user information, query or fragment, at most 2048 characters. The host is a host as $defs/host defines it, and a host whose last label is a number, all digits or 0x followed by hex digits or none, is an IPv4 address of four decimal parts from 0 to 255, each with no leading zero. A port, when one is written, is a number from 1 to 65535. This schema does not check the host and port rules; conformance checks them.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[^/?#@\\s]+(/[^?#\\s]*)?$"
+    },
+    "no_secret": {"description": "A value of a data description's settings: it has no member writeOnly, and no value inside it has one, at any depth.", "properties": {"writeOnly": false}, "additionalProperties": {"$ref": "#/$defs/no_secret"}, "items": {"$ref": "#/$defs/no_secret"}},
+    "host": {"description": "A host: lower-case labels joined by dots, each label 1 to 63 lower-case letters, digits and hyphens that starts and ends with a letter or a digit, with no *. in front.", "type": "string", "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"},
+    "egress_host": {
+      "description": "A host as $defs/host defines it that runs may reach with no admin: not a single label; not a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one; not an IPv4 address in 127.0.0.0/8, 169.254.0.0/16 or 0.0.0.0/8; and not a number in any form other than a canonical IPv4 address. A host is a number when its last label is all digits, or 0x followed by hex digits or none; a canonical IPv4 address is four decimal parts from 0 to 255, each with no leading zero.",
+      "allOf": [
+        {"$ref": "#/$defs/host"},
+        {"not": {"anyOf": [
+          {"pattern": "^[^.]*$"},
+          {"pattern": "^(.+\\.)?localhost[46]?(\\.localdomain[46]?)?$"},
+          {"pattern": "^127(\\.[0-9]{1,3}){3}$"},
+          {"pattern": "^169\\.254(\\.[0-9]{1,3}){2}$"},
+          {"pattern": "^0(\\.[0-9]{1,3}){3}$"},
+          {"allOf": [
+            {"pattern": "^(.*\\.)?([0-9]+|0x[0-9a-f]*)$"},
+            {"not": {"pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$"}}
+          ]}
+        ]}}
+      ]
+    },
+    "bounds": {
+      "description": "The limits of the schema's description that a schema can express, applied to every value of the document, the settings schema included.",
+      "maxItems": 1024,
+      "maxProperties": 1024,
+      "maxLength": 16384,
+      "propertyNames": {"maxLength": 16384},
+      "items": {"$ref": "#/$defs/bounds"},
+      "additionalProperties": {"$ref": "#/$defs/bounds"}
+    },
+    "line": {"description": "A prose line of the integration's words: 1 to 300 characters, one line, with no control characters, no bidirectional controls (the marks U+061C, U+200E and U+200F, the embeddings and overrides U+202A to U+202E and the isolates U+2066 to U+2069, so no control character in a value overrides the order it is shown in), and none of these format characters, which are usually not shown: U+00AD, U+180E, U+200B, U+2060 to U+2064, U+FEFF and U+FFF9 to U+FFFB.", "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]+$"},
+    "command": {"description": "A command a person runs: 1 to 200 characters of printable ASCII.", "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[ -~]+$"},
+    "noun": {"description": "One of the integration's words for the source's items or for its collections: 1 to 32 characters, lower-case letters, a to z, in words joined by single spaces or hyphens, starting and ending with a letter, and never work item or work items, with a space or a hyphen.", "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[a-z]+(?:[ -][a-z]+)*$", "not": {"pattern": "^work[ -]items?$"}}
   }
 }

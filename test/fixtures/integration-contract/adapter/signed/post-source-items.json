@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "target": "/v1/source-items",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Qory-Access-Key-Id": "ak_f1xt0re000000000",
+    "X-Qory-Instance-Id": "i_gYKDhIWGh4iJiouMjY6PkA",
+    "X-Qory-Contract-Version": "1",
+    "X-Qory-Signature-Ed25519": "nQ9mpASCN-PaSDBQj-0pDolxzbk6srt0w4fhFhnPhrukBMVZn18ZVnGbhgeKQWT5qw11kbcUlFPdj0gA2KfhBw"
+  },
+  "body": "{\"version\":1,\"time\":\"2026-10-15T12:00:00Z\",\"collection_ref\":\"R_1001\",\"items\":[{\"ref\":\"I_2001\",\"url\":\"https://github.com/acme/shop/issues/42\",\"type\":\"issue\",\"title\":\"Prices show without tax\",\"body\":\"The basket shows prices **without** tax.\",\"body_format\":\"markdown\",\"filed_by\":{\"name\":\"octo-acme\",\"kind\":\"person\"},\"labels\":[\"bug\",\"good first issue\"],\"state\":\"open\",\"state_reason\":null,\"comment_count\":2,\"created_at\":\"2026-10-14T16:00:00Z\",\"updated_at\":\"2026-10-15T11:58:00Z\",\"target\":{\"system\":\"github.com\",\"path\":\"acme/shop\"}}]}",
+  "note": "The items event of source-items/code-host-event.json, compact, signed under the access key of keys.json: the request string is qory-request-ed25519-v1, the access key id, the instance id, POST, the target and the raw body, joined by line feeds with none after the last. Its time is 2026-10-15T12:00:00Z; a control plane whose clock is set to that second accepts it."
+}

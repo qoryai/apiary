@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/dispatched.schema.json",
+  "title": "Dispatched",
+  "description": "The body of the signed POST /v1/dispatches/<dispatch_id>/dispatched, application/json: the starter started the job for the dispatch. The control plane records external when the body carries it, and refuses a handover before dispatched, 409 not_dispatched, handover.schema.json. A dispatch_id that is unknown, or of another node pool than the key's, is refused 403 forbidden, with the same signed body either way, so nobody learns whether an id exists; the control plane decides this before any 409 or 410. The signature with the pool's access key and that check authorise the request, not the id. It is refused after the dispatch ended, 410 gone, as refusal.schema.json describes; otherwise when the dispatch is stale, its lease lapsed before its handover, 409 lease_expired, as handover.schema.json describes, and the starter then stops the job it started for that dispatch. On success the control plane answers a signed 204 with no body. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the starter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "external": {
+      "description": "The job at the provider that runs it, when the starter knows it. Absent otherwise.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "ref",
+        "url"
+      ],
+      "properties": {
+        "type": {
+          "description": "The system that runs the job.",
+          "$ref": "definitions.schema.json#/$defs/job_system"
+        },
+        "ref": {
+          "description": "The job's ref in the system `type` names.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/ref"
+        },
+        "url": {
+          "description": "The job's page at the provider.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/url"
+        }
+      }
+    }
+  }
+}

@@ -135,6 +135,25 @@ defmodule ApiaryWeb.Routes do
           content_type: "application/json"
       end
 
+      # A request of an adapter, signed with the adapter's access key, as the integration
+      # contract has it (`ApiaryWeb.Contract.AdapterRequest`), which spends the key's bucket
+      # for adapters. Hidden from the documentation, as its feature is.
+      @doc false
+      pipeline :contract_adapter do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.AdapterRequest
+      end
+
+      # A request of a node pool's starter, signed with the pool's access key, as the
+      # provisioner contract has it: verified as an adapter's is
+      # (`ApiaryWeb.Contract.AdapterRequest`, `kind: :pool`), and spending the key's bucket
+      # for node pools. Hidden from the documentation, as its feature is.
+      @doc false
+      pipeline :contract_pool do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.AdapterRequest, kind: :pool
+      end
+
       # First for the organisation's and the workspace's pages: a segment in the place of
       # a slug that can never be one answers as a path the router does not know.
       pipeline :path_scope do
@@ -195,6 +214,52 @@ defmodule ApiaryWeb.Routes do
         get "/runs/:run_id", RegistrationController, :show
         post "/runs/:run_id/attach", AttachController, :create
         post "/runs/:run_id/outcome", OutcomeController, :create
+        # A gateway's secrets request, with the `factory` and `secrets` features, which
+        # the documentation leaves out.
+        post "/secrets", SecretsController, :create
+      end
+
+      # An adapter's read of its change feed, after a cursor.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        get "/work-items/changes", ChangesController, :index
+      end
+
+      # An adapter's requests: its declaration as it starts.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/adapter", AdapterController, :create
+      end
+
+      # A node pool's starter's requests, with the `factory` feature: its claim of a run
+      # waiting for the pool, and, for the dispatch that claim made, that the job started,
+      # the job's handover, the run given back and the image a prebuild built.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_pool
+
+        post "/pools/claim", PoolClaimController, :create
+        post "/dispatches/:dispatch_id/dispatched", DispatchController, :dispatched
+        post "/dispatches/:dispatch_id/handover", HandoverController, :create
+        post "/dispatches/:dispatch_id/release", DispatchController, :release
+        post "/dispatches/:dispatch_id/prebuilt", DispatchController, :prebuilt
+      end
+
+      # An adapter's collections: a part of its listing, and one it no longer reaches.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/source-collections", SourceCollectionsController, :create
+        post "/sources/disconnect", SourcesDisconnectController, :create
+      end
+
+      # An adapter's items of a collection, and its comments of an item.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/source-items", SourceItemsController, :create
+        post "/source-items/comments", SourceItemCommentsController, :create
       end
 
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
@@ -274,6 +339,11 @@ defmodule ApiaryWeb.Routes do
           pipe_through [:browser, :require_authenticated_user]
 
           get "/invitations/:token/continue", InvitationController, :continue
+          # A link that names an organisation's connection to an integration by its
+          # public id (`ac_…`), with the `factory` feature, as an adapter gives one: to the
+          # integration's page in the connection's organisation, after the return the
+          # adapter hands back, when the link carries one.
+          get "/integrations/:connection_id", AdapterRedirectController, :show
         end
 
         scope "/", ApiaryWeb do
@@ -345,11 +415,12 @@ defmodule ApiaryWeb.Routes do
   stays the one they came from and the Instance's sections open beside it
   (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks access itself. The
   block's routes go into the `live_session :instance`, after the core's. The core's pages
-  here are Instance settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
+  here are Instance settings › General (`ApiaryWeb.InstanceLive.General`), Instance
+  settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
   (`ApiaryWeb.InstanceMailController`), and Instance settings › Configuration
-  (`ApiaryWeb.InstanceLive.Configuration`), for the instance's admins; `/instance` itself
-  sends on to the first section the person may open, and is not found for whoever may
-  open none (`ApiaryWeb.InstanceController`).
+  (`ApiaryWeb.InstanceLive.Configuration`), the instance's settings, some saved there, for
+  the instance's admins; `/instance` itself sends on to the first section the person may
+  open, and is not found for whoever may open none (`ApiaryWeb.InstanceController`).
   """
   defmacro instance_routes(opts \\ [], block \\ []) do
     routes =
@@ -361,16 +432,58 @@ defmodule ApiaryWeb.Routes do
           get "/instance", InstanceController, :show
           # Instance › Mail's test link, which turns mail on for the admin who saved it.
           get "/instance/mail/confirm/:token", InstanceMailController, :turn_on
+          # Set up, with the `factory` feature: an instance admin starts an adapter's
+          # set-up, by its public id (`na_…`), and is sent on to its `setup_url`. A POST,
+          # with the session's CSRF token.
+          post "/instance/adapters/:adapter_id/setup", AdapterSetupController, :create
 
           live_session :instance,
             on_mount: [
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
+            # Instance › General: the product's name on the instance.
+            live "/instance/general", InstanceLive.General, :show
             # Instance › Mail: the mail server.
             live "/instance/mail", InstanceLive.Mail, :show
-            # Instance › Configuration: what whoever runs the server set, read only.
+            # Instance › Configuration: the instance's settings, some saved there.
             live "/instance/configuration", InstanceLive.Configuration, :show
+
+            # Instance settings › Adapters, with the `factory` feature, for the instance's
+            # admins: the instance's adapters, with the catalogue on the list; Add for one
+            # entry of the catalogue, a separate page, served by the Access key tab's module,
+            # which holds the first code Add makes and shows its command; and an adapter's
+            # tabs, Overview, Access key (`…/keys`) and Settings, and their acts, by the
+            # adapter's public id (`na_…`). Its Access key tab has the acts of a node's Access
+            # key tab that an adapter's key takes: no key made in the browser. The fixed path
+            # goes first, so that `:adapter_id` never takes it.
+            live "/instance/adapters", InstanceLive.Adapters, :index
+            live "/instance/adapters/new/:entry", AdapterLive.AccessKey, :new
+            live "/instance/adapters/:adapter_id", InstanceLive.Adapter, :overview
+            live "/instance/adapters/:adapter_id/keys", AdapterLive.AccessKey, :index
+
+            live "/instance/adapters/:adapter_id/keys/new-code",
+                 AdapterLive.AccessKey,
+                 :new_code
+
+            live "/instance/adapters/:adapter_id/keys/:key_id/revoke",
+                 AdapterLive.AccessKey,
+                 :revoke
+
+            live "/instance/adapters/:adapter_id/keys/codes/:code_id/revoke",
+                 AdapterLive.AccessKey,
+                 :revoke_code
+
+            live "/instance/adapters/:adapter_id/settings", InstanceLive.Adapter, :settings
+
+            live "/instance/adapters/:adapter_id/settings/rename",
+                 InstanceLive.Adapter,
+                 :rename
+
+            live "/instance/adapters/:adapter_id/settings/remove",
+                 InstanceLive.Adapter,
+                 :remove
+
             unquote(@block)
           end
         end
@@ -415,8 +528,7 @@ defmodule ApiaryWeb.Routes do
 
         # The paths of pages that moved, under the settings, out of them or to a new name,
         # sent on to where they are now, so a link someone kept still lands. Before the
-        # pages, whose `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
-        # too; its page's glob sends that one on (`TargetLive.Show`).
+        # pages, whose `/:org/:workspace` would take `/:org/members`.
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser]
 
@@ -427,6 +539,17 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/settings/retention", MovedController, :show
           get "/:org/:workspace/connections", MovedController, :show
           get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
+        end
+
+        # Install, with the `factory` feature: an owner or an admin connects the
+        # organisation to an integration, by its adapter's public id (`na_…`), and is sent
+        # on to the adapter's connect address. A POST, with the session's CSRF token.
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
+
+          post "/:org/settings/integrations/:adapter_id/install",
+               AdapterInstallController,
+               :create
         end
 
         scope "/", ApiaryWeb do
@@ -491,6 +614,19 @@ defmodule ApiaryWeb.Routes do
               live "/gateways/:node_id/access-key/codes/:code_id/revoke",
                    NodeLive.AccessKey,
                    :revoke_code
+
+              # Organisation settings › Integrations, with the `factory` feature: the list of
+              # the instance's adapters as the organisation's integrations, with Add an
+              # integration a separate page, where an owner or an admin connects the
+              # organisation to one (Install), and an integration's page in the
+              # organisation, its Repositories section, the collections its connection
+              # reaches, assigned to workspaces from a menu on the selection, by its
+              # adapter's public id (`na_…`). Making, renaming, removing an adapter and its
+              # keys are the instance admins', at `/instance/adapters`. The fixed path goes
+              # first, so that `:adapter_id` never takes it.
+              live "/settings/integrations", AdapterLive.Index, :index
+              live "/settings/integrations/new", AdapterLive.Index, :new
+              live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
             end
 
             unquote(@block)
@@ -501,27 +637,52 @@ defmodule ApiaryWeb.Routes do
               # access). Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
               live "/network", ConnectionLive.Index, :index
-              # The targets the workspace's runs changed, and one target's page: its
-              # address is the glob, the target's path alone, its system before the path
-              # only where two targets of the workspace share the path (question 9, answer
-              # A; `ApiaryWeb.TargetComponents.target_path/5`). Its tabs follow a `-`
-              # segment (`…/-/policy`), and a tab's own paths follow the tab
-              # (`…/-/policy/history`). An old address with the system of an unshared path
-              # is sent on to the path alone; the old Runs and Network access tabs to the
-              # lists narrowed to the target (`ApiaryWeb.TargetLive.Show`).
+              # The work, with the `factory` feature: the work items, one by its number in
+              # the workspace, with its ticket, its Explore and the proposal's edit, and its
+              # thread; and the Backlog, the tickets it takes in from, and one ticket by its
+              # public id (`tk_…`).
+              live "/work", WorkItemLive.Index, :index
+              live "/work/:number", WorkItemLive.Show, :ticket
+              live "/work/:number/explore", WorkItemLive.Show, :explore
+              live "/work/:number/explore/edit", WorkItemLive.Show, :edit
+              live "/work/:number/thread", WorkItemLive.Show, :thread
+              live "/backlog", BacklogLive.Index, :index
+              live "/backlog/:item_id", BacklogLive.Ticket, :show
+              # The targets the workspace's runs changed, and one target's page. `:target_id`
+              # is the target's public id (`tg_…`), never its system or its path
+              # (`ApiaryWeb.TargetComponents.target_path/3`). Its Overview is the bare
+              # address; the Policy tab and that tab's paths follow it
+              # (`…/policy/history`, `…/policy/rules/new`).
               live "/targets", TargetLive.Index, :index
-              live "/targets/*glob", TargetLive.Show, :show
+              live "/targets/:target_id", TargetLive.Show, :overview
+              live "/targets/:target_id/policy", TargetLive.Show, :rules
+              live "/targets/:target_id/policy/history", TargetLive.Show, :history
+              live "/targets/:target_id/policy/document", TargetLive.Show, :document
+              live "/targets/:target_id/policy/versions/:n", TargetLive.Show, :version
+              live "/targets/:target_id/policy/versions/:n/export", TargetLive.Show, :export
+              live "/targets/:target_id/policy/rules/new", TargetLive.Show, :new_rule
+              live "/targets/:target_id/policy/rules/:id/edit", TargetLive.Show, :edit_rule
+              # What a target's runs also read, a form page, with the `factory` feature.
+              live "/targets/:target_id/also-read", TargetLive.FurtherRepositories, :edit
               # The workspace's nodes, node pools and gateways: the list, with New node, New
               # node pool and New gateway each a page of its own, and a node's page, Overview, Access key and
               # Settings, its deletion confirmed in place in Settings, and clearing an
               # instance in place in Overview. `:node_id` is the node's public id; an
-              # instance is named by its instance id. The sidebar's Nodes leads here.
+              # instance is named by the id of its row in `node_instances`, or, with no row,
+              # by an open run's public id (`rn_…`): the page links its newest open run, and
+              # the address accepts any open run of that instance. Never by the node's
+              # instance id. The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
               live "/nodes/new-pool", NodeLive.Index, :new_pool
               live "/nodes/new-gateway", NodeLive.Index, :new_gateway
               live "/nodes/:node_id", NodeLive.Show, :overview
               live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
+
+              live "/nodes/:node_id/runs/:run_id/clear-instance",
+                   NodeLive.Show,
+                   :clear_instance
+
               live "/nodes/:node_id/settings", NodeLive.Show, :settings
               live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
               # A node's Access key tab: its keys and its outstanding enrolment codes;
@@ -547,9 +708,9 @@ defmodule ApiaryWeb.Routes do
                    :revoke_code
 
               # One run: three tabs of one LiveView, so a tab is a patch. `:run_id` is the
-              # run's subject, the id Forager prints, not the row's id. `/details` lands old
-              # links to the Details tab: the Timeline with Details open, the address
-              # rewritten to the Timeline's.
+              # run's `public_id`, `rn_…`, neither the node's run id nor the row's id.
+              # `/details` lands old links to the Details tab: the Timeline with Details
+              # open, the address rewritten to the Timeline's.
               live "/runs/:run_id", RunLive.Show, :timeline
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
               live "/runs/:run_id/network", RunLive.Show, :connections
@@ -557,7 +718,7 @@ defmodule ApiaryWeb.Routes do
               # The security policy: the workspace's baseline; a target's view of it is
               # the Policy tab of the target's page. Tabs, filters, the opened change, the
               # compared version and the export page are in the URL. A rule is added and
-              # edited on a page of its own (a target's: `…/-/policy/rules/new`).
+              # edited on a page of its own (a target's: `…/policy/rules/new`).
               live "/policy", PolicyLive.Show, :rules
               live "/policy/rules/new", PolicyLive.Show, :new_rule
               live "/policy/rules/:id/edit", PolicyLive.Show, :edit_rule

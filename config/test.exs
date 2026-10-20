@@ -43,6 +43,14 @@ config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 config :apiary, Apiary.Mail, smtp_adapter: Swoosh.Adapters.Test
 config :apiary, Apiary.Mail.Cache, enabled: false
 
+# Nor of the product's name an instance admin sets (`Apiary.ProductName`): each test reads
+# it inside the test's database sandbox.
+config :apiary, Apiary.ProductName.Cache, enabled: false
+
+# Nor of the settings an instance admin saves in Instance settings › Configuration
+# (`Apiary.InstanceConfig`): each test reads them inside the test's database sandbox.
+config :apiary, Apiary.InstanceConfig.Cache, enabled: false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
@@ -76,6 +84,10 @@ config :apiary, Apiary.KeyDerivation,
 # Forager's contract, which the instance refuses. Not a secret.
 config :apiary, Apiary.SigningKey, seed: "qory apiary test signing seed 01"
 
+# The entry point of the sealed answer's known-answer tests, which seals with the
+# contract's fixture keys (`Apiary.Secrets.Sealing`): compiled in the test build alone.
+config :apiary, Apiary.Secrets.Sealing, known_answers: true
+
 # Every enrolment test posts from the same address; the limits' own tests set their own.
 config :apiary, ApiaryWeb.Contract.EnrolmentController,
   rate: 1000,
@@ -107,6 +119,10 @@ config :apiary, Apiary.KeyCheck, enabled: false
 # of Apiary.Setup call it themselves.
 config :apiary, Apiary.Setup, enabled: false
 
+# The installer of the adapters installed with Qory Apiary would write outside any test's
+# sandbox; the tests of Apiary.Adapters.Installer call its pass themselves.
+config :apiary, Apiary.Adapters.Installer, enabled: false
+
 # Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
 # queue, peer or plugin starts.
 config :apiary, Oban, testing: :manual
@@ -117,3 +133,11 @@ config :apiary, Oban, testing: :manual
 config :apiary, Apiary.Integrations.Fetch,
   resolver: Apiary.FetchStub,
   req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]
+
+# An adapter's read of its change feed answers at once when the feed holds nothing new;
+# the test of the hold sets the hold it needs.
+config :apiary, ApiaryWeb.Contract.ChangesController, hold: 0
+
+# The random bytes of a public id come from a queue a test can fill, to make an id collide
+# (`Apiary.PublicIdSource`, in test/support).
+config :apiary, Apiary.PublicId, random: Apiary.PublicIdSource

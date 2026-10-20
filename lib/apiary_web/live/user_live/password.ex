@@ -31,9 +31,16 @@ defmodule ApiaryWeb.UserLive.Password do
       <Layouts.auth_heading>
         {gettext("That password link has expired")}
         <:subtitle>
-          {gettext(
-            "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one."
-          )}
+          {if name = Apiary.ProductName.get(),
+            do:
+              gettext(
+                "Password links work once and for a short time. Ask an admin of %{name} for a new one.",
+                name: name
+              ),
+            else:
+              gettext(
+                "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one."
+              )}
         </:subtitle>
       </Layouts.auth_heading>
       <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
@@ -162,8 +169,26 @@ defmodule ApiaryWeb.UserLive.Password do
     |> assign(user: nil, form: nil, page_title: gettext("Log in"))
     |> put_flash(
       :error,
-      gettext("This account cannot log in at the moment. Ask the admins of this Qory Apiary.")
+      refused_line()
     )
     |> redirect(to: ~p"/users/log-in")
+  end
+
+  @doc """
+  refused_line/0 is what the log-in page tells an account the edition refuses, here and
+  in `ApiaryWeb.UserSessionController`: it names the instance by the name an instance
+  admin set, and says "this Qory Apiary" where none is set.
+  """
+  @spec refused_line() :: String.t()
+  def refused_line do
+    case Apiary.ProductName.get() do
+      nil ->
+        gettext("This account cannot log in at the moment. Ask the admins of this Qory Apiary.")
+
+      name ->
+        gettext("This account cannot log in at the moment. Ask the admins of %{name}.",
+          name: name
+        )
+    end
   end
 end

@@ -6,7 +6,7 @@ defmodule Apiary.Features do
   |---|---|---|
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
-  | `secrets` | the stored secrets, the variables and the integrations of a workspace; opt-in | `security` |
+  | `secrets` | stored secrets and variables, and the organisation's integrations; opt-in | `security` |
 
   An edition adds more features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, whether it is opt-in, and its parts.
@@ -68,11 +68,24 @@ defmodule Apiary.Features do
   alias Apiary.Accounts.Scope
 
   # The core's features, in the order the instance lists them, each with the features it
-  # needs, whether it is built, and `default: false` for one that is opt-in.
+  # needs, whether it is built, `default: false` for one that is opt-in, and `docs: false`
+  # for one the documentation does not differ by.
+  #
+  # `path_rules` is the Paths field of a policy rule's form, opt-in: an instance without it
+  # draws the form without its Paths row (`ApiaryWeb.PolicyComponents.rule_form/1`,
+  # `paths`), and the rules, their paths and everything else about paths stay as they are.
+  # Every instance is served the same documentation with it on or off (`docs: false`): the
+  # module reference is served where it is off, so the table above has no row for it and
+  # no doc names it.
+  #
+  # `factory` is the work items of a workspace and what they are taken in from, opt-in
+  # until it is announced, and served the same documentation on or off (`docs: false`).
   @core [
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
-    secrets: [needs: [:security], built: true, default: false]
+    secrets: [needs: [:security], built: true, default: false],
+    path_rules: [needs: [:security], built: true, default: false, docs: false],
+    factory: [needs: [:observability, :security], built: true, default: false, docs: false]
   ]
 
   # The parts that belong to no feature, after the features' parts in `parts/0`: the
@@ -85,7 +98,8 @@ defmodule Apiary.Features do
 
   # What `registry/1` says an entry is, when it refuses one.
   @entry_shape "a feature is {name, needs: [feature], built: boolean}, " <>
-                 "with default: boolean where it is given and parts: [atom] where they are, got: "
+                 "with default: boolean and docs: boolean where they are given " <>
+                 "and parts: [atom] where they are, got: "
 
   @typedoc "A feature: one of `all/0`."
   @type feature :: atom
@@ -105,6 +119,7 @@ defmodule Apiary.Features do
           needs: %{feature => [feature]},
           built: [feature],
           opt_in: [feature],
+          documented: [feature],
           parts: [part],
           part_of: %{part => feature | nil}
         }
@@ -128,6 +143,24 @@ defmodule Apiary.Features do
   @doc "Every feature, the core's and then the edition's, in the order the instance lists them."
   @spec all() :: [feature]
   def all, do: registry().all
+
+  @doc """
+  documented/0 is the features the documentation at `/docs` differs by, in the order of
+  `all/0`: every feature but the ones listed with `docs: false`, which change nothing the
+  documentation says. `mix docs` (`Mix.Tasks.Docs.All`) builds its trees over these alone,
+  and `ApiaryWeb.DocsController` names and picks a tree by them: an instance is served the
+  same tree with a `docs: false` feature on or off.
+  """
+  @spec documented() :: [feature]
+  def documented, do: registry().documented
+
+  @doc false
+  # The core's features listed with `docs: false`, read from the list itself rather than
+  # the registry, so a module's documentation may leave out what belongs to them as it
+  # is compiled (`Apiary.Access`'s tables).
+  @spec core_undocumented() :: [feature]
+  def core_undocumented,
+    do: for({name, opts} <- @core, Keyword.get(opts, :docs, true) == false, do: name)
 
   @doc """
   parts/0 is every part: the parts of the features, `:"<feature>.<part>"`, in the order of
@@ -165,14 +198,15 @@ defmodule Apiary.Features do
 
   @doc """
   registry/1 checks a list of features, the core's followed by the edition's, and returns
-  what `all/0`, `needs/1`, `built/0`, `opt_in/0`, `parts/0` and `feature_of/1` answer
-  from; raises `ArgumentError` on a mistake: an entry that is not
+  what `all/0`, `needs/1`, `built/0`, `opt_in/0`, `documented/0`, `parts/0` and
+  `feature_of/1` answer from; raises `ArgumentError` on a mistake: an entry that is not
   `{name, needs: [feature], built: boolean}`, with `default: boolean` where it is given
-  (`true` where it is not, `false` for an opt-in feature) and `parts: [atom]` where they
-  are (none where they are not), a name listed twice, a part that is not an atom or is
-  listed twice, a feature named as a part of no feature (`nodes`), a feature that needs
-  itself or one the list does not have, or a feature that is not opt-in and needs one
-  that is. The parts of no feature follow the features' parts.
+  (`true` where it is not, `false` for an opt-in feature), `docs: boolean` where it is
+  given (`true` where it is not, `false` for a feature the documentation does not differ
+  by) and `parts: [atom]` where they are (none where they are not), a name listed twice,
+  a part that is not an atom or is listed twice, a feature named as a part of no feature
+  (`nodes`), a feature that needs itself or one the list does not have, or a feature that
+  is not opt-in and needs one that is. The parts of no feature follow the features' parts.
   """
   @spec registry([{feature, keyword}]) :: registry
   def registry(features) do
@@ -216,6 +250,7 @@ defmodule Apiary.Features do
       needs: Map.new(features, fn {name, opts} -> {name, opts[:needs]} end),
       built: for({name, opts} <- features, opts[:built], name not in opt_in, do: name),
       opt_in: opt_in,
+      documented: for({name, opts} <- features, Keyword.get(opts, :docs, true), do: name),
       parts: parts,
       part_of: Map.new(part_of)
     }
@@ -229,7 +264,8 @@ defmodule Apiary.Features do
     parts = Keyword.get(opts, :parts, [])
 
     unless is_list(needs) and Enum.all?(needs, &is_atom/1) and is_boolean(opts[:built]) and
-             is_boolean(Keyword.get(opts, :default, true)) and is_list(parts) do
+             is_boolean(Keyword.get(opts, :default, true)) and
+             is_boolean(Keyword.get(opts, :docs, true)) and is_list(parts) do
       raise ArgumentError, @entry_shape <> inspect(entry)
     end
 
@@ -330,7 +366,8 @@ defmodule Apiary.Features do
 
       unknown ->
         # The message does not list the features: an instance shows nothing of a feature
-        # it does not have, its boot errors included. The Install guide lists them.
+        # it does not have, its boot errors included. The Install guide lists them, but for
+        # one the documentation does not differ by (`docs: false`), which no guide names.
         {:error,
          "unknown #{plural(unknown, "feature", "features")} #{names(unknown)}; " <>
            "the Install guide at /docs lists the features"}

@@ -27,12 +27,14 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
   defp run!(scope, subject) do
     Repo.one!(
-      from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+      from r in Run, where: r.workspace_id == ^scope.workspace.id and r.node_run_id == ^subject
     )
   end
 
   defp events(run),
     do: Repo.all(from e in Event, where: e.run_id == ^run.id, order_by: e.sequence)
+
+  defp deliveries(key), do: Repo.all(from d in Delivery, where: d.access_key_id == ^key.id)
 
   # A delivery signed as the gateway signs it, with `versions` as its X-Qory-Contract-Version
   # headers: none, one or several.
@@ -126,7 +128,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              |> response(200)
 
       assert build_conn() |> signed_post(key.key_id, secret, [started]) |> response(202)
-      Repo.update_all(from(r in Run, where: r.run_id == ^subject), set: [clock_offset_ms: 0])
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^subject), set: [clock_offset_ms: 0])
 
       data = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
       beat = wire_event(subject, 3, "run.heartbeat", data, time: stamp.(now, -3600))
@@ -192,7 +194,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert run.event_count == 1
       assert length(events(run)) == 1
 
-      assert [%Delivery{event_count: 1, inserted_count: 1, status: 202, run_id: ^subject}] =
+      assert [%Delivery{event_count: 1, inserted_count: 1, status: 202, node_run_id: ^subject}] =
                Repo.all(from d in Delivery, where: d.access_key_id == ^key.id)
     end
 
@@ -236,7 +238,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert data == %{"anything" => [1, %{"a" => nil}]}
     end
 
-    test "without X-Qory-Delivery the delivery is recorded under an id of its own",
+    test "without X-Qory-Delivery the delivery is recorded with no delivery id",
          %{scope: scope, key: key, secret: secret} do
       subject = Ecto.UUID.generate()
       beat = wire_event(subject, 1, "run.heartbeat", %{"elapsed_seconds" => 30})
@@ -245,7 +247,57 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       assert response(conn, 202)
       assert run!(scope, subject).contract_version == 1
-      assert Repo.aggregate(from(d in Delivery, where: d.access_key_id == ^key.id), :count) == 1
+
+      assert [%Delivery{node_delivery_id: nil, inserted_count: 1, node_run_id: ^subject}] =
+               deliveries(key)
+    end
+
+    test "an X-Qory-Delivery that is not a UUID in its text form is recorded as none",
+         %{key: key, secret: secret} do
+      # The last is 16 bytes, which a UUID's raw form also is: not the text the contract says.
+      for {delivery, sequence} <- Enum.with_index(["not-a-uuid", "0123456789abcdef"], 1) do
+        {subject, [started]} = first_events()
+
+        assert signed_post(build_conn(), key.key_id, secret, [started], delivery: delivery).status ==
+                 202
+
+        assert [%Delivery{node_delivery_id: nil}] =
+                 key |> deliveries() |> Enum.filter(&(&1.node_run_id == subject))
+
+        assert length(deliveries(key)) == sequence
+      end
+    end
+
+    test "two batches with no delivery id are both recorded; their events are deduplicated on their ids",
+         %{scope: scope, key: key, secret: secret} do
+      {subject, batch} = first_events()
+
+      for _ <- 1..2 do
+        assert build_conn()
+               |> signed_post(key.key_id, secret, batch, delivery: nil)
+               |> response(202)
+      end
+
+      assert run!(scope, subject).event_count == 1
+
+      assert [
+               %{node_delivery_id: nil, inserted_count: 1},
+               %{node_delivery_id: nil, inserted_count: 0}
+             ] =
+               key |> deliveries() |> Enum.sort_by(&(-&1.inserted_count))
+    end
+
+    test "the same delivery id twice is one delivery", %{key: key, secret: secret} do
+      {_subject, batch} = first_events()
+      delivery = Ecto.UUID.generate()
+
+      for _ <- 1..2 do
+        assert build_conn()
+               |> signed_post(key.key_id, secret, batch, delivery: delivery)
+               |> response(202)
+      end
+
+      assert [%Delivery{node_delivery_id: ^delivery, inserted_count: 1}] = deliveries(key)
     end
 
     test "the run configuration digest the gateway holds is kept when it has the shape",
@@ -454,7 +506,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       refute Repo.exists?(
                from r in Run,
-                 where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+                 where: r.workspace_id == ^scope.workspace.id and r.node_run_id == ^subject
              )
     end
 
@@ -600,7 +652,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       refute Repo.exists?(
                from r in Run,
-                 where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+                 where: r.workspace_id == ^scope.workspace.id and r.node_run_id == ^subject
              )
     end
 

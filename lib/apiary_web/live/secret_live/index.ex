@@ -46,7 +46,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"secret.read"}
 
-  alias Apiary.{Access, Organisations, Secrets, Variables}
+  alias Apiary.{Access, Secrets, Variables}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.Variables.{Denied, Variable}
   alias ApiaryWeb.{People, SettingsComponents, UserAuth}
@@ -341,7 +341,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         <%= case row do %>
           <% {:secret, secret} -> %>
             <span class="q-nm">
-              <span class="q-title font-mono">{secret.name}</span>
+              <span class="q-title font-mono" title={secret.name}>{secret.name}</span>
               <span :if={secret.note} class="q-side" title={secret.note}>{secret.note}</span>
             </span>
           <% {:value, _secret, value} -> %>
@@ -363,7 +363,11 @@ defmodule ApiaryWeb.SecretLive.Index do
         <% end %>
       </:col>
       <:col :let={row} label={gettext("Changed")} from="sm">
-        <.changed changed={changed_of(row)} people={@people} />
+        <.changed
+          changed={changed_of(row)}
+          people={@people}
+          reader={@current_scope.user.email}
+        />
       </:col>
       <:col :let={row} label={gettext("Used by")} from="sm">
         <%= case row do %>
@@ -371,8 +375,13 @@ defmodule ApiaryWeb.SecretLive.Index do
             <span :if={Map.get(@uses, secret.id, []) == []} class="q-faint">
               {gettext("Not used")}
             </span>
-            <span :if={Map.get(@uses, secret.id, []) != []}>
-              {@uses |> Map.get(secret.id) |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")}
+            <span
+              :if={Map.get(@uses, secret.id, []) != []}
+              id={"#{row_id(row)}-used-by"}
+              class="q-cut"
+              title={used_by(@uses, secret.id)}
+            >
+              {used_by(@uses, secret.id)}
             </span>
           <% {:value, _secret, _value} -> %>
         <% end %>
@@ -403,6 +412,11 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp row_id({:secret, secret}), do: "secret-#{secret.public_id}"
   defp row_id({:value, secret, value}), do: "secret-#{secret.public_id}-#{value.value_id}"
 
+  # The names of what uses a secret, as its Used by cell shows them and as its title holds
+  # them whole.
+  defp used_by(uses, secret_id),
+    do: uses |> Map.get(secret_id, []) |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")
+
   # Who changed what the row shows last, and when: a value's own change, or for a secret
   # of one value that value's, else the secret's.
   defp changed_of({:value, _secret, value}), do: %{at: value.updated_at, by: value.updated_by_id}
@@ -414,18 +428,21 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   attr :changed, :map, required: true, doc: "when, and by whose user id"
   attr :people, :map, required: true
+  attr :reader, :string, required: true, doc: "the reader's address"
 
   defp changed(assigns) do
     assigns =
       assign(assigns,
         at: assigns.changed.at,
-        by: People.short(People.member(assigns.people, assigns.changed.by))
+        by: People.account(assigns.people, assigns.changed.by)
       )
 
     ~H"""
     <span class="tabular-nums">
       <%= if @by do %>
-        <.rich text={rich_gettext("%{time} by %{person}", time: {:part, :time}, person: @by)}>
+        <.rich text={
+          rich_gettext("%{time} by %{person}", time: {:part, :time}, person: letter(@by, @reader))
+        }>
           <:part name={:time}><.time_ago at={@at} /></:part>
         </.rich>
       <% else %>
@@ -433,6 +450,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       <% end %>
     </span>
     """
+  end
+
+  # Who changed it, in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
   end
 
   attr :row, :any, required: true
@@ -645,7 +669,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     >
       <:col :let={variable} label={gettext("Name")} kind="title">
         <span class="q-nm">
-          <span class="q-title font-mono">{variable.name}</span>
+          <span class="q-title q-cut font-mono" title={variable.name}>{variable.name}</span>
           <.state_word
             :if={warned?(variable.name)}
             id={"variable-#{variable.id}-denied"}
@@ -658,7 +682,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       <:col :let={variable} label={gettext("Value")}>
         <span
           id={"variable-#{variable.id}-value"}
-          class="block max-w-[28ch] truncate font-mono text-[12.5px]"
+          class="q-cut max-w-[28ch] font-mono text-[12.5px]"
           title={variable.value}
         >
           {variable.value}
@@ -683,6 +707,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         <.changed
           changed={%{at: variable.updated_at, by: variable.updated_by_id}}
           people={@people}
+          reader={@current_scope.user.email}
         />
       </:col>
       <:action :let={variable}>
@@ -751,7 +776,9 @@ defmodule ApiaryWeb.SecretLive.Index do
     ~H"""
     <%= cond do %>
       <% @entry && :workspace in @entry.ignored -> %>
-        <.state_word id={@id} hot>{gettext("Set aside: locked above the workspace")}</.state_word>
+        <.state_word id={@id} hot class="q-stw-wrap">
+          {gettext("Set aside: locked above the workspace")}
+        </.state_word>
       <% @variable.locked -> %>
         <span id={@id} class="inline-flex items-center gap-1">
           <.icon name="hero-lock-closed-micro" class="size-3.5 text-faint" />{gettext("Locked")}
@@ -776,7 +803,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     ~H"""
     <span :if={@targets == []} id={@id} class="q-faint">{gettext("No overrides")}</span>
-    <.link :if={@targets != []} id={@id} patch={@path} class="hover:underline">
+    <.link :if={@targets != []} id={@id} patch={@path} class="q-parts hover:underline">
       <span :if={@own > 0}>
         {ngettext("%{number} target overrides it", "%{number} targets override it", @own,
           number: Format.number(@own)
@@ -1141,24 +1168,18 @@ defmodule ApiaryWeb.SecretLive.Index do
     >
       <:col :let={%{target: target}} label={gettext("Target")} kind="title">
         <.link
-          navigate={
-            ApiaryWeb.TargetComponents.target_path(
-              @current_scope,
-              target.system,
-              target.path,
-              [],
-              @shared
-            )
-          }
+          navigate={ApiaryWeb.TargetComponents.target_path(@current_scope, target)}
           class="hover:underline"
         >
-          <.target_name system={target.system} path={target.path} shared={@shared} />
+          <.target_name system={target.system} path={target.path} shared={@shared} class="q-cut" />
         </.link>
       </:col>
       <:col :let={%{state: state}} label={gettext("Its value")}>
-        {if state == :own,
-          do: gettext("Overrides the workspace's value"),
-          else: gettext("Its value set aside by the lock")}
+        <span class="q-parts">
+          {if state == :own,
+            do: gettext("Overrides the workspace's value"),
+            else: gettext("Its value set aside by the lock")}
+        </span>
       </:col>
     </.table>
     <SettingsComponents.save id="variable-targets-foot">
@@ -1725,17 +1746,20 @@ defmodule ApiaryWeb.SecretLive.Index do
          variables: variables,
          resolution: resolution,
          targets: targets,
-         people: people(scope)
+         people: people(secrets, variables)
        }}
     end
   end
 
-  # user id => email, of the organisation's members: who changed a value or a variable.
-  defp people(scope) do
-    for %{user: user} <- Organisations.list_members(scope),
-        email = People.email(user),
-        into: %{},
-        do: {user.id, email}
+  # user id => email, of the accounts that changed a secret, a value or a variable, read
+  # in one query (`ApiaryWeb.People.accounts/1`).
+  defp people(secrets, variables) do
+    secrets
+    |> Enum.flat_map(fn secret ->
+      [secret.updated_by_id | Enum.map(secret.values, & &1.updated_by_id)]
+    end)
+    |> Enum.concat(Enum.map(variables, & &1.updated_by_id))
+    |> People.accounts()
   end
 
   defp reload(socket) do
@@ -1969,9 +1993,51 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## Events
 
+  # An event the page's controls never send is refused in silence, before any clause
+  # reads it (`sent?/2`): the page stays up, so no crash report prints the event, and a
+  # secret's value in it with the rest of its terms.
   @impl true
+  def handle_event(event, params, socket) do
+    if sent?(event, params), do: handle(event, params, socket), else: {:noreply, socket}
+  end
+
+  # Whether an event and its parameters are what the page's controls send: a form's
+  # fields, under the form's key, each a string; a search's `q`, and the `id` a row's menu
+  # names, strings; a confirmation's button, nothing the page reads. So every clause
+  # below, and all it calls, is given strings, as the forms give them. New secret's values
+  # are a map of rows by index, each a map: a field of a row that is not text is refused
+  # under its field, as `Apiary.Secrets.create_secret/2` casts it.
+  defp sent?(event, %{"q" => q}) when event in ~w(find find_target), do: is_binary(q)
+
+  defp sent?("create_secret", %{"secret" => %{} = fields}),
+    do: strings?(Map.delete(fields, "values")) and rows?(fields["values"])
+
+  defp sent?("update_secret", %{"secret" => fields}), do: strings?(fields)
+
+  defp sent?(event, %{"secret_value" => fields})
+       when event in ~w(add_value set_value rename_value),
+       do: strings?(fields)
+
+  defp sent?(event, %{"variable" => fields})
+       when event in ~w(validate_variable create_variable change_variable),
+       do: strings?(fields)
+
+  defp sent?(event, %{} = params)
+       when event in ~w(lock_variable unlock_variable delete_variable),
+       do: is_binary(Map.get(params, "id", ""))
+
+  defp sent?(event, _params) when event in ~w(delete_value delete_secret), do: true
+  defp sent?(_event, _params), do: false
+
+  defp strings?(%{} = fields), do: Enum.all?(fields, fn {_key, field} -> is_binary(field) end)
+  defp strings?(_fields), do: false
+
+  defp rows?(nil), do: true
+  defp rows?(%{} = rows), do: Enum.all?(rows, fn {_index, row} -> is_map(row) end)
+  defp rows?(_rows), do: false
+
   # The search is the URL's `q`, sent as the reader types.
-  def handle_event("find", %{"q" => q}, socket) do
+  defp handle("find", %{"q" => q}, socket) do
     query = %{socket.assigns.query | q: String.trim(q)}
 
     {:noreply,
@@ -1981,13 +2047,13 @@ defmodule ApiaryWeb.SecretLive.Index do
      )}
   end
 
-  def handle_event("find_target", %{"q" => q}, socket),
+  defp handle("find_target", %{"q" => q}, socket),
     do: {:noreply, assign(socket, :target_q, String.trim(q))}
 
   # One value, or several, each with its value ID: only the fields of the choice taken
   # are read, and a refused save shows the form again, its errors under their fields and
   # every value empty, to write again.
-  def handle_event("create_secret", %{"secret" => params}, socket) when is_map(params) do
+  defp handle("create_secret", %{"secret" => params}, socket) when is_map(params) do
     scope = socket.assigns.current_scope
     kind = if params["values_kind"] == "several", do: "several", else: "one"
 
@@ -2015,12 +2081,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "update_secret",
-        %{"secret" => params},
-        %{assigns: %{act: :edit_secret}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "update_secret",
+         %{"secret" => params},
+         %{assigns: %{act: :edit_secret}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret} = socket.assigns
 
     case Secrets.update_secret(scope, secret, Map.take(params, ~w(name note))) do
@@ -2035,12 +2101,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "add_value",
-        %{"secret_value" => params},
-        %{assigns: %{act: :add_value}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "add_value",
+         %{"secret_value" => params},
+         %{assigns: %{act: :add_value}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret} = socket.assigns
     params = Map.take(params, ~w(value_id value first_value_id))
 
@@ -2063,12 +2129,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "set_value",
-        %{"secret_value" => params},
-        %{assigns: %{act: :change_value}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "set_value",
+         %{"secret_value" => params},
+         %{assigns: %{act: :change_value}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
     case Secrets.set_value(scope, secret, value.value_id, params["value"]) do
@@ -2094,12 +2160,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "rename_value",
-        %{"secret_value" => params},
-        %{assigns: %{act: :rename_value}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "rename_value",
+         %{"secret_value" => params},
+         %{assigns: %{act: :rename_value}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
     case Secrets.rename_value(scope, secret, value.value_id, params["value_id"]) do
@@ -2122,7 +2188,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("delete_value", _params, %{assigns: %{act: :delete_value}} = socket) do
+  defp handle("delete_value", _params, %{assigns: %{act: :delete_value}} = socket) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
     case Secrets.delete_value(scope, secret, value.value_id) do
@@ -2141,7 +2207,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("delete_secret", _params, %{assigns: %{act: :delete_secret}} = socket) do
+  defp handle("delete_secret", _params, %{assigns: %{act: :delete_secret}} = socket) do
     %{current_scope: scope, secret: secret} = socket.assigns
 
     case Secrets.delete_secret(scope, secret) do
@@ -2153,7 +2219,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("validate_variable", %{"variable" => params}, socket) when is_map(params) do
+  defp handle("validate_variable", %{"variable" => params}, socket) when is_map(params) do
     changeset =
       %Variable{}
       |> Variables.change_variable(params)
@@ -2164,7 +2230,7 @@ defmodule ApiaryWeb.SecretLive.Index do
      assign(socket, form: to_form(changeset, as: "variable"), warning: warning(params["name"]))}
   end
 
-  def handle_event("create_variable", %{"variable" => params}, socket) when is_map(params) do
+  defp handle("create_variable", %{"variable" => params}, socket) when is_map(params) do
     scope = socket.assigns.current_scope
 
     case Variables.create_variable(scope, :workspace, Map.take(params, ~w(name value locked))) do
@@ -2180,12 +2246,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(
-        "change_variable",
-        %{"variable" => params},
-        %{assigns: %{act: :change_variable}} = socket
-      )
-      when is_map(params) do
+  defp handle(
+         "change_variable",
+         %{"variable" => params},
+         %{assigns: %{act: :change_variable}} = socket
+       )
+       when is_map(params) do
     %{current_scope: scope, variable: variable} = socket.assigns
     asked_at = DateTime.utc_now()
 
@@ -2203,32 +2269,32 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   # The confirmation on a row acts on the variable its path named; the context asks again
   # whether the reader still may. A row's menu names its own variable (below).
-  def handle_event(event, params, %{assigns: %{act: act}} = socket)
-      when {event, act} in [
-             {"lock_variable", :lock_variable},
-             {"unlock_variable", :unlock_variable},
-             {"delete_variable", :delete_variable}
-           ] and not is_map_key(params, "id"),
-      do: {:noreply, change_variable(socket, event, socket.assigns.variable)}
+  defp handle(event, params, %{assigns: %{act: act}} = socket)
+       when {event, act} in [
+              {"lock_variable", :lock_variable},
+              {"unlock_variable", :unlock_variable},
+              {"delete_variable", :delete_variable}
+            ] and not is_map_key(params, "id"),
+       do: {:noreply, change_variable(socket, event, socket.assigns.variable)}
 
   # Lock and Unlock act at once from the row's menu, which names the variable.
-  def handle_event(event, %{"id" => id}, socket)
-      when event in ~w(lock_variable unlock_variable) do
+  defp handle(event, %{"id" => id}, socket)
+       when event in ~w(lock_variable unlock_variable) do
     {:noreply, with_variable(socket, id, :edit, &change_variable(&1, event, &2))}
   end
 
   # A change without its page or its confirmation open: a second click of a button whose
   # confirmation has gone, or an event the page offers no control for. One who may change the view is shown the
   # list again; one who may not is refused, as a path the page offers no button for is.
-  def handle_event(event, _params, socket)
-      when event in ~w(update_secret add_value set_value rename_value delete_value delete_secret) do
+  defp handle(event, _params, socket)
+       when event in ~w(update_secret add_value set_value rename_value delete_value delete_secret) do
     if socket.assigns.may_write,
       do: {:noreply, reload(socket)},
       else: {:noreply, refused(socket, :"secret.write")}
   end
 
-  def handle_event(event, _params, socket)
-      when event in ~w(change_variable lock_variable unlock_variable delete_variable) do
+  defp handle(event, _params, socket)
+       when event in ~w(change_variable lock_variable unlock_variable delete_variable) do
     if socket.assigns.may_edit,
       do: {:noreply, reload(socket)},
       else: {:noreply, refused(socket, :"variable.edit")}

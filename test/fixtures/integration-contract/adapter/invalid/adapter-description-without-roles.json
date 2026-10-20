@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "connect_url": "https://tracker-adapter.acme.example/connect",
+  "sync": {
+    "default_interval": 900,
+    "minimum_interval": 300,
+    "sends_changes": false
+  },
+  "description": {
+    "version": 1,
+    "name": "example-tracker",
+    "title": "Example Tracker",
+    "program_version": "0.1.0",
+    "settings": {
+      "type": "object"
+    }
+  }
+}

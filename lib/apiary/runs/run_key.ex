@@ -182,6 +182,20 @@ defmodule Apiary.Runs.RunKey do
 
   def verify(_run_key, _keys), do: :error
 
+  @doc false
+  # lists_key?/2 is whether the run key whose payload is `payload`, as the run keeps it,
+  # lists `public_key` (raw, 32 bytes) among the gateway's keys. A payload that breaks
+  # its rules lists none.
+  @spec lists_key?(term, term) :: boolean
+  def lists_key?(payload, <<_::256>> = public_key) when is_binary(payload) do
+    case read(payload) do
+      {:ok, %{gateway_public_keys: keys}} -> public_key in keys
+      :error -> false
+    end
+  end
+
+  def lists_key?(_payload, _public_key), do: false
+
   # Strict base64url without padding: the bytes, encoded again, are the text as given.
   defp decode(text) do
     with {:ok, bytes} when bytes != "" <- Base.url_decode64(text, padding: false),

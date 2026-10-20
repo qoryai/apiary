@@ -21,8 +21,11 @@ defmodule Apiary.Deletion.Tables do
   `workspace_tables/0` lists those, in the same order, the tables a workspace's purge
   walks. A table marked `:organisation` holds the organisation's rows: `memberships`
   has no workspace, since a person stays in the organisation when a workspace goes, and
-  only their access to it goes with it. `organisations` itself is not on the list: its row
-  is deleted last, after them all. Nor are the instance's tables, `users` and
+  only their access to it goes with it. A table so marked may have a `workspace_id` all
+  the same, a link to a workspace that its rows outlive (`outliving_tables/0`): the
+  workspace's purge links them to none before it walks, and the organisation's purge
+  deletes them. `organisations` itself is not on the list: its row is deleted last, after
+  them all. Nor are the instance's tables, `users` and
   `users_tokens` (an account belongs to no organisation), `purged_organisations` (what the
   instance keeps of a purged organisation), `access_key_public_keys` (the ledger of public
   keys, which outlives the keys, `Apiary.AccessKeys.PublicKey`) and Oban's.
@@ -32,33 +35,70 @@ defmodule Apiary.Deletion.Tables do
   @type mark :: :organisation | :workspace
 
   # Children first: a run's events, log and connections before the run; the deliveries
-  # before the access keys they name; the run configurations and the policy's rules before
-  # the targets, and so are the pins; a node's instances before the access keys they name;
-  # the access keys before the enrolment codes they arrived by, and the keys, the codes,
-  # the runs and the instances before the nodes they name; everything of a workspace
-  # before the workspace.
+  # before the access keys they name; the composed run configurations before the run
+  # configurations they were composed from; the run configurations and the policy's rules
+  # before the targets, and so are the pins; the runs before the runs of the queue they name, the
+  # dispatches before the runs of the queue, the node pools and the access keys they name,
+  # and the runs of the queue before their work items; the environment records before the
+  # node pools and the collections they name; a node's instances before the access keys
+  # they name; the access keys before the enrolment codes they arrived by, and
+  # the keys, the codes, the runs, the instances and the organisation's connections to
+  # adapters before the nodes they name; the work items before the tickets they name, a
+  # ticket's comments before the ticket, and the tickets and the bookkeeping of their
+  # listings before the collections they belong to; an adapter's collections and the
+  # bookkeeping of their listings before the connections they name; a work item's events,
+  # answers, confirmations and comments before the work item; a connection's workspaces
+  # and a provider's models before the connection, and the connections before the
+  # releases, the service definitions and the secrets they name; everything of a
+  # workspace before the workspace.
+  #
+  # A run of the queue names its work item by the organisation, not the workspace: it
+  # stays in the workspace it was queued in when its work item moves to another. So a
+  # workspace's purge deletes the runs of the queue of that workspace, whatever workspace
+  # their work items are in, and the work items of that workspace, whose runs of the queue
+  # in another workspace go with them (`ON DELETE CASCADE`), their dispatches with those,
+  # and the runs registered for them keep no link to them.
   @tables [
     {"log_chunks", :workspace},
     {"events", :workspace},
     {"connections", :workspace},
     {"deliveries", :workspace},
+    {"composed_run_configurations", :workspace},
     {"run_configurations", :workspace},
     {"runs", :workspace},
+    {"dispatches", :workspace},
+    {"dispatch_runs", :workspace},
+    {"environments", :workspace},
+    {"work_item_events", :workspace},
+    {"work_item_answers", :workspace},
+    {"work_item_confirmations", :workspace},
+    {"work_item_comments", :workspace},
+    {"model_choices", :workspace},
+    {"work_items", :workspace},
+    {"work_item_counters", :workspace},
     {"retention_runs", :workspace},
     {"policy_rules", :workspace},
-    {"connection_targets", :workspace},
-    {"workspace_connections", :workspace},
-    {"service_definitions", :workspace},
-    {"integration_releases", :workspace},
+    {"connection_workspaces", :workspace},
+    {"provider_models", :organisation},
+    {"organisation_connections", :organisation},
+    {"service_definitions", :organisation},
+    {"integration_releases", :organisation},
     {"variables", :workspace},
     {"secret_values", :workspace},
     {"secrets", :workspace},
     {"workspace_data_keys", :workspace},
+    {"organisation_data_keys", :organisation},
     {"target_pins", :workspace},
     {"targets", :workspace},
     {"node_instances", :workspace},
     {"access_keys", :workspace},
     {"access_key_enrolment_codes", :workspace},
+    {"source_item_comments", :organisation},
+    {"source_items", :organisation},
+    {"source_item_listings", :organisation},
+    {"source_collection_listings", :organisation},
+    {"source_collections", :organisation},
+    {"adapter_connections", :organisation},
     {"nodes", :workspace},
     {"invitations", :workspace},
     {"memberships", :organisation},
@@ -80,6 +120,14 @@ defmodule Apiary.Deletion.Tables do
   """
   @spec workspace_tables() :: [String.t()]
   def workspace_tables, do: for({table, :workspace} <- walk(), do: table)
+
+  @doc """
+  outliving_tables/0 is the core's tables marked `:organisation` that have a
+  `workspace_id`: their rows stay with the organisation when the workspace they link to is
+  purged, which links them to none first (`Apiary.Deletion.purge_workspace/1`).
+  """
+  @spec outliving_tables() :: [String.t()]
+  def outliving_tables, do: ["source_collections"]
 
   @doc """
   boot!/0 checks the walk once at boot, so an edition's list that names a table twice, one

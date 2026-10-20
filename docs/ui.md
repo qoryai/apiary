@@ -27,7 +27,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   then the workspace, each a link to its home, and the page's segments, a target or a
   record, the last one the page with `aria-current="page"`. A page of a workspace or an
   organisation starts them with its section's name as the sidebar words it: a link to the
-  section's page on a page under it (`Acme / Main / Runs / Run 0191f2a4`, also where that
+  section's page on a page under it (`Acme / Main / Runs / Run rn_7k3m9q2x`, also where that
   run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
   itself on the section's page (`Acme / Main / Runs`, `Acme / Main / Overview`,
   `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
@@ -126,15 +126,21 @@ page and an Instance page, the one the person came from (Two levels, below).
   bare Settings, and so its tooltip while folded; the current entry on every page of them
   (General, or an entry of the section `:settings`, such as People), marked as their
   parent (The current entry, above),
-  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the edition's
-  name (`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), no version,
-  opening upward to what is about the product rather than the person: first, only
-  for whoever may open a section of the Instance level
+  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the product's
+  name on the instance (`Apiary.ProductName.button_name/0`: the name an instance admin set
+  in Instance settings › General, else the edition's,
+  `c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), a name too long for
+  the sidebar cut with an ellipsis and whole on hover, no version, opening upward to what
+  is about the product rather than the
+  person: first, only for whoever may open a section of the Instance level
   (`ApiaryWeb.Layouts.instance_sections/1`, read with the navigation's counts), **Instance
   settings** (`#brand-menu-instance`), leading to the first, under it a rule; then Docs,
   Changelog with the running version faint at its right (`#brand-version`), a rule and
   Source on GitHub; and at the right of it the fold. Folded, and from the bar on a page
-  without a sidebar, it is the same menu.
+  without a sidebar, it is the same menu. Beside a name an instance admin set that is not
+  Qory Apiary (`Apiary.ProductName.powered_by?/0`), the foot says "Powered by Qory Apiary"
+  in plain text: a faint line under the menu's row (`#powered-by`), in the sidebar and the
+  drawer; folded, and from the bar, the menu's last line instead (`#brand-menu-powered`).
 - **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
   page of the level, its settings included. A page of a level's settings, of Your settings
   or of the Instance opens the level's sections as a **second column** beside the sidebar
@@ -158,8 +164,9 @@ page and an Instance page, the one the person came from (Two levels, below).
   node's Settings tab lists its few sections in the page.
 - **Narrowing.** On Runs and on Network access narrowed to one target, the sidebar's Runs
   and Network access carry the target (`Layouts.app/1`'s `narrowed`, built with
-  `Layouts.narrowed/2`): its path, and its system only where two systems share the path,
-  each entry's accessible name and tooltip saying so ("Runs, narrowed to acme/shop",
+  `ApiaryWeb.Narrowing.carried/2`): its id in the address, named by its path, and its
+  system only where two systems share the path, each entry's accessible name and tooltip
+  saying so ("Runs, narrowed to acme/shop",
   "Network access, narrowed to acme/shop"). Nothing else carries it, and the palette's Go
   to never does.
 - **The sidebar folds to icons** from 768 px, by the fold (`#sidebar-collapse`, an icon
@@ -181,7 +188,7 @@ page and an Instance page, the one the person came from (Two levels, below).
   is drawn lighter, the page's parent, while the disclosure under the bar (Two levels,
   above) names the level and lists its sections. The bar names the last segment of the breadcrumb only, and before
   it, on a page under a parent, the parent as a link back, a chevron before its name
-  (`‹ Runs / Run 0191f2a4`): the item of the one
+  (`‹ Runs / Run rn_7k3m9q2x`): the item of the one
   breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
   Where the two do not fit, the page's name is cut short first, with an ellipsis, and the
   parent keeps up to 8rem. A section's page shows its name alone. On a core
@@ -297,14 +304,26 @@ replaces the navigation it is in.
   `ApiaryWeb.Routes.instance_routes/2`, each page with `place={:instance}`), from the Qory
   Apiary menu's Instance settings, shown only when the person may open a section of it
   (`ApiaryWeb.Layouts.instance_sections/1`) and leading to the first, as `/instance`
-  itself does: the edition's sections
-  (`ApiaryWeb.Edition.instance_sections/1`), then, for the instance's admins, the core's
-  Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, its
-  `<h1>` Configuration), read only: what whoever runs Qory Apiary set, as Qory Apiary read it
-  when it started, each value with the setting it is set by. Anyone else is answered not
-  found. The sidebar stays the one the person came from. In the core Configuration is the
-  one section, so there is no second column; an edition's sections add to it, and with two
-  or more they are the second column (`#instance-tabs`, `instance-tab-<key>`).
+  itself does. For the instance's admins the core's General comes first
+  (`/instance/general`, `ApiaryWeb.InstanceLive.General`, its `<h1>` General): one field,
+  Name, the product's name on the instance (`Apiary.ProductName`), its placeholder and its
+  hint's "Empty: …" the edition's name (`Apiary.ProductName.edition_name/0`), which the
+  menu's button shows where no name is set, while titles, log-in pages and emails show
+  Qory Apiary there; and under Save, where the edition says "Powered by Qory Apiary", the
+  note of when it does. Saving reloads the page with the toast "Instance renamed to …"; a
+  name breaking an organisation's name's rules shows its error under the field. Then the
+  edition's sections (`ApiaryWeb.Edition.instance_sections/1`), then the
+  core's Mail (`/instance/mail`, `ApiaryWeb.InstanceLive.Mail`), the mail server, after a
+  recent sign-in, and Configuration (`/instance/configuration`,
+  `ApiaryWeb.InstanceLive.Configuration`, its `<h1>` Configuration): the instance's
+  settings. Retention, Deletion and Invitations are each a form with its Save: a field for
+  each setting the environment does not set, with its unit, days, where it has one, and the
+  hint "Empty: …", saved after a recent sign-in with a toast; a setting the environment
+  sets shows read only, with the variable that sets it. Then the edition's parts
+  (`c:ApiaryWeb.Edition.configuration_parts/1`). Features and Run pruning are read only.
+  Anyone else is answered not found. The sidebar stays the one
+  the person came from, and the sections are the second column (`#instance-tabs`,
+  `instance-tab-<key>`).
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one
@@ -331,9 +350,11 @@ The breadcrumb names the level and ends with the section, both written by the fr
 a person's page starts with Your settings and an Instance page with Instance
 settings, then the section (The top bar, under The shell). The browser title is the most
 specific first, the page's words, the level, then the workspace's name and the organisation's
-(`SettingsComponents.page_title/3`): `Runs · Workspace settings · Main · Acme · Qory
-Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account · Your
-settings · Qory Apiary`, `Configuration · Instance settings · Qory Apiary`.
+(`SettingsComponents.page_title/3`), then the product's name on the instance
+(`Apiary.ProductName.name/0`, the root layout's): `Runs · Workspace settings · Main ·
+Acme · Qory Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account ·
+Your settings · Qory Apiary`, `General · Instance settings · Qory Apiary`; with the name
+Acme Agents set, `General · Instance settings · Acme Agents`.
 
 **A form is a page.** Creating or changing one thing is a page of its section at a separate
 path, never a dialog over the list: the second column stays beside it, its section the
@@ -436,6 +457,19 @@ connection as a thing keeps its word: a row is a destination and the connections
 it. The Policy page's hosts and paths are its Network access section, which links to the
 page ("See what the runs reached"); the page's rule links lead to the rule there.
 
+A target is filtered by the id Qory Apiary gives it, never by its system or its path:
+`?target=tg_…`, several ids joined by commas for the runs of any of them, and
+`?target=none` for the runs with no target. The ids are read with the address, in one
+query scoped to the workspace (`ApiaryWeb.Narrowing`): an id that names no target of the
+workspace is dropped, like any value the page does not know, and the page says the link's
+target filter could not be read. An address of an older release, which named a target by
+`system=` and a path in `target=`, is dropped the same way. A typed `repo:` takes a
+target's name, or its id. A name that names no target is search text, never an address: it
+stays in the query (`?q=target:acme/nowhere`), the list matches nothing (no run on Runs, no
+destination on Network access), and the line names it as typed ("Showing the runs of
+acme/nowhere only.", "Showing acme/nowhere only."). A target chosen in its place, in the
+Filter menu or the rail, takes the name out of the query and keeps the rest of the text.
+
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
 and on a target's Policy tab) are on the same pattern, their query read and written by
 `ApiaryWeb.PolicyLive.RuleList`, pure over the rows the page holds: views All, Allowed,
@@ -452,23 +486,22 @@ button, with a line under it of what the rules are; the search's bar keeps Find,
 and Sort. A reader who may not change the policy sees no Add rule and no row menus.
 
 **A rule is added and changed on a page** (No modals, above), never in a line
-over the list: New rule (`…/policy/rules/new`, a target's `…/-/policy/rules/new`) from
+over the list: New rule (`…/policy/rules/new`, a target's `…/tg_…/policy/rules/new`) from
 Add rule, the empty list's Add a host rule and the top bar's New (Network access rule);
 Edit rule (`…/policy/rules/:id/edit`) from a row's ⋯ Edit, for an allow and a deny alike
 (`PolicyComponents.rule_form/1`). The form asks the goal first: "What should runs do?",
-Allow and Deny as two radio cards that each say what they do; then Host and Paths, each
-labelled with its help under it (a deny takes no paths and says so); then "What this
-rule does", the rule read back in plain words as it is typed (`PolicyLive.Reading`), a
-polite live region. An error is said under its field, with its repair as a link (Use
-api.example, Every path, Show it); a refusal, a lock's or the domain's, takes the read
-back's place above the foot. Add rule is never off: pressed with an error, it moves the
-focus to the first field at fault. A pasted list of hosts fills Host with the first and
-counts the rest beside its label; each is added in turn, the page staying until the last.
+Allow and Deny as two radio cards that each say what they do; then Host, labelled with
+its help under it; then "What this rule does", the rule read back in plain words as it
+is typed (`PolicyLive.Reading`), a polite live region. An error is said under its field,
+with its repair as a link (Use api.example, Show it); a refusal, a lock's or the
+domain's, takes the read back's place above the foot. Add rule is never off: pressed
+with an error, it moves the focus to the first field at fault. A pasted list of hosts
+fills Host with the first and counts the rest beside its label; each is added in turn,
+the page staying until the last.
 A save goes back to the list as it was left, on the page that holds the rule, its row
 marked and New in its version, the focus on its ⋯, with the flash that names the version;
 Cancel goes back to the list as it was left. On Edit rule the host is shown, not a field:
-another host is a new rule. A target's suggestion's Allow with paths… opens New rule with
-the host filled and the focus in Paths (`?host=…&focus=paths`; `?action=deny` picks Deny).
+another host is a new rule.
 A target's Policy tab shows each rule's Source; the target rules come first and have the ⋯
 menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
 the level above the workspace has that level's tile in its Source, which says whose it is;
@@ -482,7 +515,7 @@ force: a honey tile with the mode's icon (a lock where a level above requires en
 workspace, by its name, or Overridden; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
-The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
+The Document tab (`…/policy/document`, a target's `…/tg_…/policy/document`) is the document
 in force under the card and the tabs: its version's number, In force and the version's
 views, which stay on the tab. The document's bar is the tab's one place to take it away,
 the code-block header's pattern: two small icon buttons on its right, Copy (the document
@@ -522,7 +555,7 @@ The policy pages confirm in place, never over the page:
   the page (`#policy-keys`), not an overlay; Escape and its Close hide it.
 
 **The export** (`…/policy/versions/:n/export`, and a target's
-`…/-/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
+`…/tg_…/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
 with Version n and Export and is the one way back, with no separate trail on the page; the
 title "Export for a node without a server" and what is exported (an h2 under a target's
 title), the policy file with Download and Copy, the command for the
@@ -548,7 +581,9 @@ version in force is exported; another version's path sends on to it.
   (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
-  case (a run's id, title or target; a destination's host or path). `state:` takes a
+  case (a run's id, title or target; a destination's host or path). A run's id is the start
+  of its `rn_` id, four characters after `rn_` at least, or of the node's run id, four
+  hexadecimal characters at least; a run page's address finds that run. `state:` takes a
   state or a family (`state:completed`, `state:ended_badly`). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
   from the host filter's query, narrowed as the list is); choosing one adds `host:`.
@@ -625,7 +660,8 @@ version in force is exported; another version's path sends on to it.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
-  card, of the run chosen (`?run=`; the first row until the reader chooses one), with the
+  card, of the run chosen (`?run=`, its `rn_` id; another value is dropped with a notice;
+  the first row until the reader chooses one), with the
   last lines of its log as plain text for a reader who may read the log (`run.read_log`;
   without it, no line is read and the preview has no terminal). The `RunList` hook tells
   the page the width, turns a row's click into a choice there, and moves it with ↑ and ↓;
@@ -646,9 +682,10 @@ words say so. The workspace's window is **fourteen days**:
   The default window is no filter: the Filter menu does not count it. Its views count
   destinations, and a destination with attempts of both kinds counts in each, which a
   line under the views says when it happens.
-- **The overview's summary** counts the chart's fourteen UTC days, and each number leads
-  to its list over the same days (`?from=` the first of them; the denied attempts to
-  Network access, whose Denied view counts the destinations the summary names). **To
+- **The overview's summary** counts the chart's fourteen days, in the reader's time zone,
+  and each number leads to its list over the same days (`?from=` the first of them; the
+  denied attempts to Network access, whose Denied view counts the destinations the summary
+  names). **To
   review** weighs the same fourteen days but lists only what is still denied, no rule
   having allowed it since, and its "and n more" says so.
 - **The Policy page's** fact on the mode card and the enforce preview read fourteen days,
@@ -756,14 +793,12 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   Below 600 px of table the last run is a line under the path. It reads in one query
   bounded by the fourteen days, and re-reads at most once a second as runs land, changing
   the rows it holds in place.
-- **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
-  segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
-  `…/-/network` (once `…/-/connections`, which the page sends on with its query, moved
-  permanently) and, with `security`, `…/-/policy` with the policy's paths after it
-  (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
-  would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
-  the workspace does not have, and a tab the page does not know, are not found. The header
-  names the target as it is addressed (its path, its system before it only where two
+- **A target's page** is `/:org/:workspace/targets/:target_id`, by the target's public id,
+  `tg_…`, never its system or its path (`target_path/3`): Overview at the bare address
+  and, with `security`, `…/policy` with the policy's paths after it (`/history`,
+  `/document`, `/versions/:n`, `/export`, `/rules/new`, `/rules/:id/edit`). An id the
+  workspace does not have, and a tab the reader may not read, are not found. The header
+  names the target in its notation (its path, its system before it only where two
   targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it overrides the workspace's) and Open on the
   system when the system is a host name; the breadcrumb ends with the section, a link to the
@@ -776,8 +811,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
   - Its runs and its Network access are the workspace's lists narrowed to it
-    (`/runs?target=acme/shop`, `/network?target=acme/shop`); the old `…/-/runs`,
-    `…/-/network` and `…/-/connections` send on there with their query.
+    (`/runs?target=tg_…`, `/network?target=tg_…`).
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
     mode card (Follow the workspace, by its name, Observe or Enforce, and whose the mode
     is), the rules in force for it on the list pattern with their Source, and
@@ -956,16 +990,16 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   address", Needs "This page open over HTTPS", then Generate a key. A node lists the
   command first, its button primary; a pool lists Generate a key in the browser first. A
   member reads, under "Connect build-01", "build-01 has no key yet, so it isn't connected
-  to Qory. An owner or admin connects it." A command not yet run shows
+  to Qory Apiary. An owner or admin connects it." A command not yet run shows
   in the command's option, above its button, or its row under Add a key: "A command is waiting to be run
-  on build-01.", "dana@example.com got it at 14:17. It works once, until 14:32. It was
+  on build-01.", "D got it at 14:17. It works once, until 14:32. It was
   shown once: if it's lost, cancel it and get a new one." and Cancel the command…,
   confirmed in place ("Cancel the command from 14:17?", Yes, cancel it and Keep it); its
   button becomes Get a new command. There is no list of codes. With keys, the tab lists
   them under Keys, with a count, one card each, headed by its label and Active or Revoked:
   Key ID, `ak_…` with Copy, since the ID can always be seen again, Added ("Connected with
-  a command by dana@example.com, …" or "Generated in a browser by …"), Secret (where the
-  key's secret is), Last used ("Not yet" while unused) and Fingerprint,
+  a command by D, …" or "Generated in a browser by …", D being the person's letter),
+  Secret (where the key's secret is), Last used ("Not yet" while unused) and Fingerprint,
   and an active key's **Forager file**, for everyone who reads the node, and Revoke…,
   confirmed in place. A key whose record doesn't match its integrity code says so on its
   card: "… It can't be used." Under the keys, Add a key says how to move to a new key, add
@@ -1094,7 +1128,11 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
-  `/nodes/:node_id/instances/:instance/clear` (the instance's id) that line, or that row in
+  `/nodes/:node_id/instances/:instance/clear` (the id of the instance's row in
+  `node_instances`), or, for an instance with no row, at
+  `/nodes/:node_id/runs/:run_id/clear-instance` (an open run's `rn_` id: the page links
+  its newest open run, and the address accepts any open run of that instance), never
+  the node's instance id, that line, or that row in
   place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
   build-01? Clear this instance if it stopped without saying so. Another instance can then
   start at once." with Yes, clear and Cancel; an instance that does not run now confirms at
@@ -1223,6 +1261,17 @@ needs becomes a component, or an attribute of one, not a copy.
 - **Tooltips** (`.tooltip` with `data-tip`) take no box while hidden, so a right-hand one
   never widens a phone's page; shown, they wrap at 36ch or the window. Escape hides the
   one under the pointer or focus until the pointer leaves or focus moves (`app.js`).
+- **`<.avatar>`** draws a first letter on a circle. In a list of people it sits beside the
+  person's address, decorative and hidden from screen readers. In a line of text it stands
+  for the person (`email`): the first character of the address, upper case, as an `<abbr>`
+  whose tooltip and accessible name are the address, with the address also in visually
+  hidden text, so the line reads aloud as "Locked by priya@example.com on 3 Oct.". The
+  `<abbr>` is a tab stop, except inside a link or a row that opens (`in_link`), where its
+  tooltip opens when the link or the row has keyboard focus. The reader's letter has the
+  account menu's colour and its tooltip "dana@example.com (you)"; a line that says "you"
+  keeps the word. Two people of one letter look alike, and the tooltip tells them apart.
+  A deleted account is the words Former member, with no letter. A tooltip or a label is
+  plain text, so it names the person by the whole address.
 - **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>` (with `suggest`, a
   combobox of suggestions), `<.filter_menu>`, `<.sort_menu>` and `<.filter_tokens>` are a
   list's controls; `<.state_word>` says a
@@ -1254,6 +1303,15 @@ events; a page whose behaviour differs is the edition's page at the same path.
 A component does not ask `Apiary.Features` what the instance serves or the reader is
 shown: the page asks with its scope and passes the answer, as the connection row's `security` attribute does. What
 Forager reported is untrusted: a component interpolates it and never passes it to `raw/1`.
+
+Untrusted Markdown that a page shows formatted is the one named exception:
+`SourceComponents.body/1` passes it to `raw/1` as HTML that is sanitised last, on the
+server, with an allowlist of tags, attributes and URL schemes, after every other change.
+Links are `https` only, and any other link is its words. An image is never shown: it
+becomes a link to it, and raw HTML is not rendered. Task boxes and tables get words for a
+screen reader. Show as written shows the text as written, with invisible characters
+dropped and control characters shown as U+FFFD, except tabs and line breaks, which it
+keeps, interpolated, and plain text is only ever interpolated.
 
 ### Storybook
 
@@ -1348,8 +1406,9 @@ never holds more than 600 items.
 `clock`, `duration`, `seconds`) and the server's now in `data-now`; `<.relative_time>`
 and `<.duration>` render them. The `Ticker` hook re-renders every one from a single
 interval, once a second, paused while the tab is hidden, and counts on the server's clock
-rather than the browser's. It writes in the words, locale and time zone the server put on
-`<body>`, so the server never re-renders for a clock. The full time with its zone is the
+rather than the browser's. It writes in the words and locale the server put on `<body>`,
+and in the time zone the element names (`data-time-zone`, the one the server rendered it
+in), else the body's, so the server never re-renders for a clock. The full time with its zone is the
 `title`. Everything else a person reads as a date, time or number goes through
 `ApiaryWeb.Format`.
 
@@ -1390,11 +1449,19 @@ width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, 
 separately) sits beside it on every tab, Terminal too; below 1280 px Details is a button
 under the header. The terminal takes the whole window through Focus (The terminal,
 below). The top bar's breadcrumb ends with Runs, a link to the list,
-and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
+and `Run rn_7k3m9q2x`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page draws no other breadcrumb.
 
+A run's address, `/:org/:workspace/runs/:run_id`, carries the id Qory Apiary gives the
+run: `rn_` and sixteen characters (`Apiary.PublicId`). An address with the node's run id,
+or any other value, is not found, and nothing redirects it. The header, Details and Copy
+run id give the whole `rn_` id; lists, titles and the breadcrumb give `rn_` and its first
+eight characters. Details' Record shows the node's run id on the next row, "Node's run id",
+and the search finds a run by either id. Details and the runs list's preview show the
+instance id the run's node claimed, when it claimed one, under "Node's instance id".
+
 - **The header** is the title (the one the run gave in its `about`, else "Run" and the
-  run's short id, `Run 0191f2a4`) alone; then, when the run names a kind or subjects, one
+  run's whole id, `Run rn_7k3m9q2xd4h8vbn1`) alone; then, when the run names a kind or subjects, one
   line of what it is about: the kind, then at most three subjects, each its type and ref
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
@@ -1405,7 +1472,7 @@ page draws no other breadcrumb.
   page), the runtime, the host, when it
   started, how long it took (left out for a run that did not start, which never ran) and
   its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
-  (Copy run id, Raw log, Download log), and no
+  (Copy run id, which copies the `rn_` id, Raw log, Download log), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
@@ -1456,7 +1523,7 @@ page draws no other breadcrumb.
   timeline's last item too unless the run was given an outcome: that item says the exit's
   reason, and the others the outcome's
   ([contract-assumptions.md](contract-assumptions.md), How a run ends):
-  "time limit reached", "no activity for 30 minutes", "permission to run expired",
+  "time limit reached", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
   check whether the run may go on: unreadable answer", and for a run that did not start
@@ -1465,9 +1532,7 @@ page draws no other breadcrumb.
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. Any other code is the run's starter's,
-  shown as given with spaces for underscores: "no longer needed". The quiet period reads
-  in whole hours, else whole minutes, else seconds: 1800 seconds is "no activity for 30
-  minutes".
+  shown as given with spaces for underscores: "no longer needed".
 - **The rail's State and Exit.** State is the state's dot and word, with "Registered only"
   under Pending for a run that registered, or "Ping only" for a run that only pinged,
   stored before the registration replaced the ping, and the end reason's words under it. Exit, on a session's run whose exit was
@@ -1518,10 +1583,22 @@ other page. The screen is `role="log"` with `aria-live="off"`.
 
 ## Words
 
-Every visible or announced string goes through Gettext in engine words, one whole
-sentence per msgid, and markup inside a sentence goes through `ApiaryWeb.RichText`; the
-rules are in [lingo.md](lingo.md). A page says organisation and workspace as plain words,
-and names the product Qory Apiary.
+Every visible or announced string goes through Gettext in engine words, one whole sentence
+per msgid, and markup inside a sentence goes through `ApiaryWeb.RichText`; the rules are
+in [lingo.md](lingo.md). A page says organisation and workspace as plain words, and names
+the product Qory Apiary. Where an instance admin set a name in Instance settings › General
+(`Apiary.ProductName`), it replaces Qory Apiary in the browser title, the Qory Apiary
+menu's button and names (which, where no name is set, show the edition's name,
+`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), the log-in, sign-up,
+set-up and welcome pages (`Layouts.auth`: the name beside the mark, the brand panel's name
+and line, the headings, and the sentences there that say "this Qory Apiary", which then
+name the instance), the button of the page `/docs` shows when the docs are not built, and
+every email's from-name, subject and body. Those places then also say "Powered by Qory
+Apiary": the sidebar's foot (The shell), under the form of every page with the brand panel
+(`#powered-by`), and each email's last line.
+Everything else keeps Qory Apiary: the docs, the console's other sentences that say "this
+Qory Apiary", the sentences where Qory Apiary acts or is what a machine connects to, and
+the Activity page's.
 
 - Plain and exact: second person, present tense, sentence case. Full stops on sentences,
   none on buttons, labels or headings. No exclamation marks, no "oops", no "successfully".

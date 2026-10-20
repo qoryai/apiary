@@ -49,6 +49,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(would: nil, composer_open: false, own_only: false, params: %{})
       |> assign(target_list: [], summary: nil, shown: nil)
+      # The rule form's Paths row, drawn where the instance has `path_rules`.
+      |> assign(:path_rules, Apiary.Features.on?(:path_rules))
       |> assign(:target_details, Phoenix.LiveView.AsyncResult.loading())
       |> assign(:target_suggestions, Phoenix.LiveView.AsyncResult.loading())
 
@@ -449,6 +451,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
       %{
         id: target.id,
+        public_id: target.public_id,
         system: target.system,
         path: target.path,
         own: row.rule_count,
@@ -851,7 +854,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   # The targets' own rules a lock of this rule would put out of force: a rule on the
   # same host, or an allow below a locked `*.` deny. Read for the targets that have
-  # rules of their own, at most fifty of them. Each is named as it is addressed (`name`):
+  # rules of their own, at most fifty of them. Each is named in its notation (`name`):
   # one read of the paths it names.
   defp held_by_lock(scope, rule) do
     held =
@@ -986,7 +989,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
           queued={length(@queue)}
           editing={@rule_edit && @rule_edit.host}
           error={@write_error}
+          error_field={@write_error_field}
           cancel={Common.cancel_path(assigns)}
+          paths={@path_rules}
         >
           <:description>
             {if @rule_edit,
@@ -1176,6 +1181,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           v={@v}
           base={@base}
           now={@now}
+          reader={@current_scope.user.email}
         />
         <.export_page
           :if={@live_action == :export && @v && @export}
@@ -1592,19 +1598,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
               <td role="cell" class="q-c-target">
                 <.link
-                  navigate={
-                    ApiaryWeb.TargetComponents.target_path(
-                      @scope,
-                      row.system,
-                      row.path,
-                      ["policy"],
-                      @shared
-                    )
-                  }
-                  class="q-target-name q-rowlink"
-                  title={"#{row.system}/#{row.path}"}
+                  navigate={ApiaryWeb.TargetComponents.target_path(@scope, row, ["policy"])}
+                  class="q-target-name q-rowlink q-cut"
+                  title={ApiaryWeb.TargetComponents.target_label(row.system, row.path, true)}
                 >
-                  <span :if={MapSet.member?(@shared, row.path)} class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
+                  <span :if={MapSet.member?(@shared, row.path)} class="q-target-system"><.external_text text={
+                    row.system
+                  } />/</span><span class="q-target-path"><.external_text text={row.path} /></span>
                 </.link>
               </td>
               <td role="cell" class="q-c-mode">
@@ -1644,13 +1644,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
                           do:
                             ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
                           else:
-                            ApiaryWeb.TargetComponents.target_path(
-                              @scope,
-                              row.system,
-                              row.path,
-                              ["policy", "versions", to_string(row.detail.version.version)],
-                              @shared
-                            )
+                            ApiaryWeb.TargetComponents.target_path(@scope, row, [
+                              "policy",
+                              "versions",
+                              to_string(row.detail.version.version)
+                            ])
                       }
                       class="q-mono hover:underline"
                     >
@@ -1779,10 +1777,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <.tool_mark name={destination.tool} /><span
               :if={destination.path}
               class="text-muted"
-            >{destination.path}</span><span class="text-faint"><bdi>{destination.host}</bdi></span>
+            ><.external_text text={destination.path} /></span><span class="text-faint"><.external_text text={
+              destination.host
+            } /></span>
           </span>
           <span :if={!destination[:tool]} class="q-dest">
-            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
+            <.external_text text={destination.host} /><span :if={destination.path} class="text-muted"><.external_text text={
+              destination.path
+            } /></span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,

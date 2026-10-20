@@ -147,6 +147,20 @@ defmodule ApiaryWeb.PageComponents do
           ...
         </.settings_page>
       </Layouts.app>
+
+  Where the h1 holds more than words, such as an integration's mark beside its name, the
+  page gives that markup as `title_block`, and the h1 shows it in place of `title`; the
+  h1, its id and its classes stay the same. `title` is still required and is still the
+  plain words. The browser title is not read from the h1 or from this component: the
+  page's LiveView sets it as `page_title`, from the same plain words
+  (`ApiaryWeb.SettingsComponents.page_title/3`), as it gives the frame's crumbs.
+
+      <.settings_page section={:integrations} title={@name} measure="list">
+        <:title_block>
+          <.icon name="hero-puzzle-piece-micro" class="size-4" />{@name}
+        </:title_block>
+        ...
+      </.settings_page>
   """
   attr :heading, :string,
     default: nil,
@@ -154,8 +168,18 @@ defmodule ApiaryWeb.PageComponents do
       "ignored: the frame names the level, and the section's title is the h1. Kept so a caller that passes it still compiles"
 
   attr :section, :atom, required: true, doc: "the section's key, as the second column has it"
-  attr :title, :string, required: true, doc: "the section's title, the page's h1"
+
+  attr :title, :string,
+    required: true,
+    doc:
+      "the section's title as plain words: the page's h1 where `title_block` is not given. A page that gives `title_block` still passes it, and sets its `page_title` from the same words"
+
   attr :measure, :string, default: "read", values: ~w(read list)
+
+  slot :title_block,
+    doc:
+      "the h1's content in place of `title`, where it holds more than words (a mark beside the name). It does not reach the browser title, which the page sets from `title`'s words"
+
   slot :subtitle, doc: "one sentence: what the section is for"
   slot :actions, doc: "at most one primary and one default action"
   slot :inner_block, required: true
@@ -170,7 +194,7 @@ defmodule ApiaryWeb.PageComponents do
         <header class="q-settings-head">
           <div class="min-w-0">
             <h1 id="settings-section-title" class="q-settings-title outline-none" tabindex="-1">
-              {@title}
+              {if @title_block == [], do: @title, else: render_slot(@title_block)}
             </h1>
             <p :if={@subtitle != []} class="q-settings-head-sub">{render_slot(@subtitle)}</p>
           </div>

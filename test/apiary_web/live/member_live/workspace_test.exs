@@ -39,6 +39,11 @@ defmodule ApiaryWeb.MemberLive.WorkspaceTest do
       assert has_element?(lv, "#member-#{scope.membership.id} .q-title", user.email)
       assert has_element?(lv, "#member-#{scope.membership.id} .q-side", "you")
       assert has_element?(lv, "#member-#{scope.membership.id}-level", "Owner")
+
+      # A name cut to its column holds the whole of it in its title; "you" carries none,
+      # so it keeps its width.
+      assert has_element?(lv, "#member-#{scope.membership.id} .q-title[title='#{user.email}']")
+      refute has_element?(lv, "#member-#{scope.membership.id} .q-side[title]")
       assert has_element?(lv, "#member-#{admin_membership.id}-level", "Admin")
       assert has_element?(lv, "#member-#{membership.id}-level", "Member")
       assert has_element?(lv, "#members", admin.email)

@@ -436,15 +436,36 @@ defmodule Apiary.RuntimeConfigTest do
     end
   end
 
+  describe "the log handler" do
+    @tag :tmp_dir
+    test "drops no burst unseen, and keeps the queue limits that say when they drop", %{
+      tmp_dir: dir
+    } do
+      handler = get_in(prod_config(), [:logger, :default_handler])
+      assert handler[:config] == [burst_limit_enable: false]
+
+      # The handler OTP makes of it, written to a file here rather than to stdout.
+      config = Map.new(handler[:config]) |> Map.put(:type, {:file, ~c"#{dir}/log"})
+      :ok = :logger.add_handler(:runtime_config_test, :logger_std_h, %{config: config})
+      on_exit(fn -> :logger.remove_handler(:runtime_config_test) end)
+
+      assert {:ok, %{config: made}} = :logger.get_handler_config(:runtime_config_test)
+      assert made.burst_limit_enable == false
+      assert %{sync_mode_qlen: 10, drop_mode_qlen: 200, flush_qlen: 1000} = made
+    end
+  end
+
   describe "Oban's crontab" do
-    test "is the application's: the core's daily sweeps, then the edition's jobs" do
+    test "is the application's: the core's daily sweeps, its purge of seen requests and its sweep of lapsed claims, then the edition's jobs" do
       oban = Application.get_env(:apiary, Oban)
 
       assert Enum.map(oban[:crontab], &elem(&1, 1)) ==
                [
                  Apiary.Audit.PruneSweep,
                  Apiary.Organisations.InvitationSweep,
-                 Apiary.Deletion.PurgeSweep
+                 Apiary.Deletion.PurgeSweep,
+                 Apiary.Adapters.SeenRequestsPurge,
+                 Apiary.Dispatches.Sweep
                ] ++ Enum.map(Apiary.Edition.crontab(), &elem(&1, 1))
 
       for {expression, _worker} <- oban[:crontab] do
@@ -456,6 +477,13 @@ defmodule Apiary.RuntimeConfigTest do
       assert oban[:repo] == Apiary.Repo
       assert oban[:queues] == [default: 5]
       assert oban[:testing] == :manual
+    end
+
+    test "names the time of day a daily job runs at, as Oban runs it" do
+      oban = Application.get_env(:apiary, Oban)
+      assert {"40 2 * * *", _} = List.keyfind(oban[:crontab], Apiary.Audit.PruneSweep, 1)
+      assert Apiary.Application.daily_at(Apiary.Audit.PruneSweep) == ~T[02:40:00]
+      assert Apiary.Application.daily_at(Apiary.Deletion.PurgeSweep) == ~T[03:20:00]
     end
 
     test "is not in the configuration, so an edition never restates Oban's" do

@@ -25,12 +25,18 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       assert has_element?(lv, "#settings-tabs #settings-tab-general[aria-current=page]")
       refute has_element?(lv, "#main #settings-tabs")
       assert has_element?(lv, "#workspace-name #workspace-type dt", "Type")
-      assert has_element?(lv, "#workspace-type-value", "A software workspace")
+      assert has_element?(lv, "#workspace-type-value", "Software workspace")
 
       assert has_element?(
                lv,
-               "#workspace-type",
-               "Set when the workspace was created. It decides the words its pages use."
+               "#workspace-type-description",
+               "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
+             )
+
+      assert has_element?(
+               lv,
+               "#workspace-type-fixed",
+               "Chosen when the workspace was created, and can't be changed. The type sets the words on the workspace's pages and the integrations offered to the workspace."
              )
 
       # Read only: no field for it, and the form sends none.
@@ -38,24 +44,32 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       refute has_element?(lv, "#workspace-form #workspace-type")
     end
 
-    test "names a workspace of another domain by the domain's name alone",
+    test "names a workspace of another domain by that domain's label and line",
          %{conn: conn, scope: scope} do
-      Apiary.Repo.update_all(
-        from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
-        set: [domain: "example"]
-      )
+      for {domain, label, line} <- [
+            {"general", "General workspace",
+             "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."},
+            {"example", "Example workspace", "For the tests only."}
+          ] do
+        Apiary.Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [domain: domain]
+        )
 
-      {:ok, lv, _html} = live(conn, settings_path(scope))
+        {:ok, lv, _html} = live(conn, settings_path(scope))
 
-      assert lv |> element("#workspace-type-value") |> render() =~ ~r{>\s*example\s*</dd>}
-      refute has_element?(lv, "#workspace-type-value", "workspace")
-      refute has_element?(lv, "#workspace-type-value", "software")
+        assert lv |> element("#workspace-type-value") |> render() =~
+                 ~r{>\s*#{label}\s*</dd>}
+
+        assert has_element?(lv, "#workspace-type-description", line)
+        refute has_element?(lv, "#workspace-type-value", "software")
+      end
     end
 
     test "says it to a member too, who changes nothing", %{scope: scope} do
       {:ok, lv, _html} = live(member_conn(scope, :member), settings_path(scope))
 
-      assert has_element?(lv, "#workspace-type-value", "A software workspace")
+      assert has_element?(lv, "#workspace-type-value", "Software workspace")
       assert has_element?(lv, "input#workspace_name[disabled]")
     end
 
@@ -72,7 +86,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
         {:ok, lv, _html} = live(conn, path)
         assert has_element?(lv, "#settings-tab-general[aria-current=page]")
         assert has_element?(lv, "#settings-section-general #delete-workspace-form")
-        assert has_element?(lv, "#workspace-type-value", "A software workspace")
+        assert has_element?(lv, "#workspace-type-value", "Software workspace")
       end
     end
   end

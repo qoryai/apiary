@@ -30,11 +30,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.RichText
-  import Phoenix.Component, only: [assign: 2, assign: 3, to_form: 2]
+  import Phoenix.Component, only: [assign: 2, assign: 3, to_form: 2, sigil_H: 2]
+  import ApiaryWeb.CoreComponents, only: [avatar: 1]
   # Phoenix.LiveView, its async work run under the page's organisation and workspace ids.
   use ApiaryWeb.Async
 
-  alias Apiary.{Access, Organisations}
+  alias Apiary.Access
   alias Apiary.Accounts.Scope
   alias Apiary.Policy
   alias Apiary.Policy.{Above, Grammar, Rule}
@@ -61,8 +62,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   a level above the workspace; `may_change`, whether the reader may change the page's
   rules, a function of the scope, `security_policy.edit` on the workspace by default
   (`may?/2`), which the New rule and Edit rule pages and a save of the form ask
-  (`new_rule/2`, `edit_rule/2`). The holder is named and addressed by it (`holder_name/1`,
-  `base/3`), its system said only where it is shared.
+  (`new_rule/2`, `edit_rule/2`). The holder is named by it (`holder_name/1`), its system
+  said only where it is shared, and addressed by its public id (`base/2`).
   """
   def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
@@ -76,12 +77,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
       writer: Keyword.get(opts, :writer, policy_writer()),
       scope_kind: Keyword.get(opts, :scope) || if(holder, do: :target, else: :workspace),
       may_change: Keyword.get(opts, :may_change, &may_edit?/1),
-      base: Keyword.get(opts, :base) || base(scope, holder, shared),
-      people: people(scope),
+      base: Keyword.get(opts, :base) || base(scope, holder),
       authors: %{},
       fresh: %{},
       announce: nil,
       write_error: nil,
+      write_error_field: nil,
       dialog: nil,
       mode_pick: nil,
       queue: [],
@@ -137,16 +138,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc """
-  The path of the holder's policy page in `scope`'s workspace: a target's Policy tab at its
-  address, its system in it only where its path is `shared`
-  (`ApiaryWeb.TargetComponents.target_path/5`).
+  The path of the holder's policy page in `scope`'s workspace: the workspace's, or a
+  target's Policy tab, by the target's public id
+  (`ApiaryWeb.TargetComponents.target_path/3`).
   """
-  def base(scope, holder, shared \\ false)
+  def base(scope, holder)
 
-  def base(scope, nil, _shared), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
-
-  def base(scope, %{system: system, path: path}, shared),
-    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"], shared)
+  def base(scope, nil), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
+  def base(scope, target), do: ApiaryWeb.TargetComponents.target_path(scope, target, ["policy"])
 
   @doc """
   Whether the reader of a policy page may take `action` on the workspace's security
@@ -174,24 +173,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "The start of the window a list of rules counts their use in: the last 14 days."
   def use_since, do: DateTime.add(DateTime.utc_now(), -@fortnight, :second)
 
-  # user id => email, of the people of the workspace: who added a rule.
-  defp people(scope) do
-    for %{user: %{id: id, email: email}} <- Organisations.list_members(scope),
-        into: %{},
-        do: {id, email}
-  end
-
-  @doc "The local part of an email: dana of dana@example.com."
-  def local(nil), do: nil
-  def local(email), do: People.short(email)
-
-  @doc """
-  Who made a rule or a change, by user id, among the page's `people`: the local part of a
-  member's address, "Former member" for a person who is not one any more, their account
-  deleted or their membership ended (`ApiaryWeb.People`), nil for nobody.
-  """
-  def person(people, id), do: people |> People.member(id) |> People.short()
-
   @doc """
   Reads who made each rule the page lists, in one read, into its `authors`: the authors
   of its rules (`own`) and of the rules of its effective policy (`effective`), the level
@@ -217,17 +198,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   Who made a rule, by user id, as the history names them: the local part of the address
   of their account, whether or not they are a member of the organisation, "Former member"
-  for a deleted account, nil for nobody. Read by `assign_authors/1`; a person it has not
-  read is named among the page's `people` (`person/2`).
+  for a deleted account or an id no account has, nil for nobody. Read by
+  `assign_authors/1`.
   """
   def author(_socket, nil), do: nil
 
-  def author(%{assigns: assigns}, id) do
-    case assigns do
-      %{authors: %{^id => name}} -> People.short(name)
-      _ -> person(assigns.people, id)
-    end
-  end
+  def author(%{assigns: assigns}, id),
+    do: assigns.authors |> People.account(id) |> People.short()
 
   ## Coalesced reloads: one read per 250 ms however many changes land
 
@@ -600,6 +577,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         entries: socket.assigns.effective.entries,
         owner: may?(socket, :"security_policy.lock"),
         locked_by: socket.assigns[:locks] || %{},
+        reader: socket.assigns.current_scope.user.email,
         who_locks:
           ApiaryWeb.Edition.who_may_sentence(
             :"security_policy.lock",
@@ -1088,8 +1066,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc """
-  The target holder's name in words, as it is addressed: its path, `acme/shop`, and its
-  system before it only where the path is shared, `gitlab.com/acme/shop`
+  The target holder's name in words, in its notation: its path, `acme/shop`, and its
+  system before it only where the path is shared, `git.example/acme/shop`
   (`ApiaryWeb.TargetComponents.target_label/3`, the page's `holder_shared`).
   """
   def holder_name(%{assigns: %{holder: %{system: system, path: path}} = assigns}),
@@ -1166,9 +1144,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> put_flash(:info, sentence <> tail)
   end
 
-  @doc "A refused write: the domain's sentence above the composer, as an alert; the list is read again."
-  def refused(socket, %Policy.Error{message: message}) do
-    socket.assigns.reload.(socket) |> assign(:write_error, message)
+  @doc """
+  A refused write: the domain's sentence above the composer, as an alert; the list is read
+  again. A deny of an integration's host is refused with the sentence under the Host
+  field (`write_error_field: :host`).
+  """
+  def refused(socket, %Policy.Error{message: message} = error) do
+    field = if error.reason == :integration_host, do: error.field
+
+    socket.assigns.reload.(socket)
+    |> assign(write_error: message, write_error_field: field)
   end
 
   def focus(socket, id), do: push_event(socket, "policy:focus", %{id: id})
@@ -1231,9 +1216,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "The destinations an enforce confirm lists, each on its row: the first eight."
   def would_shown(%{destinations: destinations}), do: Enum.take(destinations, 8)
 
-  @doc "A destination of the list as its Allow names it: the host, and its path where it has one."
-  def would_name(%{host: host, path: path}) when is_binary(path), do: host <> path
-  def would_name(%{host: host}), do: host
+  @doc """
+  A destination of the list as its Allow names it: the host, and its path where it has
+  one, texts Forager sent, each shown as one where it was sent
+  (`Apiary.ExternalText.sent/1`).
+  """
+  def would_name(%{host: host, path: path}) when is_binary(path),
+    do: "#{Apiary.ExternalText.sent(host)}#{Apiary.ExternalText.sent(path)}"
+
+  def would_name(%{host: host}), do: Apiary.ExternalText.sent(host)
 
   @doc """
   After an Allow of the list, the focus goes on to the next Allow still open among those
@@ -1259,12 +1250,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The sentence of a change, its author first: rich text. `who` is the author's email,
-  "Former member" once their account is deleted (`ApiaryWeb.People`), or nil for a change
-  nobody made, such as a render again after an upgrade, which Qory made. `above` is the
-  name of the level above the workspace, for a change of it (`above_changed`), or nil.
+  shown as its first letter with the address as its tooltip, "Former member" once their
+  account is deleted (`ApiaryWeb.People`), or nil for a change nobody made, such as a
+  render again after an upgrade, which Qory made. `above` is the name of the level above
+  the workspace, for a change of it (`above_changed`), or nil; `reader` is the reader's
+  address.
   """
-  def change_sentence(change, who, above \\ nil) do
-    who = {:b, who || gettext("Qory Apiary")}
+  def change_sentence(change, who, above \\ nil, reader \\ nil) do
+    who = {:b, (who && letter(who, reader)) || gettext("Qory Apiary")}
     diff = Policy.diff(change)
 
     case {change.action, diff} do
@@ -1669,6 +1662,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
+  # The author of a change, as its sentence's subject inside the row that opens it: their
+  # first letter, with the address as its tooltip (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} in_link size="xs" />|
+  end
+
   ## History
 
   @doc "A page of the holder's history as the rows of the change list."
@@ -1687,11 +1687,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
         made = made_version(versions, holder, change)
         query = if changes.page > 1, do: %{"page" => changes.page}, else: %{}
 
+        who = People.email(change.changed_by)
+
         %{
           id: change.id,
-          sentence: change_sentence(change, People.email(change.changed_by), above),
+          sentence: change_sentence(change, who, above, scope.user.email),
           origin: origin(change, made),
-          who: People.email(change.changed_by),
           at: change.inserted_at,
           version: made && made.version,
           digest: made && made.digest,
@@ -1862,13 +1863,17 @@ defmodule ApiaryWeb.PolicyLive.Common do
         |> Enum.take(5)
         |> then(&if(&1 == [], do: [configuration], else: &1))
 
+      # Who made this version and each version around it, read in one query.
+      accounts =
+        People.accounts([configuration.changed_by_id | Enum.map(around, & &1.changed_by_id)])
+
       {:ok,
        %{
          configuration: configuration,
          current?: latest.version == configuration.version,
          latest: latest.version,
          superseded_by: superseded_by,
-         changed_by: People.member(socket.assigns.people, configuration.changed_by_id),
+         changed_by: People.account(accounts, configuration.changed_by_id),
          mode: document_mode(configuration.document),
          mode_source:
            if(latest.version == configuration.version,
@@ -1898,7 +1903,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
                version: item.version,
                digest: item.digest,
                words: (change && change_words(change)) || gettext("First render"),
-               who: People.member(socket.assigns.people, item.changed_by_id),
+               who: People.account(accounts, item.changed_by_id),
                at: item.rendered_at,
                workspace: holder != nil and change != nil and is_nil(change.target_id)
              }
@@ -2015,7 +2020,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     %{
       subject: subject,
-      # The page names a target as it is addressed; the file's head, `subject`, in full.
+      # The page names a target in its notation; the file's head, `subject`, in full.
       name: if(holder, do: holder_name(socket)),
       workspace: if(is_nil(holder), do: scope.workspace.name),
       version: configuration.version,

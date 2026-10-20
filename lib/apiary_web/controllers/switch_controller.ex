@@ -76,9 +76,8 @@ defmodule ApiaryWeb.SwitchController do
   # `Apiary.Access.shown_as/1`), if it asks one, are shown to the person in the
   # destination.
   defp shown?(scope, view) do
-    feature? =
-      not (Code.ensure_loaded?(view) and function_exported?(view, :__feature__, 0)) or
-        Apiary.Features.visible?(scope, view.__feature__())
+    gate = ApiaryWeb.Features.gate(view)
+    feature? = is_nil(gate) or ApiaryWeb.Features.visible?(scope, gate)
 
     shown_as = (action = ApiaryWeb.Access.view_action(view)) && Apiary.Access.shown_as(action)
     feature? and (is_nil(shown_as) or Apiary.Features.visible?(scope, shown_as))

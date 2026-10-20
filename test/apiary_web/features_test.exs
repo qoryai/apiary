@@ -109,6 +109,9 @@ defmodule ApiaryWeb.FeaturesTest do
 
     test "a live navigation to the policy is refused the same way", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+      # The page's async reads finish first, so none is killed holding the test's sandbox
+      # connection when the page ends.
+      render_async(view)
 
       # The page is not mounted: the browser is told to load it, and gets the 404 above.
 
@@ -190,6 +193,9 @@ defmodule ApiaryWeb.FeaturesTest do
 
     test "a live navigation to the policy is refused the same way", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+      # The page's async reads finish first, so none is killed holding the test's sandbox
+      # connection when the page ends.
+      render_async(view)
 
       assert {%{status: 404, reason: "reload"}, _call} =
                catch_exit(

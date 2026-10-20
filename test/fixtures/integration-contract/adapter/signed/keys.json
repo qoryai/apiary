@@ -1,0 +1,14 @@
+{
+  "note": "For tests only. These keys grant nothing: they are Forager's published fixture keys (github.com/qoryai/forager, contracts/forager/v1/fixtures/known-answers/keys.json), whose secrets anyone can read, and accesskey's PublicKey.Fixture names each. The access key signs the requests under the id and the instance id below; the server key signs the answer, the connect pass and the setup pass.",
+  "access_key": {
+    "secret": "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+    "access_key_id": "ak_f1xt0re000000000",
+    "instance_id": "i_gYKDhIWGh4iJiouMjY6PkA",
+    "public_key": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
+  },
+  "server_key": {
+    "seed": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpbXF1eX2A",
+    "public_key": "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc",
+    "fingerprint": "uoES-kuj1vk0sq0qoGlmAg"
+  }
+}

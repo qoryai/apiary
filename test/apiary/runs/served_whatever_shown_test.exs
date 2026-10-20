@@ -76,7 +76,7 @@ defmodule Apiary.Runs.ServedWhateverShownTest do
     )
   end
 
-  defp run(run_id), do: Repo.one!(from r in Run, where: r.run_id == ^run_id)
+  defp run(run_id), do: Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
 
   defp in_force(conn), do: get_resp_header(conn, "x-qory-run-configuration")
 

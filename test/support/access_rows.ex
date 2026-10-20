@@ -8,9 +8,13 @@ defmodule Apiary.AccessRows do
       admin         an admin of the organisation
       owner         an owner of the organisation
       other_owner   an owner of another organisation
-      access_key    a gateway, with an access key of the workspace
+      access_key    a node, with an access key of the workspace
+      pool_key      a node pool, with an access key of the workspace, asked of that
+                    workspace: its queue
+      adapter_key   an adapter of the instance, with an access key enrolled on it,
+                    asked of that adapter
       instance      the instance itself, in a job no person enqueued
-      feature_off   whoever the action is for, an owner, an access key or the instance, on
+      feature_off   whoever the action is for, an owner, a key or the instance, on
                     an instance without the action's feature
       hidden        whoever the action is for, as feature_off, where the edition hides the
                     action's feature from people, or the part the action belongs to, of
@@ -23,12 +27,16 @@ defmodule Apiary.AccessRows do
   instance's machine: nobody's row says yes. Nor for a password link, which an instance
   admin makes, as `Apiary.Accounts.build_password_link/3` asks, or a release command, nor
   for saving the instance's mail settings and turning them on, an instance admin's, as
-  `Apiary.Mail.save_settings/3` and `turn_on/2` ask. Creating an organisation is a sign-up's, which
-  asks nothing, in the core; an edition may let a signed-in person create one. Creating,
-  deleting and restoring a workspace are asked of the organisation: an owner creates one,
-  an owner or an admin deletes any workspace of it; purging is the instance's, once a
-  deletion's grace period is over. The actions over people are asked of the workspace, as
-  a page asks whether to show them.
+  `Apiary.Mail.save_settings/3` and `turn_on/2` ask, nor for setting the product's name,
+  an instance admin's too, as `Apiary.ProductName.rename/2` asks, nor for changing the
+  instance's settings, an instance admin's after a recent sign-in, as
+  `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
+  the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks.
+  Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
+  let a signed-in person create one. Creating, deleting and restoring a workspace are
+  asked of the organisation: an owner creates one, an owner or an admin deletes any
+  workspace of it; purging is the instance's, once a deletion's grace period is over. The
+  actions over people are asked of the workspace, as a page asks whether to show them.
   """
 
   import Apiary.AccessKeysFixtures
@@ -41,7 +49,18 @@ defmodule Apiary.AccessRows do
   @doc "actors/0 is the core's actors."
   @spec actors() :: [atom]
   def actors,
-    do: [:member, :admin, :owner, :other_owner, :access_key, :instance, :feature_off, :hidden]
+    do: [
+      :member,
+      :admin,
+      :owner,
+      :other_owner,
+      :access_key,
+      :pool_key,
+      :adapter_key,
+      :instance,
+      :feature_off,
+      :hidden
+    ]
 
   @doc "rows/0 is the core's rows: every action of the core, with the actors that may."
   @spec rows() :: [{atom, keyword}]
@@ -65,6 +84,8 @@ defmodule Apiary.AccessRows do
       {:"account.password_link", yes: []},
       {:"instance.mail_save", yes: []},
       {:"instance.mail_on", yes: []},
+      {:"instance.rename", yes: []},
+      {:"instance.configure", yes: []},
       {:"audit.read", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"audit.prune", yes: [:instance, :feature_off, :hidden]},
       {:"workspace.create", yes: @owners ++ [:feature_off, :hidden]},
@@ -96,29 +117,74 @@ defmodule Apiary.AccessRows do
       {:"variable.edit", yes: @owners ++ [:admin]},
       {:"connection.read", yes: @owners ++ [:member, :admin]},
       {:"connection.write", yes: @owners ++ [:admin]},
-      {:"run.post_events", yes: [:access_key, :hidden]},
-      {:"run_configuration.fetch", yes: [:access_key, :hidden]}
+      {:"model_choice.write", yes: @owners ++ [:admin]},
+      {:"run.post_events", yes: [:access_key, :pool_key, :hidden]},
+      {:"run_configuration.fetch", yes: [:access_key, :pool_key, :hidden]},
+      {:"secret.seal", yes: [:access_key, :hidden]},
+      {:"adapter.read", yes: @owners ++ [:member, :admin]},
+      {:"adapter.create", yes: []},
+      {:"adapter.edit", yes: []},
+      {:"adapter.set_interval", yes: []},
+      {:"adapter.delete", yes: []},
+      {:"adapter.install", yes: [:instance, :hidden]},
+      {:"adapter.setup", yes: []},
+      {:"adapter.connect", yes: @owners ++ [:admin]},
+      {:"collection.assign", yes: @owners ++ [:admin]},
+      {:"collection.set_backlog", yes: @owners ++ [:admin]},
+      {:"collection.move", yes: [:instance, :hidden]},
+      {:"work_item.read", yes: @owners ++ [:member, :admin]},
+      {:"work_item.take_in", yes: @owners ++ [:member, :admin]},
+      {:"work_item.undo", yes: @owners ++ [:member, :admin]},
+      {:"work_item.decline", yes: @owners ++ [:member, :admin]},
+      {:"work_item.close", yes: @owners ++ [:member, :admin]},
+      {:"work_item.answer", yes: @owners ++ [:member, :admin]},
+      {:"work_item.confirm", yes: @owners ++ [:member, :admin]},
+      {:"work_item.explore_again", yes: @owners ++ [:member, :admin]},
+      {:"work_item.comment", yes: @owners ++ [:member, :admin]},
+      # Asked of the workspace, as a page asks whether to show the button at all: the role
+      # alone answers. A comment's author is asked of the comment (`test/apiary/access_test.exs`).
+      {:"work_item.comment_delete", yes: @owners ++ [:admin]},
+      {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"dispatch.claim", yes: [:pool_key, :hidden]},
+      {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
+      {:"dispatch.handover", yes: [:pool_key, :hidden]},
+      {:"dispatch.release", yes: [:pool_key, :hidden]},
+      {:"target.set_further_repositories", yes: @owners ++ [:admin]},
+      {:"dispatch.prebuilt", yes: [:pool_key, :hidden]},
+      {:"target.rebuild_environment", yes: @owners ++ [:member, :admin]}
     ]
   end
 
   @doc """
-  setup/1 makes the core's place, `home`, an organisation with its workspace, and the
-  scopes of the core's actors in it.
+  setup/1 makes the core's place, `home`, an organisation with its workspace, beside an
+  adapter of the instance (`adapter`), and the scopes of the core's actors in it. The
+  adapter's key, `adapter_key`, is a key enrolled on it by an instance admin, its scope
+  that of the server contract (`Apiary.Accounts.Scope.for_access_key/1`): no organisation,
+  and no workspace. The pool's key, `pool_key`, is a key of a node pool of the workspace.
   """
   @spec setup(map) :: %{places: map, scopes: map}
   def setup(_made) do
     home = sign_up_fixture()
     owner = home.scope
     %{access_key: key} = access_key_fixture(owner)
+    pool = Apiary.NodesFixtures.pool_fixture(owner)
+    %{access_key: pool_key} = access_key_fixture(owner, node: pool)
+    adapter = Apiary.NodesFixtures.adapter_fixture()
+    %{access_key: adapter_key} = enrolled_key_fixture(instance_admin_scope(), adapter)
 
     %{
-      places: %{home: home},
+      places: %{home: Map.put(home, :adapter, adapter)},
       scopes: %{
         member: member_fixture(owner, :member).scope,
         admin: member_fixture(owner, :admin).scope,
         owner: owner,
         other_owner: sign_up_fixture().scope,
         access_key: Scope.for_access_key(key),
+        pool_key: Scope.for_access_key(pool_key),
+        adapter_key: Scope.for_access_key(adapter_key),
         instance: Scope.for_instance(home.organisation, home.workspace)
       }
     }
@@ -130,17 +196,39 @@ defmodule Apiary.AccessRows do
 
   @doc """
   refusal/3 is why the core's answer is no where it is not the role: a feature that is off
-  or hidden is not found, and so is a hidden part, anything of another organisation, and
-  an organisation that does not exist yet, which is no place.
+  or hidden is not found, and so is a hidden part, anything of another organisation, an
+  organisation that does not exist yet, which is no place, an adapter, which is the
+  instance's, to anyone but its key, to an adapter's key, anything but that adapter, and,
+  to a node pool's key, anything but its workspace: it is asked of no node here, and the
+  organisation is beyond its workspace.
   """
   @spec refusal(atom, atom, term) :: :not_found | nil
-  def refusal(action, actor, _subject) do
+  def refusal(action, actor, subject) do
     cond do
-      actor == :feature_off and Apiary.Access.feature(action) != nil -> :not_found
-      actor == :hidden and Apiary.Access.shown_as(action) != nil -> :not_found
-      actor == :other_owner -> :not_found
-      Apiary.Access.action(action).asked_of == :new_organisation -> :not_found
-      true -> nil
+      actor == :feature_off and Apiary.Access.feature(action) != nil ->
+        :not_found
+
+      actor == :hidden and Apiary.Access.shown_as(action) != nil ->
+        :not_found
+
+      actor == :other_owner ->
+        :not_found
+
+      Apiary.Access.action(action).asked_of == :new_organisation ->
+        :not_found
+
+      actor == :adapter_key and not match?(%Apiary.Nodes.Node{kind: :adapter}, subject) ->
+        :not_found
+
+      actor == :pool_key and not match?(%Apiary.Organisations.Workspace{}, subject) ->
+        :not_found
+
+      actor != :adapter_key and
+          match?(%Apiary.Nodes.Node{kind: :adapter, organisation_id: nil}, subject) ->
+        :not_found
+
+      true ->
+        nil
     end
   end
 end

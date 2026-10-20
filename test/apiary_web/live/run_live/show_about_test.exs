@@ -32,7 +32,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
 
   defp page(conn, scope, run, tab \\ "") do
     {:ok, lv, html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}" <> tab)
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}" <> tab)
 
     {lv, html}
   end
@@ -89,12 +89,12 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       refute has_element?(lv, "#run-about-more")
     end
 
-    test "isolates a subject's words, and its tooltip names the url's own host", %{
+    test "isolates a subject's words, and its tooltip names the host of the url", %{
       conn: conn,
       scope: scope
     } do
       # A right-to-left override in the ref and a host-like title: neither may pass for
-      # where the link leads.
+      # where the link leads. The override is dropped (`Apiary.ExternalText.line/1`).
       ref = "ENG-17\u202Emoc.elpmaxe.live"
 
       subject = %{
@@ -109,9 +109,12 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       link = ~s(a[href="https://tracker.example.com/browse/ENG-17"])
       tip = "login.example.org · tracker.example.com"
 
+      # The override itself is dropped (`Apiary.ExternalText.line/1`).
+      shown_ref = "ENG-17moc.elpmaxe.live"
+
       for place <- ["#run-about", "#run-about-facts"] do
         assert has_element?(lv, "#{place} #{link}[title=\"#{tip}\"]")
-        assert has_element?(lv, "#{place} #{link} bdi", ref)
+        assert has_element?(lv, "#{place} #{link} bdi", shown_ref)
         assert has_element?(lv, "#{place} #{link} bdi", "ticket")
       end
 
@@ -121,7 +124,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       plain = %{subject | "url" => "javascript:alert(1)"}
       {lv, _html} = page(conn, scope, started(scope, %{"subjects" => [plain]}))
       refute has_element?(lv, "#run-about a")
-      assert has_element?(lv, ~s(#run-about span[title="login.example.org"] bdi), ref)
+      assert has_element?(lv, ~s(#run-about span[title="login.example.org"] bdi), shown_ref)
     end
 
     test "isolates the run's title and kind", %{conn: conn, scope: scope} do
@@ -131,11 +134,12 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       {lv, _html} =
         page(conn, scope, started(scope, %{"title" => title, "kind" => kind}), "/terminal")
 
-      assert has_element?(lv, "h1#run-title > bdi", title)
-      assert has_element?(lv, "#run-about-kind > bdi", kind)
-      assert has_element?(lv, "#run-about-facts > dd > bdi", kind)
+      # The title and the kind without the override (`Apiary.ExternalText.line/1`).
+      assert has_element?(lv, "h1#run-title > bdi", "Fix the loginredirect")
+      assert has_element?(lv, "#run-about-kind > bdi", "Implementation")
+      assert has_element?(lv, "#run-about-facts > dd > bdi", "Implementation")
       # The tab's title is plain text.
-      assert page_title(lv) =~ title
+      assert page_title(lv) =~ "Fix the loginredirect"
     end
 
     test "shows three subjects, then how many more, as text", %{conn: conn, scope: scope} do

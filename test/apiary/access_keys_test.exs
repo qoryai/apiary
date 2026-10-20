@@ -36,6 +36,20 @@ defmodule Apiary.AccessKeysTest do
       assert {:ok, %AccessKey{revoked_at: nil}} = AccessKeys.fetch_for_verification(key.key_id)
     end
 
+    @tag needs: :factory
+    # The topic is the whole node's, so a nudge from another test may arrive too: only that
+    # one comes is asserted.
+    test "an adapter's key, revoked, asks the installer to pass at once" do
+      :ok = Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Adapters.Installed.topic())
+      adapter = Apiary.NodesFixtures.installed_adapter_fixture()
+      %{access_key: key} = installed_key_fixture(adapter)
+
+      assert {:ok, %AccessKey{revoked_at: %DateTime{}}} =
+               AccessKeys.revoke_access_key(instance_admin_scope(), key)
+
+      assert_receive :nudge
+    end
+
     test "a key of another workspace cannot be revoked through a foreign scope" do
       %{scope: scope} = sign_up_fixture()
       %{scope: other_scope} = sign_up_fixture()

@@ -21,8 +21,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   the same runs on any day, and a run still running at a time long past is found lost at
   once.
 
-  Each run is a record Forager could have sent: its registration, then its start, with what it is about (an
-  issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
+  Each run is a record Forager could have sent: its registration, then its start, with what it is about (a
+  fix and the change that makes it, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
   heartbeats, and its exit. A run on a shared machine has a starter, which may give its
   outcome; a run on a laptop has none. Most runs complete and some fail, by the
@@ -815,7 +815,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp write_chunk(specs, ctx) do
     built = Enum.map(specs, &build(&1, ctx))
 
-    Repo.insert_all(Run, Enum.map(built, fn {run, _events} -> run end))
+    Apiary.PublicId.Insert.insert_all(Run, Enum.map(built, fn {run, _events} -> run end))
 
     built
     |> Enum.flat_map(fn {_run, events} -> events end)
@@ -849,7 +849,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
           workspace_id: workspace.id,
           run_id: id,
           sequence: sequence,
-          event_id: Ecto.UUID.generate(),
+          node_event_id: Ecto.UUID.generate(),
           type: "dev.qory." <> type,
           time: instant(time),
           data: data,
@@ -865,12 +865,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     run = %{
       id: id,
+      public_id: Run.new_public_id(),
       organisation_id: organisation.id,
       workspace_id: workspace.id,
-      run_id: run_id,
+      node_run_id: run_id,
       access_key_id: key.id,
       node_id: key.node_id,
-      instance_id: instance_id(key.node_id, spec.host),
+      node_instance_id: instance_id(key.node_id, spec.host),
       state: "pending",
       forager_version: forager_version(spec),
       contract_version: 1,
@@ -1950,11 +1951,11 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       Repo.all(
         from r in Run,
           where: r.workspace_id == ^workspace.id and not is_nil(r.node_id),
-          where: not is_nil(r.instance_id) and not is_nil(r.host),
-          group_by: [r.node_id, r.instance_id, r.host],
+          where: not is_nil(r.node_instance_id) and not is_nil(r.host),
+          group_by: [r.node_id, r.node_instance_id, r.host],
           select: %{
             node_id: r.node_id,
-            instance_id: r.instance_id,
+            node_instance_id: r.node_instance_id,
             name: r.host,
             first_seen_at: min(r.inserted_at),
             last_seen_at: max(r.last_event_at),
@@ -1983,7 +1984,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     Repo.insert_all(Instance, entries,
       on_conflict: {:replace, [:last_seen_at, :access_key_id, :last_forager_version]},
-      conflict_target: [:node_id, :instance_id]
+      conflict_target: [:node_id, :node_instance_id]
     )
   end
 

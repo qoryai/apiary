@@ -9,6 +9,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   alias Apiary.{Repo, Secrets, Variables}
   alias Apiary.Audit.Entry
   alias Apiary.Runs.Target
+  alias Apiary.Secrets.Value
 
   @moduletag needs: :secrets
 
@@ -60,6 +61,33 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   end
 
   defp refute_value(html), do: refute(html =~ @value)
+
+  # The nonce and the ciphertext of each of a secret's values, as the database has them.
+  defp sealed_rows(secret) do
+    Repo.all(from v in Value, where: v.secret_id == ^secret.id, select: {v.nonce, v.ciphertext})
+  end
+
+  # The page's state holds none of the sealed bytes, and its form's changeset no nonce nor
+  # ciphertext, in its data or its changes.
+  defp refute_sealed_state(lv, rows) do
+    assigns = :sys.get_state(lv.pid).socket.assigns
+    bytes = :erlang.term_to_binary(assigns)
+
+    for {nonce, ciphertext} <- rows, sealed <- [nonce, ciphertext] do
+      assert :binary.match(bytes, sealed) == :nomatch
+    end
+
+    case assigns[:form] do
+      %Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset} ->
+        for field <- [:nonce, :ciphertext] do
+          assert Map.get(changeset.data, field) == nil
+          refute Map.has_key?(changeset.changes, field)
+        end
+
+      _none ->
+        :ok
+    end
+  end
 
   # A page's or a dialog's path the page refuses as it opens: back to the list, with why.
   defp refused_at(conn, path) do
@@ -640,6 +668,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert reveal(scope, secret, "bot-app") == {:ok, "second"}
 
       assert has_element?(lv, "#secret-#{secret.public_id}", "2 values")
+
+      # The name, cut to its column, keeps the whole of it in its title.
+      assert has_element?(
+               lv,
+               "#secret-#{secret.public_id} .q-nm > .q-title[title='GITHUB_APP_PRIVATE_KEY']"
+             )
+
       assert has_element?(lv, "#secret-#{secret.public_id}-main-app-value-id", "main-app")
       assert has_element?(lv, "#secret-#{secret.public_id}-bot-app-value-id", "bot-app")
 
@@ -770,6 +805,33 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert render(lv) =~ "main-app of GITHUB_APP_PRIVATE_KEY is now web-app."
       assert reveal(scope, secret, "web-app") == {:ok, @value}
       refute_value(render(lv))
+    end
+
+    test "a value's save, refused or made, leaves no sealed bytes in the page's state",
+         %{conn: conn, scope: scope} do
+      secret = secret!(scope, %{name: "DEPLOY_KEYS", value_id: "main-app"})
+      {:ok, _} = Secrets.add_value(scope, secret, %{value_id: "bot-app", value: "x"})
+      before = sealed_rows(secret)
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main-app/change"))
+
+      lv |> form("#secret-form", secret_value: %{value: ""}) |> render_submit()
+      assert has_element?(lv, "#secret_value_value-error")
+      refute_sealed_state(lv, before)
+
+      lv |> form("#secret-form", secret_value: %{value: "next"}) |> render_submit()
+      assert reveal(scope, secret, "main-app") == {:ok, "next"}
+      refute_sealed_state(lv, before ++ sealed_rows(secret))
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main-app/rename"))
+
+      for value_id <- ["Not A Slug", "bot-app"] do
+        lv |> form("#secret-form", secret_value: %{value_id: value_id}) |> render_submit()
+        assert has_element?(lv, "#secret_value_value_id-error")
+        refute_sealed_state(lv, sealed_rows(secret))
+      end
     end
 
     test "deletes a value of several; a secret's one value goes only with it",
@@ -1000,6 +1062,22 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#variable-#{variable.id}-value", "https://registry.example.com")
       assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
       assert has_element?(lv, "#variable-#{variable.id}-targets", "No overrides")
+
+      # The name and the value are cut to their columns, each whole in its title; the name
+      # is the last to give way.
+      assert has_element?(
+               lv,
+               "#variable-#{variable.id} .q-nm > .q-title.q-cut[title='NPM_REGISTRY']",
+               "NPM_REGISTRY"
+             )
+
+      assert has_element?(
+               lv,
+               "#variable-#{variable.id}-value.q-cut[title='https://registry.example.com']"
+             )
+
+      refute has_element?(lv, "#variable-#{variable.id}-value.truncate")
+      refute has_element?(lv, "#variable-#{variable.id}-lock.q-stw-wrap")
     end
 
     test "a QORY_ name is refused, and a name already set too", %{conn: conn, scope: scope} do
@@ -1067,6 +1145,8 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       {:ok, lv, _html} = live(conn, variables_path(scope))
       assert has_element?(lv, "#variable-#{variable.id}-targets", "2 repositories override it")
+      # Its counts are parts of one line, which breaks between them only.
+      assert has_element?(lv, "a#variable-#{variable.id}-targets.q-parts")
 
       lv |> element("#variable-#{variable.id}-change") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/change"))
@@ -1214,6 +1294,21 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       for target <- targets, do: assert(has_element?(lv, "#variable-target-#{target.id}"))
       assert has_element?(lv, "#variable-targets", "Overrides the workspace's value")
 
+      # A repository's name is cut to its column, whole in its title; its value's words
+      # break between them.
+      [first | _] = targets
+
+      assert has_element?(
+               lv,
+               "#variable-target-#{first.id} .q-tname.q-cut[title='github.example/acme/site-01']"
+             )
+
+      assert has_element?(
+               lv,
+               "#variable-target-#{first.id} td > span.q-parts",
+               "Overrides the workspace's value"
+             )
+
       # The table's region is named apart from the page's.
       assert has_element?(lv, "[role=region][aria-label=Repositories] #variable-targets")
 
@@ -1241,15 +1336,11 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/targets"))
 
-      # Its system is in the address only where its path is shared.
-      for {target, path} <- [
-            {shop, "/targets/github.example/acme/shop"},
-            {other, "/targets/gitlab.example/acme/shop"},
-            {billing, "/targets/acme/billing"}
-          ] do
+      # Each links to its page by its public id.
+      for target <- [shop, billing, other] do
         assert has_element?(
                  lv,
-                 "#variable-target-#{target.id} a[href='#{workspace_path(scope, path)}']"
+                 "#variable-target-#{target.id} a[href='#{workspace_path(scope, "/targets/#{target.public_id}")}']"
                )
       end
     end
@@ -1431,6 +1522,84 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       assert refused_at(conn, variables_path(scope, "/#{own.id}/delete")) ==
                "That variable is no longer in this workspace."
+    end
+  end
+
+  describe "who changed a secret or a variable" do
+    # The rows of a secret and a variable that `admin` changed last, once `change` ran on
+    # them, as their views show them, their tags left out.
+    defp changed_by(conn, scope, admin, change) do
+      secret = secret!(admin.scope, %{name: "DEPLOY_TOKEN"})
+      variable = variable!(admin.scope, :workspace, "REGION", "eu-west")
+      change.(secret, variable)
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+      secret_row = lv |> element("#secret-#{secret.public_id}") |> render() |> plain()
+      {:ok, lv, _html} = live(conn, variables_path(scope))
+      variable_row = lv |> element("#variable-#{variable.id}") |> render() |> plain()
+      {secret_row, variable_row}
+    end
+
+    defp plain(html),
+      do: html |> String.replace(~r/<[^>]+>/, " ") |> String.split() |> Enum.join(" ")
+
+    # The changed rows name `user` instead: the secret, its value and the variable.
+    defp changed_by_user(secret, variable, user) do
+      for schema <- [Apiary.Secrets.Secret, Apiary.Variables.Variable] do
+        id = if schema == Apiary.Secrets.Secret, do: secret.id, else: variable.id
+        Repo.update_all(from(r in schema, where: r.id == ^id), set: [updated_by_id: user.id])
+      end
+
+      Repo.update_all(from(v in Value, where: v.secret_id == ^secret.id),
+        set: [updated_by_id: user.id]
+      )
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      rows =
+        changed_by(conn, scope, admin, fn _secret, _variable ->
+          Repo.delete!(admin.membership)
+        end)
+
+      letter = "#{String.upcase(String.first(admin.user.email))} #{admin.user.email}"
+
+      for row <- Tuple.to_list(rows) do
+        assert row =~ "by #{letter}"
+        refute row =~ "Former member"
+      end
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      rows =
+        changed_by(conn, scope, admin, fn _secret, _variable ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(admin.user)
+        end)
+
+      for row <- Tuple.to_list(rows) do
+        assert row =~ "by Former member"
+        refute row =~ Apiary.Accounts.User.short_name(admin.user.email)
+      end
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      user = Apiary.AccountsFixtures.user_fixture()
+
+      rows =
+        changed_by(conn, scope, admin, fn secret, variable ->
+          changed_by_user(secret, variable, user)
+        end)
+
+      for row <- Tuple.to_list(rows) do
+        assert row =~ "by #{String.upcase(String.first(user.email))} #{user.email}"
+        refute row =~ "Former member"
+      end
     end
   end
 end

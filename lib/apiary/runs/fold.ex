@@ -46,9 +46,7 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
-  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start). An
-  exit with the reason `quiet`, which an older Forager wrote, says the quiet period,
-  `quiet_seconds`.
+  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start).
 
   How the run ended is its exit's `state` and `reason` (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
   any other value is absent; the reason is a code, a lower-case letter then up to 63
@@ -61,7 +59,10 @@ defmodule Apiary.Runs.Fold do
 
   The run's starter's outcome (`Apiary.Runs.Outcome`), stored on the run and not folded,
   decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
-  applies it, so its state and reason are the run's, and the exit's stay beside them.
+  applies it, so its state and reason are the run's, and the exit's stay beside them. A run
+  whose end Qory recorded without an outcome (`released_at`, not folded either) is
+  cancelled with the reason `released`, whatever its exit said, until its starter's
+  outcome decides; that step comes just before the outcome's.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's,
   the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
@@ -76,7 +77,9 @@ defmodule Apiary.Runs.Fold do
   offset as the pass leaves it, from its time and arrival (the projector hands them over
   when that heartbeat was projected before), so `last_heartbeat_at` is the same in any
   order of arrival and after a rebuild. A heartbeat a pass folds revives a lost or pending
-  run only when it counts as heard within three intervals of its arrival; a lower offset
+  run only when it counts as heard within three intervals of its arrival, and, for a run
+  whose attach set a deadline for its end (`backstop_at`, `Apiary.Runs.Liveness`), only
+  when it arrived by then, as does a start; a lower offset
   alone revives nothing and undoes no revive. So the one order that can show is a revive
   by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
   an earlier heartbeat delivered after it across a clock set back between the two. The
@@ -84,8 +87,8 @@ defmodule Apiary.Runs.Fold do
 
   A run through a gateway counts the starts and heartbeats of the instance that attached
   it alone (`liveness_instance/1`), by the instance id each event was delivered with
-  (`events.instance_id`): after a loss, only the attaching instance's heartbeat makes the
-  run live again. Another instance's heartbeat is folded into nothing, neither the last
+  (`events.node_instance_id`): after a loss, only the attaching instance's heartbeat makes
+  the run live again. Another instance's heartbeat is folded into nothing, neither the last
   heartbeat, nor the offset, nor the elapsed time, and its start revives nothing. An
   event stored before its instance was kept counts, and so does every event of a run
   whose attaching instance is not known, and of a direct run. The instance ids are stored
@@ -143,22 +146,13 @@ defmodule Apiary.Runs.Fold do
   @max_cells 65_535
   @statuses 100..599
 
-  # The states no start or heartbeat folded later changes, with the old names an older
-  # release stored them under (`Apiary.Runs.Run.old_states/0`).
-  @terminal ~w(completed failed cancelled succeeded ended timed_out)
+  # The states no start or heartbeat folded later changes.
+  @terminal ~w(completed failed cancelled)
   # A reason: an open code of Forager's or of the run's starter.
   @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
-  # The reasons of the failed exit an older Forager, under the contract before the outcome,
-  # wrote when it stopped a run itself, a session's run or a gateway's: its time limit, no
-  # activity, its run credential expired, or its starter ended it. Such an exit is stored,
-  # and a rebuild folds it again.
-  @stopped_reasons ~w(timeout quiet credential_expired run_ended_at_issuer)
-  # The reasons of an exit without a state, stored under that contract, that cancel the run:
-  # its time limit, no activity, its run credential expired, or its starter ended it.
-  @cancelled_reasons ~w(timeout quiet credential_expired stopped run_ended_at_issuer)
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
@@ -209,8 +203,26 @@ defmodule Apiary.Runs.Fold do
       |> Enum.reduce(acc, &event(&2, &1))
       |> count_beat()
 
-    %{acc | run: outcome(acc.run), log_chunks: Enum.reverse(acc.log_chunks)}
+    %{acc | run: settle(acc.run), log_chunks: Enum.reverse(acc.log_chunks)}
   end
+
+  # settle/1 is the last step of every fold, and what a rebuild's reset and an end Qory
+  # records apply: a run its starter released after a queue handed it over
+  # (`released_at`, `Apiary.Dispatches.RunEnd`) is cancelled with the reason `released`,
+  # whatever its exit said, and not lost; then its starter's outcome, should it have one,
+  # decides over that as over all the rest (`outcome/1`). No outcome is recorded for a
+  # release. Every other run is `outcome/1` alone.
+  @doc false
+  @spec settle(map()) :: map()
+  def settle(run), do: run |> released() |> outcome()
+
+  defp released(%{released_at: %DateTime{}} = run) do
+    if Map.get(run, :outcome_state) in @outcome_states,
+      do: run,
+      else: Map.merge(run, %{state: "cancelled", reason: "released", lost_at: nil})
+  end
+
+  defp released(run), do: run
 
   @doc """
   `run` with its starter's outcome applied: given an outcome (`outcome_state`, from
@@ -379,7 +391,6 @@ defmodule Apiary.Runs.Fold do
         reason: reason,
         exit_reason: reason,
         refused_at: nil,
-        quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
         duration_ms: integer(data, "duration_ms", 0..@int8),
         lost_at: if(state == "lost", do: event.time)
       })
@@ -465,50 +476,45 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies:
 
-    1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
-       cancelled: the exit an older Forager, under the contract before the outcome, wrote
-       when it stopped a run itself.
-    2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
-    3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
-    4. Without a state, as an older Forager wrote a gateway's exit, the reason decides:
-       `timeout`, `quiet`, `credential_expired`, `stopped` and `run_ended_at_issuer` are
-       cancelled, `session_lost` and `gateway_lost` lost, and any other reason, or none,
-       failed.
+    1. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
+    2. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
+    3. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
+       lost, and any other reason, or none, failed.
 
   A state other than the three is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state("failed", reason) when reason in @stopped_reasons, do: "cancelled"
   def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
   def exit_state("succeeded", _reason), do: "completed"
   def exit_state("failed", _reason), do: "failed"
   def exit_state("cancelled", _reason), do: "cancelled"
-  def exit_state(_state, reason) when reason in @cancelled_reasons, do: "cancelled"
   def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 
-  # A start revives the run as a heartbeat does, from the attaching instance alone.
+  # A start revives the run as a heartbeat does, from the attaching instance alone, and
+  # not past the run's backstop.
   defp started_state(run, event) do
-    if ended?(run) or not attaching_instance?(run, event),
-      do: run,
-      else: %{run | state: "running", lost_at: nil}
+    if ended?(run) or not attaching_instance?(run, event) or
+         Liveness.past_backstop?(run, received_at(event)),
+       do: run,
+       else: %{run | state: "running", lost_at: nil}
   end
 
   @doc """
   The instance whose starts and heartbeats count towards `run`'s liveness: the instance
-  that attached it (`attach_instance_id`), for a run through a gateway that has one; nil
+  that attached it (`gateway_instance_id`), for a run through a gateway that has one; nil
   for any other run, whose events count from whoever sent them.
   """
   @spec liveness_instance(map()) :: String.t() | nil
   def liveness_instance(run) do
-    if Map.get(run, :run_key_payload), do: Map.get(run, :attach_instance_id)
+    if Map.get(run, :run_key_payload), do: Map.get(run, :gateway_instance_id)
   end
 
   # An event stored before its instance was kept, with none, counts as it did.
   defp attaching_instance?(run, event) do
     case liveness_instance(run) do
       nil -> true
-      instance_id -> Map.get(event, :instance_id) in [nil, instance_id]
+      instance_id -> Map.get(event, :node_instance_id) in [nil, instance_id]
     end
   end
 
@@ -607,9 +613,10 @@ defmodule Apiary.Runs.Fold do
       Map.get(run, :registration_interval_seconds) || Map.get(run, :attach_interval_seconds) ||
         Map.get(run, :heartbeat_interval_seconds)
 
-    if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
-      do: %{acc | run: revive(run)},
-      else: %{acc | run: run}
+    if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at) and
+         not Liveness.past_backstop?(run, received_at),
+       do: %{acc | run: revive(run)},
+       else: %{acc | run: run}
   end
 
   defp count_beat(acc), do: acc

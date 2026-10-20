@@ -18,6 +18,7 @@ defmodule Apiary.Runs.Record do
 
   import Ecto.Query, warn: false
 
+  alias Apiary.Edition
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
@@ -147,21 +148,20 @@ defmodule Apiary.Runs.Record do
   ## The run
 
   @doc """
-  The run of the scope's workspace whose subject is `run_id`, the id Forager prints,
-  with its access key and its node (a deleted node's too). `:error` for a subject the
-  workspace has not seen and for anything that is not a UUID.
+  The run of the scope's workspace whose `public_id` is `public_id`, `rn_…`, the id the
+  run's URL carries, with its access key and its node (a deleted node's too). `:error` for
+  an id the workspace has not got and for anything that is not of that shape, the node's
+  run id among them.
   """
-  def fetch_run(%Scope{} = scope, run_id) do
-    with {:ok, run_id} <- cast_uuid(run_id) do
-      {:ok, scope |> Runs.get_run_by_run_id!(run_id) |> Repo.preload([:access_key, :node])}
+  def fetch_run(%Scope{} = scope, public_id) do
+    if Run.public_id?(public_id) do
+      {:ok, scope |> Runs.get_run_by_public_id!(public_id) |> Repo.preload([:access_key, :node])}
+    else
+      :error
     end
   rescue
     Ecto.NoResultsError -> :error
   end
-
-  # `Ecto.UUID.cast/1` takes sixteen raw bytes too; a URL never means those.
-  defp cast_uuid(<<_::binary-size(36)>> = id), do: Ecto.UUID.cast(id)
-  defp cast_uuid(_other), do: :error
 
   @doc """
   The run again, as the database has it now, with what `fetch_run/2` reads beside it; nil
@@ -176,8 +176,9 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The policy in force, from the run's last `run.policy_applied`: `%{sequence, time, mode,
-  source, allow, allow_count, deny, deny_count, terminated, terminated_count,
-  credentials, credentials_count, tools, tools_count}`; the lists hold at most fifty
+  source, allow, allow_count, allow_first, allow_first_count, deny, deny_count,
+  terminated, terminated_count, credentials, credentials_count, tools, tools_count}`;
+  `allow_first` is empty where the event has none. The lists hold at most fifty
   strings, the credentials and the tools at most twenty `%{"name", "argument", "hosts"}`
   each, with ten hosts at most and the argument whole up to the contract's 4096 code
   points, nil when the entry has none. One entry per entry of the event: the uses of one
@@ -186,28 +187,33 @@ defmodule Apiary.Runs.Record do
   run has none.
   """
   def policy(%Scope{} = scope, %Run{} = run) do
-    Repo.one(
-      from e in events(scope, run),
-        where: e.type == ^@policy_applied,
-        order_by: [desc: e.sequence],
-        limit: 1,
-        select: %{
-          sequence: e.sequence,
-          time: e.time,
-          mode: fragment("left(? ->> 'mode', 40)", e.data),
-          source: fragment("left(? ->> 'source', 40)", e.data),
-          allow: strings(e.data, "allow", 50, 255),
-          allow_count: array_length(e.data, "allow"),
-          deny: strings(e.data, "deny", 50, 255),
-          deny_count: array_length(e.data, "deny"),
-          terminated: strings(e.data, "terminated", 50, 255),
-          terminated_count: array_length(e.data, "terminated"),
-          credentials: named_hosts(e.data, "credentials"),
-          credentials_count: named_count(e.data, "credentials"),
-          tools: named_hosts(e.data, "tools"),
-          tools_count: named_count(e.data, "tools")
-        }
-    )
+    policy =
+      Repo.one(
+        from e in events(scope, run),
+          where: e.type == ^@policy_applied,
+          order_by: [desc: e.sequence],
+          limit: 1,
+          select: %{
+            sequence: e.sequence,
+            time: e.time,
+            mode: fragment("left(? ->> 'mode', 40)", e.data),
+            source: fragment("left(? ->> 'source', 40)", e.data),
+            allow: strings(e.data, "allow", 50, 255),
+            allow_count: array_length(e.data, "allow"),
+            allow_first: strings(e.data, "allow_first", 50, 255),
+            allow_first_count: array_length(e.data, "allow_first"),
+            deny: strings(e.data, "deny", 50, 255),
+            deny_count: array_length(e.data, "deny"),
+            terminated: strings(e.data, "terminated", 50, 255),
+            terminated_count: array_length(e.data, "terminated"),
+            credentials: named_hosts(e.data, "credentials"),
+            credentials_count: named_count(e.data, "credentials"),
+            tools: named_hosts(e.data, "tools"),
+            tools_count: named_count(e.data, "tools")
+          }
+      )
+
+    Edition.client_reads(scope, :run_policy, run, policy)
   end
 
   @doc "The runtime's session id, from the run's last `session.started`; nil without one."
@@ -389,7 +395,7 @@ defmodule Apiary.Runs.Record do
   SELECT
     e.sequence, e.type, e.time,
     #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason state code signal method request_method path decision rule path_rule credential request_id run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
-    #{Enum.map_join(~w(port exit_code quiet_seconds duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
+    #{Enum.map_join(~w(port exit_code duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
@@ -581,11 +587,19 @@ defmodule Apiary.Runs.Record do
     end
   end
 
+  # `Ecto.UUID.cast/1` takes sixteen raw bytes too; a URL never means those.
+  defp cast_uuid(<<_::binary-size(36)>> = id), do: Ecto.UUID.cast(id)
+  defp cast_uuid(_other), do: :error
+
   defp connections_of(scope, run) do
-    from c in Connection,
-      where:
-        c.organisation_id == ^organisation_id(scope) and c.workspace_id == ^workspace_id(scope),
-      where: c.run_id == ^run.id
+    query =
+      from c in Connection,
+        where:
+          c.organisation_id == ^organisation_id(scope) and
+            c.workspace_id == ^workspace_id(scope),
+        where: c.run_id == ^run.id
+
+    Edition.client_reads(scope, :run_connections, run, query)
   end
 
   ## The log
@@ -855,11 +869,15 @@ defmodule Apiary.Runs.Record do
         r.organisation_id == ^organisation_id(scope) and r.workspace_id == ^workspace_id(scope)
   end
 
-  defp events(%Scope{} = scope, %Run{id: id}) do
-    from e in Event,
-      where:
-        e.organisation_id == ^organisation_id(scope) and e.workspace_id == ^workspace_id(scope),
-      where: e.run_id == ^id
+  defp events(%Scope{} = scope, %Run{id: id} = run) do
+    query =
+      from e in Event,
+        where:
+          e.organisation_id == ^organisation_id(scope) and
+            e.workspace_id == ^workspace_id(scope),
+        where: e.run_id == ^id
+
+    Edition.client_reads(scope, :run_events, run, query)
   end
 
   defp log_chunks(%Scope{} = scope, %Run{id: id}) do

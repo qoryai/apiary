@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "litellm",
+  "title": "LiteLLM",
+  "description": "Runs use a LiteLLM proxy that you run, at the address you enter, with a key the proxy accepts. The proxy decides which models it serves.",
+  "settings": {
+    "type": "object",
+    "properties": {
+      "address": {
+        "type": "string",
+        "title": "Address",
+        "description": "The https address of your LiteLLM proxy, without /v1, such as https://litellm.example.com."
+      }
+    },
+    "required": ["address"],
+    "additionalProperties": false
+  },
+  "egress_hosts": [{"setting": "address"}],
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": {"setting": "address"}, "auth": {"scheme": "bearer"}}
+      ],
+      "models": []
+    }
+  }
+}

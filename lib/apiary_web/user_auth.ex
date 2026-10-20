@@ -373,7 +373,19 @@ defmodule ApiaryWeb.UserAuth do
       instance: ApiaryWeb.Layouts.instance_sections(scope)
     }
     |> Map.merge(policy_mode(scope))
+    |> Map.merge(waiting_on(scope))
     |> Map.merge(ApiaryWeb.Edition.nav_counts(scope))
+  end
+
+  # How many work items wait on the reader, beside Work items, where they may read them;
+  # none at nought, as Runs shows none while no run is alive.
+  defp waiting_on(%Scope{} = scope) do
+    with true <- Apiary.Access.can?(scope, :"work_item.read", scope.workspace),
+         count when count > 0 <- Apiary.WorkItems.count_waiting_on(scope) do
+      %{waiting_on: count}
+    else
+      _none -> %{}
+    end
   end
 
   # The targets the person pinned in the workspace, the first seven in the order pinned:
@@ -557,11 +569,16 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
-  # An open page follows a change of the user's own membership and of the workspaces they
+  # An open page follows a change of the user's membership and of the workspaces they
   # reach: a new level is loaded into the scope, a membership that is gone, or a workspace
   # they no longer reach, sends the page to `/` (and from there to wherever the user
-  # still belongs). The contexts authorize on the
-  # database whatever the page holds; this keeps what the page shows honest.
+  # still belongs). An action a context takes is authorized on the database
+  # (`Apiary.Access.authorize/3`), whatever the page holds. A read of what a page shows,
+  # such as the sidebar's counts (`Apiary.WorkItems.count_waiting_on/1`) and the Work items
+  # list (`Apiary.WorkItems.WorkList`), asks `Apiary.Access.can?/3` of the scope the page
+  # holds, so that scope must stay current: this loads it again on a change of membership,
+  # and the Work items pages load it again on a message that work items changed
+  # (`reload_scope/1`).
   defp follow_membership_changes(socket) do
     if Phoenix.LiveView.connected?(socket) do
       Phoenix.PubSub.subscribe(
@@ -602,11 +619,12 @@ defmodule ApiaryWeb.UserAuth do
   as it is now. A page that asks `Apiary.Access.can?/3` as it renders follows. A
   membership that is gone, or a workspace of the path the user no longer reaches, sends
   the page to `/`; a membership suspended sends it to `/users/organisations`, which says
-  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`),
-  or whose action (`ApiaryWeb.Access`) belongs to a feature or a part hidden meanwhile
-  (`Apiary.Access.shown_as/1`), sends it to the organisation's overview, which every
-  organisation has, and says so; an organisation's page keeps its workspace while the user
-  reaches it.
+  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`;
+  for a page of the Instance level, one the instance does not have,
+  `ApiaryWeb.Features.page_shown?/2`), or whose action (`ApiaryWeb.Access`) belongs to a
+  feature or a part hidden meanwhile (`Apiary.Access.shown_as/1`), sends it to the
+  organisation's overview, which every organisation has, and says so; an organisation's
+  page keeps its workspace while the user reaches it.
   """
   @spec reload_scope(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def reload_scope(socket) do
@@ -655,15 +673,15 @@ defmodule ApiaryWeb.UserAuth do
   # Whether the feature of the page's LiveView (`ApiaryWeb.Features`), if it has one, and
   # the feature or the part of the action it mounted on (`ApiaryWeb.Access`), if it asked
   # one, are still shown to the person where the scope is now: a feature or a part hidden
-  # while the page was open.
+  # while the page was open. A page of the Instance level asks the instance, as its gate
+  # does (`ApiaryWeb.Features.page_shown?/2`), not the organisation the scope carries.
   defp page_shown(socket, reloaded) do
     view = socket.view
     action = socket.private[:access_action]
     shown_as = action && Apiary.Access.shown_as(action)
 
     cond do
-      function_exported?(view, :__feature__, 0) and
-          not Apiary.Features.visible?(reloaded, view.__feature__()) ->
+      not ApiaryWeb.Features.page_shown?(view, reloaded) ->
         {:hidden, reloaded}
 
       shown_as && not Apiary.Features.visible?(reloaded, shown_as) ->

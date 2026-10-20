@@ -12,7 +12,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
   import Apiary.RunListFixtures
   import Apiary.Midnight
 
@@ -266,7 +266,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       [%{target: target}] = Policy.list_targets(scope)
       {:ok, _} = Policy.allow(scope, target, %{host: "sms.example"})
       {:ok, _} = Policy.set_mode(scope, target, "observe")
-      %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
+      %{target: target, path: target_path(scope, target, ["policy"])}
     end
 
     test "lists the level's rows after its own, and the floor fixes its mode", %{
@@ -307,7 +307,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert text(view, "#policy-mode-required") == "Required by Eight Wonders"
 
       assert text(view, "#policy-mode-effect") =~
-               "Its observe override, set by #{ApiaryWeb.People.short(scope.user.email)} today, is not in force: Eight Wonders requires enforce."
+               "Its observe override, set by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) today, is not in force: Eight Wonders requires enforce."
 
       refute has_element?(view, "#policy-mode-change")
       render_hook(view, "mode_open", %{"mode" => "enforce"})
@@ -323,7 +323,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       [%{target: target}] = Policy.list_targets(scope)
       {:ok, _} = Policy.deny(scope, target, %{host: "api.algolia.example"})
       above!([rule("allow", "api.algolia.example")])
-      %{path: target_path(scope, target.system, target.path, ["policy"])}
+      %{path: target_path(scope, target, ["policy"])}
     end
 
     test "strikes the level's allow and names the target, not the workspace, as its winner",
@@ -524,7 +524,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
       for path <- [
             workspace_path(scope, "/policy"),
-            target_path(scope, target.system, target.path, ["policy"])
+            target_path(scope, target, ["policy"])
           ] do
         view = open(conn, path)
         assert text(view, "##{row(view, "paste.example")} .q-pr-by") =~ local
@@ -566,7 +566,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     end
 
     test "shows none of it on a target's tab", %{conn: conn, scope: scope, target: target} do
-      view = open(conn, target_path(scope, target.system, target.path, ["policy"]))
+      view = open(conn, target_path(scope, target, ["policy"]))
 
       assert hosts(view) == ["sms.example", "paste.example", "cdn.example"]
       refute render(view) =~ "Eight Wonders"
