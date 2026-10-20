@@ -10,35 +10,47 @@ defmodule Apiary.Runs.SecretsRequest do
   #
   # The refusals, in order, after the request verified under the access key:
   #
-  #  1. `{:error, :invalid_request}`, a body the schema refuses: not JSON, a member the
+  #  1. `{:error, :invalid_request}`, a body that fails the schema: not JSON, a member the
   #     schema does not define, a member twice, a member of the wrong form;
   #  2. `{:error, :unauthorized}`, a `timestamp` more than 300 seconds from the server's
   #     clock, either way;
   #  3. `{:error, :secrets_not_allowed}`, a key not allowed stored secrets;
   #  4. as a reload of the run is refused (`Apiary.Runs.Registration.fetch/3`):
-  #     `{:error, :not_found}` for a run the key may not reload, and for a run that does
-  #     not go through a gateway, since only a gateway seals; then
-  #     `{:error, :workspace_not_served}`; then `{:error, :gone}` for a run that is not
-  #     live: not pending or running, or its sending ended (`Apiary.Runs.Sender`);
-  #  5. `{:error, :credential_unavailable}`, a run the handover gave no model provider, or
-  #     whose provider or key the provider's deletion took from it: no run configuration of
-  #     the run has a credential, or none can be composed;
-  #  6. `{:error, :run_configuration_superseded}`, a digest that is not the one a reload of
-  #     the run is answered now: the gateway reads the run configuration and its digest
+  #     `{:error, :not_found}` for a run that does not go through a gateway, since only a
+  #     gateway seals, for a run whose run key does not list the access key among the
+  #     gateway's keys (`Apiary.Runs.RunKey.lists_key?/2`), and for a run the key may not
+  #     reload; then `{:error, :workspace_not_served}`; then `{:error, :gone}` for a run
+  #     that is not live: not pending or running, or its sending ended
+  #     (`Apiary.Runs.Sender`);
+  #  5. `{:error, :run_configuration_superseded}`, a digest other than the one a reload
+  #     of the run returns now: the gateway reads the run configuration and its digest
   #     from a reload;
-  #  7. `{:error, :credentials_differ}`, a `credentials` list other than that run
-  #     configuration's names in its order;
+  #  6. `{:error, :credential_unavailable}`, a run with no model provider, or whose
+  #     provider cannot be read: the run configuration has no credential, or none can be
+  #     composed. The provider's columns of a run are NULL when the handover set no
+  #     provider, or when the provider was deleted; a provider's deletion is refused while
+  #     a pending or running run uses it, so only a run that ended, refused at step 4,
+  #     has them NULL after a deletion;
+  #  7. `{:error, :credentials_differ}`, a `credentials` list other than the credential
+  #     names of that run configuration, in its order;
   #  8. `{:error, :credential_unavailable}`, a key Qory may not seal for the gateway: the
   #     provider's row, its secret or the value fails its integrity check or is gone; the
-  #     provider's organisation is not the run's (for a provider of the organisation's
-  #     chain), or not the gateway's while the run's organisation's chain is the
-  #     operator's (`c:Apiary.Edition.model_choice_chain/1`); the access key's public key
-  #     fails a key check (`Apiary.Contract.Ed25519.check_public_key/1`); the value is not
-  #     one the plaintext takes.
+  #     provider's secret or chain differs from the run's; the provider's organisation is
+  #     not the run's; the gateway's organisation may not receive the key
+  #     (`Apiary.Runs.ProviderCredential.sealable_to?/3`): for a provider of the
+  #     organisation's chain, a gateway of another organisation, and for a provider of an
+  #     operator's chain, a gateway of the run's organisation, of an organisation whose
+  #     gateways do not serve the run's, or any gateway once the edition returns another
+  #     chain than "operator" for the run's organisation
+  #     (`c:Apiary.Edition.model_choice_chain/1`); the access key's public key fails a key
+  #     check (`Apiary.Contract.Ed25519.check_public_key/1`); the value does not fit the
+  #     plaintext's schema.
   #
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
-  # audit entry fails. A seal is recorded in the audit trail of the gateway's organisation, `secret.seal`,
-  # about the run, with the provider's public id and the credential's name.
+  # audit entry fails. A seal is recorded in the audit trail of the gateway's
+  # organisation, `secret.seal`, with the provider's public id and the credential's name,
+  # about the run; for a run of another organisation, about the gateway, with the run's
+  # id.
   #
   # The value goes into the seal and nowhere else: no log line, error, exception message
   # or audit entry has it, nor the plaintext, the sealed bytes or a key. A log line has
@@ -46,11 +58,11 @@ defmodule Apiary.Runs.SecretsRequest do
 
   require Logger
 
-  alias Apiary.{Audit, Edition, Repo, Secrets}
+  alias Apiary.{Audit, Repo, Secrets}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Contract.Ed25519
-  alias Apiary.Runs.{ProviderCredential, Registration, Run, Sender}
+  alias Apiary.Runs.{ProviderCredential, Registration, Run, RunKey, Sender}
   alias Apiary.Secrets.Sealing
 
   @members ~w(version run_id run_configuration credentials timestamp)
@@ -89,11 +101,14 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
+  # The credential is read before the reload, which cannot compose a run configuration
+  # without it, and its refusal follows the digest's.
   defp for_run(access_key, request, instance_id, now) do
     with {:ok, run} <- run(access_key, request.run_id, instance_id),
-         {:ok, credential} <- credential(run),
-         {:ok, digest} <- in_force(access_key, run, instance_id),
+         credential = credential(run),
+         {:ok, digest} <- in_force(access_key, run, instance_id, credential),
          :ok <- same_digest(request, digest),
+         {:ok, credential} <- credential,
          :ok <- same_names(request, credential),
          :ok <- sealable(run, credential.provider, access_key),
          {:ok, public_key} <- recipient_key(run, access_key),
@@ -157,11 +172,23 @@ defmodule Apiary.Runs.SecretsRequest do
     case Repo.one(Sender.run_query(access_key, run_id)) do
       %Run{} = run ->
         cond do
-          not Run.through_gateway?(run) -> {:error, :not_found}
-          not Registration.reload_allowed?(access_key, run, instance_id) -> {:error, :not_found}
-          not Sender.serves?(run, access_key) -> {:error, :workspace_not_served}
-          not live?(run) -> {:error, :gone}
-          true -> {:ok, run}
+          not Run.through_gateway?(run) ->
+            {:error, :not_found}
+
+          not RunKey.lists_key?(run.run_key_payload, access_key.public_key) ->
+            {:error, :not_found}
+
+          not Registration.reload_allowed?(access_key, run, instance_id) ->
+            {:error, :not_found}
+
+          not Sender.serves?(run, access_key) ->
+            {:error, :workspace_not_served}
+
+          not live?(run) ->
+            {:error, :gone}
+
+          true ->
+            {:ok, run}
         end
 
       nil ->
@@ -172,8 +199,8 @@ defmodule Apiary.Runs.SecretsRequest do
   defp live?(%Run{} = run),
     do: run.state in Run.alive_states() and not Sender.sending_ended?(run)
 
-  # The run's model key, as its run configuration has it; `:credential_unavailable` for a
-  # run with none, or whose provider cannot be read.
+  # The run's model key, as its run configuration contains it; `:credential_unavailable`
+  # for a run with none, or whose provider cannot be read.
   defp credential(%Run{provider_api: %{}, provider_value_id: value_id} = run)
        when is_binary(value_id) and is_binary(run.provider_connection_id) and
               is_binary(run.provider_secret_id) do
@@ -186,13 +213,14 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp credential(%Run{}), do: {:error, :credential_unavailable}
 
-  # The digest a reload of the run is answered now, with the reload's refusals.
-  defp in_force(access_key, run, instance_id) do
+  # The digest a reload of the run returns now, with the reload's refusals. A reload that
+  # fails while the credential cannot be read is the credential's refusal.
+  defp in_force(access_key, run, instance_id, credential) do
     case Registration.fetch(access_key, run.node_run_id, instance_id) do
       {:ok, %{digest: digest}} -> {:ok, digest}
       {:error, :not_found} -> {:error, :run_configuration_superseded}
       {:error, :workspace_not_served} -> {:error, :workspace_not_served}
-      {:error, _reason} -> {:error, :unavailable}
+      {:error, _reason} -> with {:ok, _credential} <- credential, do: {:error, :unavailable}
     end
   end
 
@@ -212,15 +240,18 @@ defmodule Apiary.Runs.SecretsRequest do
       provider.chain != run.provider_chain ->
         refused(run, provider, :chain)
 
-      provider.chain == "organisation" and provider.organisation_id == run.organisation_id ->
-        :ok
+      provider.organisation_id != run.organisation_id ->
+        refused(run, provider, :organisation)
 
-      provider.chain == "operator" and node.organisation_id == provider.organisation_id and
-          Edition.model_choice_chain(run.organisation_id) == "operator" ->
-        :ok
+      not ProviderCredential.sealable_to?(
+        provider.chain,
+        node.organisation_id,
+        run.organisation_id
+      ) ->
+        refused(run, provider, :gateway)
 
       true ->
-        refused(run, provider, :organisation)
+        :ok
     end
   end
 
@@ -298,14 +329,23 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
-  # The audit entry of the seal, in the gateway's organisation: no answer leaves without
-  # it.
+  # The audit entry of the seal, in the gateway's organisation: no answer is sent
+  # without it. Its subject is the run, or, for a run of another organisation, which an
+  # operator's gateway serves, the gateway, with the run's id in its details: an entry's
+  # subject is of the trail's organisation.
   defp record(access_key, run, credential) do
-    case Audit.record(Repo, Scope.for_access_key(access_key), :"secret.seal", run, %{
-           details: %{
-             "provider_id" => credential.provider.public_id,
-             "credential" => credential.name
-           }
+    details = %{
+      "provider_id" => credential.provider.public_id,
+      "credential" => credential.name
+    }
+
+    {subject, details} =
+      if run.organisation_id == access_key.organisation_id,
+        do: {run, details},
+        else: {access_key.node, Map.put(details, "run_id", run.node_run_id)}
+
+    case Audit.record(Repo, Scope.for_access_key(access_key), :"secret.seal", subject, %{
+           details: details
          }) do
       {:ok, _entry} -> :ok
       {:error, _changeset} -> {:error, :unavailable}

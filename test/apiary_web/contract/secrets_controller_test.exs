@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.Contract.SecretsControllerTest do
   # The secrets request (`POST /v1/secrets`): a run's model key, sealed to the gateway's
-  # access key, and each refusal in the order the contract and
-  # `Apiary.Runs.SecretsRequest` give them. Not async, as the other contract tests of a
+  # access key, and each refusal in the order of the contract and
+  # `Apiary.Runs.SecretsRequest`. Not async, as the other contract tests of a
   # pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
@@ -108,7 +108,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   end
 
   describe "the refusals" do
-    test "400 invalid_request for a body the schema refuses", ctx do
+    test "400 invalid_request for a body that fails the schema", ctx do
       good = Jason.decode!(request(ctx))
 
       for body <- [
@@ -163,6 +163,19 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
         )
 
       conn = post_secrets(ctx, request(ctx), key: {other, pair.secret})
+      assert conn.status == 404
+      assert signed_answer?(conn)
+      assert seals() == []
+    end
+
+    test "404 for a key of the run's gateway that its run key does not list", ctx do
+      # Enrolled after the handover, allowed stored secrets.
+      %{access_key: later, pair: pair} =
+        Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, ctx.gateway, %{
+          allow_secrets: true
+        })
+
+      conn = post_secrets(ctx, request(ctx), key: {later, pair.secret})
       assert conn.status == 404
       assert signed_answer?(conn)
       assert seals() == []
@@ -273,7 +286,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
           set: [provider_connection_id: theirs.id, provider_secret_id: theirs.secret_id]
         )
 
-      # The digest of what a reload answers now, which names their provider.
+      # The digest of what a reload returns now, which contains their provider.
       {key, _seed} = ctx.secrets_key
 
       {:ok, %{digest: digest}} =
@@ -315,6 +328,8 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
         |> Apiary.AccessKeys.AccessKey.put_integrity()
         |> Repo.insert!()
 
+      list_key!(ctx.run, fixture)
+
       {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx), key: {row, fixture_seed}) end)
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
@@ -322,6 +337,33 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert log =~ "fails the key check fixture"
       assert seals() == []
     end
+  end
+
+  # The run's run key payload with `public_key` added to the gateway's keys it lists, as
+  # a handover would have written it had the gateway held that key then.
+  defp list_key!(%Run{id: id}, public_key) do
+    %Run{run_key_payload: payload} = Repo.get!(Run, id)
+    %Jason.OrderedObject{values: values} = Jason.decode!(payload, objects: :ordered_objects)
+
+    values =
+      Enum.map(values, fn
+        {"gateway_public_key", keys} ->
+          entry =
+            Jason.OrderedObject.new(
+              alg: "ed25519",
+              public_key: Apiary.Contract.Ed25519.encode(public_key)
+            )
+
+          {"gateway_public_key", keys ++ [entry]}
+
+        member ->
+          member
+      end)
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^id),
+        set: [run_key_payload: Jason.encode!(Jason.OrderedObject.new(values))]
+      )
   end
 
   defp restore(%Run{} = run) do

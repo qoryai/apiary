@@ -892,6 +892,26 @@ defmodule Apiary.EditionStubs do
       do: GrantsOrganisationSecrets.organisation_secrets(scope, verb)
   end
 
+  defmodule ServesAcrossWithChain do
+    @moduledoc """
+    `ServesAcross`, with the chain of model choices of every organisation
+    (`c:Apiary.Edition.model_choice_chain/1`) that the test sets with `chain/1`:
+    "organisation" until it does, as the core's edition returns.
+    """
+
+    @doc "chain/1 sets the chain of model choices for the test's process."
+    def chain(chain) when chain in ["organisation", "operator"],
+      do: Process.put(:model_choice_chain, chain)
+
+    def model_choice_chain(_organisation_id), do: Process.get(:model_choice_chain, "organisation")
+
+    def serving_organisations(id), do: ServesAcross.serving_organisations(id)
+    def served_organisations(id), do: ServesAcross.served_organisations(id)
+
+    def active_organisations(query, binding),
+      do: ServesAcross.active_organisations(query, binding)
+  end
+
   defmodule HidesRuns do
     @moduledoc """
     A client is shown nothing of the runs and the connections of its workspace

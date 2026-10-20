@@ -1,8 +1,8 @@
 defmodule Apiary.Runs.ProviderCredential do
   @moduledoc false
 
-  # The model key of a run that the handover gave a model provider
-  # (`Apiary.Dispatches.RunSettings`), as its run configuration names it: one entry of the
+  # The model key of a run that the handover set a model provider for
+  # (`Apiary.Dispatches.RunSettings`), as its run configuration contains it: one entry of the
   # contract's `credentials`, an API credential, and the hosts the provider needs, which
   # the run's `egress.allow` gains (`Apiary.Policy.ComposedConfiguration`). Both come from
   # the run's stored provider columns and the provider's row, so a choice changed after
@@ -17,8 +17,8 @@ defmodule Apiary.Runs.ProviderCredential do
   # The hosts are the description's `egress_hosts`, in its order, each once. An entry
   # `{"setting": name}` is the host of that setting's address: the address in
   # `runs.provider_api` when the run's API takes its endpoint from that setting, else the
-  # provider's value of the setting. An address that `Apiary.Kinds.Endpoint` refuses gives
-  # no host, with a line in the log.
+  # provider's value of the setting. An address that fails the check of
+  # `Apiary.Kinds.Endpoint` adds no host, with a line in the log.
   #
   # Only with both features `factory` and `secrets` on; with either off, a run has none.
   # `{:error, :unavailable}` when the run has a provider whose row is gone, fails its
@@ -31,7 +31,7 @@ defmodule Apiary.Runs.ProviderCredential do
 
   require Logger
 
-  alias Apiary.{Connections, Features, Repo}
+  alias Apiary.{Connections, Edition, Features, Gateways, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Endpoint, Provider}
 
@@ -52,12 +52,38 @@ defmodule Apiary.Runs.ProviderCredential do
   @doc false
   @spec for_run(map | nil) :: {:ok, t | nil} | {:error, :unavailable}
   def for_run(%{provider_api: %{} = api} = run) do
-    if Features.on?(:factory) and Features.on?(:secrets),
-      do: credential(run, api),
-      else: {:ok, nil}
+    if applies?(), do: credential(run, api), else: {:ok, nil}
   end
 
   def for_run(_run), do: {:ok, nil}
+
+  @doc false
+  # applies?/0 is whether a run with a model provider is given its credential: both
+  # features `factory` and `secrets` on.
+  @spec applies?() :: boolean
+  def applies?, do: Features.on?(:factory) and Features.on?(:secrets)
+
+  @doc false
+  # sealable_to?/3 is whether the key of a provider of `chain`, of the run's organisation
+  # `run_organisation_id`, may be sealed for a gateway of `gateway_organisation_id`. A
+  # provider of the organisation's chain: only for a gateway of the run's organisation. A
+  # provider of an operator's chain: only while the edition returns "operator" for the
+  # run's organisation (`c:Apiary.Edition.model_choice_chain/1`), and only for a gateway
+  # of another organisation whose gateways serve the run's
+  # (`Apiary.Gateways.serving_organisations/1`). The handover
+  # (`Apiary.Dispatches.Handover`) and the secrets request
+  # (`Apiary.Runs.SecretsRequest`) both check it.
+  @spec sealable_to?(String.t(), Ecto.UUID.t(), Ecto.UUID.t()) :: boolean
+  def sealable_to?("organisation", gateway_organisation_id, run_organisation_id),
+    do: gateway_organisation_id == run_organisation_id
+
+  def sealable_to?("operator", gateway_organisation_id, run_organisation_id) do
+    gateway_organisation_id != run_organisation_id and
+      Edition.model_choice_chain(run_organisation_id) == "operator" and
+      gateway_organisation_id in Gateways.serving_organisations(run_organisation_id)
+  end
+
+  def sealable_to?(_chain, _gateway_organisation_id, _run_organisation_id), do: false
 
   defp credential(run, api) do
     with {:ok, provider} <- provider(Map.get(run, :provider_connection_id)),
