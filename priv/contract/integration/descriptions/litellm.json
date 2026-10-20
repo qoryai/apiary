@@ -9,7 +9,7 @@
       "address": {
         "type": "string",
         "title": "Address",
-        "description": "The https address of your LiteLLM proxy, without /v1, such as https://litellm.example.com."
+        "description": "The https address of your LiteLLM proxy, without /v1, such as https://litellm.example.com. If the proxy is at a private network address, a run behind a wall or a separate gateway reaches it only when the node's forager.yaml lists its host by name in gateway.egress.allow."
       }
     },
     "required": ["address"],
