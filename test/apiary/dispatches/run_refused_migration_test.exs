@@ -19,7 +19,7 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
 
   @moduletag needs: :factory
 
-  @migration {20_261_019_070_300, Apiary.Repo.Migrations.EndARunTheGatewayRefused,
+  @migration {20_261_020_090_000, Apiary.Repo.Migrations.EndARunTheGatewayRefused,
               "end_a_run_the_gateway_refused"}
 
   setup_all do
@@ -50,6 +50,19 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
       )
 
     rows != []
+  end
+
+  # The causes the check `name` lists, sorted, as the database stores them.
+  defp causes(name) do
+    %{rows: [[definition]]} =
+      Repo.query!("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = $1", [
+        name
+      ])
+
+    ~r/'([a-z_]+)'::text/
+    |> Regex.scan(definition, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.sort()
   end
 
   defp refused(constraint, fun), do: assert_raise(Postgrex.Error, ~r/#{constraint}/, fun)
@@ -133,6 +146,13 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
     refused("dispatches_end_cause_check", fn ->
       update!("dispatches", dispatch.id, "end_cause = 'run_refused'")
     end)
+
+    # Every cause before the migration stays, `secrets_not_allowed` among them.
+    before = DispatchRun.end_causes() -- [:run_refused]
+
+    for table <- ~w(dispatch_runs dispatches) do
+      assert causes("#{table}_end_cause_check") == Enum.sort(Enum.map(before, &to_string/1))
+    end
 
     up!(@migration)
     assert column?()

@@ -5,16 +5,19 @@ defmodule Apiary.Repo.Migrations.EndARunTheGatewayRefused do
   # gateway refused it before it started (`dev.qory.run.refused`), and the run is not
   # queued again. The run of the queue keeps the refusal's code as `end_detail`, a code of
   # at most 64 lower-case letters, digits and `_` that starts with a letter, and only a run
-  # ended `run_refused` has one.
+  # ended `run_refused` has one. A run ended `run_refused` has no `result_outcome`, so the
+  # checks of `result_outcome` stay as they are
+  # (`20261019080000_end_a_run_its_gateway_may_not_seal_for`).
   #
   # Rolled back, the column and its check go and the causes are as before. The roll back
   # refuses while a run of the queue or a dispatch has this cause.
-  @end_causes ~w(released closed undone run_ended lost collection_ended superseded
-                 variables_invalid ticket_gone inputs_invalid prebuilt)
-  @refused_causes @end_causes ++ ~w(run_refused)
+  @before ~w(released closed undone run_ended lost collection_ended superseded
+             variables_invalid ticket_gone inputs_invalid prebuilt
+             provider_gone runtime_unserved key_gone model_gone secrets_not_allowed)
+  @cause "run_refused"
 
   def up do
-    causes(@refused_causes)
+    causes(@before ++ [@cause])
 
     alter table(:dispatch_runs) do
       add :end_detail, :text
@@ -28,13 +31,12 @@ defmodule Apiary.Repo.Migrations.EndARunTheGatewayRefused do
   end
 
   def down do
+    causes(@before)
     drop constraint(:dispatch_runs, :dispatch_runs_end_detail_check)
 
     alter table(:dispatch_runs) do
       remove :end_detail
     end
-
-    causes(@end_causes)
   end
 
   defp causes(causes) do
