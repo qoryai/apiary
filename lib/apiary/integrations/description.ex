@@ -65,6 +65,7 @@ defmodule Apiary.Integrations.Description do
     Bounds,
     Budget,
     CanonicalJSON,
+    Endpoint,
     Pattern,
     PatternMemory,
     RegexFormat,
@@ -534,4 +535,39 @@ defmodule Apiary.Integrations.Description do
   @spec hosts(t) :: [String.t()]
   def hosts(%__MODULE__{document: document}),
     do: get_in(document, ["roles", "credential", "hosts"]) || []
+
+  @doc """
+  egress_hosts/2 is every host of `description`'s `egress_hosts`, the hosts that runs of
+  the integration need to reach, for a connection with the plain settings `settings`. A
+  host entry is taken as it is: the schema holds it to the contract's `egress_host`. A
+  `{"setting": name}` entry is the host of that setting's address, or of the setting's
+  `default` where `settings` has none, once the address passes the rule of
+  `Apiary.Kinds.Endpoint`. An entry whose address is absent or fails the rule is left
+  out. Each host once, in the order of the entries.
+  """
+  @spec egress_hosts(t, map) :: [String.t()]
+  def egress_hosts(%__MODULE__{document: document}, settings) when is_map(settings) do
+    for entry <- Map.get(document, "egress_hosts", []),
+        host <- [egress_host(entry, document, settings)],
+        is_binary(host),
+        uniq: true,
+        do: host
+  end
+
+  defp egress_host(host, _document, _settings) when is_binary(host), do: host
+
+  defp egress_host(%{"setting" => name}, document, settings) do
+    address =
+      case Map.fetch(settings, name) do
+        {:ok, value} -> value
+        :error -> get_in(document, ["settings", "properties", name, "default"])
+      end
+
+    case Endpoint.host(address) do
+      {:ok, host} -> host
+      :error -> nil
+    end
+  end
+
+  defp egress_host(_entry, _document, _settings), do: nil
 end

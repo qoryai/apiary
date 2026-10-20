@@ -8,7 +8,8 @@ defmodule Apiary.Policy.Change do
   the change was made; a change that rendered the same bytes names the version that
   stayed. A `rerendered` change is no change of the rules (`before` equals `after`): the
   documents were rendered again by `mix apiary.policy.rerender` after an upgrade that
-  changed what a render says. An `above_changed` change is likewise no change of the
+  changed what a render says, or after a change of an integration that reaches the
+  workspace changed the hosts it requires (`Apiary.Connections.egress_hosts/1`). An `above_changed` change is likewise no change of the
   holder's rules: the level above the workspace changed (`Apiary.Policy.Above`), and the
   holder's bytes with it; `cause` is the id of the entry of that change, where the
   edition recorded one.

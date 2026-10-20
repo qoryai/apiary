@@ -1539,4 +1539,65 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
   end
+
+  describe "egress_hosts/2" do
+    defp with_address(egress_hosts, default \\ nil) do
+      address =
+        %{"title" => "Address", "type" => "string"}
+        |> then(&if(default, do: Map.put(&1, "default", default), else: &1))
+
+      {:ok, description} =
+        tracker_description(%{
+          "settings" => %{
+            "type" => "object",
+            "properties" => %{
+              "address" => address,
+              "api_key" => %{"title" => "API key", "type" => "string", "writeOnly" => true},
+              "api_key_file" => %{"title" => "API key file", "type" => "string"}
+            }
+          },
+          "egress_hosts" => egress_hosts
+        })
+        |> parse()
+
+      description
+    end
+
+    test "is the host entries, and the host of a setting's address" do
+      description = with_address(["api.example.com", %{"setting" => "address"}])
+
+      assert Description.egress_hosts(description, %{
+               "address" => "https://models.example.com:8443/v1"
+             }) == ["api.example.com", "models.example.com"]
+
+      assert Description.egress_hosts(description, %{"address" => "https://api.example.com"}) ==
+               ["api.example.com"]
+    end
+
+    test "leaves out an address that the endpoint rule refuses, or none" do
+      description = with_address(["api.example.com", %{"setting" => "address"}])
+
+      for address <- ["http://models.example.com", "https://localhost", "https://127.0.0.1"] do
+        assert Description.egress_hosts(description, %{"address" => address}) ==
+                 ["api.example.com"]
+      end
+
+      assert Description.egress_hosts(description, %{}) == ["api.example.com"]
+    end
+
+    test "reads the setting's default where the connection has no value" do
+      description =
+        with_address([%{"setting" => "address"}], "https://gateway.example.com/v1")
+
+      assert Description.egress_hosts(description, %{}) == ["gateway.example.com"]
+
+      assert Description.egress_hosts(description, %{"address" => "https://edge.example.com"}) ==
+               ["edge.example.com"]
+    end
+
+    test "is empty for a description without the member" do
+      {:ok, description} = parse(tracker_description())
+      assert Description.egress_hosts(description, %{}) == []
+    end
+  end
 end

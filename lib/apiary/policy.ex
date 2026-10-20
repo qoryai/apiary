@@ -19,6 +19,13 @@ defmodule Apiary.Policy do
   rule of the workspace holds against every target. How the rules come to one policy is
   `Apiary.Policy.Resolution`'s to say.
 
+  Every document of a workspace also allows the hosts that the integrations reaching the
+  workspace require (`Apiary.Connections.egress_hosts/1`), each on every path. They come
+  from no rule, and no deny takes them out (`Apiary.Policy.Resolution`, source
+  `:integration`). A change of such an integration renders the workspaces it reaches
+  again, inside the change's transaction (`rerender_in/3`). `effective/2`, which the pages
+  read, leaves those hosts out; `effective/3` has them.
+
   An edition may keep a level above the workspace's policy
   (`c:Apiary.Edition.above_workspace/1`, an `Apiary.Policy.Above`; the core keeps none):
   its host rules, which every read and render of this module takes in, read once
@@ -84,7 +91,7 @@ defmodule Apiary.Policy do
 
   require Logger
 
-  alias Apiary.{Access, Audit}
+  alias Apiary.{Access, Audit, Connections}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Audit.Entry
   alias Apiary.Organisations.{Workspace, Organisation}
@@ -398,9 +405,28 @@ defmodule Apiary.Policy do
   from (`mode_source`, `:organisation`, `:workspace` or `:target`), and `above`, the
   level above the workspace (nil where the edition keeps none). A target that is not the
   workspace's gets the baseline.
+
+  The hosts of the integrations that reach the workspace are left out: `effective/3`
+  with `integrations: true` has them.
   """
   @spec effective(Scope.t(), holder) :: Effective.t()
-  def effective(%Scope{} = scope, holder) do
+  # The pages read the policy here, and show no integration's host until the pages'
+  # words for those hosts are reviewed: this clause leaves them out until then.
+  def effective(%Scope{} = scope, holder), do: effective(scope, holder, integrations: false)
+
+  @doc """
+  effective/3 is `effective/2` with `opts`: `integrations: true` takes in the hosts of the
+  integrations that reach the workspace (`Apiary.Connections.egress_hosts/1`), each an
+  entry with source `:integration`, as the document served to the workspace's runs has
+  them (`Apiary.Policy.Resolution`).
+  """
+  @spec effective(Scope.t(), holder, keyword) :: Effective.t()
+  def effective(%Scope{} = scope, holder, opts) do
+    integrations =
+      if Keyword.get(opts, :integrations, false),
+        do: Connections.egress_hosts(scope.workspace),
+        else: []
+
     target_id =
       case holder_id(scope, holder) do
         {:ok, target_id} -> target_id
@@ -416,7 +442,15 @@ defmodule Apiary.Policy do
       if target_id,
         do: Repo.one(from p in targets(scope), where: p.id == ^target_id, select: p.egress_mode)
 
-    case Resolution.resolve_for(workspace_mode, own_mode, workspace_rules, own, target_id, above) do
+    case Resolution.resolve_for(
+           workspace_mode,
+           own_mode,
+           workspace_rules,
+           own,
+           target_id,
+           above,
+           integrations
+         ) do
       {:ok, effective} ->
         effective
 
@@ -2007,7 +2041,8 @@ defmodule Apiary.Policy do
   render the resolution or the schema refuses, said with the holder it came from), which
   the caller rolls back.
 
-  `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`) or
+  `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`, and a
+  change of an integration that reaches the workspace, `Apiary.Connections`) or
   `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`);
   `cause`, the id of the entry that caused it, kept in the change's `details.cause` and
   `Apiary.Policy.Change`'s `cause`; `all`, whether to render an unmanaged workspace too
@@ -2111,10 +2146,20 @@ defmodule Apiary.Policy do
     holders = [nil | Enum.uniq(Map.keys(own) ++ rendered ++ Map.keys(modes))]
 
     above = above(workspace)
+    integrations = Connections.egress_hosts(workspace)
 
     Enum.reduce_while(holders, {:ok, initial}, fn target_id, {:ok, acc} ->
       rules = Map.get(own, target_id, [])
-      rendered = document(workspace, target_id, modes[target_id], workspace_rules, rules, above)
+
+      rendered =
+        document(
+          workspace,
+          target_id,
+          modes[target_id],
+          workspace_rules,
+          rules,
+          {above, integrations}
+        )
 
       store = fn change ->
         {:ok, document} = rendered
@@ -2128,7 +2173,7 @@ defmodule Apiary.Policy do
     end)
   end
 
-  defp document(workspace, target_id, own_mode, workspace_rules, own, above) do
+  defp document(workspace, target_id, own_mode, workspace_rules, own, {above, integrations}) do
     with {:ok, effective} <-
            Resolution.resolve_for(
              workspace.egress_mode,
@@ -2136,7 +2181,8 @@ defmodule Apiary.Policy do
              workspace_rules,
              own,
              target_id,
-             above
+             above,
+             integrations
            ),
          document = Render.document(effective),
          :ok <- small(document),

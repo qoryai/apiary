@@ -14,11 +14,11 @@ defmodule Apiary.Policy.Resolution do
      (`Apiary.Policy.Above`, source `:organisation`), then a locked rule of the workspace,
      then the target's rule, then an unlocked rule of the workspace. Rules meet on the
      same host string, and the one that wins decides the host whole: action and paths.
-     The level above is not one rank: its **deny** is above everything (nothing below
-     allows the host), and its **allow** reaches every workspace but may be narrowed: a
-     lower deny on the same host, or a lower `*.` deny that covers it, beats it; against
-     lower allows on the same host it holds, paths included, so its allow is never
-     widened. An allow of the workspace or of the target is struck without a winner
+     The level above is not one rank: its **deny** is above every rule (no rule below
+     allows the host; an integration's host is above it, point 7), and its **allow**
+     reaches every workspace but may be narrowed: a lower deny on the same host, or a
+     lower `*.` deny that covers it, beats it; against lower allows on the same host it
+     holds, paths included, so its allow is never widened. An allow of the workspace or of the target is struck without a winner
      (`Apiary.Policy.Entry`'s `reason: :only_above_allows`) where the level above allows
      only the hosts on its list (`own_allows` off); denies still count. Where it requires
      `enforce` (`floor`), the mode in force is `enforce` whatever the workspace or the
@@ -53,6 +53,16 @@ defmodule Apiary.Policy.Resolution do
      the connection by `deny`, then by `allow`, and only then the request by `paths`
      (`docs/contract-assumptions.md`). A denied host is never reached, so its paths never
      apply.
+  7. **An integration's host** (source `:integration`, `integrations` of `resolve/6`) is
+     an allow on every path, and no deny takes it out: it beats a deny of any rank on the
+     same host, the level above's included, and a deny below it when it is a `*.` suffix.
+     A `*.` deny that covers it stays in force for every other host it covers, and the
+     integration's entry has the deny in its `overrides`. Among allows it has the lowest
+     rank: an allow of the workspace, of a target or of the level above on the same host
+     decides the host, and the integration's entry is overridden. Two integrations that
+     list one host stay in force together. Where the level above allows only the hosts on
+     its list, an integration's host is not struck. A `*.` allow held to paths, of any
+     level, leaves it on every path: the document has the host in `paths` with `/*`.
 
   `allow` and `deny` are sorted with names before `*.` suffixes, each alphabetically, so
   the rule the gateway reports for a connection is the most exact one; `paths` is sorted by
@@ -69,6 +79,8 @@ defmodule Apiary.Policy.Resolution do
   @target 2
   @workspace 1
   @above_among_allows 4
+  @integration_vs_deny 6
+  @integration_among_allows 0
 
   @doc """
   Resolves a target's policy from the workspace's mode and the target's override, nil
@@ -85,7 +97,8 @@ defmodule Apiary.Policy.Resolution do
           [Rule.t()],
           [Rule.t()],
           Ecto.UUID.t() | nil,
-          Above.t() | nil
+          Above.t() | nil,
+          [integration_host]
         ) ::
           {:ok, Effective.t()} | {:error, Error.t()}
   def resolve_for(
@@ -94,7 +107,8 @@ defmodule Apiary.Policy.Resolution do
         workspace_rules,
         target_rules,
         target_id,
-        above \\ nil
+        above \\ nil,
+        integrations \\ []
       ) do
     above = Above.for_policy(above)
 
@@ -105,27 +119,54 @@ defmodule Apiary.Policy.Resolution do
         true -> {workspace_mode, :workspace}
       end
 
-    with {:ok, effective} <- resolve(mode, workspace_rules, target_rules, target_id, above) do
+    with {:ok, effective} <-
+           resolve(mode, workspace_rules, target_rules, target_id, above, integrations) do
       {:ok, %{effective | mode_source: source}}
     end
   end
+
+  @typedoc """
+  A host an integration requires, as `Apiary.Connections.egress_hosts/1` reads it: the
+  host, and the connection whose description lists it.
+  """
+  @type integration_host :: %{
+          host: String.t(),
+          connection: %{id: Ecto.UUID.t(), public_id: String.t(), name: String.t()}
+        }
 
   @doc """
   Resolves the rules. `target_rules` is `[]` for the baseline and for a target
   with no rules; `above` is the level above the workspace, with its rules,
   or nil where the edition keeps none. A level that carries variables only
-  (`Apiary.Policy.Above`'s `policy: false`) resolves as nil, here and in `resolve_for/6`.
+  (`Apiary.Policy.Above`'s `policy: false`) resolves as nil, here and in `resolve_for/7`.
+  `integrations` is the hosts the integrations that reach the workspace require, each
+  an entry with source `:integration`.
   """
-  @spec resolve(String.t(), [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil, Above.t() | nil) ::
+  @spec resolve(
+          String.t(),
+          [Rule.t()],
+          [Rule.t()],
+          Ecto.UUID.t() | nil,
+          Above.t() | nil,
+          [integration_host]
+        ) ::
           {:ok, Effective.t()} | {:error, Error.t()}
-  def resolve(mode, workspace_rules, target_rules \\ [], target_id \\ nil, above \\ nil)
+  def resolve(
+        mode,
+        workspace_rules,
+        target_rules \\ [],
+        target_id \\ nil,
+        above \\ nil,
+        integrations \\ []
+      )
       when mode in ["observe", "enforce"] do
     above = Above.for_policy(above)
 
     entries =
       (Enum.map(above_rules(above), &entry(&1, :organisation)) ++
          Enum.map(workspace_rules, &entry(&1, :workspace)) ++
-         Enum.map(target_rules, &entry(&1, :target)))
+         Enum.map(target_rules, &entry(&1, :target)) ++
+         Enum.map(integrations, &integration_entry/1))
       |> Enum.with_index()
       |> Map.new(fn {entry, index} -> {index, entry} end)
 
@@ -137,6 +178,7 @@ defmodule Apiary.Policy.Resolution do
       |> covered_by_deny()
       |> under_allow()
       |> under_above_allow()
+      |> integration_under_deny()
 
     with :ok <- one_path_list(entries, above) do
       {:ok, effective(mode, target_id, entries, above)}
@@ -158,27 +200,43 @@ defmodule Apiary.Policy.Resolution do
     }
   end
 
+  defp integration_entry(%{host: host, connection: connection}) do
+    %Entry{
+      kind: :host,
+      action: :allow,
+      host: host,
+      source: :integration,
+      connection: connection
+    }
+  end
+
+  defp integration?(%Entry{source: source}), do: source == :integration
+
   # The precedence is not one rank. Against a deny, the level above's deny is above
-  # everything and its allow below everything: a lower deny narrows it, and its own `*.`
-  # allow never overrides a lower deny. Among allows alone, the level above holds, paths
-  # included: its allow is never widened.
+  # every rule and its allow below every rule: a lower deny narrows it, and its `*.`
+  # allow never overrides a lower deny. An integration's host is above every deny. Among
+  # allows alone, the level above holds, paths included: its allow is never widened; and
+  # an integration's host is below every rule's allow.
+  defp rank_vs_deny(%Entry{source: :integration}), do: @integration_vs_deny
   defp rank_vs_deny(%Entry{source: :organisation, action: :deny}), do: @above_deny
   defp rank_vs_deny(%Entry{source: :organisation}), do: @above_allow
   defp rank_vs_deny(%Entry{source: :workspace, locked: true}), do: @locked
   defp rank_vs_deny(%Entry{source: :target}), do: @target
   defp rank_vs_deny(%Entry{}), do: @workspace
 
+  defp rank_among_allows(%Entry{source: :integration}), do: @integration_among_allows
   defp rank_among_allows(%Entry{source: :organisation}), do: @above_among_allows
   defp rank_among_allows(%Entry{source: :workspace, locked: true}), do: @locked
   defp rank_among_allows(%Entry{source: :target}), do: @target
   defp rank_among_allows(%Entry{}), do: @workspace
 
-  # Where the level above allows only its own hosts, every host allow below it is struck
-  # before anything meets: nothing beat it, and the page says why.
+  # Where the level above allows only the hosts on its list, every host allow below it is
+  # struck before anything meets: nothing beat it, and the page says why. An
+  # integration's host is not struck.
   defp only_above_allows(entries, %Above{own_allows: false}) do
     Map.new(entries, fn
       {index, %Entry{kind: :host, action: :allow, source: source} = entry}
-      when source != :organisation ->
+      when source not in [:organisation, :integration] ->
         {index, %{entry | in_force: false, reason: :only_above_allows}}
 
       pair ->
@@ -199,42 +257,52 @@ defmodule Apiary.Policy.Resolution do
     end)
   end
 
-  # Rules that meet on the same host: the highest precedence decides it whole.
+  # Rules that meet on the same host: the highest precedence decides it whole. Where an
+  # integration's host decides it, the entries of other integrations on that host stay in
+  # force beside it.
   defp same_subject(entries) do
     entries
     |> in_force(:host)
     |> Enum.group_by(fn {_index, entry} -> entry.host end)
     |> Enum.reduce(entries, fn {_subject, group}, entries ->
-      {winner, _entry} = winner(group)
+      {winner, winning} = winner(group)
 
       Enum.reduce(group, entries, fn
-        {^winner, _entry}, entries -> entries
-        {loser, _entry}, entries -> override(entries, loser, winner)
+        {^winner, _entry}, entries ->
+          entries
+
+        {loser, losing}, entries ->
+          if integration?(winning) and integration?(losing),
+            do: entries,
+            else: override(entries, loser, winner)
       end)
     end)
   end
 
-  # The one that decides a subject: the deny that outranks every allow, else the allow of
-  # the highest rank among allows.
+  # The one that decides a subject: the deny that outranks every rule's allow, else the
+  # allow of the highest rank among allows. A deny that outranks every rule's allow loses
+  # to an integration's host, the first on the subject.
   defp winner(group) do
     {denies, allows} = Enum.split_with(group, fn {_index, entry} -> entry.action == :deny end)
+    {integrations, rules} = Enum.split_with(allows, fn {_index, entry} -> integration?(entry) end)
     deny = Enum.max_by(denies, fn {_index, entry} -> rank_vs_deny(entry) end, fn -> nil end)
-
-    allow =
-      Enum.max_by(allows, fn {_index, entry} -> rank_vs_deny(entry) end, fn -> nil end)
+    allow = Enum.max_by(rules, fn {_index, entry} -> rank_vs_deny(entry) end, fn -> nil end)
 
     cond do
-      allow == nil ->
+      allows == [] ->
         deny
 
       deny == nil ->
         Enum.max_by(allows, fn {_index, entry} -> rank_among_allows(entry) end)
 
-      rank_vs_deny(elem(deny, 1)) >= rank_vs_deny(elem(allow, 1)) ->
-        deny
+      allow != nil and rank_vs_deny(elem(allow, 1)) > rank_vs_deny(elem(deny, 1)) ->
+        Enum.max_by(allows, fn {_index, entry} -> rank_among_allows(entry) end)
+
+      integrations != [] ->
+        hd(integrations)
 
       true ->
-        Enum.max_by(allows, fn {_index, entry} -> rank_among_allows(entry) end)
+        deny
     end
   end
 
@@ -298,7 +366,8 @@ defmodule Apiary.Policy.Resolution do
           do: {index, entry}
 
     Enum.reduce(in_force(entries, :host), entries, fn
-      {index, %{action: :allow, source: source} = allow}, entries when source != :organisation ->
+      {index, %{action: :allow, source: source} = allow}, entries
+      when source not in [:organisation, :integration] ->
         held
         |> Enum.filter(fn {_index, above} ->
           above.host != allow.host and Grammar.covers?(above.host, allow.host)
@@ -314,6 +383,32 @@ defmodule Apiary.Policy.Resolution do
     end)
   end
 
+  # A `*.` deny that covers an integration's host stays in force for every other host it
+  # covers: the integration's entry lists it among the entries it overrides.
+  defp integration_under_deny(entries) do
+    denies =
+      for {index, %{action: :deny} = entry} <- in_force(entries, :host),
+          Grammar.wildcard?(entry.host),
+          do: {index, entry}
+
+    bare = fn entry -> %{entry | overridden_by: nil, overrides: []} end
+
+    Enum.reduce(in_force(entries, :host), entries, fn
+      {index, %{source: :integration} = allow}, entries ->
+        covering =
+          for {_index, deny} <- denies,
+              deny.host != allow.host and Grammar.covers?(deny.host, allow.host),
+              do: bare.(deny)
+
+        Map.update!(entries, index, &%{&1 | overrides: &1.overrides ++ covering})
+
+      _entry, entries ->
+        entries
+    end)
+  end
+
+  # An integration's host is on every path, whatever `*.` allow held to paths covers it
+  # (`effective/4` writes it in `paths` with `/*`), so it is never in a conflict.
   defp one_path_list(entries, above_level) do
     allows = for {_index, %{action: :allow} = entry} <- in_force(entries, :host), do: entry
 
@@ -321,6 +416,7 @@ defmodule Apiary.Policy.Resolution do
       for %{paths: paths} = above when is_list(paths) <- allows,
           Grammar.wildcard?(above.host),
           below <- allows,
+          not integration?(below),
           below.host != above.host and Grammar.covers?(above.host, below.host),
           do: {above, below}
 
@@ -528,30 +624,42 @@ defmodule Apiary.Policy.Resolution do
         Enum.any?(hosts, &(&1.host != deny.host and Grammar.covers?(deny.host, &1.host)))
       end)
 
+    held =
+      for %{paths: paths} = entry when is_list(paths) <- hosts,
+          into: %{},
+          do: {entry.host, Enum.sort(Enum.uniq(paths))}
+
+    # An integration's host that a `*.` allow held to paths covers would be held to that
+    # allow's paths: `/*` keeps it on every path.
+    every_path =
+      for %{source: :integration, host: host} <- hosts,
+          not Map.has_key?(held, host),
+          Enum.any?(Map.keys(held), &(&1 != host and Grammar.covers?(&1, host))),
+          into: %{},
+          do: {host, ["/*"]}
+
     %Effective{
       mode: mode,
       target_id: target_id,
       above: above,
       entries:
         entries
-        |> Map.values()
+        |> Enum.sort_by(fn {index, _entry} -> index end)
+        |> Enum.map(fn {_index, entry} -> entry end)
         |> Enum.sort_by(&{sort_key(&1.host), source_order(&1.source)}),
-      allow: hosts |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
+      allow: hosts |> Enum.map(& &1.host) |> Enum.uniq() |> Enum.sort_by(&sort_key/1),
       deny: said |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
-      paths:
-        for(
-          %{paths: paths} = entry when is_list(paths) <- hosts,
-          into: %{},
-          do: {entry.host, Enum.sort(Enum.uniq(paths))}
-        )
+      paths: Map.merge(held, every_path)
     }
   end
 
   # Names before `*.` suffixes, each alphabetically.
   defp sort_key(host), do: {Grammar.wildcard?(host), host}
 
-  # On one subject, the level above's entry first, then the workspace's, then the target's.
+  # On one subject, the level above's entry first, then the workspace's, then the
+  # target's, then the integrations'.
   defp source_order(:organisation), do: 0
   defp source_order(:workspace), do: 1
   defp source_order(:target), do: 2
+  defp source_order(:integration), do: 3
 end
