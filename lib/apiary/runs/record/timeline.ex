@@ -42,23 +42,23 @@ defmodule Apiary.Runs.Record.Timeline do
     "run.exited" => :run_exited,
     "run.refused" => :run_refused,
     "run.egress" => :connection,
-    "session.started" => :session_started,
-    "session.prompt_submitted" => :prompt,
-    "session.tool_started" => :tool,
-    "session.tool_finished" => :tool,
-    "session.tool_failed" => :tool,
-    "session.subagent_started" => :subagent_started,
-    "session.subagent_finished" => :subagent_finished,
-    "session.notification" => :notification,
-    "session.turn_finished" => :turn_finished,
-    "session.turn_failed" => :turn_failed,
-    "session.result" => :result,
-    "session.ended" => :session_ended
+    "runtime.started" => :session_started,
+    "runtime.prompt_submitted" => :prompt,
+    "runtime.tool_started" => :tool,
+    "runtime.tool_finished" => :tool,
+    "runtime.tool_failed" => :tool,
+    "runtime.subagent_started" => :subagent_started,
+    "runtime.subagent_finished" => :subagent_finished,
+    "runtime.notification" => :notification,
+    "runtime.turn_finished" => :turn_finished,
+    "runtime.turn_failed" => :turn_failed,
+    "runtime.result" => :result,
+    "runtime.ended" => :session_ended
   }
 
-  # The session reads this one from the runtime's output; every other session event comes
-  # from a hook.
-  @not_from_a_hook "session.result"
+  # The session reads this one from the runtime's output; every other `runtime.` event
+  # comes from a hook.
+  @not_from_a_hook "runtime.result"
 
   @max_rails 4
   @colors [:a, :b, :c]
@@ -131,7 +131,7 @@ defmodule Apiary.Runs.Record.Timeline do
       `lane/2` finds any of them;
     * `:rails`: how many rails the gutter needs, one to four;
     * `:session_items`: how many items are the session's (not Forager's, not egress);
-    * `:hook_events`: how many session events came from the runtime's hooks;
+    * `:hook_events`: how many `runtime.` events came from the runtime's hooks;
     * `:background`: `%{tasks: [...], count: n}`, the tasks of the last list the runtime
       gave, each with the sequence it was first listed at;
     * `:through`: the highest sequence folded.
@@ -243,7 +243,7 @@ defmodule Apiary.Runs.Record.Timeline do
   defp public_lane(lane),
     do: Map.take(lane, [:index, :id, :type, :rail, :color, :started_seq, :finished_seq])
 
-  defp count(state, %{type: @prefix <> "session." <> _ = type}) do
+  defp count(state, %{type: @prefix <> "runtime." <> _ = type}) do
     if type == @prefix <> @not_from_a_hook,
       do: state,
       else: %{state | hook_events: state.hook_events + 1}
@@ -290,7 +290,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp agent_key(event), do: event[:agent_id] || :main
 
-  defp place(state, :tool, %{type: @prefix <> "session.tool_started"} = event) do
+  defp place(state, :tool, %{type: @prefix <> "runtime.tool_started"} = event) do
     id = event[:tool_use_id]
 
     cond do
@@ -909,7 +909,7 @@ defmodule Apiary.Runs.Record.Timeline do
     }
   end
 
-  defp failed?(%{type: type}), do: type == @prefix <> "session.tool_failed"
+  defp failed?(%{type: type}), do: type == @prefix <> "runtime.tool_failed"
 
   defp wells(source, ended, status, limit) do
     input = well(gettext("input"), :json, source.input, source.input_bytes, nil, limit)
@@ -1029,8 +1029,8 @@ defmodule Apiary.Runs.Record.Timeline do
 
     body =
       case event.type do
-        @prefix <> "session.prompt_submitted" -> data["prompt"]
-        @prefix <> "session.result" -> data["result"]
+        @prefix <> "runtime.prompt_submitted" -> data["prompt"]
+        @prefix <> "runtime.result" -> data["result"]
         _ -> data["message"]
       end
 

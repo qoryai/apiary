@@ -695,16 +695,16 @@ defmodule Apiary.Runs.RecordTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.tool_started",
+          {2, "runtime.tool_started",
            %{"tool" => 7, "tool_use_id" => "t", "input" => "not a map"}},
-          {3, "session.tool_finished",
+          {3, "runtime.tool_finished",
            %{
              "tool_use_id" => "t",
              "response" => 12,
              "duration_ms" => "soon",
              "interrupted" => "yes"
            }},
-          {4, "session.result",
+          {4, "runtime.result",
            %{"turns" => 1.5, "cost_usd" => "free", "result" => %{}, "duration_ms" => 1.0e300}},
           {5, "run.egress", %{"host" => 5, "port" => "https", "decision" => []}}
         ])
@@ -795,9 +795,9 @@ defmodule Apiary.Runs.RecordTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.tool_started",
+          {2, "runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "x"}}},
-          {3, "session.tool_finished",
+          {3, "runtime.tool_finished",
            %{"tool" => "Bash", "tool_use_id" => "t", "response" => huge}}
         ])
 
@@ -822,7 +822,7 @@ defmodule Apiary.Runs.RecordTest do
 
       rows =
         [
-          {1, "dev.qory.session.tool_started",
+          {1, "dev.qory.runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "fetch"}}}
         ] ++
           for(

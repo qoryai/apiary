@@ -60,7 +60,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
   defp tool(sequence, phase, id, extra \\ %{}) do
     event(
       sequence,
-      "session.tool_" <> phase,
+      "runtime.tool_" <> phase,
       Map.merge(%{"tool" => "Bash", "tool_use_id" => id}, extra)
     )
   end
@@ -68,7 +68,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
   defp subagent(sequence, phase, id, type, extra \\ %{}) do
     event(
       sequence,
-      "session.subagent_" <> phase,
+      "runtime.subagent_" <> phase,
       Map.merge(%{"agent_id" => id, "agent_type" => type}, extra)
     )
   end
@@ -82,7 +82,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
           event(3, "run.log", %{"stream" => "stdout", "bytes" => ""}),
           event(4, "run.heartbeat"),
           event(5, "something.unheard_of"),
-          event(6, "session.prompt_submitted", %{"prompt" => "hello"}),
+          event(6, "runtime.prompt_submitted", %{"prompt" => "hello"}),
           event(7, "run.resized", %{"cols" => 100, "rows" => 30})
         ])
 
@@ -132,14 +132,14 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
     test "a call without an id is an item that is never open" do
       index =
-        index([event(1, "session.tool_started", %{"tool" => "Bash"}), egress(2)], alive: true)
+        index([event(1, "runtime.tool_started", %{"tool" => "Bash"}), egress(2)], alive: true)
 
       assert [%{seq: 1, tool_state: :no_end, inner: []}, %{seq: 2, kind: :connection}] =
                index.items
     end
 
-    test "session.result is the session's but not a hook's" do
-      index = index([event(1, "session.result", %{"outcome" => "success"})])
+    test "runtime.result is the session's but not a hook's" do
+      index = index([event(1, "runtime.result", %{"outcome" => "success"})])
       assert index.session_items == 1
       assert index.hook_events == 0
     end
@@ -181,7 +181,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
           egress(5, %{"decision" => "denied"}),
           egress(6),
           egress(7, %{"host" => "other.example"}),
-          event(8, "session.notification"),
+          event(8, "runtime.notification"),
           egress(9, %{"host" => "other.example"})
         ])
 
@@ -238,7 +238,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     test "one rail per agent, bracketed by its start and finish; a rail is reused, the hue cycles" do
       index =
         index([
-          event(1, "session.prompt_submitted"),
+          event(1, "runtime.prompt_submitted"),
           subagent(2, "started", "a1", "Explore"),
           subagent(3, "started", "a2", "general-purpose"),
           tool(4, "started", "t1", %{"agent_id" => "a2", "agent_type" => "general-purpose"}),
@@ -246,7 +246,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
           subagent(6, "started", "a3", "Plan"),
           subagent(7, "finished", "a2", "general-purpose"),
           subagent(8, "finished", "a3", "Plan"),
-          event(9, "session.turn_finished")
+          event(9, "runtime.turn_finished")
         ])
 
       assert [
@@ -296,7 +296,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
 
     test "the last item's rails fade while the record is still being written" do
-      events = [event(1, "session.prompt_submitted"), event(2, "session.turn_finished")]
+      events = [event(1, "runtime.prompt_submitted"), event(2, "runtime.turn_finished")]
 
       assert [_, %{rails: [%{part: :live}]}] = index(events, alive: true).items
       assert [_, %{rails: [%{part: :to}]}] = index(events, alive: false).items
@@ -310,12 +310,12 @@ defmodule Apiary.Runs.Record.TimelineTest do
       end
 
       events = [
-        event(1, "session.turn_finished", %{"background_tasks" => [task.("b1")]}),
+        event(1, "runtime.turn_finished", %{"background_tasks" => [task.("b1")]}),
         subagent(2, "finished", "a1", "Explore", %{
           "background_tasks" => [task.("b1"), task.("b2")]
         }),
-        event(3, "session.turn_finished", %{}),
-        event(4, "session.turn_finished", %{"background_tasks" => [task.("b2")]})
+        event(3, "runtime.turn_finished", %{}),
+        event(4, "runtime.turn_finished", %{"background_tasks" => [task.("b2")]})
       ]
 
       assert %{
@@ -328,14 +328,14 @@ defmodule Apiary.Runs.Record.TimelineTest do
                index(events).background
 
       assert %{count: 0, tasks: []} =
-               index(events ++ [event(5, "session.turn_finished", %{"background_tasks" => []})]).background
+               index(events ++ [event(5, "runtime.turn_finished", %{"background_tasks" => []})]).background
     end
 
     test "a list is read fifty tasks deep, and what was read beside the events can be put in" do
       tasks = for n <- 1..80, do: %{"id" => "b#{n}", "type" => "shell"}
 
       assert %{count: 50} =
-               index([event(1, "session.turn_finished", %{"background_tasks" => tasks})]).background
+               index([event(1, "runtime.turn_finished", %{"background_tasks" => tasks})]).background
 
       index =
         Timeline.put_background(index([]), [
@@ -348,13 +348,13 @@ defmodule Apiary.Runs.Record.TimelineTest do
       assert %{count: 0} =
                Timeline.extend(
                  index,
-                 light([event(9, "session.turn_finished", %{"background_tasks" => []})])
+                 light([event(9, "runtime.turn_finished", %{"background_tasks" => []})])
                ).background
     end
 
     test "an entry that is not an object with an id is ignored" do
       events = [
-        event(1, "session.turn_finished", %{"background_tasks" => ["x", %{"type" => "shell"}, 7]})
+        event(1, "runtime.turn_finished", %{"background_tasks" => ["x", %{"type" => "shell"}, 7]})
       ]
 
       assert %{count: 0} = index(events).background
@@ -365,9 +365,9 @@ defmodule Apiary.Runs.Record.TimelineTest do
     test "stops being open where the record says it cannot be: later connections are their own items" do
       events = [
         tool(1, "started", "t"),
-        event(2, "session.turn_finished", %{"message" => "done"}),
-        event(3, "session.ended", %{"reason" => "other"}),
-        event(4, "session.started", %{"source" => "resume"}),
+        event(2, "runtime.turn_finished", %{"message" => "done"}),
+        event(3, "runtime.ended", %{"reason" => "other"}),
+        event(4, "runtime.started", %{"source" => "resume"}),
         egress(5, %{"decision" => "denied", "rule" => ""}),
         egress(6)
       ]
@@ -382,10 +382,10 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
     test "each of turn finished or failed, the subagent's finish, session ended or started and run exited closes it" do
       for closing <- [
-            event(2, "session.turn_finished"),
-            event(2, "session.turn_failed"),
-            event(2, "session.ended"),
-            event(2, "session.started"),
+            event(2, "runtime.turn_finished"),
+            event(2, "runtime.turn_failed"),
+            event(2, "runtime.ended"),
+            event(2, "runtime.started"),
             event(2, "run.exited", %{"exit_code" => 0})
           ] do
         index = index([tool(1, "started", "t"), closing, egress(3)], alive: true)
@@ -413,7 +413,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
       index =
         index([
           tool(1, "started", "t"),
-          event(2, "session.turn_finished"),
+          event(2, "runtime.turn_finished"),
           tool(3, "finished", "t")
         ])
 
@@ -459,7 +459,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     test "folding a run in pieces gives what folding it whole gives" do
       events =
         light([
-          event(1, "session.prompt_submitted"),
+          event(1, "runtime.prompt_submitted"),
           subagent(2, "started", "a1", "Explore"),
           tool(3, "started", "t1", %{"agent_id" => "a1"}),
           egress(4),
@@ -468,7 +468,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
           egress(7),
           egress(8),
           subagent(9, "finished", "a1", "Explore"),
-          event(10, "session.turn_finished", %{
+          event(10, "runtime.turn_finished", %{
             "background_tasks" => [%{"id" => "b", "type" => "shell"}]
           })
         ])
@@ -522,7 +522,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
             for(i <- 1..n, do: subagent(i, "started", "agent-#{i}", "Explore")) ++
               for(
                 i <- (n + 1)..(2 * n),
-                do: event(i, "session.notification", %{"agent_id" => "agent-#{i - n}"})
+                do: event(i, "runtime.notification", %{"agent_id" => "agent-#{i - n}"})
               )
           )
         end)
@@ -610,7 +610,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
       summary = fn tool, input ->
         [item] =
           build([
-            event(1, "session.tool_started", %{
+            event(1, "runtime.tool_started", %{
               "tool" => tool,
               "tool_use_id" => "x",
               "input" => input
@@ -711,20 +711,20 @@ defmodule Apiary.Runs.Record.TimelineTest do
             "source" => "fetched",
             "terminated" => ["a"]
           }),
-          event(3, "session.started", %{"model" => "m", "source" => "startup", "cwd" => "/work"}),
-          event(4, "session.notification", %{
+          event(3, "runtime.started", %{"model" => "m", "source" => "startup", "cwd" => "/work"}),
+          event(4, "runtime.notification", %{
             "kind" => "permission_prompt",
             "message" => "needs permission"
           }),
-          event(5, "session.turn_failed", %{"error" => "rate_limit", "details" => "429"}),
-          event(6, "session.result", %{
+          event(5, "runtime.turn_failed", %{"error" => "rate_limit", "details" => "429"}),
+          event(6, "runtime.result", %{
             "outcome" => "success",
             "turns" => 7,
             "duration_ms" => 161_000,
             "cost_usd" => 0.42,
             "result" => "ok"
           }),
-          event(7, "session.ended", %{"reason" => "other"}),
+          event(7, "runtime.ended", %{"reason" => "other"}),
           event(8, "run.exited", %{
             "state" => "failed",
             "exit_code" => -1,
@@ -758,7 +758,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     test "data of the wrong shape reads as absent, never as a crash" do
       assert [%{kind: :tool, tool: "tool", summary: nil, wells: []}] =
                build([
-                 event(1, "session.tool_started", %{
+                 event(1, "runtime.tool_started", %{
                    "tool" => 7,
                    "input" => "not a map",
                    "tool_use_id" => []
@@ -767,7 +767,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
       assert [%{kind: :result, turns: nil, cost_usd: nil, text: nil}] =
                build([
-                 event(1, "session.result", %{
+                 event(1, "runtime.result", %{
                    "turns" => "many",
                    "cost_usd" => "free",
                    "result" => 5

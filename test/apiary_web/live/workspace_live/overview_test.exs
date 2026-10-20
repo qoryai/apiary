@@ -910,7 +910,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       costed = run_fixture(scope)
       event_fixture(costed, 2, "run.started", started_data(), time: DateTime.utc_now())
-      event_fixture(costed, 3, "session.result", %{"outcome" => "success", "cost_usd" => 0.8412})
+      event_fixture(costed, 3, "runtime.result", %{"outcome" => "success", "cost_usd" => 0.8412})
       {:ok, _} = Projector.project(costed)
       render_async(view, 5_000)
 

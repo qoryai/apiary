@@ -782,8 +782,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.prompt_submitted", %{"prompt" => "<script>alert(1)</script>"}},
-          {3, "session.tool_started",
+          {2, "runtime.prompt_submitted", %{"prompt" => "<script>alert(1)</script>"}},
+          {3, "runtime.tool_started",
            %{
              "tool" => "<b>Bash</b>",
              "tool_use_id" => "t",
@@ -809,9 +809,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.tool_started",
+          {2, "runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "cat big"}}},
-          {3, "session.tool_finished",
+          {3, "runtime.tool_finished",
            %{"tool" => "Bash", "tool_use_id" => "t", "response" => big}}
         ])
 
@@ -852,7 +852,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         projected(scope, [
           {1, "run.started",
            started_data(%{"wall" => "docker", "image" => "registry.example/agent:1"})},
-          {2, "session.result", %{"outcome" => "success", "result" => "done"}},
+          {2, "runtime.result", %{"outcome" => "success", "result" => "done"}},
           {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
@@ -1130,9 +1130,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data(), time: DateTime.add(now, -30, :second)},
-          {2, "session.prompt_submitted", %{"prompt" => "go"},
+          {2, "runtime.prompt_submitted", %{"prompt" => "go"},
            time: DateTime.add(now, -29, :second)},
-          {3, "session.tool_started",
+          {3, "runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t1", "input" => %{"command" => "sleep 9"}},
            time: DateTime.add(now, -28, :second)}
         ])
@@ -1155,7 +1155,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "Listening for the next batch."
 
       project_more(run, [
-        {4, "session.tool_finished",
+        {4, "runtime.tool_finished",
          %{"tool" => "Bash", "tool_use_id" => "t1", "response" => "ok", "duration_ms" => 9000},
          time: now}
       ])
@@ -1177,9 +1177,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       project_more(run, [
-        {4, "session.notification", %{"kind" => "idle_prompt", "message" => "waiting"},
+        {4, "runtime.notification", %{"kind" => "idle_prompt", "message" => "waiting"},
          time: now},
-        {5, "session.turn_finished", %{"message" => "done"}, time: now}
+        {5, "runtime.turn_finished", %{"message" => "done"}, time: now}
       ])
 
       html = flush(lv)
@@ -1199,7 +1199,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       render_hook(element(lv, "#run-timeline"), "live_end", %{"at_end" => true})
 
-      project_more(run, [{4, "session.turn_finished", %{"message" => "done"}, time: now}])
+      project_more(run, [{4, "runtime.turn_finished", %{"message" => "done"}, time: now}])
 
       html = flush(lv)
       assert item_ids(html) == ["e-1", "e-2", "e-3", "e-4"]
@@ -1228,7 +1228,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       run =
         project_more(run, [
-          {4, "session.turn_finished", %{"message" => "m", "background_tasks" => [task]},
+          {4, "runtime.turn_finished", %{"message" => "m", "background_tasks" => [task]},
            time: now}
         ])
 
@@ -1280,7 +1280,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         [{1, "run.started", started_data()}] ++
           for(
             n <- 2..900,
-            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}}
+            do: {n, "runtime.notification", %{"kind" => "k", "message" => "m#{n}"}}
           ) ++
           [{901, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}]
 
@@ -1643,7 +1643,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         run =
           projected(scope, [
             {1, "run.started", started_data(), time: now},
-            {2, "session.prompt_submitted", %{"prompt" => "go"}, time: now}
+            {2, "runtime.prompt_submitted", %{"prompt" => "go"}, time: now}
           ])
 
         {:ok, lv, _html} =
@@ -1655,7 +1655,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           do: render_hook(element(lv, "#run-timeline"), "live_end", %{"at_end" => true})
 
         project_more(run, [
-          {3, "session.started", %{"session_id" => "session-0001"}, time: now}
+          {3, "runtime.started", %{"session_id" => "session-0001"}, time: now}
         ])
 
         html = flush(lv)
@@ -1709,7 +1709,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         [{1, "run.started", started_data(), time: now}] ++
           for(
             n <- 2..items,
-            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}, time: now}
+            do: {n, "runtime.notification", %{"kind" => "k", "message" => "m#{n}"}, time: now}
           ) ++
           for(
             n <- (items + 1)..(items + 40),
@@ -1763,7 +1763,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                time: now}
 
             _ ->
-              {sequence, "session.notification", %{"kind" => "k", "message" => "new #{n}"},
+              {sequence, "runtime.notification", %{"kind" => "k", "message" => "new #{n}"},
                time: now}
           end
 
@@ -1828,8 +1828,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data(), time: now},
-          {2, "session.prompt_submitted", %{"prompt" => "go"}, time: now},
-          {5, "session.turn_finished", %{"message" => "done"}, time: now}
+          {2, "runtime.prompt_submitted", %{"prompt" => "go"}, time: now},
+          {5, "runtime.turn_finished", %{"message" => "done"}, time: now}
         ])
 
       {:ok, lv, html} =
@@ -1838,7 +1838,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert item_ids(html) == ["e-1", "e-2", "e-5"]
 
       project_more(run, [
-        {3, "session.notification", %{"kind" => "late", "message" => "late"}, time: now}
+        {3, "runtime.notification", %{"kind" => "late", "message" => "late"}, time: now}
       ])
 
       assert lv |> flush() |> item_ids() == ["e-1", "e-2", "e-3", "e-5"]
@@ -1849,11 +1849,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     setup %{scope: scope} do
       run =
         projected(scope, [
-          {1, "session.tool_started",
+          {1, "runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "sleep 9"}}},
-          {2, "session.turn_finished", %{"message" => "done"}},
-          {3, "session.ended", %{"reason" => "other"}},
-          {4, "session.started", %{"source" => "resume"}},
+          {2, "runtime.turn_finished", %{"message" => "done"}},
+          {3, "runtime.ended", %{"reason" => "other"}},
+          {4, "runtime.started", %{"source" => "resume"}},
           {5, "run.egress",
            egress_data(%{
              "host" => "late.example",
@@ -1894,7 +1894,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data(), time: now},
-          {2, "session.tool_started",
+          {2, "runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "x"}}, time: now}
         ])
 
@@ -1952,7 +1952,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           for(
             n <- 1..30,
             do:
-              {n + 1, "session.subagent_started",
+              {n + 1, "runtime.subagent_started",
                %{"agent_id" => "agent-#{n}", "agent_type" => "Explore"}, time: now}
           )
 
@@ -2095,7 +2095,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         [{1, "run.started", started_data()}] ++
           for(
             n <- 2..400,
-            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}}
+            do: {n, "runtime.notification", %{"kind" => "k", "message" => "m#{n}"}}
           )
 
       run = projected(scope, events)
@@ -2467,7 +2467,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.result",
+          {2, "runtime.result",
            %{"outcome" => "error", "result" => "I could not finish:\nthe tests still fail."}},
           {3, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
         ])
@@ -2487,7 +2487,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.result", %{"outcome" => "success", "result" => "done"}},
+          {2, "runtime.result", %{"outcome" => "success", "result" => "done"}},
           {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
@@ -3299,10 +3299,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.started", %{"session_id" => sent("session-0001")}},
+          {2, "runtime.started", %{"session_id" => sent("session-0001")}},
           {3, "run.policy_applied", tool_policy_data(policy)},
           {4, "run.egress", egress_data(%{})},
-          {5, "session.result", %{"outcome" => "error", "result" => sent("I could not finish")}},
+          {5, "runtime.result", %{"outcome" => "error", "result" => sent("I could not finish")}},
           {6, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
         ])
 
@@ -3351,7 +3351,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.result", %{"outcome" => "error", "result" => " \u00A0"}},
+          {2, "runtime.result", %{"outcome" => "error", "result" => " \u00A0"}},
           {3, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
         ])
 
@@ -3428,8 +3428,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.turn_failed", %{"error" => "the earlier words"}},
-          {3, "session.result", %{"outcome" => "error", "result" => "\u202E\u200B"}},
+          {2, "runtime.turn_failed", %{"error" => "the earlier words"}},
+          {3, "runtime.result", %{"outcome" => "error", "result" => "\u202E\u200B"}},
           {4, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
         ])
 

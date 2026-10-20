@@ -2700,7 +2700,7 @@ defmodule ApiaryWeb.RunLive.Show do
         # started, whatever the tab. Only `session_id` is assigned, so the Timeline's window
         # stays as it is.
         |> then(
-          &if("dev.qory.session.started" in types,
+          &if("dev.qory.runtime.started" in types,
             do: assign(&1, session_id: Record.session_id(scope, run)),
             else: &1
           )

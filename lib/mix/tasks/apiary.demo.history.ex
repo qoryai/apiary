@@ -1226,13 +1226,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
         else: pick(["claude-sonnet-5", "claude-opus-5"])
 
     acc
-    |> put(800, "session.started", %{
+    |> put(800, "runtime.started", %{
       "session_id" => session,
       "source" => "startup",
       "model" => model,
       "cwd" => "/work/#{workdir(spec)}"
     })
-    |> put(1_000, "session.prompt_submitted", %{"session_id" => session, "prompt" => spec.prompt})
+    |> put(1_000, "runtime.prompt_submitted", %{"session_id" => session, "prompt" => spec.prompt})
     |> log(1_000, spec, "#{bold(cyan(">"))} #{spec.prompt}\n")
     |> egress(1_100, spec, mode, "api.llm.example", 443)
     |> then(
@@ -1259,9 +1259,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
         else: "I could not finish: the last test run still fails. #{sentence(spec)}"
 
     acc
-    |> put(ends - 2_000, "session.turn_finished", %{"session_id" => session, "message" => summary})
+    |> put(ends - 2_000, "runtime.turn_finished", %{"session_id" => session, "message" => summary})
     |> log(ends - 2_000, spec, "\n#{summary}\n")
-    |> put(ends - 800, "session.result", %{
+    |> put(ends - 800, "runtime.result", %{
       "session_id" => session,
       "outcome" => if(ok, do: "success", else: "error"),
       "is_error" => not ok,
@@ -1270,7 +1270,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "cost_usd" => lognormal(0.45, 0.9) |> max(0.02) |> min(9.0) |> Float.round(4),
       "result" => summary
     })
-    |> put(ends - 300, "session.ended", %{"session_id" => session, "reason" => "other"})
+    |> put(ends - 300, "runtime.ended", %{"session_id" => session, "reason" => "other"})
   end
 
   defp sentence(%{task: "issue-" <> number}),
@@ -1431,7 +1431,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
       acc =
         acc
-        |> put(start, "session.tool_started", %{
+        |> put(start, "runtime.tool_started", %{
           "session_id" => session,
           "tool" => "Task",
           "tool_use_id" => tool_id(spec, start),
@@ -1442,7 +1442,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
           }
         })
         |> log(start, spec, "#{cyan("●")} Task(#{type}: #{String.downcase(description)})\n")
-        |> put(start + 200, "session.subagent_started", %{
+        |> put(start + 200, "runtime.subagent_started", %{
           "session_id" => session,
           "agent_id" => id,
           "agent_type" => type
@@ -1454,14 +1454,14 @@ defmodule Mix.Tasks.Apiary.Demo.History do
         end)
 
       acc
-      |> put(start + span, "session.subagent_finished", %{
+      |> put(start + span, "runtime.subagent_finished", %{
         "session_id" => session,
         "agent_id" => id,
         "agent_type" => type,
         "message" => "#{description}: done.",
         "background_tasks" => []
       })
-      |> put(start + span + 100, "session.tool_finished", %{
+      |> put(start + span + 100, "runtime.tool_finished", %{
         "session_id" => session,
         "tool" => "Task",
         "tool_use_id" => tool_id(spec, start),
@@ -1494,12 +1494,12 @@ defmodule Mix.Tasks.Apiary.Demo.History do
             else: base
 
         acc
-        |> put(at, "session.tool_started", base)
+        |> put(at, "runtime.tool_started", base)
         |> log(at, spec, line)
         |> effect.(at + 200)
         |> put(
           at + took,
-          if(ok, do: "session.tool_finished", else: "session.tool_failed"),
+          if(ok, do: "runtime.tool_finished", else: "runtime.tool_failed"),
           if(ok,
             do: Map.merge(base, %{"response" => %{"ok" => true}, "duration_ms" => took}),
             else:

@@ -108,7 +108,7 @@ defmodule Apiary.Runs.Fold do
   @egress "dev.qory.run.egress"
   @exited "dev.qory.run.exited"
   @refused "dev.qory.run.refused"
-  @result "dev.qory.session.result"
+  @result "dev.qory.runtime.result"
 
   # The most bytes of a connection's host, and what ends one cut to fit (`host/1`).
   @host_max 255

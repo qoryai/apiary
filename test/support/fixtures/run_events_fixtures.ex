@@ -81,7 +81,7 @@ defmodule Apiary.RunEventsFixtures do
          "source" => "config",
          "digest" => String.duplicate("1a", 32)
        }},
-      {4, "session.started", %{"session_id" => "session-1"}},
+      {4, "runtime.started", %{"session_id" => "session-1"}},
       {5, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("building\n")}},
       {6, "run.egress", egress_data()},
       {7, "run.egress",

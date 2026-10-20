@@ -64,7 +64,7 @@ defmodule Apiary.Runs.Projector do
   @heartbeat "dev.qory.run.heartbeat"
   # The events whose fold may decide what a run of a workspace's queue gave: its exit and
   # its result.
-  @settling ["dev.qory.run.exited", "dev.qory.session.result"]
+  @settling ["dev.qory.run.exited", "dev.qory.runtime.result"]
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,

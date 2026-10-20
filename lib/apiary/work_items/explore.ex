@@ -21,7 +21,7 @@ defmodule Apiary.WorkItems.Explore do
   #     Qory reads it as decided it is kept on the run of the queue
   #     (`Apiary.Dispatches.Settle`: `result_outcome`, and the run's result for a proposal
   #     or questions), and read from there; until then it is read from the run's
-  #     `dev.qory.session.result` with the highest sequence (`Apiary.Explore.Result.given/3`).
+  #     `dev.qory.runtime.result` with the highest sequence (`Apiary.Explore.Result.given/3`).
   #     A result whose verdict is `understood` is `:proposal`, one whose verdict is
   #     `not_understood` is `:questions`. Without a result the run is `:cancelled` when the
   #     registered run reads as cancelled, `:lost` when it reads as lost, and otherwise

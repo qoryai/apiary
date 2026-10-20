@@ -557,7 +557,7 @@ defmodule Apiary.Runs.ProjectorTest do
 
     test "session events and unknown types are marked projected and fold nothing", %{run: run} do
       events_fixture(run, [
-        {1, "session.started", %{"session_id" => "session-1"}},
+        {1, "runtime.started", %{"session_id" => "session-1"}},
         {2, "something.unheard_of", %{"anything" => true}}
       ])
 
@@ -636,7 +636,7 @@ defmodule Apiary.Runs.ProjectorTest do
             run_id: run.id,
             sequence: sequence,
             node_event_id: Ecto.UUID.generate(),
-            type: "dev.qory.session.started",
+            type: "dev.qory.runtime.started",
             time: now,
             data: %{},
             received_at: now

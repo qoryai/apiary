@@ -100,7 +100,7 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
     {_subject, [started]} = first_events(ctx.run_id)
 
     result =
-      wire_event(ctx.run_id, 3, "session.result", %{
+      wire_event(ctx.run_id, 3, "runtime.result", %{
         "outcome" => "success",
         "result" => ~s({"version":1})
       })
@@ -113,7 +113,7 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
     run = Repo.one!(from r in Run, where: r.node_run_id == ^ctx.run_id)
 
     assert Repo.exists?(
-             from e in Event, where: e.run_id == ^run.id and e.type == "dev.qory.session.result"
+             from e in Event, where: e.run_id == ^run.id and e.type == "dev.qory.runtime.result"
            )
 
     # The outcome, under the pool's key, the node the run is bound to.

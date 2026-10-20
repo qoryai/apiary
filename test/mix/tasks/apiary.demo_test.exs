@@ -47,7 +47,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
   # session's events, in the order the lanes first appear.
   defp lanes(events) do
     events
-    |> Enum.filter(&String.starts_with?(&1.type, "dev.qory.session."))
+    |> Enum.filter(&String.starts_with?(&1.type, "dev.qory.runtime."))
     |> Enum.map(&{&1.data["agent_id"], &1.data["agent_type"]})
     |> Enum.uniq()
   end
@@ -126,7 +126,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       for host <- ["registry.example", "metrics.example"] do
         index = Enum.find_index(events, &(&1.data["host"] == host))
 
-        assert %{type: "dev.qory.session.tool_started", data: %{"tool" => "Bash"} = data} =
+        assert %{type: "dev.qory.runtime.tool_started", data: %{"tool" => "Bash"} = data} =
                  Enum.at(events, index - 1)
 
         assert data["input"]["command"] =~ host
