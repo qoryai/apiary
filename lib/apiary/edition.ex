@@ -156,14 +156,23 @@ defmodule Apiary.Edition do
   #   (`Apiary.Runs.Record.policy/2`);
   # - `:workspace_connections`, the query of the workspace's connections, joined to their
   #   runs, the connection the first binding and the run the second: the policy activity
-  #   (`Apiary.Policy.Activity`) and the workspace's connections (`Apiary.Runs`).
+  #   (`Apiary.Policy.Activity`), the attempts beside the declared hosts
+  #   (`Apiary.Policy.Suggestions`) and the workspace's connections (`Apiary.Runs`);
+  # - `:workspace_events`, the query of the workspace's events, joined to their runs, the
+  #   event the first binding and the run the second: the hosts the runs declared
+  #   (`Apiary.Policy.Suggestions`).
   #
   # `run` is the run read, nil for `:workspace_connections`. Asked once per read. The core
   # answers `subject` as it is.
   @doc false
   @callback client_reads(
               Scope.t(),
-              kind :: :run_events | :run_connections | :run_policy | :workspace_connections,
+              kind ::
+                :run_events
+                | :run_connections
+                | :run_policy
+                | :workspace_connections
+                | :workspace_events,
               run :: struct | nil,
               subject
             ) :: subject
