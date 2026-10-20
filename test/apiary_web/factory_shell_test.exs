@@ -71,8 +71,11 @@ defmodule ApiaryWeb.FactoryShellTest do
   # `ApiaryWeb.Contract.ChangesControllerTest`,
   # `ApiaryWeb.Contract.SourceCollectionsControllerTest`,
   # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest` and
-  # their fixtures' tests, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them.
+  # their fixtures' tests, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them. A
+  # gateway's secrets request is no page either: `ApiaryWeb.Contract.SecretsControllerTest`
+  # and `ApiaryWeb.Contract.SecretsDiscoveryTest` answer for it.
   @signed_routes [
+    ApiaryWeb.Contract.SecretsController,
     ApiaryWeb.Contract.AdapterController,
     ApiaryWeb.Contract.ChangesController,
     ApiaryWeb.Contract.SourceCollectionsController,
