@@ -79,6 +79,7 @@ defmodule Apiary.Runs.Projector do
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
         end_handed_over(run)
+        end_refused(run)
         settle_dispatched(run, first, last)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
@@ -449,6 +450,20 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp end_handed_over(_run), do: :ok
+
+  # A run a workspace's queue handed over whose passes folded a refusal, `dev.qory.run.refused`,
+  # and no exit, ends the queue's run with it, `run_refused`, once its passes have
+  # committed, in a separate transaction that locks the queue's run first
+  # (`Apiary.Dispatches.RunEnd.refused/1`). A failure is logged and the lost-run check ends
+  # it at its next tick (`Apiary.Dispatches.RunEnd.lose/1`).
+  defp end_refused(%Run{dispatch_run_id: id, refused_at: %DateTime{}} = run)
+       when is_binary(id) do
+    run |> Apiary.Dispatches.RunEnd.refused() |> Apiary.Dispatches.broadcast()
+  rescue
+    error -> log_failure(run, {:run_refused, error.__struct__})
+  end
+
+  defp end_refused(_run), do: :ok
 
   # A run a workspace's queue handed over whose passes folded an exit or a result event
   # has what it gave stored on the queue's run, once its passes and its end committed, in

@@ -188,8 +188,13 @@ defmodule Apiary.Dispatches.Settle do
     told(work_item_id)
   end
 
-  # The work item's workspace and public id as they are now, read with no lock.
-  defp told(work_item_id) do
+  # told/1 is the work item `work_item_id` to tell once a transaction commits: its
+  # workspace and public id as they are now, read with no lock; none for no work item.
+  @doc false
+  @spec told(Ecto.UUID.t() | nil) :: [told]
+  def told(nil), do: []
+
+  def told(work_item_id) do
     case Repo.one(
            from w in WorkItem,
              where: w.id == ^work_item_id,

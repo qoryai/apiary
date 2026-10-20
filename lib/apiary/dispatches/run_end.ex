@@ -3,7 +3,7 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # The end of a run of the queue once it was handed over (`Apiary.Dispatches.DispatchRun`,
   # `:handed_over`), with its dispatches and the slot its dispatch holds. The run registered
-  # for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names it) ends in one of three ways,
+  # for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names it) ends in one of four ways,
   # a prebuild in one of four, and the first to come decides the end cause:
   #
   # - its starter's outcome, or its exit once folded: `run_ended`. The outcome's write ends
@@ -23,7 +23,16 @@ defmodule Apiary.Dispatches.RunEnd do
   #   (`Apiary.Runs.Ingest`). Its gateway's attach is refused `410` from then on, as for any
   #   run that ended (`Apiary.Runs.Attach`). A release that finds the registered run's
   #   outcome or exit folded and its end not yet written, or its exit projected and not
-  #   folded, is too late: it changes nothing, and that end is written `run_ended`;
+  #   folded, is too late: it changes nothing, and that end is written `run_ended`. A
+  #   release that finds the run's refusal folded and its end not yet written is too late
+  #   too, and that end is written `run_refused`;
+  # - its gateway's refusal, once folded (`refused/1`, from `Apiary.Runs.Projector`):
+  #   `run_refused`, for a run that is not a prebuild. The run did not start
+  #   (`dev.qory.run.refused`), so no retry can help: it is not queued again, whatever its
+  #   starter's release says, and the refusal's code is kept as `end_detail`. The
+  #   registered run stays failed with that code as its reason (`Apiary.Runs.Fold`). A
+  #   refusal that comes after an outcome, an exit or any other end changes nothing, and a
+  #   prebuild's refusal ends nothing of the queue;
   # - for a prebuild, its starter's `prebuilt` (`prebuilt/2`, from
   #   `Apiary.Dispatches.Prebuilt`): `prebuilt`. The run of the queue and its dispatch end
   #   and the slot is freed, but the registered run is left as it is: nothing is set on it,
@@ -42,7 +51,9 @@ defmodule Apiary.Dispatches.RunEnd do
   #   ends the run of the queue. It also ends, `run_ended`, one whose outcome or exit came
   #   and whose end was not written, should a projection have stopped between its pass and
   #   its end, and one whose exit its projection skipped unfolded
-  #   (`Apiary.Runs.Projector`); for a prebuild, one whose outcome came alone.
+  #   (`Apiary.Runs.Projector`); for a prebuild, one whose outcome came alone. A run that
+  #   is not a prebuild whose refusal was folded and whose end was not written ends
+  #   `run_refused` the same way.
   #
   # A prebuild the check ends `lost` records that end as its last build's failure, on the
   # environment record of its collection and of its pool, the one that claimed it
@@ -65,6 +76,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # of the queue nor its dispatches, and frees nothing again; the registered run still
   # takes what comes as before: a run lost or released takes its starter's later outcome,
   # which may set it failed and is never refused as given (`Apiary.Runs.Outcome`).
+  #
+  # The end by a refusal, as the end by an exit, is written after the projection's pass
+  # has committed, in a separate transaction (`refused/1`): the pass holds the registered
+  # run, and the run of the queue is locked before it.
   #
   # **Locks.** For a prebuild, the lost-run check, an outcome and a projection's end first
   # hold its environment record `FOR UPDATE` (`hold/1`, `Apiary.Environments.lock_record/2`),
@@ -163,7 +178,7 @@ defmodule Apiary.Dispatches.RunEnd do
         held
       ) do
     in_transaction!()
-    changed = end_locked(dispatch_run, cause, now)
+    changed = end_locked(dispatch_run, cause, now, detail(cause, run))
     :ok = build_ended(held, dispatch_run, cause, run, now)
     changed ++ settled(dispatch_run, run, cause, now)
   end
@@ -173,7 +188,15 @@ defmodule Apiary.Dispatches.RunEnd do
   defp settled(dispatch_run, run, :run_ended, now),
     do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: :run_ended}, run, now)
 
+  defp settled(%DispatchRun{work_item_id: work_item_id}, _run, :run_refused, _now),
+    do: Settle.told(work_item_id)
+
   defp settled(_dispatch_run, _run, _cause, _now), do: []
+
+  # The refusal's code, which the fold kept as the run's reason (`Apiary.Runs.Fold`); nil
+  # for any other cause.
+  defp detail(:run_refused, %Run{reason: reason}), do: reason
+  defp detail(_cause, _run), do: nil
 
   # prebuilt/2 ends the run of the queue `dispatch_run_id`, a prebuild whose starter
   # reported the image it built after its handover, `prebuilt`, at `now`, inside the
@@ -211,9 +234,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # none) for the caller to broadcast, and the workspaces whose slots changed, for the
   # caller to tell, both once its transaction commits; `{:error, :ended}` for one that
   # ended already, whatever its cause, or whose registered run has its outcome or its exit
-  # folded and its end not yet written, or its exit projected and not folded: the first to
-  # come decides, and the projection that folded the exit, or the lost-run check, writes
-  # that end (`run_ended/1`, `lose/1`);
+  # folded and its end not yet written, or its exit projected and not folded, or its
+  # refusal folded and its end not yet written: the first to come decides, and the
+  # projection that folded the exit or the refusal, or the lost-run check, writes that end
+  # (`run_ended/1`, `refused/1`, `lose/1`);
   # `{:error, :not_handed_over}` for one waiting or claimed; `{:error, :not_found}` for
   # none. Nothing is written but on `:ok`.
   @doc false
@@ -271,13 +295,13 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # A registered run whose outcome or exit came first, an exit its projection skipped
-  # unfolded among them; for a prebuild, whose exit ends nothing of the queue, its outcome
-  # alone.
+  # unfolded among them, or whose refusal was folded first; for a prebuild, whose exit and
+  # refusal end nothing of the queue, its outcome alone.
   defp too_late?(_dispatch_run, nil), do: false
   defp too_late?(%DispatchRun{step: @prebuild}, %Run{} = run), do: not is_nil(run.outcome_state)
 
   defp too_late?(%DispatchRun{}, %Run{} = run),
-    do: outcome_or_exit?(run) or exit_stored(run) == :projected
+    do: outcome_or_exit?(run) or exit_stored(run) == :projected or refused?(run)
 
   # Cancelled, with the reason `released`, and no outcome: the fold applies it after every
   # pass until an outcome decides (`Apiary.Runs.Fold.settle/1`).
@@ -321,10 +345,38 @@ defmodule Apiary.Dispatches.RunEnd do
 
   def run_ended(%Run{}), do: []
 
+  # refused/1 ends the run of the queue of `run`, a run that is not a prebuild whose
+  # projection folded a refusal, `run_refused`, in a separate transaction: the run of the
+  # queue locked first, then the registered run. It changes nothing when the run of the
+  # queue is not handed over any more, or when an outcome or an exit came, stored or
+  # folded, which end it as theirs. The ids of the workspaces whose slots changed, and the
+  # work item whose run ended, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  @doc false
+  @spec refused(Run.t()) :: [Ecto.UUID.t() | Settle.told()]
+  def refused(%Run{id: run_id, dispatch_run_id: dispatch_run_id})
+      when is_binary(dispatch_run_id) do
+    {:ok, changed} =
+      Repo.transact(fn ->
+        with %DispatchRun{state: :handed_over, step: step} = dispatch_run when step != @prebuild <-
+               lock(dispatch_run_id),
+             %Run{} = run <- locked_run(run_id),
+             true <- refused?(run) do
+          {:ok, finish(dispatch_run, run, :run_refused, now(), nil)}
+        else
+          _not_ended -> {:ok, []}
+        end
+      end)
+
+    changed
+  end
+
+  def refused(%Run{}), do: []
+
   # lose/1 ends, at `now`, the runs of the queue handed over whose registered run its
   # gateway never attached by its `attach_by`, or that has neither an outcome nor an exit
   # by its `backstop_at` (`lost`), or whose outcome or exit came and whose end was not
-  # written (`run_ended`): at most `@batch`, each in a separate transaction. One that
+  # written (`run_ended`), or whose refusal was folded and whose end was not written
+  # (`run_refused`): at most `@batch`, each in a separate transaction. One that
   # raises is logged by its id and the exception's module, and the rest are still ended.
   # The ids of the workspaces whose slots changed, and the work items whose run settled,
   # for the caller to tell (`Apiary.Dispatches.broadcast/1`).
@@ -337,7 +389,8 @@ defmodule Apiary.Dispatches.RunEnd do
       where: fragment("? = 'handed_over'", d.state),
       where:
         not is_nil(r.outcome_state) or
-          (d.step != ^@prebuild and (not is_nil(r.exited_at) or not is_nil(r.exit_state))) or
+          (d.step != ^@prebuild and
+             (not is_nil(r.exited_at) or not is_nil(r.exit_state) or not is_nil(r.refused_at))) or
           not is_nil(r.released_at) or (is_nil(r.attached_at) and r.attach_by < ^now) or
           r.backstop_at < ^now,
       order_by: d.id,
@@ -414,6 +467,7 @@ defmodule Apiary.Dispatches.RunEnd do
     cond do
       outcome_or_exit?(run) -> :run_ended
       not is_nil(run.released_at) -> :released
+      refused?(run) -> :run_refused
       true -> by_exit(exit_stored(run), run, now)
     end
   end
@@ -422,6 +476,13 @@ defmodule Apiary.Dispatches.RunEnd do
   # exit: its outcome or its exit; for a prebuild, its outcome alone.
   defp ends?(%DispatchRun{step: @prebuild}, %Run{} = run), do: not is_nil(run.outcome_state)
   defp ends?(%DispatchRun{}, %Run{} = run), do: outcome_or_exit?(run)
+
+  # A refusal folded, and no outcome or exit, stored or folded, when the run of the queue
+  # is locked: the refusal ends the run of the queue. An outcome or an exit that comes
+  # after the fold and before that end decides over the refusal, and the run ends
+  # `run_ended`; an exit stored and not yet projected ends it when its projection folds it.
+  defp refused?(%Run{} = run),
+    do: not is_nil(run.refused_at) and not outcome_or_exit?(run) and is_nil(exit_stored(run))
 
   # An exit stored and not yet projected: its projection ends the run as its exit. One
   # projected that its fold did not take, skipped by its projection (`Apiary.Runs.Projector`):
@@ -460,12 +521,12 @@ defmodule Apiary.Dispatches.RunEnd do
 
   defp locked_run(id), do: Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
 
-  # The run of the queue ended with `cause`, its live dispatch with it, a stale one not
-  # yet ended `run_ended`, and the slot freed once.
-  defp end_locked(%DispatchRun{id: id}, cause, now) do
+  # The run of the queue ended with `cause`, and `detail` kept on it, its live dispatch
+  # with the cause, a stale one not yet ended `run_ended`, and the slot freed once.
+  defp end_locked(%DispatchRun{id: id}, cause, now, detail \\ nil) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
-        set: [state: :ended, end_cause: cause, updated_at: now]
+        set: [state: :ended, end_cause: cause, end_detail: detail, updated_at: now]
       )
 
     {_count, _rows} =

@@ -204,6 +204,12 @@ defmodule Apiary.Dispatches.Handover do
           | :no_gateway
           | :unavailable
 
+  # unformed/0 is every cause a claimed run ends for when its handover cannot form what
+  # it is made from, each with the outcome `error` on a run that is not a prebuild.
+  @doc false
+  @spec unformed() :: [atom]
+  def unformed, do: @unformed
+
   # dispatched/3 records that the starter started the job for the dispatch `dispatch_id`
   # of the pool of `access_key`, with the job's `external` (nil for none): the moduledoc.
   @doc false

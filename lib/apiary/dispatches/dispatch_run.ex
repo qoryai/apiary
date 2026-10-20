@@ -25,7 +25,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   # (`20261017160000_queue_prebuilds`).
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
-  # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `queued_at`
+  # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `end_detail` is
+  # the refusal's code of a run ended `run_refused`, nil for any other. `queued_at`
   # orders the queue, oldest first.
   #
   # `result_outcome` is what the run gave once Qory reads it as decided
@@ -68,7 +69,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # (`model_gone`) (`Apiary.Dispatches.RunSettings`), 410 gone; `secrets_not_allowed`, a
   # claimed explore run whose model choice has a provider, whose gateway has an active key
   # made without the stored-secrets flag (`allow_secrets`), so the gateway may not get
-  # the run's model key (`Apiary.Dispatches.Handover`), 410 gone.
+  # the run's model key (`Apiary.Dispatches.Handover`), 410 gone; `run_refused`, a run
+  # its gateway refused before it started (`dev.qory.run.refused`), not queued again, with
+  # the refusal's code kept as `end_detail` (`Apiary.Dispatches.RunEnd.refused/1`).
   @end_causes [
     :released,
     :closed,
@@ -85,7 +88,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :runtime_unserved,
     :key_gone,
     :model_gone,
-    :secrets_not_allowed
+    :secrets_not_allowed,
+    :run_refused
   ]
 
   # What a run gave (`Apiary.Explore.Result.outcome/1`).
@@ -107,6 +111,7 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :of, :integer
     field :state, Ecto.Enum, values: @states, default: :waiting
     field :end_cause, Ecto.Enum, values: @end_causes
+    field :end_detail, :string
     field :queued_at, :utc_datetime_usec
     field :environment_ref, :string
     field :environment_ref_at, :utc_datetime_usec

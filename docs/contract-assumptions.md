@@ -416,11 +416,12 @@ domain that requires one (`inputs_invalid`). The contract names
 dispatch, never as `503`, which would have the starter ask again for a run that can never be
 handed over.
 
-Once handed over, such a run ends with its registered run, in one of three ways, the first
+Once handed over, such a run ends with its registered run, in one of four ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
 `dev.qory.run.exited` once folded, end it `run_ended`; its starter's release after the
-handover ends it `released`; and the lost-run check ends it `lost` when its gateway never
-attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
+handover ends it `released`; a `dev.qory.run.refused` once folded ends it `run_refused`,
+for a run that is not a prebuild; and the lost-run check ends it `lost` when its gateway
+never attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
 backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
 (Liveness). A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
 registered run ends: the registered run is left as it is, to its starter's outcome, which
@@ -452,6 +453,22 @@ Each end locks the run of the queue first, then the registered run, then writes 
 dispatches, so two ends of one run take turns, and an outcome that comes as the check
 loses the run is either taken first, its end cause `run_ended`, or after it, the end cause
 staying `lost`.
+
+A run its gateway refused before it started (`dev.qory.run.refused`, with a code such as
+`model_key_missing`) ends `run_refused` at its first refusal and is not queued again. The
+projection that folded the refusal ends the run of the queue after its pass has committed,
+in a transaction that locks the run of the queue first, then the registered run, as an
+exit's end does. The run of the queue keeps the refusal's code as `end_detail` (nil when
+the event's code is not a code), and its dispatch ends with the same end cause; the slot is
+freed once. The registered run stays failed with the code as its reason and `refused_at`; a
+starter's outcome that follows replaces its reason and leaves `end_detail`. The starter's
+release of the dispatch after this end is `410` `gone` and queues nothing, and the claim
+never offers the run again. A refusal that comes after any other end, or while an outcome
+or an exit decides over it, changes nothing: the run keeps the end cause that came first. A
+refusal folded whose end the projection did not write is ended by the lost-run check at its
+next tick. A prebuild's refusal ends nothing of the queue. A work item's Explore reads a
+run ended `run_refused` as a run with no result and the outcome `error`, as it reads the
+end causes of a handover that cannot form a run (`Apiary.WorkItems.Explore`).
 
 The release gives a run back (`release.schema.json`), with the starter's `reason` and
 `retry`, in one transaction (`Apiary.Dispatches.Release`). The refusals come in the
