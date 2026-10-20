@@ -404,6 +404,77 @@ defmodule Apiary.Policy.IntegrationHostsTest do
       assert served(scope, nil)["allow_first"] == ["10.0.0.12", "api.example.com"]
       assert allow_first(scope, nil) == ["10.0.0.12", "api.example.com"]
     end
+
+    test "with a value the address rules refuse, does not fall back to the default",
+         %{scope: scope} do
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
+
+      release =
+        settings_release!(scope, "acme-models", %{
+          "title" => "Address",
+          "type" => "string",
+          "default" => "https://fallback.example.com"
+        })
+
+      {:ok, connection} = Connections.create_integration(scope, release.id, %{})
+      assert served(scope, nil)["allow_first"] == ["api.example.com", "fallback.example.com"]
+
+      for address <- [
+            "https://*.example.com",
+            "https://localhost/v1",
+            "http://models.example.com"
+          ] do
+        {:ok, _connection} =
+          Connections.update_connection(scope, connection, %{
+            settings: %{"endpoint" => address}
+          })
+
+        assert served(scope, nil)["allow_first"] == ["api.example.com"], address
+      end
+    end
+
+    test "with a property schema of true or false adds no host, and every write renders" do
+      for schema <- [true, false] do
+        %{scope: scope} = sign_up_fixture()
+        {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
+        release = settings_release!(scope, "acme-flag", schema)
+
+        assert {:ok, _connection} = Connections.create_integration(scope, release.id, %{})
+        assert {:ok, _rule} = Policy.allow(scope, nil, %{host: "cdn.example.com"})
+        assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "tracker.example.org"})
+
+        assert %{
+                 "allow" => ["cdn.example.com", "docs.example.com"],
+                 "allow_first" => ["api.example.com"],
+                 "deny" => ["tracker.example.org"]
+               } = served(scope, nil)
+
+        assert allow_first(scope, nil) == ["api.example.com"]
+      end
+    end
+  end
+
+  # A release of an integration named `name` whose `egress_hosts` are `api.example.com`
+  # and the setting `endpoint`, whose property schema is `endpoint`.
+  defp settings_release!(scope, name, endpoint) do
+    description =
+      tracker_description(%{
+        "name" => name,
+        "settings" => %{
+          "type" => "object",
+          "properties" => %{
+            "endpoint" => endpoint,
+            "api_key" => %{"title" => "API key", "type" => "string", "writeOnly" => true},
+            "api_key_file" => %{"title" => "API key file", "type" => "string"}
+          }
+        },
+        "roles" => %{
+          "credential" => %{"argument" => "[A-Z]+", "hosts" => ["#{name}.example.net"]}
+        },
+        "egress_hosts" => ["api.example.com", %{"setting" => "endpoint"}]
+      })
+
+    ready_release!(scope, description, "codeberg.org/acme/#{name}")
   end
 
   test "a connection whose integrity code fails adds nothing, with an error in the log", %{

@@ -570,7 +570,7 @@ defmodule Apiary.Integrations.Description do
     address =
       case Map.fetch(settings, name) do
         {:ok, value} -> value
-        :error -> get_in(document, ["settings", "properties", name, "default"])
+        :error -> setting_default(document, name)
       end
 
     with false <- is_nil(address),
@@ -584,4 +584,13 @@ defmodule Apiary.Integrations.Description do
   end
 
   defp egress_host(_entry, _document, _settings), do: :none
+
+  # The `default` of the setting `name`, read only from a property schema that is an
+  # object: JSON Schema also takes `true` or `false` as a property's schema.
+  defp setting_default(document, name) do
+    case get_in(document, ["settings", "properties"]) do
+      %{^name => %{} = property} -> Map.get(property, "default")
+      _other -> nil
+    end
+  end
 end
