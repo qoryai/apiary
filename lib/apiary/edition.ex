@@ -148,7 +148,7 @@ defmodule Apiary.Edition do
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
   # the edition, so that a client of an operator is not shown the operator's model
   # provider: its credential, its connections and its events. `kind` is what is read, and
-  # `subject` what the core would read, given back narrowed or as it is:
+  # `subject` the query or value the core would read, returned narrowed or as it is:
   #
   # - `:run_events`, the query of a run's events (`Apiary.Runs.Record`);
   # - `:run_connections`, the query of a run's connections (`Apiary.Runs.Record`);
@@ -157,13 +157,14 @@ defmodule Apiary.Edition do
   # - `:workspace_connections`, the query of the workspace's connections, joined to their
   #   runs, the connection the first binding and the run the second: the policy activity
   #   (`Apiary.Policy.Activity`), the attempts beside the declared hosts
-  #   (`Apiary.Policy.Suggestions`) and the workspace's connections (`Apiary.Runs`);
+  #   (`Apiary.Policy.Suggestions`), a target's denied destinations (`Apiary.Targets`),
+  #   and the workspace's connections and one connection by its id (`Apiary.Runs`);
   # - `:workspace_events`, the query of the workspace's events, joined to their runs, the
   #   event the first binding and the run the second: the hosts the runs declared
   #   (`Apiary.Policy.Suggestions`).
   #
-  # `run` is the run read, nil for `:workspace_connections`. Asked once per read. The core
-  # answers `subject` as it is.
+  # `run` is the run read, nil for `:workspace_connections` and `:workspace_events`.
+  # Called once per read. The core returns `subject` as it is.
   @doc false
   @callback client_reads(
               Scope.t(),

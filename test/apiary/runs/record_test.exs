@@ -4,6 +4,7 @@ defmodule Apiary.Runs.RecordTest do
   import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias Apiary.Runs.{Projector, Record, Run}
   alias Apiary.Runs.Record.Timeline
@@ -25,6 +26,31 @@ defmodule Apiary.Runs.RecordTest do
 
   setup do
     %{scope: scope_fixture()}
+  end
+
+  # A target of the scope's workspace that `run` belongs to, with one of its connections
+  # denied once, written past the record's fold.
+  defp denied_target!(scope, run) do
+    target =
+      Repo.insert!(%Apiary.Runs.Target{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        system: "github.example",
+        path: "acme/record",
+        first_seen_at: DateTime.utc_now()
+      })
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [target_id: target.id])
+
+    [connection | _] = Repo.all(from c in Apiary.Runs.Connection, where: c.run_id == ^run.id)
+
+    {1, _rows} =
+      Repo.update_all(from(c in Apiary.Runs.Connection, where: c.id == ^connection.id),
+        set: [denied: 1, last_seen_at: DateTime.utc_now()]
+      )
+
+    target
   end
 
   describe "fetch_run/2" do
@@ -190,14 +216,30 @@ defmodule Apiary.Runs.RecordTest do
 
       assert Apiary.Edition.Core.client_reads(scope, :run_policy, run, %{a: 1}) == %{a: 1}
 
+      filters = Apiary.Runs.Filters.parse(%{}, :connections)
+      assert %{rows: [_ | _]} = Apiary.Runs.page_destinations(scope, filters)
+      [connection | _] = Repo.all(from c in Apiary.Runs.Connection, where: c.run_id == ^run.id)
+      assert {:ok, _connection} = Apiary.Runs.fetch_connection(scope, connection.id)
+
+      denied_target = denied_target!(scope, run)
+      since = DateTime.add(DateTime.utc_now(), -365, :day)
+
+      assert %{rows: [_ | _]} =
+               Apiary.Targets.denied_destinations(scope, denied_target, since)
+
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesRuns)
+
+      assert %{rows: [], destinations: 0, attempts: 0} =
+               Apiary.Targets.denied_destinations(scope, denied_target, since)
+
+      assert %{rows: []} = Apiary.Runs.page_destinations(scope, filters)
+      assert Apiary.Runs.fetch_connection(scope, connection.id) == :error
 
       assert %{rows: [], total: 0} = Record.connections(scope, run)
       assert %{all: 0, attempts: 0} = Record.connection_counts(scope, run)
       assert Record.timeline(scope, run).items == []
       assert Record.policy(scope, run) == nil
 
-      since = DateTime.add(DateTime.utc_now(), -365, :day)
       assert {:ok, []} = Apiary.Policy.Activity.denied_destinations(scope, since)
     end
   end
