@@ -15,9 +15,11 @@ defmodule Apiary.Dispatches.RunSettings do
   #
   # `hold/1` reads the choices of the run's chain without a lock, locks the rows of the
   # model providers they name `FOR SHARE`, by id, then the rows of those providers' keys'
-  # secrets `FOR SHARE`, by id, and reads the choices again: should the second read name a
-  # provider the first did not, it locks that one too, up to three times, else the handover
-  # is refused (`:unavailable`) with nothing written. A change to a provider takes its row
+  # secrets `FOR SHARE`, by id, and reads the choices again. Each read that names a
+  # provider not yet locked locks it the same way. It reads the choices at most four times
+  # and locks at most three times: when the fourth read still names a provider not yet
+  # locked, the choices changed while the handover read them (`:unstable`), and the
+  # handover is refused with nothing written. A change to a provider takes its row
   # `FOR UPDATE`, and a change to its keys the keys' secret's row, in the same order, so a
   # change and a handover of its run take turns: a change waits for a handover that holds
   # the row, and the run keeps the provider as it was before the change; a change that
@@ -28,8 +30,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # `build/1` resolves the choices against the providers as they are once the rows are
   # held, and ends the run with the first cause that applies, in this order:
   #
-  #   * `provider_gone`: the provider is not there, does not apply to the workspace any
-  #     more, or is no longer in the catalogue as it was added;
+  #   * `provider_gone`: the provider is not there, fails its integrity code
+  #     (`Apiary.Connections.intact?/1`), does not apply to the workspace any more, or is
+  #     no longer in the catalogue as it was added;
   #   * `runtime_unserved`: no API of the provider serves the run's runtime
   #     (`Apiary.Kinds.Providers.api/2`);
   #   * `provider_gone`: the endpoint of that API is a setting whose address
@@ -54,9 +57,12 @@ defmodule Apiary.Dispatches.RunSettings do
   # the reads that follow the handover. The run settings take at most 64 KiB encoded;
   # more refuses the handover.
   #
-  # Reads, and takes the locks above; writes nothing, and logs nothing.
+  # Reads, and takes the locks above; writes nothing. It logs a provider that fails its
+  # integrity code, by its public id.
 
   import Ecto.Query, only: [from: 2]
+
+  require Logger
 
   alias Apiary.{Connections, Edition, Features, ModelChoices, Repo}
   alias Apiary.Connections.{Connection, ProviderModel}
@@ -71,8 +77,9 @@ defmodule Apiary.Dispatches.RunSettings do
   @run_kind "explore"
   # The most bytes the run settings take, encoded: the column's check.
   @max_bytes 65_536
-  # How often `hold/1` locks the providers a second read named.
-  @tries 3
+  # The most times `hold/1` locks providers: after each of the first three reads of the
+  # choices. A fourth read that names a provider not yet locked is `:unstable`.
+  @lock_rounds 3
 
   @typedoc "The causes the handover ends a run for here."
   @type cause :: :provider_gone | :runtime_unserved | :key_gone | :model_gone
@@ -108,7 +115,7 @@ defmodule Apiary.Dispatches.RunSettings do
       organisation = Repo.get!(Organisation, workspace.organisation_id)
       target = target(workspace, id)
 
-      case lock(workspace, target, [], @tries) do
+      case lock(workspace, target, [], @lock_rounds) do
         {:ok, input} ->
           %{organisation: organisation, workspace: workspace, target: target, input: input}
 
@@ -183,11 +190,13 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # build/1 is the run settings of what `hold/1` held: `{:ok, nil}` for a run with none,
-  # `{:ok, built}`, `{:end, cause}`, or `:unavailable` where the handover cannot be made.
+  # `{:ok, built}`, `{:end, cause}`, `:unstable` where the choices changed while `hold/1`
+  # read them, or `:unavailable` where the run settings take more than 64 KiB.
   @doc false
-  @spec build(map | :unstable | nil) :: {:ok, built | nil} | {:end, cause} | :unavailable
+  @spec build(map | :unstable | nil) ::
+          {:ok, built | nil} | {:end, cause} | :unstable | :unavailable
   def build(nil), do: {:ok, nil}
-  def build(:unstable), do: :unavailable
+  def build(:unstable), do: :unstable
 
   def build(%{} = held) do
     providers = providers(held)
@@ -214,16 +223,16 @@ defmodule Apiary.Dispatches.RunSettings do
         provider = Map.fetch!(providers, resolution.connection_id)
         {:ok, runtime} = Runtimes.fetch(ModelChoices.runtime_name())
 
-        case form(
-               resolution,
-               provider,
-               Connections.provider(provider),
-               runtime,
-               held.workspace.id
-             ) do
-          {:ok, built} -> sealed(built)
-          {:end, _cause} = ended -> ended
-        end
+        with :ok <- intact(provider),
+             {:ok, built} <-
+               form(
+                 resolution,
+                 provider,
+                 Connections.provider(provider),
+                 runtime,
+                 held.workspace.id
+               ),
+             do: sealed(built)
     end
   end
 
@@ -244,6 +253,20 @@ defmodule Apiary.Dispatches.RunSettings do
     )
     |> Repo.all()
     |> Map.new(&{&1.id, &1})
+  end
+
+  # The provider's row as it was written, or the run ends `provider_gone`: the row's
+  # endpoint setting and keys' secret id are read only from a row whose code verifies.
+  defp intact(%Connection{} = provider) do
+    if Connections.intact?(provider) do
+      :ok
+    else
+      Logger.error(
+        "a handover ends its run: the model provider #{provider.public_id} fails its integrity code"
+      )
+
+      {:end, :provider_gone}
+    end
   end
 
   defp runtime_only do

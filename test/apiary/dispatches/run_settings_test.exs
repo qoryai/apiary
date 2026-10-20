@@ -15,7 +15,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunSettings}
-  alias Apiary.Kinds.{Providers, Runtimes}
+  alias Apiary.Kinds.{Coded, Providers, Runtimes}
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
   alias Apiary.Runs.{Projector, Run, Target}
 
@@ -51,6 +51,16 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     %{dispatch: dispatch} = dispatched!(ctx.key)
     {Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body}), queued, dispatch}
+  end
+
+  # The provider's row with `changes`, written past the save's checks, and coded again as
+  # a save codes it, so the row still passes its integrity code.
+  defp recode!(%Connection{id: id}, changes) do
+    Connection
+    |> Repo.get!(id)
+    |> Ecto.Changeset.change(changes)
+    |> Coded.seal()
+    |> Repo.update!()
   end
 
   defp settings(%{run_settings: settings}), do: settings |> Jason.encode!() |> Jason.decode!()
@@ -282,10 +292,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       # Past the save, which refuses each: an address stored before the rule refused it.
       for {address, n} <-
             Enum.with_index(["https://127.0.0.1:4000", "http://litellm.example.com"]) do
-        {1, _rows} =
-          Repo.update_all(from(c in Connection, where: c.id == ^litellm.id),
-            set: [settings: Jason.encode!(%{"address" => address})]
-          )
+        recode!(litellm, settings: Jason.encode!(%{"address" => address}))
 
         {answer, queued, dispatch} = handover!(ctx, %{external_ref: "acme/shop##{20 + n}"})
         assert answer == {:error, :gone}, address
@@ -295,15 +302,39 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     test "provider_gone for a provider that no longer applies to the workspace", ctx do
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
-
-      {1, _rows} =
-        Repo.update_all(from(c in Connection, where: c.id == ^ctx.provider.id),
-          set: [applies_to: "selected"]
-        )
+      recode!(ctx.provider, applies_to: "selected")
 
       {answer, queued, dispatch} = handover!(ctx)
       assert answer == {:error, :gone}
       ended!(queued, dispatch, :provider_gone)
+    end
+
+    test "provider_gone for a provider row that fails its integrity code", ctx do
+      {:ok, litellm} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "litellm",
+          settings: %{"address" => "https://litellm.example.com"},
+          keys: [%{value_id: "main", value: "sk-team"}]
+        })
+
+      {:ok, litellm} =
+        Connections.add_provider_model(ctx.scope, litellm, %{model_id: "team-large"})
+
+      choose!(ctx.scope, :workspace, %{provider: litellm.public_id, model: "team-large"})
+
+      # An address the endpoint rule takes, written without a new code: the run must not
+      # be handed over with it.
+      {1, _rows} =
+        Repo.update_all(from(c in Connection, where: c.id == ^litellm.id),
+          set: [settings: ~s({"address":"https://elsewhere.example.com"})]
+        )
+
+      {result, log} = with_log(fn -> handover!(ctx) end)
+      {answer, queued, dispatch} = result
+      assert answer == {:error, :gone}
+      ended!(queued, dispatch, :provider_gone)
+      assert log =~ "the model provider #{litellm.public_id} fails its integrity code"
+      refute log =~ "elsewhere.example.com"
     end
 
     @tag needs: :security
@@ -367,6 +398,52 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert %Run{provider_api: %{"endpoint" => "https://models.example.com"}} =
                Repo.get!(Run, next.run.id)
+    end
+  end
+
+  describe "a deletion of the provider" do
+    test "is refused while a pending or running run uses it, which it names beside the choices",
+         ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      run = Repo.get!(Run, handed.run.id)
+      assert run.state == "pending"
+
+      assert {:error, {:provider_in_use, %{places: [%{level: 5}], runs: [public_id]}}} =
+               Connections.delete_provider(ctx.scope, ctx.provider)
+
+      assert public_id == run.public_id
+
+      {:ok, _choice} = ModelChoices.delete_choice(ctx.scope, :workspace)
+
+      for state <- Run.alive_states() do
+        {1, _rows} = Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [state: state])
+
+        assert Connections.delete_provider(ctx.scope, ctx.provider) ==
+                 {:error, {:provider_in_use, %{places: [], runs: [run.public_id]}}}
+      end
+
+      # Once the run ended, the provider goes; the run keeps what it was handed over
+      # with, and its links to the deleted rows are cleared.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [state: "completed"])
+
+      assert {:ok, _deleted} = Connections.delete_provider(ctx.scope, ctx.provider)
+
+      assert %Run{
+               provider_connection_id: nil,
+               provider_secret_id: nil,
+               provider_value_id: "main",
+               provider_api: @messages,
+               run_settings: %{"model" => "claude-opus-5-5"}
+             } = Repo.get!(Run, run.id)
+    end
+
+    test "keeps refusing with the choices alone while no run uses it", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+
+      assert {:error, {:model_in_use, [%{level: 5}]}} =
+               Connections.delete_provider(ctx.scope, ctx.provider)
     end
   end
 

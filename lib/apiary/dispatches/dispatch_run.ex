@@ -60,10 +60,12 @@ defmodule Apiary.Dispatches.DispatchRun do
   # `prebuilt`, a prebuild handed over whose starter reported the image it built
   # (prebuilt.schema.json), its registered run left to its outcome; `provider_gone`,
   # `runtime_unserved`, `key_gone` and `model_gone`, a claimed explore run whose model
-  # choice its handover could not form: its model provider is gone, does not apply to the
-  # workspace or has an endpoint address the endpoint rule refuses, no longer serves the
-  # runtime, no longer has the chosen key, or no longer lists the chosen model or effort
-  # value (`Apiary.Dispatches.RunSettings`), 410 gone.
+  # choice its handover could not form: its model provider is gone, fails its integrity
+  # code, does not apply to the workspace, has a description the catalogue changed since
+  # the provider was added, or has an endpoint address the endpoint rule refuses
+  # (`provider_gone`); no longer serves the runtime (`runtime_unserved`); no longer has
+  # the chosen key (`key_gone`); or no longer lists the chosen model or effort value
+  # (`model_gone`) (`Apiary.Dispatches.RunSettings`), 410 gone.
   @end_causes [
     :released,
     :closed,

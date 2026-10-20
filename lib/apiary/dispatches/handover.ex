@@ -416,6 +416,13 @@ defmodule Apiary.Dispatches.Handover do
         Logger.error("a handover could not be made: the answer does not fit its limit")
         {:error, :unavailable}
 
+      :unstable ->
+        Logger.error(
+          "a handover could not be made: the run's model choices changed while the handover read them"
+        )
+
+        {:error, :unavailable}
+
       {:ok, formed} ->
         pool = locked.key.node
 
@@ -449,8 +456,8 @@ defmodule Apiary.Dispatches.Handover do
 
   # An explore run has its work item's target, nil for none; a work item without one in
   # a domain that requires a target ends `inputs_invalid`. Its run settings come next
-  # (`Apiary.Dispatches.RunSettings`), which can end it with a cause of their own or refuse
-  # the handover. The answer and the input get the same target and the same domain, and the
+  # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
+  # `RunSettings.causes/0` lists, or refuse the handover. The answer and the input get the same target and the same domain, and the
   # input the bytes of the answer's limit that the rest of the answer leaves.
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held}, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
@@ -473,6 +480,7 @@ defmodule Apiary.Dispatches.Handover do
       true -> {:end, :inputs_invalid}
       {:end, _cause} = ended -> ended
       :unavailable -> :unavailable
+      :unstable -> :unstable
     end
   end
 

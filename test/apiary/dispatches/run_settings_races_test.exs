@@ -9,7 +9,8 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   # The rule under test: the handover reads the choices without a lock, then takes the
   # provider's row and its keys' secret's row `FOR SHARE`, before anything else; a change
   # of the provider takes its row `FOR UPDATE`. So the two take turns, whoever comes
-  # second sees what the first wrote, and neither deadlocks.
+  # second sees what the first wrote, and neither deadlocks: a deletion that comes second
+  # reads the run the handover registered, and is refused.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -112,7 +113,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
     end
 
   # The choice and then the provider, in one transaction: the provider's deletion is
-  # refused while a choice names it.
+  # refused while a choice names it. A refused deletion rolls the choice's back too.
   defp delete_provider(ctx) do
     fn ->
       Repo.transact(fn ->
@@ -156,7 +157,8 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   end
 
   describe "a handover and the provider's deletion" do
-    test "the handover first: the deletion waits, then finds the run it registered", ctx do
+    test "the handover first: the deletion waits, then is refused for the run it registered",
+         ctx do
       dispatch = started!(ctx)
       {first, first_pid} = hold(handover(ctx, dispatch))
       assert {:ok, handed} = first.result
@@ -165,18 +167,20 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, %Connection{}} = Task.await(second.task)
-      refute provider_there?(ctx)
+      run = run!(handed)
 
-      # The run keeps what it was handed over with; its links to the deleted rows are
-      # cleared.
+      assert Task.await(second.task) ==
+               {:error, {:provider_in_use, %{places: [], runs: [run.public_id]}}}
+
+      assert provider_there?(ctx)
+
       assert %Run{
-               provider_connection_id: nil,
-               provider_secret_id: nil,
-               provider_value_id: "main",
+               provider_connection_id: provider_id,
                provider_api: %{"endpoint" => @old_address},
                run_settings: %{"model" => "team-large"}
-             } = run!(handed)
+             } = run
+
+      assert provider_id == ctx.provider.id
     end
 
     test "the deletion first: the handover waits, then finds no choice", ctx do

@@ -500,7 +500,9 @@ for each other and never on each other at once:
    then the rows of those providers' keys' secrets `FOR SHARE`, by id, before the
    environment records, the run of the queue, the dispatch and the gateway's row
    (`Apiary.Dispatches.Slots`). A change to a provider or to its keys that came first is
-   seen by the handover; one that comes after waits for the handover to commit.
+   seen by the handover; one that comes after waits for the handover to commit. A
+   deletion of the provider then reads the run the handover registered, and refuses while
+   that run is pending or running.
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the
