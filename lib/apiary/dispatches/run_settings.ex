@@ -19,45 +19,49 @@ defmodule Apiary.Dispatches.RunSettings do
   # provider the first did not, it locks that one too, up to three times, else the handover
   # is refused (`:unavailable`) with nothing written. A change to a provider takes its row
   # `FOR UPDATE`, and a change to its keys the keys' secret's row, in the same order, so a
-  # change and a handover of its run take turns: a handover that holds the row finishes
-  # first, and the change then sees the run it registered; a change that came first is
-  # seen by the handover, which reads the provider after the lock.
+  # change and a handover of its run take turns: a change waits for a handover that holds
+  # the row, and the run keeps the provider as it was before the change; a change that
+  # came first is seen by the handover, which reads the provider after the lock.
   #
   # ## What it checks
   #
   # `build/1` resolves the choices against the providers as they are once the rows are
   # held, and ends the run with the first cause that applies, in this order:
   #
-  #   * `provider_gone`: the provider is not there, does not apply to the workspace
-  #     any more, is no longer in the catalogue as it was added, or has no address that
-  #     passes `Apiary.Kinds.Endpoint`;
-  #   * `runtime_unserved`: the provider no longer serves the run's runtime
-  #     (`Apiary.ModelChoices.serves/3`);
+  #   * `provider_gone`: the provider is not there, does not apply to the workspace any
+  #     more, or is no longer in the catalogue as it was added;
+  #   * `runtime_unserved`: no API of the provider serves the run's runtime
+  #     (`Apiary.Kinds.Providers.api/2`);
+  #   * `provider_gone`: the endpoint of that API is a setting whose address
+  #     `Apiary.Kinds.Endpoint` refuses;
   #   * `key_gone`: the chosen key is no longer one of the provider's keys;
-  #   * `model_gone`: the chosen model, or its effort value, is no longer on the
-  #     provider's list;
-  #   * `host_denied`: a deny rule in force for the run's workspace and target covers a host
-  #     the provider's runs reach.
+  #   * `model_gone`: the chosen model is no longer on the provider's list, or its effort
+  #     value is no longer among both the model's and the runtime's effort values.
+  #
+  # A deny rule of the security policy is not asked: it never blocks a host of an
+  # integration.
   #
   # ## What it writes
   #
   # `run_settings`, in the schema's order: `runtime`, `model`, `effort` when the choice has
-  # one, `endpoint`, `provider_models` (every model of the provider's list with its effort
-  # values) and `tiers`, a tier left out when no choice maps it to a model the provider
-  # lists. The answer has no key, no secret and no id of a key, and neither has the
-  # stored copy: the run keeps the provider's row id, its keys' secret's row id, the
-  # chosen key's value id and the provider's chain beside it, for the reads that follow
-  # the handover. At most 64 KiB encoded; more refuses the handover.
+  # one, `provider_models` (every model of the provider's list with the effort values that
+  # both it and the runtime have) and `tiers`, a tier left out when no choice maps it to a
+  # model the provider lists. The answer has no key, no secret and no id of a key, and
+  # neither has the stored copy. Beside it, the run keeps the provider's row id, its keys'
+  # secret's row id, the chosen key's value id, the provider's chain and the API the run
+  # uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
+  # address, its `auth` and, when the description lists them, its `key_prefixes`), for
+  # the reads that follow the handover. The run settings take at most 64 KiB encoded;
+  # more refuses the handover.
   #
   # Reads, and takes the locks above; writes nothing, and logs nothing.
 
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Connections, Edition, Features, ModelChoices, Repo}
-  alias Apiary.Accounts.Scope
   alias Apiary.Connections.{Connection, ProviderModel}
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Kinds.{Endpoint, Provider, Runtime, Runtimes}
+  alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime, Runtimes}
   alias Apiary.ModelChoices.Resolution
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
@@ -71,7 +75,7 @@ defmodule Apiary.Dispatches.RunSettings do
   @tries 3
 
   @typedoc "The causes the handover ends a run for here."
-  @type cause :: :provider_gone | :runtime_unserved | :key_gone | :model_gone | :host_denied
+  @type cause :: :provider_gone | :runtime_unserved | :key_gone | :model_gone
 
   @typedoc """
   What a handover writes: `wire`, the answer's `run_settings`; `stored`, the same as a
@@ -92,7 +96,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # causes/0 is every cause `build/1` ends a run for.
   @doc false
   @spec causes() :: [cause]
-  def causes, do: [:provider_gone, :runtime_unserved, :key_gone, :model_gone, :host_denied]
+  def causes, do: [:provider_gone, :runtime_unserved, :key_gone, :model_gone]
 
   # hold/1 is what the handover of the run of the queue `dispatch_run` holds before it
   # locks anything: nil for a run that has no `run_settings`, else what `build/1` takes.
@@ -210,19 +214,12 @@ defmodule Apiary.Dispatches.RunSettings do
         provider = Map.fetch!(providers, resolution.connection_id)
         {:ok, runtime} = Runtimes.fetch(ModelChoices.runtime_name())
 
-        scope = %Scope{organisation: held.organisation, workspace: held.workspace}
-
-        denied = fn description ->
-          ModelChoices.denied?(provider, description, scope, held.workspace, held.target)
-        end
-
         case form(
                resolution,
                provider,
                Connections.provider(provider),
                runtime,
-               held.workspace.id,
-               denied
+               held.workspace.id
              ) do
           {:ok, built} -> sealed(built)
           {:end, _cause} = ended -> ended
@@ -262,10 +259,9 @@ defmodule Apiary.Dispatches.RunSettings do
     if byte_size(Jason.encode!(wire)) <= @max_bytes, do: {:ok, built}, else: :unavailable
   end
 
-  # form/6 is the settings of `resolution` for `provider`, the connection as `hold/1` read
+  # form/5 is the settings of `resolution` for `provider`, the connection as `hold/1` read
   # it, whose description in the catalogue is `description` (`Connections.provider/1`),
-  # for the runs of `runtime` in the workspace `workspace_id`; `denied` is given the
-  # description and says whether a deny rule covers a host. The first cause of the
+  # for the runs of `runtime` in the workspace `workspace_id`. The first cause of the
   # moduledoc that applies, else `{:ok, built}`. A function of its arguments, which a test
   # calls with a description or a runtime the catalogue does not have.
   @doc false
@@ -274,18 +270,16 @@ defmodule Apiary.Dispatches.RunSettings do
           Connection.t(),
           {:ok, Provider.t()} | {:error, atom},
           Runtime.t(),
-          Ecto.UUID.t(),
-          (Provider.t() -> boolean)
+          Ecto.UUID.t()
         ) :: {:ok, built} | {:end, cause}
-  def form(resolution, provider, description, runtime, workspace_id, denied) do
+  def form(resolution, provider, description, runtime, workspace_id) do
     with {:ok, description} <- described(description),
          :ok <- applies(provider, workspace_id),
-         {:ok, endpoint} <- endpoint(description, provider),
-         :ok <- served(description, runtime),
+         {:ok, api} <- api(description, runtime),
+         {:ok, endpoint} <- endpoint(api, provider),
          :ok <- key(provider, resolution.value_id),
-         {:ok, model} <- model(provider, resolution),
-         :ok <- not_denied(denied.(description)) do
-      {:ok, built(resolution, provider, model, endpoint)}
+         {:ok, model} <- model(provider, resolution, runtime) do
+      {:ok, built(resolution, provider, model, runtime, %{api | "endpoint" => endpoint})}
     end
   end
 
@@ -300,24 +294,24 @@ defmodule Apiary.Dispatches.RunSettings do
       else: {:end, :provider_gone}
   end
 
-  # The address of the provider's API: its description's, or the one its address setting has.
-  defp endpoint(%Provider{endpoint: address}, _provider) when is_binary(address),
-    do: checked(address)
-
-  defp endpoint(%Provider{endpoint: %{"setting" => name}}, %Connection{} = provider),
-    do: checked(Map.get(Connection.settings_map(provider), name))
-
-  defp checked(address) do
-    case Endpoint.check(address) do
-      :ok -> {:ok, address}
-      {:error, _refusal} -> {:end, :provider_gone}
+  # The API of the provider that the runtime's runs use.
+  defp api(description, runtime) do
+    case Providers.api(description, runtime) do
+      {:ok, api} -> {:ok, api}
+      {:error, _refusal} -> {:end, :runtime_unserved}
     end
   end
 
-  defp served(description, runtime) do
-    case ModelChoices.serves(description, runtime) do
-      :ok -> :ok
-      {:error, _refusal} -> {:end, :runtime_unserved}
+  # The address of the API: the description's, or the one the provider has for the
+  # setting the description names, which passes the endpoint rule again here.
+  defp endpoint(%{"endpoint" => address}, _provider) when is_binary(address), do: {:ok, address}
+
+  defp endpoint(%{"endpoint" => %{"setting" => name}}, %Connection{} = provider) do
+    address = Map.get(Connection.settings_map(provider), name)
+
+    case Endpoint.check(address) do
+      :ok -> {:ok, address}
+      {:error, _refusal} -> {:end, :provider_gone}
     end
   end
 
@@ -327,10 +321,12 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp key(%Connection{}, _value_id), do: {:end, :key_gone}
 
-  defp model(%Connection{models: models}, %Resolution{model_id: model_id, effort: effort}) do
-    case Enum.find(models, &(&1.model_id == model_id)) do
+  # The chosen model on the provider's list, with an effort value that both the model's
+  # and the runtime's lists have, or none.
+  defp model(%Connection{models: models}, %Resolution{} = resolution, runtime) do
+    case Enum.find(models, &(&1.model_id == resolution.model_id)) do
       %ProviderModel{} = model ->
-        if is_nil(effort) or effort in (model.effort || []),
+        if is_nil(resolution.effort) or resolution.effort in offered(model, runtime),
           do: {:ok, model},
           else: {:end, :model_gone}
 
@@ -339,22 +335,22 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  defp not_denied(false), do: :ok
-  defp not_denied(true), do: {:end, :host_denied}
+  # The effort values of `model` that the runtime's list has too, in the model's order.
+  defp offered(%ProviderModel{effort: effort}, %Runtime{effort_values: values}),
+    do: Enum.filter(effort || [], &(&1 in values))
 
   defp built(
          %Resolution{} = resolution,
          %Connection{} = provider,
          %ProviderModel{} = model,
-         endpoint
+         runtime,
+         api
        ) do
     members =
       [{"runtime", ModelChoices.runtime_name()}, {"model", model.model_id}] ++
         if(resolution.effort, do: [{"effort", resolution.effort}], else: []) ++
-        [
-          {"endpoint", endpoint},
-          {"provider_models", Enum.map(provider.models, &listed/1)}
-        ] ++ tiers(resolution.tiers)
+        [{"provider_models", Enum.map(provider.models, &listed(&1, runtime))}] ++
+        tiers(resolution.tiers)
 
     wire = Jason.OrderedObject.new(members)
 
@@ -365,16 +361,18 @@ defmodule Apiary.Dispatches.RunSettings do
         provider_connection_id: provider.id,
         provider_secret_id: provider.secret_id,
         provider_value_id: resolution.value_id,
-        provider_chain: provider.chain
+        provider_chain: provider.chain,
+        provider_api: Map.take(api, ~w(format endpoint auth key_prefixes))
       }
     }
   end
 
-  defp listed(%ProviderModel{model_id: id, effort: effort}) when effort in [nil, []],
-    do: Jason.OrderedObject.new([{"id", id}])
-
-  defp listed(%ProviderModel{model_id: id, effort: effort}),
-    do: Jason.OrderedObject.new([{"id", id}, {"effort", effort}])
+  defp listed(%ProviderModel{model_id: id} = model, runtime) do
+    case offered(model, runtime) do
+      [] -> Jason.OrderedObject.new([{"id", id}])
+      effort -> Jason.OrderedObject.new([{"id", id}, {"effort", effort}])
+    end
+  end
 
   defp tiers(tiers) when tiers == %{}, do: []
 

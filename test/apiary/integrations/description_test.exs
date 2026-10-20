@@ -37,7 +37,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 85
+      assert length(names) == 96
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -263,22 +263,22 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "92f7df5a8a9488b8ecaaa31e83c23ddbe4b9ddfe"
+  @integrations_ref "8658bc57f6db0c1fe1b32d6d20d2160301c9d38c"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "f5d9f17c0d3eaab76835f5a5a7252b97d4c789445aa3243024987db74dbddb7a",
+      "c7caf7f8019e588fb1df50a25a7c7bb22933eac34ede8f7bc49e2d6547381842",
     "priv/contract/integration/definitions.schema.json" =>
       "dccf00468dc180a63a116b6fa823e04358b94d3b0b79678843f8f49ae9056e0b",
     "priv/contract/integration/descriptions/anthropic.json" =>
-      "4144d460838262122a9692cc770ec723a73054323ed1905aaf6318bc6d4c08c1",
+      "04f85c67a8f04e06c925ce61b5210c7141aec7453b3e645a298f075b06491c1b",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
-      "5f37264b346275be09fb5fcf7d70b40b6c237861571f3917504ce638e47f14e2",
+      "4bd492082526fe8184edb26fdb3bc9f4f812569c7d890c715e13f9208b4fc95d",
     "priv/contract/integration/descriptions/deepseek.json" =>
-      "f70abcc193da78d1af5da699f66060f9ec478165bf9dd2077f0dbe064156c080",
+      "6cdf2ab9c102dfb01ba618b2b44fa7235e253cf29d3b349474eae5108cc6dd64",
     "priv/contract/integration/descriptions/litellm.json" =>
-      "b7e6c7986a3f8e951e2a57be814a91f284030391ea568e6d488fccf81da92d6b",
+      "cbc50081646c9bb07b528a81c1c9cd38b82a506efad356641b0fef42615dceea",
     "priv/contract/integration/descriptions/openrouter.json" =>
-      "5461a0913683190c84784bdbc9d5942bfa9c29b93b6fc7e46e5330fde9dc23d3",
+      "f77a4df6d8115eb3030a2053e8c97f87aef2a8e0566b629673d618cefb28d7bb",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
       "20213633b1e66629e11b7406b386f0c85603196ae84677186d049329d16c8bf3",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
@@ -342,22 +342,62 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "is refused with a key variable the schema refuses" do
-      assert {:error, {:description_invalid, [{:schema, summary}]}} =
-               parse_fixture("invalid/description-model-provider-key-variables-lower-case.json")
-
-      assert %{kind: :pattern, instanceLocation: "#/roles/model_provider/key_variables/0"} in summary.errors
+    test "is refused with a role member the apis replaced" do
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               parse_fixture("invalid/description-model-provider-role-key-variables.json")
 
       anthropic = vendored_description("anthropic")
 
-      for variables <- [[], List.duplicate("ANTHROPIC_API_KEY", 2), ["1KEY"]] do
+      for {member, value} <- [
+            {"key_variables", ["ANTHROPIC_API_KEY"]},
+            {"endpoint", "https://api.anthropic.com"},
+            {"formats", ["anthropic-messages"]},
+            {"hosts", ["api.anthropic.com"]},
+            {"auth", %{"scheme" => "bearer"}}
+          ] do
         assert {:error, {:description_invalid, [{:schema, _}]}} =
                  anthropic
-                 |> put_in(["roles", "model_provider", "key_variables"], variables)
+                 |> put_in(["roles", "model_provider", member], value)
                  |> encode()
                  |> Description.parse(),
-               inspect(variables)
+               member
       end
+    end
+
+    test "is refused with key prefixes or apis the schema refuses" do
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               parse_fixture("invalid/description-model-provider-key-prefixes-space.json")
+
+      anthropic = vendored_description("anthropic")
+      [api] = anthropic["roles"]["model_provider"]["apis"]
+
+      for prefixes <- [[], ["sk ant-"], List.duplicate("sk-ant-", 2), ~w(a b c d e)] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 anthropic
+                 |> put_in(["roles", "model_provider", "apis"], [
+                   Map.put(api, "key_prefixes", prefixes)
+                 ])
+                 |> encode()
+                 |> Description.parse(),
+               inspect(prefixes)
+      end
+
+      for apis <- [[], List.duplicate(api, 5), [Map.delete(api, "auth")]] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 anthropic
+                 |> put_in(["roles", "model_provider", "apis"], apis)
+                 |> encode()
+                 |> Description.parse(),
+               inspect(apis)
+      end
+
+      assert {:ok, _description} =
+               anthropic
+               |> put_in(["roles", "model_provider", "apis"], [
+                 Map.put(api, "key_prefixes", ["sk-ant-"])
+               ])
+               |> encode()
+               |> Description.parse()
     end
 
     test "is refused with an egress host that is a local name" do

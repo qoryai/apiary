@@ -66,7 +66,7 @@ defmodule Apiary.Dispatches.Handover do
   #       or whose work item has no target in a domain that requires one
   #       (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`; an explore run
   #       whose model choice cannot be formed (`Apiary.Dispatches.RunSettings`):
-  #       `provider_gone`, `runtime_unserved`, `key_gone`, `model_gone` or `host_denied`;
+  #       `provider_gone`, `runtime_unserved`, `key_gone` or `model_gone`;
   #   11. the run key cannot be made for the gateway's address
   #       (`Apiary.Runs.Registration.issue_through/5`), the run settings take more than 64
   #       KiB, the answer takes more than 1 MiB with every comment left out of its input,
@@ -99,8 +99,9 @@ defmodule Apiary.Dispatches.Handover do
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
-  # provider's row id, its keys' secret's row id, the chosen key's value id and the
-  # provider's chain; later reads take those, never the choices. The answer, encoded, takes
+  # provider's row id, its keys' secret's row id, the chosen key's value id, the
+  # provider's chain and the API of the provider the run uses; later reads take those,
+  # never the choices. The answer, encoded, takes
   # at most 1 MiB: the input is given what the rest of the answer leaves, measured with a
   # run key of the longest length the contract allows, and leaves out its oldest comments
   # first (`comments_omitted`).

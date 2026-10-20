@@ -7,11 +7,9 @@
   "egress_hosts": ["openrouter.ai"],
   "roles": {
     "model_provider": {
-      "endpoint": "https://openrouter.ai/api",
-      "formats": ["anthropic-messages"],
-      "hosts": ["openrouter.ai"],
-      "auth": {"scheme": "bearer"},
-      "key_variables": ["ANTHROPIC_AUTH_TOKEN"],
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": "https://openrouter.ai/api", "auth": {"scheme": "bearer"}}
+      ],
       "models": [
         {"id": "anthropic/claude-opus-5.5", "title": "Claude Opus 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
         {"id": "anthropic/claude-sonnet-5.5", "title": "Claude Sonnet 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
