@@ -1,6 +1,6 @@
 defmodule Apiary.PoolKeyRoleTest do
   # A node pool's key acts in the role `pool_key`, apart from a node's key: what a node's
-  # key holds, and the dispatch actions besides, on its workspace's queue and the
+  # key holds but the secrets request, a gateway's, and the dispatch actions besides, on its workspace's queue and the
   # dispatches its pool claimed there alone.
   # Not async: the features are the whole node's.
   use Apiary.DataCase, async: false
@@ -27,6 +27,9 @@ defmodule Apiary.PoolKeyRoleTest do
 
   # What a node pool's key held before it acted in `pool_key`, as a node's key does.
   @key_actions [:"run.post_events", :"run_configuration.fetch"]
+
+  # What a gateway's key holds alone: the secrets request, which seals to a gateway's key.
+  @gateway_actions [:"secret.seal"]
 
   # Every feature but `factory`, and those that need it.
   @without_factory Enum.reject(
@@ -84,7 +87,7 @@ defmodule Apiary.PoolKeyRoleTest do
     end
 
     test "holds what a node's key holds, and the dispatch actions besides" do
-      assert Access.roles().access_key == @key_actions
+      assert Access.roles().access_key == @key_actions ++ @gateway_actions
       assert Access.roles().pool_key == @key_actions ++ @dispatch_actions
 
       for action <- @key_actions do
@@ -271,7 +274,7 @@ defmodule Apiary.PoolKeyRoleTest do
       other_workspace = workspace_fixture(ctx.owner.organisation)
       %{scope: elsewhere} = sign_up_fixture()
 
-      for action <- Access.actions() -- @dispatch_actions,
+      for action <- Access.actions() -- (@dispatch_actions ++ @gateway_actions),
           subject <- [ctx.workspace, other_workspace, elsewhere.workspace] do
         assert Access.authorize(ctx.pool_scope, action, subject) ==
                  Access.authorize(ctx.node_scope, action, subject),

@@ -945,6 +945,51 @@ defmodule Apiary.Secrets do
     end
   end
 
+  # With the `factory` feature, which the documentation leaves out: reveal_for_sealing/2
+  # is the plaintext of the key `value_id` of the model provider `provider`, a row of
+  # `Apiary.Connections` the caller has read and checked (`Apiary.Connections.intact?/1`),
+  # for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The key is a value of
+  # the organisation's secret that the provider's row links (`secret_id`), read at the
+  # organisation's level as `reveal_for_sealing/3` reads it, with the same answers. The
+  # edition is not asked: the provider's keys are kept by the core whatever the edition
+  # answers for the organisation's other secrets. `{:error, :not_found}` for a provider
+  # that links no secret.
+  @doc false
+  @spec reveal_for_sealing(Connection.t(), String.t()) ::
+          {:ok, binary} | {:error, :not_found | :unavailable}
+  def reveal_for_sealing(
+        %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
+        value_id
+      )
+      when is_binary(organisation_id) and is_binary(secret_row_id) and is_binary(value_id) and
+             not is_nil(provider.provider_kind) do
+    case Repo.one(
+           from s in Secret,
+             where:
+               s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
+                 is_nil(s.workspace_id),
+             select: s.public_id
+         ) do
+      secret_id when is_binary(secret_id) ->
+        from(v in Value,
+          join: s in Secret,
+          on: s.id == v.secret_id and s.organisation_id == v.organisation_id,
+          join: k in OrganisationDataKey,
+          on: k.id == v.organisation_data_key_id and k.organisation_id == v.organisation_id,
+          where:
+            s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
+              is_nil(s.workspace_id) and is_nil(v.workspace_id),
+          select: {v, k}
+        )
+        |> reveal(organisation_id, nil, secret_id, value_id)
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  def reveal_for_sealing(_provider, _value_id), do: {:error, :not_found}
+
   defp reveal(query, organisation_id, workspace_id, secret_id, value_id) do
     query =
       if is_nil(value_id),
