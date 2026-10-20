@@ -34,6 +34,7 @@ priv/contract/secrets-request.schema.json
 priv/contract/secrets-answer.schema.json
 priv/contract/sealed-plaintext.schema.json
 test/fixtures/forager-contract/known-answers/keys.json
+test/fixtures/forager-contract/known-answers/small-order.json
 test/fixtures/forager-contract/sealed/invalid/bad-signature.json
 test/fixtures/forager-contract/sealed/invalid/expired.json
 test/fixtures/forager-contract/sealed/invalid/other-digest.json

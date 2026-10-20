@@ -10,7 +10,7 @@ defmodule Apiary.Secrets.Sealing do
   the access key's Ed25519 public key converted to its Montgomery u-coordinate
   (`Apiary.Contract.Ed25519.x25519_public_key/1`), as Forager converts it.
 
-  **What is bound.** `info/1` and `aad/4` are built from the values `seal/3` is given,
+  **What is bound.** `info/1` and `aad/4` are built from the values `seal/2` is given,
   never from an envelope:
 
     * `info`: `qory secrets v1`, a zero byte, the suite's three ids as u16 big-endian,
@@ -26,12 +26,19 @@ defmodule Apiary.Secrets.Sealing do
   compact JSON of `version`, `run_configuration`, the credentials sorted, and the values
   sorted by credential, each `credential` then `value`, quoted as Go's `jsontext` quotes.
 
-  **What it refuses**, each with an atom and nothing of the input: identifiers outside
-  their forms (`:identifiers`); an access key that fails a key check (`:key`); a
-  plaintext whose digest is not the given one (`:digest`); credentials that are not 1
-  to 8 names, each once (`:credentials`); values that are not one for each credential
-  (`:values`); a value that is not 1 to 16,384 bytes of UTF-8 without a NUL (`:value`);
-  any other plaintext (`:plaintext`).
+  **What it refuses**, each with an atom and nothing of the input: a recipient that is not
+  a map (`:recipient`); identifiers outside their forms (`:identifiers`); an access key
+  that fails a key check, or whose seal fails in `:crypto` (`:key`); a plaintext whose
+  digest is not the given one (`:digest`); credentials that are not 1 to 8 names, each
+  once (`:credentials`); values that are not one for each credential (`:values`); a value
+  that is not 1 to 16,384 bytes of UTF-8 without a NUL (`:value`); any other plaintext
+  (`:plaintext`).
+
+  **Keys.** `seal/2` seals with a fresh ephemeral key and signs under the instance's
+  signing key (`Apiary.SigningKey.current/0`). It takes no other key: the tests of the
+  contract's known answers seal through an entry point that only the test build compiles.
+  Nothing of the ephemeral private key or of the shared secret leaves the seal: a seal
+  that fails in `:crypto` returns `{:error, :key}`, and the exception is dropped.
   """
 
   import Bitwise, only: [bsr: 2, band: 2]
@@ -74,9 +81,20 @@ defmodule Apiary.Secrets.Sealing do
           required(:exp) => non_neg_integer
         }
 
-  @typedoc "Why `seal/3` refuses its input."
+  @typedoc "Why `seal/2` refuses its input."
   @type refusal ::
-          :identifiers | :key | :digest | :credentials | :values | :value | :plaintext
+          :recipient
+          | :identifiers
+          | :key
+          | :digest
+          | :credentials
+          | :values
+          | :value
+          | :plaintext
+
+  # Whether the test build compiles `seal_with/3`, the entry point of the known answers'
+  # tests (config/test.exs).
+  @known_answers Application.compile_env(:apiary, [__MODULE__, :known_answers], false)
 
   @doc "suite/0 is the envelope's suite."
   @spec suite() :: String.t()
@@ -87,40 +105,60 @@ defmodule Apiary.Secrets.Sealing do
   def expiry(%DateTime{} = now), do: DateTime.to_unix(now) + @lifetime
 
   @doc """
-  seal/3 is the body of the secrets answer: `plaintext`, the decoded document of
+  seal/2 is the body of the secrets answer: `plaintext`, the decoded document of
   `sealed-plaintext.schema.json` with string keys, sealed to `recipient`'s access key with
-  a fresh ephemeral key, and the envelope signed. `{:ok, bytes}`, compact JSON, or
-  `{:error, refusal}` (see the module's documentation).
-
-  Options, for the tests of the contract's known answers alone:
-
-    * `:signing_key`, an `Apiary.SigningKey`, the instance's (`SigningKey.current/0`)
-      unless given;
-    * `:ephemeral_private_key`, the X25519 private key of the ephemeral key, 32 raw
-      bytes, fresh random bytes unless given.
+  a fresh ephemeral key, and the envelope signed under the instance's signing key.
+  `{:ok, bytes}`, compact JSON, or `{:error, refusal}` (see the module's documentation).
   """
-  @spec seal(map, recipient, keyword) :: {:ok, binary} | {:error, refusal}
-  def seal(plaintext, recipient, opts \\ [])
+  @spec seal(map, recipient) :: {:ok, binary} | {:error, refusal}
+  def seal(plaintext, recipient),
+    do:
+      sealed(plaintext, recipient, fn -> :crypto.strong_rand_bytes(32) end, &SigningKey.current/0)
 
-  def seal(%{} = plaintext, %{} = recipient, opts) when is_list(opts) do
+  if @known_answers do
+    # seal_with/3 is seal/2 with the keys of the contract's known answers: `opts` has
+    # `:signing_key`, an `Apiary.SigningKey`, and `:ephemeral_private_key`, 32 raw bytes,
+    # each taken as seal/2 takes it when not given. Compiled in the test build alone.
+    @doc false
+    @spec seal_with(map, recipient, keyword) :: {:ok, binary} | {:error, refusal}
+    def seal_with(plaintext, recipient, opts) when is_list(opts) do
+      ephemeral =
+        case Keyword.fetch(opts, :ephemeral_private_key) do
+          {:ok, <<_::binary-size(32)>> = key} -> fn -> key end
+          {:ok, _other} -> raise ArgumentError, "the ephemeral private key is not 32 bytes"
+          :error -> fn -> :crypto.strong_rand_bytes(32) end
+        end
+
+      signing_key =
+        case Keyword.fetch(opts, :signing_key) do
+          {:ok, key} -> fn -> key end
+          :error -> &SigningKey.current/0
+        end
+
+      sealed(plaintext, recipient, ephemeral, signing_key)
+    end
+  end
+
+  defp sealed(%{} = plaintext, %{} = recipient, ephemeral, signing_key) do
     with {:ok, ids} <- identifiers(recipient),
          {:ok, pk_r} <- recipient_key(recipient),
          {:ok, pt} <- plaintext(plaintext, ids.run_configuration) do
-      ephemeral = ephemeral_key(opts)
-      signing_key = Keyword.get_lazy(opts, :signing_key, &SigningKey.current/0)
       info = info(ids.access_key_id)
       aad = aad(ids.run_id, ids.access_key_id, ids.run_configuration, ids.exp)
 
       with {:ok, enc, ct} <- hpke_seal(ephemeral, pk_r, info, aad, pt) do
-        {:ok, envelope(ids, enc, ct, signing_key)}
+        {:ok, envelope(ids, enc, ct, signing_key.())}
       end
     end
   end
 
-  def seal(_plaintext, _recipient, _opts), do: {:error, :plaintext}
+  defp sealed(_plaintext, recipient, _ephemeral, _signing_key) when not is_map(recipient),
+    do: {:error, :recipient}
+
+  defp sealed(_plaintext, _recipient, _ephemeral, _signing_key), do: {:error, :plaintext}
 
   @doc """
-  plaintext/2 is the bytes `seal/3` seals: `plaintext` as Forager writes it, its
+  plaintext/2 is the bytes `seal/2` seals: `plaintext` as Forager writes it, its
   `run_configuration` checked against `digest`. `{:ok, bytes}`, or `{:error, refusal}`.
   """
   @spec plaintext(map, String.t()) :: {:ok, binary} | {:error, refusal}
@@ -197,14 +235,6 @@ defmodule Apiary.Secrets.Sealing do
 
   defp recipient_key(_recipient), do: {:error, :key}
 
-  defp ephemeral_key(opts) do
-    case Keyword.fetch(opts, :ephemeral_private_key) do
-      {:ok, <<_::binary-size(32)>> = key} -> key
-      {:ok, _other} -> raise ArgumentError, "the ephemeral private key is not 32 bytes"
-      :error -> :crypto.strong_rand_bytes(32)
-    end
-  end
-
   # The credentials sorted: 1 to 8 names of the grammar, each once.
   defp credentials(credentials) do
     sorted = Enum.sort(credentials)
@@ -263,9 +293,20 @@ defmodule Apiary.Secrets.Sealing do
 
   defp hex(digit), do: Enum.at(~c"0123456789abcdef", digit)
 
-  # RFC 9180, base mode, single shot: `{:ok, enc, ct}`, ct with its 16-byte tag.
-  defp hpke_seal(sk_e, pk_r, info, aad, pt) do
-    {pk_e, sk_e} = :crypto.generate_key(:ecdh, :x25519, sk_e)
+  # RFC 9180, base mode, single shot: `{:ok, enc, ct}`, ct with its 16-byte tag, or
+  # `{:error, :key}`. The ephemeral private key is made inside, from `ephemeral`, a function
+  # of no arguments, so no caller's frame holds it. Any exception of `:crypto` is dropped
+  # here with its stack trace, whose top frame can hold a key among its arguments.
+  defp hpke_seal(ephemeral, pk_r, info, aad, pt) do
+    hpke(ephemeral, pk_r, info, aad, pt)
+  rescue
+    _exception -> {:error, :key}
+  catch
+    _kind, _reason -> {:error, :key}
+  end
+
+  defp hpke(ephemeral, pk_r, info, aad, pt) do
+    {pk_e, sk_e} = :crypto.generate_key(:ecdh, :x25519, ephemeral.())
     dh = :crypto.compute_key(:ecdh, pk_r, sk_e, :x25519)
 
     # An all-zero shared secret is refused (RFC 9180, 7.1.4); a key that passes the key
