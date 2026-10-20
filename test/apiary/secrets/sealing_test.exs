@@ -186,7 +186,7 @@ defmodule Apiary.Secrets.SealingTest do
              }) == {:error, :sig}
     end
 
-    test "refuses a recipient that is not a map with its own atom" do
+    test "refuses a recipient that is not a map with :recipient" do
       for recipient <- [nil, "ak_f1xt0re000000000", [access_key_id: "ak_f1xt0re000000000"]] do
         assert Sealing.seal(fixture_plaintext(), recipient) == {:error, :recipient}
       end
