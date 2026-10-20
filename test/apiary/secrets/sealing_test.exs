@@ -186,13 +186,13 @@ defmodule Apiary.Secrets.SealingTest do
              }) == {:error, :sig}
     end
 
-    test "refuses a recipient that is not a map with :recipient" do
+    test "returns :recipient for a recipient that is not a map" do
       for recipient <- [nil, "ak_f1xt0re000000000", [access_key_id: "ak_f1xt0re000000000"]] do
         assert Sealing.seal(fixture_plaintext(), recipient) == {:error, :recipient}
       end
     end
 
-    test "refuses each key of small-order.json with :key" do
+    test "returns :key for each key of small-order.json" do
       %{"small_order" => small, "non_canonical" => non_canonical, "torsion" => torsion} =
         json("fixtures/known-answers/small-order.json")
 
@@ -255,7 +255,7 @@ defmodule Apiary.Secrets.SealingTest do
     end
   end
 
-  describe "what the seal refuses" do
+  describe "the errors of the seal" do
     test "identifiers outside their forms" do
       for {field, value} <- [
             access_key_id: "ak_F1XT0RE000000000",

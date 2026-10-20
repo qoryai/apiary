@@ -35,7 +35,7 @@ defmodule Apiary.Secrets.Sealing do
   (`:plaintext`).
 
   **Keys.** `seal/2` seals with a fresh ephemeral key and signs under the instance's
-  signing key (`Apiary.SigningKey.current/0`). It takes no other key: the tests of the
+  signing key (`Apiary.SigningKey.current/0`). It uses no other key: the tests of the
   contract's known answers seal through an entry point that only the test build compiles.
   Nothing of the ephemeral private key or of the shared secret leaves the seal: a seal
   that fails in `:crypto` returns `{:error, :key}`, and the exception is dropped.
@@ -81,7 +81,7 @@ defmodule Apiary.Secrets.Sealing do
           required(:exp) => non_neg_integer
         }
 
-  @typedoc "Why `seal/2` refuses its input."
+  @typedoc "The errors `seal/2` returns for its input."
   @type refusal ::
           :recipient
           | :identifiers
@@ -118,7 +118,7 @@ defmodule Apiary.Secrets.Sealing do
   if @known_answers do
     # seal_with/3 is seal/2 with the keys of the contract's known answers: `opts` has
     # `:signing_key`, an `Apiary.SigningKey`, and `:ephemeral_private_key`, 32 raw bytes,
-    # each taken as seal/2 takes it when not given. Compiled in the test build alone.
+    # each taken as seal/2 uses it when not given. Compiled in the test build alone.
     @doc false
     @spec seal_with(map, recipient, keyword) :: {:ok, binary} | {:error, refusal}
     def seal_with(plaintext, recipient, opts) when is_list(opts) do
@@ -295,8 +295,8 @@ defmodule Apiary.Secrets.Sealing do
 
   # RFC 9180, base mode, single shot: `{:ok, enc, ct}`, ct with its 16-byte tag, or
   # `{:error, :key}`. The ephemeral private key is made inside, from `ephemeral`, a function
-  # of no arguments, so no caller's frame holds it. Any exception of `:crypto` is dropped
-  # here with its stack trace, whose top frame can hold a key among its arguments.
+  # of no arguments, so no caller's frame contains it. Any exception of `:crypto` is dropped
+  # here with its stack trace, whose top frame can contain a key among its arguments.
   defp hpke_seal(ephemeral, pk_r, info, aad, pt) do
     hpke(ephemeral, pk_r, info, aad, pt)
   rescue

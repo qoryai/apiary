@@ -100,7 +100,7 @@ defmodule ApiaryWeb.Contract.RunVariablesServedTest do
       :ok
     end
 
-    test "the attach gives the stored document, then the variables, labels and about, under the digest of the document with the variables",
+    test "the attach returns the stored document, then the variables, labels and about, under the digest of the document with the variables",
          ctx do
       {run_id, run_key} = registered(ctx)
       conn = attach(ctx.gateway_key, run_id, run_key)
@@ -134,7 +134,7 @@ defmodule ApiaryWeb.Contract.RunVariablesServedTest do
       assert get_resp_header(again, "x-qory-run-configuration") == [digest]
     end
 
-    test "a reload gives the stored document and the variables, under the digest of those bytes",
+    test "a reload returns the stored document and the variables, under the digest of those bytes",
          ctx do
       {run_id, run_key} = registered(ctx)
       assert attach(ctx.gateway_key, run_id, run_key).status == 200
@@ -217,7 +217,7 @@ defmodule ApiaryWeb.Contract.RunVariablesServedTest do
              digest_with_members(document)
            ]
 
-    # The reload gives the same document again: it was composed from no policy.
+    # The reload returns the same document again: it was composed from no policy.
     reloaded = reload(ctx.gateway_key, run_id)
     assert reloaded.status == 200
     assert reloaded.resp_body == with_members(document)

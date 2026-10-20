@@ -9,7 +9,7 @@ defmodule ApiaryWeb.Contract.SecretsController do
   # verifies the request and signs the answer. The body is read raw, up to 32 KiB
   # (`ApiaryWeb.Contract.RawBody`). With either feature off, a request that verifies is
   # given a signed `404`, as a path the instance does not serve: the route's gate is
-  # `factory` (`ApiaryWeb.Features.Routes`), and `secrets` is asked here.
+  # `factory` (`ApiaryWeb.Features.Routes`), and `secrets` is checked here.
   #
   # The answer is `200`, `application/json`, the sealed envelope
   # (`secrets-answer.schema.json`). The refusals: `400` `invalid_request`; `401`,

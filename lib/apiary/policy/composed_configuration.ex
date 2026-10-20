@@ -56,7 +56,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #
   # - `variables`, the run variables Qory set for the run (`runs.registration_variables`,
   #   `Apiary.Runs.RunVariables.document/1`);
-  # - with the `secrets` feature too, for a run the handover gave a model provider:
+  # - with the `secrets` feature too, for a run the handover set a model provider for:
   #   `credentials`, the provider's API credential, and `model_credential`, its name
   #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
@@ -130,7 +130,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     end
   end
 
-  # What `shape/5` gives for the image alone.
+  # What `shape/5` returns for the image alone.
   defp imaged(document, image, prebuild?, fixed?) do
     if is_binary(document) and names_image?(document) do
       cond do
@@ -173,8 +173,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp value(value), do: value
 
   @doc """
-  The digest of what `shape/5` gives, nil where it gives the document as it is: a read,
-  nothing stored.
+  The digest of what `shape/5` returns, nil where it returns the document as it is: a
+  read, nothing stored.
   """
   @spec digest(binary | nil, image, boolean | (-> boolean), boolean, map | nil) ::
           String.t() | nil
@@ -294,7 +294,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     do: Jason.encode!(Jason.OrderedObject.new(members), escape: :json)
 
   @doc """
-  What a run is given, as `shape/5` decides it, for the run configuration in force of the
+  What a run receives, as `shape/5` composes it, for the run configuration in force of the
   workspace (`configuration`, nil where it serves none): `:as_is`, or `{:ok, row}`, the
   composed document kept, made now or read when it was made before. Inside or outside a
   transaction: a second writer of the same document reads the first's row.
@@ -374,11 +374,11 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   @doc """
   The digest a run is answered on a reload under the run configuration `configuration`:
-  the document composed for it as `shape/5` decides, with what the run started in
+  the document composed for it as `shape/5` composes it, with what the run started in
   (`started/1`), whether it must build on its pool's default image or not, its image
   fixed; the digest `configuration` is stored under where nothing is composed. A run that
   is nil is one the caller does not know: no image, and no build on the default image.
-  Nil when the run's document cannot be composed, as its reload then answers none. A
+  Nil when the run's document cannot be composed, and its reload then returns none. A
   read, nothing stored.
   """
   @spec run_digest(RunConfiguration.t(), Run.t() | nil) :: String.t() | nil

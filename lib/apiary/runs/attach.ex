@@ -72,10 +72,10 @@ defmodule Apiary.Runs.Attach do
   `labels` and `about` of the run's registration, added after its last member, each left
   out when the run has none; and its digest, for `X-Qory-Run-Configuration` and `ETag`:
   the SHA-256 of the document's bytes without `labels` and `about`, the document a reload
-  of the run answers. A run Qory set run variables for (`Apiary.Runs.Run`,
-  `registration_variables`) is given a document composed for it with them after its last
+  of the run returns. A run Qory set run variables for (`Apiary.Runs.Run`,
+  `registration_variables`) receives a document composed for it with them after its last
   member (`Apiary.Policy.ComposedConfiguration`), and the digest is that document's. The
-  variables are fixed when the run starts, so its reloads name the same ones, and a run
+  variables are fixed when the run starts, so its reloads contain the same ones, and a run
   is never told its configuration moved because of them.
 
   A run given an image at the attach (`runs.configured_image`) has its configuration

@@ -58,7 +58,7 @@ defmodule Apiary.SealedRunsFixtures do
   end
 
   @doc """
-  The body of a secrets request for `run` and the digest `digest`, naming `credentials`,
+  The body of a secrets request for `run` and the digest `digest`, with `credentials`,
   at `now` (Unix seconds).
   """
   def secrets_request(%Run{node_run_id: run_id}, digest, credentials, now) do

@@ -12,8 +12,9 @@ defmodule Apiary.Secrets do
 
   ## Write-only
 
-  No function of this module returns a value, but `reveal_for_sealing/3`, which the
-  secrets endpoint calls to seal a value to the gateway, and only that. A listing loads the
+  No function of this module returns a value, but `reveal_for_sealing/3` and the reveal
+  of a model provider's key, which the secrets endpoint calls to seal a value to the
+  gateway, and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
   secret and a value id, never a value.
 
@@ -887,7 +888,8 @@ defmodule Apiary.Secrets do
 
   @doc """
   reveal_for_sealing/3 is the plaintext of a stored value, for the secrets endpoint to seal
-  to the gateway's key, and for nothing else: the one function that returns a value. The
+  to the gateway's key, and for nothing else: with the reveal of a model provider's key,
+  one of the two functions that return a value. The
   value is the secret with the public id `secret_id` of `place`, a workspace or an
   organisation, at that level only, and its value with `value_id`, nil for a secret's one
   value without one. A workspace's reveal never finds its organisation's secret, nor an
@@ -901,11 +903,12 @@ defmodule Apiary.Secrets do
   value. For an organisation, the edition is asked first, `:seal` with a nil scope
   (`c:Apiary.Edition.organisation_secrets/2`), and its refusal is the answer, as it is.
 
-  It asks nothing of `Apiary.Access`, and is the one function of this module that does
-  not: it is the server's sealing path, called by the secrets endpoint once it has
-  verified the gateway's signed request and decided what that gateway may receive, with no
-  person's scope to ask about. The plaintext goes into the seal and nowhere else: not
-  into a log, an assign, a process's state or an error.
+  It asks nothing of `Apiary.Access`, and is, with the reveal of a model provider's key,
+  one of the two functions of this module that do not: it is the server's sealing path,
+  called by the secrets endpoint once it has verified the gateway's signed request and
+  decided what that gateway may receive, with no person's scope to check. The plaintext
+  goes into the seal and nowhere else: not into a log, an assign, a process's state or an
+  error.
   """
   @spec reveal_for_sealing(%Workspace{} | %Organisation{}, String.t(), String.t() | nil) ::
           {:ok, binary} | {:error, Access.reason() | :unavailable}
@@ -950,9 +953,9 @@ defmodule Apiary.Secrets do
   # `Apiary.Connections` the caller has read and checked (`Apiary.Connections.intact?/1`),
   # for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The key is a value of
   # the organisation's secret that the provider's row links (`secret_id`), read at the
-  # organisation's level as `reveal_for_sealing/3` reads it, with the same answers. The
-  # edition is not asked: the provider's keys are kept by the core whatever the edition
-  # answers for the organisation's other secrets. `{:error, :not_found}` for a provider
+  # organisation's level as `reveal_for_sealing/3` reads it, with the same results. The
+  # edition is not called: the core keeps the provider's keys whatever the edition
+  # returns for the organisation's other secrets. `{:error, :not_found}` for a provider
   # that links no secret.
   @doc false
   @spec reveal_for_sealing(Connection.t(), String.t()) ::

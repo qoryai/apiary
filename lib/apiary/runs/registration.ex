@@ -562,7 +562,7 @@ defmodule Apiary.Runs.Registration do
   # (`Apiary.Policy.ComposedConfiguration.serve/7`), the composed document kept: `{:ok,
   # settings, image}`; `:unmanaged` where the workspace serves none and nothing is
   # composed. Where it serves none, a document is composed from no policy only when
-  # `from_no_policy?` holds (a boolean, or a function that reads it). `members` are the
+  # `from_no_policy?` is true (a boolean, or a function that reads it). `members` are the
   # run's (`Apiary.Policy.ComposedConfiguration.members/1`), nil for none.
   defp composed(access_key, labels, image, prebuild?, fixed?, from_no_policy?, members) do
     %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
@@ -980,7 +980,7 @@ defmodule Apiary.Runs.Registration do
   never loosens a run already started, one given an image included. Only a run whose
   attach answer was composed from no policy, where the workspace served no run
   configuration at its attach (`{"version":1,"image":…}` for a run given an image, or the
-  document of no policy with the run variables Qory set for it), is given that again
+  document of no policy with the run variables Qory set for it), receives that again
   there, and only while the workspace has never stored a run configuration: such a run
   started under no policy of the workspace and cannot have taken one on a reload since.
   `{:error, :workspace_not_served}` for a run through a gateway that may no longer serve
@@ -1031,7 +1031,7 @@ defmodule Apiary.Runs.Registration do
 
   # Whether the run can never have been given a policy: its attach answer was a document
   # composed from none, with its image or its members alone, and the workspace has never
-  # stored a run configuration since, so no reload can have given the run one either.
+  # stored a run configuration since, so no reload can have returned one for the run.
   # Only such a run is reloaded from no policy; any other is reloaded with none,
   # `not_found`, so a workspace that stops serving its policy mid-run never loosens a run,
   # one that took the policy on a reload included.
@@ -1040,12 +1040,12 @@ defmodule Apiary.Runs.Registration do
       ComposedConfiguration.from_no_policy?(workspace_id, digest) and
         not Apiary.Policy.managed_workspace?(workspace_id)
 
-  # Who may reload a run: an active key of the node that registered it, and no other; for a
-  # run through a gateway, the instance of the gateway that attached it. A reload reads,
-  # and gives a run whose attaching instance is not known yet none. A run its batches
-  # created, which never registered, and a run whose node is gone are reloaded by none.
-  # Whether `access_key`, from the instance `instance_id`, may reload `run`: as the reload
-  # and the secrets request (`Apiary.Runs.SecretsRequest`) ask it.
+  # reload_allowed?/3 is whether `access_key`, from the instance `instance_id`, may reload
+  # `run`, as the reload and the secrets request (`Apiary.Runs.SecretsRequest`) check it:
+  # an active key of the node that registered it, and no other; for a run through a
+  # gateway, the instance of the gateway that attached it. A run whose attaching instance
+  # is not known yet is reloaded by none, nor is a run its batches created, which never
+  # registered, nor a run whose node is gone.
   @doc false
   @spec reload_allowed?(AccessKey.t(), Run.t(), String.t() | nil) :: boolean
   def reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run, instance_id),

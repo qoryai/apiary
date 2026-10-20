@@ -3,7 +3,7 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
   # starter says it started the job and asks for the handover; the gateway the run key
   # names attaches the run and is given the run configuration in force with the run
   # variables, the labels and what the run is about, as the handover stored them, under
-  # the digest of the configuration with the variables; a reload gives the same; a batch
+  # the digest of the configuration with the variables; a reload returns the same; a batch
   # is answered the same digest; and the run's outcome,
   # under the pool's key, ends the run of the queue and frees its slot. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
@@ -87,7 +87,7 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
 
     # The attach: the configuration in force, then the variables, the labels and what the
     # run is about, as the handover stored them, under the digest of the configuration with
-    # the variables, the document a reload gives.
+    # the variables, the document a reload returns.
     attached = gateway_attach(ctx, run_id, run_key)
     assert attached.status == 200
     assert signed_answer?(attached)
@@ -121,7 +121,7 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
     assert %DateTime{} = run.attached_at
     assert DateTime.diff(run.backstop_at, run.attached_at) == 1200
 
-    # A reload gives the same answer, the same digest: the SHA-256 of its bytes.
+    # A reload returns the same answer, the same digest: the SHA-256 of its bytes.
     reload = gateway_reload(ctx, run_id)
     assert reload.status == 200
     assert signed_answer?(reload)

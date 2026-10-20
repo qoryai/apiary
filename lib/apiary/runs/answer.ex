@@ -1,10 +1,9 @@
 defmodule Apiary.Runs.Answer do
   @moduledoc false
 
-  # The bytes of a run configuration answered with members beside the document: an
-  # attach's `labels` and `about` (`Apiary.Runs.Attach`). The document's bytes are kept as
-  # they are, and its digest stays the document's, which is what a reload of the run
-  # answers.
+  # The bytes of a run configuration sent with members beside the document: an attach's
+  # `labels` and `about` (`Apiary.Runs.Attach`). The document's bytes are kept as they
+  # are, and its digest stays the document's, the digest a reload of the run returns.
 
   @doc """
   `document`, one JSON object, with `members`, `{name, value}` in order, added after its

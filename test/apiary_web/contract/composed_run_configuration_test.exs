@@ -246,7 +246,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
         assert batch_digest(ctx, run_id, 2) == nil
 
       unmanaged? ->
-        # Its variables were composed from no policy at its attach: the reload gives
+        # Its variables were composed from no policy at its attach: the reload returns
         # them again, and the workspace's batches carry no digest.
         assert reloaded.status == 200
         assert reloaded.resp_body == reload_bytes(document, run)
@@ -335,7 +335,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       composed = ComposedConfiguration.compose(newer.document, @image)
       digest = digest_of(composed, run_id)
 
-      # The batch tells the run its configuration moved; the reload gives the new policy
+      # The batch tells the run its configuration moved; the reload returns the new policy
       # with the same image.
       assert batch_digest(ctx, run_id, 3) == digest
       refute digest == before

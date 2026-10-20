@@ -925,8 +925,7 @@ defmodule Apiary.AuditChanges do
     {before, Adapters.declare(Scope.for_access_key(key), declaration())}
   end
 
-  # A dispatch another pool of the workspace claimed is not the key's to hand over.
-  # A request that names a credential the run does not have seals nothing.
+  # A request with a credential the run does not have seals nothing.
   def refuse(:"secret.seal", %{scope: scope}) do
     {ctx, key, now} = sealed_run(scope)
     body = secrets_request(ctx.run, ctx.attached.digest, ["forge"], now)
@@ -936,6 +935,7 @@ defmodule Apiary.AuditChanges do
      Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)}
   end
 
+  # A dispatch another pool of the workspace claimed is not the key's to hand over.
   def refuse(:"dispatch.handover", %{scope: scope}) do
     %{key: claimer} = handover_place_fixture(scope)
     %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))

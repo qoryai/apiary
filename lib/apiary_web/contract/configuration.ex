@@ -46,7 +46,7 @@ defmodule ApiaryWeb.Contract.Configuration do
   @doc "The path of the run endpoint, as the document names it under the public URL."
   def run_path, do: @run_path
 
-  # The path of the secrets endpoint, as the document names it under the public URL.
+  # The path of the secrets endpoint, as the document lists it under the public URL.
   @doc false
   def secrets_path, do: @secrets_path
 

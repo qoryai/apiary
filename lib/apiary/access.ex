@@ -320,8 +320,8 @@ defmodule Apiary.Access do
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
     # A gateway's secrets request: a run's model key, sealed to the gateway's access key
-    # (`Apiary.Runs.SecretsRequest`). Asked of nothing: the request is decided by the run
-    # and the key it verified under.
+    # (`Apiary.Runs.SecretsRequest`). No other rule applies here: the secrets request
+    # checks the run and the key it verified under.
     Action.new(:"secret.seal", "seal a run's model key to the gateway's access key",
       feature: :factory,
       roles: [:access_key]

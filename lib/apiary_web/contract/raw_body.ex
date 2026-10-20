@@ -54,7 +54,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   @gate_feature :factory
   # A gateway's secrets request, `POST /v1/secrets`, of the `factory` and `secrets`
   # features both, which the documentation leaves out: at most 32 KiB, the contract's
-  # limit, read the same way where both are on or where the request carries a signature.
+  # limit, read the same way where both are on or where the request has a signature.
   @secrets_path ["v1", "secrets"]
   @secrets_max_bytes 32 * 1024
   @events_path ["v1", "events"]

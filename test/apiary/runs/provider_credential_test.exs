@@ -1,8 +1,8 @@
 defmodule Apiary.Runs.ProviderCredentialTest do
-  # A run the handover gave a model provider is given its model key's credential in its
+  # A run the handover set a model provider for receives its model key's credential in its
   # run configuration, and the provider's hosts in its allow list
   # (`Apiary.Runs.ProviderCredential`, `Apiary.Policy.ComposedConfiguration`); every digest
-  # it is answered is the SHA-256 of the bytes it is sent.
+  # sent for it is the SHA-256 of the bytes sent.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -80,7 +80,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       refute document =~ Repo.get!(Apiary.Secrets.Secret, ctx.run.provider_secret_id).public_id
       refute document =~ ~s("main")
 
-      # The reload answers the same bytes, under the same digest, which the run keeps.
+      # The reload returns the same bytes, under the same digest, which the run keeps.
       assert {:ok, %{settings: ^document, digest: digest}} = reload(ctx)
       assert digest == ctx.attached.digest
       assert ctx.run.attach_answer_digest == digest
@@ -101,7 +101,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert credential.name == ctx.provider.public_id
     end
 
-    test "a provider row that fails its integrity code gives no run configuration", ctx do
+    test "a provider row that fails its integrity code leaves no run configuration", ctx do
       {1, _rows} =
         Repo.update_all(from(c in Connection, where: c.id == ^ctx.provider.id),
           set: [name: "Changed past the save"]
@@ -113,7 +113,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       refute log =~ model_key()
     end
 
-    test "a run whose provider is gone gives no run configuration", ctx do
+    test "a run whose provider is gone has no run configuration", ctx do
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
           set: [provider_connection_id: nil]
@@ -141,7 +141,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert egress["deny"] == ["tracker.example"]
     end
 
-    test "the deny is dropped once it holds nothing else", %{scope: scope} do
+    test "the deny is dropped once it has nothing else", %{scope: scope} do
       {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.anthropic.com"})
       ctx = sealed_run_fixture(scope)
 

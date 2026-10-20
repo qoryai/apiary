@@ -507,8 +507,9 @@ for each other and never on each other at once:
    A gateway's secrets request for a run's model key takes no lock: it reads the run,
    the provider's row and the row of its keys' secret without one, checks the
    provider's integrity code, decrypts the key, whose row is bound to its secret, and
-   writes the audit entry `secret.seal` alone. A provider deleted before the request
-   leaves the run's provider columns empty, and the request is refused.
+   writes the audit entry `secret.seal` alone. A provider's deletion is refused while a
+   pending or running run uses it, so the run's provider columns are empty only on a run
+   that ended, and the request for such a run is refused.
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the

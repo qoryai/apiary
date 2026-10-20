@@ -11,9 +11,9 @@ defmodule Apiary.Policy.Render do
   member.
   """
 
-  # With the `factory` feature, which the documentation leaves out: `credentials` and
-  # `model_credential` are written in the document composed for a run that the handover
-  # gave a model provider (`Apiary.Policy.ComposedConfiguration`,
+  # With the features `factory` and `secrets`, which the documentation leaves out:
+  # `credentials` and `model_credential` are written in the document composed for a run
+  # that the handover set a model provider for (`Apiary.Policy.ComposedConfiguration`,
   # `Apiary.Runs.ProviderCredential`), never in a policy's.
 
   alias Apiary.Policy.Effective

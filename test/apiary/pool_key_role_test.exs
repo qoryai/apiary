@@ -1,7 +1,7 @@
 defmodule Apiary.PoolKeyRoleTest do
-  # A node pool's key acts in the role `pool_key`, apart from a node's key: what a node's
-  # key holds but the secrets request, a gateway's, and the dispatch actions besides, on its workspace's queue and the
-  # dispatches its pool claimed there alone.
+  # A node pool's key acts in the role `pool_key`, apart from a node's key: the actions of
+  # a node's key but the secrets request, a gateway's, and the dispatch actions besides,
+  # on its workspace's queue and the dispatches its pool claimed there alone.
   # Not async: the features are the whole node's.
   use Apiary.DataCase, async: false
 
@@ -28,7 +28,7 @@ defmodule Apiary.PoolKeyRoleTest do
   # What a node pool's key held before it acted in `pool_key`, as a node's key does.
   @key_actions [:"run.post_events", :"run_configuration.fetch"]
 
-  # What a gateway's key holds alone: the secrets request, which seals to a gateway's key.
+  # The action of a gateway's key alone: the secrets request, which seals to a gateway's key.
   @gateway_actions [:"secret.seal"]
 
   # Every feature but `factory`, and those that need it.

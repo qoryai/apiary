@@ -25,7 +25,7 @@ defmodule Apiary.SealedOpen do
   open/2 opens `answer`, the bytes of a secrets answer, for `expected`: `access_key_id`,
   `run_id`, `run_configuration`, `signing_public_key` (32 raw bytes) and
   `x25519_private_key` (32 raw bytes). `{:ok, plaintext, envelope}`, the plaintext's bytes
-  and the decoded envelope, or `{:error, step}` naming the first step that refused it.
+  and the decoded envelope, or `{:error, step}` with the first step that failed.
   """
   @spec open(binary, map) :: {:ok, binary, map} | {:error, atom}
   def open(answer, expected) when is_binary(answer) do
