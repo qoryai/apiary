@@ -4,9 +4,7 @@
     {
       "name": "claude",
       "title": "Claude Code",
-      "reserves": [
-        "ANTHROPIC_AUTH_TOKEN"
-      ],
+      "reserves": [],
       "denies": [
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_BEDROCK_BASE_URL",
@@ -25,42 +23,17 @@
         "CLAUDE_CONFIG_DIR",
         "CLAUDE_CODE_CLIENT_CERT",
         "CLAUDE_CODE_CLIENT_KEY",
-        "CLAUDE_CODE_CERT_STORE"
+        "CLAUDE_CODE_CERT_STORE",
+        "CLAUDE_CODE_PLUGIN_DIRS",
+        "CLAUDE_RELAUNCH_SESSION_ADD_DIRS",
+        "CLAUDE_CODE_PLUGIN_SEED_DIR",
+        "CLAUDE_CODE_PLUGIN_CACHE_DIR",
+        "CLAUDE_CODE_MANAGED_SETTINGS_PATH"
       ],
       "credential_files": [
         "~/.claude/.credentials.json"
       ],
-      "declares": [
-        {
-          "id": "api_key",
-          "title": "Anthropic API key",
-          "name": "ANTHROPIC_API_KEY",
-          "hosts": [
-            "api.anthropic.com"
-          ],
-          "auth": {
-            "scheme": "header",
-            "header": "x-api-key"
-          },
-          "paths": [
-            "/v1/*"
-          ]
-        },
-        {
-          "id": "oauth_token",
-          "title": "Claude OAuth token",
-          "name": "CLAUDE_CODE_OAUTH_TOKEN",
-          "hosts": [
-            "api.anthropic.com"
-          ],
-          "auth": {
-            "scheme": "bearer"
-          },
-          "paths": [
-            "/v1/*"
-          ]
-        }
-      ],
+      "declares": [],
       "one_of": [],
       "model": {
         "formats": [
@@ -94,6 +67,31 @@
         "endpoint": {
           "variable": "ANTHROPIC_BASE_URL"
         },
+        "keys": [
+          {
+            "format": "anthropic-messages",
+            "auth": {
+              "scheme": "header",
+              "header": "x-api-key"
+            },
+            "variable": "ANTHROPIC_API_KEY"
+          },
+          {
+            "format": "anthropic-messages",
+            "auth": {
+              "scheme": "bearer"
+            },
+            "variable": "ANTHROPIC_AUTH_TOKEN"
+          },
+          {
+            "format": "anthropic-messages",
+            "auth": {
+              "scheme": "bearer",
+              "oauth": true
+            },
+            "variable": "CLAUDE_CODE_OAUTH_TOKEN"
+          }
+        ],
         "overrides": [
           "ANTHROPIC_MODEL",
           "ANTHROPIC_DEFAULT_MODEL",

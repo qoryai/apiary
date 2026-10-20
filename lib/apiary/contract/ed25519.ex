@@ -2,8 +2,9 @@ defmodule Apiary.Contract.Ed25519 do
   @moduledoc """
   Ed25519 as the server contract uses it for access keys: the strict encoding of a
   public key, the checks every public key the server is given passes, its fingerprint,
-  and cofactorless verification of a signature. Pure functions; nothing here touches the
-  database or logs.
+  its X25519 public key, which the secrets answer is sealed to, and cofactorless
+  verification of a signature. Pure functions; nothing here touches the database or
+  logs.
 
   **Encoding.** A public key, like every binary value of the contract, is base64url
   without padding, decoded strictly (`decode/2`): padding, a character of the standard
@@ -113,17 +114,42 @@ defmodule Apiary.Contract.Ed25519 do
   """
   @spec check_public_key(term) :: :ok | {:error, refusal}
   def check_public_key(<<_::binary-size(32)>> = key) do
-    with {:ok, {x, y}} <- decompress(key),
-         :ok <- if(y == 1, do: {:error, :y_is_one}, else: :ok),
-         point = {x, y, 1, mod(x * y)},
-         :ok <- if(identity?(times_8(point)), do: {:error, :small_order}, else: :ok),
-         :ok <- if(identity?(multiply(point, @l)), do: :ok, else: {:error, :not_prime_order}),
+    with {:ok, _y} <- check_point(key),
          :ok <- if(key in fixture_keys(), do: {:error, :fixture}, else: :ok) do
       :ok
     end
   end
 
   def check_public_key(_key), do: {:error, :length}
+
+  @doc """
+  x25519_public_key/1 is the X25519 public key of an Ed25519 public key, 32 raw bytes:
+  the Montgomery u-coordinate u = (1 + y) / (1 − y) mod 2^255 − 19, little-endian, as
+  Forager converts an access key to seal to it. `{:ok, u}`, or `{:error, refusal}` for a
+  key that fails a key check of the module's documentation but the fixture check: a
+  fixture key converts, so a test can seal to one.
+  """
+  @spec x25519_public_key(term) :: {:ok, <<_::256>>} | {:error, refusal}
+  def x25519_public_key(<<_::binary-size(32)>> = key) do
+    with {:ok, y} <- check_point(key) do
+      u = mod((1 + y) * pow(1 - y, @p - 2))
+      {:ok, <<u::little-size(256)>>}
+    end
+  end
+
+  def x25519_public_key(_key), do: {:error, :length}
+
+  # Every key check but the fixture check, in the module's order: `{:ok, y}`, the point's
+  # y-coordinate, or `{:error, refusal}`.
+  defp check_point(key) do
+    with {:ok, {x, y}} <- decompress(key),
+         :ok <- if(y == 1, do: {:error, :y_is_one}, else: :ok),
+         point = {x, y, 1, mod(x * y)},
+         :ok <- if(identity?(times_8(point)), do: {:error, :small_order}, else: :ok),
+         :ok <- if(identity?(multiply(point, @l)), do: :ok, else: {:error, :not_prime_order}) do
+      {:ok, y}
+    end
+  end
 
   @doc """
   fingerprint/1 is a public key's fingerprint: `base64url(SHA-256(key)[:16])`, 22
