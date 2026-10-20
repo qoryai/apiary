@@ -358,7 +358,8 @@ defmodule Apiary.Connections do
 
   Model providers are left out: a run whose handover set a model provider gets the
   provider's hosts in the document composed for the run
-  (`Apiary.Policy.ComposedConfiguration`). A connection that fails its integrity code, or
+  (`Apiary.Policy.ComposedConfiguration`), and `provider_hosts/1` has the hosts of their
+  API endpoints. A connection that fails its integrity code, or
   whose release does, is left out, with an error in the log, and so is one whose
   description fails to parse. A setting whose address fails the endpoint rule, or whose
   host is not exact, adds no host, with a line in the log that contains the setting's
@@ -366,14 +367,8 @@ defmodule Apiary.Connections do
   organisation's integrations are absent there. It asks nothing of `Apiary.Access`.
   """
   @spec egress_hosts(%Workspace{}) :: [Apiary.Policy.Resolution.integration_host()]
-  def egress_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}) do
-    reaching_hosts(organisation_id, fn query ->
-      from [c] in query,
-        left_join: w in ConnectionWorkspace,
-        on: w.connection_id == c.id and w.workspace_id == ^workspace_id,
-        where: c.applies_to == "all" or not is_nil(w.workspace_id)
-    end)
-  end
+  def egress_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}),
+    do: reaching_hosts(organisation_id, &reaching_workspace(&1, workspace_id))
 
   @doc """
   organisation_egress_hosts/1 is `egress_hosts/1` for every workspace of the
@@ -384,39 +379,120 @@ defmodule Apiary.Connections do
           [Apiary.Policy.Resolution.integration_host()]
   def organisation_egress_hosts(%Organisation{id: id}), do: organisation_egress_hosts(id)
 
-  def organisation_egress_hosts(organisation_id) when is_binary(organisation_id) do
-    reaching_hosts(organisation_id, fn query ->
-      from [c] in query,
-        where:
-          c.applies_to == "all" or
-            exists(from w in ConnectionWorkspace, where: w.connection_id == parent_as(:c).id)
-    end)
+  def organisation_egress_hosts(organisation_id) when is_binary(organisation_id),
+    do: reaching_hosts(organisation_id, &reaching_any/1)
+
+  @doc """
+  provider_hosts/1 is the hosts of the API endpoints of the model providers reaching
+  `workspace`, each with its connection: every provider connection of the organisation
+  that applies to every workspace or lists `workspace`, the reach the model choice
+  checks. An endpoint that is a setting is the provider's value of that setting. Each
+  host is exact and passes the rule of `Apiary.Kinds.Endpoint`; any other is left out,
+  and so is a provider that fails its integrity code or is no longer in the catalogue as
+  it was added. `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are
+  in no workspace's policy, only in the document composed for a run
+  (`Apiary.Policy.ComposedConfiguration`). `[]` unless the features `factory` and
+  `secrets` are both on. It asks nothing of `Apiary.Access`.
+  """
+  @spec provider_hosts(%Workspace{}) :: [Apiary.Policy.Resolution.integration_host()]
+  def provider_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}),
+    do: reaching_provider_hosts(organisation_id, &reaching_workspace(&1, workspace_id))
+
+  @doc """
+  organisation_provider_hosts/1 is `provider_hosts/1` for every workspace of the
+  organisation at once: the hosts of each provider connection that applies to every
+  workspace or lists at least one workspace, each with its connection.
+  """
+  @spec organisation_provider_hosts(%Organisation{} | Ecto.UUID.t()) ::
+          [Apiary.Policy.Resolution.integration_host()]
+  def organisation_provider_hosts(%Organisation{id: id}), do: organisation_provider_hosts(id)
+
+  def organisation_provider_hosts(organisation_id) when is_binary(organisation_id),
+    do: reaching_provider_hosts(organisation_id, &reaching_any/1)
+
+  defp reaching_workspace(query, workspace_id) do
+    from [c] in query,
+      left_join: w in ConnectionWorkspace,
+      on: w.connection_id == c.id and w.workspace_id == ^workspace_id,
+      where: c.applies_to == "all" or not is_nil(w.workspace_id)
+  end
+
+  defp reaching_any(query) do
+    from [c] in query,
+      where:
+        c.applies_to == "all" or
+          exists(from w in ConnectionWorkspace, where: w.connection_id == parent_as(:c).id)
   end
 
   defp reaching_hosts(organisation_id, reach) do
     if Features.on?(:secrets) do
-      reaching =
-        from(c in connections(organisation_id),
-          as: :c,
-          where: c.kind == "integration" and is_nil(c.provider_kind),
-          order_by: [asc: c.id],
-          preload: [:release]
-        )
-        |> reach.()
-        |> Repo.all()
-
-      for connection <- reaching,
-          host <- connection_egress_hosts(connection),
-          do: %{
-            host: host,
-            connection: %{
-              id: connection.id,
-              public_id: connection.public_id,
-              name: connection.name
-            }
-          }
+      from(c in connections(organisation_id),
+        as: :c,
+        where: c.kind == "integration" and is_nil(c.provider_kind),
+        order_by: [asc: c.id],
+        preload: [:release]
+      )
+      |> reach.()
+      |> Repo.all()
+      |> with_hosts(&connection_egress_hosts/1)
     else
       []
+    end
+  end
+
+  defp reaching_provider_hosts(organisation_id, reach) do
+    if Features.on?(:factory) and Features.on?(:secrets) do
+      from(c in connections(organisation_id),
+        as: :c,
+        where: c.kind == "integration" and not is_nil(c.provider_kind),
+        order_by: [asc: c.id]
+      )
+      |> reach.()
+      |> Repo.all()
+      |> with_hosts(&api_hosts/1)
+    else
+      []
+    end
+  end
+
+  defp with_hosts(connections, hosts) do
+    for connection <- connections,
+        host <- hosts.(connection),
+        do: %{
+          host: host,
+          connection: %{
+            id: connection.id,
+            public_id: connection.public_id,
+            name: connection.name
+          }
+        }
+  end
+
+  # The exact hosts of the provider's API endpoints, each once, as the document composed
+  # for a run checks them (`Apiary.Runs.ProviderCredential`). A provider that fails its
+  # integrity code, or is no longer in the catalogue as it was added, has none here: a
+  # run of it is given no run configuration.
+  defp api_hosts(%Connection{} = provider) do
+    with true <- intact?(provider),
+         {:ok, %Provider{apis: apis}} <- provider(provider) do
+      settings = Connection.settings_map(provider)
+
+      apis
+      |> Enum.flat_map(fn
+        %{"endpoint" => address} when is_binary(address) -> [address]
+        %{"endpoint" => %{"setting" => name}} -> [settings[name]]
+        _api -> []
+      end)
+      |> Enum.flat_map(fn address ->
+        case Endpoint.host(address) do
+          {:ok, host} -> [host]
+          :error -> []
+        end
+      end)
+      |> Enum.filter(&Grammar.exact_host?/1)
+      |> Enum.uniq()
+    else
+      _not_read -> []
     end
   end
 

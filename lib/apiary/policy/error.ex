@@ -6,7 +6,8 @@ defmodule Apiary.Policy.Error do
   above the workspace that requires `enforce` (`Apiary.Policy.Above`).
 
   `:integration_host` refuses a deny rule whose host is a host that an integration
-  reaching the place requires (`Apiary.Policy.check_deny/3`). Its `details` are
+  reaching the place requires, a model provider's API endpoints included
+  (`Apiary.Policy.check_deny/3`). Its `details` are
   `%{connection: %{id:, public_id:, name:}, host: host}`.
   """
 

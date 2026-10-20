@@ -1562,7 +1562,7 @@ defmodule Apiary.Policy do
     with :ok <- may_change(scope, existing),
          :ok <- may_lock(scope, existing, attrs),
          :ok <- room(workspace.id, target_id, existing),
-         :ok <- deny_allowed(candidate, Connections.egress_hosts(workspace)) do
+         :ok <- deny_allowed(candidate, undeniable(workspace)) do
       store(workspace, scope.user, target_id, existing, candidate, attrs)
     end
   end
@@ -1570,11 +1570,14 @@ defmodule Apiary.Policy do
   @doc """
   check_deny/3 says whether a deny rule of `host` may be saved at `place`: `:ok`, or
   `{:error, %Error{reason: :integration_host}}` when `host` equals a host that an
-  integration reaching the place requires. The error's `details` contain that
+  integration reaching the place requires (`Apiary.Connections.egress_hosts/1`), or the
+  host of an API endpoint of a model provider reaching it
+  (`Apiary.Connections.provider_hosts/1`). The error's `details` contain that
   integration's connection and the host (`Apiary.Policy.Error`), and its `message` says
-  to remove the host, with the connection's name. A `*.` host is never
-  refused: a `*.` deny saves, and the integration's host beats it in the resolution
-  (`Apiary.Policy.Resolution`, point 7).
+  to remove the host, with the connection's name. A `*.` host is never refused: a `*.`
+  deny saves, and the integration's host beats it in the resolution
+  (`Apiary.Policy.Resolution`, point 7), as a provider's host beats it in the document
+  composed for a run (`Apiary.Policy.ComposedConfiguration`).
 
   `place` is `:workspace`, for the scope's workspace and each of its targets, which
   `allow/3`, `deny/3` and the other writes of this module ask under the workspace's lock;
@@ -1586,14 +1589,20 @@ defmodule Apiary.Policy do
   """
   @spec check_deny(Scope.t(), :workspace | :above, String.t()) :: :ok | refusal
   def check_deny(%Scope{workspace: %Workspace{} = workspace}, :workspace, host),
-    do: deny_allowed(%Rule{action: "deny", host: host}, Connections.egress_hosts(workspace))
+    do: deny_allowed(%Rule{action: "deny", host: host}, undeniable(workspace))
 
   def check_deny(%Scope{organisation: %Organisation{} = organisation}, :above, host) do
     deny_allowed(
       %Rule{action: "deny", host: host},
-      Connections.organisation_egress_hosts(organisation)
+      Connections.organisation_egress_hosts(organisation) ++
+        Connections.organisation_provider_hosts(organisation)
     )
   end
+
+  # The hosts no deny rule of `workspace` may name exactly: the integrations' and the API
+  # endpoints' of the model providers, each with its connection.
+  defp undeniable(%Workspace{} = workspace),
+    do: Connections.egress_hosts(workspace) ++ Connections.provider_hosts(workspace)
 
   # A deny rule on an integration's host, exactly, is refused; the first connection that
   # lists the host is the one the refusal contains.

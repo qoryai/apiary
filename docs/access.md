@@ -493,7 +493,11 @@ for each other and never on each other at once:
    than a model provider, so the two never wait on each other. A save of a deny rule
    reads the integrations' hosts while it holds its workspace's row, with no lock of
    theirs (`Apiary.Policy.check_deny/3`): a write to an integration holds every workspace
-   row before it writes, so the save reads that write whole or not at all. A write of a model choice
+   row before it writes, so the save reads that write whole or not at all. It reads the
+   hosts of the model providers' API endpoints the same way. A change to a model provider
+   takes no workspace row, so a save at the same moment may read the provider as it was
+   before the change; the document composed for a run has the provider's hosts in
+   `allow_first` either way (`Apiary.Policy.ComposedConfiguration`). A write of a model choice
    at levels 2 to 5 holds the workspace row and then takes a provider's row `FOR SHARE`. A change to a model provider takes the integrations lock, then the
    provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes
    the organisation's advisory lock for its secrets and the row of the keys' secret

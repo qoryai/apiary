@@ -510,6 +510,90 @@ defmodule Apiary.Policy.IntegrationHostsTest do
     assert served(scope, nil)["allow"] == ["docs.example.com"]
   end
 
+  describe "saving a deny rule of a model provider's host" do
+    @describetag needs: :factory
+
+    defp provider!(scope, attrs) do
+      {:ok, provider} =
+        Connections.create_provider(
+          scope,
+          Map.merge(%{keys: [%{value_id: "main", value: "sk-hosts-test-0123456789"}]}, attrs)
+        )
+
+      provider
+    end
+
+    defp refused(provider, host) do
+      %{
+        reason: :integration_host,
+        details: %{
+          connection: %{id: provider.id, public_id: provider.public_id, name: provider.name},
+          host: host
+        },
+        message:
+          "Remove #{host} from the rule. #{provider.name} needs this host, so no rule can deny it."
+      }
+    end
+
+    test "is refused at the workspace, at a target and at the level above", %{scope: scope} do
+      provider = provider!(scope, %{provider: "anthropic"})
+      target = target!(scope, "acme/site")
+      expected = refused(provider, "api.anthropic.com")
+
+      for holder <- [nil, target] do
+        assert {:error, %Error{} = error} =
+                 Policy.deny(scope, holder, %{host: "api.anthropic.com"})
+
+        assert Map.take(error, [:reason, :details, :message]) == expected
+      end
+
+      for place <- [:workspace, :above] do
+        assert {:error, %Error{} = error} = Policy.check_deny(scope, place, "api.anthropic.com")
+        assert Map.take(error, [:reason, :details, :message]) == expected
+      end
+
+      # A *. deny that covers it saves, and the provider's host is in no workspace document.
+      assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "*.anthropic.com"})
+      assert {:ok, _rule} = Policy.deny(scope, target, %{host: "*.anthropic.com"})
+      assert Policy.check_deny(scope, :above, "*.anthropic.com") == :ok
+      refute Map.has_key?(served(scope, nil), "allow_first")
+      assert Policy.list_rules(scope, nil) |> Enum.map(& &1.host) == ["*.anthropic.com"]
+    end
+
+    test "is refused for an endpoint a setting has", %{scope: scope} do
+      provider =
+        provider!(scope, %{
+          provider: "litellm",
+          settings: %{"address" => "https://litellm.example.com"}
+        })
+
+      assert {:error, %Error{} = error} =
+               Policy.deny(scope, nil, %{host: "litellm.example.com"})
+
+      assert Map.take(error, [:reason, :details, :message]) ==
+               refused(provider, "litellm.example.com")
+    end
+
+    test "is refused only where the provider reaches", %{scope: scope, user: user} do
+      site = workspace!(scope, "Site")
+      at_site = workspace_scope(user, site)
+
+      provider =
+        provider!(scope, %{
+          provider: "anthropic",
+          applies_to: "selected",
+          workspace_ids: [site.id]
+        })
+
+      assert {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.anthropic.com"})
+
+      assert {:error, %Error{details: %{connection: %{id: id}}}} =
+               Policy.deny(at_site, nil, %{host: "api.anthropic.com"})
+
+      assert id == provider.id
+    end
+  end
+
   test "effective/2, which the pages read, is as it was before the integration", %{
     scope: scope
   } do
