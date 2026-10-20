@@ -47,7 +47,7 @@
           "properties": {
             "argument": {"description": "A regular expression, RE2, the policy's argument must match whole: the definition's argument.", "type": "string", "minLength": 1},
             "hosts": {
-              "description": "The hosts the adapter answers for: the definition's hosts, the most an answer may claim.",
+              "description": "The hosts the adapter answers for: the definition's hosts, the most an answer may claim. Each host has an equal entry in egress_hosts.",
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
@@ -150,7 +150,7 @@
       }
     },
     "egress_hosts": {
-      "description": "Every host that runs of this integration need to reach. Each entry is a host as $defs/host defines it, which is the grammar of Forager's egress allow list, or an object for a host from a setting. The control plane allows these hosts for the runs that use this integration, and no deny rule applies to these hosts; a *. deny stays in force for the other hosts it covers. Each host in the credential role's hosts, and the host of each model_provider API endpoint that is a URL, is covered by an entry: an equal entry, or an entry *.x for a host under x. A model_provider API endpoint that is a setting has an entry with the same setting. A host entry is never a single label, a *. over a single label, a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one, a loopback, link-local or 0.0.0.0/8 IPv4 address, or a number in any form other than a canonical IPv4 address; these rules do not apply to a host from a setting. Absent means no host.",
+      "description": "Every host that runs of this integration need to reach, each listed exactly. Each entry is a host as $defs/host defines it, or an object for a host from a setting. The control plane allows these hosts for the runs that use this integration, and no deny rule applies to these hosts; a *. deny stays in force for the other hosts it covers. Each host in the credential role's hosts, and the host of each model_provider API endpoint that is a URL, has an equal entry. A model_provider API endpoint that is a setting has an entry with the same setting. A host entry is never a single label, a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one, a loopback, link-local or 0.0.0.0/8 IPv4 address, or a number in any form other than a canonical IPv4 address; these rules do not apply to a host from a setting. Absent means no host.",
       "type": "array",
       "uniqueItems": true,
       "items": {
@@ -204,20 +204,19 @@
       }
     },
     "endpoint": {
-      "description": "A model API's base URL, the grammar of Forager's run-configuration.schema.json: https://, a host, an optional port and path, and no user information, query or fragment, at most 2048 characters. The host is a host as $defs/host defines it, with no *. in front, and a host whose last label is a number, all digits or 0x followed by hex digits or none, is an IPv4 address of four decimal parts from 0 to 255, each with no leading zero. A port, when one is written, is a number from 1 to 65535. This schema does not check the host and port rules; conformance checks them.",
+      "description": "A model API's base URL, the grammar of Forager's run-configuration.schema.json: https://, a host, an optional port and path, and no user information, query or fragment, at most 2048 characters. The host is a host as $defs/host defines it, and a host whose last label is a number, all digits or 0x followed by hex digits or none, is an IPv4 address of four decimal parts from 0 to 255, each with no leading zero. A port, when one is written, is a number from 1 to 65535. This schema does not check the host and port rules; conformance checks them.",
       "type": "string",
       "maxLength": 2048,
       "pattern": "^https://[^/?#@\\s]+(/[^?#\\s]*)?$"
     },
     "no_secret": {"description": "A value of a data description's settings: it has no member writeOnly, and no value inside it has one, at any depth.", "properties": {"writeOnly": false}, "additionalProperties": {"$ref": "#/$defs/no_secret"}, "items": {"$ref": "#/$defs/no_secret"}},
-    "host": {"description": "A host: lower-case labels joined by dots, each label 1 to 63 lower-case letters, digits and hyphens that starts and ends with a letter or a digit, with an optional *. in front for every host under it.", "type": "string", "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"},
+    "host": {"description": "A host: lower-case labels joined by dots, each label 1 to 63 lower-case letters, digits and hyphens that starts and ends with a letter or a digit, with no *. in front.", "type": "string", "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"},
     "egress_host": {
-      "description": "A host as $defs/host defines it that runs may reach with no admin: not a single label; not a *. over a single label; not a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one; not an IPv4 address in 127.0.0.0/8, 169.254.0.0/16 or 0.0.0.0/8; and not a number in any form other than a canonical IPv4 address. A host is a number when its last label is all digits, or 0x followed by hex digits or none; a canonical IPv4 address is four decimal parts from 0 to 255, each with no leading zero.",
+      "description": "A host as $defs/host defines it that runs may reach with no admin: not a single label; not a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one; not an IPv4 address in 127.0.0.0/8, 169.254.0.0/16 or 0.0.0.0/8; and not a number in any form other than a canonical IPv4 address. A host is a number when its last label is all digits, or 0x followed by hex digits or none; a canonical IPv4 address is four decimal parts from 0 to 255, each with no leading zero.",
       "allOf": [
         {"$ref": "#/$defs/host"},
         {"not": {"anyOf": [
           {"pattern": "^[^.]*$"},
-          {"pattern": "^\\*\\.[^.]+$"},
           {"pattern": "^(.+\\.)?localhost[46]?(\\.localdomain[46]?)?$"},
           {"pattern": "^127(\\.[0-9]{1,3}){3}$"},
           {"pattern": "^169\\.254(\\.[0-9]{1,3}){2}$"},

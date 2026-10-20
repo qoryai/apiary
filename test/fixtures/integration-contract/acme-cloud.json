@@ -18,5 +18,5 @@
       ]
     }
   },
-  "egress_hosts": ["*.acme-cloud.example"]
+  "egress_hosts": ["api.acme-cloud.example"]
 }

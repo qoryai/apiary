@@ -37,7 +37,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 96
+      assert length(names) == 98
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -263,10 +263,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "3b63cb4deda20a2af5590798d5234e57f542a628"
+  @integrations_ref "a22946819868503a62d5855bd2c664d9e339527f"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "04b4ec3159f5a8bdf6107a273adc62056d984f48ee9e757d4d69dde4f1235bc9",
+      "016283cff012f7becd936d642e730149ac24787ec6a5fa9c2c82782ca2cd0b8e",
     "priv/contract/integration/definitions.schema.json" =>
       "dccf00468dc180a63a116b6fa823e04358b94d3b0b79678843f8f49ae9056e0b",
     "priv/contract/integration/descriptions/anthropic.json" =>
@@ -409,6 +409,25 @@ defmodule Apiary.Integrations.DescriptionTest do
       for host <- ["localhost", "api.localhost", "127.0.0.1", "169.254.169.254", "intranet"] do
         assert {:error, {:description_invalid, [{:schema, _}]}} =
                  anthropic |> Map.put("egress_hosts", [host]) |> encode() |> Description.parse(),
+               host
+      end
+    end
+
+    test "is refused with an egress host or a credential host that is a *. suffix" do
+      for name <- ~w(egress-hosts-wildcard credential-hosts-wildcard) do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 parse_fixture("invalid/description-#{name}.json"),
+               name
+      end
+
+      anthropic = vendored_description("anthropic")
+
+      for host <- ["*.example.com", "*.anthropic.com", "api.example.com\n"] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 anthropic
+                 |> Map.update!("egress_hosts", &[host | &1])
+                 |> encode()
+                 |> Description.parse(),
                host
       end
     end
