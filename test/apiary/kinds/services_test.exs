@@ -177,7 +177,7 @@ defmodule Apiary.Kinds.ServicesTest do
       end
     end
 
-    test "builds its auth on the schemes and members of the contract's auth" do
+    test "builds its auth on the schemes and members of the contract's auth, but oauth" do
       contract =
         Application.app_dir(:apiary, ["priv", "contract", "auth.schema.json"])
         |> File.read!()
@@ -189,7 +189,12 @@ defmodule Apiary.Kinds.ServicesTest do
         |> Jason.decode!()
         |> get_in(["properties", "auth"])
 
-      for member <- Map.keys(contract["properties"]) do
+      # `oauth` marks a model key, which comes from a model provider; a service's value
+      # is never one.
+      assert Map.has_key?(contract["properties"], "oauth")
+      refute Map.has_key?(own["properties"], "oauth")
+
+      for member <- Map.keys(contract["properties"]) -- ["oauth"] do
         assert own["properties"][member]["$ref"] ==
                  contract["$id"] <> "#/properties/" <> member,
                member
@@ -209,14 +214,36 @@ defmodule Apiary.Kinds.ServicesTest do
   end
 
   describe "the runtimes" do
-    test "the catalogue lists Claude Code with its declarations, no group and its model formats" do
+    test "the catalogue lists Claude Code with its model formats, keys, effort and endpoint" do
       assert {:ok, runtime} = Runtimes.fetch("claude")
       assert runtime.title == "Claude Code"
-      assert Enum.map(runtime.declares, & &1["id"]) == ["api_key", "oauth_token"]
+      assert runtime.declares == []
+      assert runtime.reserves == []
       assert runtime.one_of == []
       assert runtime.model["formats"] == ["anthropic-messages"]
       assert Runtimes.formats(runtime) == ["anthropic-messages"]
-      assert Runtimes.hosts(runtime) == ["api.anthropic.com"]
+      assert Runtimes.hosts(runtime) == []
+
+      assert runtime.model_keys == [
+               %{
+                 "format" => "anthropic-messages",
+                 "auth" => %{"scheme" => "header", "header" => "x-api-key"},
+                 "variable" => "ANTHROPIC_API_KEY"
+               },
+               %{
+                 "format" => "anthropic-messages",
+                 "auth" => %{"scheme" => "bearer"},
+                 "variable" => "ANTHROPIC_AUTH_TOKEN"
+               },
+               %{
+                 "format" => "anthropic-messages",
+                 "auth" => %{"scheme" => "bearer", "oauth" => true},
+                 "variable" => "CLAUDE_CODE_OAUTH_TOKEN"
+               }
+             ]
+
+      assert runtime.effort_values == ~w(low medium high xhigh max)
+      assert runtime.endpoint_variable == "ANTHROPIC_BASE_URL"
       assert Runtimes.fetch("nothing") == :error
     end
 
@@ -226,16 +253,44 @@ defmodule Apiary.Kinds.ServicesTest do
       # A local Forager checkout from before a file has none of it; CI, at the pinned
       # commit, requires every one.
       required? = System.get_env("CONTRACT_FIXTURES_REQUIRED") == "1"
-      files = Enum.map(Apiary.ContractFixtures.vendored(), &Path.relative_to(&1, "priv/contract"))
+      root = Path.dirname(Mix.Project.project_file())
+      vendored = Apiary.ContractFixtures.vendored()
 
-      assert Enum.sort(files) ==
-               ~w(api-format.schema.json auth.schema.json policy.schema.json
-                  run-configuration.schema.json runtimes.json)
+      assert Enum.sort(vendored) ==
+               Enum.sort(
+                 ~w(api-format.schema.json auth.schema.json policy.schema.json
+                    run-configuration.schema.json runtimes.json secrets-request.schema.json
+                    secrets-answer.schema.json sealed-plaintext.schema.json)
+                 |> Enum.map(&("priv/contract/" <> &1))
+                 |> Enum.concat(
+                   for file <- ~w(sealed/invalid/bad-signature.json sealed/invalid/expired.json
+                                  sealed/invalid/other-digest.json sealed/invalid/other-run.json
+                                  sealed/invalid/too-far-ahead.json sealed/invalid/unknown-suite.json
+                                  sealed/invalid/value-not-requested.json
+                                  sealed/invalid/wrong-aad.json sealed/invalid/wrong-info.json
+                                  sealed/plaintext-not-requested.json
+                                  sealed/plaintext-other-digest.json sealed/run-configuration.json
+                                  sealed/sealed-plaintext.json sealed/secrets-answer.json
+                                  sealed/secrets-request.json sealed/vectors.json
+                                  known-answers/keys.json),
+                       do: "test/fixtures/forager-contract/" <> file
+                 )
+               )
 
-      for file <- files, required? or File.exists?(Path.join(dir, file)) do
-        assert {:ok, File.read!(Application.app_dir(:apiary, ["priv", "contract", file]))} ==
-                 File.read(Path.join(dir, file)),
-               "priv/contract/#{file} differs from the contract's: copy it from #{dir}"
+      for path <- vendored,
+          file = Apiary.ContractFixtures.contract_path(path),
+          required? or File.exists?(Path.join(dir, file)) do
+        assert {:ok, File.read!(Path.join(root, path))} == File.read(Path.join(dir, file)),
+               "#{path} differs from the contract's #{file}: copy it from #{dir}"
+      end
+
+      # Every fixture of fixtures/sealed is vendored.
+      if required? or File.dir?(Path.join(dir, "fixtures/sealed")) do
+        sealed =
+          for file <- Path.wildcard(Path.join(dir, "fixtures/sealed/**/*.json")),
+              do: Path.relative_to(file, dir)
+
+        assert sealed -- Enum.map(vendored, &Apiary.ContractFixtures.contract_path/1) == []
       end
     end
 

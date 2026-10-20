@@ -23,6 +23,9 @@ defmodule Apiary.Kinds.ProvidersTest do
     )
   end
 
+  defp key(auth, format \\ "anthropic-messages", variable \\ "MODEL_KEY"),
+    do: %{"format" => format, "auth" => auth, "variable" => variable}
+
   defp declare(name, auth), do: %{"id" => "key", "title" => "Key", "name" => name, "auth" => auth}
 
   describe "the catalogue" do
@@ -165,114 +168,129 @@ defmodule Apiary.Kinds.ProvidersTest do
   end
 
   describe "serve/2 against the vendored claude runtime" do
-    # At Forager eac178ce, the claude runtime declares ANTHROPIC_API_KEY (header x-api-key)
-    # and CLAUDE_CODE_OAUTH_TOKEN (bearer), and only reserves ANTHROPIC_AUTH_TOKEN. The
-    # Forager repin that declares ANTHROPIC_AUTH_TOKEN with the bearer scheme makes
-    # openrouter and litellm serve the claude runtime, and changes this table.
+    # At Forager b672408e, the claude runtime reads a model key from ANTHROPIC_API_KEY
+    # (header x-api-key), ANTHROPIC_AUTH_TOKEN (bearer) and CLAUDE_CODE_OAUTH_TOKEN
+    # (bearer, oauth), each for anthropic-messages. Every vendored provider sends
+    # anthropic-messages with a header x-api-key or a bearer without oauth.
     @served %{
       "anthropic" => :ok,
       "claude-subscription" => :ok,
       "deepseek" => :ok,
-      "litellm" => {:error, :key_variable},
-      "openrouter" => {:error, :key_variable}
+      "litellm" => :ok,
+      "openrouter" => :ok
     }
 
     test "each provider gets the result the pinned files give" do
       assert {:ok, claude} = Runtimes.fetch("claude")
       assert Runtimes.formats(claude) == ["anthropic-messages"]
-      assert "ANTHROPIC_AUTH_TOKEN" in claude.reserves
+      assert claude.declares == []
 
       assert Map.new(Providers.list(), &{&1.name, Providers.serve(&1, claude)}) == @served
 
       for provider <- Providers.list(),
           do: assert(Providers.serves?(provider, claude) == (@served[provider.name] == :ok))
     end
+
+    test "a provider whose auth no model key of the runtime has gets :key_variable" do
+      assert {:ok, claude} = Runtimes.fetch("claude")
+      {:ok, anthropic} = Providers.fetch("anthropic")
+
+      for auth <- [
+            %{"scheme" => "basic", "username" => "runner"},
+            %{"scheme" => "header", "header" => "authorization"}
+          ] do
+        assert Providers.serve(%{anthropic | auth: auth}, claude) == {:error, :key_variable}
+      end
+    end
   end
 
   describe "serve/2" do
-    test "is :ok for a shared format and a declared key variable with the same auth" do
-      runtime = runtime(declares: [declare("MODEL_KEY", %{"scheme" => "bearer"})])
+    test "is :ok for a shared format and a model key with that format and the same auth" do
+      runtime = runtime(model_keys: [key(%{"scheme" => "bearer"})])
       assert Providers.serve(provider([]), runtime) == :ok
       assert Providers.serves?(provider([]), runtime)
     end
 
-    test "is :ok when one of several formats and one of several key variables match" do
+    test "is :ok when one of several formats and one of several model keys match" do
       runtime =
         runtime(
           model: %{"formats" => ["openai-chat", "anthropic-messages"]},
-          declares: [
-            declare("OTHER_KEY", %{"scheme" => "bearer"}),
-            declare("SECOND_KEY", %{"scheme" => "bearer"})
+          model_keys: [
+            key(%{"scheme" => "header", "header" => "x-api-key"}, "anthropic-messages"),
+            key(%{"scheme" => "bearer"}, "openai-chat", "OTHER_KEY")
           ]
         )
 
-      provider =
-        provider(
-          formats: ["gemini", "anthropic-messages"],
-          key_variables: ["MODEL_KEY", "SECOND_KEY"]
-        )
-
+      provider = provider(formats: ["gemini", "openai-chat"])
       assert Providers.serve(provider, runtime) == :ok
     end
 
+    test "reads neither the provider's key variables nor the runtime's declarations" do
+      runtime =
+        runtime(
+          model_keys: [key(%{"scheme" => "bearer"}, "anthropic-messages", "RUNTIME_KEY")],
+          declares: []
+        )
+
+      assert Providers.serve(provider(key_variables: ["UNRELATED"]), runtime) == :ok
+
+      runtime =
+        runtime(model_keys: [], declares: [declare("MODEL_KEY", %{"scheme" => "bearer"})])
+
+      assert Providers.serve(provider([]), runtime) == {:error, :key_variable}
+    end
+
     test "refuses with :format when the provider and the runtime share no format" do
-      runtime = runtime(declares: [declare("MODEL_KEY", %{"scheme" => "bearer"})])
+      runtime = runtime(model_keys: [key(%{"scheme" => "bearer"})])
       provider = provider(formats: ["openai-chat", "openai-responses"])
       assert Providers.serve(provider, runtime) == {:error, :format}
       refute Providers.serves?(provider, runtime)
     end
 
     test "refuses with :format for a runtime without a model" do
-      runtime = runtime(model: nil, declares: [declare("MODEL_KEY", %{"scheme" => "bearer"})])
+      runtime = runtime(model: nil, model_keys: [])
       assert Runtimes.formats(runtime) == []
       assert Providers.serve(provider([]), runtime) == {:error, :format}
     end
 
-    test "checks the format before the key variable" do
-      runtime = runtime(declares: [])
+    test "checks the format before the model key" do
+      runtime = runtime(model_keys: [])
       assert Providers.serve(provider(formats: ["gemini"]), runtime) == {:error, :format}
     end
 
-    test "refuses with :key_variable when the runtime declares none of the key variables" do
-      runtime = runtime(declares: [declare("OTHER_KEY", %{"scheme" => "bearer"})])
-      assert Providers.serve(provider([]), runtime) == {:error, :key_variable}
+    test "refuses with :key_variable when the runtime has no model key" do
+      assert Providers.serve(provider([]), runtime(model_keys: [])) == {:error, :key_variable}
     end
 
-    test "refuses with :key_variable when the runtime only reserves the key variable" do
-      runtime = runtime(declares: [], reserves: ["MODEL_KEY"])
-      assert Providers.serve(provider([]), runtime) == {:error, :key_variable}
-    end
-
-    test "refuses with :key_variable when the declared auth differs" do
+    test "refuses with :key_variable when the model key's auth differs" do
       for auth <- [
             %{"scheme" => "header", "header" => "x-api-key"},
             %{"scheme" => "basic", "username" => "runner"},
-            nil
+            %{"scheme" => "bearer", "oauth" => true}
           ] do
-        runtime = runtime(declares: [declare("MODEL_KEY", auth)])
+        runtime = runtime(model_keys: [key(auth)])
         assert Providers.serve(provider([]), runtime) == {:error, :key_variable}, inspect(auth)
       end
     end
 
     test "refuses with :key_variable when the header of a header auth differs" do
       provider = provider(auth: %{"scheme" => "header", "header" => "x-api-key"})
-
-      runtime =
-        runtime(declares: [declare("MODEL_KEY", %{"scheme" => "header", "header" => "x-key"})])
-
+      runtime = runtime(model_keys: [key(%{"scheme" => "header", "header" => "x-key"})])
       assert Providers.serve(provider, runtime) == {:error, :key_variable}
     end
 
-    test "refuses with :key_variable when the matching auth is on another variable" do
+    test "refuses with :key_variable when the matching auth is for a format the provider lacks" do
       runtime =
         runtime(
-          declares: [
-            declare("MODEL_KEY", %{"scheme" => "header", "header" => "x-api-key"}),
-            declare("OTHER_KEY", %{"scheme" => "bearer"})
+          model: %{"formats" => ["anthropic-messages", "openai-chat"]},
+          model_keys: [
+            key(%{"scheme" => "header", "header" => "x-api-key"}, "anthropic-messages"),
+            key(%{"scheme" => "bearer"}, "openai-chat")
           ]
         )
 
-      assert Providers.serve(provider([]), runtime) == {:error, :key_variable}
+      assert Providers.serve(provider(formats: ["anthropic-messages"]), runtime) ==
+               {:error, :key_variable}
     end
   end
 end
