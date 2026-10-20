@@ -42,7 +42,7 @@ defmodule Apiary.Targets do
   import Ecto.Query, warn: false
   import Apiary.Days, only: [sql_day: 2]
 
-  alias Apiary.{Access, Audit, PublicId}
+  alias Apiary.{Access, Audit, Edition, PublicId}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
@@ -539,10 +539,19 @@ defmodule Apiary.Targets do
           attempts: non_neg_integer
         }
   def denied_destinations(%Scope{} = scope, %Target{} = target, since, limit \\ 6) do
+    connections =
+      Edition.client_reads(
+        scope,
+        :workspace_connections,
+        nil,
+        from(c in Connection,
+          join: r in Run,
+          on: r.id == c.run_id and r.workspace_id == c.workspace_id
+        )
+      )
+
     grouped =
-      from c in Connection,
-        join: r in Run,
-        on: r.id == c.run_id and r.workspace_id == c.workspace_id,
+      from [c, r] in connections,
         where: c.organisation_id == ^scope.organisation.id,
         where: c.workspace_id == ^scope.workspace.id,
         where: c.last_seen_at >= ^since and c.denied > 0,

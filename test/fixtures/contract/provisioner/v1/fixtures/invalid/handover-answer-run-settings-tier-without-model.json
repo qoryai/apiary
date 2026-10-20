@@ -19,7 +19,6 @@
     "runtime": "claude",
     "model": "example-large",
     "effort": "high",
-    "endpoint": "https://models.example.com",
     "provider_models": [
       {
         "id": "example-large",

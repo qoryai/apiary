@@ -537,8 +537,9 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
       assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
       refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
-      # The form offers none of the runtime's declarations, the model keys.
-      assert has_element?(lv, "#runtime-catalogue", "Its hosts: api.anthropic.com.")
+      # The form offers none of the runtime's variables of a model key, and the runtime
+      # declares no secret, so it lists no host.
+      refute has_element?(lv, "#runtime-catalogue", "Its hosts")
       refute has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
       refute has_element?(lv, "#runtime-catalogue", "CLAUDE_CODE_OAUTH_TOKEN")
       refute has_element?(lv, "#runtime-catalogue", "It declares")

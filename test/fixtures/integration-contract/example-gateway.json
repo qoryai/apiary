@@ -13,10 +13,10 @@
   },
   "roles": {
     "model_provider": {
-      "endpoint": {"setting": "url"},
-      "formats": ["openai-chat", "anthropic-messages"],
-      "auth": {"scheme": "bearer"},
-      "key_variables": ["ANTHROPIC_AUTH_TOKEN"],
+      "apis": [
+        {"format": "openai-chat", "endpoint": {"setting": "url"}, "auth": {"scheme": "bearer"}},
+        {"format": "anthropic-messages", "endpoint": {"setting": "url"}, "auth": {"scheme": "bearer"}}
+      ],
       "models": []
     }
   },

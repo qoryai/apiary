@@ -160,6 +160,10 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
     })
   end
 
+  # An explore run's answer has `run_settings` with both features `factory` and `secrets`
+  # on (`Apiary.Dispatches.RunSettings`); these tests need `factory`.
+  defp run_settings, do: if(Apiary.Features.on?(:secrets), do: ~w(run_settings), else: [])
+
   defp refused?(conn, status, code),
     do: json_response(conn, status) == %{"error" => code} and signed_answer?(conn)
 
@@ -200,7 +204,11 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert {:ok, _} = JSV.validate(answer["inputs"], validator("explore/v1/inputs.schema.json"))
 
       assert members(conn.resp_body) ==
-               ~w(version revision run_id run_key step domain access target work_item inputs)
+               ~w(version revision run_id run_key step domain access target work_item) ++
+                 run_settings() ++ ~w(inputs)
+
+      # With no model choice at any level, the run settings have the runtime alone.
+      if run_settings() != [], do: assert(answer["run_settings"] == %{"runtime" => "claude"})
 
       assert conn.resp_body
              |> Jason.decode!(objects: :ordered_objects)
@@ -308,7 +316,8 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert {:ok, _} = JSV.validate(answer["inputs"], validator("explore/v1/inputs.schema.json"))
 
       assert members(conn.resp_body) ==
-               ~w(version revision run_id run_key step domain work_item inputs)
+               ~w(version revision run_id run_key step domain work_item) ++
+                 run_settings() ++ ~w(inputs)
 
       assert {answer["run_id"], answer["domain"]} == {queued.run_id, "general"}
       assert answer["work_item"]["id"] == work_item.public_id

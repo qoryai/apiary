@@ -281,9 +281,10 @@ workspace reads the nodes (`node.read`), and a page shows a node's keys under it
 
 A key acts in the role its node's kind gives it (`Apiary.Access.role/1`): a node's key and
 a gateway's in `access_key`, a node pool's in `pool_key`, an adapter's in `adapter_key`.
-`pool_key` holds what `access_key` holds, `run.post_events` and `run_configuration.fetch`,
+`pool_key` holds `run.post_events` and `run_configuration.fetch`, as `access_key` does,
 so a pool registers its runs, posts their events and their outcome and is served the run
-configuration as a node is; reading the configuration document asks no role, only the
+configuration as a node is; `access_key` alone holds `secret.seal`, a gateway's secrets
+request for a run's model key, of an opt-in feature the module's tables leave out; reading the configuration document asks no role, only the
 signed request (`ApiaryWeb.Contract.SignedRequest`). Beside them it holds the dispatch
 actions, `dispatch.claim`, `dispatch.dispatched`, `dispatch.handover`,
 `dispatch.release` and `dispatch.prebuilt`, of an opt-in feature the module's tables leave out (`docs: false`). A
@@ -504,6 +505,20 @@ for each other and never on each other at once:
    it: the change reads the choices that use the provider, or the model, without a lock,
    and refuses while one does. No change to a provider takes a lock on an adapter's
    connection.
+   The handover of an explore run (`Apiary.Dispatches.RunSettings`) reads the choices
+   without a lock, then takes the rows of the providers they name `FOR SHARE`, by id,
+   then the rows of those providers' keys' secrets `FOR SHARE`, by id, before the
+   environment records, the run of the queue, the dispatch and the gateway's row
+   (`Apiary.Dispatches.Slots`). A change to a provider or to its keys that came first is
+   seen by the handover; one that comes after waits for the handover to commit. A
+   deletion of the provider then reads the run the handover registered, and refuses while
+   that run is pending or running.
+   A gateway's secrets request for a run's model key takes no lock: it reads the run,
+   the provider's row and the row of its keys' secret without one, checks the
+   provider's integrity code, decrypts the key, whose row is bound to its secret, and
+   writes the audit entry `secret.seal` alone. A provider's deletion is refused while a
+   pending or running run uses it, so the run's provider columns are empty only on a run
+   that ended, and the request for such a run is refused.
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the

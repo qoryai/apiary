@@ -126,6 +126,7 @@ defmodule Apiary.Connections do
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.Run
 
   @typedoc """
   Why a change is refused: the reasons of `Apiary.Access`, a changeset, or a code with
@@ -135,9 +136,10 @@ defmodule Apiary.Connections do
   `{:integration_settings_not_allowed, names}`, `{:integration_settings_invalid, details}`,
   `{:integration_settings_too_large, max}` and `{:integration_argument_not_allowed, roles}`;
   for a definition, `{:definition_invalid, problems}`; for a provider,
-  `:provider_unknown`, `:provider_changed`, `{:model_in_use, places}` and
-  `Apiary.Secrets`' refusals of its keys; for an integration, an `Apiary.Policy.Error`
-  when a render of the security policy fails.
+  `:provider_unknown`, `:provider_changed`, `{:model_in_use, places}`,
+  `{:provider_in_use, %{places: places, runs: run_public_ids}}` and `Apiary.Secrets`'
+  refusals of its keys; for an integration, an `Apiary.Policy.Error` when a render of
+  the security policy fails.
   """
   @type refusal ::
           Access.reason() | Ecto.Changeset.t() | Apiary.Policy.Error.t() | atom | {atom, term}
@@ -1330,18 +1332,20 @@ defmodule Apiary.Connections do
   @doc """
   delete_provider/2 removes a model provider (`connection.write`) with its workspaces, its
   models and its keys' secret: `{:ok, provider}`, the provider as it was, or
-  `{:error, refusal}`, `{:model_in_use, places}` while a model choice uses it, with the
-  places of those choices. It leaves one `connection.write` entry.
+  `{:error, refusal}`: `{:model_in_use, places}` while a model choice uses it, with the
+  places of those choices; `{:provider_in_use, %{places: places, runs: run_public_ids}}`
+  while a run that is pending or running uses it, with the public ids of those runs, and
+  the places of the choices that use it, if any. It leaves one `connection.write` entry.
   """
   @spec delete_provider(Scope.t(), Connection.t()) :: {:ok, Connection.t()} | {:error, refusal}
   def delete_provider(%Scope{} = scope, %Connection{provider_kind: kind} = provider)
       when is_binary(kind) do
     write_connection(scope, provider, fn scope, _organisation, current ->
-      # The model choices that use the provider, read without a lock under the provider's
-      # row lock. A live run that uses it is not read yet: a run keeps its provider only
-      # once the handover writes it. Read those runs here then, and name them in the
-      # refusal beside the choices.
-      with :ok <- not_chosen(ModelChoices.places_using(current)),
+      # The model choices and the pending or running runs that use the provider, read
+      # without a lock under the provider's row lock. A handover holds the row `FOR SHARE`
+      # until it commits (`Apiary.Dispatches.RunSettings`), so a run it registers is read
+      # here, and a handover that comes after reads the provider as deleted.
+      with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
            {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"connection.write", deleted, %{
@@ -1362,8 +1366,19 @@ defmodule Apiary.Connections do
 
   def delete_provider(%Scope{}, %Connection{}), do: {:error, :not_found}
 
-  defp not_chosen([]), do: :ok
-  defp not_chosen(places), do: {:error, {:model_in_use, places}}
+  defp not_used([], []), do: :ok
+  defp not_used(places, []), do: {:error, {:model_in_use, places}}
+  defp not_used(places, runs), do: {:error, {:provider_in_use, %{places: places, runs: runs}}}
+
+  # The public ids of the pending or running runs that use `provider`, oldest first.
+  defp live_runs(%Connection{id: id}) do
+    Repo.all(
+      from r in Run,
+        where: r.provider_connection_id == ^id and r.state in ^Run.alive_states(),
+        order_by: [asc: r.inserted_at, asc: r.id],
+        select: r.public_id
+    )
+  end
 
   # The provider's row deleted, and with it the secret of its keys, which
   # `Apiary.Secrets` deletes once the row that links it is gone.
@@ -1666,7 +1681,7 @@ defmodule Apiary.Connections do
   def delete_provider_model(%Scope{} = scope, %Connection{} = provider, model_id) do
     write_provider(scope, provider, fn scope, _organisation, current ->
       with {:ok, model} <- listed_model(current, model_id),
-           :ok <- not_chosen(ModelChoices.places_using(current, model_id)),
+           :ok <- not_used(ModelChoices.places_using(current, model_id), []),
            {:ok, _deleted} <- Repo.delete(model),
            {:ok, default} <- default_after(current, model),
            {:ok, _entry} <-

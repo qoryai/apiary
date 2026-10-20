@@ -144,6 +144,41 @@ defmodule Apiary.Edition do
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 
+  # With the `factory` feature, which the documentation leaves out: what a person of
+  # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
+  # the edition, so that a client of an operator is not shown the operator's model
+  # provider: its credential, its connections and its events. `kind` is what is read, and
+  # `subject` the query or value the core would read, returned narrowed or as it is:
+  #
+  # - `:run_events`, the query of a run's events (`Apiary.Runs.Record`);
+  # - `:run_connections`, the query of a run's connections (`Apiary.Runs.Record`);
+  # - `:run_policy`, the policy a run's last `policy.applied` event reported, a map or nil
+  #   (`Apiary.Runs.Record.policy/2`);
+  # - `:workspace_connections`, the query of the workspace's connections, joined to their
+  #   runs, the connection the first binding and the run the second: the policy activity
+  #   (`Apiary.Policy.Activity`), the attempts beside the declared hosts
+  #   (`Apiary.Policy.Suggestions`), a target's denied destinations (`Apiary.Targets`),
+  #   and the workspace's connections and one connection by its id (`Apiary.Runs`);
+  # - `:workspace_events`, the query of the workspace's events, joined to their runs, the
+  #   event the first binding and the run the second: the hosts the runs declared
+  #   (`Apiary.Policy.Suggestions`).
+  #
+  # `run` is the run read, nil for `:workspace_connections` and `:workspace_events`.
+  # Called once per read. The core returns `subject` as it is.
+  @doc false
+  @callback client_reads(
+              Scope.t(),
+              kind ::
+                :run_events
+                | :run_connections
+                | :run_policy
+                | :workspace_connections
+                | :workspace_events,
+              run :: struct | nil,
+              subject
+            ) :: subject
+            when subject: Ecto.Query.t() | map | nil
+
   @doc """
   Whether the stored secrets of an organisation, those without a workspace
   (`Apiary.Secrets`), may be read (`:read`), changed (`:write`) or linked to what uses
@@ -542,6 +577,7 @@ defmodule Apiary.Edition do
     first_sign_up_line: 0,
     above_workspace: 1,
     model_choice_chain: 1,
+    client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,
     attribution?: 0,

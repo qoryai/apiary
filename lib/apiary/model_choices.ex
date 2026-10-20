@@ -33,14 +33,21 @@ defmodule Apiary.ModelChoices do
   #
   #   * `provider`: a model provider of the organisation's chain (`is invalid` otherwise),
   #     that applies to the workspace, and that serves the runtime of the runs
-  #     (`Apiary.Kinds.Providers.serve/2`);
+  #     (`Apiary.Kinds.Providers.serve/2`). A deny rule of the security policy is not
+  #     asked: it never blocks a host of an integration;
   #   * `key`: a value id of the provider's keys;
-  #   * `model` and `effort`: a model on the provider's list, and one of its effort values;
+  #   * `model` and `effort`: a model on the provider's list, and one of its offered effort
+  #     values;
   #   * `tiers`: tiers among `light`, `fast` and `thinking`, each a model id, or a map of
-  #     `model` and `effort`; with a provider, each on the provider's list.
+  #     `model` and `effort`; with a provider, each model on the provider's list and each
+  #     effort one of that model's offered effort values.
   #
-  # The organisation's default has no workspace, so the workspace is not asked of it: a run
-  # whose workspace the default's provider does not reach is ended at its handover.
+  # A model's **offered effort values** are the values that both the model's list and the
+  # runtime's (`Apiary.Kinds.Runtime`, `effort_values`) contain, in the model's order. A
+  # resolution reads only these.
+  #
+  # The organisation's default has no workspace, so the workspace is not asked of it: a
+  # run whose workspace the default's provider does not reach is ended at its handover.
   #
   # Only the organisation's chain is written here; an edition writes the operator's chain
   # (`c:Apiary.Edition.model_choice_chain/1`).
@@ -103,6 +110,11 @@ defmodule Apiary.ModelChoices do
         }
 
   @doc false
+  # runtime_name/0 is the name of the runtime of every run of the queue.
+  @spec runtime_name() :: String.t()
+  def runtime_name, do: @runtime
+
+  @doc false
   # run_kinds/0 is the run kinds a choice may be set for.
   @spec run_kinds() :: [String.t()]
   def run_kinds, do: @run_kinds
@@ -158,8 +170,33 @@ defmodule Apiary.ModelChoices do
   def resolve(%Scope{}, _holder, _run_kind), do: {:error, :not_found}
 
   # What a resolution reads for the runs of `run_kind` of `workspace` at `target`, nil for
-  # none: the choices of the organisation's chain that may reach them, and the providers those name. Read without a lock.
+  # none: the choices of the organisation's chain that may reach them, and the providers
+  # those name. Read without a lock.
   defp input(%Workspace{} = workspace, target, run_kind) do
+    input = choices_for(workspace, target, run_kind)
+    ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
+
+    providers =
+      Repo.all(
+        from c in Connection,
+          where:
+            c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
+              not is_nil(c.provider_kind),
+          preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
+      )
+      |> Map.new(&{&1.id, resolution_provider(&1)})
+
+    Map.put(input, :providers, providers)
+  end
+
+  @doc false
+  # choices_for/3 is what a resolution reads of the choices for the runs of `run_kind` of
+  # `workspace` at `target`, nil for none, without the providers: the choices of the
+  # organisation's chain that may reach them, read without a lock, as
+  # `Apiary.ModelChoices.Resolution.resolve/1` takes them. `Apiary.Dispatches.RunSettings`
+  # reads the providers itself, once it holds their rows.
+  @spec choices_for(Workspace.t(), Target.t() | nil, String.t()) :: map
+  def choices_for(%Workspace{} = workspace, target, run_kind) do
     chain = Edition.model_choice_chain(workspace.organisation_id)
     target_id = target && target.id
 
@@ -185,30 +222,26 @@ defmodule Apiary.ModelChoices do
             )
       )
 
-    ids = for %{connection_id: id} <- choices, is_binary(id), uniq: true, do: id
+    %{choices: choices, workspace_id: workspace.id, target_id: target_id, run_kind: run_kind}
+  end
 
-    providers =
-      Repo.all(
-        from c in Connection,
-          where:
-            c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
-              not is_nil(c.provider_kind),
-          preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
-      )
-      |> Map.new(fn provider ->
-        {provider.id,
-         %{
-           default_value_id: provider.default_value_id,
-           models: Enum.map(provider.models, &Map.take(&1, [:model_id, :effort, :is_default]))
-         }}
-      end)
-
+  @doc false
+  # resolution_provider/1 is `provider`, a provider connection with its models loaded, as
+  # `Apiary.ModelChoices.Resolution` reads a provider.
+  @spec resolution_provider(Connection.t()) :: Resolution.provider()
+  def resolution_provider(%Connection{} = provider) do
     %{
-      choices: choices,
-      workspace_id: workspace.id,
-      target_id: target_id,
-      run_kind: run_kind,
-      providers: providers
+      default_value_id: provider.default_value_id,
+      models:
+        Enum.map(provider.models, fn model ->
+          offered = offered(model)
+
+          %{
+            model_id: model.model_id,
+            effort: if(offered == [], do: nil, else: offered),
+            is_default: model.is_default
+          }
+        end)
     }
   end
 
@@ -767,7 +800,7 @@ defmodule Apiary.ModelChoices do
           model ->
             effort = get_field(changeset, :effort)
 
-            if is_nil(effort) or effort in (model.effort || []),
+            if is_nil(effort) or effort in offered(model),
               do: changeset,
               else: add_error(changeset, :effort, effort_not_listed(), effort_bindings(model))
         end
@@ -790,7 +823,7 @@ defmodule Apiary.ModelChoices do
            add_error(changeset, :tiers, not_listed(), provider: provider.name, model: model_id)}
 
         model ->
-          if is_nil(entry["effort"]) or entry["effort"] in (model.effort || []),
+          if is_nil(entry["effort"]) or entry["effort"] in offered(model),
             do: {:cont, changeset},
             else:
               {:halt, add_error(changeset, :tiers, effort_not_listed(), effort_bindings(model))}
@@ -807,8 +840,13 @@ defmodule Apiary.ModelChoices do
   defp effort_not_listed,
     do: dgettext_noop("errors", "Choose one of %{model}'s effort values: %{values}.")
 
-  defp effort_bindings(%ProviderModel{model_id: model_id, effort: effort}),
-    do: [model: model_id, values: Enum.join(effort || [], ", ")]
+  defp effort_bindings(%ProviderModel{model_id: model_id} = model),
+    do: [model: model_id, values: Enum.join(offered(model), ", ")]
+
+  # The model's offered effort values: those of its list that the runtime's list contains
+  # too, in the model's order.
+  defp offered(%ProviderModel{effort: effort}),
+    do: Enum.filter(effort || [], &(&1 in runtime().effort_values))
 
   ## What uses a provider
 

@@ -15,11 +15,39 @@
 # and a runtime's `model` in runtimes.json, with the formats it sends; a run
 # configuration's `credentials`, whose values the server seals to the access key in its
 # answer to the secrets request, a signed POST to discovery's `secrets.url`; a Claude
-# Code runtime that requires no model key; and a gateway that opens its machine only
-# for an exact entry of the node's policy, never for an entry of a server's policy.
-eac178ce03d6a0198752006384cb5356c4471b67
+# Code runtime that requires no model key; a gateway that opens its machine only for an
+# exact entry of the node's policy, never for an entry of a server's policy; a runtime's
+# `model.keys`, the variables it reads a model key from, each for one API format and
+# auth, an OAuth token marked `oauth`; and the sealed answer to the secrets request, with
+# its known answers under fixtures/sealed.
+#
+# The lines after the commit are the files copied byte for byte from that commit, each a
+# path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
+# under test/fixtures/forager-contract/<path>.
+b672408ecf75b07c6724d0df8c7c69e8f0debb83
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json
 priv/contract/run-configuration.schema.json
 priv/contract/runtimes.json
+priv/contract/secrets-request.schema.json
+priv/contract/secrets-answer.schema.json
+priv/contract/sealed-plaintext.schema.json
+test/fixtures/forager-contract/known-answers/keys.json
+test/fixtures/forager-contract/known-answers/small-order.json
+test/fixtures/forager-contract/sealed/invalid/bad-signature.json
+test/fixtures/forager-contract/sealed/invalid/expired.json
+test/fixtures/forager-contract/sealed/invalid/other-digest.json
+test/fixtures/forager-contract/sealed/invalid/other-run.json
+test/fixtures/forager-contract/sealed/invalid/too-far-ahead.json
+test/fixtures/forager-contract/sealed/invalid/unknown-suite.json
+test/fixtures/forager-contract/sealed/invalid/value-not-requested.json
+test/fixtures/forager-contract/sealed/invalid/wrong-aad.json
+test/fixtures/forager-contract/sealed/invalid/wrong-info.json
+test/fixtures/forager-contract/sealed/plaintext-not-requested.json
+test/fixtures/forager-contract/sealed/plaintext-other-digest.json
+test/fixtures/forager-contract/sealed/run-configuration.json
+test/fixtures/forager-contract/sealed/sealed-plaintext.json
+test/fixtures/forager-contract/sealed/secrets-answer.json
+test/fixtures/forager-contract/sealed/secrets-request.json
+test/fixtures/forager-contract/sealed/vectors.json

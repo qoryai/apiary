@@ -344,7 +344,9 @@ defmodule Apiary.ConnectionsTest do
           status_definition(%{"key" => "model-api", "hosts" => ["api.anthropic.com"]})
         )
 
-      assert {:error, {:overlap, [_]}} =
+      # The claude runtime declares no secret, so its connection serves no host: the run's
+      # model key comes from a model provider.
+      assert {:ok, _} =
                Connections.create_service(scope, %{definition_id: definition.public_id})
 
       ready = ready_release!(scope, github_description())
