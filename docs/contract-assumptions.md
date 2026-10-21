@@ -879,7 +879,9 @@ interactive, with the terminal's size and the image where they apply, and a
 reads the runtime, its version, the command, its arguments, the directory, whether it is
 interactive and the image from the `dev.qory.session.started` with the highest sequence,
 and folds nothing from `dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's
-`dev.qory.run.exited`, one per run, carries `state` and `exit_code`.
+`dev.qory.run.exited`, one per run, carries `state` and `exit_code`. A session's
+`dev.qory.run.log`, `dev.qory.run.resized` and runtime events carry its number as
+`session`, which is stored with the event; the projection reads nothing from it.
 
 A run through a gateway belongs to the node that registered it, with that node's instance
 and key: a gateway is a separate kind of node, whose key is refused at registration

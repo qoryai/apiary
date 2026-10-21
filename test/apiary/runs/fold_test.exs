@@ -1011,6 +1011,18 @@ defmodule Apiary.Runs.FoldTest do
              ]
     end
 
+    test "a session's chunk, resize and runtime event fold as without their session" do
+      plain = [
+        event(5, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("hi\n")}),
+        event(6, "run.resized", %{"cols" => 100, "rows" => 30}),
+        event(7, "runtime.started", %{"session_id" => "s", "source" => "startup"})
+      ]
+
+      of_a_session = Enum.map(plain, &put_in(&1, [:data, "session"], 1))
+
+      assert Fold.fold(@run, of_a_session) == Fold.fold(@run, plain)
+    end
+
     test "bytes that are not base64 are skipped and counted" do
       events = [
         event(5, "run.log", %{"stream" => "stdout", "bytes" => "not base64!"}),
