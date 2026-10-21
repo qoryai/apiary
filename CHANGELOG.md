@@ -74,8 +74,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   start. Without `RELEASE_COOKIE`, each start makes a new random cookie, so the cookie in
   the image is never used.
 - The image build stops unless `ca-certificates` is 20250419+deb13u1 or later. That version
-  removes the eMudhra root whose intermediate CA certificates were compromised (Debian
-  DSA-6572-1).
+  removes the emSign ECC Root CA - G3 and Comodo AAA Services roots after eMudhra
+  intermediate CA certificates were compromised (Debian DSA-6572-1).
 
 ### Migrations
 
