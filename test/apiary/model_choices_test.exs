@@ -518,7 +518,6 @@ defmodule Apiary.ModelChoicesTest do
   end
 
   describe "a deny rule" do
-    @tag needs: :security
     test "that covers a host of the provider refuses no save", ctx do
       %{scope: scope, provider: provider, target: target} = ctx
 
