@@ -1006,9 +1006,21 @@ defmodule Apiary.Runs.FoldTest do
       assert %{log_chunks: chunks, skipped_log_chunks: 0} = Fold.fold(@run, events)
 
       assert chunks == [
-               %{sequence: 5, stream: "stdout", bytes: <<0, 255>>},
-               %{sequence: 7, stream: "stderr", bytes: "two\n"}
+               %{sequence: 5, stream: "stdout", bytes: <<0, 255>>, step: nil},
+               %{sequence: 7, stream: "stderr", bytes: "two\n", step: nil}
              ]
+    end
+
+    test "a session's chunk, resize and runtime event fold as without their session" do
+      plain = [
+        event(5, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("hi\n")}),
+        event(6, "run.resized", %{"cols" => 100, "rows" => 30}),
+        event(7, "runtime.started", %{"session_id" => "s", "source" => "startup"})
+      ]
+
+      of_a_session = Enum.map(plain, &put_in(&1, [:data, "session"], 1))
+
+      assert Fold.fold(@run, of_a_session) == Fold.fold(@run, plain)
     end
 
     test "bytes that are not base64 are skipped and counted" do
@@ -1019,6 +1031,137 @@ defmodule Apiary.Runs.FoldTest do
       ]
 
       assert %{log_chunks: [], skipped_log_chunks: 3} = Fold.fold(@run, events)
+    end
+  end
+
+  describe "dev.qory.run.step_started and dev.qory.run.step_exited" do
+    defp step_started(sequence, step, extra \\ %{}) do
+      event(
+        sequence,
+        "run.step_started",
+        Map.merge(
+          %{"step" => step, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"},
+          extra
+        )
+      )
+    end
+
+    defp step_exited(sequence, step, extra \\ %{}) do
+      event(
+        sequence,
+        "run.step_exited",
+        Map.merge(
+          %{"step" => step, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1840},
+          extra
+        )
+      )
+    end
+
+    test "a start and its exit are one step; its log lines keep its number" do
+      events = [
+        step_started(3, 1),
+        event(4, "run.log", %{"stream" => "stderr", "bytes" => Base.encode64("ok\n"), "step" => 1}),
+        step_exited(5, 1),
+        event(6, "run.log", %{"stream" => "stderr", "bytes" => Base.encode64("host\n")})
+      ]
+
+      assert %Fold{run: @run, steps: steps, log_chunks: chunks} = Fold.fold(@run, events)
+
+      assert steps == %{
+               1 => %{
+                 name: "fetch git.example.com/acme/shop",
+                 kind: "fetch",
+                 started_sequence: 3,
+                 started_at: at(3),
+                 state: "succeeded",
+                 exit_code: 0,
+                 duration_ms: 1840,
+                 exited_sequence: 5,
+                 exited_at: at(5)
+               }
+             }
+
+      assert Enum.map(chunks, &{&1.sequence, &1.step}) == [{4, 1}, {6, nil}]
+    end
+
+    test "a step without an exit has no state, which the projector writes as running" do
+      assert %{1 => %{state: nil, exited_sequence: nil, started_sequence: 3}} =
+               Fold.fold(@run, [step_started(3, 1)]).steps
+    end
+
+    test "an exit before its start is kept, and the start fills the rest" do
+      assert %{1 => %{state: "failed", exit_code: 128, name: "compose", kind: "compose"}} =
+               Fold.fold(@run, [
+                 step_exited(9, 1, %{"state" => "failed", "exit_code" => 128}),
+                 step_started(2, 1, %{"name" => "compose", "kind" => "compose"})
+               ]).steps
+    end
+
+    test "of two starts or two exits with one number, the lower sequence decides, in any order" do
+      events = [
+        step_started(7, 1, %{"name" => "later"}),
+        step_started(3, 1, %{"name" => "earlier"}),
+        step_exited(9, 1, %{"state" => "cancelled", "exit_code" => -1}),
+        step_exited(8, 1, %{"state" => "failed", "exit_code" => 2})
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        assert %{
+                 1 => %{
+                   name: "earlier",
+                   started_sequence: 3,
+                   state: "failed",
+                   exit_code: 2,
+                   exited_sequence: 8
+                 }
+               } = Fold.fold(@run, order).steps
+      end
+    end
+
+    test "a step event whose step is not an integer from 1 folds nothing; such a log line has no step" do
+      for step <- [0, -1, "1", 1.5, nil, 2_147_483_648] do
+        assert Fold.fold(@run, [step_started(3, step), step_exited(4, step)]).steps == %{}
+
+        log = event(5, "run.log", %{"stream" => "stderr", "bytes" => "", "step" => step})
+        assert [%{step: nil}] = Fold.fold(@run, [log]).log_chunks
+      end
+    end
+
+    test "a kind outside the six is absent, and an exit's state outside the three, or none, is failed" do
+      steps =
+        Fold.fold(@run, [
+          step_started(2, 1, %{"kind" => "deploy"}),
+          step_exited(3, 1, %{"state" => "skipped"}),
+          step_started(4, 2, %{"kind" => 7}),
+          step_exited(5, 2, %{"state" => nil}),
+          step_exited(6, 3) |> update_in([:data], &Map.delete(&1, "state"))
+        ]).steps
+
+      assert %{1 => %{kind: nil, state: "failed"}, 2 => %{kind: nil, state: "failed"}} = steps
+      assert %{3 => %{state: "failed"}} = steps
+
+      for kind <- ~w(fetch compose image setup join wall) do
+        assert %{1 => %{kind: ^kind}} =
+                 Fold.fold(@run, [step_started(2, 1, %{"kind" => kind})]).steps
+      end
+    end
+
+    test "integers outside their columns are absent, and a long name is cut" do
+      steps =
+        Fold.fold(@run, [
+          step_started(2, 1, %{"name" => String.duplicate("é", 600)}),
+          step_exited(3, 1, %{"exit_code" => 2_147_483_648, "duration_ms" => -1}),
+          step_started(4, 2, %{"name" => 12}),
+          step_exited(5, 2, %{"exit_code" => "0", "duration_ms" => 1.5})
+        ]).steps
+
+      assert byte_size(steps[1].name) == 1024
+      assert %{exit_code: nil, duration_ms: nil} = steps[1]
+      assert %{name: nil, exit_code: nil, duration_ms: nil} = steps[2]
+    end
+
+    test "steps leave the run as it is" do
+      assert Fold.fold(@run, [step_started(2, 1), step_exited(3, 1)]).run == @run
     end
   end
 
@@ -1723,7 +1866,8 @@ defmodule Apiary.Runs.FoldTest do
       %{sequence: 6, type: "com.example.other", data: %{}, time: at(6)}
     ]
 
-    assert %Fold{run: @run, connections: %{}, log_chunks: []} = Fold.fold(@run, events)
+    assert %Fold{run: @run, connections: %{}, steps: %{}, log_chunks: []} =
+             Fold.fold(@run, events)
   end
 
   test "any order and any split into passes gives the same run" do

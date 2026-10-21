@@ -31,6 +31,17 @@ defmodule Apiary.Runs.Fold do
   `dir`, `interactive` and `image`, is the `session.started` with the highest sequence.
   `session.exited` is folded into nothing: how the run ended is its `run.exited`.
 
+  The steps of the run's host work and joins (`Apiary.Runs.Step`) are folded by `step`,
+  their number, an integer from 1: `steps` has one delta per number, the start's `name`,
+  `kind` and sequence from its `run.step_started`, and the exit's `state`, `exit_code`,
+  `duration_ms` and sequence from its `run.step_exited`. Of two starts, or two exits, with
+  one number, which the contract forbids, the lower sequence decides, in this pass
+  and against what is stored (`Apiary.Runs.Projector`). A `kind` outside the contract's
+  six is absent. An exit's `state` other than `succeeded`, `failed` and `cancelled`, or
+  none, is `failed`, the rule of a run's exit without a state (`exit_state/2`). A step
+  event whose `step` is not such an integer is folded into nothing. A log chunk keeps its
+  event's `step`, read the same way.
+
   An egress event names a `tool` when the proxy decided the request by its path for a host
   the tool serves. It is folded into the destination's connection like any other, and the
   connection's `last_tool` and `last_status` say the tool whose host the last attempt was
@@ -116,6 +127,8 @@ defmodule Apiary.Runs.Fold do
   @exited "dev.qory.run.exited"
   @refused "dev.qory.run.refused"
   @result "dev.qory.runtime.result"
+  @step_started "dev.qory.run.step_started"
+  @step_exited "dev.qory.run.step_exited"
 
   # The most bytes of a connection's host, and what ends one cut to fit (`host/1`).
   @host_max 255
@@ -164,6 +177,9 @@ defmodule Apiary.Runs.Fold do
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
+  # The states a step's exit says, and the kinds of step the contract lists.
+  @step_states ~w(succeeded failed cancelled)
+  @step_kinds ~w(fetch compose image setup join wall)
 
   defstruct run: %{},
             latest: %{},
@@ -171,6 +187,7 @@ defmodule Apiary.Runs.Fold do
             recount: false,
             beaten: false,
             connections: %{},
+            steps: %{},
             log_chunks: [],
             skipped_log_chunks: 0
 
@@ -181,6 +198,7 @@ defmodule Apiary.Runs.Fold do
           recount: boolean(),
           beaten: boolean(),
           connections: %{optional({String.t(), integer(), String.t()}) => map()},
+          steps: %{optional(pos_integer()) => map()},
           log_chunks: [map()],
           skipped_log_chunks: non_neg_integer()
         }
@@ -194,8 +212,8 @@ defmodule Apiary.Runs.Fold do
   or nil when there is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
-  (host, port, path), `log_chunks` in sequence order and the count of log events skipped
-  because their bytes were not base64.
+  (host, port, path), `steps` as one delta per step number, `log_chunks` in sequence order
+  and the count of log events skipped because their bytes were not base64.
   """
   @spec fold(map(), Enumerable.t(), map(), map()) :: t()
   def fold(run, events, latest \\ %{}, projected \\ %{}) do
@@ -338,7 +356,7 @@ defmodule Apiary.Runs.Fold do
     with stream when stream in @streams <- string(data, "stream"),
          encoded when is_binary(encoded) <- string(data, "bytes", :infinity),
          {:ok, bytes} <- Base.decode64(encoded) do
-      chunk = %{sequence: sequence, stream: stream, bytes: bytes}
+      chunk = %{sequence: sequence, stream: stream, bytes: bytes, step: step_number(data)}
       %{acc | log_chunks: [chunk | acc.log_chunks]}
     else
       _ -> %{acc | skipped_log_chunks: acc.skipped_log_chunks + 1}
@@ -436,6 +454,44 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
+  # A step's start: the lowest sequence of its number decides, so the first by sequence
+  # in this pass is kept (events come in sequence order).
+  defp event(acc, %{type: @step_started, data: data, time: time, sequence: sequence}) do
+    case step_number(data) do
+      nil ->
+        acc
+
+      step ->
+        start = %{
+          name: string(data, "name"),
+          kind: step_kind(data),
+          started_sequence: sequence,
+          started_at: time
+        }
+
+        put_step(acc, step, :started_sequence, start)
+    end
+  end
+
+  # A step's exit, the same way: the lowest sequence of its number decides.
+  defp event(acc, %{type: @step_exited, data: data, time: time, sequence: sequence}) do
+    case step_number(data) do
+      nil ->
+        acc
+
+      step ->
+        exit = %{
+          state: step_state(data),
+          exit_code: integer(data, "exit_code", -@int4..@int4),
+          duration_ms: integer(data, "duration_ms", 0..@int8),
+          exited_sequence: sequence,
+          exited_at: time
+        }
+
+        put_step(acc, step, :exited_sequence, exit)
+    end
+  end
+
   # The cost a non-interactive session reported is the runtime's own total for the
   # session, its subagents included (`docs/contract-assumptions.md`): every result of the
   # run adds its `cost_usd` to the run's, once, so the run's cost is a sum of totals and
@@ -451,6 +507,48 @@ defmodule Apiary.Runs.Fold do
   # Session events and types this revision does not know: kept in `events`, marked
   # projected by the projector, nothing folded.
   defp event(acc, _event), do: acc
+
+  # The fields of a step's delta. A delta has every one, nil where its events said
+  # nothing, so that the projector writes all its rows alike.
+  @step_delta %{
+    name: nil,
+    kind: nil,
+    started_sequence: nil,
+    started_at: nil,
+    state: nil,
+    exit_code: nil,
+    duration_ms: nil,
+    exited_sequence: nil,
+    exited_at: nil
+  }
+
+  # Merges a start or an exit into the step's delta unless the delta has one already,
+  # which then has the lower sequence.
+  defp put_step(acc, step, sequence_key, fields) do
+    delta = Map.get(acc.steps, step, @step_delta)
+
+    if delta[sequence_key],
+      do: acc,
+      else: %{acc | steps: Map.put(acc.steps, step, Map.merge(delta, fields))}
+  end
+
+  # A step's number: an integer from 1 that the column holds, else absent.
+  defp step_number(data), do: integer(data, "step", 1..@int4)
+
+  defp step_kind(data) do
+    case string(data, "kind") do
+      kind when kind in @step_kinds -> kind
+      _ -> nil
+    end
+  end
+
+  # An exit that says no state of the three ended badly, as a run's does (`exit_state/2`).
+  defp step_state(data) do
+    case string(data, "state") do
+      state when state in @step_states -> state
+      _ -> "failed"
+    end
+  end
 
   # The destination's host, at most 255 bytes. A longer one is kept, so the attempt is
   # counted and shown: its first 252 bytes, cut on a character boundary, then "…" (3

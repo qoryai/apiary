@@ -111,6 +111,40 @@ defmodule Apiary.RunEventsFixtures do
     ]
   end
 
+  @doc """
+  A synthetic run with steps: a fetch and a compose of its host work, each with its log
+  lines, the join step of its one session, the session and the run's exit.
+  """
+  def steps_record do
+    [
+      {1, "run.started", started_data()},
+      {2, "run.step_started",
+       %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+      {3, "run.log", step_log_data(1, "Cloning into 'shop'...\n")},
+      {4, "run.step_exited",
+       %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1840}},
+      {5, "run.step_started",
+       %{"step" => 2, "name" => "compose the harness", "kind" => "compose"}},
+      {6, "run.log", step_log_data(2, "composed 3 sources\n")},
+      {7, "run.log", step_log_data(2, "wrote the settings\n")},
+      {8, "run.step_exited",
+       %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 620}},
+      {9, "run.step_started", %{"step" => 3, "name" => "join session 1", "kind" => "join"}},
+      {10, "run.step_exited",
+       %{"step" => 3, "state" => "succeeded", "exit_code" => -1, "duration_ms" => 15}},
+      {11, "session.started", session_started_data()},
+      {12, "run.log",
+       %{"stream" => "stdout", "bytes" => Base.encode64("all tests pass\n"), "session" => 1}},
+      {13, "session.exited",
+       %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 3000}},
+      {14, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 14_000}}
+    ]
+  end
+
+  @doc "The data of a `run.log` line of step `step`, on stderr, as the host work writes it."
+  def step_log_data(step, line),
+    do: %{"stream" => "stderr", "bytes" => Base.encode64(line), "step" => step}
+
   @doc "The data of a `run.started`: the run's open, with no runtime."
   def started_data(extra \\ %{}) do
     Map.merge(
