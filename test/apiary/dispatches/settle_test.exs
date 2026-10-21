@@ -278,7 +278,7 @@ defmodule Apiary.Dispatches.SettleTest do
       latest =
         Repo.one(
           from e in Event,
-            where: e.run_id == ^handed.run.id and e.type == "dev.qory.session.result",
+            where: e.run_id == ^handed.run.id and e.type == "dev.qory.runtime.result",
             order_by: [desc: e.sequence],
             limit: 1
         )

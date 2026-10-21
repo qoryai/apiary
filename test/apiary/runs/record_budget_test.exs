@@ -30,13 +30,13 @@ defmodule Apiary.Runs.RecordBudgetTest do
         [{1, "run.started", started_data()}] ++
           Enum.flat_map(1..300, fn n ->
             [
-              {2 * n, "session.tool_started",
+              {2 * n, "runtime.tool_started",
                %{
                  "tool" => "Bash",
                  "tool_use_id" => "t#{n}",
                  "input" => %{"command" => "cat big-#{n}", "stdin" => big}
                }},
-              {2 * n + 1, "session.tool_finished",
+              {2 * n + 1, "runtime.tool_finished",
                %{
                  "tool" => "Bash",
                  "tool_use_id" => "t#{n}",

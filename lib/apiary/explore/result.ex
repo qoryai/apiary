@@ -2,12 +2,12 @@ defmodule Apiary.Explore.Result do
   # Result reads an Explore run's result: the JSON document of the explore contract's
   # `result.schema.json` (`priv/contract/explore/v1/`, vendored from the integrations at
   # the commit in `test/fixtures/contract/explore/v1/.contract-ref`) that the run's last
-  # `dev.qory.session.result` event carries in its `result` string. The document is
+  # `dev.qory.runtime.result` event carries in its `result` string. The document is
   # untrusted: whatever fails a check below is no result, `:none`, never an error and
   # never a raise.
   #
   # `from_events/1` picks the event: among the run's events of type
-  # `dev.qory.session.result`, the one with the highest `sequence` (a run's sequences are
+  # `dev.qory.runtime.result`, the one with the highest `sequence` (a run's sequences are
   # unique). That event alone counts: when its `data` has an `is_error` other than
   # `false`, or no `result` string, the run has no result, whatever an earlier result
   # event said; so has a run without a result event.
@@ -61,7 +61,7 @@ defmodule Apiary.Explore.Result do
   @typedoc "What a run gave: its result's verdict, or why it has none."
   @type outcome :: :proposal | :questions | :error | :none | :refused
 
-  @event "dev.qory.session.result"
+  @event "dev.qory.runtime.result"
   # How long after its outcome arrived a run with no result yet is not settled.
   @settle_seconds 600
   @schema ["contract", "explore", "v1", "result.schema.json"]

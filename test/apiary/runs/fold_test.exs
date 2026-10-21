@@ -1553,11 +1553,11 @@ defmodule Apiary.Runs.FoldTest do
       do: for(item <- list, rest <- permutations(list -- [item]), do: [item | rest])
   end
 
-  describe "dev.qory.session.result" do
+  describe "dev.qory.runtime.result" do
     test "adds the cost the session reported to the run's, once per result" do
       events = [
-        event(4, "session.result", %{"outcome" => "success", "cost_usd" => 0.8412}),
-        event(9, "session.result", %{"outcome" => "error_max_turns", "cost_usd" => 1})
+        event(4, "runtime.result", %{"outcome" => "success", "cost_usd" => 0.8412}),
+        event(9, "runtime.result", %{"outcome" => "error_max_turns", "cost_usd" => 1})
       ]
 
       %{run: run} = Fold.fold(@run, events)
@@ -1577,12 +1577,12 @@ defmodule Apiary.Runs.FoldTest do
             %{"cost_usd" => -0.5},
             %{"cost_usd" => 1.0e12}
           ] do
-        assert %{run: %{cost_usd: nil}} = Fold.fold(@run, [event(4, "session.result", data)])
+        assert %{run: %{cost_usd: nil}} = Fold.fold(@run, [event(4, "runtime.result", data)])
       end
 
       # A zero is a cost that was reported: zero, not unrecorded.
       assert %{run: %{cost_usd: zero}} =
-               Fold.fold(@run, [event(4, "session.result", %{"cost_usd" => 0})])
+               Fold.fold(@run, [event(4, "runtime.result", %{"cost_usd" => 0})])
 
       assert Decimal.equal?(zero, 0)
     end
@@ -1590,7 +1590,7 @@ defmodule Apiary.Runs.FoldTest do
 
   test "session events and unknown types fold nothing" do
     events = [
-      event(4, "session.started", %{"session_id" => "s"}),
+      event(4, "runtime.started", %{"session_id" => "s"}),
       event(5, "something.new", %{"anything" => 1}),
       %{sequence: 6, type: "com.example.other", data: %{}, time: at(6)}
     ]

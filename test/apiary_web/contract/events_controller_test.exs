@@ -322,7 +322,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "a NUL in the data, which Postgres cannot hold, is replaced and not a 500",
          %{scope: scope, key: key, secret: secret} do
       subject = Ecto.UUID.generate()
-      event = wire_event(subject, 1, "session.prompt_submitted", %{"prompt" => "a\u0000b"})
+      event = wire_event(subject, 1, "runtime.prompt_submitted", %{"prompt" => "a\u0000b"})
       assert build_conn() |> signed_post(key.key_id, secret, [event]) |> response(202)
       assert [%Event{data: %{"prompt" => "a�b"}}] = scope |> run!(subject) |> events()
     end
@@ -573,14 +573,14 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       events =
         [
-          wire_event(subject, 1, "session.tool_started", nested(64),
+          wire_event(subject, 1, "runtime.tool_started", nested(64),
             time: "1970-01-01T00:00:00Z"
           ),
-          wire_event(subject, 2, "session.ended", %{}, time: "9999-12-31T23:59:59.999999Z")
+          wire_event(subject, 2, "runtime.ended", %{}, time: "9999-12-31T23:59:59.999999Z")
         ] ++
           for(
             n <- 3..1000,
-            do: wire_event(subject, n, "session.notification", %{"kind" => "idle"})
+            do: wire_event(subject, n, "runtime.notification", %{"kind" => "idle"})
           )
 
       # Out of order on the wire; stored in one go all the same.

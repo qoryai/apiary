@@ -27,11 +27,11 @@ defmodule Apiary.Runs.Record do
   alias Apiary.Runs.Record.Timeline
 
   @policy_applied "dev.qory.run.policy_applied"
-  @session_started "dev.qory.session.started"
+  @runtime_started "dev.qory.runtime.started"
   @started "dev.qory.run.started"
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
-  @list_types ["dev.qory.session.turn_finished", "dev.qory.session.subagent_finished"]
+  @list_types ["dev.qory.runtime.turn_finished", "dev.qory.runtime.subagent_finished"]
 
   @log_page 200
   @default_log_limit 2_000
@@ -216,11 +216,11 @@ defmodule Apiary.Runs.Record do
     Edition.client_reads(scope, :run_policy, run, policy)
   end
 
-  @doc "The runtime's session id, from the run's last `session.started`; nil without one."
+  @doc "The runtime's session id, from the run's last `runtime.started`; nil without one."
   def session_id(%Scope{} = scope, %Run{} = run) do
     Repo.one(
       from e in events(scope, run),
-        where: e.type == ^@session_started,
+        where: e.type == ^@runtime_started,
         order_by: [desc: e.sequence],
         limit: 1,
         select: fragment("left(? ->> 'session_id', 120)", e.data)
@@ -423,8 +423,8 @@ defmodule Apiary.Runs.Record do
            WHEN jsonb_typeof(x.r #> '{file,content}') = 'string' THEN x.r #>> '{file,content}' END AS plain,
       CASE WHEN jsonb_typeof(x.r -> 'stdout') = 'string' THEN x.r ->> 'stdout' END AS out,
       CASE WHEN jsonb_typeof(x.r -> 'stderr') = 'string' THEN x.r ->> 'stderr' END AS err,
-      CASE e.type WHEN 'dev.qory.session.prompt_submitted' THEN e.data -> 'prompt'
-                  WHEN 'dev.qory.session.result' THEN e.data -> 'result'
+      CASE e.type WHEN 'dev.qory.runtime.prompt_submitted' THEN e.data -> 'prompt'
+                  WHEN 'dev.qory.runtime.result' THEN e.data -> 'result'
                   ELSE e.data -> 'message' END AS body) w
   CROSS JOIN LATERAL (SELECT
       CASE WHEN jsonb_typeof(w.body) = 'string' THEN w.body #>> '{}' END AS text,

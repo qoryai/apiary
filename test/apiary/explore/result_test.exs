@@ -2,7 +2,7 @@ defmodule Apiary.Explore.ResultTest do
   # The explore result check against the explore contract's fixtures, vendored from the
   # integrations at the commit in `test/fixtures/contract/explore/v1/.contract-ref`: each
   # result fixture passes and each refused result fixture is no result, carried in a
-  # `dev.qory.session.result` event as Forager sends it. Then the event rules (the last
+  # `dev.qory.runtime.result` event as Forager sends it. Then the event rules (the last
   # result event by sequence, `is_error`, the `result` string), the 128 KiB bound in
   # bytes of the decoded string, each character and source rule of the schema, the strict
   # objects, the lengths in code points, and input that is not UTF-8 or not JSON.
@@ -40,10 +40,10 @@ defmodule Apiary.Explore.ResultTest do
 
   defp fixtures(dir), do: @fixtures |> Path.join(dir) |> File.ls!() |> Enum.sort()
 
-  # A `dev.qory.session.result` event as the record holds it: the wire's JSON, decoded,
+  # A `dev.qory.runtime.result` event as the record holds it: the wire's JSON, decoded,
   # with `data` as Forager sent it.
   defp event(sequence, data) do
-    %{"type" => "dev.qory.session.result", "sequence" => sequence, "data" => data}
+    %{"type" => "dev.qory.runtime.result", "sequence" => sequence, "data" => data}
     |> Jason.encode!()
     |> Jason.decode!()
     |> then(&%{type: &1["type"], sequence: &1["sequence"], data: &1["data"]})
@@ -112,7 +112,7 @@ defmodule Apiary.Explore.ResultTest do
 
       assert Result.from_events([
                event(1, %{"result" => fixture("result/understood.json")})
-               |> Map.put(:type, "dev.qory.session.turn_finished")
+               |> Map.put(:type, "dev.qory.runtime.turn_finished")
              ]) == :none
     end
 
@@ -169,7 +169,7 @@ defmodule Apiary.Explore.ResultTest do
         assert Result.from_events([event(1, data)]) == :none
       end
 
-      assert Result.from_events([%{type: "dev.qory.session.result", sequence: 1, data: nil}]) ==
+      assert Result.from_events([%{type: "dev.qory.runtime.result", sequence: 1, data: nil}]) ==
                :none
 
       assert Result.from_events([
@@ -181,7 +181,7 @@ defmodule Apiary.Explore.ResultTest do
       text = fixture("result/not-understood.json")
 
       event = %Event{
-        type: "dev.qory.session.result",
+        type: "dev.qory.runtime.result",
         sequence: 4,
         data: %{
           "session_id" => "session-1",
@@ -693,7 +693,7 @@ defmodule Apiary.Explore.ResultTest do
               max_runs: 300
             ) do
         event = %{
-          type: "dev.qory.session.result",
+          type: "dev.qory.runtime.result",
           sequence: 1,
           data: %{"is_error" => false, "result" => text}
         }
@@ -751,7 +751,7 @@ defmodule Apiary.Explore.ResultTest do
         data = if is_map(data), do: Map.put(data, "is_error", is_error), else: data
 
         assert parse_shape(
-                 Result.from_events([%{type: "dev.qory.session.result", sequence: 1, data: data}])
+                 Result.from_events([%{type: "dev.qory.runtime.result", sequence: 1, data: data}])
                )
       end
     end

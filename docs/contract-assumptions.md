@@ -1216,9 +1216,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   or any target's newest), that digest; else the baseline's. A gateway told a digest it
   does not hold reloads once and remembers the answer it tried, so the worst case is one
   reload that changes nothing.
-- The `cost_usd` of `dev.qory.session.result` is the runtime's total for the session:
+- The `cost_usd` of `dev.qory.runtime.result` is the runtime's total for the session:
   what Claude Code prints as `total_cost_usd` in its result line, which counts the tokens of
-  the subagents the session ran as well as the session's. `dev.qory.session.subagent_finished`
+  the subagents the session ran as well as the session's. `dev.qory.runtime.subagent_finished`
   carries no cost. So Qory Apiary folds a run's cost as the sum of `cost_usd` over the run's
   result events, once each (`runs.cost_usd`), and never adds anything for a subagent: a
   result whose cost already includes its subagents is counted once, and a second result in
