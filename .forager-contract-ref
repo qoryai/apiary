@@ -25,12 +25,14 @@
 # `dev.qory.runtime.<name>`; and a run split from its sessions: `dev.qory.run.started`
 # with `opened_by` `run` and no runtime members, a `dev.qory.session.started` with the
 # runtime members and a `dev.qory.session.exited` for each session, numbered from 1, and
-# the `dev.qory.run.exited` reason `no_session`, a run closed with no session started.
+# the `dev.qory.run.exited` reason `no_session`, a run closed with no session started;
+# and a wall that refuses a session after its `dev.qory.session.started`, whose
+# `dev.qory.session.exited` has the refusal's code as its reason.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-2a10c228c6a89395a77715c389caa05231cae3b6
+413368821ff3b046b7f88f46b6b28dd0c309875f
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json
