@@ -894,9 +894,9 @@ Every `dev.qory.run.exited` carries `state`, how the run ended: `succeeded`, it 
 `cancelled`, it was stopped before it said how it went. It may carry `reason`, why: an open
 code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's codes are reserved:
-`timeout`, `stopped`, `interrupted`, `session_lost`, `gateway_lost`, `batch_refused` and
-`run_closed`, and so are old names Forager no longer writes, which records written before
-may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
+`timeout`, `interrupted`, `no_session`, `stopped`, `session_lost`, `gateway_lost`,
+`batch_refused` and `run_closed`, and so are old names Forager no longer writes, which
+records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
 starter gave, carried as given. Events are read as untrusted, so a `state` other than the
@@ -943,10 +943,7 @@ Forager's codes, and the words Qory Apiary says for each
 | `gateway_lost` | the gateway was lost before the run's exit was recorded; the exit is written when the record is sent again | Lost | end not recorded |
 | `batch_refused` | the gateway refused a batch of the session's, and ended the run | Failed | events refused |
 | `run_closed` | nothing: the session's record alone holds it, the gateway's `410` to a run already ended there | by its `state` | none |
-| `no_session` | the run was closed with no session started, after its host work failed, such as a fetch or a compose; `exit_code` is `-1` | Failed | no session, as a starter's code reads |
-
-`no_session` is not among the reserved codes this section lists: a starter's outcome that
-gives it keeps it.
+| `no_session` | the run was closed with no session started, after its host work failed, such as a fetch or a compose; `exit_code` is `-1` | Failed | no session: the code, its `_` read as a space |
 
 A record written before may hold an old name, read in these words:
 

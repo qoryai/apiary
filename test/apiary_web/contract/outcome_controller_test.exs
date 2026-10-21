@@ -166,7 +166,13 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
 
     test "drops a reason that is Forager's own or not a code, and keeps the outcome", ctx do
       for {reason, index} <-
-            Enum.with_index(["timeout", "Not A Code", 42, String.duplicate("a", 65)]) do
+            Enum.with_index([
+              "timeout",
+              "no_session",
+              "Not A Code",
+              42,
+              String.duplicate("a", 65)
+            ]) do
         run_id = Ecto.UUID.generate()
         {key, secret} = ctx.key
 

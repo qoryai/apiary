@@ -3146,8 +3146,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       reasons =
-        ~w(timeout quiet credential_expired stopped interrupted session_lost gateway_lost
-           batch_refused credential_check_unreachable credential_check_invalid run_closed
+        ~w(timeout quiet credential_expired stopped interrupted no_session session_lost
+           gateway_lost batch_refused credential_check_unreachable credential_check_invalid run_closed
            run_ended_at_issuer issuer_unreachable issuer_answer_invalid example_reason)
 
       runs =
