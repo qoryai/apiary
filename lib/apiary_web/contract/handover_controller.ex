@@ -28,7 +28,7 @@ defmodule ApiaryWeb.Contract.HandoverController do
   # alone, its `run_settings` an explore run's alone, with both features `factory` and
   # `secrets` on (`Apiary.Dispatches.RunSettings`), its `stack` and `workflow` those of
   # the workspace's entry in the machines file (`Apiary.Dispatches.MachinesFile`), both
-  # absent without one, and its `inputs` as Qory wrote them
+  # absent without one and for a prebuild, and its `inputs` as Qory wrote them
   # (`Apiary.Dispatches.Inputs`). The run key is given
   # once, in this answer; nothing here logs it, the body or the input.
 

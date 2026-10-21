@@ -356,8 +356,9 @@ run's workspace's domain, and an explore run's input has the same `domain` and t
 a JSON file at the path `APIARY_MACHINES_FILE` is set to and read at boot
 (`Apiary.Dispatches.MachinesFile`), has an entry per workspace, by
 `<organisation slug>/<workspace slug>`: a claim answer has `machine`, the machine type of
-the entry of the run's workspace, and a handover answer has `stack` and `workflow`, the
-entry's stack and workflow, for every step. With the variable unset, or for a workspace
+the entry of the run's workspace, for every step, and a handover answer has `stack` and
+`workflow`, the entry's stack and workflow, for every step but `prebuild`: a prebuild's
+handover answer has neither. With the variable unset, or for a workspace
 without an entry or without that part of one, the answer leaves those members out. Its
 `handover.schema.json` has the handover register the run, and
 has the run endpoint refuse, under any key, a registration whose `run_id` is that of such a

@@ -41,7 +41,8 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # members in the schema's order: `revision`, the run's `run_id`, its `run_key`, its
   # `step`, the workspace's `domain`, the run's `target` (nil for none), its `work_item`
   # (nil for a prebuild), its `run_settings` (nil for none, a `Jason.OrderedObject`), its
-  # `stack` and `workflow` (nil for none, `Apiary.Dispatches.MachinesFile.stack/2`) and
+  # `stack` and `workflow` (nil for none and for a prebuild,
+  # `Apiary.Dispatches.MachinesFile.stack/2`) and
   # its `inputs`. The controller sends it, and the handover measures it
   # (`Apiary.Dispatches.Handover`), so both read one encoding.
   @doc false

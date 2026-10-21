@@ -2,8 +2,8 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   # The claim answer's `machine` and the handover answer's `stack` and `workflow`, from the
   # entry of the run's workspace in the machines file (`Apiary.Dispatches.MachinesFile`),
   # as a node pool's starter receives them: absent without a file or an entry, each part
-  # of an entry alone, for an explore run and a prebuild, and within the handover
-  # answer's limit. Not async: the file read at boot and the features are the whole
+  # of an entry alone, for an explore run, within the handover answer's limit, and for a
+  # prebuild, whose handover answer has neither `stack` nor `workflow`. Not async: the file read at boot and the features are the whole
   # node's.
   use ApiaryWeb.ConnCase, async: false
 
@@ -230,7 +230,8 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   end
 
   describe "a prebuild" do
-    test "of a workspace with a machine and a stack has machine, stack and workflow", ctx do
+    test "of a workspace with a machine and a stack has machine, and neither stack nor workflow",
+         ctx do
       machines!(ctx, %{
         ctx.place => %{"machine" => "small", "stack" => @stack, "workflow" => "hello"}
       })
@@ -246,12 +247,11 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
                ~w(version revision dispatch_id run_id pool_id lease_until step access target machine)
 
       assert members(handover) ==
-               ~w(version revision run_id run_key step domain access target stack workflow inputs)
+               ~w(version revision run_id run_key step domain access target inputs)
 
+      assert Jason.decode!(claim)["machine"] == "small"
       answer = Jason.decode!(handover)
-
-      assert {answer["step"], answer["stack"], answer["workflow"]} ==
-               {"prebuild", @stack, "hello"}
+      assert answer["step"] == "prebuild"
 
       assert answer["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end

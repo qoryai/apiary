@@ -103,9 +103,10 @@ defmodule Apiary.Dispatches.Handover do
   # The answer has the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and
   # the run's target, or no target for an explore run whose work item has none. An explore
   # run's input has the same domain and the same target, from the same values. For every
-  # step, the answer has the stack and the workflow of the workspace's entry in the
-  # machines file (`Apiary.Dispatches.MachinesFile.stack/2`), by the slugs of the key's
-  # organisation and workspace, and neither without one.
+  # step but prebuild, the answer has the stack and the workflow of the workspace's entry
+  # in the machines file (`Apiary.Dispatches.MachinesFile.stack/2`), by the slugs of the
+  # key's organisation and workspace, and neither without one. A prebuild's answer has
+  # neither: the job builds the target's environment and starts no stack.
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
@@ -492,12 +493,10 @@ defmodule Apiary.Dispatches.Handover do
   defp sealable(formed, _gateway, _workspace, _keys), do: formed
 
   # What the run is formed from, or the cause its run of the queue ends for.
-  defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run} = locked, workspace) do
+  defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
     case collection(dispatch_run) do
       {:ok, target} ->
-        stack = stack(locked.key, workspace)
-
-        formed(dispatch_run, workspace, target, nil, nil, stack, fn _domain ->
+        formed(dispatch_run, workspace, target, nil, nil, nil, fn _domain ->
           {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
         end)
 
