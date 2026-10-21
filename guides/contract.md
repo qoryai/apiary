@@ -518,7 +518,7 @@ this order, and the first refusal that applies is the answer:
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a batch, is over a limit, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
+| `400` | the body is not a batch, is over a limit, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is absent or not `run`, or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | the run is another node's: the whole batch is refused, and nothing of it is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the instance is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |

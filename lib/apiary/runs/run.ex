@@ -52,6 +52,8 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
+    # What the run runs, from its last `session.started`: `runtime` to `interactive` and
+    # `image` (`Apiary.Runs.Fold`).
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
@@ -60,8 +62,9 @@ defmodule Apiary.Runs.Run do
     field :args, {:array, :string}, default: []
     field :dir, :string
     field :interactive, :boolean
-    # The pseudo-terminal's size as the record last said it: `terminal` of `run.started`,
-    # then each `run.resized`. Null on pipes, and when Forager reported no size.
+    # The pseudo-terminal's size as the record last said it: the later by sequence of the
+    # last `session.started`'s `terminal` and the last `run.resized`. Null on pipes, and
+    # when Forager reported no size.
     field :terminal_cols, :integer
     field :terminal_rows, :integer
     field :host, :string

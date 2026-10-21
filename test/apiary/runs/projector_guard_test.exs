@@ -110,7 +110,6 @@ defmodule Apiary.Runs.ProjectorGuardTest do
       events_fixture(run, [
         {1, "run.started",
          started_data(%{
-           "args" => ["--prompt", "marker-in-an-arg"],
            "about" => %{"title" => "marker-in-a-title"},
            "labels" => %{
              "forge" => "git.example.com",
@@ -118,8 +117,10 @@ defmodule Apiary.Runs.ProjectorGuardTest do
              "task" => "marker-in-a-label"
            }
          })},
-        {2, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("marker-in-the-log")}},
-        {3, "run.egress", egress_data(%{"host" => "marker-in-a-host.example.com"})}
+        {2, "session.started",
+         session_started_data(%{"args" => ["--prompt", "marker-in-an-arg"]})},
+        {3, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("marker-in-the-log")}},
+        {4, "run.egress", egress_data(%{"host" => "marker-in-a-host.example.com"})}
       ])
 
       debug_level()
@@ -127,8 +128,11 @@ defmodule Apiary.Runs.ProjectorGuardTest do
       log =
         capture_log([level: :debug], fn ->
           assert {:ok,
-                  %Run{about_title: "marker-in-a-title", labels: %{"task" => "marker-in-a-label"}}} =
-                   Projector.project(run)
+                  %Run{
+                    about_title: "marker-in-a-title",
+                    labels: %{"task" => "marker-in-a-label"},
+                    args: ["--prompt", "marker-in-an-arg"]
+                  }} = Projector.project(run)
 
           assert {:ok, %Run{}} = Projector.rebuild(run)
         end)

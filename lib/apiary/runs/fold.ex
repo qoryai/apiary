@@ -19,10 +19,17 @@ defmodule Apiary.Runs.Fold do
   revive (Times, below): `latest` carries,
   per rank, the highest sequence already projected. A rank is a type where one event wins
   (`ranks/0`); `run.started` and `ping` also share the rank of the `forager_version`, which
-  the later of the two decides, and `run.started` and `run.resized` share the rank of the
-  terminal's size, which the later of them decides: `terminal_cols` and `terminal_rows`
-  are the size the record last said, `terminal` of the start on a pseudo-terminal, then
-  each resize. A start on pipes reports no size and leaves both null.
+  the later of the two decides, and `session.started` and `run.resized` share the rank of
+  the terminal's size, which the later of them decides: `terminal_cols` and
+  `terminal_rows` are the size the record last said, `terminal` of a session's start on a
+  pseudo-terminal, then each resize. A session's start on pipes reports no size and
+  leaves both null.
+
+  A run is opened once, `run.started` (`opened_by` `run`, which `Apiary.Runs.Batch`
+  requires), and each session that joins it has a `session.started` and a
+  `session.exited`. What the run runs, `runtime`, `runtime_version`, `command`, `args`,
+  `dir`, `interactive` and `image`, is the `session.started` with the highest sequence.
+  `session.exited` is folded into nothing: how the run ended is its `run.exited`.
 
   An egress event names a `tool` when the proxy decided the request by its path for a host
   the tool serves. It is folded into the destination's connection like any other, and the
@@ -45,8 +52,6 @@ defmodule Apiary.Runs.Fold do
   password) are dropped from it alone when they break their rules. Of the subjects kept,
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
-
-  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start).
 
   How the run ended is its exit's `state` and `reason` (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
   any other value is absent; the reason is a code, a lower-case letter then up to 63
@@ -101,6 +106,8 @@ defmodule Apiary.Runs.Fold do
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
+  @session_started "dev.qory.session.started"
+  @session_exited "dev.qory.session.exited"
   @policy_applied "dev.qory.run.policy_applied"
   @heartbeat "dev.qory.run.heartbeat"
   @log "dev.qory.run.log"
@@ -126,14 +133,15 @@ defmodule Apiary.Runs.Fold do
   for a type that is folded without ranking.
   """
   def ranks(@ping), do: [@ping, @forager_version]
-  def ranks(@started), do: [@started, @forager_version, @terminal_rank]
+  def ranks(@started), do: [@started, @forager_version]
+  def ranks(@session_started), do: [@session_started, @terminal_rank]
   def ranks(@resized), do: [@terminal_rank]
   def ranks(type) when type in [@policy_applied, @heartbeat, @exited, @refused], do: [type]
   def ranks(_type), do: []
 
   @doc "The types whose highest projected sequence seeds a rank."
   def rank_types(@forager_version), do: [@ping, @started]
-  def rank_types(@terminal_rank), do: [@started, @resized]
+  def rank_types(@terminal_rank), do: [@session_started, @resized]
   def rank_types(type), do: [type]
 
   @int4 2_147_483_647
@@ -260,22 +268,14 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, %{type: @started, data: data} = event) do
     acc
     |> forager_version(event)
-    |> terminal_size(event, terminal(data))
     |> ranked(event, fn run ->
       labels = labels(data)
       target = target(run, data)
 
       run
       |> Map.merge(%{
-        runtime: string(data, "runtime"),
-        runtime_version: string(data, "runtime_version"),
-        command: string(data, "command", @long_text),
-        args: strings(data, "args"),
-        dir: string(data, "dir", @long_text),
-        interactive: boolean(data, "interactive"),
         host: string(data, "host"),
         wall: string(data, "wall"),
-        image: string(data, "image"),
         labels: labels,
         target_system: target && target.system,
         target_path: target && target.path,
@@ -285,6 +285,28 @@ defmodule Apiary.Runs.Fold do
       |> started_state(event)
     end)
   end
+
+  # What the run runs is its last session's: the `session.started` with the highest
+  # sequence decides every member, one the event leaves out included.
+  defp event(acc, %{type: @session_started, data: data} = event) do
+    acc
+    |> terminal_size(event, terminal(data))
+    |> ranked(event, fn run ->
+      Map.merge(run, %{
+        runtime: string(data, "runtime"),
+        runtime_version: string(data, "runtime_version"),
+        command: string(data, "command", @long_text),
+        args: strings(data, "args"),
+        dir: string(data, "dir", @long_text),
+        interactive: boolean(data, "interactive"),
+        image: string(data, "image")
+      })
+    end)
+  end
+
+  # How one session ended is folded into nothing; a refused join has no `session.started`
+  # and changes nothing either.
+  defp event(acc, %{type: @session_exited}), do: acc
 
   defp event(acc, %{type: @policy_applied, data: data} = event) do
     ranked(acc, event, fn run ->
@@ -546,8 +568,8 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # `run.started` and `run.resized` both say the terminal's size: the later decides. A
-  # start says none on pipes, which is `{nil, nil}`.
+  # `session.started` and `run.resized` both say the terminal's size: the later decides. A
+  # session's start says none on pipes, which is `{nil, nil}`.
   defp terminal_size(acc, %{sequence: sequence}, {cols, rows}) do
     if sequence > Map.get(acc.latest, @terminal_rank, 0) do
       %{
@@ -560,7 +582,7 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The size a start reports: `terminal`, or none on pipes.
+  # The size a session's start reports: `terminal`, or none on pipes.
   defp terminal(%{"terminal" => %{} = terminal}), do: size(terminal) || {nil, nil}
   defp terminal(_data), do: {nil, nil}
 

@@ -30,13 +30,13 @@ defmodule Apiary.RetentionTest do
       node_delivery_id: Ecto.UUID.generate(),
       node_run_id: run.node_run_id,
       received_at: days_ago(days),
-      event_count: 14,
-      inserted_count: 14,
+      event_count: 15,
+      inserted_count: 15,
       status: 202
     })
 
     Repo.update_all(from(r in Run, where: r.id == ^run.id),
-      set: [last_event_at: days_ago(days), event_count: 14]
+      set: [last_event_at: days_ago(days), event_count: 15]
     )
 
     Repo.get!(Run, run.id)
@@ -166,11 +166,11 @@ defmodule Apiary.RetentionTest do
 
       assert count(LogChunk, old) == 0
       assert log_events(old) == 0
-      assert count(Event, old) == 12
+      assert count(Event, old) == 13
       assert %Run{log_pruned_at: %DateTime{}, events_pruned_at: nil} = Repo.get!(Run, old.id)
 
       assert count(LogChunk, young) == 2
-      assert count(Event, young) == 14
+      assert count(Event, young) == 15
       assert %Run{log_pruned_at: nil} = Repo.get!(Run, young.id)
     end
 
@@ -183,7 +183,7 @@ defmodule Apiary.RetentionTest do
 
       assert %{
                runs_pruned: 1,
-               events_deleted: 14,
+               events_deleted: 15,
                log_chunks_deleted: 2,
                log_bytes_deleted: 12,
                deliveries_deleted: 1
@@ -208,10 +208,10 @@ defmodule Apiary.RetentionTest do
       ]
 
       assert Map.take(pruned, kept) == Map.take(old, kept)
-      assert pruned.event_count == 14
+      assert pruned.event_count == 15
       assert pruned.state == "completed"
 
-      assert count(Event, young) == 14
+      assert count(Event, young) == 15
 
       assert Repo.aggregate(
                from(d in Delivery, where: d.node_run_id == ^young.node_run_id),
@@ -230,7 +230,7 @@ defmodule Apiary.RetentionTest do
       counts = [:runs_pruned, :events_deleted, :log_chunks_deleted, :log_bytes_deleted]
       assert Map.take(dry, counts) == Map.take(wet, counts)
 
-      assert %{runs_pruned: 2, events_deleted: 16, log_chunks_deleted: 4, log_bytes_deleted: 24} =
+      assert %{runs_pruned: 2, events_deleted: 17, log_chunks_deleted: 4, log_bytes_deleted: 24} =
                wet
 
       # Again: nothing is left to do.
@@ -255,11 +255,11 @@ defmodule Apiary.RetentionTest do
       scope = retain(scope, events_retention_days: 10)
       runs = for days <- [40, 30, 20], do: old_run(scope, days)
 
-      assert %{runs_pruned: 2, events_deleted: 28, complete: false} =
+      assert %{runs_pruned: 2, events_deleted: 30, complete: false} =
                Retention.prune_workspace(scope.workspace, now: @now, batch: 3, max_runs: 2)
 
       # Oldest first.
-      assert [0, 0, 14] = Enum.map(runs, &count(Event, &1))
+      assert [0, 0, 15] = Enum.map(runs, &count(Event, &1))
 
       assert %{runs_pruned: 1, complete: true} =
                Retention.prune_workspace(scope.workspace, now: @now, batch: 3, max_runs: 2)
@@ -269,10 +269,10 @@ defmodule Apiary.RetentionTest do
       scope = retain(scope, events_retention_days: 10)
       run = old_run(scope, 11)
 
-      assert %{runs_pruned: 1, events_deleted: 14, dry_run: true} =
+      assert %{runs_pruned: 1, events_deleted: 15, dry_run: true} =
                Retention.prune_workspace(scope.workspace, now: @now, dry_run: true)
 
-      assert count(Event, run) == 14
+      assert count(Event, run) == 15
       assert Repo.get!(Run, run.id).events_pruned_at == nil
       assert Retention.list_retention_runs(scope) == []
     end
@@ -289,8 +289,8 @@ defmodule Apiary.RetentionTest do
       assert %{runs_pruned: 0, events_deleted: 0, log_chunks_deleted: 0} =
                Retention.prune_workspace(scope.workspace, now: @now)
 
-      assert count(Event, past_events) == 14
-      assert count(Event, past_log) == 14
+      assert count(Event, past_events) == 15
+      assert count(Event, past_log) == 15
       assert count(LogChunk, past_log) == chunks
       assert %Run{events_pruned_at: nil, log_pruned_at: nil} = Repo.get!(Run, past_events.id)
       assert %Run{events_pruned_at: nil, log_pruned_at: nil} = Repo.get!(Run, past_log.id)
@@ -301,13 +301,13 @@ defmodule Apiary.RetentionTest do
       past_events = lost_run(scope, 30, 8)
       past_log = lost_run(scope, 8, 8)
 
-      assert %{runs_pruned: 2, events_deleted: 16} =
+      assert %{runs_pruned: 2, events_deleted: 17} =
                Retention.prune_workspace(scope.workspace, now: @now)
 
       assert count(Event, past_events) == 0
       assert %Run{events_pruned_at: %DateTime{}} = Repo.get!(Run, past_events.id)
       assert log_events(past_log) == 0
-      assert count(Event, past_log) == 12
+      assert count(Event, past_log) == 13
       assert %Run{events_pruned_at: nil, log_pruned_at: %DateTime{}} = Repo.get!(Run, past_log.id)
     end
 
@@ -317,7 +317,7 @@ defmodule Apiary.RetentionTest do
       gone = lost_run(scope, 8, nil)
 
       assert %{runs_pruned: 1} = Retention.prune_workspace(scope.workspace, now: @now)
-      assert count(Event, kept) == 14
+      assert count(Event, kept) == 15
       assert count(Event, gone) == 0
     end
 
@@ -336,7 +336,7 @@ defmodule Apiary.RetentionTest do
       assert %{runs_pruned: 2} = Retention.prune_workspace(scope.workspace, now: @now)
       assert count(Event, succeeded) == 0
       assert count(Event, failed) == 0
-      assert count(Event, revived) == 14
+      assert count(Event, revived) == 15
     end
 
     test "lost less than 7 days ago is not due for a rebuild either", %{scope: scope} do
@@ -402,7 +402,7 @@ defmodule Apiary.RetentionTest do
 
       assert {:ok, rebuilt} = Projector.rebuild(Repo.get!(Run, run.id))
       assert rebuilt.state == "completed"
-      assert rebuilt.projected_sequence == 14
+      assert rebuilt.projected_sequence == 15
       assert rebuilt.denied_count == 1
       assert %DateTime{} = rebuilt.log_pruned_at
       assert count(Connection, run) == 2

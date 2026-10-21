@@ -21,11 +21,15 @@ defmodule ApiaryWeb.RunLogControllerTest do
     run = run_fixture(scope)
 
     events_fixture(run, [
-      {1, "run.started",
-       started_data(%{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}})},
-      drawn(2, "a"),
-      drawn(3, "b"),
-      drawn(4, "c"),
+      {1, "run.started", started_data()},
+      {2, "session.started",
+       session_started_data(%{
+         "interactive" => true,
+         "terminal" => %{"cols" => 120, "rows" => 40}
+       })},
+      drawn(3, "a"),
+      drawn(4, "b"),
+      drawn(5, "c"),
       {6, "run.resized", %{"cols" => 100, "rows" => 30}},
       drawn(7, "d"),
       drawn(8, "e"),
@@ -54,7 +58,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert conn.state == :chunked
       assert conn.resp_body == "building\n" <> <<255, 0, 10>>
       assert get_resp_header(conn, "content-type") == ["application/octet-stream"]
-      assert get_resp_header(conn, "x-qory-log-through") == ["9"]
+      assert get_resp_header(conn, "x-qory-log-through") == ["10"]
       assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
       assert get_resp_header(conn, "cache-control") == ["private, no-store"]
       assert get_resp_header(conn, "content-disposition") == []
@@ -76,16 +80,16 @@ defmodule ApiaryWeb.RunLogControllerTest do
       run = run_with_log(scope)
 
       conn1 =
-        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?after=5")
+        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?after=6")
 
       assert conn1.resp_body == <<255, 0, 10>>
-      assert get_resp_header(conn1, "x-qory-log-through") == ["9"]
+      assert get_resp_header(conn1, "x-qory-log-through") == ["10"]
 
       conn2 =
         get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?limit=1")
 
       assert conn2.resp_body == "building\n"
-      assert get_resp_header(conn2, "x-qory-log-through") == ["5"]
+      assert get_resp_header(conn2, "x-qory-log-through") == ["6"]
 
       conn3 =
         get(
@@ -96,11 +100,14 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert conn3.resp_body == <<255, 0, 10>>
 
       conn4 =
-        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?after=9")
+        get(
+          conn,
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log?after=10"
+        )
 
       assert conn4.status == 200
       assert conn4.resp_body == ""
-      assert get_resp_header(conn4, "x-qory-log-through") == ["9"]
+      assert get_resp_header(conn4, "x-qory-log-through") == ["10"]
     end
 
     test "a sized run is answered one size at a time, stopping short of each resize", %{
@@ -111,8 +118,8 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert %{terminal_cols: 80, terminal_rows: 24} = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
       path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log"
 
-      # From the start: the chunks before the first resize, at the start's size, and the
-      # answer reaches the resize itself.
+      # From the start: the chunks before the first resize, at the session's start's size,
+      # and the answer reaches the resize itself.
       first = get(conn, path)
       assert {first.resp_body, through(first), size(first)} == {"abc", "6", "120x40"}
 
@@ -126,8 +133,8 @@ defmodule ApiaryWeb.RunLogControllerTest do
 
       # A limit under the chunks before a resize stops at the chunk, not the resize.
       limited = get(conn, "#{path}?limit=2")
-      assert {limited.resp_body, through(limited), size(limited)} == {"ab", "3", "120x40"}
-      rest = get(conn, "#{path}?after=3&limit=2")
+      assert {limited.resp_body, through(limited), size(limited)} == {"ab", "4", "120x40"}
+      rest = get(conn, "#{path}?after=4&limit=2")
       assert {rest.resp_body, through(rest), size(rest)} == {"c", "6", "120x40"}
 
       # The size in force between two resizes, from any sequence.
@@ -146,7 +153,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
     } do
       run = run_with_log(scope)
       conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log")
-      assert {through(conn), size(conn)} == {"9", nil}
+      assert {through(conn), size(conn)} == {"10", nil}
     end
 
     test "download=1 is every chunk as an attachment named after the short id", %{

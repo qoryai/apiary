@@ -37,13 +37,13 @@ defmodule Apiary.RetentionJobTest do
       node_delivery_id: Ecto.UUID.generate(),
       node_run_id: run.node_run_id,
       received_at: days_ago(days),
-      event_count: 14,
-      inserted_count: 14,
+      event_count: 15,
+      inserted_count: 15,
       status: 202
     })
 
     Repo.update_all(from(r in Run, where: r.id == ^run.id),
-      set: [last_event_at: days_ago(days), event_count: 14]
+      set: [last_event_at: days_ago(days), event_count: 15]
     )
 
     Repo.get!(Run, run.id)
@@ -66,7 +66,7 @@ defmodule Apiary.RetentionJobTest do
     test "a workspace without a setting loses nothing", %{scope: scope} do
       run = old_run(scope, 4000)
       assert {:ok, []} = Retention.prune_all(now: @now)
-      assert count(Event, run) == 14
+      assert count(Event, run) == 15
       assert Repo.aggregate(RetentionRun, :count) == 0
     end
   end
@@ -101,7 +101,7 @@ defmodule Apiary.RetentionJobTest do
       assert workspace_id == scope.workspace.id
 
       assert count(Event, mine) == 0
-      assert count(Event, theirs) == 14
+      assert count(Event, theirs) == 15
       assert count(LogChunk, theirs) == 2
       assert Repo.get!(Run, theirs.id).events_pruned_at == nil
     end
@@ -119,7 +119,7 @@ defmodule Apiary.RetentionJobTest do
       assert mine.trigger == "manual"
       assert mine.events_retention_days == 10
       assert mine.events_cutoff == days_ago(10)
-      assert %{runs_pruned: 1, events_deleted: 14, log_bytes_deleted: 12, complete: true} = mine
+      assert %{runs_pruned: 1, events_deleted: 15, log_bytes_deleted: 12, complete: true} = mine
 
       assert [%RetentionRun{runs_pruned: 0} = theirs] = Retention.list_retention_runs(other)
       assert theirs.workspace_id == other.workspace.id
@@ -151,7 +151,7 @@ defmodule Apiary.RetentionJobTest do
     log = capture_log([level: :info], fn -> Retention.prune_all(now: @now) end)
 
     assert log =~ "retention pruned workspace=#{workspace.id} trigger=manual"
-    assert log =~ "runs=1 events=14 log_chunks=2 log_bytes=12 deliveries=1"
+    assert log =~ "runs=1 events=15 log_chunks=2 log_bytes=12 deliveries=1"
     assert log =~ "complete=true"
     # Nothing of a run's data is in the line.
     refute log =~ "api.example.com"

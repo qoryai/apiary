@@ -256,7 +256,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(
                lv,
                "#retention-runs li",
-               "1 run: 14 events and 12 B of log output in 2 chunks."
+               "1 run: 15 events and 12 B of log output in 2 chunks."
              )
 
       assert has_element?(lv, "#retention-run-#{mine.id}", "By hand")
@@ -283,7 +283,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
       {:ok, lv, _html} = live(conn, path)
 
-      assert has_element?(lv, "#retention-runs li", "1 run: 14 events.")
+      assert has_element?(lv, "#retention-runs li", "1 run: 15 events.")
       pruned = lv |> element("#retention-runs") |> render()
       refute pruned =~ "12 B"
       refute pruned =~ "of log output in"
@@ -295,7 +295,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(
                lv,
                "#retention-runs li",
-               "1 run: 14 events and 12 B of log output in 2 chunks."
+               "1 run: 15 events and 12 B of log output in 2 chunks."
              )
     end
   end

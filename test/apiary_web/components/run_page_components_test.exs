@@ -191,6 +191,25 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     )
   end
 
+  # The run's start item of a `run.started` with `data`, then a `session.started` with
+  # `session`, which gives the item its runtime.
+  defp started_html(data, session) do
+    events = [
+      %{sequence: 1, type: "dev.qory.run.started", time: @t0, data: data},
+      %{sequence: 2, type: "dev.qory.session.started", time: @t0, data: session}
+    ]
+
+    index = Timeline.index(Enum.map(events, &Map.delete(&1, :data)))
+    [item] = Timeline.build(index.items, Map.new(events, &{&1.sequence, Timeline.slim(&1)}))
+
+    render_component(&RunPageComponents.timeline_item/1,
+      id: "e-1",
+      item: item,
+      started_at: @t0,
+      seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+    )
+  end
+
   describe "the timeline's items, texts the run's report sent" do
     test "a tool call: its tool and its summary cleaned, isolated in <bdi>" do
       html =
@@ -291,12 +310,10 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
     test "a run started: its runtime, version, host and wall cleaned; a host sent blank marked" do
       html =
-        item_html("dev.qory.run.started", %{
-          "runtime" => dirty("claude"),
-          "runtime_version" => dirty("2.1"),
-          "host" => dirty("dev-box"),
-          "wall" => dirty("docker")
-        })
+        started_html(
+          %{"host" => dirty("dev-box"), "wall" => dirty("docker")},
+          %{"runtime" => dirty("claude"), "runtime_version" => dirty("2.1")}
+        )
 
       said = LazyHTML.text(query(html, ".q-s"))
 
@@ -305,7 +322,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
       refute_dirty(html)
 
-      blank = item_html("dev.qory.run.started", %{"runtime" => "claude", "host" => @zwsp})
+      blank = started_html(%{"host" => @zwsp}, %{"runtime" => "claude"})
       assert LazyHTML.text(query(blank, ".q-s")) =~ "on #{@shown_control}"
       refute LazyHTML.text(query(blank, ".q-s")) =~ "n/a"
     end

@@ -13,7 +13,8 @@ defmodule Apiary.Runs.ListingTest do
     %{scope: scope_fixture(), other: scope_fixture()}
   end
 
-  # A run that started `ago` seconds before @now, with its labels, projected.
+  # A run that started `ago` seconds before @now, with its labels and one session,
+  # projected.
   defp started(scope, labels, ago, extra \\ []) do
     run = run_fixture(scope)
     time = DateTime.add(@now, -ago, :second)
@@ -22,15 +23,18 @@ defmodule Apiary.Runs.ListingTest do
       started_data(
         Map.merge(
           %{"labels" => labels},
-          Map.new(Keyword.take(extra, [:about, :runtime, :host]), fn {k, v} ->
+          Map.new(Keyword.take(extra, [:about, :host]), fn {k, v} ->
             {to_string(k), v}
           end)
         )
       )
 
-    event_fixture(run, 2, "run.started", data, time: time)
+    session = if runtime = extra[:runtime], do: %{"runtime" => runtime}, else: %{}
 
-    for {egress, n} <- Enum.with_index(Keyword.get(extra, :egress, []), 3) do
+    event_fixture(run, 2, "run.started", data, time: time)
+    event_fixture(run, 3, "session.started", session_started_data(session), time: time)
+
+    for {egress, n} <- Enum.with_index(Keyword.get(extra, :egress, []), 4) do
       event_fixture(run, n, "run.egress", egress_data(egress),
         time: DateTime.add(time, n, :second)
       )

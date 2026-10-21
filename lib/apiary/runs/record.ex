@@ -28,7 +28,7 @@ defmodule Apiary.Runs.Record do
 
   @policy_applied "dev.qory.run.policy_applied"
   @runtime_started "dev.qory.runtime.started"
-  @started "dev.qory.run.started"
+  @session_started "dev.qory.session.started"
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
   @list_types ["dev.qory.runtime.turn_finished", "dev.qory.runtime.subagent_finished"]
@@ -681,9 +681,9 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The size of the terminal the chunks right after `after_sequence` were written to:
-  `{cols, rows}`, the last `dev.qory.run.resized` at or below it, else `terminal` of
-  `dev.qory.run.started`; nil when the record says none, a run on pipes or one recorded
-  before Forager reported the size. A size is read like the fold reads it.
+  `{cols, rows}`, the last `dev.qory.run.resized` at or below it, else `terminal` of the
+  last `dev.qory.session.started`; nil when the record says none, a run on pipes or one
+  recorded before Forager reported the size. A size is read like the fold reads it.
   """
   def terminal_size(%Scope{} = scope, %Run{} = run, after_sequence) do
     resized =
@@ -699,7 +699,7 @@ defmodule Apiary.Runs.Record do
       resized ||
         Repo.one(
           from e in events(scope, run),
-            where: e.type == @started,
+            where: e.type == @session_started,
             order_by: [desc: e.sequence],
             limit: 1,
             select: fragment("? -> 'terminal'", e.data)

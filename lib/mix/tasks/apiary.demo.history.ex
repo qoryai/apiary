@@ -73,6 +73,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ]
 
   @chunk 40
+  # When a run's one session starts: an offset in milliseconds, as every offset of record/1.
+  @session_at 130
   @insert_rows 1_000
   @log_bytes 3_000
   @long_log_bytes 12_000
@@ -922,6 +924,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     new()
     |> put(120, "run.started", started(spec))
+    |> put(@session_at, "session.started", session_started(spec))
     |> put(150, "run.policy_applied", policy_applied(spec, mode))
     |> log(200, spec, banner(spec, mode))
     |> work(spec, mode, ends)
@@ -987,25 +990,34 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     |> Map.new()
   end
 
+  # The run's open: what the run is about, where it runs and behind which wall.
   defp started(spec) do
-    {command, args} = command(spec)
     about = about(spec)
     labels = labels(spec)
 
     %{
-      "opened_by" => "session",
-      "runtime" => runtime_name(spec),
-      "runtime_version" => runtime_version(spec),
-      "command" => command,
-      "args" => args,
-      "dir" => "/work/#{workdir(spec)}",
-      "interactive" => spec.interactive,
+      "opened_by" => "run",
       "forager_version" => forager_version(spec),
       "host" => spec.host,
       "labels" => labels
     }
     |> put_if(about, "about", about)
     |> put_if(spec.machine.wall, "wall", spec.machine.wall)
+  end
+
+  # The run's one session: the runtime it starts, in the wall's image when there is one.
+  defp session_started(spec) do
+    {command, args} = command(spec)
+
+    %{
+      "session" => 1,
+      "runtime" => runtime_name(spec),
+      "runtime_version" => runtime_version(spec),
+      "command" => command,
+      "args" => args,
+      "dir" => "/work/#{workdir(spec)}",
+      "interactive" => spec.interactive
+    }
     |> put_if(spec.machine.wall, "image", image(spec))
     |> put_if(spec.interactive, "terminal", %{
       "cols" => pick([120, 160, 200]),
@@ -1681,8 +1693,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   # The exit, in the contract's words: its `state` is `succeeded`, `failed` or `cancelled`, and
-  # its `reason` Forager's own code or the starter's. A run that went silent, or is still
-  # running, has none.
+  # its `reason` Forager's code or the starter's. The session's exit comes just before it.
+  # A run that went silent, or is still running, has neither.
   defp finish(acc, %{outcome: outcome, reason: nil}, _ends) when outcome in [:lost, :alive],
     do: acc
 
@@ -1690,6 +1702,12 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp finish(acc, %{reason: "timeout"} = spec, ends) do
     acc
     |> log(ends - 5, spec, dim("qory: run timed out after 1 h"))
+    |> session_exited(ends, %{
+      "state" => "cancelled",
+      "exit_code" => -1,
+      "signal" => "SIGTERM",
+      "reason" => "timeout"
+    })
     |> put(ends, "run.exited", %{
       "state" => "cancelled",
       "exit_code" => -1,
@@ -1702,7 +1720,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   # The starter answered that the run is no longer needed, and the gateway ended it; the
   # gateway holds no exit status of the runtime's.
   defp finish(acc, %{reason: "no_longer_needed"}, ends) do
-    put(acc, ends, "run.exited", %{
+    acc
+    |> session_exited(ends, %{
+      "state" => "cancelled",
+      "exit_code" => -1,
+      "reason" => "no_longer_needed"
+    })
+    |> put(ends, "run.exited", %{
       "state" => "cancelled",
       "exit_code" => -1,
       "reason" => "no_longer_needed",
@@ -1712,7 +1736,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # The gateway heard nothing from the session for three heartbeat intervals.
   defp finish(acc, %{reason: "session_lost"}, ends) do
-    put(acc, ends + 90_000, "run.exited", %{
+    acc
+    |> session_exited(ends + 90_000, %{
+      "state" => "failed",
+      "exit_code" => -1,
+      "reason" => "session_lost"
+    })
+    |> put(ends + 90_000, "run.exited", %{
       "state" => "failed",
       "exit_code" => -1,
       "reason" => "session_lost",
@@ -1723,7 +1753,15 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   # Forager died before the exit was recorded: the resend of the record, minutes later,
   # writes the exit, its duration to the last event recorded.
   defp finish(acc, %{reason: "gateway_lost"}, ends) do
-    put(acc, ends + between(2, 15) * @minute, "run.exited", %{
+    at = ends + between(2, 15) * @minute
+
+    acc
+    |> session_exited(at, ends, %{
+      "state" => "failed",
+      "exit_code" => -1,
+      "reason" => "gateway_lost"
+    })
+    |> put(at, "run.exited", %{
       "state" => "failed",
       "exit_code" => -1,
       "reason" => "gateway_lost",
@@ -1744,6 +1782,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     acc
     |> log(ends - 5, spec, dim("qory: run exited #{code} after #{human(ends)}"))
+    |> session_exited(ends, %{
+      "state" => if(code == 0, do: "succeeded", else: "failed"),
+      "exit_code" => code
+    })
     |> put(
       ends,
       "run.exited",
@@ -1753,6 +1795,17 @@ defmodule Mix.Tasks.Apiary.Demo.History do
         "reason",
         spec.reason
       )
+    )
+  end
+
+  # The exit of the run's one session, put at `at`; its duration runs from the session's
+  # start to `ended`, which is `at` but for a run whose end was written later.
+  defp session_exited(acc, at, ended \\ nil, data) do
+    put(
+      acc,
+      at,
+      "session.exited",
+      Map.merge(data, %{"session" => 1, "duration_ms" => (ended || at) - @session_at})
     )
   end
 

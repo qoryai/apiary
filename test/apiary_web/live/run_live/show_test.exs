@@ -594,7 +594,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       ids = item_ids(html)
       assert hd(ids) == "e-2"
-      assert List.last(ids) == "e-101"
+      assert List.last(ids) == "e-103"
       assert ids == Enum.sort_by(ids, fn "e-" <> n -> String.to_integer(n) end)
 
       for words <- [
@@ -627,7 +627,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "permission_prompt · Claude needs your permission to use Bash"
       assert html =~ "success · 14 turns · 3 m 49 s · $0.84"
       assert html =~ "exit 0"
-      assert html =~ "End of the record. 100 events."
+      assert html =~ "End of the record. 102 events."
       assert has_element?(lv, "ol#timeline[aria-label='Session timeline, oldest first']")
       refute html =~ "aria-live=\"polite\" id=\"timeline\""
     end
@@ -647,17 +647,17 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "ol.q-lanes-3")
 
       # start and finish brackets
-      assert has_element?(lv, "#e-21 .q-r.q-rail-1.q-r-from")
-      assert has_element?(lv, "#e-21 .q-h.q-rail-1.q-lane-a")
-      assert has_element?(lv, "#e-21 .q-who.q-lane-a", "Explore")
-      assert has_element?(lv, "#e-36 .q-r.q-rail-1.q-r-to")
-      assert has_element?(lv, "#e-22 .q-r.q-rail-2.q-r-from")
-      assert has_element?(lv, "#e-49 .q-r.q-rail-2.q-r-to")
+      assert has_element?(lv, "#e-22 .q-r.q-rail-1.q-r-from")
+      assert has_element?(lv, "#e-22 .q-h.q-rail-1.q-lane-a")
+      assert has_element?(lv, "#e-22 .q-who.q-lane-a", "Explore")
+      assert has_element?(lv, "#e-37 .q-r.q-rail-1.q-r-to")
+      assert has_element?(lv, "#e-23 .q-r.q-rail-2.q-r-from")
+      assert has_element?(lv, "#e-50 .q-r.q-rail-2.q-r-to")
 
       # a subagent's tool sits on the subagent's rail, with all three rails passing
-      assert has_element?(lv, "#e-25 .q-n.q-rail-1.q-lane-a")
-      assert has_element?(lv, "#e-25 .q-r.q-rail-2")
-      assert has_element?(lv, "#e-25[data-lane='agent-demo-a1']")
+      assert has_element?(lv, "#e-26 .q-n.q-rail-1.q-lane-a")
+      assert has_element?(lv, "#e-26 .q-r.q-rail-2")
+      assert has_element?(lv, "#e-26[data-lane='agent-demo-a1']")
     end
 
     test "a tool pairs its events: summary, duration, input and response; a failed one starts open",
@@ -665,21 +665,21 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
-      assert has_element?(lv, "#e-11 summary .q-k", "Read")
-      assert has_element?(lv, "#e-11 summary .q-s", "/work/shop/package.json")
-      assert has_element?(lv, "#e-11 .q-well", "input")
-      assert has_element?(lv, "#e-11 .q-well", "response")
-      assert has_element?(lv, "#e-11 .q-well .q-key", "\"file_path\"")
-      refute has_element?(lv, "#e-11 details[open]")
+      assert has_element?(lv, "#e-12 summary .q-k", "Read")
+      assert has_element?(lv, "#e-12 summary .q-s", "/work/shop/package.json")
+      assert has_element?(lv, "#e-12 .q-well", "input")
+      assert has_element?(lv, "#e-12 .q-well", "response")
+      assert has_element?(lv, "#e-12 .q-well .q-key", "\"file_path\"")
+      refute has_element?(lv, "#e-12 details[open]")
       # the end of a call is not a separate item
-      refute has_element?(lv, "#e-12")
+      refute has_element?(lv, "#e-13")
 
-      assert has_element?(lv, "#e-25 summary .q-s", "CheckoutForm in /work/shop/src")
+      assert has_element?(lv, "#e-26 summary .q-s", "CheckoutForm in /work/shop/src")
 
-      assert has_element?(lv, "#e-58 details[open]")
-      assert has_element?(lv, "#e-58 summary .q-bad", "Failed")
-      assert has_element?(lv, "#e-58 .q-n.q-n-fail")
-      assert has_element?(lv, "#e-58 .q-well.q-well-err", "error")
+      assert has_element?(lv, "#e-59 details[open]")
+      assert has_element?(lv, "#e-59 summary .q-bad", "Failed")
+      assert has_element?(lv, "#e-59 .q-n.q-n-fail")
+      assert has_element?(lv, "#e-59 .q-well.q-well-err", "error")
     end
 
     test "a connection sits inside a call only when exactly one was open, and says while", %{
@@ -690,21 +690,21 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
-      assert has_element?(lv, "#e-58 .q-during", "1 connection while this call was open")
-      assert has_element?(lv, "#e-58 .q-during .q-cx-denied", "registry.example")
+      assert has_element?(lv, "#e-59 .q-during", "1 connection while this call was open")
+      assert has_element?(lv, "#e-59 .q-during .q-cx-denied", "registry.example")
 
       assert has_element?(
                lv,
-               "#e-58 .q-during",
+               "#e-59 .q-during",
                if(security?(), do: "No rule matches", else: "Denied.")
              )
 
-      refute has_element?(lv, "#e-59")
+      refute has_element?(lv, "#e-60")
 
       # between items while the two Task calls were open, with the caption, and no node
       assert html =~ "while 2 calls were open"
-      assert has_element?(lv, "#e-6.q-ti-cx")
-      refute has_element?(lv, "#e-6 .q-n")
+      assert has_element?(lv, "#e-7.q-ti-cx")
+      refute has_element?(lv, "#e-7 .q-n")
 
       refute has_element?(lv, "#timeline", "because")
     end
@@ -715,9 +715,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=59")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=60")
 
-      assert has_element?(lv, "ol#timeline[data-target='e-58']")
+      assert has_element?(lv, "ol#timeline[data-target='e-59']")
 
       # what is not valid is dropped: the page is the plain one, and its links carry none of it
       {:ok, lv, html} =
@@ -734,9 +734,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       # a valid one among them is kept
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=58&x=1")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=59&x=1")
 
-      assert has_element?(lv, "ol#timeline[data-target='e-58']")
+      assert has_element?(lv, "ol#timeline[data-target='e-59']")
     end
 
     test "?lane= isolates a lane and ?cx=0 hides the connections; both are toggles that patch", %{
@@ -850,10 +850,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     } do
       run =
         projected(scope, [
-          {1, "run.started",
-           started_data(%{"wall" => "docker", "image" => "registry.example/agent:1"})},
-          {2, "runtime.result", %{"outcome" => "success", "result" => "done"}},
-          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "session.started", session_started_data(%{"image" => "registry.example/agent:1"})},
+          {3, "runtime.result", %{"outcome" => "success", "result" => "done"}},
+          {4, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
       {:ok, _lv, html} =
@@ -870,7 +870,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+          {2, "session.started", session_started_data()},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
       {:ok, _lv, html} =
@@ -882,7 +883,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     test "a running run with no session events, heard of over a minute ago: the hooks sentence",
          %{conn: conn, scope: scope} do
       ago = DateTime.add(DateTime.utc_now(), -120, :second)
-      run = projected(scope, [{1, "run.started", started_data(), time: ago}])
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(), time: ago},
+          {2, "session.started", session_started_data(), time: ago}
+        ])
+
       Apiary.Repo.update_all(Apiary.Runs.Run, set: [inserted_at: ago, last_event_at: ago])
 
       {:ok, lv, html} =
@@ -1028,8 +1035,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       run =
         projected(scope, [
-          {1, "run.started", started_data(%{"interactive" => true}), time: now},
-          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\n")}, time: now}
+          {1, "run.started", started_data(), time: now},
+          {2, "session.started", session_started_data(%{"interactive" => true}), time: now},
+          {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\n")}, time: now}
         ])
 
       :ok = Apiary.EditionStubs.HidesNamed.put([])
@@ -1038,18 +1046,18 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/terminal")
 
       project_more(run, [
-        {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("two\n")}, time: now}
+        {4, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("two\n")}, time: now}
       ])
 
       flush(lv)
-      assert_push_event(lv, "log_advanced", %{through: 3})
+      assert_push_event(lv, "log_advanced", %{through: 4})
 
       # The edition refuses the log from now on, with no change to the reader's place to
       # load the scope again: the page asks at each read, and pushes nothing.
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLog)
 
       project_more(run, [
-        {4, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("three\n")}, time: now}
+        {5, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("three\n")}, time: now}
       ])
 
       flush(lv)
@@ -1060,10 +1068,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     test "Details names no terminal size", %{conn: conn, scope: scope} do
       run =
         projected(scope, [
-          {1, "run.started",
-           started_data(%{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}})},
-          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}},
-          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+          {1, "run.started", started_data()},
+          {2, "session.started",
+           session_started_data(%{
+             "interactive" => true,
+             "terminal" => %{"cols" => 120, "rows" => 40}
+           })},
+          {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}},
+          {4, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
         ])
 
       path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network"
@@ -1085,15 +1097,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       walled =
         projected(scope, [
-          {1, "run.started",
-           started_data(%{"wall" => "docker", "image" => "registry.example/agent:1"})},
-          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "session.started", session_started_data(%{"image" => "registry.example/agent:1"})},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
       no_hooks =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+          {2, "session.started", session_started_data()},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
       sentences = [
@@ -1343,7 +1356,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert html =~ "Ended"
       assert html =~ "chunks"
-      assert html =~ "through #0100"
+      assert html =~ "through #0101"
       assert html =~ "The bytes as the runtime wrote them"
       assert has_element?(lv, "#terminal[data-sized='false'] [data-wrap]")
       refute has_element?(lv, "#terminal[data-cols]")
@@ -1393,11 +1406,15 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     } do
       run =
         projected(scope, [
-          {1, "run.started",
-           started_data(%{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}})},
-          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}},
-          {3, "run.resized", %{"cols" => 100, "rows" => 30}},
-          {4, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+          {1, "run.started", started_data()},
+          {2, "session.started",
+           session_started_data(%{
+             "interactive" => true,
+             "terminal" => %{"cols" => 120, "rows" => 40}
+           })},
+          {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}},
+          {4, "run.resized", %{"cols" => 100, "rows" => 30}},
+          {5, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
         ])
 
       {:ok, lv, html} =
@@ -1421,8 +1438,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       run =
         projected(scope, [
-          {1, "run.started", started_data(%{"interactive" => true}), time: now},
-          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\n")}, time: now}
+          {1, "run.started", started_data(), time: now},
+          {2, "session.started", session_started_data(%{"interactive" => true}), time: now},
+          {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\n")}, time: now}
         ])
 
       {:ok, lv, html} =
@@ -1433,13 +1451,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#terminal [data-follow][aria-pressed='true']")
 
       project_more(run, [
-        {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("two\n")}, time: now}
+        {4, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("two\n")}, time: now}
       ])
 
       html = flush(lv)
 
-      assert_push_event(lv, "log_advanced", %{through: 3})
-      assert html =~ "through #0003"
+      assert_push_event(lv, "log_advanced", %{through: 4})
+      assert html =~ "through #0004"
       assert html =~ "2 chunks"
     end
 
@@ -2084,9 +2102,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
-      assert has_element?(lv, "#e-25 .sr-only", "in Explore -demo-a1")
-      assert has_element?(lv, "#e-27 .sr-only", "in general-purpose -demo-a2")
-      refute has_element?(lv, "#e-11 .sr-only", "in ")
+      assert has_element?(lv, "#e-26 .sr-only", "in Explore -demo-a1")
+      assert has_element?(lv, "#e-28 .sr-only", "in general-purpose -demo-a2")
+      refute has_element?(lv, "#e-12 .sr-only", "in ")
     end
 
     test "earlier items are announced, and the list only says oldest first when it starts at the start",
@@ -2264,30 +2282,30 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       # the tools are listed on the policy applied, an item only where there is security
       if security?() do
-        assert has_element?(lv, "#e-2-tools", "files")
-        assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+        assert has_element?(lv, "#e-3-tools", "files")
+        assert has_element?(lv, "#e-3-tools", "files.tools.internal")
       else
-        refute has_element?(lv, "#e-2")
+        refute has_element?(lv, "#e-3")
       end
 
-      assert has_element?(lv, "#e-4-group .q-cx-sum .q-tool-name", "files")
-      assert has_element?(lv, "#e-4-group .q-cx-sum", "2 allowed requests")
-      refute render(element(lv, "#e-4-group .q-cx-sum")) =~ "calls"
-      assert has_element?(lv, "#e-4-cx-4 .q-outcome", "Answered 200")
-      assert has_element?(lv, "#e-4-cx-5 .q-outcome", "Answered 201")
+      assert has_element?(lv, "#e-5-group .q-cx-sum .q-tool-name", "files")
+      assert has_element?(lv, "#e-5-group .q-cx-sum", "2 allowed requests")
+      refute render(element(lv, "#e-5-group .q-cx-sum")) =~ "calls"
+      assert has_element?(lv, "#e-5-cx-5 .q-outcome", "Answered 200")
+      assert has_element?(lv, "#e-5-cx-6 .q-outcome", "Answered 201")
 
       assert has_element?(
                lv,
-               ~s(#e-4-cx-5 .q-dest[data-request-id="0a1b2c3d4e5f60718293a4b5c6d7e8f9"])
+               ~s(#e-5-cx-6 .q-dest[data-request-id="0a1b2c3d4e5f60718293a4b5c6d7e8f9"])
              )
 
       # The refused request is a separate denial, never folded into the group, and names
       # the tool only as the one it did not reach.
-      assert has_element?(lv, "#e-6-cx.q-cx-denied .q-dest", "files.tools.internal")
-      refute has_element?(lv, "#e-6-cx .q-dest-tool")
-      assert has_element?(lv, "#e-6-cx .q-for-tool", "files")
-      assert has_element?(lv, "#e-3-cx .q-dest", "api.example.com")
-      refute has_element?(lv, "#e-3-cx .q-dest-tool")
+      assert has_element?(lv, "#e-7-cx.q-cx-denied .q-dest", "files.tools.internal")
+      refute has_element?(lv, "#e-7-cx .q-dest-tool")
+      assert has_element?(lv, "#e-7-cx .q-for-tool", "files")
+      assert has_element?(lv, "#e-4-cx .q-dest", "api.example.com")
+      refute has_element?(lv, "#e-4-cx .q-dest-tool")
     end
 
     @tag needs: :security
@@ -3365,8 +3383,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     } do
       run =
         projected(scope, [
-          {1, "run.started", started_data(%{"runtime" => sent("make")})},
-          {2, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data(%{"runtime" => sent("make")})},
+          {3, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
         ])
 
       lv = open(conn, scope, run)
