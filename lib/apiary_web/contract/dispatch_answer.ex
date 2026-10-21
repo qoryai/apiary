@@ -5,8 +5,12 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # (`ApiaryWeb.Contract.PoolClaimController`) and the handover's
   # (`ApiaryWeb.Contract.HandoverController`): a run's target and its work item, as
   # `definitions.schema.json` has them, what a run of a step may do on its target, present
-  # together with the target or left out with it, and a time in UTC to the whole second.
+  # together with the target or left out with it, the machine type of the claim answer
+  # and the stack of the handover answer from the machines file
+  # (`Apiary.Dispatches.MachinesFile`), and a time in UTC to the whole second.
 
+  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Dispatches.MachinesFile
   alias Apiary.WorkItems
 
   # what_for/1 is the access, the target and the work item of an explore run, the access
@@ -20,10 +24,24 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   def what_for(%{work_item: work_item, run: run}),
     do: reach(run.step, target_of(work_item)) ++ [{"work_item", work_item(work_item)}]
 
+  # machine/1 is the `machine` member of the claim answer of a run of the workspace of the
+  # node pool's key `access_key`, which `Apiary.AccessKeys.fetch_for_verification/1`
+  # loads with its organisation and its workspace: the machine type of the workspace's
+  # entry in the machines file, or no member.
+  @doc false
+  @spec machine(AccessKey.t()) :: [{String.t(), String.t()}]
+  def machine(%AccessKey{organisation: organisation, workspace: workspace}) do
+    case MachinesFile.machine(organisation.slug, workspace.slug) do
+      nil -> []
+      machine -> [{"machine", machine}]
+    end
+  end
+
   # handover_body/1 is the handover answer's JSON (`handover-answer.schema.json`), its
   # members in the schema's order: `revision`, the run's `run_id`, its `run_key`, its
   # `step`, the workspace's `domain`, the run's `target` (nil for none), its `work_item`
-  # (nil for a prebuild), its `run_settings` (nil for none, a `Jason.OrderedObject`) and
+  # (nil for a prebuild), its `run_settings` (nil for none, a `Jason.OrderedObject`), its
+  # `stack` and `workflow` (nil for none, `Apiary.Dispatches.MachinesFile.stack/2`) and
   # its `inputs`. The controller sends it, and the handover measures it
   # (`Apiary.Dispatches.Handover`), so both read one encoding.
   @doc false
@@ -36,6 +54,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           target: %{system: String.t(), path: String.t()} | nil,
           work_item: Apiary.WorkItems.WorkItem.t() | nil,
           run_settings: Jason.OrderedObject.t() | nil,
+          stack: MachinesFile.stack() | nil,
           inputs: Jason.OrderedObject.t()
         }) :: binary
   def handover_body(%{} = answer) do
@@ -53,9 +72,19 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           {"domain", answer.domain}
         ] ++
           reach(answer.step, answer.target) ++
-          work_item ++ run_settings ++ [{"inputs", answer.inputs}]
+          work_item ++ run_settings ++ stack(answer.stack) ++ [{"inputs", answer.inputs}]
       )
     )
+  end
+
+  # The `stack` and the `workflow` of a handover answer, both or neither.
+  defp stack(nil), do: []
+
+  defp stack(%{url: url, commit: commit, path: path, workflow: workflow}) do
+    [
+      {"stack", Jason.OrderedObject.new([{"url", url}, {"commit", commit}, {"path", path}])},
+      {"workflow", workflow}
+    ]
   end
 
   # reach/2 is the `access` of a run of `step` and its `target`, both present for a run

@@ -352,7 +352,13 @@ handover answer have the run's `target` and its `access` together, or neither fo
 explore run whose work item has no target, which a workspace outside the software domain
 allows; a prebuild always has both. A handover answer also has `domain`, the name of the
 run's workspace's domain, and an explore run's input has the same `domain` and the same
-`target`, or no `target`, written from the same values as the answer. Its
+`target`, or no `target`, written from the same values as the answer. The machines file,
+a JSON file at the path `APIARY_MACHINES_FILE` is set to and read at boot
+(`Apiary.Dispatches.MachinesFile`), has an entry per workspace, by
+`<organisation slug>/<workspace slug>`: a claim answer has `machine`, the machine type of
+the entry of the run's workspace, and a handover answer has `stack` and `workflow`, the
+entry's stack and workflow, for every step. With the variable unset, or for a workspace
+without an entry or without that part of one, the answer leaves those members out. Its
 `handover.schema.json` has the handover register the run, and
 has the run endpoint refuse, under any key, a registration whose `run_id` is that of such a
 run, waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
