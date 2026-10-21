@@ -15,11 +15,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An instance admin can rename the product in Instance settings › General: the browser
   tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
   Apiary” beside it.
-- `deploy/aws/delete-kept.sh` deletes what a deleted test stack of the AWS template kept:
-  its key secrets, its log groups, and the snapshots its database left when the stack was
-  deleted and when an update replaced it. Without `--yes` it lists them and deletes
-  nothing; it refuses a stack that is not deleted and anything a stack that is not
-  deleted still uses, and says what is left after a delete.
 - An instance admin can change, in Instance settings › Configuration, how long the audit
   log keeps an entry and the IP address it came from, the grace period before a deleted
   workspace or organisation is purged, and the invitations an organisation makes a day:
@@ -30,10 +25,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   daily job, a new grace period to what is deleted after it, and a new number of
   invitations at once. Each change is an `instance.configure` entry in the trail of the
   instance's organisation, with the values before and after.
-- The AWS template's Advanced group has Features (optional), `Features`, passed as
-  `QORY_FEATURES` only when set. An Update with a new value starts a new task with it, and
-  a name Qory Apiary does not know rolls the update back. As with every field but the
-  download key, with Version empty, changing it also looks up the newest release.
 
 ### Changed
 
@@ -54,6 +45,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   characters are counted in code points, so a letter's accent marks count too. An account
   whose address already holds such a character still logs in with it. An invitation to an
   address with a NUL in it is refused with the address's error, not a server error.
+- The AWS CloudFormation template moved to qoryai/deploy. A Qory Apiary release no longer
+  attaches `apiary.yaml`.
 <!-- feature: secrets -->
 - An integration description is refused when it goes past the limits the integration
   contract states (1024 list entries, 1024 members in an object, 4096 values, strings of
