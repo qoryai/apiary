@@ -1,6 +1,6 @@
 # The commit of qoryai/forager whose contracts/forager/v1 the :contract tests replay, in
-# CI and in development (Apiary.ContractFixtures.contract_dir/0): a commit of a Forager
-# work branch after its release v0.7.0, pinned by its id, where an enrolment code's
+# CI and in development (Apiary.ContractFixtures.contract_dir/0): a commit of Forager's
+# main branch after its release v0.7.0, pinned by its id, where an enrolment code's
 # prefix names its node's kind (`qec[npgi]_`): the contract of Forager in three parts
 # over one core, the session, the gateway and the wall, with a gateway between the
 # session and Qory Apiary, every run's exit saying how the run ended, discovery listing
@@ -25,7 +25,7 @@
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-b5bfbc15aa56481c696c00140570d41dac6b0892
+072c240d154ceacd8fd1055cb9a63152c724f09f
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json
