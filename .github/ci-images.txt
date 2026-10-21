@@ -9,7 +9,7 @@
 # stays as it is until its line is changed: to take a newer build, put the newer digest
 # here, push, and then put it in the places that pull it.
 postgres-18 public.ecr.aws/docker/library/postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
-golang-1.27 public.ecr.aws/docker/library/golang:1.27@sha256:e432b43af23a9328d56a7c499be0476810aa344acbcf65fc7c455d4ff5a40602
+golang-1.27 public.ecr.aws/docker/library/golang:1.27@sha256:f24164268fc1e741bbdc0066dbadcf1c8426c5a8489f0729c02c3905a53032fd
 busybox-stable public.ecr.aws/docker/library/busybox:stable@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
 docker-dind public.ecr.aws/docker/library/docker:dind@sha256:0b6d18a4a222e71c88be6034926b4f6cde2fc33c2218643d03ccfddc65995470
 docker-29-dind public.ecr.aws/docker/library/docker:29-dind@sha256:0b6d18a4a222e71c88be6034926b4f6cde2fc33c2218643d03ccfddc65995470
