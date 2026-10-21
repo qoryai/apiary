@@ -184,6 +184,8 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       assert members(handover) == @handover ++ run_settings() ++ ~w(inputs)
     end
 
+    # The comments are smaller than the stack, so an answer measured without the stack
+    # passes the limit: 450 comments of 500 bytes, of which the input keeps the newest.
     test "keeps the handover answer within its limit with the stack at its caps", ctx do
       url = "https://forge.example.com/" <> String.duplicate("u", 2048 - 26)
       folder = String.duplicate("d/", 127) <> "e"
@@ -194,7 +196,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       work_item = explore!(ctx)
       at = DateTime.utc_now(:second)
 
-      for n <- 1..5 do
+      for n <- 1..450 do
         Repo.insert!(%Comment{
           organisation_id: work_item.organisation_id,
           item_id: work_item.item_id,
@@ -202,7 +204,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
           url: "https://forge.example.com/acme/shop/issues/12#c#{n}",
           author_name: "Avery Example",
           author_kind: :person,
-          body: "#{n} " <> String.duplicate("x", 60_000),
+          body: String.pad_trailing("#{n} ", 500, "x"),
           body_format: "markdown",
           source_created_at: DateTime.add(at, n, :second),
           source_updated_at: DateTime.add(at, n, :second)
@@ -214,11 +216,16 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       assert byte_size(handover) <= 200_000
       answer = Jason.decode!(handover)
       assert answer["stack"] == stack
+      comments = answer["inputs"]["comments"]
       assert answer["inputs"]["comments_omitted"] > 0
+      assert List.last(comments)["body"] =~ ~r/\A450 /
 
-      # One comment more would not fit.
-      one_more = byte_size(Jason.encode!(%{"body" => String.duplicate("x", 60_000)}))
-      assert byte_size(handover) + one_more > 200_000
+      # The input is cut no further than it must be: the room the budget keeps for the
+      # longest run key, plus one comment and its comma, would pass the limit. The comment
+      # left out next is older, so no longer, than the longest comment kept.
+      key_room = 2048 - byte_size(answer["run_key"])
+      comment = comments |> Enum.map(&byte_size(Jason.encode!(&1))) |> Enum.max()
+      assert byte_size(handover) + key_room + comment + 1 > 200_000
     end
   end
 
