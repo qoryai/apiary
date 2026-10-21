@@ -52,8 +52,8 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
-    # What the run runs, from its last `session.started`: `runtime` to `interactive` and
-    # `image` (`Apiary.Runs.Fold`).
+    # What the run runs, from its last `session.started` (`Apiary.Runs.Fold`): `runtime`,
+    # `runtime_version`, `command`, `args`, `dir`, `interactive` and `image`.
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string

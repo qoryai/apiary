@@ -147,6 +147,51 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert {download.resp_body, through(download), size(download)} == {"abcde", "8", nil}
     end
 
+    test "each session's start sets the size of the chunks after it", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = run_fixture(scope)
+
+      events_fixture(run, [
+        {1, "run.started", started_data()},
+        {2, "session.started",
+         session_started_data(%{
+           "session" => 1,
+           "interactive" => true,
+           "terminal" => %{"cols" => 120, "rows" => 40}
+         })},
+        drawn(3, "a"),
+        drawn(4, "b"),
+        drawn(5, "c"),
+        {6, "session.exited",
+         %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}},
+        {7, "session.started",
+         session_started_data(%{
+           "session" => 2,
+           "interactive" => true,
+           "terminal" => %{"cols" => 80, "rows" => 24}
+         })},
+        drawn(8, "d"),
+        drawn(9, "e")
+      ])
+
+      {:ok, run} = Projector.project(run)
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log"
+
+      # Session 1's chunks at its size, up to session 2's start.
+      first = get(conn, path)
+      assert {first.resp_body, through(first), size(first)} == {"abc", "7", "120x40"}
+
+      # From session 2's start: its size, to the end.
+      second = get(conn, "#{path}?after=7")
+      assert {second.resp_body, through(second), size(second)} == {"de", "9", "80x24"}
+
+      # Between the two starts, the first session's size, stopping at the second.
+      between = get(conn, "#{path}?after=4")
+      assert {between.resp_body, through(between), size(between)} == {"c", "7", "120x40"}
+    end
+
     test "a run without a size is answered as before: every chunk, no size", %{
       conn: conn,
       scope: scope

@@ -839,18 +839,21 @@ xterm.js as bytes, so a character cut in two is still one character.
 The size of the pseudo-terminal is in the record: `terminal` of each
 `dev.qory.session.started` (`cols`, `rows`, present exactly when `interactive` is true) and
 one `dev.qory.run.resized` per change, at the sequence where the new size took effect, so
-the chunks before it were written to the old size and the chunks after it to the new. The
-projection keeps the size the record last said, `runs.terminal_cols` and
-`runs.terminal_rows`, the later of the last session's start and the resizes by sequence; a resize whose data is not a size (an integer in 1 to 65535 each)
-changes nothing. The run page's Details shows it. A resize is not an item of the timeline: the
-terminal is where it matters.
+the chunks before it were written to the old size and the chunks after it to the new. A
+session's start sets the size the same way for the chunks after it. The projection keeps
+the size the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later
+of the last session's start and the last resize by sequence; a resize whose data is not a
+size (an integer in 1 to 65535 each) changes nothing. The run page's Details shows it. A
+resize is not an item of the timeline: the terminal is where it matters.
 
 The terminal tab replays at the recorded size. The bytes never cross the LiveView socket,
-so the sequence of the resizes has to reach the reader beside the bytes: the log endpoint
+so the sequence of the sizes has to reach the reader beside the bytes: the log endpoint
 answers one size at a time. `x-qory-log-size` (`<cols>x<rows>`) is the size in force right
-after `after`, the last resize at or below it, else the last session's start's; an answer stops short of
-the next resize, and once every chunk before it is sent, `x-qory-log-through` is the
-resize's sequence, so the next question is answered at the new size. The reader sets the
+after `after`: of the later of the last resize and the last session's start at or below
+it, else of the run's first session's start. An answer stops short of the next resize or
+the next session's start with a size, and once every chunk before it is sent,
+`x-qory-log-through` is that event's sequence, so the next question is answered at the
+new size. The reader sets the
 screen to each answer's size before writing its bytes, and xterm.js reflows as a terminal
 does. A resize that arrives after the chunks past it (delivery is in any order) is applied
 on the next load, not to what is already on the screen.
