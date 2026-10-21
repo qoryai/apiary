@@ -699,33 +699,29 @@ defmodule Apiary.Runs.Record.TimelineTest do
     test "Forager's own items and the session's simple ones" do
       items =
         build([
-          event(1, "run.started", %{
-            "runtime" => "claude",
-            "runtime_version" => "2.1",
-            "host" => "build-01",
-            "wall" => "docker"
-          }),
-          event(2, "run.policy_applied", %{
+          event(1, "run.started", %{"host" => "build-01", "wall" => "docker"}),
+          event(2, "session.started", %{"runtime" => "claude", "runtime_version" => "2.1"}),
+          event(3, "run.policy_applied", %{
             "mode" => "enforce",
             "allow" => ["a", "b"],
             "source" => "fetched",
             "terminated" => ["a"]
           }),
-          event(3, "runtime.started", %{"model" => "m", "source" => "startup", "cwd" => "/work"}),
-          event(4, "runtime.notification", %{
+          event(4, "runtime.started", %{"model" => "m", "source" => "startup", "cwd" => "/work"}),
+          event(5, "runtime.notification", %{
             "kind" => "permission_prompt",
             "message" => "needs permission"
           }),
-          event(5, "runtime.turn_failed", %{"error" => "rate_limit", "details" => "429"}),
-          event(6, "runtime.result", %{
+          event(6, "runtime.turn_failed", %{"error" => "rate_limit", "details" => "429"}),
+          event(7, "runtime.result", %{
             "outcome" => "success",
             "turns" => 7,
             "duration_ms" => 161_000,
             "cost_usd" => 0.42,
             "result" => "ok"
           }),
-          event(7, "runtime.ended", %{"reason" => "other"}),
-          event(8, "run.exited", %{
+          event(8, "runtime.ended", %{"reason" => "other"}),
+          event(9, "run.exited", %{
             "state" => "failed",
             "exit_code" => -1,
             "signal" => "SIGKILL",
@@ -734,7 +730,13 @@ defmodule Apiary.Runs.Record.TimelineTest do
         ])
 
       assert [
-               %{kind: :run_started, runtime: "claude", host: "build-01", wall: "docker"},
+               %{
+                 kind: :run_started,
+                 runtime: "claude",
+                 runtime_version: "2.1",
+                 host: "build-01",
+                 wall: "docker"
+               },
                %{
                  kind: :policy_applied,
                  mode: "enforce",
@@ -753,6 +755,33 @@ defmodule Apiary.Runs.Record.TimelineTest do
                %{kind: :session_ended, reason: "other"},
                %{kind: :run_exited, exit_code: -1, signal: "SIGKILL"}
              ] = items
+    end
+
+    test "the run's start shows the last session's runtime, and changes when one starts" do
+      started = event(1, "run.started", %{"host" => "build-01"})
+      first = event(2, "session.started", %{"runtime" => "claude", "runtime_version" => "2.1"})
+      second = event(5, "session.started", %{"runtime" => "codex", "runtime_version" => "0.52.0"})
+      slim = Map.new([started, first, second], &{&1.sequence, Timeline.slim(&1, 400)})
+
+      # No session yet: the runtime is not known.
+      index = index([started])
+      assert [%{kind: :run_started, session_seq: nil}] = index.items
+
+      assert [%{kind: :run_started, runtime: nil, runtime_version: nil, host: "build-01"}] =
+               Timeline.build(index.items, slim)
+
+      # Each session's start is no item; the run's start item links to the last one, and is
+      # changed, so a page builds it again.
+      index = Timeline.extend(index, light([first]))
+      assert [%{kind: :run_started, session_seq: 2, seqs: [1, 2]}] = index.items
+      assert [%{runtime: "claude", runtime_version: "2.1"}] = Timeline.build(index.items, slim)
+
+      index = Timeline.extend(index, light([second]))
+      assert [%{kind: :run_started, session_seq: 5, seqs: [1, 5]}] = index.items
+      assert Timeline.needed(index.items) == [1, 5]
+      assert [%{runtime: "codex", runtime_version: "0.52.0"}] = Timeline.build(index.items, slim)
+      assert "dev.qory.session.started" in Timeline.types()
+      assert Timeline.kind("dev.qory.session.started") == nil
     end
 
     test "data of the wrong shape reads as absent, never as a crash" do

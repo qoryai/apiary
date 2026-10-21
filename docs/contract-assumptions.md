@@ -156,7 +156,7 @@ first refusal that applies is the answer:
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
+| `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is absent or not `run`, or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `409` | the subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, and the key reaches no run under it: before the handover no key does; after it, a key reaches the run when it is a key of the run's workspace, or a gateway's that may serve the run's workspace (`Apiary.Gateways.may_serve?/2`), and keeps the answer it had. Such a run is opened only by its handover (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
@@ -836,24 +836,27 @@ pseudo-terminal it is one redraw, 4096 bytes or a quiet gap of 50 ms after the r
 last write, never inside a character. The terminal of the run page hands the bytes to
 xterm.js as bytes, so a character cut in two is still one character.
 
-The size of the pseudo-terminal is in the record: `terminal` of `dev.qory.run.started`
-(`cols`, `rows`, present exactly when `interactive` is true) and one `dev.qory.run.resized`
-per change, at the sequence where the new size took effect, so the chunks before it were
-written to the old size and the chunks after it to the new. The projection keeps the size
-the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later of the start
-and the resizes by sequence; a resize whose data is not a size (an integer in 1 to 65535 each)
-changes nothing. The run page's Details shows it. A resize is not an item of the timeline: the
-terminal is where it matters.
+The size of the pseudo-terminal is in the record: `terminal` of each
+`dev.qory.session.started` (`cols`, `rows`, present exactly when `interactive` is true) and
+one `dev.qory.run.resized` per change, at the sequence where the new size took effect, so
+the chunks before it were written to the old size and the chunks after it to the new. A
+session's start sets the size the same way for the chunks after it. The projection keeps
+the size the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later
+of the last session's start and the last resize by sequence; a resize whose data is not a
+size (an integer in 1 to 65535 each) changes nothing. The run page's Details shows it. A
+resize is not an item of the timeline: the terminal is where it matters.
 
 The terminal tab replays at the recorded size. The bytes never cross the LiveView socket,
-so the sequence of the resizes has to reach the reader beside the bytes: the log endpoint
+so the sequence of the sizes has to reach the reader beside the bytes: the log endpoint
 answers one size at a time. `x-qory-log-size` (`<cols>x<rows>`) is the size in force right
-after `after`, the last resize at or below it, else the start's; an answer stops short of
-the next resize, and once every chunk before it is sent, `x-qory-log-through` is the
-resize's sequence, so the next question is answered at the new size. The reader sets the
-screen to each answer's size before writing its bytes, and xterm.js reflows as a terminal
-does. A resize that arrives after the chunks past it (delivery is in any order) is applied
-on the next load, not to what is already on the screen.
+after `after`: of the later of the last resize and the last session's start at or below
+it, else of the run's first session's start, and absent inside a session on pipes. An
+answer stops short of the next resize or the next session's start, and once every chunk
+before it is sent, `x-qory-log-through` is that event's sequence, so the next question is
+answered at the new size. The reader sets the screen to each answer's size before writing
+its bytes, and xterm.js reflows as a terminal does. A resize that arrives after the chunks
+past it (delivery is in any order) is applied on the next load, not to what is already on
+the screen.
 
 A run without a size is a run on pipes: the endpoint sends no size header and the page fits
 the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never
@@ -861,14 +864,22 @@ the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `s
 
 ## What opened a run
 
-A Forager session opens every run. `dev.qory.run.started` says so, in `opened_by`, which
-the contract requires and holds to `session`, and carries the runtime, the command, its
-arguments, the directory and whether it is interactive, with the host, the terminal's
-size, the wall and the image where they apply; the run's `dev.qory.run.exited` carries
-`state` and `exit_code`. A start whose `opened_by` is anything else, or that carries a
+Every run is opened once, by Forager's open of the run, before any session joins it.
+`dev.qory.run.started` says so, in `opened_by`, which the contract requires and holds
+to `run`, and carries the host, the wall where there is one, the labels and `about`. A
+start whose `opened_by` is absent or anything else, `session` included, or that carries a
 `credential` member, which the contract's schema refuses, is refused with its whole batch,
-a signed `400` `invalid_request` (`Apiary.Runs.Batch`). A start that leaves `opened_by`
-out is read as a session's.
+a signed `400` `invalid_request` (`Apiary.Runs.Batch`).
+
+Each session that joins the run has a `dev.qory.session.started`, numbered from 1 in
+`session`, with the runtime, the command, its arguments, the directory and whether it is
+interactive, with the terminal's size and the image where they apply, and a
+`dev.qory.session.exited`, how the session ended. A join that was refused has a
+`dev.qory.session.exited` alone. Both types are stored like every other. The projection
+reads the runtime, its version, the command, its arguments, the directory, whether it is
+interactive and the image from the `dev.qory.session.started` with the highest sequence,
+and folds nothing from `dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's
+`dev.qory.run.exited`, one per run, carries `state` and `exit_code`.
 
 A run through a gateway belongs to the node that registered it, with that node's instance
 and key: a gateway is a separate kind of node, whose key is refused at registration
@@ -883,9 +894,9 @@ Every `dev.qory.run.exited` carries `state`, how the run ended: `succeeded`, it 
 `cancelled`, it was stopped before it said how it went. It may carry `reason`, why: an open
 code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's codes are reserved:
-`timeout`, `stopped`, `interrupted`, `session_lost`, `gateway_lost`, `batch_refused` and
-`run_closed`, and so are old names Forager no longer writes, which records written before
-may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
+`timeout`, `interrupted`, `no_session`, `stopped`, `session_lost`, `gateway_lost`,
+`batch_refused` and `run_closed`, and so are old names Forager no longer writes, which
+records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
 starter gave, carried as given. Events are read as untrusted, so a `state` other than the
@@ -932,6 +943,7 @@ Forager's codes, and the words Qory Apiary says for each
 | `gateway_lost` | the gateway was lost before the run's exit was recorded; the exit is written when the record is sent again | Lost | end not recorded |
 | `batch_refused` | the gateway refused a batch of the session's, and ended the run | Failed | events refused |
 | `run_closed` | nothing: the session's record alone holds it, the gateway's `410` to a run already ended there | by its `state` | none |
+| `no_session` | the run was closed with no session started, after its host work failed, such as a fetch or a compose; `exit_code` is `-1` | Failed | no session: the code, its `_` read as a space |
 
 A record written before may hold an old name, read in these words:
 

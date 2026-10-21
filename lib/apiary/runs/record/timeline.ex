@@ -21,7 +21,8 @@ defmodule Apiary.Runs.Record.Timeline do
   *while*, never *because*. A call whose end the record lacks stops being open when its
   agent's turn ends, its subagent finishes, the session ends or starts again, or the run
   exits: from there on a connection is a separate item. Heartbeats, log chunks, the
-  ping and types this module has not heard of are not items.
+  ping, a session's start and end, and types this module has not heard of are not
+  items; the run's start shows the runtime of the last session's start.
 
   Everything that comes out of an event is Forager's input and is treated as such:
   strings are bounded, what one item loads is bounded (#{100} connections inside a call),
@@ -55,6 +56,10 @@ defmodule Apiary.Runs.Record.Timeline do
     "runtime.result" => :result,
     "runtime.ended" => :session_ended
   }
+
+  # A session's start makes no item: the run's start reads what the run runs from the
+  # last one (`run_started/2`).
+  @session_started "session.started"
 
   # The session reads this one from the runtime's output; every other `runtime.` event
   # comes from a hook.
@@ -101,7 +106,7 @@ defmodule Apiary.Runs.Record.Timeline do
   def max_argument, do: @max_argument
 
   @doc "The event types the index needs, with the `dev.qory.` prefix."
-  def types, do: Enum.map(Map.keys(@kinds), &(@prefix <> &1))
+  def types, do: Enum.map([@session_started | Map.keys(@kinds)], &(@prefix <> &1))
 
   @doc "The kind of item an event type makes, or nil when it makes none."
   def kind(@prefix <> type), do: Map.get(@kinds, type)
@@ -150,7 +155,7 @@ defmodule Apiary.Runs.Record.Timeline do
     state =
       Enum.reduce(events, state, fn event, state ->
         state = %{state | through: max(state.through, event.sequence)}
-        state = background(state, event)
+        state = state |> background(event) |> run_started(event)
 
         case kind(event.type) do
           nil -> state
@@ -210,6 +215,9 @@ defmodule Apiary.Runs.Record.Timeline do
       tasks: [],
       # the sequence of the last policy applied, for the reload that follows it
       policy_seq: nil,
+      # the item seq of the run's start, and the sequence of the last session's start
+      run_started_seq: nil,
+      session_seq: nil,
       through: 0
     }
   end
@@ -428,6 +436,14 @@ defmodule Apiary.Runs.Record.Timeline do
     end
   end
 
+  # The run's start, with the last session's start folded so far: a later one replaces it
+  # (`run_started/2`).
+  defp place(state, :run_started, event) do
+    state
+    |> push(:run_started, event, %{session_seq: state.session_seq})
+    |> Map.put(:run_started_seq, event.sequence)
+  end
+
   # A policy applied after the first is a reload: it remembers the one before it, which is
   # what its delta is taken against.
   defp place(state, :policy_applied, event) do
@@ -510,6 +526,7 @@ defmodule Apiary.Runs.Record.Timeline do
           denied_inside: false,
           started_seq: nil,
           previous_seq: nil,
+          session_seq: nil,
           lane: lane,
           open_rails: rails,
           opens: false,
@@ -604,7 +621,9 @@ defmodule Apiary.Runs.Record.Timeline do
 
         _ ->
           [item.seq | inner] ++
-            List.wrap(item.end_seq) ++ List.wrap(item.started_seq) ++ List.wrap(item.previous_seq)
+            List.wrap(item.end_seq) ++
+            List.wrap(item.started_seq) ++
+            List.wrap(item.previous_seq) ++ List.wrap(item.session_seq)
       end
 
     item
@@ -652,6 +671,21 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   defp background(state, _event), do: state
+
+  ## The run's start
+
+  # A session's start is kept as the last one, and the run's start item, when there is one,
+  # links to it: the item changes, so a page that shows it builds it again.
+  defp run_started(state, %{type: @prefix <> @session_started, sequence: sequence}) do
+    state = %{state | session_seq: sequence}
+
+    case state.run_started_seq do
+      nil -> state
+      seq -> update_item(state, seq, &%{&1 | session_seq: sequence})
+    end
+  end
+
+  defp run_started(state, _event), do: state
 
   defp task_id(task) do
     case task["id"] do
@@ -702,8 +736,15 @@ defmodule Apiary.Runs.Record.Timeline do
   @doc "The sequences `build/3` needs for these light items: at most #{@max_inner + 2} each."
   def needed(light), do: light |> Enum.flat_map(& &1.seqs) |> Enum.uniq()
 
-  defp body(%{kind: :run_started}, event, _events, _limit),
-    do: Map.take(event, [:runtime, :runtime_version, :host, :wall])
+  # The host and the wall are the run's start's; the runtime and its version are the last
+  # session's start's, nil before a session started.
+  defp body(%{kind: :run_started} = item, event, events, _limit) do
+    session = (item.session_seq && events[item.session_seq]) || %{}
+
+    event
+    |> Map.take([:host, :wall])
+    |> Map.merge(%{runtime: session[:runtime], runtime_version: session[:runtime_version]})
+  end
 
   defp body(%{kind: :policy_applied} = item, event, events, _limit) do
     previous = item[:previous_seq] && events[item.previous_seq]

@@ -63,7 +63,7 @@ defmodule Apiary.Runs.Outcome do
   # never writes, and `released`, which Qory sets itself for a run its starter released
   # (`Apiary.Runs.Fold.settle/1`): a starter's outcome may not give one.
   @reserved ~w(
-    timeout interrupted quiet credential_expired stopped session_lost gateway_lost
+    timeout interrupted no_session quiet credential_expired stopped session_lost gateway_lost
     batch_refused credential_check_unreachable credential_check_invalid run_closed
     run_ended_at_issuer issuer_unreachable issuer_answer_invalid released
   )

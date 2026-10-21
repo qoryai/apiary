@@ -47,7 +47,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
   defp received(scope, key) do
     subject = Ecto.UUID.generate()
     events = wire(subject)
-    assert %{status: 202, inserted: 13} = deliver(key, events)
+    assert %{status: 202, inserted: 14} = deliver(key, events)
 
     run =
       Repo.one!(
@@ -95,7 +95,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
     assert %{status: 410} = deliver(key, Enum.take(events, 3))
 
     # A new event of the run is no more welcome than an old one.
-    assert %{status: 410} = deliver(key, [wire_event(run.node_run_id, 15, "run.heartbeat", %{})])
+    assert %{status: 410} = deliver(key, [wire_event(run.node_run_id, 16, "run.heartbeat", %{})])
 
     {:ok, _run} = Projector.project(run)
     assert state(run) == before
@@ -113,22 +113,22 @@ defmodule Apiary.Runs.IngestPrunedTest do
     {run, events} = received(scope, key)
     prune(scope, %{log_retention_days: 30})
     before = state(run)
-    assert %{events: 11, chunks: 0} = before
+    assert %{events: 12, chunks: 0} = before
 
-    assert %{status: 202, inserted: 0, duplicates: 13, conflicts: 0} = deliver(key, events)
+    assert %{status: 202, inserted: 0, duplicates: 14, conflicts: 0} = deliver(key, events)
 
     {:ok, _run} = Projector.project(run)
     assert state(run) == before
 
     # A log event the run never sent is not kept either; another event still is.
     late = [
-      wire_event(run.node_run_id, 15, "run.log", %{"stream" => "stdout", "bytes" => "bGF0ZQo="}),
-      wire_event(run.node_run_id, 16, "run.heartbeat", %{"elapsed_seconds" => 90})
+      wire_event(run.node_run_id, 16, "run.log", %{"stream" => "stdout", "bytes" => "bGF0ZQo="}),
+      wire_event(run.node_run_id, 17, "run.heartbeat", %{"elapsed_seconds" => 90})
     ]
 
     assert %{status: 202, inserted: 1, duplicates: 1} = deliver(key, late)
     {:ok, _run} = Projector.project(run)
-    assert %{events: 12, chunks: 0} = state(run)
+    assert %{events: 13, chunks: 0} = state(run)
   end
 
   test "the endpoint answers 410 with the digests in force and an empty body", %{

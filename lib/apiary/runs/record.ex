@@ -28,7 +28,7 @@ defmodule Apiary.Runs.Record do
 
   @policy_applied "dev.qory.run.policy_applied"
   @runtime_started "dev.qory.runtime.started"
-  @started "dev.qory.run.started"
+  @session_started "dev.qory.session.started"
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
   @list_types ["dev.qory.runtime.turn_finished", "dev.qory.runtime.subagent_finished"]
@@ -681,53 +681,79 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The size of the terminal the chunks right after `after_sequence` were written to:
-  `{cols, rows}`, the last `dev.qory.run.resized` at or below it, else `terminal` of
-  `dev.qory.run.started`; nil when the record says none, a run on pipes or one recorded
-  before Forager reported the size. A size is read like the fold reads it.
+  `{cols, rows}`, of the later by sequence of the last `dev.qory.run.resized` and the last
+  `dev.qory.session.started` at or below it, a session's start giving its `terminal`;
+  with neither, the `terminal` of the first `dev.qory.session.started`. Each session's
+  start sets the size its chunks are written to. Nil when the record says none, a run on
+  pipes or one recorded before Forager reported the size. A size is read like the fold
+  reads it.
   """
   def terminal_size(%Scope{} = scope, %Run{} = run, after_sequence) do
-    resized =
+    last =
       Repo.one(
         from e in events(scope, run),
-          where: e.type == @resized and e.sequence <= ^after_sequence,
+          where: e.type in [@resized, @session_started] and e.sequence <= ^after_sequence,
           order_by: [desc: e.sequence],
           limit: 1,
-          select: e.data
+          select: {e.type, e.data}
       )
 
-    started =
-      resized ||
+    case last do
+      {type, data} ->
+        size(sizing(type, data))
+
+      nil ->
         Repo.one(
           from e in events(scope, run),
-            where: e.type == @started,
-            order_by: [desc: e.sequence],
+            where: e.type == @session_started,
+            order_by: e.sequence,
             limit: 1,
             select: fragment("? -> 'terminal'", e.data)
         )
-
-    size(started)
+        |> size()
+    end
   end
 
   @doc """
-  The first `dev.qory.run.resized` after `after_sequence` that is a size, `%{sequence,
-  cols, rows}`, or nil: where a read of the log has to stop, since the chunks after it
-  were written to a terminal of another size.
+  The first event after `after_sequence` that sets a size, `%{sequence, cols, rows}`, or
+  nil: a `dev.qory.run.resized` that is a size, or any `dev.qory.session.started` other
+  than the run's first, whose `cols` and `rows` are nil when it is on pipes. It is where a
+  read of the log has to stop, since the chunks after it were written to a terminal of
+  another size, or to none. The run's first session's start is the size from the log's
+  beginning (`terminal_size/3`), so a read does not stop there.
   """
   def next_resize(%Scope{} = scope, %Run{} = run, after_sequence) do
+    first_start =
+      Repo.one(
+        from e in events(scope, run),
+          where: e.type == @session_started,
+          order_by: e.sequence,
+          limit: 1,
+          select: e.sequence
+      ) || 0
+
     Repo.all(
       from e in events(scope, run),
-        where: e.type == @resized and e.sequence > ^after_sequence,
+        where:
+          e.sequence > ^after_sequence and
+            (e.type == @resized or (e.type == @session_started and e.sequence > ^first_start)),
         order_by: e.sequence,
         limit: @resizes_read,
-        select: {e.sequence, e.data}
+        select: {e.sequence, e.type, e.data}
     )
-    |> Enum.find_value(fn {sequence, data} ->
-      case size(data) do
-        {cols, rows} -> %{sequence: sequence, cols: cols, rows: rows}
-        nil -> nil
+    |> Enum.find_value(fn {sequence, type, data} ->
+      case {type, size(sizing(type, data))} do
+        {_type, {cols, rows}} -> %{sequence: sequence, cols: cols, rows: rows}
+        {@session_started, nil} -> %{sequence: sequence, cols: nil, rows: nil}
+        {_resized, nil} -> nil
       end
     end)
   end
+
+  # The size of each: a resize's data, a session's start's `terminal`.
+  defp sizing(@session_started, %{"terminal" => terminal}), do: terminal
+  defp sizing(@session_started, _data), do: nil
+  defp sizing(_resized, data), do: data
 
   defp size(%{"cols" => cols, "rows" => rows})
        when is_integer(cols) and cols in 1..@max_cells and is_integer(rows) and

@@ -31,7 +31,7 @@ defmodule Mix.Tasks.Apiary.PruneTest do
     assert_received {:mix_shell, :info,
                      ["No workspace has a retention setting: nothing to prune."]}
 
-    assert events(run) == 14
+    assert events(run) == 15
   end
 
   test "--dry-run counts and deletes nothing; without it the job prunes and records", %{
@@ -44,15 +44,15 @@ defmodule Mix.Tasks.Apiary.PruneTest do
     assert_received {:mix_shell, :info, [line]}
 
     assert line =~
-             "workspace #{workspace.id}: would prune 1 runs: 14 events, 2 log chunks (12 bytes)"
+             "workspace #{workspace.id}: would prune 1 runs: 15 events, 2 log chunks (12 bytes)"
 
-    assert events(run) == 14
+    assert events(run) == 15
     assert Retention.list_retention_runs(scope) == []
 
     Prune.run(["--batch", "5"])
     assert_received {:mix_shell, :info, [line]}
-    assert line =~ "workspace #{workspace.id}: pruned 1 runs: 14 events"
+    assert line =~ "workspace #{workspace.id}: pruned 1 runs: 15 events"
     assert events(run) == 0
-    assert [%{trigger: "manual", events_deleted: 14}] = Retention.list_retention_runs(scope)
+    assert [%{trigger: "manual", events_deleted: 15}] = Retention.list_retention_runs(scope)
   end
 end

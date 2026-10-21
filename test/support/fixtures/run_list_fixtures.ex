@@ -11,7 +11,7 @@ defmodule Apiary.RunListFixtures do
   @doc """
   A run that started `ago:` seconds ago (default 60) with `labels`, projected. Options:
   `about:` (what `run.started` says the run is about, such as `%{"title" => "Fix the
-  build"}`), `runtime:`, `host:`, `egress:` (a list of overrides of `egress_data/1`), `exit:` (the
+  build"}`), `runtime:` (of its `session.started`), `host:`, `egress:` (a list of overrides of `egress_data/1`), `exit:` (the
   data of `run.exited`), `heartbeat:` `{seconds_ago_received, elapsed, interval}`, `now:`
   the moment `ago:` and the heartbeat count back from (default the clock), for a test that
   reads by UTC day: a clock just after midnight would put a run of a minute ago on
@@ -24,14 +24,16 @@ defmodule Apiary.RunListFixtures do
 
     extra =
       opts
-      |> Keyword.take([:about, :runtime, :host])
+      |> Keyword.take([:about, :host])
       |> Map.new(fn {k, v} -> {to_string(k), v} end)
 
     data = started_data(Map.put(extra, "labels", labels))
+    session = if runtime = opts[:runtime], do: %{"runtime" => runtime}, else: %{}
 
     event_fixture(run, 2, "run.started", data, time: time)
+    event_fixture(run, 3, "session.started", session_started_data(session), time: time)
 
-    for {egress, n} <- Enum.with_index(Keyword.get(opts, :egress, []), 3) do
+    for {egress, n} <- Enum.with_index(Keyword.get(opts, :egress, []), 4) do
       event_fixture(run, n, "run.egress", egress_data(egress),
         time: DateTime.add(time, n, :second)
       )

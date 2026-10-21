@@ -64,23 +64,36 @@ defmodule Apiary.Runs.FoldTest do
       "run.started",
       Map.merge(
         %{
-          "opened_by" => "session",
+          "opened_by" => "run",
           "credential" => "none",
+          "forager_version" => "v0.4.0",
+          "host" => "dev-laptop",
+          "wall" => "docker",
+          "labels" => %{
+            "forge" => "git.example.com",
+            "repository" => "acme/shop",
+            "task" => "issue-12"
+          }
+        },
+        extra
+      )
+    )
+  end
+
+  defp session_started(sequence, extra \\ %{}) do
+    event(
+      sequence,
+      "session.started",
+      Map.merge(
+        %{
+          "session" => 1,
           "runtime" => "claude",
           "runtime_version" => "2.1.0",
           "command" => "claude",
           "args" => ["-p", "fix the build"],
           "dir" => "/work",
           "interactive" => false,
-          "forager_version" => "v0.4.0",
-          "host" => "dev-laptop",
-          "wall" => "docker",
-          "image" => "example/agent:1",
-          "labels" => %{
-            "forge" => "git.example.com",
-            "repository" => "acme/shop",
-            "task" => "issue-12"
-          }
+          "image" => "example/agent:1"
         },
         extra
       )
@@ -169,19 +182,32 @@ defmodule Apiary.Runs.FoldTest do
 
       assert run.state == "running"
       assert run.started_at == at(2)
-      assert run.runtime == "claude"
-      assert run.runtime_version == "2.1.0"
-      assert run.command == "claude"
-      assert run.args == ["-p", "fix the build"]
-      assert run.dir == "/work"
-      assert run.interactive == false
       assert run.forager_version == "v0.4.0"
       assert run.host == "dev-laptop"
       assert run.wall == "docker"
-      assert run.image == "example/agent:1"
       assert run.target_system == "git.example.com"
       assert run.target_path == "acme/shop"
       assert run.labels["task"] == "issue-12"
+    end
+
+    test "says nothing of what the run runs: that is a session's start" do
+      runtime = %{
+        "runtime" => "claude",
+        "command" => "claude",
+        "args" => ["-p", "fix the build"],
+        "dir" => "/work",
+        "interactive" => true,
+        "terminal" => %{"cols" => 120, "rows" => 40},
+        "image" => "example/agent:1"
+      }
+
+      %{run: run, latest: latest} = Fold.fold(@run, [started(2, runtime)])
+
+      assert {run.runtime, run.command, run.args, run.dir, run.interactive, run.image} ==
+               {nil, nil, [], nil, nil, nil}
+
+      assert {run.terminal_cols, run.terminal_rows} == {nil, nil}
+      refute Map.has_key?(latest, "terminal")
     end
 
     test "the workspace's domain names the target, by its own labels" do
@@ -205,19 +231,68 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run} = Fold.fold(run, [started(2)], %{"dev.qory.run.exited" => 9})
 
       assert run.state == "completed"
-      assert run.runtime == "claude"
+      assert run.host == "dev-laptop"
     end
 
     test "arriving for a lost run, the run is running and no longer lost" do
       %{run: run} = Fold.fold(%{@run | state: "lost", lost_at: at(100)}, [started(2)])
       assert {run.state, run.lost_at} == {"running", nil}
     end
+  end
+
+  describe "dev.qory.session.started" do
+    test "fills what the run runs, and leaves the state" do
+      %{run: run} = Fold.fold(@run, [session_started(3)])
+
+      assert run.state == "pending"
+      assert run.started_at == nil
+      assert run.runtime == "claude"
+      assert run.runtime_version == "2.1.0"
+      assert run.command == "claude"
+      assert run.args == ["-p", "fix the build"]
+      assert run.dir == "/work"
+      assert run.interactive == false
+      assert run.image == "example/agent:1"
+    end
+
+    test "of two sessions, the last by sequence decides every member, in any order" do
+      first = session_started(3, pty(120, 40))
+
+      second =
+        session_started(8, %{
+          "session" => 2,
+          "runtime" => "codex",
+          "runtime_version" => "0.52.0",
+          "command" => "codex",
+          "args" => ["exec", "fix the build"],
+          "dir" => "/work/api"
+        })
+        |> Map.update!(:data, &Map.delete(&1, "image"))
+
+      events = [started(2), first, second]
+
+      for order <- [events, Enum.reverse(events)] do
+        %{run: run} = Fold.fold(@run, order)
+
+        assert {run.runtime, run.runtime_version, run.command, run.args, run.dir} ==
+                 {"codex", "0.52.0", "codex", ["exec", "fix the build"], "/work/api"}
+
+        assert {run.interactive, run.image, run.terminal_cols, run.terminal_rows} ==
+                 {false, nil, nil, nil}
+
+        assert run.host == "dev-laptop"
+      end
+
+      %{run: run, latest: latest} = Fold.fold(@run, [started(2), second])
+      %{run: run} = Fold.fold(run, [first], latest)
+      assert run.runtime == "codex"
+    end
 
     test "on a pseudo-terminal it says the terminal's size; on pipes there is none" do
-      %{run: run} = Fold.fold(@run, [started(2, pty(120, 40))])
+      %{run: run} = Fold.fold(@run, [session_started(3, pty(120, 40))])
       assert {run.interactive, run.terminal_cols, run.terminal_rows} == {true, 120, 40}
 
-      %{run: run} = Fold.fold(@run, [started(2)])
+      %{run: run} = Fold.fold(@run, [session_started(3)])
       assert {run.terminal_cols, run.terminal_rows} == {nil, nil}
     end
 
@@ -229,9 +304,43 @@ defmodule Apiary.Runs.FoldTest do
             %{"cols" => 120},
             "120x40"
           ] do
-        %{run: run} = Fold.fold(@run, [started(2, %{"terminal" => terminal})])
+        %{run: run} = Fold.fold(@run, [session_started(3, %{"terminal" => terminal})])
         assert {run.terminal_cols, run.terminal_rows} == {nil, nil}
       end
+    end
+
+    test "its ranks are its type's and the terminal's" do
+      assert Fold.ranks("dev.qory.session.started") == ["dev.qory.session.started", "terminal"]
+      assert Fold.ranks("dev.qory.run.started") == ["dev.qory.run.started", "forager_version"]
+    end
+  end
+
+  describe "dev.qory.session.exited" do
+    test "is folded into nothing, a refused join's alone included" do
+      refused = %{
+        "session" => 1,
+        "state" => "failed",
+        "exit_code" => -1,
+        "reason" => "image_unknown",
+        "duration_ms" => 0
+      }
+
+      ended = %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 900}
+
+      for data <- [refused, ended] do
+        acc = Fold.fold(@run, [event(4, "session.exited", data)])
+
+        assert acc.run == @run
+        assert acc.latest == %{}
+        assert {acc.connections, acc.log_chunks} == {%{}, []}
+        assert Fold.ranks("dev.qory.session.exited") == []
+      end
+
+      %{run: run} =
+        Fold.fold(@run, [started(2), session_started(3), event(9, "session.exited", ended)])
+
+      assert {run.state, run.exited_at, run.exit_code, run.reason} ==
+               {"running", nil, nil, nil}
     end
   end
 
@@ -291,7 +400,7 @@ defmodule Apiary.Runs.FoldTest do
         assert {run.about_kind, run.about_title, run.about_subjects, run.about_details} ==
                  {nil, nil, [], nil}
 
-        assert run.runtime == "claude"
+        assert run.host == "dev-laptop"
       end
     end
 
@@ -579,7 +688,7 @@ defmodule Apiary.Runs.FoldTest do
 
   describe "dev.qory.run.resized" do
     test "moves the run to the new size, the later by sequence deciding in any order" do
-      events = [started(2, pty(120, 40)), resized(6, 100, 30), resized(9, 80, 24)]
+      events = [session_started(2, pty(120, 40)), resized(6, 100, 30), resized(9, 80, 24)]
 
       for order <- [
             events,
@@ -595,9 +704,11 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run} = Fold.fold(@run, [resized(9, 80, 24)])
       assert {run.terminal_cols, run.terminal_rows} == {80, 24}
 
-      # The start and an earlier resize arrive after: neither takes the size back.
+      # The session's start and an earlier resize arrive after: neither takes the size back.
       %{run: run} =
-        Fold.fold(run, [started(2, pty(120, 40)), resized(6, 100, 30)], %{"terminal" => 9})
+        Fold.fold(run, [session_started(2, pty(120, 40)), resized(6, 100, 30)], %{
+          "terminal" => 9
+        })
 
       assert {run.terminal_cols, run.terminal_rows} == {80, 24}
       assert run.interactive == true
@@ -606,7 +717,7 @@ defmodule Apiary.Runs.FoldTest do
     test "a resize that is not a size changes nothing, and does not take the rank" do
       %{run: run, latest: latest} =
         Fold.fold(@run, [
-          started(2, pty(120, 40)),
+          session_started(2, pty(120, 40)),
           resized(6, 0, 30),
           event(7, "run.resized", %{})
         ])
@@ -615,10 +726,15 @@ defmodule Apiary.Runs.FoldTest do
       assert latest["terminal"] == 2
     end
 
-    test "its ranks are the terminal's, shared with the start" do
+    test "its ranks are the terminal's, shared with a session's start" do
       assert Fold.ranks("dev.qory.run.resized") == ["terminal"]
-      assert "terminal" in Fold.ranks("dev.qory.run.started")
-      assert Fold.rank_types("terminal") == ["dev.qory.run.started", "dev.qory.run.resized"]
+      assert "terminal" in Fold.ranks("dev.qory.session.started")
+      refute "terminal" in Fold.ranks("dev.qory.run.started")
+
+      assert Fold.rank_types("terminal") == [
+               "dev.qory.session.started",
+               "dev.qory.run.resized"
+             ]
     end
   end
 
@@ -1229,6 +1345,18 @@ defmodule Apiary.Runs.FoldTest do
       end
     end
 
+    test "no_session: a run closed with no session started is failed, with that reason" do
+      exit = exited(9, %{"state" => "failed", "reason" => "no_session", "exit_code" => -1})
+      %{run: run} = Fold.fold(@run, [started(2), exit])
+
+      assert {run.state, run.reason, run.exit_state, run.exit_reason} ==
+               {"failed", "no_session", "failed", "no_session"}
+
+      assert {run.exit_code, run.exited_at, run.lost_at} == {-1, at(9), nil}
+      assert {run.runtime, run.command} == {nil, nil}
+      assert Fold.exit_state("failed", "no_session") == "failed"
+    end
+
     test "a state other than the three, and a reason that is not a code, read as absent" do
       long = "a" <> String.duplicate("b", 63)
 
@@ -1495,7 +1623,7 @@ defmodule Apiary.Runs.FoldTest do
       do: Map.merge(@run, %{outcome_state: state, outcome_reason: reason})
 
     test "decides the state and reason in any order, the exit's facts kept beside it" do
-      started = event(2, "run.started", %{"opened_by" => "session"})
+      started = event(2, "run.started", %{"opened_by" => "run"})
       beat = event(3, "run.heartbeat", %{"elapsed_seconds" => 1})
 
       exited =
