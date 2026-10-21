@@ -32,6 +32,9 @@ scripts/changelog-section.sh X.Y.Z
 grep 'version: "X.Y.Z"' mix.exs
 ```
 
+A released version is never deleted or published again: a Compose install pulls
+`ghcr.io/qoryai/apiary` by the version in `APIARY_VERSION`.
+
 Before a release, `.github/workflows/prerelease.yml` publishes pre-release images. It runs
 only by hand: from the Actions tab, for the branch it is run on or the ref it is given,
 once the workflow is on the default branch; or by pushing a commit to the branch
