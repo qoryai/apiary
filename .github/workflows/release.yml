@@ -13,7 +13,7 @@ permissions:
 # image's build is ci.yml's: the same labels, build arguments and cache.
 # Nothing else publishes this image; prerelease.yml, run by hand or by a push to the branch
 # prerelease, publishes pre-release images to another package,
-# ghcr.io/qoryai/apiary-prerelease. The AWS CloudFormation template is in qoryai/deploy.
+# ghcr.io/qoryai/apiary-prerelease.
 #
 # env.example has no leading period: GitHub renames asset names with a leading period.
 jobs:

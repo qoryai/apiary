@@ -45,8 +45,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   characters are counted in code points, so a letter's accent marks count too. An account
   whose address already holds such a character still logs in with it. An invitation to an
   address with a NUL in it is refused with the address's error, not a server error.
-- The AWS CloudFormation template moved to qoryai/deploy. A Qory Apiary release no longer
-  attaches `apiary.yaml`.
+- The AWS CloudFormation template is removed. A Qory Apiary release no longer attaches
+  `apiary.yaml`.
 <!-- feature: secrets -->
 - An integration description is refused when it goes past the limits the integration
   contract states (1024 list entries, 1024 members in an object, 4096 values, strings of

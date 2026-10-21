@@ -32,15 +32,6 @@ scripts/changelog-section.sh X.Y.Z
 grep 'version: "X.Y.Z"' mix.exs
 ```
 
-The AWS CloudFormation template is in [qoryai/deploy](https://github.com/qoryai/deploy),
-with the script that writes its release and test copies, and its checks. A Qory Apiary
-release attaches no template.
-
-A released version is never deleted: a stack of the AWS template pins the image's digest
-and pulls it again each time its task is replaced. Pushing a released tag again does not
-change a running stack, but deleting the version from `ghcr.io/qoryai/apiary` stops that
-stack at its next task replacement.
-
 Before a release, `.github/workflows/prerelease.yml` publishes pre-release images. It runs
 only by hand: from the Actions tab, for the branch it is run on or the ref it is given,
 once the workflow is on the default branch; or by pushing a commit to the branch
@@ -50,5 +41,4 @@ push to any other branch or on a schedule. It builds the image as `release.yml` 
 pushes it to `ghcr.io/qoryai/apiary-prerelease` alone, as `sha-` and the commit's first
 seven characters, and as `next` when the ref is `next`. That package stays private: GHCR
 sets visibility per package, so pre-release tags never sit beside a release's. Its old
-`sha-` tags are deleted by hand. A test stack of the AWS template's test copy runs such an
-image, under Test image.
+`sha-` tags are deleted by hand.

@@ -143,9 +143,8 @@ what they describe changes them in the same pull request.
 How a release is made is in [docs/releases.md](docs/releases.md). A tag `vX.Y.Z` runs
 `.github/workflows/release.yml`, which publishes the image `ghcr.io/qoryai/apiary` as
 `X.Y.Z`, `X.Y` and `latest`, and the GitHub release with `compose.yaml` and `env.example`
-attached, which the README's Run it downloads. The AWS CloudFormation template is in
-[qoryai/deploy](https://github.com/qoryai/deploy). Pre-release images go
-to `ghcr.io/qoryai/apiary-prerelease`, a private package and not a place to install from:
+attached, which the README's Run it downloads. Pre-release images go to
+`ghcr.io/qoryai/apiary-prerelease`, a private package and not a place to install from:
 only releases are installed.
 
 ## Pull requests
