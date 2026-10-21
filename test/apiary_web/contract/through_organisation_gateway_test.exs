@@ -60,7 +60,7 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
     )
   end
 
-  defp run(run_id), do: Repo.one!(from r in Run, where: r.run_id == ^run_id)
+  defp run(run_id), do: Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
 
   defp now, do: ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!()
 
@@ -135,7 +135,7 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
       {subject, events} = first_events()
       conn = deliver(ctx.gateway_key, events)
       assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
-      refute Repo.exists?(from r in Run, where: r.run_id == ^subject)
+      refute Repo.exists?(from r in Run, where: r.node_run_id == ^subject)
     end
   end
 
@@ -245,7 +245,7 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
       run = run(run_id)
 
       {Repo.aggregate(from(e in Apiary.Runs.Event, where: e.run_id == ^run.id), :count),
-       Repo.aggregate(from(d in Apiary.Runs.Delivery, where: d.run_id == ^run_id), :count)}
+       Repo.aggregate(from(d in Apiary.Runs.Delivery, where: d.node_run_id == ^run_id), :count)}
     end
 
     # The batch refused: signed, no digest, and nothing of it stored.
@@ -362,7 +362,7 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
       {run_id, _run_key} = attached(ctx)
       {delivery, events} = accepted(ctx, run_id)
 
-      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [events_pruned_at: DateTime.utc_now()]
       )
 

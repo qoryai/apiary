@@ -31,7 +31,7 @@ defmodule ApiaryWeb.UserLive.Confirmation do
       <Layouts.auth_heading>
         {if @user.confirmed_at,
           do: gettext("Welcome back"),
-          else: gettext("Welcome to Qory Apiary")}
+          else: gettext("Welcome to %{name}", name: Apiary.ProductName.name())}
         <:subtitle><span class="break-all">{@user.email}</span></:subtitle>
       </Layouts.auth_heading>
 

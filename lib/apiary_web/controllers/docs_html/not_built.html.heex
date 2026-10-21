@@ -15,7 +15,9 @@
         )
       } />
       <:actions>
-        <.button navigate={~p"/"}>{gettext("Back to Qory Apiary")}</.button>
+        <.button navigate={~p"/"}>
+          {gettext("Back to %{name}", name: Apiary.ProductName.name())}
+        </.button>
       </:actions>
     </.empty_state>
   </div>

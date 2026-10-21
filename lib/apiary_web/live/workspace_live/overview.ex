@@ -54,6 +54,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Enrolment
+  alias Apiary.Days
   alias Apiary.Gateways
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -199,7 +200,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                     )
                   } />
                 </span>
-                {gettext("Days in UTC.")}
                 <span class="q-live-on">{gettext("Updated as batches land.")}</span>
                 <span class="q-live-off">{gettext("Reconnecting.")}</span>
                 <span :if={@connections == :unavailable} id="activity-uncounted">
@@ -233,7 +233,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             policy_failed?={!!@failed[:policy]}
             workspace={@current_scope.workspace}
             retention={@retention}
-            now={@now}
           />
         </div>
       </div>
@@ -273,7 +272,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         live?: posted?,
         landed: nil,
         now: now,
-        today: DateTime.to_date(now),
+        today: Format.today(now),
         onboarding: if(posted?, do: nil, else: read_onboarding(scope)),
         command: nil,
         table?: false,
@@ -288,7 +287,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         target_count: 0,
         shared: MapSet.new(),
         retention: nil,
-        days: empty_days(DateTime.to_date(now)),
+        days: empty_days(Format.today(now)),
         facts: nil,
         drift: %{},
         connections: nil,
@@ -337,9 +336,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp read(socket, :activity) do
     %{current_scope: scope, today: today, security?: security?} = socket.assigns
+    zone = Format.time_zone()
 
     start_async(socket, :activity, fn ->
-      read_activity(scope, today, DateTime.utc_now(), security?)
+      read_activity(scope, today, zone, DateTime.utc_now(), security?)
     end)
   end
 
@@ -378,8 +378,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   ## The reads. Each runs in its own task; nothing here touches the socket.
 
-  defp read_activity(scope, today, now, security?) do
-    from = start_of(Date.add(today, -(@thresholds.chart_days - 1)))
+  defp read_activity(scope, today, zone, now, security?) do
+    from = Days.start_of(Date.add(today, -(@thresholds.chart_days - 1)), zone)
     alive_runs = Runs.list_alive(scope, @shown)
 
     %{
@@ -393,11 +393,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # Today's column and the alive runs again: what a run change can move.
-  defp read_today(scope, today, now, security?) do
+  defp read_today(scope, today, zone, now, security?) do
     alive_runs = Runs.list_alive(scope, @shown)
 
     %{
-      today: Runs.day_facts(scope, start_of(today)),
+      today: Runs.day_facts(scope, Days.start_of(today, zone)),
       alive_runs: alive_runs,
       drift: drift_facts(scope, alive_runs, security?),
       alive: Runs.count_alive(scope),
@@ -477,7 +477,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       with_rules: Enum.count(targets, &(&1.rule_count > 0)),
       following: Enum.count(targets, &is_nil(&1.own_mode)),
       own: own,
-      # The one target the guard may name, named as it is addressed: one read, or none.
+      # The one target the guard may name, named in its notation: one read, or none.
       shared: Runs.shared_paths(scope, for(%{target: t} <- own, length(own) == 1, do: t.path)),
       version: version,
       allow_rules: Enum.count(rules, &(&1.kind == "host" and &1.action == "allow")),
@@ -513,30 +513,39 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       versions = Policy.newest_versions(scope, [nil | holders])
       targets = Map.new(holders, &{&1, holder_of(scope, &1)})
 
-      # A target's versions are at its address, its system there only where its path is
-      # shared: one read for the targets of the runs that are behind.
-      shared = Runs.shared_paths(scope, for({_id, %{path: path}} <- targets, do: path))
+      # A run given a composed document reports its digest: it is behind when it is not
+      # what the run would be answered now, and its version is the configuration it was
+      # composed from.
+      composed =
+        Policy.policy_digests(scope, Enum.map(reported, & &1.reported_run_configuration_digest))
 
       for run <- reported,
           in_force = versions[run.target_id] || versions[nil],
-          in_force.digest != run.reported_run_configuration_digest,
+          answered(scope, run, in_force) != run.reported_run_configuration_digest,
+          digest = run.reported_run_configuration_digest,
+          digest = Map.get(composed, digest, digest),
           into: %{} do
         holder = run.target_id && targets[run.target_id]
 
         reported_version =
-          case Policy.configuration_for_digest(
-                 scope,
-                 holder,
-                 run.reported_run_configuration_digest
-               ) do
-            {:ok, configuration} -> version_map(scope, configuration, holder, shared)
+          case Policy.configuration_for_digest(scope, holder, digest) do
+            {:ok, configuration} -> version_map(scope, configuration, holder)
             _ -> nil
           end
 
-        {run.id,
-         %{in_force: version_map(scope, in_force, holder, shared), reported: reported_version}}
+        {run.id, %{in_force: version_map(scope, in_force, holder), reported: reported_version}}
       end
     end
+  end
+
+  # What the run would be answered now: the version in force, composed for a run that may
+  # be given a composed document (one given an image, one whose start was kept, or a run
+  # of the queue, which may be a prebuild); the version's digest for any other, read
+  # without its document.
+  defp answered(scope, run, in_force) do
+    if run.configured_image || run.started_image_from || run.dispatch_run_id,
+      do: Policy.answered_digest(scope, run) || in_force.digest,
+      else: in_force.digest
   end
 
   defp holder_of(_scope, nil), do: nil
@@ -550,9 +559,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   # A target's version is on its Policy tab: `holder` is the run's target, the one target
   # a run's versions are of; no path when it could not be read.
-  defp version_map(scope, configuration, holder, shared) do
+  defp version_map(scope, configuration, holder) do
     holder = if configuration.target_id, do: holder
-    shared = holder != nil and MapSet.member?(shared, holder.path)
 
     %{
       n: configuration.version,
@@ -560,11 +568,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       rendered_at: configuration.rendered_at,
       target_id: configuration.target_id,
       holder: holder,
-      shared: shared,
       path:
         if(configuration.target_id && is_nil(holder),
           do: nil,
-          else: Rules.version_path(scope, holder, configuration.version, %{}, shared)
+          else: Rules.version_path(scope, holder, configuration.version)
         )
     }
   end
@@ -824,21 +831,23 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp drop_command(socket), do: socket
 
   # The coalesced re-read: today's column, the alive rows, the last runs, the lost runs. At
-  # midnight UTC the window has moved: the fourteen days are read anew.
+  # the reader's midnight the window has moved: the fourteen days are read anew.
   defp refresh_runs(%{assigns: %{live?: true}} = socket) do
     %{current_scope: scope, today: today, security?: security?} = socket.assigns
     now = DateTime.utc_now()
+    zone = Format.time_zone()
+    local_today = Days.today(zone, now)
 
-    if Date.compare(DateTime.to_date(now), today) == :gt do
-      new_today = DateTime.to_date(now)
-
+    if Date.compare(local_today, today) == :gt do
       socket
-      |> assign(today: new_today)
+      |> assign(today: local_today)
       |> then(
-        &start_async(&1, :activity, fn -> read_activity(scope, new_today, now, security?) end)
+        &start_async(&1, :activity, fn ->
+          read_activity(scope, local_today, zone, now, security?)
+        end)
       )
     else
-      start_async(socket, :today, fn -> read_today(scope, today, now, security?) end)
+      start_async(socket, :today, fn -> read_today(scope, today, zone, now, security?) end)
     end
   end
 
@@ -1068,7 +1077,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     reached =
       Runs.destination_targets(scope, @denied_filters, {item.host, item.port, item.path})
 
-    # Each target named as it is addressed: one read of the paths the panel names.
+    # Each target named in its notation: one read of the paths the panel names.
     shared =
       Runs.shared_paths(
         scope,
@@ -1249,14 +1258,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       for run <- assigns.lost ++ Enum.filter(runs, &(&1.state == "lost")),
           run.lost_at && DateTime.compare(run.lost_at, since_lost) != :lt,
           uniq: true,
-          do: %{id: "att-run-#{run.run_id}", kind: :lost, run: run, at: run.lost_at}
+          do: %{id: "att-run-#{run.public_id}", kind: :lost, run: run, at: run.lost_at}
 
     alive = assigns.alive_runs || []
 
     quiet =
       for run <- alive, seconds = quiet_for(run, now), is_integer(seconds) do
         %{
-          id: "att-run-#{run.run_id}",
+          id: "att-run-#{run.public_id}",
           kind: :quiet,
           run: run,
           at: run.last_heartbeat_at || run.inserted_at
@@ -1269,7 +1278,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           DateTime.diff(now, in_force.rendered_at, :second) >
             @thresholds.behind_intervals * beat(run) do
         %{
-          id: "att-run-#{run.run_id}",
+          id: "att-run-#{run.public_id}",
           kind: :behind,
           run: run,
           at: in_force.rendered_at,
@@ -1345,14 +1354,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp compare_path(scope, in_force, %{n: m, target_id: same})
        when same == in_force.target_id and (is_nil(same) or in_force.holder != nil),
-       do:
-         Rules.version_path(
-           scope,
-           in_force.holder,
-           in_force.n,
-           %{"compare" => m},
-           in_force.shared
-         )
+       do: Rules.version_path(scope, in_force.holder, in_force.n, %{"compare" => m})
 
   defp compare_path(_scope, in_force, _reported), do: in_force.path
 
@@ -1687,8 +1689,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp add_cost(sum, nil), do: sum
   defp add_cost(sum, cost), do: Decimal.add(sum, cost)
 
-  defp start_of(%Date{} = day), do: DateTime.new!(day, ~T[00:00:00.000000], "Etc/UTC")
-
   ## Small things
 
   # The latest struct of every run the page has seen, by row id: what a resolution reads.
@@ -1772,10 +1772,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
-  # What became of a run that ended while it was on the list; a name an older release stored
-  # reads as its new state.
+  # What became of a run that ended while it was on the list.
   defp ended(state) do
-    case Run.current_state(state) do
+    case state do
       "completed" -> gettext("Completed.")
       "failed" -> gettext("Failed.")
       "cancelled" -> gettext("Cancelled.")

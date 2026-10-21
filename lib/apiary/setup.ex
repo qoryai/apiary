@@ -180,10 +180,10 @@ defmodule Apiary.Setup do
   set_up/3 sets the instance up with `code`: the instance's first sign-up,
   `Apiary.Organisations.sign_up_user/3` with `first_only: true` and `actor: :instance`,
   in one transaction that also checks the code under the row's lock and marks it used.
-  `attrs` are the sign-up form's: `email`, `organisation_name`, `password` and
-  `password_confirmation`. It creates the instance's organisation, its workspace Main
-  and the account as its owner, and the edition's part of a first sign-up applies
-  (`:first_sign_up`).
+  `attrs` are the sign-up form's: `email`, `organisation_name`, `password`,
+  `password_confirmation`, and `domain`, Main's domain, the default domain without one.
+  It creates the instance's organisation, its workspace Main and the account as its
+  owner, and the edition's part of a first sign-up applies (`:first_sign_up`).
 
   Answers `{:ok, map}` as the sign-up does; `{:error, :already_set_up}` once the instance
   is set up, a set-up a moment before included; `{:error, :invalid_code}` for a code that
@@ -191,7 +191,10 @@ defmodule Apiary.Setup do
 
   `password: :required` asks for a password, as the set-up page does; by default it is
   required while the instance sends no email (`Apiary.Mail.configured?/0`), as a
-  person's sign-up's is, and optional once it does; a password given is kept either way. `origin:` is where the set-up comes from, for its entry
+  person's sign-up's is, and optional once it does; a password given is kept either way.
+  `domain: :required` asks for Main's domain, as the set-up page does; without it, a
+  sign-up with no domain makes Main of the default domain. `origin:` is where the set-up
+  comes from, for its entry
   (`Apiary.Accounts.Scope.put_origin/2`); `Apiary.Setup` when none is given.
   """
   @spec set_up(String.t(), map, keyword) ::
@@ -215,6 +218,7 @@ defmodule Apiary.Setup do
                actor: :instance,
                setup_code: code,
                password: password,
+               domain: Keyword.get(opts, :domain, :optional),
                origin: Keyword.get(opts, :origin) || %{worker: "Apiary.Setup"}
              ) do
           {:ok, _signed_up} = done -> done

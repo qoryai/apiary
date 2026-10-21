@@ -31,7 +31,9 @@ defmodule Apiary.AccessCase do
 
   - `actors/0`, its actors;
   - `rows/0`, `[{action, keyword}]`: `yes:`, the actors that may, and `on:`, what the
-    action is asked of when it is not what `Apiary.Access.Action` says (`asked_of`). A
+    action is asked of when it is not what `Apiary.Access.Action` says (`asked_of`), or
+    `:adapter`, the adapter beside the place, a node of kind `:adapter` of the instance
+    (the place's `adapter`). A
     row of an action another module has too adds its `yes:` to the other's: an edition's
     row of a core action names the edition's actors that may;
   - `setup/1`, given what the modules before it made (`%{places: %{}, scopes: %{}}`),
@@ -221,14 +223,16 @@ defmodule Apiary.AccessCase do
   end
 
   # The scope that asks and what it asks about. `feature_off` and `hidden` ask as whoever
-  # the action is for, an owner, an access key or the instance; everyone else as
-  # themselves, in the place their module says, of what the action is asked of there: the
-  # organisation, the workspace, a new organisation, or the member's account, another than
-  # the asker's.
+  # the action is for, an owner, an adapter's key, an access key, a pool's key or the
+  # instance; everyone else as themselves, in the place their module says, of what the
+  # action is asked of there: the organisation, the workspace, a new organisation, or the
+  # member's account, another than the asker's.
   defp asked(ctx, modules, action, actor) when actor in [:feature_off, :hidden] do
     actor =
       cond do
+        :adapter_key in Access.action(action).roles -> :adapter_key
         :access_key in Access.action(action).roles -> :access_key
+        :pool_key in Access.action(action).roles -> :pool_key
         :instance in Access.action(action).roles -> :instance
         true -> :owner
       end
@@ -254,6 +258,7 @@ defmodule Apiary.AccessCase do
       :workspace -> place.workspace
       :new_organisation -> %Organisation{}
       :account -> ctx.scopes.member.user
+      :adapter -> place.adapter
     end
   end
 

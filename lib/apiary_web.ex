@@ -86,6 +86,9 @@ defmodule ApiaryWeb do
       # The domain's words: the locale follows the scope the live_session loaded.
       on_mount ApiaryWeb.Lingo
 
+      # The product's name on the instance, read once for the page (Apiary.ProductName).
+      on_mount ApiaryWeb.ProductName
+
       unquote(html_helpers(router, gettext))
     end
   end
@@ -143,6 +146,8 @@ defmodule ApiaryWeb do
       import ApiaryWeb.PageComponents
       # Whole translated sentences with marked-up parts
       import ApiaryWeb.RichText
+      # A text of one line an external system sent, isolated and shown safely
+      import ApiaryWeb.ExternalText
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

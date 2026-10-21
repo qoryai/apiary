@@ -4,17 +4,24 @@ defmodule Apiary.PublicId do
   an underscore, then 16 lowercase Crockford base32 characters, 80 random bits, as
   `ak_0123456789abcdef`. Crockford's alphabet leaves out `i`, `l`, `o` and `u`, so an id
   read aloud or copied by hand is not mistaken. The prefix says what the id names:
-  `ak` an access key, `sec` a stored secret, `nd` a node, `np` a node pool and `ws` a
-  workspace.
+  `ak` an access key, `sec` a stored secret, `nd` a node, `np` a node pool, `rn` a run,
+  `tg` a target and `ws` a workspace.
   """
+
+  # `cm` names a comment on a work item (`Apiary.WorkItems.Comment`), a part of Qory the
+  # documentation leaves out.
 
   # Crockford base32 without the ambiguous letters i, l, o, u.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"
 
+  # The module that gives the 10 random bytes: `:crypto`. Only the test configuration
+  # names another, to make an id collide (`config/test.exs`).
+  @random Application.compile_env(:apiary, [__MODULE__, :random], :crypto)
+
   @doc "generate/1 is a fresh id with `prefix`: `prefix`, `_`, 16 random characters."
   @spec generate(String.t()) :: String.t()
   def generate(prefix) when is_binary(prefix) do
-    random = :crypto.strong_rand_bytes(10)
+    random = @random.strong_rand_bytes(10)
     prefix <> "_" <> for(<<chunk::5 <- random>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
   end
 
@@ -24,8 +31,10 @@ defmodule Apiary.PublicId do
     size = byte_size(prefix)
 
     case id do
+      # Byte by byte: the alphabet is ASCII, so a byte outside it, the first byte of a
+      # character that takes more than one, or bytes that are not UTF-8 at all, is refused.
       <<^prefix::binary-size(^size), "_", rest::binary-size(16)>> ->
-        rest |> String.to_charlist() |> Enum.all?(&(&1 in @alphabet))
+        for <<byte <- rest>>, reduce: true, do: (ok -> ok and byte in @alphabet)
 
       _other ->
         false

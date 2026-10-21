@@ -47,7 +47,7 @@ being one. Every variable named here is described in [Install and configure](ins
   organisation's name does the same.
   [Install and configure](install.md#set-up-a-new-instance) has both.
 <!-- feature: secrets -->
-- **Where integrations come from.** A workspace adds an integration from a release on
+- **Where integrations come from.** An organisation adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
   `description.json`, which may be on any host; Qory Apiary fetches it from public addresses
   only. On an instance open to people you do not know, set
@@ -77,7 +77,8 @@ being one. Every variable named here is described in [Install and configure](ins
   until the instance is set up: that line is how you get it.
 - **Sign-up.** Once the instance is set up, nobody signs up without an invitation: people
   join by invitation from an owner or an admin on the organisation's **People** page, as
-  members. `INVITATIONS_PER_DAY` bounds how many invitations the organisation makes a day.
+  members. An instance admin sets how many invitations the organisation makes a day in
+  **Instance settings › Configuration**, unless `INVITATIONS_PER_DAY` is set.
   [Install and configure](install.md#sign-up-and-invitations) has the details.
 - **Stopping someone.** An owner suspends an admin or a member on the organisation's
   **People** page, and an admin a member, and activates them again; nothing is removed.

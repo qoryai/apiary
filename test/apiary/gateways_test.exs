@@ -693,7 +693,7 @@ defmodule Apiary.GatewaysTest do
 
     defp attach(%{gateway_key: key}, {run, run_key}) do
       {:ok, body} = Attach.parse(attach_body(run_key))
-      {:ok, %{run: attached}} = Attach.attach(key, run.run_id, body, %{})
+      {:ok, %{run: attached}} = Attach.attach(key, run.node_run_id, body, %{})
       attached
     end
 
@@ -766,8 +766,8 @@ defmodule Apiary.GatewaysTest do
         attach_by: DateTime.add(now, -1, :second)
       )
 
-      {cancelled_old_name, _run_key} = register(through)
-      set(cancelled_old_name, state: "timed_out")
+      {cancelled, _run_key} = register(through)
+      set(cancelled, state: "cancelled")
       # Refused at its start: failed, with no exit and no outcome, as the fold stores it.
       refused = attach(through, register(through))
       set(refused, state: "failed", refused_at: now)

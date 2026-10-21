@@ -1,14 +1,14 @@
 defmodule ApiaryWeb.PolicyLive.Target do
   @moduledoc """
   A target's view of the workspace's policy, the Policy tab of the target's page
-  (`ApiaryWeb.TargetLive.Show`, `…/-/policy`): the effective list, one row per host in
+  (`ApiaryWeb.TargetLive.Show`, `…/tg_…/policy`): the effective list, one row per host in
   force with where it came from, the rules that lost hung under the rule that beat them;
-  the hosts the harness declared; the target's history (`…/-/policy/history`),
-  versions (`…/-/policy/versions/:n`, with `/export`) and the document in force
-  (`…/-/policy/document`: the target's version, or the workspace's while it is served the
+  the hosts the harness declared; the target's history (`…/tg_…/policy/history`),
+  versions (`…/tg_…/policy/versions/:n`, with `/export`) and the document in force
+  (`…/tg_…/policy/document`: the target's version, or the workspace's while it is served the
   workspace's, shown in place under the mode card and read again after a change); and
-  the New rule and Edit rule pages of its rules (`…/-/policy/rules/new`,
-  `…/-/policy/rules/:id/edit`, `ApiaryWeb.PolicyComponents.rule_form/1`), which go back
+  the New rule and Edit rule pages of its rules (`…/tg_…/policy/rules/new`,
+  `…/tg_…/policy/rules/:id/edit`, `ApiaryWeb.PolicyComponents.rule_form/1`), which go back
   to the list as it was left.
 
   Not a separate page: the target's page mounts it with the target it found in the current
@@ -36,8 +36,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
   @doc """
   mount/3 is the tab's assigns for `target`, a target of the scope's workspace, and the
   subscription to the policy's changes. `shared` is whether the target's path is shared
-  by another target of the workspace, as its page's address says; read once when nil.
-  The tab names and addresses the target by it. The tab is read once, by the connected
+  by another target of the workspace, as its page reads it; read once when nil. The tab
+  names the target by it, and addresses it by its public id. The tab is read once, by the connected
   mount: the first render is its skeleton.
   """
   def mount(socket, target, shared \\ nil) do
@@ -51,17 +51,18 @@ defmodule ApiaryWeb.PolicyLive.Target do
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(composer_open: false, summary: nil, would: nil, params: %{}, shown: nil)
       |> assign(:version_base, nil)
+      # The rule form's Paths row, drawn where the instance has `path_rules`.
+      |> assign(:path_rules, Apiary.Features.on?(:path_rules))
 
     if connected?(socket),
       do: socket |> load() |> assign(loaded: true, network: network_path(socket, target)),
       else: assign(socket, loaded: false)
   end
 
-  # What the target's runs reached: Network access narrowed to the target, its system in
-  # the address only where another system has the same path.
+  # What the target's runs reached: Network access narrowed to the target, by its id.
   defp network_path(socket, target) do
     scope = socket.assigns.current_scope
-    params = Filters.target_params(target.system, target.path, socket.assigns.holder_shared)
+    params = Filters.target_params([target.public_id])
     ~p"/#{scope.organisation}/#{scope.workspace}/network?#{params}"
   end
 
@@ -158,7 +159,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     case Enum.find(changes, &(&1.action == "mode_changed")) do
       %{after: %{"mode" => mode}} = change when mode in ~w(observe enforce) ->
         %{
-          by: ApiaryWeb.People.short(ApiaryWeb.People.email(change.changed_by)),
+          by: ApiaryWeb.People.email(change.changed_by),
           at: change.inserted_at
         }
 
@@ -666,7 +667,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     end
   end
 
-  # The target in words, as it is addressed (`Common.holder_name/1`).
+  # The target in words, in its notation (`Common.holder_name/1`).
   defp name(socket), do: Common.holder_name(socket)
 
   # After an act on a row, focus stays on the row: its menu, when it is on the page.
@@ -756,7 +757,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
         queued={length(@queue)}
         editing={@rule_edit && @rule_edit.host}
         error={@write_error}
+        error_field={@write_error_field}
         cancel={Common.cancel_path(assigns)}
+        paths={@path_rules}
         host_placeholder={gettext("mcp.acme.example")}
       >
         <:description>
@@ -901,7 +904,13 @@ defmodule ApiaryWeb.PolicyLive.Target do
         summary={@summary}
         now={@now}
       />
-      <.version_view :if={@action == :version && @v} v={@v} base={@base} now={@now} />
+      <.version_view
+        :if={@action == :version && @v}
+        v={@v}
+        base={@base}
+        now={@now}
+        reader={@current_scope.user.email}
+      />
       <Show.version_head
         :if={@action == :document && @v}
         v={@v}
@@ -915,6 +924,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         v={@v}
         base={@version_base}
         now={@now}
+        reader={@current_scope.user.email}
       />
       <.export_page
         :if={@action == :export && @v && @export}
@@ -1044,7 +1054,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
               else: "pending"
           } />
           <span class="q-dest">
-            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
+            <.external_text text={destination.host} /><span :if={destination.path} class="text-muted"><.external_text text={
+              destination.path
+            } /></span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,

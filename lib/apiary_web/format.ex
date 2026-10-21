@@ -198,14 +198,19 @@ defmodule ApiaryWeb.Format do
     if this_year?(at, now), do: short_date(at), else: date(at)
   end
 
-  @doc "A time of day: \"14:03\", or \"14:03:11\" with `seconds: true`."
+  @doc """
+  A time of day: "14:03", or "14:03:11" with `seconds: true`. With `zone: true` it names
+  the time zone: "14:03 UTC".
+  """
   @spec time(moment() | nil, keyword()) :: String.t() | nil
   def time(at, opts \\ [])
   def time(nil, _opts), do: nil
 
   def time(at, opts) do
     style = if opts[:seconds], do: :medium, else: :short
-    Cldr.Time.to_string!(local(at), backend: Backend, locale: locale(), format: style)
+    local = local(at)
+    text = Cldr.Time.to_string!(local, backend: Backend, locale: locale(), format: style)
+    if opts[:zone], do: with_zone(text, local), else: text
   end
 
   @doc """
@@ -268,16 +273,26 @@ defmodule ApiaryWeb.Format do
   @doc """
   A timestamp as people say it, up to seven days back ("2 minutes ago", "Yesterday,
   17:20", "3 days ago"), then its date.
+
+  Options:
+
+    * `case: :inline` is the form for a time that follows other words in a sentence:
+      "just now" and "yesterday, 17:20", in lower case. The other forms are the same in
+      both cases. The default, `case: :start`, is the form that starts a sentence or
+      stands alone.
   """
-  @spec time_ago(moment(), DateTime.t()) :: String.t()
-  def time_ago(at, now \\ DateTime.utc_now()) do
+  @spec time_ago(moment(), DateTime.t(), keyword()) :: String.t()
+  def time_ago(at, now \\ DateTime.utc_now(), opts \\ []) do
     seconds = max(DateTime.diff(now, utc(at), :second), 0)
     days = days_back(at, now)
+    inline? = Keyword.get(opts, :case, :start) == :inline
 
     cond do
+      seconds < 60 and inline? -> gettext("just now")
       seconds < 60 -> gettext("Just now")
       seconds < 3600 -> ago(div(seconds, 60), :minute)
       days <= 0 -> ago(div(seconds, 3600), :hour)
+      days == 1 and inline? -> gettext("yesterday, %{time}", time: time(at))
       days == 1 -> gettext("Yesterday, %{time}", time: time(at))
       days <= 7 -> ago(days, :day)
       true -> date(at)
@@ -334,8 +349,17 @@ defmodule ApiaryWeb.Format do
   midnight in the reader's time zone.
   """
   @spec days_back(moment(), moment()) :: integer()
-  def days_back(at, now),
-    do: Date.diff(DateTime.to_date(local(now)), DateTime.to_date(local(at)))
+  def days_back(at, now) do
+    zone = time_zone()
+    Date.diff(Apiary.Days.day_of(now, zone), Apiary.Days.day_of(at, zone))
+  end
+
+  @doc """
+  The reader's day at `now`: the day a page calls today. A `Date`, which `date/1` and
+  `short_date/1` show as it is (`Apiary.Days.today/2`).
+  """
+  @spec today(DateTime.t()) :: Date.t()
+  def today(now \\ DateTime.utc_now()), do: Apiary.Days.today(time_zone(), now)
 
   ## Helpers
 

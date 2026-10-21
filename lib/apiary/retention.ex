@@ -46,8 +46,8 @@ defmodule Apiary.Retention do
   `(run_id, sequence)`, in a separate short transaction under the run's projection lock: no
   statement scans `events`, and none holds a lock longer than its batch. The runs that are
   due are read through the partial indexes `runs_retention_events_index` and
-  `runs_retention_log_index`, which a pruned run leaves. One night prunes at most
-  `:max_runs` runs of a workspace (10,000) and goes on the next night.
+  `runs_retention_log_index`, which a pruned run leaves. Each daily job prunes at most
+  `:max_runs` runs of a workspace (10,000), and the next daily job goes on.
 
   **A node's instances.** Under the same lock, on every workspace whatever its settings,
   the job deletes the rows of nodes' instances that the pages no longer show
@@ -58,7 +58,7 @@ defmodule Apiary.Retention do
   It says what it did: a `Apiary.Retention.RetentionRun` per workspace per run of the job,
   which the settings page lists, and one log line per workspace,
   `retention pruned workspace=…`. With `dry_run: true` it deletes nothing, writes no
-  record and returns the same counts. `Apiary.Retention.Scheduler` runs it nightly;
+  record and returns the same counts. `Apiary.Retention.Scheduler` runs it daily;
   `mix apiary.prune` runs it by hand.
   """
 
@@ -68,10 +68,12 @@ defmodule Apiary.Retention do
 
   alias Apiary.{Access, Audit}
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
   alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run}
+  alias Apiary.WorkItems.{Answer, Confirmation, WorkItem}
 
   @log_type "dev.qory.run.log"
   @default_batch 2_000
@@ -108,8 +110,8 @@ defmodule Apiary.Retention do
     %{
       schema: Delivery,
       phases: [:events],
-      run_column: :run_id,
-      run_field: :run_id,
+      run_column: :node_run_id,
+      run_field: :node_run_id,
       count: :deliveries_deleted,
       log_only_in: nil,
       bytes: false
@@ -222,6 +224,7 @@ defmodule Apiary.Retention do
     opts = Keyword.put(opts, :lost_before, DateTime.add(now, -Run.lost_days(), :day))
 
     {events_counts, events_complete?} = phase(workspace, :events, events_cutoff, opts)
+    unless dry_run?, do: clear_results(workspace, events_cutoff, opts)
     # The runs past the events cut-off are the first phase's, whether or not it got to them.
     {log_counts, log_complete?} =
       phase(workspace, :log, log_cutoff, Keyword.put(opts, :not_before, events_cutoff))
@@ -353,7 +356,7 @@ defmodule Apiary.Retention do
         limit: ^limit,
         select: %{
           id: r.id,
-          run_id: r.run_id,
+          node_run_id: r.node_run_id,
           workspace_id: r.workspace_id,
           age: fragment("COALESCE(?, ?)", r.last_event_at, r.inserted_at)
         }
@@ -534,6 +537,111 @@ defmodule Apiary.Retention do
     )
   end
 
+  ## The results kept on the runs of the queue
+
+  # A run of the queue keeps the result of a proposal or questions
+  # (`Apiary.Dispatches.Settle`) past its run's events, while its take in waits for a
+  # member. The job clears it, `result` set to NULL and nothing else, its outcome kept,
+  # where the run registered for it is past the events cut-off, as `due/6` reads it
+  # whether or not its events are pruned yet, and its take in no longer waits: the take in
+  # was answered, for this run, or confirmed; the work item was declined, closed or undone
+  # (no longer `:exploring`), or taken in again (its take in is later); or a later run of
+  # the take in was queued. Each is kept for good once written, so a result cleared is
+  # never waited for again. One statement over at most `:batch` rows at a time, a short
+  # transaction for each, with no lock on a work item. It locks the runs of the queue it
+  # clears, by id, and passes by one another holds (`SKIP LOCKED`): it never waits on a
+  # lock, so it never forms a cycle with a path that holds a work item or runs of the
+  # queue (`Apiary.Dispatches.cancel_for_undo/1`), and a run passed by is cleared by the
+  # next daily job. A dry run clears nothing. A failure is logged by the workspace, and
+  # the next daily job goes on.
+  defp clear_results(_workspace, nil, _opts), do: :ok
+
+  defp clear_results(workspace, cutoff, opts) do
+    batch = opts |> Keyword.get(:batch, @default_batch) |> max(1) |> min(10_000)
+    cleared = clear_batches(kept_results(workspace, cutoff, opts), batch, 0)
+
+    if cleared > 0,
+      do: Logger.info("retention cleared results workspace=#{workspace.id} runs=#{cleared}")
+
+    :ok
+  rescue
+    error ->
+      Logger.error(
+        "retention failed workspace=#{workspace.id} step=results " <>
+          "error=#{inspect(error.__struct__)}"
+      )
+
+      :ok
+  end
+
+  defp clear_batches(query, batch, cleared) do
+    ids =
+      from [dispatch_run: d] in query,
+        order_by: d.id,
+        limit: ^batch,
+        lock: fragment("FOR UPDATE OF ? SKIP LOCKED", d),
+        select: d.id
+
+    {count, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id in subquery(ids)), set: [result: nil])
+
+    if count < batch,
+      do: cleared + count,
+      else: clear_batches(query, batch, cleared + count)
+  end
+
+  defp kept_results(
+         %Workspace{id: workspace_id, organisation_id: organisation_id},
+         cutoff,
+         opts
+       ) do
+    lost_before = Keyword.fetch!(opts, :lost_before)
+
+    later_run =
+      from l in DispatchRun,
+        where:
+          l.work_item_id == parent_as(:dispatch_run).work_item_id and
+            l.take_in == parent_as(:dispatch_run).take_in and
+            l.attempt > parent_as(:dispatch_run).attempt
+
+    answered =
+      from a in Answer,
+        where:
+          a.work_item_id == parent_as(:dispatch_run).work_item_id and
+            a.take_in == parent_as(:dispatch_run).take_in and
+            a.attempt == parent_as(:dispatch_run).attempt
+
+    confirmed =
+      from c in Confirmation,
+        where:
+          c.work_item_id == parent_as(:dispatch_run).work_item_id and
+            c.take_in == parent_as(:dispatch_run).take_in
+
+    from d in DispatchRun,
+      as: :dispatch_run,
+      join: r in Run,
+      on: r.dispatch_run_id == d.id,
+      join: w in WorkItem,
+      on: w.id == d.work_item_id,
+      where: r.workspace_id == ^workspace_id and r.organisation_id == ^organisation_id,
+      where: not is_nil(d.result),
+      where: fragment("? <> 'prebuild'", d.step),
+      where: fragment("COALESCE(?, ?) < ?", r.last_event_at, r.inserted_at, ^cutoff),
+      where: r.state not in ^Run.alive_states(),
+      where:
+        r.state != "lost" or
+          fragment(
+            "COALESCE(?, ?, ?) < ?",
+            r.lost_at,
+            r.last_event_at,
+            r.inserted_at,
+            ^lost_before
+          ),
+      where:
+        w.take_in > d.take_in or w.state != :exploring or exists(later_run) or
+          exists(answered) or exists(confirmed)
+  end
+
   ## What it says
 
   defp record(workspace, result, started_at, opts) do
@@ -585,7 +693,7 @@ defmodule Apiary.Retention do
 
   # A workspace marked for deletion is left alone, and so is every workspace of an
   # organisation marked: it is purged whole once its grace period is over, and pruned
-  # again the night after its deletion is cancelled.
+  # again by the next daily job after its deletion is cancelled.
   defp workspaces(opts) do
     query =
       from h in Workspace,

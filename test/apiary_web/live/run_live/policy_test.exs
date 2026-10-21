@@ -50,14 +50,16 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     "outcome" => "refused"
   }
 
-  # A run of github.example/acme/shop: started, a policy applied, the egress given, and
-  # with `again:` a second policy applied; `exit: true` ends it.
+  # A run of github.example/acme/shop, or of the target `labels:` name: started, a
+  # policy applied, the egress given, and with `again:` a second policy applied;
+  # `exit: true` ends it.
   defp policy_run(scope, opts \\ []) do
     run = run_fixture(scope)
     time = DateTime.add(DateTime.utc_now(), -60, :second)
     at = &DateTime.add(time, &1, :second)
+    labels = opts[:labels] || shop()
 
-    event_fixture(run, 2, "run.started", started_data(%{"labels" => shop()}), time: time)
+    event_fixture(run, 2, "run.started", started_data(%{"labels" => labels}), time: time)
 
     event_fixture(
       run,
@@ -133,7 +135,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
   defp connections(conn, scope, run) do
     {:ok, view, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
 
     view
   end
@@ -180,10 +182,13 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, configuration.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       path =
-        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{configuration.version}")
+        workspace_path(
+          scope,
+          "/targets/#{target.public_id}/policy/versions/#{configuration.version}"
+        )
 
       assert has_element?(
                view,
@@ -203,7 +208,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, configuration.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert has_element?(
                view,
@@ -225,7 +230,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, baseline.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#run-facts") =~ "v#{baseline.version} · of the workspace's policy"
 
@@ -243,7 +248,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute notice =~ "github.example"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
-      path = workspace_path(scope, "/targets/acme/shop/-/policy/versions/1")
+      path = target_page_path(scope, "github.example", "acme/shop", "/policy/versions/1")
 
       assert has_element?(
                view,
@@ -253,7 +258,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       # Details names both
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#policy-version") =~ "v#{baseline.version} · of the workspace's policy"
       assert text(view, "#policy-in-force") =~ "v1 · of acme/shop"
@@ -268,7 +273,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, @other)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#policy-unrendered") ==
                "0f0f0f0f0f0f Not a version made in this workspace"
@@ -286,7 +291,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = report(run, old.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       refute has_element?(view, "#run-drift")
 
@@ -304,7 +309,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute text(view, "#run-behind") =~ "github.example"
 
       compare =
-        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{new.version}") <>
+        target_page_path(scope, "github.example", "acme/shop", "/policy/versions/#{new.version}") <>
           "?compare=#{old.version}"
 
       assert has_element?(view, ~s(#run-behind-diff[href="#{compare}"]))
@@ -329,7 +334,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, _} = Policy.allow(scope, target, %{host: "files.cdn.example"})
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       refute has_element?(view, "#run-drift")
       refute has_element?(view, "#run-behind")
@@ -343,7 +348,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       refute has_element?(view, "#run-facts a.q-ver")
       refute has_element?(view, "#run-drift")
@@ -363,7 +368,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, applied: v1.digest, again: v2.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#e-3") =~ "Policy applied"
       refute text(view, "#e-3") =~ "again"
@@ -401,7 +406,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, applied: v.digest, again: v.digest)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       sentence = text(view, "#e-30-reload")
       refute sentence =~ "new"
@@ -435,7 +440,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, run} = Projector.project(run)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       assert text(view, "#e-3") =~ "observe · 1 host allowed · denies 1 host"
       assert text(view, "#e-9") =~ "reloaded · observe · 1 host allowed · denies 2 hosts"
@@ -451,7 +456,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "the same hosts are allowed; denies 2 hosts more and 1 host fewer."
 
       {:ok, _view, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       details = html |> String.replace(~r/<[^>]+>/, " ") |> String.replace(~r/\s+/, " ")
       assert details =~ "Allowed hosts api.example"
@@ -481,7 +486,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, run} = Projector.project(run)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
 
       html = view |> element("#e-9") |> render()
       refute html =~ "<script>alert"
@@ -657,6 +662,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
 
+      # before the rule, the row has no line after it and its reason is in the present
+      refute has_element?(view, "#cx-#{id}-after")
+      assert text(view, "#cx-#{id}") =~ "No rule matches. Enforce mode denies it."
+
       view |> element("#cx-#{id}-allow") |> render_click()
 
       assert text(view, "#rule-panel-next") =~
@@ -670,14 +679,21 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       new = in_force(scope, target)
 
-      # the row is the record: still denied, the same counts and reason
+      # the row is the record: still denied, the same counts; its reason, in the cell, the
+      # fold and the title, is in the past tense once the line after it says what holds now
       refute has_element?(view, "#rule-panel")
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied[data-decision=denied]))
-      assert text(view, "#cx-#{id}") =~ "No rule matches. Enforce mode denies it."
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "#cx-#{id} .q-why-l") == past
+      assert text(view, "#cx-#{id} .q-cx-fold") == past
+      assert has_element?(view, ~s(#cx-#{id} .q-why-l[title="#{past}"]))
+      assert text(view, "#cx-#{id} .q-why-l b") == "No rule matched."
+      refute text(view, "#cx-#{id}") =~ "No rule matches"
 
       # and it gains the line: a rule was added, and this run has not reloaded
       line = text(view, "#cx-#{id}-after")
       assert line =~ "Rule added"
+      refute line =~ "Rule changed"
 
       assert line =~
                "Allowed for this repository in v#{new.version} · of acme/shop by you"
@@ -685,7 +701,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
-      rule = workspace_path(scope, "/targets/acme/shop/-/policy?rule=files.cdn.example")
+      rule =
+        target_page_path(scope, "github.example", "acme/shop", "/policy?rule=files.cdn.example")
 
       assert has_element?(
                view,
@@ -709,6 +726,36 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       refute line =~ "has not reloaded"
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied))
+      assert text(view, "#cx-#{id} .q-why-l") == past
+      assert has_element?(view, ~s(#cx-#{id} .q-why-l[title="#{past}"]))
+
+      # the timeline's row of the same attempt has no line after it: the present
+      {:ok, timeline, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+
+      assert text(timeline, "#e-5 .q-cx-denied") =~
+               "Denied. No rule matches. Enforce mode denies it."
+
+      refute text(timeline, "#e-5 .q-cx-denied") =~ "matched"
+    end
+
+    test "a target's path, in the panel and the toast: as a page shows a text a run sent", %{
+      conn: conn,
+      scope: scope
+    } do
+      # A target's path may carry a bidirectional override and a zero-width space.
+      labels = %{"forge" => "github.example", "repository" => "acme/\u202Eshop\u200B"}
+      run = policy_run(scope, labels: labels, egress: [@denied])
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+
+      view |> element("#cx-#{id}-allow") |> render_click()
+      assert text(view, "#rule-panel") =~ "This repository acme/shop"
+      refute view |> element("#rule-panel") |> render() =~ "\u202E"
+
+      view |> form("#rule-panel-form") |> render_submit()
+      assert text(view, "#flash-info") =~ "files.cdn.example is allowed for acme/shop."
+      refute view |> element("#flash-info") |> render() =~ "\u202E"
     end
 
     test "a target whose path another system has is named and linked with its system", %{
@@ -723,8 +770,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
 
-      # The header's link lands on its page at its address.
-      page = workspace_path(scope, "/targets/github.example/acme/shop")
+      # The header's link lands on its page, by its public id.
+      page = workspace_path(scope, "/targets/#{target.public_id}")
       assert has_element?(view, "#run-target[href='#{page}']")
 
       view |> element("#cx-#{id}-allow") |> render_click()
@@ -740,12 +787,12 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(#cx-#{id}-after a[href="#{page}/-/policy/versions/#{new.version}"])
+               ~s(#cx-#{id}-after a[href="#{page}/policy/versions/#{new.version}"])
              )
 
       assert has_element?(
                view,
-               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{page}/-/policy?rule=files.cdn.example"]),
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{page}/policy?rule=files.cdn.example"]),
                "Show the rule"
              )
 
@@ -921,6 +968,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                )
 
       assert text(view, "#cx-#{id}-after") =~ "Denied for this repository"
+      # the row was let through, and says so in the past tense above its line
+      assert text(view, "#cx-#{id} .q-why-l") == "No rule matched. Observe mode let it through."
     end
 
     test "what the domain refuses is said in its sentence, and nothing is written", %{
@@ -974,7 +1023,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refusal = text(view, "#rule-panel-refusal")
       assert refusal =~ "A locked workspace rule denies *.paste.example ."
       assert refusal =~ "so no rule added here would change what happens."
-      assert refusal =~ "Locked by"
+
+      assert refusal =~
+               "Locked by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) on "
+
       assert refusal =~ "You can change or unlock it on the workspace's policy page."
 
       assert has_element?(
@@ -1034,6 +1086,122 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view |> element("#cx-#{cdn}-allow") |> render_click()
       view |> form("#rule-panel-form") |> render_submit()
       assert [%{host: "files.cdn.example"}] = Policy.list_rules(scope, target(scope, run))
+    end
+  end
+
+  describe "the line after a rule that was changed" do
+    @denied_by_rule %{
+      "host" => "files.cdn.example",
+      "decision" => "denied",
+      "rule" => "files.cdn.example",
+      "outcome" => "refused"
+    }
+    @allowed_by_rule %{"host" => "files.cdn.example", "rule" => "files.cdn.example"}
+
+    test "a deny rule changed to allow says Rule changed on the denied row", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@denied_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert has_element?(view, ~s(tr#cx-#{id}[data-decision=denied]))
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Rule changed Allowed for the workspace in v2 · of the workspace's policy by you"
+
+      refute text(view, "#cx-#{id}-after") =~ "Rule added"
+    end
+
+    test "a rule another person changed names them by their letter, the address its hint",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@allowed_by_rule])
+      {:ok, _} = Policy.deny(admin.scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      letter = String.upcase(String.first(admin.user.email))
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Denied for the workspace in v2 · of the workspace's policy by #{letter} #{admin.user.email} "
+
+      assert has_element?(view, ~s{#cx-#{id}-after abbr[data-tip="#{admin.user.email}"]})
+    end
+
+    test "an allow rule changed to deny says Rule changed", %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@allowed_by_rule])
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert has_element?(view, ~s(tr#cx-#{id}[data-decision=allowed]))
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Rule changed Denied for the workspace in v2 · of the workspace's policy by you"
+    end
+
+    test "the newest change decides: a rule added in v1 whose paths changed in v2", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = policy_run(scope, egress: [@denied, @allowed_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example", paths: ["/v1/*"]})
+
+      # the history's newest page, newest first
+      assert [{"rule_changed", 2}, {"rule_added", 1}] =
+               for(
+                 change <- Policy.list_changes(scope, nil, 1).items,
+                 change.subject == "files.cdn.example",
+                 do: {change.action, change.version_after}
+               )
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+
+      assert text(view, "#cx-#{id}-after") =~
+               "Rule changed Allowed for the workspace in v2 · of the workspace's policy by you"
+    end
+
+    test "a denied row with no rule, which a changed rule now allows, gives its reason in the past tense",
+         %{conn: conn, scope: scope} do
+      run = policy_run(scope, egress: [@denied])
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "#cx-#{id} .q-why-l") == past
+      assert text(view, "#cx-#{id} .q-cx-fold") == past
+      assert has_element?(view, ~s(#cx-#{id} .q-why-l[title="#{past}"]))
+    end
+
+    test "once the run has the changed rule, the line says In force in this run", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      digest = in_force(scope, nil).digest
+      run = policy_run(scope, applied: digest, egress: [@denied_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      run = report(run, in_force(scope, nil).digest)
+
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+      assert text(view, "#cx-#{id}-after .badge") == "In force in this run"
+      assert text(view, "#cx-#{id}-after") =~ "Allowed for the workspace in v2"
+      refute text(view, "#cx-#{id}-after") =~ "Rule changed"
     end
   end
 

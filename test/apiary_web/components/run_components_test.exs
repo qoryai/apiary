@@ -66,22 +66,6 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute html =~ "-soft"
     end
 
-    test "a state stored under its earlier name reads as the state that took it in" do
-      for {earlier, now} <- [
-            {"succeeded", "completed"},
-            {"timed_out", "cancelled"},
-            {"ended", "cancelled"}
-          ] do
-        assert RunComponents.state_label(earlier) == RunComponents.state_label(now)
-
-        assert RunComponents.state_label(String.to_atom(earlier)) ==
-                 RunComponents.state_label(now)
-
-        assert render_component(&RunComponents.run_state/1, state: earlier) ==
-                 render_component(&RunComponents.run_state/1, state: now)
-      end
-    end
-
     test "a failed run shows its exit code, or its signal instead" do
       assert text(render_component(&RunComponents.run_state/1, state: "failed", exit_code: 1)) ==
                "Failed exit 1"
@@ -102,14 +86,14 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
 
     test "a row's mark: a completed run's word is for a screen reader, a cancelled run's is grey" do
-      for state <- ~w(completed succeeded) do
+      for state <- ~w(completed) do
         html = render_component(&RunComponents.run_mark/1, state: state)
         assert html =~ "q-st-#{state}"
         assert html =~ ~s(class="q-st-w sr-only")
         assert text(html) == "Completed"
       end
 
-      for state <- ~w(cancelled timed_out ended) do
+      for state <- ~w(cancelled) do
         html = render_component(&RunComponents.run_mark/1, state: state)
         assert html =~ "q-st-#{state}"
         refute html =~ "sr-only"
@@ -120,11 +104,8 @@ defmodule ApiaryWeb.RunComponentsTest do
     test "an ended run's sentence says its state" do
       for {state, run, sentence} <- [
             {"completed", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
-            {"succeeded", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
             {"completed", %{}, "Completed"},
             {"cancelled", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
-            {"timed_out", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
-            {"ended", %{}, "Cancelled"},
             {"failed", %{exit_code: 1}, "Failed with exit 1"}
           ] do
         html = render_component(&RunComponents.alive/1, state: state, run: run)
@@ -148,13 +129,13 @@ defmodule ApiaryWeb.RunComponentsTest do
             {"credential_check_invalid",
              "couldn't check whether the run may go on: unreadable answer"}
           ] do
-        assert RunComponents.reason_words(%{reason: reason, quiet_seconds: nil}) == words
+        assert RunComponents.reason_words(%{reason: reason}) == words
         # Forager's words are a message to translate, not a starter's code shown as given.
         assert pot =~ ~s(\nmsgid "#{words}"\n), reason
       end
 
-      assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
-      assert RunComponents.reason_words(%{reason: nil, quiet_seconds: nil}) == nil
+      assert RunComponents.reason_words(%{reason: "run_closed"}) == nil
+      assert RunComponents.reason_words(%{reason: nil}) == nil
     end
 
     test "a refused batch reads events refused, whatever the state" do
@@ -165,14 +146,14 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
 
     test "a run stopped where it was started reads interrupted, whatever the state" do
-      for state <- [nil, "cancelled", :cancelled, "failed", "completed", "succeeded"] do
+      for state <- [nil, "cancelled", :cancelled, "failed", "completed"] do
         assert RunComponents.reason_words(%{reason: "interrupted", state: state}) ==
                  "interrupted"
       end
     end
 
     test "stopped beside an outcome says only that the run was stopped" do
-      for state <- ["completed", :completed, "succeeded", "failed", :failed] do
+      for state <- ["completed", :completed, "failed", :failed] do
         assert RunComponents.reason_words(%{reason: "stopped", state: state}) == "stopped"
       end
 
@@ -205,6 +186,26 @@ defmodule ApiaryWeb.RunComponentsTest do
                "no longer needed"
     end
 
+    test "a run released after a queue handed it over reads that its starter released it" do
+      released = %Apiary.Runs.Run{
+        state: "cancelled",
+        reason: "released",
+        released_at: ~U[2026-10-17 12:00:00Z]
+      }
+
+      assert RunComponents.reason_words(released) == "the starter released it"
+      assert RunComponents.exit_note(released) == "the starter released it"
+
+      # Its starter's outcome after it reads as any outcome does.
+      assert RunComponents.reason_words(%{
+               released
+               | state: "failed",
+                 reason: "crashed",
+                 outcome_state: "failed",
+                 outcome_reason: "crashed"
+             }) == "crashed"
+    end
+
     test "a reason stored under its earlier name reads as the new one" do
       for {earlier, now} <- [
             {"issuer_unreachable", "credential_check_unreachable"},
@@ -216,7 +217,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
 
       # The earlier name came with no outcome, whatever state its exit said.
-      for state <- [nil, "failed", "cancelled", "ended"] do
+      for state <- [nil, "failed", "cancelled"] do
         assert RunComponents.reason_words(%{reason: "run_ended_at_issuer", state: state}) ==
                  "stopped, no outcome given"
       end
@@ -238,25 +239,6 @@ defmodule ApiaryWeb.RunComponentsTest do
       for value <- ["Checks failed", "checks-failed", "_x", "", String.duplicate("a", 65)] do
         assert RunComponents.reason_words(%{reason: value, state: "failed"}) == nil, value
       end
-    end
-
-    test "the quiet period reads as no activity, as a duration reads" do
-      for {seconds, words} <- [
-            {1800, "no activity for 30 minutes"},
-            {60, "no activity for 1 minute"},
-            {600, "no activity for 10 minutes"},
-            {3600, "no activity for 1 hour"},
-            {7200, "no activity for 2 hours"},
-            {5400, "no activity for 90 minutes"},
-            {45, "no activity for 45 seconds"},
-            {1, "no activity for 1 second"},
-            {1830, "no activity for 1,830 seconds"}
-          ] do
-        assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: seconds}) == words
-      end
-
-      assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: nil}) == nil
-      assert RunComponents.reason_words(%{reason: "quiet"}) == nil
     end
 
     test "a run stored as refused, failed with no exit and the code as its reason, did not start" do
@@ -295,16 +277,15 @@ defmodule ApiaryWeb.RunComponentsTest do
               state <-
                 member_of(
                   [nil] ++
-                    ~w(pending running completed failed cancelled lost succeeded timed_out ended) ++
+                    ~w(pending running completed failed cancelled lost) ++
                     [:completed, :failed, :cancelled]
                 ),
-              seconds <- one_of([constant(nil), positive_integer()]),
               refused? <- boolean()
             ) do
         run =
           if refused?,
             do: %{refused: code},
-            else: %{reason: code, state: state, quiet_seconds: seconds}
+            else: %{reason: code, state: state}
 
         words = RunComponents.reason_words(run)
         refute words && words =~ ~r/issuer/i, inspect({run, words})
@@ -331,7 +312,6 @@ defmodule ApiaryWeb.RunComponentsTest do
                  "reason" => code,
                  "exit_code" => exit_code,
                  "signal" => signal,
-                 "quiet_seconds" => 1800,
                  "duration_ms" => 720_000
                }}
 
@@ -359,7 +339,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "every reason of Forager's that reaches Qory Apiary has words" do
       for reason <- (@reserved -- ["run_closed"]) ++ @earlier do
-        assert is_binary(RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})),
+        assert is_binary(RunComponents.reason_words(%{reason: reason})),
                reason
       end
     end
@@ -385,13 +365,13 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
 
       for reason <- reasons -- ["run_closed", "batch_refused"] do
-        words = RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})
+        words = RunComponents.reason_words(%{reason: reason})
         assert is_binary(words) and not (words =~ "issuer"), reason
       end
     end
 
     test "the preview says why a run ended, else its exit" do
-      run = %{state: "failed", reason: nil, quiet_seconds: nil, exit_code: 1, signal: nil}
+      run = %{state: "failed", reason: nil, exit_code: 1, signal: nil}
 
       assert RunComponents.exit_note(run) == "exit 1"
       assert RunComponents.exit_note(%{run | reason: "checks_failed"}) == "checks failed"
@@ -573,6 +553,39 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
+    test "every ticking element names the time zone the server rendered it in" do
+      ApiaryWeb.Format.put_time_zone("America/Los_Angeles")
+      at = DateTime.add(DateTime.utc_now(), -90, :second)
+
+      for html <- [
+            render_component(&RunComponents.relative_time/1, at: at),
+            render_component(&RunComponents.relative_time/1, at: at, format: "clock"),
+            render_component(&RunComponents.duration/1, elapsed_seconds: 30, elapsed_at: at),
+            render_component(&RunComponents.run_state/1,
+              state: "running",
+              quiet_for: 90,
+              quiet_since: at
+            ),
+            render_component(&RunComponents.alive/1, state: "running", last_heartbeat_at: at)
+          ] do
+        assert html =~ ~s(data-time-zone="America/Los_Angeles")
+      end
+    end
+
+    test "every <time data-tick> the console renders names its time zone" do
+      sources = Path.wildcard("lib/apiary_web/**/*.ex")
+      ticking = ~r/<time\b[^>]*\bdata-tick=["{][^>]*>/s
+
+      tags =
+        for path <- sources, tag <- Regex.scan(ticking, File.read!(path)), do: {path, hd(tag)}
+
+      assert length(tags) >= 7
+
+      for {path, tag} <- tags do
+        assert tag =~ "data-time-zone={Format.time_zone()}", "#{path}: #{tag}"
+      end
+    end
+
     test "a time names its zone in its title" do
       html =
         render_component(&RunComponents.relative_time/1,
@@ -745,8 +758,11 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
-    test "a host the wall refused for its form is shown as sent and escaped as any host" do
+    test "a host the wall refused for its form is shown marked and escaped as any host" do
       host = "<script>alert(1)</script>\u202Eexample.\u202C" <> String.duplicate("A", 300)
+
+      marked =
+        "<script>alert(1)</script>\uFFFDexample.\uFFFD" <> String.duplicate("A", 300)
 
       for html <- [
             wall_inline(host),
@@ -754,9 +770,10 @@ defmodule ApiaryWeb.RunComponentsTest do
           ] do
         refute html =~ "<script>"
         assert html =~ "&lt;script&gt;alert(1)&lt;/script&gt;"
-        # As sent, its bidirectional characters, case and length with it, and as text, as
-        # any host is; the reason's words stay the same.
-        assert text(html) =~ host
+        # Its bidirectional characters marked (`Apiary.ExternalText.marked/1`), its case
+        # and length kept, and as text, as any host is; the reason's words stay the same.
+        assert text(html) =~ marked
+        refute text(html) =~ "\u202E"
         assert text(html) =~ "#{@host_form} in either mode."
       end
     end
@@ -1117,6 +1134,172 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
   end
 
+  describe "a row with an after line says its reason in the past tense" do
+    @line %{
+      action: :allow,
+      level: :workspace,
+      version: nil,
+      by: nil,
+      at: nil,
+      state: :pending,
+      reloaded_at: nil
+    }
+
+    defp act_row(connection, variant, line) do
+      base = %{
+        id: "c1",
+        host: "files.cdn.example",
+        port: 443,
+        path: "",
+        method: "CONNECT",
+        attempts: 3,
+        allowed: 0,
+        denied: 3,
+        runs: 1,
+        last_decision: "denied",
+        last_rule: "",
+        last_outcome: "refused",
+        last_mode: "enforce",
+        first_seen_at: ~U[2026-09-20 14:02:20Z],
+        last_seen_at: ~U[2026-09-20 14:02:21Z]
+      }
+
+      act = %{rule_option: {:rule_added, :allow}, after: line}
+      assigns = %{c: Map.merge(base, connection), variant: variant, act: act}
+
+      rendered_to_string(~H"""
+      <RunComponents.connection_row id="cx-1" connection={@c} variant={@variant} act={@act} />
+      """)
+      |> LazyHTML.from_fragment()
+    end
+
+    # The Reason cell, the fold under the destination, the cell's title and its bold lead.
+    defp why(doc) do
+      cell = LazyHTML.query(doc, ".q-why-l")
+
+      %{
+        cell: text(LazyHTML.to_html(cell)),
+        fold: text(LazyHTML.to_html(LazyHTML.query(doc, ".q-cx-fold"))),
+        title: cell |> LazyHTML.attribute("title") |> List.first(),
+        bold: cell |> LazyHTML.query("b") |> LazyHTML.text()
+      }
+    end
+
+    test "with Rule added and with In force in this run, on both tables" do
+      past = "No rule matched. Enforce mode denied it."
+
+      for variant <- ~w(table workspace), state <- [:pending, :in_force] do
+        doc = act_row(%{}, variant, %{@line | state: state})
+
+        assert text(LazyHTML.to_html(LazyHTML.query(doc, "#cx-1-after .badge"))) ==
+                 if(state == :in_force, do: "In force in this run", else: "Rule added")
+
+        assert why(doc) == %{cell: past, fold: past, title: past, bold: "No rule matched."}
+        refute text(LazyHTML.to_html(doc)) =~ "No rule matches"
+      end
+    end
+
+    test "every sentence of a reason with no rule, and what follows it unchanged" do
+      for variant <- ~w(table workspace) do
+        assert why(act_row(%{last_mode: nil}, variant, @line)).title ==
+                 "No rule matched. The policy denied it."
+
+        no_path = %{last_rule: "api.example", path: "/v2/models", last_path_rule: ""}
+
+        assert why(act_row(no_path, variant, @line)) == %{
+                 cell: "Host allowed, no path rule matched. Enforce mode denied it.",
+                 fold: "Host allowed, no path rule matched. Enforce mode denied it.",
+                 title: "Host allowed, no path rule matched. Enforce mode denied it.",
+                 bold: "Host allowed, no path rule matched."
+               }
+
+        assert why(act_row(%{last_mode: nil} |> Map.merge(no_path), variant, @line)).title ==
+                 "Host allowed, no path rule matched. The policy denied it."
+
+        observed = %{
+          last_decision: "allowed",
+          last_mode: "observe",
+          last_outcome: "connected",
+          allowed: 3,
+          denied: 0
+        }
+
+        assert why(act_row(observed, variant, @line)) == %{
+                 cell: "No rule matched. Observe mode let it through.",
+                 fold: "No rule matched. Observe mode let it through.",
+                 title: "No rule matched. Observe mode let it through.",
+                 bold: "No rule matched."
+               }
+
+        assert why(act_row(%{observed | last_mode: nil}, variant, @line)).cell ==
+                 "No rule matched. It was let through."
+
+        # A tool's row keeps its tail after the lead.
+        tool =
+          Map.merge(observed, %{
+            host: "files.tools.internal",
+            method: "HTTPS",
+            path: "/media/acme/shop/checkout.png",
+            last_path_rule: "/media/acme/shop/*",
+            last_tool: "files"
+          })
+
+        handed =
+          "No rule matched. Observe mode let it through. Handed to files, path /media/acme/shop/*"
+
+        assert why(act_row(tool, variant, @line)).title == handed
+        assert why(act_row(tool, variant, @line)).cell == handed
+
+        assert why(act_row(%{tool | last_mode: nil, last_outcome: "dial_failed"}, variant, @line)).title ==
+                 "No rule matched. It was let through. For files, path /media/acme/shop/*"
+
+        # A denied request to a tool's host still says it never reached the tool.
+        assert why(act_row(Map.put(no_path, :last_tool, "files"), variant, @line)).title ==
+                 "Host allowed, no path rule matched. Enforce mode denied it. Refused before reaching the tool files."
+      end
+
+      # The workspace's title of a mixed destination keeps the last attempt.
+      mixed = act_row(%{allowed: 2, denied: 3, attempts: 5}, "workspace", @line)
+      assert why(mixed).title == "No rule matched. Enforce mode denied it. · last attempt"
+    end
+
+    test "a row without an after line, and the timeline's row, keep the present tense" do
+      for variant <- ~w(table workspace) do
+        doc = act_row(%{}, variant, nil)
+        refute LazyHTML.query(doc, "#cx-1-after") |> Enum.any?()
+        present = "No rule matches. Enforce mode denies it."
+
+        assert why(doc) == %{
+                 cell: present,
+                 fold: present,
+                 title: present,
+                 bold: "No rule matches."
+               }
+      end
+
+      event = %{
+        host: "files.cdn.example",
+        port: 443,
+        method: "CONNECT",
+        decision: "denied",
+        rule: "",
+        mode: "enforce",
+        outcome: "refused",
+        at: ~U[2026-09-20 14:02:20.300Z]
+      }
+
+      assigns = %{event: event}
+
+      html =
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-5" connection={@event} variant="inline" />
+        """)
+
+      assert text(html) =~ "Denied. No rule matches. Enforce mode denies it."
+      refute text(html) =~ "matched"
+    end
+  end
+
   describe "the Outcome column's tooltip" do
     test "says what a refusal is, in a run's table and in a workspace's" do
       for variant <- ~w(table workspace) do
@@ -1159,6 +1342,148 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
   end
 
+  describe "filter_options/1's tile" do
+    @options [{"Lea", "Lea", 2}, {"deps-bot", "deps-bot", 1}]
+
+    defp options_html(assigns) do
+      rendered_to_string(~H"""
+      <RunComponents.filter_options
+        id="f"
+        name="filed_by"
+        label="Filed by"
+        values={[]}
+        options={@options}
+        multiple
+      >
+        <:tile :let={{_label, value, _count}}>
+          <span :if={value == "deps-bot"} class="tile">{String.first(value)}</span>
+        </:tile>
+      </RunComponents.filter_options>
+      """)
+    end
+
+    test "draws the slot before each option's words, given the option" do
+      html = options_html(%{options: @options})
+      doc = LazyHTML.from_fragment(html)
+      [lea, bot] = doc |> LazyHTML.query(".q-filter-option") |> Enum.to_list()
+
+      assert lea |> LazyHTML.query(".tile") |> Enum.count() == 0
+      assert bot |> LazyHTML.query(".tile") |> LazyHTML.text() == "d"
+      assert text(LazyHTML.to_html(bot)) == "d deps-bot 1"
+      # The tile comes after the box and before the words.
+      assert LazyHTML.to_html(bot) =~
+               ~r/<input[^>]*value="deps-bot"[^>]*\/?>\s*<span[^>]*class="tile">d<\/span>\s*<span[^>]*title="deps-bot"/
+    end
+
+    test "without the slot, an option is its box, its words and its count alone" do
+      html =
+        render_component(&RunComponents.filter_options/1,
+          id: "f",
+          name: "filed_by",
+          label: "Filed by",
+          values: [],
+          options: @options,
+          multiple: true
+        )
+
+      [_lea, bot] =
+        html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-filter-option") |> Enum.to_list()
+
+      assert bot |> LazyHTML.query("label > *") |> Enum.map(&LazyHTML.tag/1) ==
+               [["input"], ["span"], ["span"]]
+
+      refute html =~ "tile"
+    end
+  end
+
+  describe "a target's name and a filter's options, as a page shows an external system's text" do
+    # A bidirectional override and a zero-width space, which a target's labels may carry.
+    @system "git\u202E.example\u200B"
+    @path "acme/\u202Eshop\u200B"
+
+    defp target_doc(attrs),
+      do: render_component(&RunComponents.target_name/1, attrs) |> LazyHTML.from_fragment()
+
+    test "a target's system and path are cleaned; the path as sent decides the system" do
+      doc = target_doc(system: @system, path: @path, shared: MapSet.new([@path]))
+      assert LazyHTML.text(doc) == "git.example/acme/shop"
+      assert attr_of(doc, ".q-tname", "title") == ["git.example/acme/shop"]
+
+      alone = target_doc(system: @system, path: @path, shared: MapSet.new(["acme/shop"]))
+      assert LazyHTML.text(alone) == "acme/shop"
+
+      blank = target_doc(system: "\u200B", path: "\u202E", shared: true)
+      assert LazyHTML.text(blank) == "\uFFFD/\uFFFD"
+
+      assert RunComponents.shown_target_label(@system, @path, MapSet.new([@path])) ==
+               "git.example/acme/shop"
+
+      assert RunComponents.shown_target_label(@system, @path, MapSet.new(["acme/shop"])) ==
+               "acme/shop"
+
+      assert RunComponents.shown_target_label(nil, "\u200B", true) == "\uFFFD"
+    end
+
+    test "an option's words are cleaned and isolated; what it picks is the value as sent" do
+      doc =
+        render_component(&RunComponents.filter_options/1,
+          id: "f",
+          name: "host",
+          label: "Host",
+          values: [@path],
+          options: [{@path, @path, 2}, {"\u200B", "\u200B", 1}]
+        )
+        |> LazyHTML.from_fragment()
+
+      assert texts(doc, ".q-filter-option > span > bdi") == ["acme/shop", "\uFFFD"]
+      assert attr_of(doc, ".q-filter-option > span[title]", "title") == ["acme/shop", "\uFFFD"]
+      assert attr_of(doc, ".q-filter-option input", "value") == [@path, "\u200B"]
+
+      chip =
+        render_component(&RunComponents.filter/1,
+          name: "host",
+          label: "Host",
+          value: @path,
+          options: [{@path, @path, 2}]
+        )
+        |> LazyHTML.from_fragment()
+
+      assert texts(chip, ".q-chip-main > b") == ["acme/shop"]
+    end
+  end
+
+  describe "filter_options/1's narrowing box" do
+    defp narrowing(attrs) do
+      assigns =
+        Keyword.merge(
+          [id: "f", name: "filed_by", label: "Filed by", values: [], multiple: true],
+          attrs
+        )
+
+      render_component(&RunComponents.filter_options/1, assigns)
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("form#f-narrow input#f-search")
+      |> Enum.count()
+    end
+
+    test "without always_find, is drawn above eight options or for a search alone" do
+      few = for n <- 1..2, do: {"Filer #{n}", "Filer #{n}", 1}
+      many = for n <- 1..9, do: {"Filer #{n}", "Filer #{n}", 1}
+
+      assert narrowing(options: few) == 0
+      assert narrowing(options: Enum.take(many, 8)) == 0
+      assert narrowing(options: many) == 1
+      assert narrowing(options: few, query: "Fil") == 1
+      assert narrowing(options: few, total: 9) == 1
+      assert narrowing(options: few, always_find: false) == 0
+    end
+
+    test "always_find draws it whatever the number of options, none among them" do
+      assert narrowing(options: [], always_find: true) == 1
+      assert narrowing(options: [{"Lea", "Lea", 2}], always_find: true) == 1
+    end
+  end
+
   describe "chips" do
     test "a long label value is cut in the middle, the whole value in the title" do
       value = String.duplicate("a", 20) <> String.duplicate("z", 20)
@@ -1181,20 +1506,20 @@ defmodule ApiaryWeb.RunComponentsTest do
   end
 
   describe "a run's title and what it is about" do
-    @run_id "7f3e9b20-5b1d-4c7e-9a10-2f6d0c4b7e11"
+    @public_id "rn_7f3e9b205b1d4c7e"
 
     test "the title is the one the run gave, else Run and its short id" do
-      titled = %{run_id: @run_id, about_title: "Fix the login redirect"}
+      titled = %{public_id: @public_id, about_title: "Fix the login redirect"}
       assert RunComponents.run_title(titled) == "Fix the login redirect"
       assert RunComponents.given_title(titled) == "Fix the login redirect"
 
       for untitled <- [
-            %{run_id: @run_id, about_title: nil},
-            %{run_id: @run_id, about_title: ""},
+            %{public_id: @public_id, about_title: nil},
+            %{public_id: @public_id, about_title: ""},
             # A task is an ordinary label, never the title.
-            %{run_id: @run_id, about_title: nil, labels: %{"task" => "fix-login"}}
+            %{public_id: @public_id, about_title: nil, labels: %{"task" => "fix-login"}}
           ] do
-        assert RunComponents.run_title(untitled) == "Run 7f3e9b20"
+        assert RunComponents.run_title(untitled) == "Run rn_7f3e9b20"
         assert RunComponents.given_title(untitled) == nil
       end
     end
@@ -1222,6 +1547,96 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       assert RunComponents.about_line(%{about_kind: nil, about_subjects: []}) == nil
       assert RunComponents.about_line(%{about_kind: "", about_subjects: []}) == nil
+    end
+
+    # A bidirectional override, a zero-width space and a control character: what a run
+    # sent, as a page shows it (`Apiary.ExternalText.line/1`).
+    @sent "Fix\u202E the\u200B login\a"
+    @shown "Fix the login\uFFFD"
+
+    defp bdis(html),
+      do: html |> LazyHTML.from_fragment() |> LazyHTML.query("bdi") |> Enum.map(&LazyHTML.text/1)
+
+    test "the title as a page shows it, isolated in a row; one with nothing left is none" do
+      run = %{public_id: @public_id, about_title: @sent}
+      assert RunComponents.given_title(run) == @sent
+      assert RunComponents.shown_run_title(run) == @shown
+      assert RunComponents.run_title(run) == @shown
+      assert bdis(render_component(&RunComponents.run_name/1, run: run)) == [@shown]
+
+      blank = %{run | about_title: "\u202E\u200B"}
+      assert RunComponents.given_title(blank) == "\u202E\u200B"
+      assert RunComponents.shown_run_title(blank) == nil
+      assert RunComponents.run_title(blank) == "Run rn_7f3e9b20"
+      assert RunComponents.shown_run_title(%{run | about_title: " \u200B "}) == nil
+
+      html = render_component(&RunComponents.run_name/1, run: blank)
+      assert bdis(html) == []
+      assert text(html) == "rn_7f3e9b20"
+    end
+
+    test "the about line, a subject's words, its tooltip and its markup as a page shows them" do
+      subject = %{
+        "type" => "pull\u200B request",
+        "ref" => "#41\u202E8\a",
+        "url" => "https://git.example.com/acme/shop/pull/418",
+        "title" => @sent
+      }
+
+      run = %{about_kind: "Re\u202Eview\a", about_subjects: [subject]}
+
+      assert RunComponents.about_line(run) == "Review\uFFFD · pull request #418\uFFFD"
+      assert RunComponents.about_line(%{about_kind: "\u200B", about_subjects: []}) == nil
+      assert RunComponents.subject_words(subject) == "pull request #418\uFFFD"
+      assert RunComponents.subject_tip(subject) == @shown <> " · git.example.com"
+      assert RunComponents.subject_tip(%{subject | "title" => "\u200B"}) == "git.example.com"
+      assert RunComponents.subject_tip(%{subject | "title" => " \u200B "}) == "git.example.com"
+
+      assert bdis(render_component(&RunComponents.subject_name/1, subject: subject)) ==
+               ["pull request", "#418\uFFFD"]
+    end
+
+    test "a label chip: its key and value as a page shows them, the value in its title" do
+      html =
+        render_component(&RunComponents.label_chip/1, key: "zo\u200Bne\a", value: @sent)
+
+      assert bdis(html) == ["zone\uFFFD", @shown]
+
+      assert html
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query(".q-label")
+             |> LazyHTML.attribute("title") ==
+               [@shown]
+    end
+
+    test "a signal as a page shows it; one with nothing left reads as the exit code" do
+      badge = fn assigns -> text(render_component(&RunComponents.run_state/1, assigns)) end
+      failed = [state: "failed", exit_code: 137]
+      assert badge.(failed ++ [signal: "SIG\u202EKILL\a"]) == "Failed SIGKILL\uFFFD"
+      assert badge.(failed ++ [signal: "\u202E\u200B"]) == "Failed exit 137"
+      assert badge.(failed ++ [signal: " \u200B "]) == "Failed exit 137"
+
+      run = %{state: "failed", reason: nil, exit_code: 137}
+      signalled = Map.put(run, :signal, "SIG\u202EKILL\a")
+      blank = Map.put(run, :signal, "\u202E\u200B")
+      assert RunComponents.exit_note(signalled) == "SIGKILL\uFFFD"
+      assert RunComponents.exit_note(blank) == "exit 137"
+      assert RunComponents.shown_signal(blank) == nil
+
+      differs = %{
+        outcome_state: "succeeded",
+        state: "completed",
+        exit_state: "failed",
+        exited_at: DateTime.utc_now(),
+        exit_code: 137,
+        signal: "\u202E\u200B"
+      }
+
+      assert RunComponents.outcome_sentence(differs) ==
+               "Succeeded, as its starter said; the runtime exited 137"
+
+      assert RunComponents.outcome_sentence(%{differs | signal: "SIG\u202EKILL\a"}) ==
+               "Succeeded, as its starter said; the runtime ended with SIGKILL\uFFFD"
     end
 
     test "the pill hides at zero and counts in words" do
@@ -1469,9 +1884,11 @@ defmodule ApiaryWeb.RunComponentsTest do
   end
 
   describe "a connection's host is isolated, so a bidi character reorders nothing" do
-    # A right-to-left override in Forager's string, and markup that must stay text.
+    # A right-to-left override in Forager's string, and markup that must stay text; the
+    # page drops the override (`Apiary.ExternalText.line/1`) and isolates what is left.
     @host "evil\u202Elpmaxe.<script>"
-    @escaped "evil\u202Elpmaxe.&lt;script&gt;"
+    @shown "evillpmaxe.<script>"
+    @escaped "evillpmaxe.&lt;script&gt;"
 
     defp bidi_row(variant, connection \\ %{}) do
       base = %{
@@ -1518,16 +1935,16 @@ defmodule ApiaryWeb.RunComponentsTest do
       for variant <- ~w(table workspace),
           connection <- [%{}, %{path: "/v1/<b>", request_method: "GET"}] do
         html = bidi_row(variant, connection)
-        assert isolated(html, ".q-cx-h > bdi") == [@host], variant
-        assert html =~ "<bdi>#{@escaped}</bdi><span class=\"q-cx-p\">:443</span>", variant
+        assert isolated(html, ".q-cx-h > bdi") == [@shown], variant
+        assert html =~ "#{@escaped}</bdi><span class=\"q-cx-p\">:443</span>", variant
         refute html =~ "<script>", variant
       end
     end
 
     test "in the timeline's row, a tool invocation's too" do
       html = bidi_row("inline")
-      assert isolated(html, ".q-dest > bdi") == [@host]
-      assert html =~ "<bdi>#{@escaped}</bdi><span class=\"text-faint\">:443</span>"
+      assert isolated(html, ".q-dest > bdi") == [@shown]
+      assert html =~ "#{@escaped}</bdi><span class=\"text-faint\">:443</span>"
       refute html =~ "<script>"
 
       html =
@@ -1540,17 +1957,18 @@ defmodule ApiaryWeb.RunComponentsTest do
           request_method: "PUT"
         })
 
-      assert isolated(html, ".q-dest-tool .q-on > bdi") == [@host]
-      assert html =~ "<span class=\"q-on\"><bdi>#{@escaped}</bdi>:443</span>"
+      assert isolated(html, ".q-dest-tool .q-on > bdi") == [@shown]
+      assert html =~ "#{@escaped}</bdi>:443</span>"
       refute html =~ "<script>"
     end
 
     test "a host cut long right after an unclosed override keeps it inside the isolate" do
-      # 18 letters, the override as the 19th character: the cut keeps 19 and the ellipsis.
+      # 18 letters, the override as the 19th character: the page drops it before the cut,
+      # which keeps 19 and the ellipsis.
       long = String.duplicate("a", 18) <> "\u202E" <> String.duplicate("b", 30) <> ".<script>"
-      cut = RunComponents.middle(long, 40)
+      cut = RunComponents.middle(Apiary.ExternalText.line(long), 40)
       assert String.ends_with?(String.slice(long, 0, 19), "\u202E")
-      assert cut =~ "\u202E…"
+      assert cut =~ "ab…"
 
       panel = %{
         anchor: "a-allow",
@@ -1568,8 +1986,9 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       html = render_component(&RunComponents.rule_panel/1, panel: panel)
       assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [cut]
-      # The isolate closes before the rest of the sentence, so the override reaches nothing.
-      assert html =~ ~r|<bdi>a{18}\x{202E}…b*\.&lt;script&gt;</bdi></span>|u
+      # The isolate closes before the rest of the sentence, and no override is left in it.
+      assert html =~ ~r|<bdi>a{18}b…b*\.&lt;script&gt;</bdi></span>|u
+      refute html =~ "\u202E"
 
       assert isolated(html, "#rule-panel-title")
              |> hd()
@@ -1579,7 +1998,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute html =~ "<script>"
 
       html = bidi_row("workspace", %{host: long})
-      assert isolated(html, ".q-cx-h > bdi") == [long]
+      assert isolated(html, ".q-cx-h > bdi") == [Apiary.ExternalText.line(long)]
       assert html =~ "</bdi><span class=\"q-cx-p\">:443</span>"
     end
 
@@ -1619,10 +2038,275 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       for panel <- panels do
         html = render_component(&RunComponents.rule_panel/1, panel: panel)
-        assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [@host], inspect(panel)
-        assert html =~ "<bdi>#{@escaped}</bdi>"
+
+        assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [@shown],
+               inspect(panel)
+
+        assert html =~ "#{@escaped}</bdi>"
         refute html =~ "<script>"
       end
+    end
+  end
+
+  describe "a connection's texts, as a page shows an external system's text" do
+    # What Forager sent with a bidirectional override, a zero-width space or a control
+    # character in it, and what is left of them on the page.
+    defp cx(connection, variant) do
+      base = %{
+        host: "api.example",
+        port: 443,
+        path: "",
+        method: "CONNECT",
+        attempts: 1,
+        allowed: 1,
+        denied: 0,
+        runs: 1,
+        last_decision: "allowed",
+        last_rule: "api.example",
+        last_outcome: "connected",
+        last_mode: "enforce",
+        first_seen_at: ~U[2026-09-20 14:02:20Z],
+        last_seen_at: ~U[2026-09-20 14:02:21Z]
+      }
+
+      assigns = %{c: Map.merge(base, connection), variant: variant}
+
+      rendered_to_string(~H"""
+      <RunComponents.connection_row id="cx-1" connection={@c} variant={@variant} />
+      """)
+      |> LazyHTML.from_fragment()
+    end
+
+    defp texts(doc, selector),
+      do: doc |> LazyHTML.query(selector) |> Enum.map(&LazyHTML.text/1)
+
+    test "a host with a bidirectional control: cleaned to read, as sent to act on" do
+      sent = "api\u202E.example\u200B"
+
+      for variant <- ~w(table workspace) do
+        doc = cx(%{host: sent, last_rule: sent}, variant)
+
+        assert texts(doc, ".q-cx-h > bdi") == ["api.example"]
+        assert attr_of(doc, ".q-cx-t", "title") == ["api.example:443"]
+        assert attr_of(doc, "#cx-1-copy", "data-copy") == [sent]
+        assert attr_of(doc, "#cx-1-copy", "aria-label") == ["Copy api.example"]
+        assert text(LazyHTML.to_html(doc)) =~ "Rule api.example"
+        refute text(LazyHTML.to_html(doc)) =~ "\u202E"
+      end
+
+      workspace = cx(%{host: sent}, "workspace")
+      assert attr_of(workspace, "#cx-1-toggle", "phx-value-host") == [sent]
+    end
+
+    test "a path with a control character: cleaned to read, as sent to act on" do
+      sent = "/v1/\aitems"
+
+      denied = %{
+        path: sent,
+        request_method: "GET",
+        last_decision: "denied",
+        last_path_rule: "",
+        allowed: 0,
+        denied: 1
+      }
+
+      assert texts(cx(denied, "table"), ".q-cx-path") == ["GET /v1/\uFFFDitems"]
+
+      doc = cx(denied, "workspace")
+      assert texts(doc, ".q-cx-path") == ["/v1/\uFFFDitems"]
+      assert attr_of(doc, ".q-cx-t", "title") == ["api.example:443 /v1/\uFFFDitems"]
+      assert attr_of(doc, "#cx-1-toggle", "phx-value-path") == [sent]
+      assert text(LazyHTML.to_html(doc)) =~ "Host allowed, no path rule matches."
+    end
+
+    test "a method, a secret, a request's id and an outcome: cleaned to read" do
+      sent = &("\u202E" <> &1 <> "\u200B\a")
+
+      connection = %{
+        path: "/v1/items",
+        method: sent.("CONNECT"),
+        request_method: sent.("GET"),
+        last_credential: sent.("model-key"),
+        request_id: sent.("rq-7"),
+        last_outcome: sent.("reset")
+      }
+
+      for variant <- ~w(inline table) do
+        doc = cx(connection, variant)
+        shown = doc |> LazyHTML.to_html() |> text()
+
+        assert shown =~ "GET\uFFFD /v1/items", variant
+        assert shown =~ "secret model-key\uFFFD", variant
+        assert shown =~ "reset\uFFFD", variant
+        refute shown =~ "\u202E", variant
+      end
+
+      doc = cx(connection, "inline")
+
+      assert attr_of(doc, ".q-dest", "title") ==
+               ["api.example:443 GET\uFFFD /v1/items, request rq-7\uFFFD"]
+
+      assert attr_of(doc, ".q-dest", "data-request-id") == [sent.("rq-7")]
+      assert texts(cx(%{connection | path: ""}, "inline"), ".q-rq") == ["CONNECT\uFFFD"]
+    end
+
+    test "a tool and a rule: cleaned; the case is what was sent, whatever is left" do
+      event = %{
+        host: "localhost",
+        port: 8080,
+        path: "/hook",
+        method: "POST",
+        request_method: "POST",
+        decision: "allowed",
+        rule: "local\u202Ehost\a",
+        tool: "\u202Ehook-relay\a",
+        mode: "enforce",
+        outcome: "connected",
+        at: ~U[2026-09-20 14:02:20Z]
+      }
+
+      inline = fn event ->
+        assigns = %{event: event}
+
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-1" connection={@event} variant="inline" />
+        """)
+      end
+
+      html = inline.(event)
+      doc = LazyHTML.from_fragment(html)
+      assert texts(doc, ".q-tool-name") == ["hook-relay\uFFFD"]
+      assert text(html) =~ "Handed to hook-relay\uFFFD by rule localhost\uFFFD"
+
+      # Nothing left to show of the tool or the rule: still a call to a tool, by a rule,
+      # each marked (`Apiary.ExternalText.marked/1`).
+      html = inline.(%{event | tool: "\u202E\u200B", rule: "\u200B"})
+      assert texts(LazyHTML.from_fragment(html), ".q-tool-name") == ["\uFFFD\uFFFD"]
+      assert text(html) =~ "Handed to \uFFFD\uFFFD by rule \uFFFD"
+      refute text(html) =~ "No rule matches."
+      refute html =~ "\u202E"
+    end
+
+    test "a denied path with nothing left to show: no path rule, never the host's" do
+      for variant <- ~w(table workspace) do
+        doc =
+          cx(
+            %{
+              path: "\u202E\u200B",
+              request_method: "GET",
+              last_decision: "denied",
+              last_rule: "api.example",
+              last_path_rule: "",
+              allowed: 0,
+              denied: 1
+            },
+            variant
+          )
+
+        words = text(LazyHTML.to_html(doc))
+        assert words =~ "Host allowed, no path rule matches.", variant
+        refute words =~ "Rule api.example", variant
+      end
+    end
+
+    test "a host the wall refused for its form: marked, inside a <bdi> where it shows" do
+      host = "Files\u202E.CDN\u200B.example."
+
+      refused = %{
+        last_decision: "denied",
+        last_rule: "wall:host-form",
+        allowed: 0,
+        denied: 1
+      }
+
+      for variant <- ~w(inline table workspace) do
+        html = cx(Map.put(refused, :host, host), variant) |> LazyHTML.to_html()
+
+        # What the row acts on and copies is the host as sent; nothing else of it is.
+        shown = String.replace(html, ~r{ (data-copy|phx-value-host)="[^"]*"}, "")
+
+        marked = "Files\uFFFD.CDN\uFFFD.example."
+        assert texts(LazyHTML.from_fragment(html), "bdi") == [marked], variant
+
+        refute shown =~ "\u202E", variant
+        refute shown =~ "\u200B", variant
+      end
+    end
+
+    test "a host, a path and a path rule with nothing left to show: marked, not none" do
+      sent = %{
+        host: "\u200B",
+        path: "\u202E\u200B",
+        request_method: "GET",
+        last_decision: "allowed",
+        last_rule: "api.example",
+        last_path_rule: "\u2060"
+      }
+
+      doc = cx(sent, "table")
+      assert texts(doc, ".q-cx-h > bdi") == ["\uFFFD"]
+      assert texts(doc, ".q-cx-path") == ["GET \uFFFD\uFFFD"]
+      assert text(LazyHTML.to_html(doc)) =~ "Rule api.example, path \uFFFD"
+      refute LazyHTML.to_html(doc) =~ "\u202E"
+    end
+
+    test "a path the wall refused as one that reads two ways: marked" do
+      refused = %{
+        path: "/a/%2e%2e/b\u202E",
+        request_method: "GET",
+        last_decision: "denied",
+        last_rule: "api.example",
+        last_path_rule: "wall:ambiguous-path",
+        allowed: 0,
+        denied: 1
+      }
+
+      assert texts(cx(refused, "table"), ".q-cx-path") == ["GET /a/%2e%2e/b\uFFFD"]
+    end
+
+    test "a tool's name, as a connection leads with it: cleaned; one sent blank marked" do
+      for {name, shown} <- [{"files\u202E\u200B", "files"}, {" ", "\uFFFD"}] do
+        html = render_component(&RunComponents.tool_mark/1, name: name)
+        assert texts(LazyHTML.from_fragment(html), ".q-tool-name") == [shown]
+      end
+    end
+
+    test "a rule panel's host and path sent with nothing left to show: marked" do
+      panel = %{
+        anchor: "a-allow",
+        action: :allow,
+        host: "\u200B",
+        path: "\u202E",
+        page: :workspace,
+        level: :workspace,
+        target: nil,
+        targets: [],
+        choice: nil,
+        what: %{workspace: %{kind: :path, paths: []}},
+        workspace: "Shop",
+        interval: 30,
+        consequence: %{},
+        error: nil
+      }
+
+      html = render_component(&RunComponents.rule_panel/1, panel: panel)
+      doc = LazyHTML.from_fragment(html)
+      assert texts(doc, "#rule-panel-title .q-rp-host > bdi") == ["\uFFFD"]
+      assert texts(doc, "#rule-panel-what .q-rule") == ["\uFFFD"]
+      # The host's title agrees with the host shown beside it.
+      assert doc |> LazyHTML.query("#rule-panel-title .q-rp-host") |> LazyHTML.attribute("title") ==
+               ["\uFFFD"]
+
+      html =
+        render_component(&RunComponents.rule_panel/1,
+          panel: %{panel | host: "\u202Eapi.example\u200B", path: "/v1"}
+        )
+
+      doc = LazyHTML.from_fragment(html)
+      assert texts(doc, "#rule-panel-title .q-rp-host > bdi") == ["api.example"]
+
+      assert doc |> LazyHTML.query("#rule-panel-title .q-rp-host") |> LazyHTML.attribute("title") ==
+               ["api.example"]
     end
   end
 end

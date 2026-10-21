@@ -30,6 +30,20 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       assert has_element?(lv, "#node-#{node.public_id}", "build-01")
       assert has_element?(lv, "#node-#{node.public_id}", node.public_id)
+
+      # The name and the id are cut to the column, each whole in its title; the id hides on
+      # a phone, title or not.
+      assert has_element?(
+               lv,
+               "#node-#{node.public_id} .q-nm > .q-title.q-cut[title='build-01']",
+               "build-01"
+             )
+
+      assert has_element?(
+               lv,
+               "#node-#{node.public_id} .q-nm > .q-side.q-mono[title='#{node.public_id}']"
+             )
+
       assert has_element?(lv, "#node-#{pool.public_id}-kind", "Pool")
       refute has_element?(lv, "#node-#{node.public_id}-kind")
       assert has_element?(lv, "#node-#{node.public_id}-state", "Never seen")
@@ -293,7 +307,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       pool = pool_fixture(scope, name: "spot-runners", instance_limit: 20)
       node_run_fixture(running, "i_1")
       instance_fixture(idle, instance_id: "i_2", seen_at: ago(7200))
-      instance_fixture(pool, instance_id: "p_1", name: "spot-1")
+      spot = instance_fixture(pool, instance_id: "p_1", name: "spot-1")
       for n <- 1..12, do: node_run_fixture(pool, "p_#{n}")
 
       {:ok, lv, _html} = live(conn, nodes_path(scope))
@@ -304,7 +318,15 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       assert has_element?(lv, "#node-#{pool.public_id}-state", "12 of 20 running")
 
       # Ten instances under the pool, then the rest as a count that leads to its page.
-      assert has_element?(lv, "#nodes tr[id^='node-#{pool.public_id}-instance-']", "spot-1")
+      assert has_element?(lv, "#nodes tr#node-#{pool.public_id}-instance-#{spot.id}", "spot-1")
+
+      # An instance's name is cut, whole in its title, its id beside it titled too; its
+      # state breaks between its parts, "Running since", the time and the run.
+      instance = "#nodes tr[id^='node-#{pool.public_id}-instance-']"
+      assert has_element?(lv, "#{instance} .q-nm > .q-cut[title='spot-1']", "spot-1")
+      assert has_element?(lv, "#{instance} .q-nm > .q-side.q-mono[title='p_1']", "p_1")
+      assert has_element?(lv, "#{instance} td > span.q-parts", "Running since")
+      assert has_element?(lv, "#{instance} td > span.q-parts > time")
 
       assert lv
              |> render()
@@ -314,6 +336,41 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       assert has_element?(lv, "#node-#{pool.public_id}-more-link", "and 2 more")
       refute has_element?(lv, "#nodes tr[id^='node-#{running.public_id}-instance-']")
+    end
+
+    test "an instance's row is named by its row's id or its newest open run's, never by the node's instance id",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners")
+      spot = instance_fixture(pool, instance_id: "i-alpha-41", name: "spot-1")
+      node_run_fixture(pool, "i-alpha-41")
+      run = node_run_fixture(pool, "i-beta-42")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      assert has_element?(lv, "#nodes tr#node-#{pool.public_id}-instance-#{spot.id}", "spot-1")
+
+      assert has_element?(
+               lv,
+               "#nodes tr#node-#{pool.public_id}-instance-#{run.public_id}",
+               "i-beta-42"
+             )
+
+      ids = lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.query("[id]")
+      ids = LazyHTML.attribute(ids, "id")
+      assert ids != []
+      refute Enum.any?(ids, &(&1 =~ "alpha-41" or &1 =~ "beta-42"))
+    end
+
+    test "an instance's id and Forager's version: cleaned in its row and its title",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners")
+      node_run_fixture(pool, "i\u202E-gamma-43", %{forager_version: "0.7\u200B.0"})
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      assert has_element?(lv, "#nodes .q-cut[title='i-gamma-43'] > bdi", "i-gamma-43")
+      assert has_element?(lv, "#nodes tr", "0.7.0")
+      refute lv |> element("#nodes") |> render() =~ ~r/[\x{202E}\x{200B}]/u
     end
 
     test "the views count and keep the running and the rest", %{conn: conn, scope: scope} do

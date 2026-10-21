@@ -39,6 +39,13 @@ defmodule ApiaryWeb.SecretLive.InUseTest do
     assert has_element?(lv, "#secret-#{secret.public_id}", "Example")
     refute has_element?(lv, "#secret-#{secret.public_id}", "Not used")
 
+    # What uses it is cut to its column, the whole of it in its title.
+    assert has_element?(
+             lv,
+             "#secret-#{secret.public_id}-used-by.q-cut[title='Example']",
+             "Example"
+           )
+
     {:ok, lv, _html} = live(conn, path <> "/#{secret.public_id}/delete")
     lv |> element("#secret-#{secret.public_id}-confirm button", "Yes, delete") |> render_click()
 

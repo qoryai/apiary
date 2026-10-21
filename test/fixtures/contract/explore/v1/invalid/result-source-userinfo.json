@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "verdict": "understood",
+  "complexity": {
+    "level": "standard",
+    "reason": "The fix touches the date parser and its callers in one module, and the parser has tests to extend."
+  },
+  "understanding": "The example service's date parser refuses dates written with a two-digit year, such as 01/02/26.\nThe ticket asks that it read them as years from 2000, as the import form already does.",
+  "scope": {
+    "in": [
+      "Read a two-digit year as a year from 2000 in the date parser.",
+      "Add tests for two-digit and four-digit years."
+    ],
+    "out": [
+      "Changing how dates are shown."
+    ]
+  },
+  "approach": {
+    "summary": "Extend the parser's year rule to take two digits and add 2000, keeping four-digit years as they are.",
+    "alternatives": [
+      {
+        "summary": "Rewrite every date before it reaches the parser.",
+        "reason": "It would change the text the service stores, which the ticket does not ask for."
+      }
+    ]
+  },
+  "knowledge": [
+    {
+      "text": "The import form already reads a two-digit year as a year from 2000.",
+      "sources": [
+        "https://docs.example.com@other.example/page"
+      ]
+    }
+  ]
+}

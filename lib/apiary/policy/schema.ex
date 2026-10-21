@@ -1,9 +1,10 @@
 defmodule Apiary.Policy.Schema do
   @moduledoc """
-  The contract's `run-configuration.schema.json` and the `policy.schema.json` it refers
-  to, vendored under `priv/contract/`, and the validation every rendered document passes
-  before it is stored. A test compares the vendored files with Forager's contract
-  directory at the commit in `.forager-contract-ref`.
+  The contract's `run-configuration.schema.json` and the `policy.schema.json`,
+  `auth.schema.json` and `api-format.schema.json` it refers to, vendored under
+  `priv/contract/`, and the validation every rendered document passes before it is
+  stored. A test compares the vendored files with Forager's contract directory at the
+  commit in `.forager-contract-ref`.
 
   The schema's patterns are anchored with `^` and `$`, and `$` also matches before a final
   newline: `"api.example\n"` passes them. This validation is the check of the document's
@@ -11,15 +12,16 @@ defmodule Apiary.Policy.Schema do
   patterns are anchored with `\\A` and `\\z` and which every rule passes before it is stored.
 
   The validator is built once and kept in `:persistent_term`, with the modification
-  times of the two files; a validation after either file changed builds it again, so a
+  times of the four files; a validation after any of them changed builds it again, so a
   checkout running with a code reloader takes a new schema without a restart. Nothing is
-  fetched: a reference outside the two files does not resolve.
+  fetched: a reference outside the four files does not resolve.
   """
 
   @behaviour JSV.Resolver
 
   @base "https://qory.dev/contracts/forager/v1/"
-  @files ~w(policy.schema.json run-configuration.schema.json)
+  @files ~w(api-format.schema.json auth.schema.json policy.schema.json
+            run-configuration.schema.json)
 
   @doc "The vendored schema files, by name."
   def files, do: @files
@@ -29,7 +31,8 @@ defmodule Apiary.Policy.Schema do
 
   @doc """
   Validates a run configuration document, as bytes. `:ok`, or `{:error, reason}` with
-  what the schema refuses, for a log and not for a page.
+  what the schema refuses, summed up (`Apiary.Kinds.Schema.summary/1`), for a log and not
+  for a page.
   """
   @spec validate(binary) :: :ok | {:error, term}
   def validate(document) when is_binary(document) do
@@ -37,7 +40,7 @@ defmodule Apiary.Policy.Schema do
          {:ok, _document} <- JSV.validate(decoded, root(), cast: false) do
       :ok
     else
-      {:error, %JSV.ValidationError{} = error} -> {:error, JSV.normalize_error(error)}
+      {:error, %JSV.ValidationError{} = error} -> {:error, Apiary.Kinds.Schema.summary(error)}
       {:error, reason} -> {:error, reason}
     end
   end

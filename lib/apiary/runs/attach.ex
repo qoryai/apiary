@@ -35,8 +35,8 @@ defmodule Apiary.Runs.Attach do
        instance of its gateway that attaches it again is given the answer and becomes its
        attaching instance;
     5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
-       ended it, it was lost after its attach, or its events were pruned. So is a run
-       whose record is gone;
+       ended it, its starter ended it without one, it was lost after its attach, or its
+       events were pruned. So is a run whose record is gone;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -50,8 +50,9 @@ defmodule Apiary.Runs.Attach do
     10. a workspace whose run configuration cannot be read is `{:error, :unavailable}`;
     11. else the run is attached: when, its heartbeat interval, which
         the run is held to from then on (`Apiary.Runs.Liveness`), Forager's version and the
-        contract's, the digest of the run configuration it is given, and the instance id
-        the attach was signed with.
+        contract's, the digest of the run configuration it is given, the instance id the
+        attach was signed with, and, for a run given one, the deadline for its end
+        (`backstop_at`, `Apiary.Runs.Liveness`).
 
   Since the gateway that attaches is the one the run key names, another gateway node
   never reaches the ninth answer once it passes the seventh; another instance of the
@@ -59,7 +60,7 @@ defmodule Apiary.Runs.Attach do
   second gateway, or a second instance of one, take a run on.
 
   The instance is the attach's signed `X-Qory-Instance-Id`, given in `meta`. It is stored
-  on the run beside the attach's answer (`runs.attach_instance_id`), and from then on the
+  on the run beside the attach's answer (`runs.gateway_instance_id`), and from then on the
   run's batches, heartbeats and reloads are taken from that instance alone
   (`Apiary.Runs.Sender`), until the run's sending ends: once its exit arrived, it was lost
   after its attach, or its events were pruned, a batch from any instance of the gateway
@@ -67,10 +68,25 @@ defmodule Apiary.Runs.Attach do
   attach itself is held to the answers above, an outcome's end included.
 
   The answer is the run configuration in force for the run's target, read under the
-  run's place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
-  `labels` and `about` of the run's registration added after its last member, each left
-  out when the registration had none; and its digest, which is the configuration's, for
-  `X-Qory-Run-Configuration` and `ETag`.
+  run's place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, then
+  `labels` and `about` of the run's registration, added after its last member, each left
+  out when the run has none; and its digest, for `X-Qory-Run-Configuration` and `ETag`:
+  the SHA-256 of the document's bytes without `labels` and `about`, the document a reload
+  of the run returns. A run Qory set run variables for (`Apiary.Runs.Run`,
+  `registration_variables`) receives a document composed for it with them after its last
+  member (`Apiary.Policy.ComposedConfiguration`), and the digest is that document's. The
+  variables are fixed when the run starts, so its reloads contain the same ones, and a run
+  is never told its configuration moved because of them.
+
+  A run given an image at the attach (`runs.configured_image`) has its configuration
+  composed with that image at the top level, beside the `security_policy`
+  (`Apiary.Policy.ComposedConfiguration`), and the digest is the composed document's. A
+  run that must build on its pool's default image, of a workspace whose policy names an
+  image, is given the policy without it. A workspace's policy that names an image gives
+  no run an image. Any other run is given the configuration as stored. Every run keeps
+  what it started in, which its reloads carry (`runs.started_image_from`,
+  `runs.started_image`): the image it was given at the top level, the image the policy it
+  was given names, or none.
 
   The gateway's row is read `FOR SHARE` in the attach's transaction, the way a gateway's
   deletion holds it (`Apiary.Gateways`), and the clock after it: a deletion either finds
@@ -82,16 +98,30 @@ defmodule Apiary.Runs.Attach do
   (`Apiary.Runs.Sender.sending_ended?/1`).
   """
 
+  # With the `factory` feature, which the documentation leaves out:
+  #
+  # - Among the runs that have ended (5. above) is a prebuild whose run of the queue its
+  #   starter's `prebuilt` ended, to any attach but a repeat.
+  # - A run a workspace's queue handed over that is not a prebuild is given the image the
+  #   node pool that claimed it recorded for the run's target, the one its registration's
+  #   labels name, on its environment record, fixed at the attach
+  #   (`runs.configured_image`); that is the run given an image at the attach. A prebuild
+  #   whose workspace's policy names an image is given the policy without it. A run with
+  #   no recorded image is given the configuration as stored.
+
   import Ecto.Query, warn: false
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Dispatches, Environments, Gateways, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{Batch, Registration, Run, RunKey, Sender}
+  alias Apiary.Policy.ComposedConfiguration
+  alias Apiary.Runs.{Answer, Batch, Registration, Run, RunKey, Sender}
 
   @version "version"
   @run_key "run_key"
@@ -113,9 +143,8 @@ defmodule Apiary.Runs.Attach do
   @document_version 1
   @int4 2_147_483_647
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
-  # The states of a run that has ended, with the old names an older release stored them
-  # under (`Apiary.Runs.Run.old_states/0`).
-  @ended Run.with_old_names(~w(completed failed cancelled))
+  # The states of a run that has ended.
+  @ended ~w(completed failed cancelled)
 
   @typedoc "An attach's body, as `parse/1` read it."
   @type t :: %__MODULE__{
@@ -275,7 +304,9 @@ defmodule Apiary.Runs.Attach do
   defp held(%{workspace: public_id, run_id: run_id}) do
     with %Workspace{} = workspace <- Repo.get_by(Workspace, public_id: public_id),
          %Run{} = run <-
-           Repo.one(from r in Run, where: r.workspace_id == ^workspace.id and r.run_id == ^run_id) do
+           Repo.one(
+             from r in Run, where: r.workspace_id == ^workspace.id and r.node_run_id == ^run_id
+           ) do
       {:ok, workspace, run}
     else
       nil -> {:error, :gone}
@@ -326,7 +357,7 @@ defmodule Apiary.Runs.Attach do
         repeat?(run, gateway, meta[:instance_id]) ->
           repeat(access_key, run, meta[:instance_id])
 
-        ended?(run) ->
+        ended?(run) or prebuilt?(run) ->
           {:error, :gone}
 
         expired?(run, now) ->
@@ -342,7 +373,7 @@ defmodule Apiary.Runs.Attach do
           {:error, :run_attached}
 
         true ->
-          take(access_key, run, attach, meta, now)
+          take(access_key, run, workspace, attach, meta, now)
       end
     end)
   end
@@ -361,12 +392,22 @@ defmodule Apiary.Runs.Attach do
 
   defp repeat?(_run, _gateway, _instance_id), do: false
 
-  # Its exit arrived, its starter's outcome ended it, or it was lost after its attach; or
-  # retention pruned its events, and the workspace wants nothing more of it.
+  # Its exit arrived, its starter's outcome ended it, its starter released it after a
+  # queue handed it over (cancelled, `released_at`, `Apiary.Dispatches.RunEnd`), or it was
+  # lost after its attach; or retention pruned its events, and the workspace wants nothing
+  # more of it.
   defp ended?(%Run{} = run) do
     run.state in @ended or not is_nil(run.exited_at) or not is_nil(run.outcome_state) or
       not is_nil(run.events_pruned_at) or (run.state == "lost" and not is_nil(run.attached_at))
   end
+
+  # A prebuild whose run of the queue its starter's `prebuilt` ended
+  # (`Apiary.Dispatches.RunEnd`): the gateway that attached it keeps it, as a repeat, and
+  # no other attach takes it on.
+  defp prebuilt?(%Run{dispatch_run_id: nil}), do: false
+
+  defp prebuilt?(%Run{dispatch_run_id: id}),
+    do: Repo.exists?(from d in DispatchRun, where: d.id == ^id and d.end_cause == :prebuilt)
 
   # A run attached before its instance was known takes this one's, under the run's row
   # lock: the attach that wrote it first holds the run.
@@ -384,18 +425,30 @@ defmodule Apiary.Runs.Attach do
     end
   end
 
-  defp take(access_key, run, attach, meta, now) do
-    with {:ok, settings} <-
-           Registration.configuration(Sender.place_key(run, access_key), run.registration_labels) do
+  defp take(access_key, run, workspace, attach, meta, now) do
+    dispatched = dispatched(run)
+
+    with {:ok, settings, image} <-
+           Registration.configuration(Sender.place_key(run, access_key), run.registration_labels,
+             image: fn -> image(run, workspace, dispatched) end,
+             prebuild: prebuild?(dispatched),
+             run: run
+           ) do
+      {started_from, started_image} = started(settings.settings, image)
+
       run =
         run
         |> Ecto.Changeset.change(
           attached_at: now,
           attach_interval_seconds: attach.interval_seconds,
           attach_answer_digest: settings.digest,
-          attach_instance_id: kept_instance(meta[:instance_id]),
+          gateway_instance_id: kept_instance(meta[:instance_id]),
           forager_version: kept_version(meta[:forager_version] || attach.forager_version),
           contract_version: attach.contract_version,
+          backstop_at: backstop_at(dispatched, now),
+          configured_image: image,
+          started_image_from: started_from,
+          started_image: started_image,
           updated_at: now
         )
         |> Repo.update!()
@@ -403,6 +456,62 @@ defmodule Apiary.Runs.Attach do
       {:ok, answer(run, settings, false)}
     end
   end
+
+  # What the run starts in, which its reloads carry (`Apiary.Runs.Run`): the image it is
+  # given at the top level, else the image the `security_policy` it is given names, else
+  # none.
+  defp started(_document, image) when is_binary(image), do: {"top_level", image}
+
+  defp started(document, nil) do
+    case ComposedConfiguration.policy_image(document) do
+      nil -> {"none", nil}
+      image -> {"policy", image}
+    end
+  end
+
+  # For a run a workspace's queue handed over, its step and the node pool that claimed
+  # it, whose dispatch was handed over; nil for any other run.
+  defp dispatched(%Run{dispatch_run_id: nil}), do: nil
+
+  defp dispatched(%Run{dispatch_run_id: id}) do
+    Repo.one(
+      from r in DispatchRun,
+        left_join: d in Dispatch,
+        on: d.dispatch_run_id == r.id and not is_nil(d.handed_over_at),
+        where: r.id == ^id,
+        order_by: [desc: d.handed_over_at],
+        limit: 1,
+        select: %{step: r.step, pool_id: d.pool_id}
+    )
+  end
+
+  defp prebuild?(%{step: step}), do: step == DispatchRun.prebuild()
+  defp prebuild?(nil), do: false
+
+  # The image a run starts in: for a run a workspace's queue handed over, not a prebuild,
+  # the image the pool that claimed it recorded for the run's target, the one its
+  # registration's labels name (`Apiary.Environments.image_for/2`); nil for any other run,
+  # which starts in the pool's default.
+  defp image(%Run{} = run, workspace, %{step: step, pool_id: pool_id})
+       when is_binary(pool_id) do
+    with false <- step == DispatchRun.prebuild(),
+         %Node{kind: :pool} = pool <- Repo.get(Node, pool_id),
+         {:ok, target} <- Domain.target(workspace, run.registration_labels) do
+      Environments.image_for(pool, target)
+    else
+      _none -> nil
+    end
+  end
+
+  defp image(_run, _workspace, _dispatched), do: nil
+
+  # A run a workspace's queue handed over is lost should it have neither an outcome nor an
+  # exit by its step's limit after its attach (`Apiary.Dispatches.RunEnd`); any other run
+  # has no such deadline.
+  defp backstop_at(nil, _now), do: nil
+
+  defp backstop_at(%{step: step}, now),
+    do: DateTime.add(now, Dispatches.backstop_seconds(step), :second)
 
   # The instance id the request was signed with, when it can be kept; nil otherwise, so the
   # run's next request from its gateway gives it one.
@@ -415,7 +524,7 @@ defmodule Apiary.Runs.Attach do
   defp kept_version(version),
     do: version |> binary_part(0, 255) |> String.chunk(:valid) |> List.first("")
 
-  # The answer's bytes, under the configuration's own digest.
+  # The answer's bytes, under the digest of the document without `labels` and `about`.
   defp answer(run, %{settings: document} = settings, repeated) do
     body = answer_body(document, run.registration_labels, run.registration_about)
     Map.merge(settings, %{settings: body, run: run, repeated: repeated})
@@ -424,29 +533,11 @@ defmodule Apiary.Runs.Attach do
   @doc """
   The bytes of an attach's answer: the run configuration `document`, with `labels` and
   `about` added after its last member, each only when it holds something. Its digest
-  stays the configuration's.
+  stays the document's.
   """
   @spec answer_body(binary, map | nil, map | nil) :: binary
-  def answer_body(document, labels, about) when is_binary(document) do
-    members =
-      [{"labels", labels}, {"about", about}]
-      |> Enum.reject(fn {_name, value} -> value in [nil, %{}] end)
-      |> Enum.map(fn {name, value} -> [?,, Jason.encode!(name), ?:, Jason.encode!(value)] end)
-
-    case members do
-      [] -> document
-      members -> with_members(document, members)
-    end
-  end
-
-  # A document is one JSON object: its members end before its last `}`.
-  defp with_members(document, members) do
-    trimmed = String.trim_trailing(document)
-    size = byte_size(trimmed) - 1
-    <<head::binary-size(^size), "}">> = trimmed
-    members = if String.trim(head) == "{", do: tl(List.flatten(members)), else: members
-    IO.iodata_to_binary([head, members, "}"])
-  end
+  def answer_body(document, labels, about) when is_binary(document),
+    do: Answer.append_members(document, [{"labels", labels}, {"about", about}])
 
   # Bookkeeping after the commit: it never fails the attach.
   defp attached(access_key, run, now) do

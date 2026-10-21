@@ -16,7 +16,11 @@ defmodule ApiaryWeb.NodeLive.Show do
     it, with the way to its Settings. Owners and admins clear a running instance
     (`node.clear_instance`): a text action on a Node's, an item of each row's menu on a
     pool's, either turning that line or row into its confirmation in place, never a
-    dialog, at `/nodes/:node_id/instances/:instance/clear`.
+    dialog, at `/nodes/:node_id/instances/:instance/clear`, `:instance` the id of the
+    instance's row in `node_instances`, or, for an instance with no row, at
+    `/nodes/:node_id/runs/:run_id/clear-instance`, `:run_id` the `public_id` of an open
+    run: the page links its newest open run, and the address accepts any open run of that
+    instance. Neither address, nor any DOM id, carries the node's instance id.
   - **Settings** (`/nodes/:node_id/settings`), with the node's list of sections
     (`ApiaryWeb.SettingsComponents`): General, its name, its kind (shown, fixed) and a
     pool's instance limit, then the danger zone, whose Delete expands its confirmation in
@@ -182,7 +186,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp apply_action(socket, :overview, _params),
     do: assign(socket, page_title: socket.assigns.node.name, clearing: nil, delete_refused: nil)
 
-  defp apply_action(socket, :clear_instance, %{"instance" => instance_id}) do
+  defp apply_action(socket, :clear_instance, params) do
     cond do
       not socket.assigns.may_clear ->
         socket
@@ -196,7 +200,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         )
         |> push_patch(to: node_path(socket, :overview))
 
-      clearing = clearing(socket, instance_id) ->
+      clearing = clearing(socket, params) ->
         assign(socket, page_title: socket.assigns.node.name, clearing: clearing)
 
       true ->
@@ -226,19 +230,36 @@ defmodule ApiaryWeb.NodeLive.Show do
     end
   end
 
-  # The instance the confirmation clears: one running now, or one the record holds a row of.
-  defp clearing(socket, instance_id) do
-    %{current_scope: scope, node: node, activity: activity} = socket.assigns
+  # The instance the confirmation clears, by the address's id: the id of its row, for one
+  # the record holds a row of, running now or not; or an open run of its, for one running
+  # with no row. The clearing names it by the node's instance id, which the address never
+  # carries.
+  defp clearing(socket, %{"instance" => row_id}) do
+    %{current_scope: scope, node: node} = socket.assigns
 
-    case Enum.find(activity.running, &(&1.instance_id == instance_id)) do
-      %{} = running ->
-        %{instance_id: instance_id, name: running.name}
+    case Nodes.get_instance_by_id(scope, node, row_id) do
+      %Instance{node_instance_id: instance_id, name: name} ->
+        %{instance_id: instance_id, name: name}
 
       nil ->
-        case Instance.instance_id?(instance_id) && Nodes.get_instance(scope, node, instance_id) do
-          %Instance{name: name} -> %{instance_id: instance_id, name: name}
-          _none -> nil
-        end
+        nil
+    end
+  end
+
+  defp clearing(socket, %{"run_id" => run_id}) do
+    %{current_scope: scope, node: node, activity: activity} = socket.assigns
+
+    with %Run{node_instance_id: instance_id} <- Nodes.get_instance_run(scope, node, run_id) do
+      case Enum.find(activity.running, &(&1.instance_id == instance_id)) do
+        %{} = running ->
+          %{instance_id: instance_id, name: running.name}
+
+        nil ->
+          case Nodes.get_instance(scope, node, instance_id) do
+            %Instance{name: name} -> %{instance_id: instance_id, name: name}
+            nil -> %{instance_id: instance_id, name: nil}
+          end
+      end
     end
   end
 
@@ -444,8 +465,14 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp refused_default(socket),
     do: refused(socket, :"node.edit", gettext("Only owners and admins change nodes."), :overview)
 
+  # An instance in words: its name, else its id, a text Forager sent, shown as one where
+  # it was sent (`shown_id/1`).
   defp instance_label(%{name: name}) when is_binary(name), do: name
-  defp instance_label(%{instance_id: instance_id}), do: instance_id
+  defp instance_label(%{instance_id: instance_id}), do: shown_id(instance_id)
+
+  # An instance's id, or Forager's version, as a page shows a text Forager sent
+  # (`Apiary.ExternalText.sent/1`).
+  defp shown_id(text), do: Apiary.ExternalText.sent(text)
 
   ## Live
 
@@ -576,9 +603,13 @@ defmodule ApiaryWeb.NodeLive.Show do
     }
   end
 
-  # The path where an instance of the node is asked to be cleared.
-  defp clear_path(scope, node, instance_id),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/instances/#{instance_id}/clear"
+  # The path where a running instance of the node is asked to be cleared: by the id of its
+  # row, or, for one with no row, by its newest open run's public id.
+  defp clear_path(scope, node, %{row_id: row_id}) when is_binary(row_id),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/instances/#{row_id}/clear"
+
+  defp clear_path(scope, node, %{run_public_id: run_id}),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/runs/#{run_id}/clear-instance"
 
   ## Render
 
@@ -595,11 +626,15 @@ defmodule ApiaryWeb.NodeLive.Show do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@live_action != :overview && @paths.overview}>
+      <:crumb navigate={@live_action != :overview && @paths.overview} title={@node.name}>
         {@node.name}
       </:crumb>
 
-      <NodeComponents.node_header node={@node} activity={@activity} />
+      <NodeComponents.node_header
+        node={@node}
+        activity={@activity}
+        reader={@current_scope.user.email}
+      />
       <NodeComponents.node_tabs
         node={@node}
         paths={@paths}
@@ -715,36 +750,37 @@ defmodule ApiaryWeb.NodeLive.Show do
           id="node-running"
           label={gettext("Running instances")}
           rows={@activity.running}
-          row_id={&instance_dom_id(&1.instance_id)}
-          confirming={@clear_at == :row && instance_dom_id(@clearing.instance_id)}
+          row_id={&instance_dom_id/1}
+          confirming={@clear_at == :row && clearing_dom_id(@clearing, @activity.running)}
         >
           <:col :let={instance} label={gettext("Instance")} kind="title">
             <span class="q-nm">
-              <span>{instance.name || instance.instance_id}</span>
-              <span :if={instance.name} class="q-side q-mono">{instance.instance_id}</span>
+              <span class="q-cut" title={instance_label(instance)}>
+                <bdi>{instance_label(instance)}</bdi>
+              </span>
+              <span :if={instance.name} class="q-side q-mono" title={shown_id(instance.instance_id)}>
+                <.external_text text={instance.instance_id} />
+              </span>
             </span>
           </:col>
           <:col :let={instance} label={gettext("Running since")}>
             <.relative_time format="clock" at={instance.since} />
           </:col>
           <:col :let={instance} label={gettext("Run")} from="sm">
-            <.run_link scope={@scope} run_id={instance.run_id} may_runs={@may_runs} />
+            <.run_link scope={@scope} public_id={instance.run_public_id} may_runs={@may_runs} />
           </:col>
           <:col :let={instance} label={gettext("Forager")} kind="faint" from="md">
-            {instance.forager_version || gettext("n/a")}
+            <.external_text text={instance.forager_version} />{if !instance.forager_version,
+              do: gettext("n/a")}
           </:col>
           <:action :let={instance} :if={@may_clear}>
             <.row_menu
-              id={"#{instance_dom_id(instance.instance_id)}-menu"}
-              label={
-                gettext("Actions for %{instance}",
-                  instance: instance.name || instance.instance_id
-                )
-              }
+              id={"#{instance_dom_id(instance)}-menu"}
+              label={gettext("Actions for %{instance}", instance: instance_label(instance))}
             >
               <.menu_item
-                id={"#{instance_dom_id(instance.instance_id)}-clear"}
-                patch={clear_path(@scope, @node, instance.instance_id)}
+                id={"#{instance_dom_id(instance)}-clear"}
+                patch={clear_path(@scope, @node, instance)}
               >
                 {gettext("Clear instance…")}
               </.menu_item>
@@ -863,10 +899,12 @@ defmodule ApiaryWeb.NodeLive.Show do
           </dd>
           <dt :if={@node.created_by} class="text-faint">{gettext("Made")}</dt>
           <dd :if={@node.created_by}>
-            {gettext("by %{person}, %{date}",
-              person: People.email(@node.created_by),
-              date: Format.date(@node.inserted_at)
-            )}
+            <.rich text={
+              rich_gettext("by %{person}, %{date}",
+                person: letter(People.email(@node.created_by), @scope.user.email),
+                date: Format.date(@node.inserted_at)
+              )
+            } />
           </dd>
         </dl>
         <p>
@@ -1009,28 +1047,32 @@ defmodule ApiaryWeb.NodeLive.Show do
       <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <%= if @running do %>
           <span id="node-instance-name" class="font-medium">
-            {@running.name || @running.instance_id}
+            <bdi>{@running.name || shown_id(@running.instance_id)}</bdi>
           </span>
-          <span :if={@running.name} class="q-mono text-muted">{@running.instance_id}</span>
+          <span :if={@running.name} class="q-mono text-muted"><.external_text text={
+            @running.instance_id
+          } /></span>
           <span class="q-sdot q-sdot-running">
             <i aria-hidden="true"></i><span>{gettext("Running since")}</span>
           </span>
           <.relative_time format="clock" at={@running.since} />
-          <.run_link scope={@scope} run_id={@running.run_id} may_runs={@may_runs} />
+          <.run_link scope={@scope} public_id={@running.run_public_id} may_runs={@may_runs} />
           <span :if={@running.forager_version} class="text-muted">
-            {gettext("Forager %{version}", version: @running.forager_version)}
+            {gettext("Forager %{version}", version: shown_id(@running.forager_version))}
           </span>
         <% else %>
           <span id="node-instance-name" class="font-medium">
-            {@last.name || @last.instance_id}
+            <bdi>{@last.name || shown_id(@last.node_instance_id)}</bdi>
           </span>
-          <span :if={@last.name} class="q-mono text-muted">{@last.instance_id}</span>
+          <span :if={@last.name} class="q-mono text-muted"><.external_text text={
+            @last.node_instance_id
+          } /></span>
           <span class="text-muted">
             {gettext("Last seen")}
             <.relative_time id="node-instance-seen" at={@last.last_seen_at} />
           </span>
           <span :if={@last.last_forager_version} class="text-muted">
-            {gettext("Forager %{version}", version: @last.last_forager_version)}
+            {gettext("Forager %{version}", version: shown_id(@last.last_forager_version))}
           </span>
         <% end %>
       </p>
@@ -1041,7 +1083,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           :if={@may_clear}
           id="node-instance-clear"
           variant="link"
-          patch={clear_path(@scope, @node, @running.instance_id)}
+          patch={clear_path(@scope, @node, @running)}
         >
           {gettext("Clear instance…")}
         </.button>
@@ -1095,7 +1137,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp clear_place(_clearing, _node, _activity), do: :part
 
   attr :scope, :map, required: true
-  attr :run_id, :string, required: true
+  attr :public_id, :string, required: true
   attr :may_runs, :boolean, required: true
 
   # An instance's current run: a link to its page for a reader of the record.
@@ -1103,18 +1145,28 @@ defmodule ApiaryWeb.NodeLive.Show do
     ~H"""
     <.link
       :if={@may_runs}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@public_id}"}
       class="q-mono text-accent hover:underline"
     >
-      {gettext("run %{id}", id: short_id(@run_id))}
+      {gettext("run %{id}", id: short_id(@public_id))}
     </.link>
-    <span :if={!@may_runs} class="q-mono">{short_id(@run_id)}</span>
+    <span :if={!@may_runs} class="q-mono">{short_id(@public_id)}</span>
     """
   end
 
-  # A running instance's row's DOM id: its instance id is a claim, any characters.
-  defp instance_dom_id(instance_id),
-    do: "node-instance-" <> Integer.to_string(:erlang.phash2(instance_id))
+  # A running instance's row's DOM id: by the id of its row in `node_instances`, or, with
+  # no row, by its newest open run's public id. Never by the node's instance id.
+  defp instance_dom_id(%{row_id: row_id}) when is_binary(row_id), do: "node-instance-" <> row_id
+  defp instance_dom_id(%{run_public_id: run_id}), do: "node-instance-" <> run_id
+
+  # The DOM id of the row the confirmation takes the place of: the row of the running
+  # instance the clearing names.
+  defp clearing_dom_id(%{instance_id: id}, running) do
+    case Enum.find(running, &(&1.instance_id == id)) do
+      %{} = instance -> instance_dom_id(instance)
+      nil -> nil
+    end
+  end
 
   attr :scope, Apiary.Accounts.Scope, required: true
   attr :node, Node, required: true
@@ -1312,6 +1364,13 @@ defmodule ApiaryWeb.NodeLive.Show do
 
   defp kind_sentence(:pool),
     do: gettext("Node pool: short-lived instances that share one access key.")
+
+  # Who made the node, in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`).
+  defp letter(email, reader) do
+    assigns = %{email: email, reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
 
   defp limit_words(%Node{kind: :node}), do: gettext("1, one instance at a time")
   defp limit_words(%Node{instance_limit: nil}), do: gettext("No limit")

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/claim-answer.schema.json",
+  "title": "Claim answer",
+  "description": "The body of the signed 200 answer to a claim, application/json: the run the starter claimed, the dispatch that holds it, and what the job is for. The dispatch is the starter's until lease_until, the deadline for its handover: the starter starts the job, says so with dispatched, dispatched.schema.json, and has the handover answered with the signed 200 before then, or its run goes back to the queue with the same run_id, except a run of the step prebuild whose collection and node pool have another prebuild run waiting: that run ends instead, so a request naming its dispatch is then refused 410 gone; either way the dispatch is stale, handover.schema.json. The answer carries no credential: the job's run key comes only from the handover, handover-answer.schema.json. A dispatch of the step prebuild is for a target, not a work item, so the end of a dispatch when its work item is closed or undone never applies to it. It ends only at a prebuilt, prebuilt.schema.json; at a release, release.schema.json; with its run, at the run's outcome or when the control plane finds the run lost, once handed over, and once stale, as for any step, since a stale dispatch, one whose lease lapsed before its handover, answers 409 lease_expired until its run ends, and 410 gone only then; or at the disconnection or end of the collection whose target it is for, which ends the dispatch and its run with no new run, after which any request naming the dispatch answers 410 gone. The answer names the contract revision it was built for in revision, inside the signed body: the starter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes for the integration contract. It is signed under the control plane's server key, and the starter checks it under a server key it pinned at enrolment before using it, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes. The starter refuses a member this schema does not define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "revision",
+    "dispatch_id",
+    "run_id",
+    "pool_id",
+    "lease_until",
+    "step"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "step": {
+            "const": "explore"
+          }
+        },
+        "required": [
+          "step"
+        ]
+      },
+      "then": {
+        "required": [
+          "work_item"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "step": {
+            "const": "prebuild"
+          }
+        },
+        "required": [
+          "step"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "work_item"
+          ]
+        },
+        "required": [
+          "access",
+          "target"
+        ]
+      }
+    }
+  ],
+  "dependentRequired": {
+    "target": [
+      "access"
+    ],
+    "access": [
+      "target"
+    ]
+  },
+  "properties": {
+    "version": {
+      "description": "The document format. The starter refuses a version it does not read.",
+      "const": 1
+    },
+    "revision": {
+      "description": "The revision of this contract the control plane built the answer for: 3, the one revision the control plane serves and the one the request's X-Qory-Contract-Version named. The answer's signature covers it, with the rest of the body. The starter refuses an answer whose revision is not the revision it implements.",
+      "const": 3
+    },
+    "dispatch_id": {
+      "description": "The dispatch: the id the starter's later requests name in their path.",
+      "$ref": "definitions.schema.json#/$defs/dispatch_id"
+    },
+    "run_id": {
+      "description": "The run claimed.",
+      "$ref": "definitions.schema.json#/$defs/run_id"
+    },
+    "pool_id": {
+      "description": "The node pool whose key claimed the run.",
+      "$ref": "definitions.schema.json#/$defs/pool_id"
+    },
+    "lease_until": {
+      "description": "Until when the dispatch is the starter's, RFC 3339 in UTC with whole seconds: the starter has the handover answered with the signed 200 before then, and dispatched does not change it.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "step": {
+      "description": "The step the run is for.",
+      "$ref": "definitions.schema.json#/$defs/step"
+    },
+    "access": {
+      "description": "What the run may do on its target. Present exactly when target is present.",
+      "$ref": "definitions.schema.json#/$defs/access"
+    },
+    "target": {
+      "description": "Where the run's change would go, and absent when the run has no place where a change would go. The step explore may have none. The step prebuild always has one: the place whose environment the job builds.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+    },
+    "work_item": {
+      "description": "The work item the run is for, for the step explore; absent for the step prebuild. A step other than explore or prebuild carries work_item, or leaves it out, as that step's schema says, and the job refuses a step it does not know.",
+      "$ref": "definitions.schema.json#/$defs/work_item"
+    }
+  }
+}

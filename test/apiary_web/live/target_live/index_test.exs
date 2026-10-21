@@ -6,10 +6,13 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
-  alias Apiary.Targets
+  alias Apiary.{AccessKeys, Repo, Targets}
+  alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Collection, Collections}
 
   setup :register_and_log_in_user
 
@@ -62,7 +65,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
 
     assert has_element?(
              view,
-             "#{row} a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']"
+             "#{row} a[href='#{workspace_path(scope, "/targets/#{shop.public_id}")}']"
            )
 
     # The last run went badly: its word shows, and so do the denied attempts.
@@ -79,7 +82,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
        %{conn: conn, scope: scope} do
     started_run(scope, repo("github.example", "acme/quiet"),
       ago: 30,
-      exit: %{"reason" => "quiet", "quiet_seconds" => 1800}
+      exit: %{"state" => "cancelled", "reason" => "timeout"}
     )
 
     quiet = Targets.get(scope, "github.example", "acme/quiet")
@@ -144,6 +147,25 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert_patch(view, workspace_path(scope, "/targets?q=shop"))
   end
 
+  test "a system and a path Forager sent: cleaned in the Filter menu, a token and a row's title",
+       %{conn: conn, scope: scope} do
+    system = "zz\u202E.example"
+    started_run(scope, repo(system, "acme/\u202Edocs\u200B"), ago: 30)
+
+    view = open(conn, scope)
+    menu = view |> element("#targets-filter") |> render()
+    assert menu =~ ~r{<bdi[^>]*>zz.example</bdi>}
+    # Only an item's id, which addresses it, keeps the system as sent.
+    refute String.replace(menu, ~r/ id="[^"]*"/, "") =~ "\u202E"
+    assert has_element?(view, ~s(#targets tr .q-tgt-name[title="zz.example/acme/docs"]))
+
+    view = open(conn, scope, "?" <> URI.encode_query(%{"q" => "forge:#{system}"}))
+    assert has_element?(view, "#targets-tokens .q-tok bdi", "zz.example")
+    assert has_element?(view, ~s(#targets-tokens [aria-label="Remove forge:zz.example"]))
+    refute view |> element("#targets-tokens") |> render() =~ "\u202E"
+    assert rows(view) == ["acme/docs"]
+  end
+
   test "the Filter menu writes the qualifiers, and Sort orders", %{
     conn: conn,
     scope: scope,
@@ -183,8 +205,8 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     view = open(conn, scope)
     refute has_element?(view, "#nav-group-pinned")
 
-    # Its spoken name names the target as it is addressed: the system only where the
-    # path is shared.
+    # Its spoken name names the target by its path, with its system only where another
+    # system shares the path.
     assert has_element?(view, "#target-pin-#{shop.id}[aria-label='Pin github.example/acme/shop']")
     assert has_element?(view, "#target-pin-#{api.id}[aria-label='Pin acme/api']")
 
@@ -214,6 +236,106 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert_patch(view, workspace_path(scope, "/targets?page=2"))
     render_async(view, 2_000)
     assert length(rows(view)) == 1
+  end
+
+  @tag needs: :factory
+  test "a repository assigned with a collection, before any run, is listed in All and in Never",
+       %{conn: conn, scope: scope} do
+    connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
+    {connection, _nonce} =
+      connection_fixture(scope, connectable.adapter, :connected)
+
+    {:ok, verified} = AccessKeys.fetch_for_verification(connectable.access_key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(verified), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections: [
+          %{
+            ref: "NEW",
+            url: "https://tracker.acme.example/NEW",
+            title: "New",
+            target: %{system: "code.example.com", path: "acme/new"}
+          }
+        ],
+        listing: %{
+          id: "listing-1",
+          part: 1,
+          started_at: DateTime.utc_now(:second),
+          complete: false
+        }
+      })
+
+    collection = Repo.get_by!(Collection, connection_id: connection.id)
+
+    {:ok, _changed} =
+      Collections.assign_collections(
+        scope,
+        connection,
+        [collection.id],
+        scope.workspace
+      )
+
+    view = open(conn, scope)
+    assert has_element?(view, "#targets-view-all[aria-current=page]", "4")
+    assert has_element?(view, "#targets-view-never", "1")
+    assert "acme/new" in rows(view)
+
+    view = open(conn, scope, "?view=never")
+    assert rows(view) == ["acme/new"]
+  end
+
+  @tag needs: :factory
+  test "a listing that changes an assigned collection's repository lists the new one, which takes the Backlog card",
+       %{conn: conn, scope: scope} do
+    connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+    {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
+    {:ok, verified} = AccessKeys.fetch_for_verification(connectable.access_key.key_id)
+
+    post = fn path, listing, started_at ->
+      {:ok, :accepted} =
+        Collections.post_listing(Scope.for_access_key(verified), %{
+          time: DateTime.utc_now(:second),
+          connection_id: connection.public_id,
+          collections: [
+            %{
+              ref: "NEW",
+              url: "https://tracker.acme.example/NEW",
+              title: "New",
+              target: %{system: "code.example.com", path: path}
+            }
+          ],
+          listing: %{id: listing, part: 1, started_at: started_at, complete: false}
+        })
+    end
+
+    started_at = DateTime.utc_now(:second)
+    post.("acme/new", "listing-1", started_at)
+    collection = Repo.get_by!(Collection, connection_id: connection.id)
+
+    {:ok, _changed} =
+      Collections.assign_collections(scope, connection, [collection.id], scope.workspace)
+
+    post.("acme/moved", "listing-2", DateTime.add(started_at, 60))
+
+    view = open(conn, scope, "?view=never")
+    assert Enum.sort(rows(view)) == ["acme/moved", "acme/new"]
+
+    assert %{rows: never} = Targets.page(scope, %{view: :never})
+    assert %{runs: 0} = Enum.find(never, &(&1.target.path == "acme/moved"))
+
+    old = Targets.get(scope, "code.example.com", "acme/new")
+    new = Targets.get(scope, "code.example.com", "acme/moved")
+
+    {:ok, view, _html} = live(conn, workspace_path(scope, "/targets/#{new.public_id}"))
+    render_async(view, 2_000)
+    assert has_element?(view, "#target-backlog")
+
+    {:ok, view, _html} = live(conn, workspace_path(scope, "/targets/#{old.public_id}"))
+    render_async(view, 2_000)
+    refute has_element?(view, "#target-backlog")
   end
 
   test "a workspace no run named a target of says what fills the page" do

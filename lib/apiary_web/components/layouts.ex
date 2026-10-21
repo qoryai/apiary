@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.Layouts do
   @moduledoc """
   Layouts: the application shell (`app/1`) for signed-in pages and the split
-  view (`auth/1`) for log-in, registration, invitation and welcome pages. The
-  product on every surface is Qory Apiary.
+  view (`auth/1`) for log-in, registration, invitation and welcome pages. Both name the
+  product as this instance does (`Apiary.ProductName`).
 
   The shell shows one scope at a time, the one the page belongs to: a workspace, an
   organisation or the person. The top bar says where the page is and switches it (the
@@ -30,6 +30,7 @@ defmodule ApiaryWeb.Layouts do
   # so is the name of the first group's navigation.
   @sections [
     home: nil,
+    work: gettext_noop("Work"),
     record: gettext_noop("Record"),
     guard: gettext_noop("Guard"),
     account: gettext_noop("Your settings")
@@ -37,6 +38,10 @@ defmodule ApiaryWeb.Layouts do
 
   # How many pinned targets the sidebar lists.
   @pins 7
+
+  # The entries of the sidebar the palette's Go to leaves out, by key: Work's, which the
+  # palette does not list yet.
+  @off_palette [:work_items, :backlog]
 
   @doc """
   nav_entries/1 is the navigation of `scope`'s pages, as `ApiaryWeb.Nav.Entry` values:
@@ -61,6 +66,26 @@ defmodule ApiaryWeb.Layouts do
         icon: "hero-squares-2x2",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}" end,
         action: :"run.read"
+      },
+      # Work, with the `factory` feature: the work items, with how many wait on the reader,
+      # and the Backlog they are taken in from. Not in the palette's Go to yet
+      # (`palette_entries/1`).
+      %Entry{
+        section: :work,
+        key: :work_items,
+        label: gettext("Work items"),
+        icon: "hero-rectangle-stack",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/work" end,
+        action: :"work_item.read",
+        count: :waiting_on
+      },
+      %Entry{
+        section: :work,
+        key: :backlog,
+        label: gettext("Backlog"),
+        icon: "hero-inbox-stack",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/backlog" end,
+        action: :"work_item.read"
       },
       %Entry{
         section: :record,
@@ -322,6 +347,14 @@ defmodule ApiaryWeb.Layouts do
   """
   @spec palette_entries(Apiary.Accounts.Scope.t()) :: [{Entry.t(), String.t()}]
   def palette_entries(scope) do
+    for {entry, _path} = found <- open_entries(scope),
+        entry.key not in @off_palette,
+        do: found
+  end
+
+  # Every entry of the navigation the reader may open in `scope`, with where it leads: the
+  # palette's, and the ones it leaves out, for where a switch of workspace lands.
+  defp open_entries(scope) do
     for %Entry{} = entry <- nav_entries(scope),
         shown?(entry, scope, nil),
         do: {entry, Entry.path(entry, scope.organisation, scope.workspace)}
@@ -329,16 +362,28 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   instance_sections/1 is the Instance level's sections the scope's person may open, as
-  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the edition's
-  (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Mail and Configuration,
-  for an instance admin (`Apiary.Access.instance_admin?/1`). It reads the database, so
-  it is read once with the navigation's counts (`ApiaryWeb.UserAuth.nav_counts/1`, as
-  `:instance`), not on every render: the Qory Apiary menu's Instance settings leads to
-  the first, and with two or more the Instance's pages list them as the second column.
+  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the core's General, first, the
+  edition's (`c:ApiaryWeb.Edition.instance_sections/1`) after it, and the core's Mail and
+  Configuration last; the core's for an instance admin (`Apiary.Access.instance_admin?/1`). It
+  reads the database, so it is read once with the navigation's counts
+  (`ApiaryWeb.UserAuth.nav_counts/1`, as `:instance`), not on every render: the Qory
+  Apiary menu's Instance settings leads to the first, and with two or more the Instance's
+  pages list them as the second column.
   """
   @spec instance_sections(Apiary.Accounts.Scope.t() | nil) :: [Entry.t()]
   def instance_sections(%{user: %{}} = scope) do
     admin? = Access.instance_admin?(scope)
+
+    general =
+      admin? &&
+        %Entry{
+          section: :instance,
+          key: :general,
+          label: gettext("General"),
+          icon: "hero-adjustments-horizontal",
+          path: ~p"/instance/general",
+          place: :instance
+        }
 
     mail =
       admin? &&
@@ -348,6 +393,20 @@ defmodule ApiaryWeb.Layouts do
           label: gettext("Mail"),
           icon: "hero-envelope",
           path: ~p"/instance/mail",
+          place: :instance
+        }
+
+    # The instance's adapters, with the `factory` feature, which the instance has or not:
+    # an Instance page has no organisation whose people it could be hidden from (`use
+    # ApiaryWeb.Features, instance: :factory`). After the edition's, before Mail.
+    adapters =
+      admin? && Apiary.Features.on?(:factory) &&
+        %Entry{
+          section: :instance,
+          key: :adapters,
+          label: gettext("Adapters"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/instance/adapters",
           place: :instance
         }
 
@@ -362,7 +421,9 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
-    for %Entry{} = entry <- ApiaryWeb.Edition.instance_sections(scope) ++ [mail, configuration],
+    for %Entry{} = entry <-
+          [general] ++
+            ApiaryWeb.Edition.instance_sections(scope) ++ [adapters, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 
@@ -409,21 +470,6 @@ defmodule ApiaryWeb.Layouts do
         is_nil(entry.action) or (organisation && nav_open?(scope, entry.action, organisation)),
         do: entry
   end
-
-  @doc """
-  narrowed/2 is the value of `app/1`'s `narrowed` for a list narrowed to `target`, as the
-  list's filters parsed it (`{system, path}`, `{nil, path}` for the path on every system),
-  given the paths shared by two systems of the workspace (`Apiary.Runs.shared_paths/2`, or
-  whether this one is): the system is carried only where the path is shared. Nil for no
-  target, or `:none`.
-  """
-  @spec narrowed(term, MapSet.t() | boolean) :: map | nil
-  def narrowed({system, path}, shared) when is_binary(path) do
-    shared? = if is_boolean(shared), do: shared, else: MapSet.member?(shared, path)
-    %{system: system, path: path, shared: shared? and is_binary(system)}
-  end
-
-  def narrowed(_target, _shared), do: nil
 
   @doc """
   The application shell: a 48 px top bar across the window, then the sidebar of the
@@ -498,7 +544,7 @@ defmodule ApiaryWeb.Layouts do
   attr :counts, :map,
     default: nil,
     doc:
-      "%{members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{id, system, path, shared}` (`Apiary.Targets.list_pins/2`)}"
+      "%{members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{id, public_id, system, path, shared}` (`Apiary.Targets.list_pins/2`)}"
 
   attr :width, :string,
     default: "list",
@@ -534,7 +580,7 @@ defmodule ApiaryWeb.Layouts do
   attr :narrowed, :map,
     default: nil,
     doc:
-      "on Runs and Network access narrowed to one target, that target, `%{system, path, shared}` (`narrowed/2`): the sidebar's Runs and Network access carry it, its path and, only where the path is shared, its system. Nil everywhere else"
+      "on Runs and Network access narrowed to the targets of one path or to a typed name, `%{target, system, path}` (`ApiaryWeb.Narrowing.carried/2`): the sidebar's Runs and Network access carry the filters' target as the lists write it, and are named by the path and, only where another system has the path and one target is named, its system. Nil everywhere else"
 
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
@@ -543,6 +589,10 @@ defmodule ApiaryWeb.Layouts do
     attr :patch, :string,
       doc:
         "where the segment leads within the page's LiveView, as its tabs do; in place of `navigate`"
+
+    attr :title, :string,
+      doc:
+        "the whole of a name the segment shows, as its title where the segment is cut; none for fixed words"
   end
 
   slot :inner_block, required: true
@@ -807,24 +857,23 @@ defmodule ApiaryWeb.Layouts do
 
   # What the sidebar's Runs and Network access carry on a list narrowed to a target: that
   # target, on Runs and on Network access alone; nothing anywhere else.
-  defp carry(%{path: path} = narrowed, nav) when nav in [:runs, :network] and is_binary(path),
-    do: narrowed
+  defp carry(%{target: target, path: path} = narrowed, nav)
+       when nav in [:runs, :network] and not is_nil(target) and is_binary(path),
+       do: narrowed
 
   defp carry(_narrowed, _nav), do: nil
 
   # The target's name as the lists write it: its path, its system before it where the path
   # is shared.
-  defp narrowed_name(%{shared: true, system: system, path: path}) when is_binary(system),
+  defp narrowed_name(%{system: system, path: path}) when is_binary(system),
     do: "#{system}/#{path}"
 
   defp narrowed_name(%{path: path}), do: path
 
-  # The list's path with the target's parameters, written as the lists write them
-  # (`Apiary.Runs.Filters.target_params/2`): the path, and the system only where the path
-  # is shared.
-  defp carried_path(path, %{system: system, path: target_path, shared: shared}) do
-    params = Apiary.Runs.Filters.target_params(if(shared, do: system), target_path)
-    path <> "?" <> Plug.Conn.Query.encode(params)
+  # The list's path with the target, as the lists write it
+  # (`Apiary.Runs.Filters.target_params/1`): its ids, or a typed name's query word.
+  defp carried_path(path, %{target: target}) do
+    path <> "?" <> Plug.Conn.Query.encode(Apiary.Runs.Filters.target_params(target))
   end
 
   defp carried_label(:runs, name), do: gettext("Runs, narrowed to %{name}", name: name)
@@ -1216,14 +1265,16 @@ defmodule ApiaryWeb.Layouts do
         patch={crumb[:patch]}
         class="q-trail-link"
       >
-        <.trail_back :if={i == length(@crumb) - 2} /><span class="truncate">{render_slot(crumb)}</span>
+        <.trail_back :if={i == length(@crumb) - 2} /><span class="truncate" title={crumb[:title]}>{render_slot(
+          crumb
+        )}</span>
       </.link>
       <span
         :if={!link?(crumb)}
         class="q-trail-link q-trail-page"
         aria-current={i == length(@crumb) - 1 && "page"}
       >
-        <span class="truncate">{render_slot(crumb)}</span>
+        <span class="truncate" title={crumb[:title]}>{render_slot(crumb)}</span>
       </span>
     </li>
     """
@@ -1333,7 +1384,7 @@ defmodule ApiaryWeb.Layouts do
                   data-fold
                 >
                   <.icon name="hero-chevron-right-micro" class="q-switcher-fold-i size-3.5" />
-                  <span class="truncate">{heading}</span>
+                  <span class="truncate" title={heading}>{heading}</span>
                   <span class="q-switcher-n">{Format.number(length(places))}</span>
                 </button>
               <% else %>
@@ -1361,7 +1412,9 @@ defmodule ApiaryWeb.Layouts do
                   data-switch
                 >
                   <.avatar name={place.organisation.name} kind="organisation" size="xs" />
-                  <span class="truncate">{place.organisation.name}</span>
+                  <span class="truncate" title={place.organisation.name}>
+                    {place.organisation.name}
+                  </span>
                   <.icon
                     :if={current_organisation?(place, @organisation)}
                     name="hero-check-micro"
@@ -1428,7 +1481,7 @@ defmodule ApiaryWeb.Layouts do
                   data-switch
                   data-search={search_text([w.name, w.slug])}
                 >
-                  <span class="truncate">{w.name}</span>
+                  <span class="truncate" title={w.name}>{w.name}</span>
                   <.icon
                     :if={current_workspace?(w, @workspace)}
                     name="hero-check-micro"
@@ -1512,7 +1565,7 @@ defmodule ApiaryWeb.Layouts do
               data-switch
               data-search={search_text([w.name, w.slug])}
             >
-              <span class="truncate">{w.name}</span>
+              <span class="truncate" title={w.name}>{w.name}</span>
               <.icon
                 :if={current_workspace?(w, @workspace)}
                 name="hero-check-micro"
@@ -1878,7 +1931,7 @@ defmodule ApiaryWeb.Layouts do
         label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
       >
         <.avatar name={@organisation.name} kind="organisation" size="xs" />
-        <span class="truncate">{@organisation.name}</span>
+        <span class="truncate" title={@organisation.name}>{@organisation.name}</span>
       </.drawer_switch>
       <span :if={!@menus.organisation_menu?} class="q-drawer-switch" title={@organisation.name}>
         <.avatar name={@organisation.name} kind="organisation" size="xs" />
@@ -1891,7 +1944,7 @@ defmodule ApiaryWeb.Layouts do
         controls="workspace-menu"
         label={gettext("Switch workspace, current: %{name}", name: @menus.workspace.name)}
       >
-        <span class="truncate">{@menus.workspace.name}</span>
+        <span class="truncate" title={@menus.workspace.name}>{@menus.workspace.name}</span>
       </.drawer_switch>
       <span
         :if={@menus.workspace && !@menus.workspace_menu?}
@@ -2021,12 +2074,14 @@ defmodule ApiaryWeb.Layouts do
             navigate={pin.href}
             aria-current={pin.id == @target && "page"}
             class="q-nav-item"
-            title={"#{pin.system}/#{pin.path}"}
+            title={ApiaryWeb.TargetComponents.target_label(pin.system, pin.path, true)}
             phx-mounted={JS.ignore_attributes(["title"])}
           >
             <.icon name="hero-folder" class="q-nav-icon size-[18px]" />
             <span class="q-nav-text q-nav-pin">
-              <span :if={pin.shared} class="q-nav-pin-sys">{pin.system}/</span>{pin.path}
+              <span :if={pin.shared} class="q-nav-pin-sys"><.external_text text={pin.system} />/</span><.external_text text={
+                pin.path
+              } />
             </span>
           </.link>
         </nav>
@@ -2060,6 +2115,10 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-chevron-double-left-micro" class="q-collapse-icon size-4" />
           </button>
         </div>
+        <%!-- Beside a name an instance admin set; folded, the menu says it instead. --%>
+        <p :if={Apiary.ProductName.powered_by?()} id="powered-by" class="q-brand-powered">
+          {gettext("Powered by Qory Apiary")}
+        </p>
       </div>
     </aside>
     """
@@ -2188,7 +2247,11 @@ defmodule ApiaryWeb.Layouts do
       >
         {policy_mode(@counts)}
       </span>
-      <span :if={count = nav_count(@counts, @entry)} class="q-nav-count">
+      <span
+        :if={count = nav_count(@counts, @entry)}
+        class="q-nav-count"
+        title={nav_count_title(@entry, count)}
+      >
         {Format.number(count)}
       </span>
     </.link>
@@ -2196,21 +2259,31 @@ defmodule ApiaryWeb.Layouts do
   end
 
   @doc """
-  The product's menu, on the brand: the mark and the edition's name
-  (`c:ApiaryWeb.Edition.product_name/0`), opening upward from the sidebar's foot and
-  downward from the bar when there is no sidebar. It holds what is about the product
-  itself, not about the person: first, for whoever may open a section of the Instance
-  level (`instance_path`, its first), the instance's settings, Instance settings, and
-  a rule; then the docs this instance serves, its changelog with the running version
-  (`version`, none when nil) faint at the right, and the source. Folded, the sidebar shows
-  the mark alone, still the menu's button.
+  The product's menu, on the brand: the mark and the product's name on this instance
+  (`Apiary.ProductName.button_name/0`: the name an instance admin set, else the
+  edition's), cut
+  with an ellipsis where it is too long for the sidebar and whole on hover, opening upward
+  from the sidebar's foot and downward from the bar when there is no sidebar. It holds
+  what is about the product itself, not about the person: first, for whoever may open a
+  section of the Instance level (`instance_path`, its first), the instance's settings,
+  Instance settings, and a rule; then the docs this instance serves, its changelog with
+  the running version (`version`, none when nil) faint at the right, and the source.
+  Folded, the sidebar shows the mark alone, still the menu's button.
+
+  Its last line, beside a name set, is "Powered by Qory Apiary"
+  (`Apiary.ProductName.powered_by?/0`), plain text: always on the bar, and in the sidebar
+  only while it is folded, since the sidebar's foot says it under the menu's row
+  otherwise.
   """
   attr :version, :any, required: true
   attr :direction, :string, required: true, values: ~w(up down)
   attr :instance_path, :string, default: nil
 
   def brand_menu(assigns) do
-    assigns = assign(assigns, :product, ApiaryWeb.Edition.product_name())
+    assigns =
+      assigns
+      |> assign(:product, Apiary.ProductName.button_name())
+      |> assign(:powered_by, Apiary.ProductName.powered_by?())
 
     ~H"""
     <div
@@ -2229,7 +2302,7 @@ defmodule ApiaryWeb.Layouts do
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.logo_mark class="size-[18px]" />
-        <span class="q-brand-name">{@product}</span>
+        <span class="q-brand-name" title={@product}>{@product}</span>
         <.icon
           name={if @direction == "up", do: "hero-chevron-up-micro", else: "hero-chevron-down-micro"}
           class="q-brand-chev size-4"
@@ -2287,6 +2360,10 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
           </.link>
         </li>
+        <li :if={@powered_by} class="menu-divider q-brand-powered-item" role="separator"></li>
+        <li :if={@powered_by} id="brand-menu-powered" class="q-brand-powered-item" role="none">
+          <span class="q-brand-powered-text">{gettext("Powered by Qory Apiary")}</span>
+        </li>
       </ul>
     </div>
     """
@@ -2302,14 +2379,7 @@ defmodule ApiaryWeb.Layouts do
       Map.put(
         pin,
         :href,
-        ApiaryWeb.TargetComponents.target_path(
-          organisation,
-          workspace,
-          pin.system,
-          pin.path,
-          [],
-          pin[:shared] == true
-        )
+        ApiaryWeb.TargetComponents.target_path(organisation, workspace, pin, [])
       )
     end
   end
@@ -2438,7 +2508,7 @@ defmodule ApiaryWeb.Layouts do
   @spec switch_target(Apiary.Accounts.Scope.t(), String.t(), String.t() | nil) :: String.t()
   def switch_target(scope, key, page \\ nil) do
     found =
-      Enum.find(palette_entries(scope), fn {entry, _path} ->
+      Enum.find(open_entries(scope), fn {entry, _path} ->
         entry.place == :workspace and Atom.to_string(entry.key) == key
       end)
 
@@ -2493,6 +2563,13 @@ defmodule ApiaryWeb.Layouts do
     do: Map.get(counts, key)
 
   defp nav_count(_counts, _entry), do: nil
+
+  # What a count beside an entry counts, where the number alone does not say: the work
+  # items that wait for the reader.
+  defp nav_count_title(%Entry{key: :work_items}, count),
+    do: ngettext("Work items: %{count} waits for you", "Work items: %{count} wait for you", count)
+
+  defp nav_count_title(_entry, _count), do: nil
 
   # The mode in force is a word, not a colour: observe is not a fault. Absent while the
   # workspace has no policy of Qory's yet.
@@ -2552,7 +2629,9 @@ defmodule ApiaryWeb.Layouts do
   @doc """
   The split view for log-in, registration, confirmation, invitation and the
   welcome page: a brand panel from 1024 px (a header strip below), and a
-  352 px form column with no card around it.
+  352 px form column with no card around it. Both name the product as this instance
+  does (`Apiary.ProductName.name/0`), and under the form, beside a name an instance admin
+  set, it says "Powered by Qory Apiary" (`Apiary.ProductName.powered_by?/0`).
 
       <Layouts.auth flash={@flash}>
         ...
@@ -2563,6 +2642,8 @@ defmodule ApiaryWeb.Layouts do
   slot :inner_block, required: true
 
   def auth(assigns) do
+    assigns = assign(assigns, :product, Apiary.ProductName.name())
+
     ~H"""
     <a
       href="#main"
@@ -2573,7 +2654,7 @@ defmodule ApiaryWeb.Layouts do
 
     <div class="grid min-h-dvh lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <aside
-        aria-label="Qory Apiary"
+        aria-label={@product}
         class="relative hidden flex-col justify-between gap-8 overflow-hidden border-r border-line bg-base-200 p-8 lg:flex lg:p-10"
       >
         <svg
@@ -2592,7 +2673,7 @@ defmodule ApiaryWeb.Layouts do
           </defs>
           <rect width="100%" height="100%" fill="url(#comb)" />
         </svg>
-        <div class="relative"><.brand size="lg" /></div>
+        <div class="relative"><.brand size="lg" name={@product} /></div>
         <div class="relative flex min-h-0 flex-1 items-center justify-center py-2">
           <img
             src={~p"/images/qbee-agent.png"}
@@ -2610,7 +2691,8 @@ defmodule ApiaryWeb.Layouts do
           <%!-- Before sign-in there is no organisation: the instance's features decide. --%>
           <p :if={Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
             {gettext(
-              "Every run of a connected machine reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
+              "Every run of a connected machine reports to %{name}: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that.",
+              name: @product
             )}
           </p>
           <p :if={!Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
@@ -2623,7 +2705,7 @@ defmodule ApiaryWeb.Layouts do
 
       <div class="relative flex min-h-dvh min-w-0 flex-col bg-base-100">
         <header class="flex h-14 flex-none items-center justify-between border-b border-line px-4 lg:absolute lg:right-5 lg:top-5 lg:h-auto lg:border-0 lg:px-0">
-          <.brand class="lg:hidden" />
+          <.brand class="lg:hidden" name={@product} />
           <.theme_menu />
         </header>
         <main
@@ -2633,6 +2715,13 @@ defmodule ApiaryWeb.Layouts do
         >
           <div class="grid w-full max-w-[352px] gap-4">
             {render_slot(@inner_block)}
+            <p
+              :if={Apiary.ProductName.powered_by?()}
+              id="powered-by"
+              class="text-[12px]/4 text-faint"
+            >
+              {gettext("Powered by Qory Apiary")}
+            </p>
           </div>
         </main>
       </div>

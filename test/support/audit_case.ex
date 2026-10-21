@@ -165,8 +165,14 @@ defmodule Apiary.AuditCase do
     assert %DateTime{} = entry.inserted_at
 
     case made do
-      %{actor: :instance} -> assert {entry.actor_kind, entry.actor_id} == {:instance, nil}
-      _person -> assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
+      %{actor: :instance} ->
+        assert {entry.actor_kind, entry.actor_id} == {:instance, nil}
+
+      %{actor: {:access_key, id}} ->
+        assert {entry.actor_kind, entry.actor_id} == {:access_key, id}
+
+      _person ->
+        assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
     end
 
     refute_personal(entry, made[:secret])
@@ -264,9 +270,20 @@ defmodule Apiary.AuditCase do
     entry
   end
 
-  @doc "organisation_id/1 is the id of the scope's organisation."
+  @doc """
+  organisation_id/1 is the id of the scope's organisation; for the scope of an adapter's
+  key, which has none, the instance's organisation, whose trail its entries are in; for
+  the scope of another key, which carries its workspace alone, the key's organisation.
+  """
   @spec organisation_id(Scope.t()) :: Ecto.UUID.t()
   def organisation_id(%Scope{organisation: %{id: id}}), do: id
+
+  def organisation_id(%Scope{organisation: nil, access_key: %{organisation_id: nil}}),
+    do: Apiary.Edition.instance_organisation_id()
+
+  def organisation_id(%Scope{organisation: nil, access_key: %{organisation_id: id}})
+      when is_binary(id),
+      do: id
 
   @doc """
   refute_personal/2 asserts that no email address of any account, nor its local part,

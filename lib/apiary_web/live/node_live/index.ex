@@ -397,8 +397,13 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   defp row_id({:node, node}), do: "node-#{node.public_id}"
 
+  # A running instance's row: by the id of its row in `node_instances`, or, with no row,
+  # by its newest open run's public id. Never by the node's instance id.
+  defp row_id({:instance, node, %{row_id: row_id}}) when is_binary(row_id),
+    do: "node-#{node.public_id}-instance-#{row_id}"
+
   defp row_id({:instance, node, instance}),
-    do: "node-#{node.public_id}-instance-#{:erlang.phash2(instance.instance_id)}"
+    do: "node-#{node.public_id}-instance-#{instance.run_public_id}"
 
   defp row_id({:more, node, _more}), do: "node-#{node.public_id}-more"
 
@@ -682,19 +687,23 @@ defmodule ApiaryWeb.NodeLive.Index do
             <%= case row do %>
               <% {:node, node} -> %>
                 <span class="q-nm">
-                  <.link navigate={node_path(@current_scope, node)} class="q-title hover:underline">
+                  <.link
+                    navigate={node_path(@current_scope, node)}
+                    class="q-title q-cut hover:underline"
+                    title={node.name}
+                  >
                     {node.name}
                   </.link>
-                  <span class="q-side q-mono">{node.public_id}</span>
-                  <span
+                  <span class="q-side q-mono" title={node.public_id}>{node.public_id}</span>
+                  <.side_words
                     :if={is_nil(node.workspace_id)}
                     id={"node-#{node.public_id}-level"}
-                    class="q-side"
-                  >
-                    {gettext("Set for %{organisation}",
-                      organisation: @current_scope.organisation.name
-                    )}
-                  </span>
+                    text={
+                      gettext("Set for %{organisation}",
+                        organisation: @current_scope.organisation.name
+                      )
+                    }
+                  />
                   <.state_word :if={node.id == @default_id} id={"node-#{node.public_id}-default"}>
                     {gettext("Default")}
                   </.state_word>
@@ -702,8 +711,19 @@ defmodule ApiaryWeb.NodeLive.Index do
               <% {:instance, _node, instance} -> %>
                 <span class="q-nm pl-5 font-normal">
                   <.icon name="hero-arrow-turn-down-right-micro" class="size-3.5 text-faint" />
-                  <span>{instance.name || instance.instance_id}</span>
-                  <span :if={instance.name} class="q-side q-mono">{instance.instance_id}</span>
+                  <span
+                    class="q-cut"
+                    title={instance.name || Apiary.ExternalText.sent(instance.instance_id)}
+                  >
+                    <bdi>{instance.name || Apiary.ExternalText.sent(instance.instance_id)}</bdi>
+                  </span>
+                  <span
+                    :if={instance.name}
+                    class="q-side q-mono"
+                    title={Apiary.ExternalText.sent(instance.instance_id)}
+                  >
+                    <.external_text text={instance.instance_id} />
+                  </span>
                 </span>
               <% {:more, node, more} -> %>
                 <.link
@@ -737,25 +757,28 @@ defmodule ApiaryWeb.NodeLive.Index do
                   activity={@activity[node.id]}
                 />
               <% {:instance, _node, instance} -> %>
-                {gettext("Running since")} <.relative_time format="clock" at={instance.since} />
-                <.link
-                  :if={@may_runs}
-                  navigate={
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{instance.run_id}"
-                  }
-                  class="q-mono text-accent hover:underline"
-                >
-                  {gettext("run %{id}", id: short_id(instance.run_id))}
-                </.link>
+                <span class="q-parts">
+                  {gettext("Running since")}
+                  <.relative_time format="clock" at={instance.since} />{" "}
+                  <.link
+                    :if={@may_runs}
+                    navigate={
+                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{instance.run_public_id}"
+                    }
+                    class="q-mono text-accent hover:underline"
+                  >
+                    {gettext("run %{id}", id: short_id(instance.run_public_id))}
+                  </.link>
+                </span>
               <% _more -> %>
             <% end %>
           </:col>
           <:col :let={row} label={gettext("Forager")} kind="faint" from="md">
             <%= case row do %>
               <% {:node, node} -> %>
-                {forager_version(@activity[node.id])}
+                <.external_text text={forager_version(@activity[node.id])} />
               <% {:instance, _node, instance} -> %>
-                {instance.forager_version}
+                <.external_text text={instance.forager_version} />
               <% _more -> %>
             <% end %>
           </:col>
@@ -798,4 +821,15 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp add_label(:gateway), do: gettext("Add gateway")
 
   defp kind_label(kind), do: NodeComponents.kind_label(kind)
+
+  attr :id, :string, required: true
+  attr :text, :string, required: true
+
+  # Faint words beside a node's name, with their whole text as the title: bound once, so
+  # what shows and the title cannot differ.
+  defp side_words(assigns) do
+    ~H"""
+    <span id={@id} class="q-side" title={@text}>{@text}</span>
+    """
+  end
 end

@@ -6,7 +6,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
   import Apiary.Midnight
@@ -32,7 +32,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.deny(scope, nil, %{host: "telemetry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
 
-    %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
+    %{target: target, path: target_path(scope, target, ["policy"])}
   end
 
   defp open(conn, path) do
@@ -124,7 +124,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   defp own(scope, target, host),
     do: Enum.find(Policy.list_rules(scope, target), &(&1.host == host))
 
-  test "another workspace's target is not found, by its path or by its old id", %{
+  test "another workspace's target is not found, by its public id or by its old id", %{
     conn: conn,
     scope: scope
   } do
@@ -134,7 +134,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
     assert_raise Ecto.NoResultsError, fn ->
-      live(conn, target_path(scope, theirs.system, theirs.path, ["policy"]))
+      live(conn, target_path(scope, theirs, ["policy"]))
     end
 
     for id <- [theirs.id, "nope"] do
@@ -142,38 +142,35 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     end
   end
 
-  test "what its runs reached is Network access narrowed to the target", %{
+  test "what its runs reached is Network access narrowed to the target, by its id", %{
     conn: conn,
     scope: scope,
-    path: path
+    path: path,
+    target: target
   } do
     view = open(conn, path)
+    network = workspace_path(scope, "/network?target=#{target.public_id}")
 
     assert has_element?(
              view,
-             "#policy-hosts-network[href='#{workspace_path(scope, "/network?target=acme%2Fshop")}']",
+             "#policy-hosts-network[href='#{network}']",
              "See what its runs reached"
            )
 
-    # Where another system has the same path, the system is in the address too: the
-    # target's own, where its tab now is, and the narrowed list's.
+    # Where another system has the same path, the address is the same id.
     started_run(scope, shop("gitlab.com"))
-    view = open(conn, workspace_path(scope, "/targets/github.example/acme/shop/-/policy"))
-
-    assert has_element?(
-             view,
-             "#policy-hosts-network[href='#{workspace_path(scope, "/network?system=github.example&target=acme%2Fshop")}']"
-           )
+    view = open(conn, path)
+    assert has_element?(view, "#policy-hosts-network[href='#{network}']")
   end
 
   test "a target no other system has is named by its path alone, in its title and its words",
-       %{conn: conn, scope: scope, path: path} do
+       %{conn: conn, scope: scope, path: path, target: target} do
     view = open(conn, path)
 
     assert page_title(view) =~ "Policy · acme/shop"
     refute page_title(view) =~ "github.example"
     assert name(view, "#target-header h1") == "acme/shop"
-    crumb = "#breadcrumb a[href='#{workspace_path(scope, "/targets/acme/shop")}']"
+    crumb = "#breadcrumb a[href='#{target_path(scope, target, [])}']"
     assert name(view, crumb) == "acme/shop"
 
     assert has_element?(
@@ -187,13 +184,13 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     started_run(scope, shop("gitlab.com"))
     {:ok, _} = Policy.deny(scope, target, %{host: "gitlab.example"})
     rule = own(scope, target, "gitlab.example")
-    base = workspace_path(scope, "/targets/github.example/acme/shop/-/policy")
+    base = target_path(scope, target, ["policy"])
 
     view = open(conn, base)
     assert page_title(view) =~ "Policy · github.example/acme/shop"
     assert name(view, "#target-header h1") == "github.example/acme/shop"
 
-    crumb = "#breadcrumb a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']"
+    crumb = "#breadcrumb a[href='#{target_path(scope, target, [])}']"
     assert name(view, crumb) == "github.example/acme/shop"
 
     assert has_element?(
@@ -227,7 +224,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute has_element?(view, "#policy-export-button")
 
     # A version and its export continue the breadcrumb as on the workspace's Policy.
-    page = workspace_path(scope, "/targets/github.example/acme/shop")
+    page = target_path(scope, target, [])
     repositories = {"Repositories", workspace_path(scope, "/targets")}
 
     view = open(conn, base <> "/versions/2")
@@ -267,6 +264,33 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert redirected_to(get(conn, old)) == path
     assert redirected_to(get(conn, old <> "/history?page=2")) == path <> "/history?page=2"
     assert redirected_to(get(conn, old <> "/versions/3/export")) == path <> "/versions/3/export"
+
+    # Each path of the tab goes on whole.
+    for rest <- ["/history", "/document", "/versions/3", "/versions/12/export"] do
+      assert redirected_to(get(conn, old <> rest)) == path <> rest, rest
+    end
+
+    # Anything else goes to the bare tab, the query kept.
+    for rest <- [
+          "/..",
+          "/../../settings",
+          "/history/..",
+          "/%2E%2E",
+          "/members",
+          "/history/extra",
+          "/document/x",
+          "/versions",
+          "/versions/0",
+          "/versions/03",
+          "/versions/-1",
+          "/versions/x",
+          "/versions/3/x",
+          "/versions/3/export/x",
+          "/versions/1234567890123456789012"
+        ] do
+      assert redirected_to(get(conn, old <> rest)) == path, rest
+      assert redirected_to(get(conn, old <> rest <> "?view=denied")) == path <> "?view=denied"
+    end
   end
 
   test "a target without rules of its own is the workspace's list, and says so",
@@ -394,7 +418,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     path: path
   } do
     view = open(conn, path)
-    type(view, %{host: "telemetry.example", paths: ""})
+    type(view, %{host: "telemetry.example"})
 
     assert text(view, "#policy-rule-reads") =~
              "telemetry.example is denied for the workspace. This rule allows it for this repository; other repositories keep the deny."
@@ -498,7 +522,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert_patch(view, path <> "/rules/new")
     assert text(view, "#policy-rule-add") == "Add repository rule"
 
-    type(view, %{host: "bin.paste.example", paths: ""})
+    type(view, %{host: "bin.paste.example"})
 
     assert has_element?(view, "#policy-rule-refusal[role=alert]")
 
@@ -511,10 +535,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     add(view)
     refute own(scope, target, "bin.paste.example")
 
-    type(view, %{host: "mcp.acme.example", paths: "/mcp/*"})
+    type(view, %{host: "mcp.acme.example"})
     add(view)
 
-    assert own(scope, target, "mcp.acme.example").paths == ["/mcp/*"]
+    assert own(scope, target, "mcp.acme.example").action == "allow"
     assert Enum.all?(Policy.list_rules(scope, nil), &(&1.host != "mcp.acme.example"))
   end
 
@@ -556,7 +580,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     words = fn ->
       view = open(member, path)
       tip = attribute(view, lock, "data-tip")
-      type(view, %{host: "bin.paste.example", paths: ""})
+      type(view, %{host: "bin.paste.example"})
 
       # A destination enforce would deny, listed before a locked deny came to cover it.
       owner = pick_mode(open(conn, path), "enforce")
@@ -594,7 +618,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     %{user: member} = member_fixture(scope, :member)
     view = compose(open(log_in_user(build_conn(), member), path))
 
-    type(view, %{host: "bin.paste.example", paths: ""})
+    type(view, %{host: "bin.paste.example"})
 
     assert text(view, "#policy-rule-refusal") =~ "Only an owner can change or unlock it."
   end
@@ -698,7 +722,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
     end
 
-    test "what enforce would deny here isolates each host, so a bidi override reorders nothing",
+    test "what enforce would deny here cleans and isolates each host, so nothing is reordered",
          %{conn: conn, path: path, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"
 
@@ -709,9 +733,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view = open(conn, path)
       pick_mode(view, "enforce")
 
-      assert has_element?(view, "#mode-would .q-dest > bdi", host)
-      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>"
-      refute render(view) =~ "elpmaxe.<script>"
+      # The override is dropped (`Apiary.ExternalText.sent/1`), the rest isolated.
+      assert has_element?(view, "#mode-would .q-dest > bdi", "evillpmaxe.<script>")
+      assert render(view) =~ ~r{<bdi[^>]*>evillpmaxe.&lt;script&gt;</bdi>}
+      refute view |> element("#mode-would") |> render() =~ "\u202E"
     end
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
@@ -780,7 +805,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       refute text(view, "#flash-info") =~ "github.example"
 
       assert text(view, "#policy-mode-effect") =~
-               "Overridden by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} observes. A connection no rule allows is denied."
+               "Overridden by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) today; #{scope.workspace.name} observes. A connection no rule allows is denied."
     end
 
     test "the Document view is the document in force under the card, and follows the mode in place",
@@ -852,7 +877,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert Policy.get_mode(scope, target).own == "observe"
 
       assert text(view, "#policy-mode-effect") =~
-               "Overridden by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
+               "Overridden by #{String.upcase(String.first(scope.user.email))} #{scope.user.email} (you) today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
 
       pick_mode(view, "follow")
       assert text(view, "#policy-mode-q") == "Let acme/shop follow #{scope.workspace.name}?"
@@ -943,7 +968,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view =
         open(
           log_in_user(build_conn(), other.user),
-          target_path(other, target.system, target.path, ["policy"])
+          target_path(other, target, ["policy"])
         )
 
       # It follows the workspace, which observes: picking observe changes the mode of
@@ -1134,7 +1159,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     # The export is a page of the tab, under the target's own title: an h2 and Done to the
     # Document view. The way back is the top bar's breadcrumb, never a trail of the page's own.
     view = open(conn, path <> "/versions/1/export")
-    # The page names the target as it is addressed; the file's head names it in full.
+    # The page names the target by its path, with its system where another system shares
+    # the path; the file's head names it in full.
     assert text(view, "#export-lead") =~ "The effective policy of acme/shop as of version 1"
 
     assert text(view, "#export-policy-text") =~
@@ -1247,7 +1273,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
         refute text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
       end
 
-      type(view, %{host: "tracker.example", paths: "", action: "deny"})
+      type(view, %{host: "tracker.example", action: "deny"})
 
       assert text(view, "#policy-rule-host-error") =~
                "tracker.example is already denied for this repository, by #{local} on"

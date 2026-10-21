@@ -75,9 +75,20 @@ defmodule Apiary.Mail.Settings do
     |> validate_length(:smtp_username, max: 320, count: :bytes)
     |> validate_length(:smtp_password, max: 1_000)
     |> validate_length(:mail_from, max: 160, count: :bytes)
-    |> validate_format(:mail_from, ~r/\A[^@,;<>"\s]+@[^@,;<>"\s]+\z/,
-      message: dgettext_noop("errors", "must have the @ sign and no spaces")
-    )
+    |> validate_mail_from()
+  end
+
+  # An account's address checks (`Apiary.Accounts.User.validate_address/2`) and, where the
+  # address has no error yet, no `<`, `>` or `"`, which mean something else in a From header.
+  defp validate_mail_from(changeset) do
+    changeset = Apiary.Accounts.User.validate_address(changeset, :mail_from)
+
+    if Keyword.has_key?(changeset.errors, :mail_from),
+      do: changeset,
+      else:
+        validate_format(changeset, :mail_from, ~r/\A[^<>"]+\z/,
+          message: dgettext_noop("errors", "must have the @ sign and no spaces")
+        )
   end
 
   # A username logs in with the password: STARTTLS that is never asked for, or that goes
@@ -113,14 +124,25 @@ defmodule Apiary.Mail.Settings do
   end
 
   @doc """
-  without_password/1 is `changeset` with the password it was given taken out of its changes
-  and its parameters, so a form made from it, which a page keeps, never holds it. A
-  password given stays in the parameters as an empty one, so the form still shows the
-  field's errors.
+  without_password/1 is `settings`, or `changeset`, with nothing of a password: the
+  password given and the one saved, encrypted, each a field `inspect/1` redacts, taken out
+  of the settings, and out of the changeset's data and changes; and the password given out
+  of its parameters, where it stays as an empty one, so the form still shows the field's
+  errors. A form made from it, which a page keeps, holds neither.
   """
+  @spec without_password(t) :: t
   @spec without_password(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def without_password(%__MODULE__{} = settings) do
+    Enum.reduce(__schema__(:redact_fields), settings, &Map.put(&2, &1, nil))
+  end
+
   def without_password(%Ecto.Changeset{} = changeset) do
-    changeset = delete_change(changeset, :smtp_password)
+    changeset =
+      Enum.reduce(
+        __schema__(:redact_fields),
+        %{changeset | data: without_password(changeset.data)},
+        &delete_change(&2, &1)
+      )
 
     case changeset.params do
       %{"smtp_password" => _given} = params ->

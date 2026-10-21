@@ -7,10 +7,25 @@
 //
 // With `data-float` the list floats: it is a `popover="manual"` shown in the top layer
 // while open, placed under its trigger, right edges aligned (above it when there is no
-// room below), so a table's scroll region never clips a row's menu. It stays where the
-// DOM has it, so focus and clicks inside it are still the menu's.
+// room below; 8px from the viewport's left edge when right-aligned would start nearer),
+// so a table's scroll region never clips a row's menu. It stays where the DOM has it, so
+// focus and clicks inside it are still the menu's.
 
 const GAP = 4
+// The least room between a floating list and the viewport's edges.
+const EDGE = 8
+
+// Where a floating list goes, given its trigger's box, its size and the viewport's: under
+// the trigger, or above it when there is no room below, its right edge on the trigger's
+// right edge. A list that would then start nearer than EDGE to the viewport's left edge
+// starts at EDGE from it instead (`left`, in place of `right`).
+export function spot(at, width, height, viewport) {
+  const below = at.bottom + GAP
+  const top =
+    below + height <= viewport.height - EDGE ? below : Math.max(EDGE, at.top - GAP - height)
+  const right = Math.max(EDGE, viewport.width - at.right)
+  return viewport.width - right - width < EDGE ? {top, left: EDGE} : {top, right}
+}
 
 // The trigger: a menu button (`aria-haspopup`), or a disclosure's button
 // (`aria-controls` with `aria-expanded`), as a Filter chip, the Filter menu of a list
@@ -168,16 +183,15 @@ export const Menu = {
     const list = this.list()
     const trigger = this.el.querySelector(TRIGGER)
     if (!list || !trigger) return
+    const viewport = {width: window.innerWidth, height: window.innerHeight}
     const at = trigger.getBoundingClientRect()
-    const height = list.offsetHeight
-    const below = at.bottom + GAP
-    const top = below + height <= window.innerHeight - 8 ? below : Math.max(8, at.top - GAP - height)
-    const right = Math.max(8, window.innerWidth - at.right)
+    const {top, right, left} = spot(at, list.offsetWidth, list.offsetHeight, viewport)
     Object.assign(list.style, {
       position: "fixed",
       inset: "auto",
       top: `${Math.round(top)}px`,
-      right: `${Math.round(right)}px`,
+      right: right === undefined ? "auto" : `${Math.round(right)}px`,
+      left: left === undefined ? "auto" : `${Math.round(left)}px`,
       margin: "0",
     })
   },

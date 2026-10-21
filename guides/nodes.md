@@ -74,7 +74,7 @@ says "Nodes use this gateway: build-01, spot-runners. Point them to another gate
 direct, then delete it.", naming the first five of the workspace and then how many more.
 Nor is one that runs still go through, live or waiting for the gateway to attach them:
 the page says "Runs are going through this gateway:", the first five to register, named
-by run id, then how many more, and "Delete it once they end."; both in one notice when
+by their `rn_` id, then how many more, and "Delete it once they end."; both in one notice when
 both hold.
 When the default goes and other gateways remain, the oldest of them becomes the default.
 
@@ -165,7 +165,7 @@ where the machine runs qory." Then four numbered steps:
    machine, with Qory Apiary's address and a one-time code in it, and **Copy command**:
 
    ```sh
-   qory access-key enrol https://apiary.example.com qec_…
+   qory access-key enrol https://apiary.example.com qecn_…
    ```
 
    It works once, for 15 minutes, and the page gives the time it stops working. This is
@@ -205,7 +205,7 @@ itself, through the gateway edge-01: …", and the command carries `--via` and t
 gateway's URL, before Qory Apiary's address:
 
 ```sh
-qory access-key enrol --via https://edge.example.com https://apiary.example.com qec_…
+qory access-key enrol --via https://edge.example.com https://apiary.example.com qecn_…
 ```
 
 A gateway's address holds no character a shell acts on except the brackets of an IPv6

@@ -1,0 +1,231 @@
+defmodule Apiary.ModelChoices.ResolutionTest do
+  # The resolution reads no table: choices and providers go in, one answer comes out.
+  use ExUnit.Case, async: true
+
+  alias Apiary.ModelChoices.{ModelChoice, Resolution}
+
+  @workspace "00000000-0000-0000-0000-0000000000a1"
+  @other_workspace "00000000-0000-0000-0000-0000000000a2"
+  @target "00000000-0000-0000-0000-0000000000b1"
+  @other_target "00000000-0000-0000-0000-0000000000b2"
+  @alpha "00000000-0000-0000-0000-0000000000c1"
+  @beta "00000000-0000-0000-0000-0000000000c2"
+
+  @providers %{
+    @alpha => %{
+      default_value_id: "main",
+      models: [
+        %{model_id: "big", effort: ["low", "high"], is_default: true},
+        %{model_id: "small", effort: nil, is_default: false},
+        %{model_id: "mid", effort: ["high"], is_default: false}
+      ]
+    },
+    @beta => %{
+      default_value_id: "team",
+      models: [%{model_id: "other", effort: nil, is_default: true}]
+    }
+  }
+
+  defp input(choices, opts \\ []) do
+    %{
+      choices: choices,
+      workspace_id: @workspace,
+      target_id: Keyword.get(opts, :target_id, @target),
+      run_kind: "explore",
+      providers: @providers
+    }
+  end
+
+  # A choice at `level`, of the workspace and target above; `attrs` are its columns.
+  defp at(level, attrs \\ []) do
+    place =
+      case level do
+        6 -> %{}
+        5 -> %{workspace_id: @workspace}
+        4 -> %{workspace_id: @workspace, run_kind: "explore"}
+        3 -> %{workspace_id: @workspace, target_id: @target}
+        2 -> %{workspace_id: @workspace, target_id: @target, run_kind: "explore"}
+      end
+
+    struct!(ModelChoice, Map.merge(%{connection_id: @alpha}, Map.merge(place, Map.new(attrs))))
+  end
+
+  defp resolved(input) do
+    assert {:ok, %Resolution{} = resolution} = Resolution.resolve(input)
+    resolution
+  end
+
+  describe "the provider, the key, the model and the effort" do
+    test "come from the most specific level that chose a provider" do
+      choices = for level <- 2..6, do: at(level, model_id: "level#{level}", value_id: "k#{level}")
+
+      assert %{level: 2, model_id: "level2", value_id: "k2"} = resolved(input(choices))
+
+      for level <- 2..6 do
+        rest = Enum.filter(choices, &(ModelChoice.level(&1) >= level))
+        assert %{level: ^level, model_id: model} = resolved(input(rest))
+        assert model == "level#{level}"
+      end
+    end
+
+    test "skip a level that sets only tiers" do
+      only_tiers = at(2, connection_id: nil, tiers: %{"fast" => %{"model" => "small"}})
+
+      assert %{level: 5, model_id: "mid"} =
+               resolved(input([only_tiers, at(5, model_id: "mid")]))
+    end
+
+    test "take a choice without a key from the provider's default key" do
+      assert %{value_id: "main"} = resolved(input([at(5)]))
+      assert %{value_id: "spare"} = resolved(input([at(5, value_id: "spare")]))
+    end
+
+    test "take a choice without a model from the provider's default model, with no effort" do
+      assert %{model_id: "big", effort: nil} = resolved(input([at(5)]))
+    end
+
+    test "leave the effort unset when the winning level sets none, whatever a level below sets" do
+      choices = [at(2, model_id: "mid"), at(5, model_id: "big", effort: "high")]
+      assert %{level: 2, model_id: "mid", effort: nil} = resolved(input(choices))
+
+      choices = [at(2, model_id: "mid", effort: "high"), at(5, model_id: "big", effort: "low")]
+      assert %{level: 2, effort: "high"} = resolved(input(choices))
+    end
+
+    test "ignore a choice of another workspace, target or run kind" do
+      others = [
+        %{at(5, model_id: "no") | workspace_id: @other_workspace},
+        %{at(4, model_id: "no") | run_kind: "plan"},
+        %{at(3, model_id: "no") | target_id: @other_target},
+        %{at(2, model_id: "no") | target_id: @other_target},
+        %{at(2, model_id: "no") | run_kind: "plan"},
+        %{at(2, model_id: "no") | workspace_id: @other_workspace}
+      ]
+
+      assert %{level: 6, model_id: "small"} = resolved(input([at(6, model_id: "small") | others]))
+    end
+
+    test "resolve a run with no target from levels 4 to 6" do
+      choices = for level <- 2..6, do: at(level, model_id: "level#{level}")
+      no_target = input(choices, target_id: nil)
+
+      assert %{level: 4, model_id: "level4"} = resolved(no_target)
+
+      rest = Enum.filter(choices, &(ModelChoice.level(&1) in [2, 3, 5, 6]))
+      assert %{level: 5, model_id: "level5"} = resolved(input(rest, target_id: nil))
+    end
+
+    test "resolve to none where no choice has a provider" do
+      assert Resolution.resolve(input([])) == :none
+
+      assert Resolution.resolve(input([at(5, connection_id: nil, tiers: %{"fast" => "small"})])) ==
+               :none
+    end
+
+    test "end with the provider removed where the chosen provider is gone" do
+      assert Resolution.resolve(input([at(5, connection_id: "missing")])) ==
+               {:error, :provider_removed}
+    end
+  end
+
+  describe "a workspace lock" do
+    test "holds against the levels below it" do
+      locked = at(5, model_id: "mid", locked: true)
+      below = for level <- [2, 3, 4], do: at(level, model_id: "level#{level}")
+
+      assert %{level: 5, model_id: "mid"} = resolved(input([locked | below]))
+    end
+
+    test "of the more specific workspace level wins among locks" do
+      choices = [at(5, model_id: "mid", locked: true), at(4, model_id: "small", locked: true)]
+      assert %{level: 4, model_id: "small"} = resolved(input(choices))
+    end
+
+    test "that sets no provider leaves the provider to the next level" do
+      locked = at(5, connection_id: nil, locked: true, tiers: %{"fast" => "small"})
+      assert %{level: 2, model_id: "mid"} = resolved(input([locked, at(2, model_id: "mid")]))
+    end
+
+    test "does not hold from level 6, which cannot be locked" do
+      assert %{level: 2} = resolved(input([at(6), at(2)]))
+    end
+  end
+
+  describe "the tiers" do
+    test "are each the most specific entry that the provider lists" do
+      choices = [
+        at(2, tiers: %{"light" => "small"}),
+        at(3, tiers: %{"light" => "mid", "fast" => %{"model" => "big", "effort" => "low"}}),
+        at(5, tiers: %{"thinking" => "big", "fast" => "small"})
+      ]
+
+      resolution = resolved(input(choices))
+
+      assert resolution.tiers == %{
+               "light" => %{"model" => "small"},
+               "fast" => %{"model" => "big", "effort" => "low"},
+               "thinking" => %{"model" => "big"}
+             }
+
+      assert resolution.tier_levels == %{"light" => 2, "fast" => 3, "thinking" => 5}
+    end
+
+    test "leave out a tier that no level maps" do
+      assert %{tiers: tiers} = resolved(input([at(5, tiers: %{"fast" => "small"})]))
+      assert tiers == %{"fast" => %{"model" => "small"}}
+      assert %{tiers: %{}} = resolved(input([at(5)]))
+    end
+
+    test "skip a level whose model the provider does not list, then read the next level" do
+      choices = [
+        at(2,
+          tiers: %{"fast" => "not-listed", "light" => %{"model" => "mid", "effort" => "low"}}
+        ),
+        at(5, tiers: %{"fast" => "small", "light" => "small"})
+      ]
+
+      assert %{tiers: tiers, tier_levels: levels} = resolved(input(choices))
+      assert tiers == %{"fast" => %{"model" => "small"}, "light" => %{"model" => "small"}}
+      assert levels == %{"fast" => 5, "light" => 5}
+    end
+
+    test "are taken from the resolved provider's list, whatever provider a level chose" do
+      choices = [at(2, connection_id: @beta, tiers: %{"fast" => "small"}), at(5, model_id: "mid")]
+      assert %{connection_id: @beta, tiers: %{}} = resolved(input(choices))
+
+      choices = [at(2, connection_id: @beta, tiers: %{"fast" => "other"})]
+      assert %{tiers: %{"fast" => %{"model" => "other"}}} = resolved(input(choices))
+    end
+
+    test "of a lock win over the levels below, tier by tier" do
+      choices = [
+        at(5, locked: true, tiers: %{"fast" => "mid"}),
+        at(2, tiers: %{"fast" => "small", "light" => "small"}),
+        at(3, tiers: %{"thinking" => "big"})
+      ]
+
+      assert %{tiers: tiers} = resolved(input(choices))
+
+      assert tiers == %{
+               "fast" => %{"model" => "mid"},
+               "light" => %{"model" => "small"},
+               "thinking" => %{"model" => "big"}
+             }
+    end
+
+    test "leave out a tier whose effort the model does not list" do
+      choices = [at(2, tiers: %{"light" => %{"model" => "mid", "effort" => "low"}})]
+      assert %{tiers: %{}} = resolved(input(choices))
+    end
+  end
+
+  test "calls no repo module and no query module" do
+    {:ok, {_module, [imports: imports]}} =
+      :beam_lib.chunks(:code.which(Resolution), [:imports])
+
+    modules = imports |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+    refute Apiary.Repo in modules
+    refute Ecto.Query in modules
+    refute Ecto.Adapters.SQL in modules
+  end
+end

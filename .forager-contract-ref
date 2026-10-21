@@ -1,11 +1,57 @@
 # The commit of qoryai/forager whose contracts/forager/v1 the :contract tests replay, in
-# CI and in development (Apiary.ContractFixtures.contract_dir/0): Forager's release
-# v0.7.0, a commit of its main branch, pinned by its id: the contract of Forager in three
-# parts over one core, the session, the gateway and the wall, with a gateway between the
+# CI and in development (Apiary.ContractFixtures.contract_dir/0): a commit of Forager's
+# main branch after its release v0.7.0, pinned by its id, where an enrolment code's
+# prefix names its node's kind (`qec[npgi]_`): the contract of Forager in three parts
+# over one core, the session, the gateway and the wall, with a gateway between the
 # session and Qory Apiary, every run's exit saying how the run ended, discovery listing
 # the one workspace an access key's node or node pool belongs to, and a run that goes
 # through a gateway: the run key, the registration's gateway shape, the attach, the
 # outcome and the end member, a gateway's key in discovery and enrolment, a gateway's
 # enrolment request and its signed answer, a gateway's discovery document without
-# workspaces, and the refusals of a gateway that may no longer serve a run's workspace.
-4d036d1fe3fe63e6e8ba3078c0a6a91b35982148
+# workspaces, and the refusals of a gateway that may no longer serve a run's workspace;
+# a run configuration and a policy may name the image by a reference pinned by digest,
+# and Forager's deny list leaves in the server's values of QORY_RUN_SYSTEM and
+# QORY_RUN_REPOSITORIES; the fixed list of model API formats (api-format.schema.json),
+# and a runtime's `model` in runtimes.json, with the formats it sends; a run
+# configuration's `credentials`, whose values the server seals to the access key in its
+# answer to the secrets request, a signed POST to discovery's `secrets.url`; a Claude
+# Code runtime that requires no model key; a gateway that opens its machine only for an
+# exact entry of the node's policy, never for an entry of a server's policy; a runtime's
+# `model.keys`, the variables it reads a model key from, each for one API format and
+# auth, an OAuth token marked `oauth`; the sealed answer to the secrets request, with
+# its known answers under fixtures/sealed; and a policy's `egress.allow_first`, at most
+# 64 exact hosts that the gateway allows before `deny` and `allow`.
+#
+# The lines after the commit are the files copied byte for byte from that commit, each a
+# path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
+# under test/fixtures/forager-contract/<path>.
+072c240d154ceacd8fd1055cb9a63152c724f09f
+priv/contract/api-format.schema.json
+priv/contract/auth.schema.json
+priv/contract/policy.schema.json
+priv/contract/run-configuration.schema.json
+priv/contract/runtimes.json
+priv/contract/secrets-request.schema.json
+priv/contract/secrets-answer.schema.json
+priv/contract/sealed-plaintext.schema.json
+test/fixtures/forager-contract/known-answers/keys.json
+test/fixtures/forager-contract/known-answers/small-order.json
+test/fixtures/forager-contract/policy/observe-allow-first.yaml
+test/fixtures/forager-contract/invalid/policy-allow-first-pattern.yaml
+test/fixtures/forager-contract/invalid/policy-allow-first-too-many.yaml
+test/fixtures/forager-contract/sealed/invalid/bad-signature.json
+test/fixtures/forager-contract/sealed/invalid/expired.json
+test/fixtures/forager-contract/sealed/invalid/other-digest.json
+test/fixtures/forager-contract/sealed/invalid/other-run.json
+test/fixtures/forager-contract/sealed/invalid/too-far-ahead.json
+test/fixtures/forager-contract/sealed/invalid/unknown-suite.json
+test/fixtures/forager-contract/sealed/invalid/value-not-requested.json
+test/fixtures/forager-contract/sealed/invalid/wrong-aad.json
+test/fixtures/forager-contract/sealed/invalid/wrong-info.json
+test/fixtures/forager-contract/sealed/plaintext-not-requested.json
+test/fixtures/forager-contract/sealed/plaintext-other-digest.json
+test/fixtures/forager-contract/sealed/run-configuration.json
+test/fixtures/forager-contract/sealed/sealed-plaintext.json
+test/fixtures/forager-contract/sealed/secrets-answer.json
+test/fixtures/forager-contract/sealed/secrets-request.json
+test/fixtures/forager-contract/sealed/vectors.json

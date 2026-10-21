@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:02:00Z",
+  "reason": "The job could not start:\u0000 no runner was free.",
+  "retry": true
+}

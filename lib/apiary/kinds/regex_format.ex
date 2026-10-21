@@ -28,8 +28,12 @@ defmodule Apiary.Kinds.RegexFormat do
   alias Apiary.Kinds.PatternMemory
 
   # The reductions charged for a compile, for each byte of the value, counting
-  # @fixed_bytes more for any compile: 10 * (bytes + 8), so that a compile, work the
-  # runtime barely counts, is charged to the budget in proportion to the value's bytes.
+  # @fixed_bytes more for the cost of any compile. Measured on ordinary valid patterns
+  # (alternations of ordinary patterns, literals, character classes) of 0 B to 19 KB:
+  # Regex.compile takes at most 37 ns a byte, and at least 290 ns for any pattern, while
+  # JSV's ordinary work counts at most 235 reductions a microsecond. At that rate a byte
+  # of compile is worth at most 9 reductions and any compile at least 70; the charge,
+  # 10 * (bytes + 8), is above both.
   @reductions_per_byte 10
   @fixed_bytes 8
   @charge_part 1000

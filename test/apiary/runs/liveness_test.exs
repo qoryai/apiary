@@ -333,7 +333,7 @@ defmodule Apiary.Runs.LivenessTest do
             workspace_id: run.workspace_id,
             run_id: run.id,
             sequence: 1,
-            event_id: Ecto.UUID.generate(),
+            node_event_id: Ecto.UUID.generate(),
             type: "dev.qory.session.started",
             time: now,
             data: %{},
@@ -415,12 +415,12 @@ defmodule Apiary.Runs.LivenessTest do
 
   test "a run that has ended or is lost is left alone", %{scope: scope} do
     runs =
-      for state <- ~w(succeeded ended failed timed_out lost) do
+      for state <- ~w(completed cancelled failed lost) do
         run_fixture(scope, %{state: state, last_heartbeat_at: ago(9000), inserted_at: ago(9000)})
       end
 
     assert Liveness.check(@now) == []
-    assert Enum.map(runs, &state/1) == ~w(succeeded ended failed timed_out lost)
+    assert Enum.map(runs, &state/1) == ~w(completed cancelled failed lost)
   end
 
   test "a second check finds nothing new, and each lost run is announced once", %{scope: scope} do
@@ -494,7 +494,7 @@ defmodule Apiary.Runs.LivenessTest do
         run_fixture(scope, %{state: "running", inserted_at: ago(60)}),
         run_fixture(scope, %{state: "pending", inserted_at: ago(91)}),
         run_fixture(scope, %{state: "pending", inserted_at: ago(89)}),
-        run_fixture(scope, %{state: "succeeded", inserted_at: ago(1)}),
+        run_fixture(scope, %{state: "completed", inserted_at: ago(1)}),
         run_fixture(scope, %{state: "lost", inserted_at: ago(1)})
       ]
 

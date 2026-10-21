@@ -215,10 +215,10 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
     deliveries =
       Repo.all(
         from d in Delivery,
-          where: d.access_key_id == ^ctx.key.id and d.instance_id == ^@backlog_instance
+          where: d.access_key_id == ^ctx.key.id and d.node_instance_id == ^@backlog_instance
       )
 
-    assert MapSet.new(deliveries, & &1.delivery_id) == accepted
+    assert MapSet.new(deliveries, & &1.node_delivery_id) == accepted
     assert Enum.sum(Enum.map(deliveries, & &1.inserted_count)) == counts_events(runs)
 
     # No run came back: every projection left each run lost or ended, no check during
@@ -253,12 +253,12 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
     opened? = List.last(probes.tries) == 200
 
     if opened? do
-      assert %Run{instance_id: @new_instance, node_id: node_id} =
-               Repo.one!(from r in Run, where: r.run_id == ^probes.subject)
+      assert %Run{node_instance_id: @new_instance, node_id: node_id} =
+               Repo.one!(from r in Run, where: r.node_run_id == ^probes.subject)
 
       assert node_id == ctx.node.id
     else
-      refute Repo.exists?(from r in Run, where: r.run_id == ^probes.subject)
+      refute Repo.exists?(from r in Run, where: r.node_run_id == ^probes.subject)
     end
 
     assert Liveness.check(DateTime.utc_now()) |> Enum.filter(&MapSet.member?(ids, &1.id)) == []
@@ -300,7 +300,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       run_fixture(ctx.scope, %{
         access_key_id: ctx.key.id,
         node_id: ctx.node.id,
-        instance_id: @backlog_instance,
+        node_instance_id: @backlog_instance,
         inserted_at: opened,
         event_count: 5,
         last_event_at: outage
@@ -328,7 +328,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       skew: skew,
       started: recorded.(opened),
       exit: rem(i, 2) == 0,
-      live: Map.new(first ++ beats, &{&1.sequence, &1.event_id})
+      live: Map.new(first ++ beats, &{&1.sequence, &1.node_event_id})
     }
   end
 
@@ -387,7 +387,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       |> Enum.with_index(7)
       |> Enum.map(fn {{offset, type, data}, sequence} ->
         time = at.(offset)
-        {time, wire_event(run.run_id, sequence, type, data, time: stamp(time))}
+        {time, wire_event(run.node_run_id, sequence, type, data, time: stamp(time))}
       end)
 
     batches =
@@ -433,7 +433,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       "duration_ms" => DateTime.diff(recorded_at(last), started, :millisecond)
     }
 
-    event = wire_event(run.run_id, sequence, "run.exited", data, time: stamp(now))
+    event = wire_event(run.node_run_id, sequence, "run.exited", data, time: stamp(now))
     %{first: now, body: Jason.encode!([event]), delivery: Ecto.UUID.generate()}
   end
 
@@ -712,22 +712,22 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   end
 
   defp stored(scope, runs) do
-    subjects = Enum.map(runs, & &1.run.run_id)
+    subjects = Enum.map(runs, & &1.run.node_run_id)
 
     Repo.all(
       from e in Event,
         join: r in Run,
         on: r.id == e.run_id,
-        where: r.workspace_id == ^scope.workspace.id and r.run_id in ^subjects,
-        select: {r.run_id, e.sequence, e.event_id}
+        where: r.workspace_id == ^scope.workspace.id and r.node_run_id in ^subjects,
+        select: {r.node_run_id, e.sequence, e.node_event_id}
     )
     |> Enum.sort()
   end
 
   defp expected(runs) do
     Enum.flat_map(runs, fn %{run: run, live: live, backlog: backlog} ->
-      Enum.map(live, fn {sequence, id} -> {run.run_id, sequence, id} end) ++
-        Enum.map(backlog, &{run.run_id, String.to_integer(&1["sequence"]), &1["id"]})
+      Enum.map(live, fn {sequence, id} -> {run.node_run_id, sequence, id} end) ++
+        Enum.map(backlog, &{run.node_run_id, String.to_integer(&1["sequence"]), &1["id"]})
     end)
     |> Enum.sort()
   end

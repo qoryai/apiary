@@ -72,6 +72,12 @@ defmodule ApiaryWeb.SettingsComponentsTest do
   end
 
   describe "the Workspaces list" do
+    # The list says the grace period (`Apiary.Deletion.grace_days/0`), which may be the one
+    # an instance admin saved, read from the database.
+    setup do
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Apiary.Repo)
+    end
+
     # A reader the edition lets rename a workspace and not delete one, as no level of the
     # core's edition is: the list without Delete… and without the deletion's note.
     defp workspaces do

@@ -13,9 +13,16 @@ defmodule ApiaryWeb.Endpoint do
 
   # The peer's address, the user agent and, behind a trusted proxy, `X-Forwarded-For` are
   # where a change came from, for the audit trail (`ApiaryWeb.Origin`).
+  #
+  # A websocket frame is bounded at 4 MiB: the largest legitimate event, a whole proposal
+  # edit at the field caps, is about 2.7 MB form-encoded. A fragmented message has the same
+  # bound, set for Bandit's `http:` in config/config.exs and for an `https:` at boot
+  # (`bound_https/1`); "/live" is the only socket outside dev, so it reaches nothing else.
+  # Longpoll has no such option and keeps Bandit's fixed 8 MB request-body read.
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
-      connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]
+      connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options],
+      max_frame_size: 4_194_304
     ],
     longpoll: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]
 
@@ -104,5 +111,28 @@ defmodule ApiaryWeb.Endpoint do
   defp dispatch(conn, _opts) do
     router = ApiaryWeb.Edition.router()
     router.call(conn, router.init([]))
+  end
+
+  # The bound on a fragmented message, the one config/config.exs sets under `http:`.
+  @max_fragmented_message_size 4_194_304
+
+  @doc false
+  # The endpoint's configuration with the bound on a fragmented message put into its
+  # `https:` as well, unless that `https:` names a bound already. Called at boot
+  # (`Apiary.Application`): config/config.exs cannot set it there, since, with the server
+  # on, Phoenix starts an https listener for any `https:` that is set. An `https:` that is
+  # not a list (absent, `nil` or `false`) is left as it is, so this never adds a listener.
+  def bound_https(config) do
+    with https when is_list(https) <- config[:https],
+         {:websocket_options, websocket} when is_list(websocket) <-
+           List.keyfind(https, :websocket_options, 0, {:websocket_options, []}) do
+      websocket =
+        Keyword.put_new(websocket, :max_fragmented_message_size, @max_fragmented_message_size)
+
+      https = List.keystore(https, :websocket_options, 0, {:websocket_options, websocket})
+      Keyword.put(config, :https, https)
+    else
+      _absent -> config
+    end
   end
 end

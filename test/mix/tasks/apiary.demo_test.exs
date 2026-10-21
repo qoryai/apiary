@@ -71,7 +71,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert [20, 20, 20, 20, 20] ==
                Repo.all(
                  from d in Delivery,
-                   where: d.run_id == ^run.run_id,
+                   where: d.node_run_id == ^run.node_run_id,
                    order_by: [desc: d.inserted_count],
                    select: d.inserted_count
                )
@@ -210,10 +210,10 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, first} = Demo.replay(access_key, file("failed-run"))
       assert {:ok, second} = Demo.replay(access_key, file("failed-run"))
 
-      assert first.run_id != second.run_id
+      assert first.node_run_id != second.node_run_id
       assert second.event_count == first.event_count
 
-      ids = fn run -> MapSet.new(events(run), & &1.event_id) end
+      ids = fn run -> MapSet.new(events(run), & &1.node_event_id) end
       assert MapSet.disjoint?(ids.(first), ids.(second))
     end
 

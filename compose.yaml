@@ -53,12 +53,65 @@ services:
     environment:
       # The bundled Postgres, unless .env names another; its password is in the volume `keys`.
       DATABASE_URL: ${DATABASE_URL:-postgres://apiary@postgres/apiary}
+      # The adapters installed with Qory Apiary, from .env; none unless .env names them.
+      QORY_INSTALLED_ADAPTERS: ${QORY_INSTALLED_ADAPTERS:-}
     volumes:
       - keys:/var/lib/apiary/keys:ro
+      # The one-time code Qory Apiary writes for the GitHub adapter, in memory. Besides
+      # Qory Apiary, only that adapter mounts this folder, read-only.
+      - type: volume
+        source: github-enrolment
+        target: /run/qory/enrolment/github
+        volume:
+          nocopy: true
     ports:
       # To the reverse proxy on this machine only. compose.override.yaml changes it.
       - "127.0.0.1:4100:4100"
+      # The GitHub adapter's port: the adapter shares the network of the service `apiary`,
+      # so its port is published here. Nothing answers on it while the profile `github`
+      # is off.
+      - "127.0.0.1:${QORY_GITHUB_HOST_PORT:-8080}:8080"
+
+  # The GitHub adapter, installed with Qory Apiary, in the profile `github`. To turn it
+  # on, add github to COMPOSE_PROFILES in .env, and set there an https PUBLIC_URL,
+  # QORY_INSTALLED_ADAPTERS=github, factory in QORY_FEATURES, and QORY_GITHUB_PUBLIC_URL.
+  # The adapter needs a separate public name, which the reverse proxy routes by host name
+  # to 127.0.0.1 on QORY_GITHUB_HOST_PORT (8080 unless set). Keep the query strings of
+  # /setup out of the proxy's access logs.
+  # Turning the profile off removes nothing from Qory Apiary. To remove the adapter, take
+  # github off QORY_INSTALLED_ADAPTERS, then remove it under Instance settings › Adapters.
+  github:
+    image: ${QORY_GITHUB_IMAGE:-ghcr.io/qoryai/qory-github-server}
+    profiles: [github]
+    command: ["serve"]
+    restart: unless-stopped
+    depends_on:
+      apiary:
+        condition: service_started
+    network_mode: "service:apiary"
+    environment:
+      QORY_GITHUB_LISTEN: ":8080"
+      QORY_GITHUB_STATE_DIR: /var/lib/qory-github
+      QORY_GITHUB_PUBLIC_URL: ${QORY_GITHUB_PUBLIC_URL:-}
+      QORY_GITHUB_APIARY_URL: http://127.0.0.1:4100
+      QORY_GITHUB_APIARY_PUBLIC_URL: ${PUBLIC_URL:-}
+      QORY_GITHUB_ENROLMENT_CODE_FILE: /run/qory/enrolment/code
+    volumes:
+      - type: volume
+        source: github-enrolment
+        target: /run/qory/enrolment
+        read_only: true
+        volume:
+          nocopy: true
+      # A directory on the host in place of the volume `github-state` must belong to the
+      # adapter's user: chown 65532:65532 DIR && chmod 0700 DIR.
+      - github-state:/var/lib/qory-github
 
 volumes:
   postgres-data:
   keys:
+  # The GitHub adapter's one-time code, in memory. A stop of both apiary and github
+  # loses it; while the adapter has no key in use, Qory Apiary writes a new one.
+  github-enrolment:
+    driver_opts: {type: tmpfs, device: tmpfs, o: "uid=65534,gid=65534,mode=0755,size=64k"}
+  github-state:

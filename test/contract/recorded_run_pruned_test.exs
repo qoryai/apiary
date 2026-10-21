@@ -1,9 +1,9 @@
 defmodule Apiary.Contract.RecordedRunPrunedTest do
   @moduledoc """
-  The record of one run of the server contract, `fixtures/run/<id>/events.jsonl`,
-  registered and delivered, then delivered again after each phase of retention: nothing
-  is stored and nothing is folded, and once its events are pruned the run takes no other
-  registration either.
+  The record of one run of the server contract, `fixtures/run/<id>/events.jsonl`, of a
+  run a server accepted, registered and delivered, then delivered again after each phase
+  of retention: nothing is stored and nothing is folded, and once its events are pruned
+  the run takes no other registration either.
   """
   use Apiary.DataCase, async: true
 
@@ -19,13 +19,13 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
 
   @moduletag :contract
 
-  @runs (case Apiary.ContractFixtures.contract_dir() do
-           nil ->
-             []
-
-           dir ->
-             dir |> Path.join("fixtures/run/*/events.jsonl") |> Path.wildcard() |> Enum.sort()
-         end)
+  # Only the records of a run a server accepted: a record of a run with no server never
+  # reached one (`Apiary.ContractFixtures.served_record?/1`), and
+  # `Apiary.Contract.RecordedRunTest` holds it to the schema.
+  @runs Enum.filter(
+          Apiary.ContractFixtures.recorded_runs(),
+          &Apiary.ContractFixtures.served_record?/1
+        )
 
   # A key of its own, not the contract's published one: `Apiary.Runs.Ingest` needs no
   # signature, and the published key id is one row every contract test inserts, on which
@@ -78,7 +78,8 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
 
       run =
         Repo.one!(
-          from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^@subject
+          from r in Run,
+            where: r.workspace_id == ^scope.workspace.id and r.node_run_id == ^@subject
         )
 
       {:ok, run} = Projector.project(run)

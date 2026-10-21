@@ -20,14 +20,16 @@ defmodule ApiaryWeb.RunLive.Index do
   Narrowed to one target, the list says so under its title, "Showing the runs of acme/shop
   only.", with the target's page, its Network access, its policy and "Show all runs",
   which takes the target away and keeps the rest; narrowed to a node, the same line names
-  the node, with no Network access. The narrowing lives in the address alone: the page
-  gives the frame its target (`ApiaryWeb.Layouts.narrowed/2`), so the sidebar's Runs and
-  Network access carry it, and nothing else does. What the address names is read with it
-  (`ApiaryWeb.Narrowing`), so all of this is right from the first render. A path that two
-  targets share, given alone, is the path on both systems: the line says so, "Showing
-  acme/shop only, on github.com and gitlab.com.", each system a link to the runs of its
-  target. The rail, the Filter menu and a typed `repo:` write a target as the line does,
-  its system only where its path is shared, and mark a path given alone as its target.
+  the node, with no Network access. The narrowing lives in the address alone, the target
+  by its id (`?target=tg_…`): the page gives the frame its target
+  (`ApiaryWeb.Narrowing.carried/2`), so the sidebar's Runs and Network access carry it,
+  and nothing else does. What the address names is read with it (`ApiaryWeb.Narrowing`),
+  so all of this is right from the first render, and an id that names no target of the
+  workspace is dropped. The targets of one path on two systems, named together, are the
+  path on both systems: the line says so, "Showing acme/shop only, on code.example and
+  git.example.", each system a link to the runs of its target. The rail, the Filter menu
+  and a typed `repo:` name a target as the line does, its system only where its path is
+  shared, and write its id.
 
   From 1920 px a preview pane beside the list shows the run chosen (`?run=`, patched by a
   click or ↑ and ↓ while the list has focus; the first row until then): its state, its
@@ -54,7 +56,7 @@ defmodule ApiaryWeb.RunLive.Index do
   alias Apiary.Nodes
   alias Apiary.Runs
   alias Apiary.Runs.Filters
-  alias Apiary.Runs.Record
+  alias Apiary.Runs.{Record, Run}
   alias ApiaryWeb.Narrowing
 
   @quiet_tick 5_000
@@ -74,7 +76,7 @@ defmodule ApiaryWeb.RunLive.Index do
       counts={@nav_counts}
       nav={:runs}
       width="work"
-      narrowed={Layouts.narrowed(@filters.target, Narrowing.shared?(@narrowing))}
+      narrowed={shown_carried(Narrowing.carried(@narrowing, @filters.target))}
     >
       <:crumb>{gettext("Runs")}</:crumb>
 
@@ -84,7 +86,7 @@ defmodule ApiaryWeb.RunLive.Index do
             {gettext("Every run the machines of this workspace have posted, as their events tell it.")}
           </:description>
           <.narrowed_line
-            :if={narrowed_to(@filters)}
+            :if={narrowed_to(@filters, @narrowing)}
             scope={@current_scope}
             filters={@filters}
             narrowing={@narrowing}
@@ -152,19 +154,19 @@ defmodule ApiaryWeb.RunLive.Index do
                 label={gettext("Target")}
                 icon="hero-folder"
                 qualifier={pgettext("qualifier", "target")}
-                value={@filters.target && target_text(@filters.target, @shared)}
+                value={shown(Narrowing.text(@narrowing, @filters.target))}
                 rail
               >
                 <.filter_options
                   id="filter-target"
                   name="target"
                   label={gettext("Target")}
-                  values={List.wrap(menu_value(@filters, @narrowing, @shared))}
+                  values={List.wrap(Filters.target_value(@filters.target))}
                   options={
                     with_chosen(
                       target_options(@facets, @shared),
-                      menu_value(@filters, @narrowing, @shared),
-                      @filters.target && target_text(@filters.target, @shared)
+                      Filters.target_value(@filters.target),
+                      Narrowing.text(@narrowing, @filters.target)
                     )
                   }
                   total={facet_total(@facets, :target)}
@@ -198,7 +200,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 label={label}
                 icon={icon}
                 qualifier={name}
-                value={text_param(@filters, name)}
+                value={shown(text_param(@filters, name))}
               >
                 <.filter_options
                   id={"filter-#{name}"}
@@ -206,11 +208,10 @@ defmodule ApiaryWeb.RunLive.Index do
                   label={label}
                   values={List.wrap(text_param(@filters, name))}
                   options={
-                    with_chosen(
-                      facet_options(@facets, String.to_existing_atom(name)),
-                      text_param(@filters, name),
-                      text_param(@filters, name)
-                    )
+                    @facets
+                    |> facet_options(String.to_existing_atom(name))
+                    |> with_chosen(text_param(@filters, name), text_param(@filters, name))
+                    |> shown_options(name)
                   }
                   total={facet_total(@facets, String.to_existing_atom(name))}
                   query={@narrow[name]}
@@ -274,13 +275,13 @@ defmodule ApiaryWeb.RunLive.Index do
             clear={Filters.any?(@filters) && page_path(@current_scope, Filters.clear(@filters))}
           >
             <:token
-              :for={token <- tokens(@current_scope, @filters, @shared)}
+              :for={token <- tokens(@current_scope, @filters, @narrowing)}
               id={token.id}
               class="q-tok-q"
               patch={token.remove}
               label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
             >
-              <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v" title={token.value}>{token.value}</span>
+              <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v" title={token.value}><bdi>{token.value}</bdi></span>
             </:token>
           </.filter_tokens>
 
@@ -293,12 +294,7 @@ defmodule ApiaryWeb.RunLive.Index do
               chosen_count={loaded_total(@loaded, @filters, @listing)}
               shared={@shared}
               query={@rail_query}
-              path={
-                &page_path(
-                  @current_scope,
-                  Filters.put(@filters, target: Filters.link_target(&1, @shared))
-                )
-              }
+              path={&page_path(@current_scope, Filters.put(@filters, target: &1))}
             />
 
             <div class="q-with-preview">
@@ -349,13 +345,13 @@ defmodule ApiaryWeb.RunLive.Index do
                   </span>
                   <:actions>
                     <.button
-                      :if={last_token(@current_scope, @filters, @shared)}
+                      :if={last_token(@current_scope, @filters, @narrowing)}
                       id="runs-remove-last"
-                      patch={last_token(@current_scope, @filters, @shared).remove}
+                      patch={last_token(@current_scope, @filters, @narrowing).remove}
                     >
                       {gettext("Remove %{token}",
                         token:
-                          "#{last_token(@current_scope, @filters, @shared).qualifier}:#{last_token(@current_scope, @filters, @shared).value}"
+                          "#{last_token(@current_scope, @filters, @narrowing).qualifier}:#{last_token(@current_scope, @filters, @narrowing).value}"
                       )}
                     </.button>
                     <.button
@@ -447,14 +443,8 @@ defmodule ApiaryWeb.RunLive.Index do
                         </p>
                         <p class="q-jumpdate-note">
                           {if @filters.sort == "newest",
-                            do:
-                              gettext(
-                                "The page of the first run started on or before that day, in UTC."
-                              ),
-                            else:
-                              gettext(
-                                "The page of the first run started on or after that day, in UTC."
-                              )}
+                            do: gettext("The page of the first run started on or before that day."),
+                            else: gettext("The page of the first run started on or after that day.")}
                         </p>
                       </form>
                     </div>
@@ -540,23 +530,23 @@ defmodule ApiaryWeb.RunLive.Index do
     %{scope: scope, filters: filters, narrowing: narrowing} = assigns
 
     assigns =
-      case narrowed_to(filters) do
-        {:target, {_system, path} = target} ->
-          found = narrowing && narrowing.target
-          shared = Narrowing.shared?(narrowing)
+      case narrowed_to(filters, narrowing) do
+        {:target, path} ->
+          found = Narrowing.one(narrowing)
           system = Narrowing.shown_system(narrowing)
-          linked = Filters.link_target(Narrowing.chosen(narrowing, target), shared)
 
           assign(assigns,
             kind: :target,
             system: system,
             path: path,
-            label: if(system, do: "#{system}/#{path}", else: path),
+            label: shown_target_label(system, path, true),
             shared_alone: Narrowing.shared_alone?(narrowing),
-            page: found && target_page(scope, found, [], shared),
-            policy: found && assigns.security && target_page(scope, found, ["policy"], shared),
+            page: found && ApiaryWeb.TargetComponents.target_path(scope, found),
+            policy:
+              found && assigns.security &&
+                ApiaryWeb.TargetComponents.target_path(scope, found, ["policy"]),
             network:
-              ~p"/#{scope.organisation}/#{scope.workspace}/network?#{Filters.target_params(elem(linked, 0), path)}",
+              ~p"/#{scope.organisation}/#{scope.workspace}/network?#{Filters.target_params(filters.target)}",
             all: page_path(scope, Filters.put(filters, target: nil))
           )
 
@@ -664,18 +654,20 @@ defmodule ApiaryWeb.RunLive.Index do
     """
   end
 
-  # A target's page, or one of its tabs, by the route helper every page writes it with:
-  # its system in the address only where its path is shared.
-  defp target_page(scope, %{system: system, path: path}, rest, shared),
-    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, rest, shared)
+  # What the list is narrowed to, as its line names it: the targets of one path (`target=`
+  # with their ids; never "none"), by that path, or a typed name that names no target, by
+  # the text; else one node; a target goes first, and a node beside it stays a token.
+  # Targets on different paths have no line: their token names them.
+  defp narrowed_to(%Filters{target: [_ | _]} = filters, narrowing) do
+    case Narrowing.path(narrowing) do
+      nil -> narrowed_to(%{filters | target: nil}, nil)
+      path -> {:target, path}
+    end
+  end
 
-  # What the list is narrowed to, as its line names it: one target (`target=` with a path;
-  # never "none"), else one node; a target goes first, and a node beside it stays a token.
-  defp narrowed_to(%Filters{target: {_system, path} = target}) when is_binary(path),
-    do: {:target, target}
-
-  defp narrowed_to(%Filters{node: node}) when is_binary(node), do: {:node, node}
-  defp narrowed_to(%Filters{}), do: nil
+  defp narrowed_to(%Filters{target: {:name, name}}, _narrowing), do: {:target, name}
+  defp narrowed_to(%Filters{node: node}, _narrowing) when is_binary(node), do: {:node, node}
+  defp narrowed_to(%Filters{}, _narrowing), do: nil
 
   ## Lifecycle
 
@@ -768,9 +760,14 @@ defmodule ApiaryWeb.RunLive.Index do
   @impl true
   def handle_params(params, _uri, socket) do
     {chosen, rest} = Map.pop(params, "run")
-    chosen = run_id(chosen)
+    chosen = chosen_id(chosen)
     filters = Filters.parse(rest, :runs)
     bad_run? = Map.has_key?(params, "run") and is_nil(chosen)
+
+    # The targets the address names are read with it: an id that names none of the
+    # workspace's is dropped like any value the page does not know.
+    socket = narrow_target(socket, filters.target)
+    filters = Narrowing.drop_unknown(filters, socket.assigns.narrowing)
 
     # The path's organisation and workspace are not filters.
     if not bad_run? and Filters.to_params(filters) == Map.drop(rest, ["org", "workspace"]) do
@@ -896,7 +893,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("select", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, filters: filters, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.run_id == id)),
+    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
       do: {:noreply, push_patch(socket, to: page_path(scope, filters, id), replace: true)},
       else: {:noreply, socket}
   end
@@ -906,7 +903,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("open", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.run_id == id)),
+    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
       do:
         {:noreply,
          push_navigate(socket, to: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}")},
@@ -1138,27 +1135,26 @@ defmodule ApiaryWeb.RunLive.Index do
     if ids != [] or has_nodes?(scope), do: Nodes.names(scope, ids)
   end
 
-  # What the address narrows to, read with it, before the page renders: the target its
+  # What the address narrows to, read with it, before the page renders: the targets its
   # `target` names (`ApiaryWeb.Narrowing`), and the node in use its `node` names, by its
-  # public id or its name. Read again only when the address names another; a path the
+  # public id or its name. Read again only when the address names others; a path the
   # read finds shared is shared for the page's names at once.
+  defp narrow_target(socket, target) do
+    case socket.assigns.narrowing do
+      %{for: ^target} ->
+        socket
+
+      _other ->
+        narrowing = Narrowing.read(socket.assigns.current_scope, target)
+
+        socket
+        |> assign(:narrowing, narrowing)
+        |> update(:shared, &MapSet.union(&1, MapSet.new(Narrowing.shared_paths(narrowing))))
+    end
+  end
+
   defp narrow(socket, %Filters{target: target, node: node}) do
-    socket =
-      case socket.assigns.narrowing do
-        %{for: ^target} ->
-          socket
-
-        _other ->
-          narrowing = Narrowing.read(socket.assigns.current_scope, target)
-
-          socket
-          |> assign(:narrowing, narrowing)
-          |> then(fn socket ->
-            if Narrowing.shared?(narrowing),
-              do: update(socket, :shared, &MapSet.put(&1, elem(target, 1))),
-              else: socket
-          end)
-      end
+    socket = narrow_target(socket, target)
 
     case socket.assigns.narrowed_node do
       %{for: ^node} -> socket
@@ -1218,7 +1214,7 @@ defmodule ApiaryWeb.RunLive.Index do
     [
       narrow: socket.assigns.rail_query,
       limit: socket.assigns.rail_limit,
-      pinned: for(%{system: system, path: path} <- pins, is_binary(system), do: {system, path})
+      pinned: Enum.filter(pins, &is_binary(&1[:public_id]))
     ]
   end
 
@@ -1233,7 +1229,7 @@ defmodule ApiaryWeb.RunLive.Index do
       cond do
         not wide -> nil
         chosen -> chosen
-        listing && listing.runs != [] -> hd(listing.runs).run_id
+        listing && listing.runs != [] -> hd(listing.runs).public_id
         true -> nil
       end
 
@@ -1255,7 +1251,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp reload_preview(socket) do
     %{current_scope: scope, preview_id: id, listing: listing} = socket.assigns
-    on_page = listing && Enum.find(listing.runs, &(&1.run_id == id))
+    on_page = listing && Enum.find(listing.runs, &(&1.public_id == id))
 
     start_async(socket, :preview, fn ->
       # A row's run can be a moment behind the record: the preview reads it again.
@@ -1360,15 +1356,8 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp loaded_total(_loaded, _filters, _listing), do: nil
 
-  # A run's id as the URL may carry it, the id Forager prints.
-  defp run_id(value) when is_binary(value) do
-    case Ecto.UUID.cast(value) do
-      {:ok, id} -> id
-      :error -> nil
-    end
-  end
-
-  defp run_id(_value), do: nil
+  # A run's id as the URL may carry it, its `public_id`, `rn_…`; nil for anything else.
+  defp chosen_id(value), do: if(Run.public_id?(value), do: value)
 
   # No run in the workspace at all, and nothing narrowing the view: the first-run states.
   defp first_run?(%{total: 0}, filters), do: not Filters.any?(filters)
@@ -1420,7 +1409,7 @@ defmodule ApiaryWeb.RunLive.Index do
   end
 
   # The filters as tokens in the query field, less the ones the current view says.
-  defp tokens(scope, filters, shared) do
+  defp tokens(scope, filters, narrowing) do
     except =
       if filters.states != [] and Enum.any?(tl(view_list(filters)), & &1.current),
         do: [:state],
@@ -1429,55 +1418,37 @@ defmodule ApiaryWeb.RunLive.Index do
     except = if filters.denials and filters.states == [], do: [:denied | except], else: except
 
     filters
-    |> Filters.tokens(except: except, target_text: &target_text(&1, shared))
+    |> Filters.tokens(except: except, target_text: &Narrowing.text(narrowing, &1))
     |> Enum.map(fn token ->
       %{
         id: "runs-token-#{token.key}",
         qualifier: qualifier(token.key),
-        value: token.value,
+        value: shown(token.value),
         remove: page_path(scope, token.without)
       }
     end)
   end
 
-  defp last_token(scope, filters, shared), do: scope |> tokens(filters, shared) |> List.last()
+  defp last_token(scope, filters, narrowing),
+    do: scope |> tokens(filters, narrowing) |> List.last()
 
   defp qualifier(:target), do: pgettext("qualifier", "target")
   defp qualifier(key), do: Atom.to_string(key)
 
-  # The Target section's options in the one notation of a target, each written as the
-  # links write it: the system only where the path is shared. A path given alone is one
-  # option with its target's: the first, as the facet puts the chosen first.
+  # The Target section's options in the one notation of a target: its system before its
+  # path only where the path is on more than one system, as every page writes a target.
+  # Each option's value is the target's id, which the address writes.
   defp target_options(facets, shared) do
     for {label, value, count} <- facet_options(facets, :target) do
-      case Jason.decode(value) do
-        {:ok, [system, path]} ->
-          {target_text({system, path}, shared),
-           Filters.target_value(Filters.link_target({system, path}, shared)), count}
+      case label do
+        {system, path} ->
+          {if(MapSet.member?(shared, path), do: "#{system}/#{path}", else: path), value, count}
 
-        _none ->
+        label ->
           {label, value, count}
       end
     end
-    |> Enum.uniq_by(&elem(&1, 1))
   end
-
-  # The Target section's choice, as its options write it: a path given alone is its one
-  # target's option.
-  defp menu_value(filters, narrowing, shared) do
-    narrowing
-    |> Narrowing.chosen(filters.target)
-    |> Filters.link_target(shared)
-    |> Filters.target_value()
-  end
-
-  # A target as the query writes it: its system before its path only where the path is on
-  # more than one system, as every page writes a target.
-  defp target_text(:none, _shared), do: "none"
-  defp target_text({nil, path}, _shared), do: path
-
-  defp target_text({system, path}, shared),
-    do: if(MapSet.member?(shared, path), do: "#{system}/#{path}", else: path)
 
   defp text_sections do
     [
@@ -1594,6 +1565,27 @@ defmodule ApiaryWeb.RunLive.Index do
       do: options,
       else: [{label, value, 0} | options]
   end
+
+  # A runtime and a host are what the runs reported: `filter_options/1` shows each label
+  # as a text Forager sent, marked where nothing is left of it, so it is given as sent; an
+  # option's value stays as sent, which the filter matches. A node is named by the
+  # organisation.
+  defp shown_options(options, _name), do: options
+
+  # A filter's value as a section and a token show it: a host, a runtime or a target may
+  # be a text Forager sent, shown as one is (`Apiary.ExternalText.present/1`), or marked
+  # (`Apiary.ExternalText.marked/1`) where nothing is left of it, since the filter matches
+  # it as sent. The page's texts are unchanged by it.
+  defp shown(value) when is_binary(value) and value != "",
+    do: Apiary.ExternalText.present(value) || Apiary.ExternalText.marked(value)
+
+  defp shown(value), do: value
+
+  # What the sidebar carries of the target the list is narrowed to, its names shown so.
+  defp shown_carried(%{system: system, path: path} = carried),
+    do: %{carried | system: shown(system), path: shown(path)}
+
+  defp shown_carried(nil), do: nil
 
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since
   defp range_value(%Filters{}), do: nil

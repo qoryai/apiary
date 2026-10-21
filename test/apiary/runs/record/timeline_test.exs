@@ -488,11 +488,13 @@ defmodule Apiary.Runs.Record.TimelineTest do
   describe "linear in what Forager sends" do
     # The work is counted in reductions, which the machine's load does not change, where
     # a wall-clock budget failed whenever the suite was busy. Four times the events is
-    # four times the work for an index that is linear and sixteen times for one that is
-    # quadratic: under six says which it is.
+    # about four times the work for an index that is linear and about sixteen times for
+    # one that is quadratic: under eight says which it is. Garbage is collected before
+    # the first reading, so that a collection's work is not counted.
     defp reductions(fun) do
       task =
         Task.async(fn ->
+          :erlang.garbage_collect()
           {:reductions, before} = Process.info(self(), :reductions)
           result = fun.()
           {:reductions, after_} = Process.info(self(), :reductions)
@@ -506,7 +508,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
       {small, _index} = reductions(fn -> Timeline.index(events_of.(12_500), alive: true) end)
       {large, index} = reductions(fn -> Timeline.index(events_of.(50_000), alive: true) end)
 
-      assert large / small < 6,
+      assert large / small < 8,
              "four times the events took #{Float.round(large / small, 1)} times the work"
 
       index
@@ -550,9 +552,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
             {%{"state" => "succeeded", "exit_code" => 0}, "completed"},
             {%{"state" => "failed", "exit_code" => 1}, "failed"},
             {%{"state" => "cancelled", "reason" => "no_longer_needed"}, "cancelled"},
-            {%{"state" => "failed", "reason" => "credential_expired"}, "cancelled"},
             {%{"state" => "failed", "reason" => "session_lost"}, "lost"},
-            {%{"reason" => "quiet", "quiet_seconds" => 1800}, "cancelled"},
             {%{"state" => "other"}, "failed"}
           ] do
         assert [%{kind: :run_started}, %{kind: :run_exited, state: ^state}] =

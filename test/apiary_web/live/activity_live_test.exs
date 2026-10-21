@@ -102,6 +102,50 @@ defmodule ApiaryWeb.ActivityLiveTest do
       refute has_element?(view, "#nav-activity")
     end
 
+    test "fits a phone: Who shows from 600 px of the table, and a cut word keeps the whole of it in its title",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, _workspace} = Organisations.update_workspace(scope, %{name: "Production"})
+      %{access_key: _key} = node_key_fixture(scope, node, %{label: "build-01"})
+
+      view = open(conn, scope)
+      [created, renamed | _older] = entries(scope)
+
+      head = "[role=region][aria-label='Audit log'] thead"
+      assert has_element?(view, "#{head} th.q-from-sm", "Who")
+      refute has_element?(view, "#{head} th.q-from-sm", "Subject")
+      assert has_element?(view, "td.q-from-sm > #entry-#{renamed.id}-actor")
+
+      # The person's name, cut to its column.
+      email = scope.user.email
+      assert has_element?(view, "#entry-#{renamed.id}-actor > .q-cut[title='#{email}']", email)
+
+      # What breaks between its words; the subject, then where it happened, each cut with
+      # the whole of it in its title, the subject giving way first.
+      assert has_element?(view, "#entry-#{created.id}-action.q-parts")
+      assert has_element?(view, "#entry-#{created.id}-subject > .q-cut[title='build-01']")
+
+      assert has_element?(
+               view,
+               "#entry-#{created.id}-subject > [class~='shrink-[1000]'][title='build-01']"
+             )
+
+      assert has_element?(
+               view,
+               "#entry-#{created.id}-subject > .q-faint.q-cut.shrink[title='in Production']",
+               "in Production"
+             )
+
+      refute has_element?(view, "#entry-#{created.id}-subject .truncate")
+      # It gives way down to a floor of five letters, never a fixed width.
+      refute has_element?(view, "#entry-#{created.id}-subject > .shrink-0")
+      assert has_element?(view, "#entry-#{created.id}-subject > [class~='min-w-[5ch]']")
+
+      # Each line of the change breaks between its parts.
+      assert has_element?(view, "#entry-#{renamed.id}-change > span.q-parts", "Production")
+      refute has_element?(view, "#entry-#{renamed.id}-change > span:not(.q-parts)")
+    end
+
     test "its title names the organisation", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       assert page_title(view) =~ "Audit log · #{scope.organisation.name}"
@@ -303,6 +347,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       view = open(conn, scope)
       assert text(view, "#entry-#{by_key.id}-actor") =~ "build-01"
       assert text(view, "#entry-#{by_key.id}-actor") =~ key.key_id
+      assert has_element?(view, "#entry-#{by_key.id}-actor > .q-cut[title='build-01']")
       assert text(view, "#entry-#{pruned.id}-actor") =~ "Qory Apiary"
       assert text(view, "#entry-#{pruned.id}-change") =~ "1 entry older than 90 days"
     end
@@ -313,6 +358,11 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       view = open(conn, scope)
       assert text(view, "#entry-#{entry.id}-actor") =~ "Former member"
+
+      assert has_element?(
+               view,
+               "#entry-#{entry.id}-actor > .q-faint.q-cut[title='Former member']"
+             )
     end
 
     test "a person who deleted their account reads as a former member, as actor and subject",

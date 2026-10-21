@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/prebuilt.schema.json",
+  "title": "Prebuilt",
+  "description": "The body of the signed POST /v1/dispatches/<dispatch_id>/prebuilt, application/json: the job for a dispatch of the step prebuild built the environment of its target, and the starter reports the image. A dispatch_id that is unknown, or of another node pool than the key's, is refused 403 forbidden, with the same signed body either way, so nobody learns whether an id exists; the control plane decides this before any 409 or 410. The signature with the pool's access key and that check authorise the request, not the id. A prebuilt is refused for the first of these that applies, in this order: 403 forbidden, as above; 410 gone, the dispatch ended, as refusal.schema.json describes, a second prebuilt among them, since the first ended the dispatch; 409 lease_expired, the dispatch is stale, as handover.schema.json describes, and the starter then stops the job it started for that dispatch; 409 not_prebuild, the dispatch's step is not prebuild; 409 not_handed_over, the dispatch was not handed over yet; 409 run_mismatch, run_id is not the dispatch's run. On success the control plane answers a signed 204 with no body: it records the image for the node pool that claimed the dispatch and the target, with its size, environment_ref and commit and the time it recorded them, and the dispatch ends and its slot is freed, so any later request naming the dispatch answers 410 gone, and the run's outcome then decides how the run ended. The control plane does not refuse an environment_ref that differs from the collection's current one: it records it with the image. A failed build is reported with a release after the handover, release.schema.json, not with a prebuilt: the control plane records the release's reason as the last build's failure, and reads retry: true as false for the step prebuild, so the run ends and no new run is queued. The starter sends the prebuilt, or a failed build's release, before the run's outcome (Forager's contract): an outcome that comes first ends the run, and a prebuilt after it is refused 410 gone. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time",
+    "run_id",
+    "image",
+    "size",
+    "environment_ref",
+    "commit"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the starter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "run_id": {
+      "description": "The dispatch's run, the run_id of its claim answer and its handover answer. A run_id that is not the dispatch's run is refused 409 run_mismatch.",
+      "$ref": "definitions.schema.json#/$defs/run_id"
+    },
+    "image": {
+      "description": "The image the job built, pinned by its digest, as definitions.schema.json describes.",
+      "$ref": "definitions.schema.json#/$defs/image"
+    },
+    "size": {
+      "description": "The image's size in bytes, from 1 to 9007199254740991.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "environment_ref": {
+      "description": "The environment_ref of the handover answer's inputs, unchanged, handover-answer.schema.json: the environment_ref the prebuild was queued for, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes it. The control plane records it even when it differs from the collection's current one.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/environment_ref"
+    },
+    "commit": {
+      "description": "The commit of the target's code the image was built from, a ref of 1 to 200 characters: the control plane compares it and stores it, and never reads meaning into it.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/ref"
+    }
+  }
+}

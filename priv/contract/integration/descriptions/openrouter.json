@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "openrouter",
+  "title": "OpenRouter",
+  "description": "Runs use OpenRouter with an OpenRouter API key. OpenRouter sends each request to the model's provider and bills your OpenRouter account.",
+  "settings": {"type": "object", "properties": {}, "additionalProperties": false},
+  "egress_hosts": ["openrouter.ai"],
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": "https://openrouter.ai/api", "auth": {"scheme": "bearer"}}
+      ],
+      "models": [
+        {"id": "anthropic/claude-opus-5.5", "title": "Claude Opus 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "anthropic/claude-sonnet-5.5", "title": "Claude Sonnet 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "anthropic/claude-haiku-5.5", "title": "Claude Haiku 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "anthropic/claude-fable-5.1", "title": "Claude Fable 5.1", "effort": ["low", "medium", "high", "xhigh", "max"]}
+      ]
+    }
+  }
+}

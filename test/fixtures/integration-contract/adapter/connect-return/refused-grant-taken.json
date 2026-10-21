@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "connection_id": "ac_f1xt0re000000000",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
+  "outcome": "refused",
+  "reason": "grant_taken",
+  "expires_at": "2026-10-15T12:05:00Z"
+}

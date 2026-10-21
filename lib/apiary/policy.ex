@@ -19,6 +19,17 @@ defmodule Apiary.Policy do
   rule of the workspace holds against every target. How the rules come to one policy is
   `Apiary.Policy.Resolution`'s to say.
 
+  Every document of a workspace also allows the hosts that the integrations reaching the
+  workspace require (`Apiary.Connections.egress_hosts/1`), in `egress.allow_first`, which
+  the gateway decides before `deny` and `allow`. Each is on every path, unless a rule's
+  allow on the same host holds it to paths. They come from no rule, and no rule takes
+  them out (`Apiary.Policy.Resolution`, point 7). A deny rule of such a host is refused
+  at save (`check_deny/3`). A `*.` deny that covers one saves and is written to `deny`:
+  the gateway reaches the integration's host and denies every other host the deny
+  covers. A change of such an integration renders the workspaces it reaches again,
+  inside the change's transaction (`rerender_in/3`). `effective/2`, which the pages
+  read, leaves those hosts out; `effective/3` has them.
+
   An edition may keep a level above the workspace's policy
   (`c:Apiary.Edition.above_workspace/1`, an `Apiary.Policy.Above`; the core keeps none):
   its host rules, which every read and render of this module takes in, read once
@@ -84,11 +95,12 @@ defmodule Apiary.Policy do
 
   require Logger
 
-  alias Apiary.{Access, Audit}
+  alias Apiary.{Access, Audit, Connections}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Audit.Entry
   alias Apiary.Organisations.{Workspace, Organisation}
-  alias Apiary.Policy.{Above, Activity, Change, Effective, Error, Export, Grammar}
+  alias Apiary.Policy.{Above, Activity, Change, ComposedConfiguration, Effective, Error}
+  alias Apiary.Policy.{Export, Grammar}
   alias Apiary.Policy.{Render, Resolution}
   alias Apiary.Policy.{Rule, RunConfiguration, Schema, Suggestions}
   alias Apiary.Repo
@@ -397,9 +409,28 @@ defmodule Apiary.Policy do
   from (`mode_source`, `:organisation`, `:workspace` or `:target`), and `above`, the
   level above the workspace (nil where the edition keeps none). A target that is not the
   workspace's gets the baseline.
+
+  The hosts of the integrations that reach the workspace are left out: `effective/3`
+  with `integrations: true` has them.
   """
   @spec effective(Scope.t(), holder) :: Effective.t()
-  def effective(%Scope{} = scope, holder) do
+  # The pages read the policy here, and show no integration's host until the pages'
+  # words for those hosts are reviewed: this clause leaves them out until then.
+  def effective(%Scope{} = scope, holder), do: effective(scope, holder, integrations: false)
+
+  @doc """
+  effective/3 is `effective/2` with `opts`: `integrations: true` takes in the hosts of the
+  integrations that reach the workspace (`Apiary.Connections.egress_hosts/1`), each an
+  entry with source `:integration`, as the document served to the workspace's runs has
+  them (`Apiary.Policy.Resolution`).
+  """
+  @spec effective(Scope.t(), holder, keyword) :: Effective.t()
+  def effective(%Scope{} = scope, holder, opts) do
+    integrations =
+      if Keyword.get(opts, :integrations, false),
+        do: Connections.egress_hosts(scope.workspace),
+        else: []
+
     target_id =
       case holder_id(scope, holder) do
         {:ok, target_id} -> target_id
@@ -415,7 +446,15 @@ defmodule Apiary.Policy do
       if target_id,
         do: Repo.one(from p in targets(scope), where: p.id == ^target_id, select: p.egress_mode)
 
-    case Resolution.resolve_for(workspace_mode, own_mode, workspace_rules, own, target_id, above) do
+    case Resolution.resolve_for(
+           workspace_mode,
+           own_mode,
+           workspace_rules,
+           own,
+           target_id,
+           above,
+           integrations
+         ) do
       {:ok, effective} ->
         effective
 
@@ -729,9 +768,9 @@ defmodule Apiary.Policy do
           hosts: non_neg_integer,
           targets: non_neg_integer
         }
-  def suggestion_counts(%Scope{workspace: %Workspace{} = workspace}, since \\ nil) do
+  def suggestion_counts(%Scope{workspace: %Workspace{} = workspace} = scope, since \\ nil) do
     since = since || DateTime.add(DateTime.utc_now(), -14, :day)
-    Suggestions.counts(workspace, since, above(workspace))
+    Suggestions.counts(scope, since, above(workspace))
   end
 
   @doc """
@@ -759,7 +798,7 @@ defmodule Apiary.Policy do
 
     case holder_id(scope, target) do
       {:ok, target_id} ->
-        Suggestions.report(scope.workspace.id, target_id, effective(scope, target), since)
+        Suggestions.report(scope, target_id, effective(scope, target), since)
 
       {:error, _not_found} ->
         %{suggested: [], covered: []}
@@ -847,6 +886,15 @@ defmodule Apiary.Policy do
   yet, and false when it reported none: such a run holds no fetched configuration. A run
   of another workspace is a refusal, `{:error, %Apiary.Policy.Error{reason: :not_found}}`,
   not a map.
+
+  `drift` compares what the run reported with what it would be answered now, the
+  configuration in force composed for it as its reload would be
+  (`Apiary.Policy.ComposedConfiguration.run_digest/2`), so a run given an image is never
+  shown behind the policy for its image. `reported` and `applied` are the policy part of
+  what the run holds: the digest in force when the run holds what it would be answered
+  now; else a digest of a document composed for a run as the configuration it was
+  composed from, never redirecting a digest a configuration was stored under
+  (`Apiary.Policy.ComposedConfiguration.policy_digests/2`).
   """
   @spec digests(Scope.t(), Run.t()) ::
           %{
@@ -860,24 +908,75 @@ defmodule Apiary.Policy do
         %Scope{workspace: %Workspace{id: workspace_id} = workspace},
         %Run{workspace_id: workspace_id} = run
       ) do
-    in_force =
+    # What the run would be answered now: the configuration in force, composed for it as
+    # its reload would be.
+    {in_force, answered} =
       case in_force(workspace.organisation_id, workspace_id, run.target_id) do
-        {:ok, configuration} -> configuration.digest
-        {:error, _error} -> nil
+        {:ok, configuration} ->
+          {configuration.digest, ComposedConfiguration.run_digest(configuration, run)}
+
+        {:error, _error} ->
+          {nil, nil}
       end
 
+    composed =
+      ComposedConfiguration.policy_digests(workspace_id, [
+        run.reported_run_configuration_digest,
+        run.run_configuration_digest
+      ])
+
+    part = &policy_part(composed, &1, answered, in_force)
     reported = run.reported_run_configuration_digest
 
     %{
       in_force: in_force,
-      reported: reported,
-      applied: run.run_configuration_digest,
-      drift: is_binary(reported) and is_binary(in_force) and reported != in_force
+      reported: part.(reported),
+      applied: part.(run.run_configuration_digest),
+      drift: is_binary(reported) and is_binary(answered) and reported != answered
     }
   end
 
   def digests(%Scope{}, %Run{}),
     do: {:error, not_found(gettext("This workspace has no such run."))}
+
+  # A digest the run holds, as the configuration it stands for: the one in force when it
+  # is what the run would be answered now, else the configuration a document composed for
+  # a run was composed from (`policy_digests/2`), else the digest as it is.
+  defp policy_part(_composed, nil, _answered, _in_force), do: nil
+  defp policy_part(_composed, answered, answered, in_force), do: in_force
+  defp policy_part(composed, digest, _answered, _in_force), do: Map.get(composed, digest, digest)
+
+  @doc """
+  The digest a run of the scope's workspace would be answered on a reload now: the run
+  configuration in force for its target, composed for it
+  (`Apiary.Policy.ComposedConfiguration.run_digest/2`); nil for a workspace that serves
+  none. What a run's reported digest is compared with to say it is behind.
+  """
+  @spec answered_digest(Scope.t(), Run.t()) :: String.t() | nil
+  def answered_digest(%Scope{workspace: %Workspace{id: workspace_id} = workspace}, %Run{} = run) do
+    case in_force(workspace.organisation_id, workspace_id, run.target_id) do
+      {:ok, configuration} -> ComposedConfiguration.run_digest(configuration, run)
+      {:error, _error} -> nil
+    end
+  end
+
+  @doc """
+  `digest`, as a run reported it, as the run configuration it stands for: the digest of
+  the configuration a document composed for a run was composed from
+  (`Apiary.Policy.ComposedConfiguration.policy_digest/2`), any other as it is. nil for nil.
+  """
+  @spec policy_digest(Scope.t(), String.t() | nil) :: String.t() | nil
+  def policy_digest(%Scope{workspace: %Workspace{id: workspace_id}}, digest),
+    do: ComposedConfiguration.policy_digest(workspace_id, digest)
+
+  @doc """
+  Each of `digests` that is a document's composed for a run in the scope's workspace, with
+  the digest of the configuration it was composed from: one read
+  (`Apiary.Policy.ComposedConfiguration.policy_digests/2`).
+  """
+  @spec policy_digests(Scope.t(), [String.t() | nil]) :: %{String.t() => String.t()}
+  def policy_digests(%Scope{workspace: %Workspace{id: workspace_id}}, digests),
+    do: ComposedConfiguration.policy_digests(workspace_id, digests)
 
   ## Bulk reads, for a page that lists
 
@@ -1462,10 +1561,73 @@ defmodule Apiary.Policy do
 
     with :ok <- may_change(scope, existing),
          :ok <- may_lock(scope, existing, attrs),
-         :ok <- room(workspace.id, target_id, existing) do
+         :ok <- room(workspace.id, target_id, existing),
+         :ok <- deny_allowed(candidate, undeniable(workspace)) do
       store(workspace, scope.user, target_id, existing, candidate, attrs)
     end
   end
+
+  @doc """
+  check_deny/3 says whether a deny rule of `host` may be saved at `place`: `:ok`, or
+  `{:error, %Error{reason: :integration_host}}` when `host` equals a host that an
+  integration reaching the place requires (`Apiary.Connections.egress_hosts/1`), or the
+  host of an API endpoint of a model provider reaching it
+  (`Apiary.Connections.provider_hosts/1`). The error's `details` contain that
+  integration's connection and the host (`Apiary.Policy.Error`), and its `message` says
+  to remove the host, with the connection's name. A `*.` host is never refused: a `*.`
+  deny saves, and the integration's host beats it in the resolution
+  (`Apiary.Policy.Resolution`, point 7), as a provider's host beats it in the document
+  composed for a run (`Apiary.Policy.ComposedConfiguration`).
+
+  `place` is `:workspace`, for the scope's workspace and each of its targets, which
+  `allow/3`, `deny/3` and the other writes of this module ask under the workspace's lock;
+  or `:above`, for the level above the workspace (`Apiary.Policy.Above`), whose denies
+  hold in every workspace of the scope's organisation. An edition that keeps a level above
+  asks it with `:above` before it saves a deny there, inside the transaction that holds the
+  organisation's workspaces (`lock_workspaces/2`), so a write to an integration, which
+  locks every workspace of the organisation first, comes wholly before or wholly after it.
+  """
+  @spec check_deny(Scope.t(), :workspace | :above, String.t()) :: :ok | refusal
+  def check_deny(%Scope{workspace: %Workspace{} = workspace}, :workspace, host),
+    do: deny_allowed(%Rule{action: "deny", host: host}, undeniable(workspace))
+
+  def check_deny(%Scope{organisation: %Organisation{} = organisation}, :above, host) do
+    deny_allowed(
+      %Rule{action: "deny", host: host},
+      Connections.organisation_egress_hosts(organisation) ++
+        Connections.organisation_provider_hosts(organisation)
+    )
+  end
+
+  # The hosts no deny rule of `workspace` may name exactly: the integrations' and the API
+  # endpoints' of the model providers, each with its connection.
+  defp undeniable(%Workspace{} = workspace),
+    do: Connections.egress_hosts(workspace) ++ Connections.provider_hosts(workspace)
+
+  # A deny rule on an integration's host, exactly, is refused; the first connection that
+  # lists the host is the one the refusal contains.
+  defp deny_allowed(%Rule{action: "deny", host: host}, integrations) when is_binary(host) do
+    case Enum.find(integrations, &(&1.host == host)) do
+      nil ->
+        :ok
+
+      %{connection: connection} ->
+        {:error,
+         %Error{
+           reason: :integration_host,
+           message:
+             gettext(
+               "Remove %{host} from the rule. %{integration} needs this host, so no rule can deny it.",
+               host: host,
+               integration: connection.name
+             ),
+           field: :host,
+           details: %{connection: connection, host: host}
+         }}
+    end
+  end
+
+  defp deny_allowed(%Rule{}, _integrations), do: :ok
 
   defp room(_workspace_id, _target_id, %Rule{}), do: :ok
 
@@ -1946,7 +2108,8 @@ defmodule Apiary.Policy do
   render the resolution or the schema refuses, said with the holder it came from), which
   the caller rolls back.
 
-  `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`) or
+  `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`, and a
+  change of an integration that reaches the workspace, `Apiary.Connections`) or
   `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`);
   `cause`, the id of the entry that caused it, kept in the change's `details.cause` and
   `Apiary.Policy.Change`'s `cause`; `all`, whether to render an unmanaged workspace too
@@ -2050,10 +2213,20 @@ defmodule Apiary.Policy do
     holders = [nil | Enum.uniq(Map.keys(own) ++ rendered ++ Map.keys(modes))]
 
     above = above(workspace)
+    integrations = Connections.egress_hosts(workspace)
 
     Enum.reduce_while(holders, {:ok, initial}, fn target_id, {:ok, acc} ->
       rules = Map.get(own, target_id, [])
-      rendered = document(workspace, target_id, modes[target_id], workspace_rules, rules, above)
+
+      rendered =
+        document(
+          workspace,
+          target_id,
+          modes[target_id],
+          workspace_rules,
+          rules,
+          {above, integrations}
+        )
 
       store = fn change ->
         {:ok, document} = rendered
@@ -2067,7 +2240,7 @@ defmodule Apiary.Policy do
     end)
   end
 
-  defp document(workspace, target_id, own_mode, workspace_rules, own, above) do
+  defp document(workspace, target_id, own_mode, workspace_rules, own, {above, integrations}) do
     with {:ok, effective} <-
            Resolution.resolve_for(
              workspace.egress_mode,
@@ -2075,12 +2248,29 @@ defmodule Apiary.Policy do
              workspace_rules,
              own,
              target_id,
-             above
+             above,
+             integrations
            ),
-         document = Render.document(effective),
+         {:ok, document, _allow_first} <- rendered(effective),
          :ok <- small(document),
          :ok <- valid(document) do
       {:ok, document}
+    end
+  end
+
+  # More integration hosts than the 64 `egress.allow_first` takes is no document the
+  # contract accepts.
+  defp rendered(effective) do
+    case Render.render(effective) do
+      {:ok, _document, _allow_first} = rendered ->
+        rendered
+
+      {:error, {:allow_first_too_long, count}} ->
+        Logger.error(
+          "a rendered run configuration was refused: the integrations reaching the workspace require #{count} hosts, more than the 64 of allow_first"
+        )
+
+        {:error, not_in_contract()}
     end
   end
 
@@ -2135,19 +2325,23 @@ defmodule Apiary.Policy do
           "a rendered run configuration was refused by the contract's schema or the host grammar: #{inspect(reason, limit: 20)}"
         )
 
-        {:error,
-         Error.new(
-           :invalid_document,
-           gettext(
-             "The change was not made: the run configuration it renders is not one Forager's contract accepts."
-           )
-         )}
+        {:error, not_in_contract()}
     end
+  end
+
+  defp not_in_contract do
+    Error.new(
+      :invalid_document,
+      gettext(
+        "The change was not made: the run configuration it renders is not one Forager's contract accepts."
+      )
+    )
   end
 
   # The schema's host pattern takes an address in any form; the gateway takes one only as
   # `a.b.c.d`, and refuses the whole document for another. Every host of the document is
-  # held to the grammar again, so no render ever carries one.
+  # held to the grammar again, so no render ever writes one; an entry of `allow_first`
+  # also has no `*.`.
   defp in_grammar(document) do
     egress = get_in(Jason.decode!(document), ["security_policy", "egress"]) || %{}
 
@@ -2155,7 +2349,11 @@ defmodule Apiary.Policy do
       Map.get(egress, "allow", []) ++
         Map.get(egress, "deny", []) ++ Map.keys(Map.get(egress, "paths", %{}))
 
-    case Enum.reject(hosts, &Grammar.host?/1) do
+    refused =
+      Enum.reject(hosts, &Grammar.host?/1) ++
+        Enum.reject(Map.get(egress, "allow_first", []), &Grammar.exact_host?/1)
+
+    case refused do
       [] -> :ok
       refused -> {:error, {:out_of_grammar, refused}}
     end

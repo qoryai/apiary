@@ -42,7 +42,7 @@ Metadata:
       - Label: { default: Recovery }
         Parameters: [AcceptSigningKey, DatabaseDeletionProtection]
       - Label: { default: Advanced }
-        Parameters: [ErlangOptions]
+        Parameters: [Features, ErlangOptions]
       # [test copy]
       - Label: { default: For testing only }
         Parameters: [TestImage]
@@ -61,6 +61,7 @@ Metadata:
       DatabaseSnapshot: { default: Database snapshot to restore (optional) }
       AcceptSigningKey: { default: Accept a new signing key (fingerprint) }
       DatabaseDeletionProtection: { default: Protect the database from deletion }
+      Features: { default: Features (optional) }
       ErlangOptions: { default: Extra Erlang options (optional) }
       TestImage: { default: Test image (leave empty) }  # [test copy]
 
@@ -124,6 +125,16 @@ Parameters:
     Default: "Yes"
     AllowedValues: ["Yes", "No"]
     Description: "Yes turns it on once Qory Apiary first starts healthy, so a failed install still rolls back. To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
+  # Passed to the container as QORY_FEATURES, and only when set: the features of the
+  # instance, which the console's Configuration page shows read only. A name the release
+  # does not know stops its boot: the new task never answers /health, the circuit breaker
+  # rolls the service back, and the stack with it.
+  Features:
+    Type: String
+    Default: ""
+    AllowedPattern: '^$|^(all-)?[a-z0-9_]+(,[a-z0-9_]+)*$'
+    ConstraintDescription: "all, or all- and the features to leave out, or the features to turn on: lower-case names separated by commas, without spaces, such as all-security or observability,security."
+    Description: "Leave empty for the default features. Passed as QORY_FEATURES: all, all- and the features to leave out (all-security), or the features to turn on (observability,security). A name Qory Apiary does not know stops it from starting, and the stack rolls back. The Install guide lists the features, under Features."
   # Passed to the container as ELIXIR_ERL_OPTIONS, and only when set. The release's start
   # script puts it on the Erlang runtime's command line; the image sets none.
   ErlangOptions:
@@ -193,6 +204,7 @@ Conditions:
   # The Version resource reads the key for Qory Apiary Pro alone.
   LooksUpWithDownloadKey: !And [!Condition HasDownloadKey, !Not [!Condition IsCommunity]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
+  HasFeatures: !Not [!Equals [!Ref Features, ""]]
   HasErlangOptions: !Not [!Equals [!Ref ErlangOptions, ""]]
   ProtectDatabase: !Equals [!Ref DatabaseDeletionProtection, "Yes"]
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
@@ -916,6 +928,7 @@ Resources:
       DatabaseSnapshot: !Ref DatabaseSnapshot
       AcceptSigningKey: !Ref AcceptSigningKey
       DatabaseDeletionProtection: !Ref DatabaseDeletionProtection
+      Features: !Ref Features
       ErlangOptions: !Ref ErlangOptions
 
   # Part 1's settings, from the parameters and Secrets Manager. The database's certificate
@@ -924,8 +937,9 @@ Resources:
   # [test copy]
   # With Test image, exactly the image it names.
   # [/test copy]
-  # APIARY_ACCEPT_SIGNING_FINGERPRINT is set only when Accept a new signing key is, and
-  # ELIXIR_ERL_OPTIONS only when Extra Erlang options is.
+  # APIARY_ACCEPT_SIGNING_FINGERPRINT is set only when Accept a new signing key is,
+  # QORY_FEATURES only when Features is, and ELIXIR_ERL_OPTIONS only when Extra Erlang
+  # options is.
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -971,6 +985,11 @@ Resources:
               - HasAcceptSigningKey
               - Name: APIARY_ACCEPT_SIGNING_FINGERPRINT
                 Value: !Ref AcceptSigningKey
+              - !Ref AWS::NoValue
+            - !If
+              - HasFeatures
+              - Name: QORY_FEATURES
+                Value: !Ref Features
               - !Ref AWS::NoValue
             - !If
               - HasErlangOptions

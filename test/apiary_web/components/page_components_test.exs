@@ -42,15 +42,39 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "page-header-actions"
   end
 
+  test "a page's header fits a phone: a long name wraps, and so do the actions" do
+    css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+    rule = fn selector ->
+      [body] =
+        Regex.run(~r/\n  #{Regex.escape(selector)} \{([^}]*)\}/, css, capture: :all_but_first)
+
+      body
+    end
+
+    assert rule.(".q-page-h1") =~ "overflow-wrap: anywhere;"
+    assert rule.(".q-page-desc") =~ "overflow-wrap: anywhere;"
+
+    [phone] =
+      Regex.run(~r/@media \(max-width: 479px\) \{\s*\.q-page-actions \{([^}]*)\}/, css,
+        capture: :all_but_first
+      )
+
+    assert phone =~ "width: 100%;"
+    assert phone =~ "flex-wrap: wrap;"
+  end
+
   test "a thing's tabs: links, the current one marked, Settings last and set apart" do
     assigns = %{}
 
     html =
       rendered_to_string(~H"""
       <.page_tabs id="target-tabs" label="Target" current={:policy}>
-        <:tab key={:overview} patch="/acme/shop/targets/acme/shop">Overview</:tab>
-        <:tab key={:policy} patch="/acme/shop/targets/acme/shop/-/policy" count={2}>Policy</:tab>
-        <:tab key={:settings} navigate="/acme/shop/targets/acme/shop/-/settings" settings>
+        <:tab key={:overview} patch="/acme/shop/targets/tg_0123456789abcdef">Overview</:tab>
+        <:tab key={:policy} patch="/acme/shop/targets/tg_0123456789abcdef/policy" count={2}>
+          Policy
+        </:tab>
+        <:tab key={:settings} navigate="/acme/shop/targets/tg_0123456789abcdef/settings" settings>
           Settings
         </:tab>
       </.page_tabs>
@@ -136,6 +160,53 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "Organisation settings"
   end
 
+  test "a settings page without a title block: the h1 holds the title's words, as before" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.settings_page section={:mail} title="Mail &amp; <b>">
+        <p>body</p>
+      </.settings_page>
+      """)
+
+    assert html =~
+             ~s(<h1 id="settings-section-title" class="q-settings-title outline-none" tabindex="-1">\n          Mail &amp;amp; &lt;b&gt;\n        </h1>)
+  end
+
+  test "a settings page with a title block: the h1 holds its markup, the same h1" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.settings_page section={:integrations} title="Acme Chat" measure="list">
+        <:title_block><span id="mark" aria-hidden="true">*</span><span>Acme Chat</span></:title_block>
+        <:subtitle>What this integration reaches.</:subtitle>
+        <p>body</p>
+      </.settings_page>
+      """)
+
+    h1 = "#settings-section-integrations h1#settings-section-title"
+    assert attribute(html, h1, "class") == "q-settings-title outline-none"
+    assert attribute(html, h1, "tabindex") == "-1"
+    assert attribute(html, "#{h1} > span#mark", "aria-hidden") == "true"
+    assert text(html, "#{h1} > span#mark + span") == "Acme Chat"
+    assert html |> LazyHTML.from_fragment() |> LazyHTML.query("h1") |> Enum.count() == 1
+    # The words are drawn once, by the block: the title's string is not added beside it.
+    assert html |> String.split("Acme Chat") |> length() == 2
+  end
+
+  test "a settings page's title stays required plain words, for the browser title" do
+    %{attrs: attrs, slots: slots} = ApiaryWeb.PageComponents.__components__()[:settings_page]
+
+    # The browser title is set by the page from the same words, never from the h1.
+    assert %{type: :string, required: true} = Enum.find(attrs, &(&1.name == :title))
+    assert %{required: false} = Enum.find(slots, &(&1.name == :title_block))
+
+    assert ApiaryWeb.SettingsComponents.page_title(nil, :instance, ["Acme Chat", "Integrations"]) ==
+             "Acme Chat · Integrations · Instance settings"
+  end
+
   test "a form page: its title, and Cancel at its foot to where it was opened from" do
     assigns = %{}
 
@@ -171,7 +242,7 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "/acme/shop/nodes"
   end
 
-  test "the line of what a run receives, in the page's own words" do
+  test "the line of what a run receives, in the words the page gives" do
     assigns = %{}
 
     html =

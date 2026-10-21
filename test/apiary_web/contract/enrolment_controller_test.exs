@@ -225,6 +225,15 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       Map.put(code(scope, node), :pair, ed25519_key_pair())
     end
 
+    # The row's hash set to `head`'s, with its integrity code, as if it had been made so.
+    defp set_hash(row, head) do
+      row
+      |> Repo.reload!()
+      |> Ecto.Changeset.change(code_sha256: EnrolmentCode.hash(head))
+      |> EnrolmentCode.put_integrity()
+      |> Repo.update!()
+    end
+
     defp assert_unauthorized(conn) do
       assert conn.status == 401
       assert conn.resp_body == ~s({"error":"unauthorized"})
@@ -253,7 +262,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
     test "a code never made, a code of another server's key, and a code with two fingerprints",
          %{code: code, pair: pair} do
       [head, fingerprint] = String.split(code, ".")
-      other = "qec_" <> String.duplicate("0", 26) <> "." <> fingerprint
+      other = EnrolmentCode.prefix(:node) <> String.duplicate("0", 26) <> "." <> fingerprint
       assert_unauthorized(enrol(body(other, pair)))
 
       foreign = head <> "." <> Ed25519.fingerprint(ed25519_key_pair().public_key)
@@ -297,7 +306,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
     test "comes before the key's and the proof's checks: a refused code with a bad proof, or a key of small order",
          %{code: code, pair: pair} do
       [_head, fingerprint] = String.split(code, ".")
-      unknown = "qec_" <> String.duplicate("0", 26) <> "." <> fingerprint
+      unknown = EnrolmentCode.prefix(:node) <> String.duplicate("0", 26) <> "." <> fingerprint
       forged = body(unknown, ed25519_key_pair(), public_key: pair.encoded)
       assert_unauthorized(enrol(forged))
 
@@ -306,6 +315,25 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
 
       stale = body(code, ed25519_key_pair(), public_key: pair.encoded, timestamp: 0)
       assert_unauthorized(enrol(stale))
+    end
+
+    test "a code with another kind's prefix, though its row's hash is that code's", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      [head, fingerprint] = String.split(code, ".")
+      body_chars = String.replace_prefix(head, EnrolmentCode.prefix(:node), "")
+
+      for kind <- [:pool, :gateway] do
+        other = EnrolmentCode.prefix(kind) <> body_chars
+        set_hash(row, other)
+        assert_unauthorized(enrol(body(other <> "." <> fingerprint, pair)))
+        assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+      end
+
+      set_hash(row, head)
+      assert enrol(body(code, pair)).status == 201
     end
 
     @tag :capture_log

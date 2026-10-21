@@ -28,6 +28,8 @@ defmodule Apiary.Edition do
     `audit_retention_max_days/0`, `attribution?/0`.
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
+  - **Stored secrets** (`Apiary.Secrets`): `organisation_secrets/2`, whether an
+    organisation's stored secrets may be read, changed, linked or sealed.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
     `reload/2`, `places_to_lock/1`, `lock_rows/1`, `every_workspace_levels/0`,
     `reaches_workspace?/3`, `reached_workspaces/2`.
@@ -133,7 +135,69 @@ defmodule Apiary.Edition do
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
-  @doc "The most days `AUDIT_RETENTION_DAYS` may say."
+  # With the `factory` feature, which the documentation leaves out: the chain of model
+  # choices that resolves for the runs of the organisation `organisation_id`
+  # (`Apiary.ModelChoices`): "organisation", the choices the organisation sets, or
+  # "operator", the choices an operator sets for it as its client, which are then the
+  # whole chain, while the organisation's are kept and unused. Asked without a lock, once
+  # per resolution. The core answers "organisation".
+  @doc false
+  @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
+
+  # With the `factory` feature, which the documentation leaves out: what a person of
+  # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
+  # the edition, so that a client of an operator is not shown the operator's model
+  # provider: its credential, its connections and its events. `kind` is what is read, and
+  # `subject` the query or value the core would read, returned narrowed or as it is:
+  #
+  # - `:run_events`, the query of a run's events (`Apiary.Runs.Record`);
+  # - `:run_connections`, the query of a run's connections (`Apiary.Runs.Record`);
+  # - `:run_policy`, the policy a run's last `policy.applied` event reported, a map or nil
+  #   (`Apiary.Runs.Record.policy/2`);
+  # - `:workspace_connections`, the query of the workspace's connections, joined to their
+  #   runs, the connection the first binding and the run the second: the policy activity
+  #   (`Apiary.Policy.Activity`), the attempts beside the declared hosts
+  #   (`Apiary.Policy.Suggestions`), a target's denied destinations (`Apiary.Targets`),
+  #   and the workspace's connections and one connection by its id (`Apiary.Runs`);
+  # - `:workspace_events`, the query of the workspace's events, joined to their runs, the
+  #   event the first binding and the run the second: the hosts the runs declared
+  #   (`Apiary.Policy.Suggestions`).
+  #
+  # `run` is the run read, nil for `:workspace_connections` and `:workspace_events`.
+  # Called once per read. The core returns `subject` as it is.
+  @doc false
+  @callback client_reads(
+              Scope.t(),
+              kind ::
+                :run_events
+                | :run_connections
+                | :run_policy
+                | :workspace_connections
+                | :workspace_events,
+              run :: struct | nil,
+              subject
+            ) :: subject
+            when subject: Ecto.Query.t() | map | nil
+
+  @doc """
+  Whether the stored secrets of an organisation, those without a workspace
+  (`Apiary.Secrets`), may be read (`:read`), changed (`:write`) or linked to what uses
+  them (`:use`) by the scope's person, in the scope's organisation; or, asked with a nil
+  scope, whether an organisation's stored secrets may be sealed (`:seal`). `:ok`, or
+  `{:error, reason}`, which `Apiary.Secrets` hands back as it is.
+
+  Asked by `Apiary.Secrets` once it has read the membership again (`Apiary.Access.reload/2`),
+  and, on a write, under the write's locks, before anything else of an organisation's
+  secrets is read or written. The core keeps no secret at an organisation and answers
+  `{:error, :not_found}` for every verb, `:seal` included.
+  """
+  @callback organisation_secrets(Scope.t() | nil, :read | :write | :use | :seal) ::
+              :ok | {:error, Apiary.Access.reason()}
+
+  @doc """
+  The most days the audit trail keeps an entry, by `AUDIT_RETENTION_DAYS` or Instance
+  settings › Configuration.
+  """
   @callback audit_retention_max_days() :: pos_integer
 
   @doc ~s(Whether the product's pages and emails carry "Powered by Qory Apiary".)
@@ -314,9 +378,9 @@ defmodule Apiary.Edition do
     names in the gateways' lock order (`Apiary.Gateways.lock/1`), at the change's one point;
   - it answers the relation alone, and never the organisation itself. It may name an
     organisation out of use: the core never skips a level for that, so the defaults, the
-    choices, the automatic default and the default after a deletion keep it, and a
-    suspension never moves a node on Default to another gateway. Use is checked where
-    it matters, at the server contract: the key of an organisation's gateway is verified
+    choices, the automatic default and the default after a deletion keep it, and taking an
+    organisation out of use never moves a node on Default to another gateway. Use is checked
+    where it matters, at the server contract: the key of an organisation's gateway is verified
     while its organisation is out of use (`Apiary.AccessKeys.fetch_for_verification/1`), and a
     run's place is checked at its attach, its batches and its reload
     (`Apiary.AccessKeys.place_in_use?/2`), so the gateway keeps carrying the runs of the
@@ -512,6 +576,9 @@ defmodule Apiary.Edition do
     instance_organisation_id: 0,
     first_sign_up_line: 0,
     above_workspace: 1,
+    model_choice_chain: 1,
+    client_reads: 4,
+    organisation_secrets: 2,
     audit_retention_max_days: 0,
     attribution?: 0,
     actions: 0,

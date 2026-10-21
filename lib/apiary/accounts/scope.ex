@@ -44,6 +44,7 @@ defmodule Apiary.Accounts.Scope do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.{Preferences, User}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
 
   @typedoc "Who is asking, and in which organisation and workspace."
@@ -94,22 +95,69 @@ defmodule Apiary.Accounts.Scope do
   `Apiary.Policy.Serving.managed?/1` do).
   """
   @spec for_access_key(AccessKey.t()) :: t
-  def for_access_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
+  def for_access_key(%AccessKey{} = access_key) do
+    # The key's node says the role it acts in (`Apiary.Access.role/1`): it is loaded here
+    # when the key does not carry it, and a key whose node cannot be read acts in none.
+    access_key = with_node(access_key)
+    of_key(access_key)
+  end
+
+  # An adapter's key is the instance's, as its adapter is: no organisation and no
+  # workspace, so nothing an edition asks of an organisation is asked of one for it.
+  defp of_key(%AccessKey{node: %Node{kind: :adapter}, workspace_id: nil} = access_key) do
+    %__MODULE__{access_key: access_key, organisation: nil, workspace: nil}
+  end
+
+  defp of_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
     %__MODULE__{access_key: access_key, workspace: workspace}
   end
 
-  def for_access_key(%AccessKey{workspace_id: nil, workspace: nil} = access_key) do
+  defp of_key(%AccessKey{workspace_id: nil} = access_key) do
     %__MODULE__{access_key: access_key, workspace: nil}
   end
+
+  @doc false
+  # for_connection/2 is the scope of an adapter's key (`for_access_key/1`) narrowed to the
+  # organisation of `connection`, a connection of that adapter, which carries its
+  # organisation loaded, and no workspace: what the key asks for that organisation is asked
+  # with it (`Apiary.Access`), so the edition answers for the organisation. Nothing else
+  # of the scope changes. The caller found the connection the adapter's
+  # (`Apiary.Adapters.Connections`).
+  @spec for_connection(t, struct()) :: t
+  def for_connection(
+        %__MODULE__{
+          access_key: %AccessKey{
+            node_id: adapter_id,
+            organisation_id: nil,
+            workspace_id: nil,
+            node: %Node{kind: :adapter}
+          }
+        } = scope,
+        %Apiary.Adapters.Connection{
+          adapter_id: adapter_id,
+          organisation: %Organisation{id: organisation_id} = organisation
+        }
+      )
+      when is_binary(adapter_id) and is_binary(organisation_id),
+      do: %{scope | organisation: organisation, workspace: nil}
+
+  defp with_node(%AccessKey{node: %Node{}} = access_key), do: access_key
+
+  defp with_node(%AccessKey{node_id: node_id} = access_key) when is_binary(node_id),
+    do: %{access_key | node: Apiary.Repo.get(Node, node_id)}
+
+  defp with_node(%AccessKey{} = access_key), do: %{access_key | node: nil}
 
   @doc """
   key_place/1 is what the place of an access key's scope is asked as, a subject of
   `Apiary.Access`: the key's workspace, or, for a key with none, its organisation, which
   the key carries loaded (`Apiary.AccessKeys.fetch_for_verification/1`), or a struct with
-  its id alone.
+  its id alone; nil for a key with neither, which is at no place of an organisation.
   """
-  @spec key_place(t) :: %Workspace{} | %Organisation{}
+  @spec key_place(t) :: %Workspace{} | %Organisation{} | nil
   def key_place(%__MODULE__{workspace: %Workspace{} = workspace}), do: workspace
+
+  def key_place(%__MODULE__{access_key: %AccessKey{organisation_id: nil}}), do: nil
 
   def key_place(%__MODULE__{
         access_key: %AccessKey{organisation: %Organisation{} = organisation}

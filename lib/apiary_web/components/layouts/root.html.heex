@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <meta name="color-scheme" content="light dark" />
-    <.live_title default="Qory Apiary" suffix=" · Qory Apiary" phx-no-format>{assigns[:page_title]}</.live_title>
+    <%!-- The product's name: an instance admin's, else the edition's. --%>
+    <.live_title
+      default={Apiary.ProductName.name()}
+      suffix={" · " <> Apiary.ProductName.name()}
+      phx-no-format
+    >{assigns[:page_title]}</.live_title>
     <link rel="icon" type="image/svg+xml" href={~p"/favicon.svg"} />
     <link rel="alternate icon" type="image/png" sizes="32x32" href={~p"/favicon-32.png"} />
     <link

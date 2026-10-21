@@ -12,10 +12,10 @@ defmodule ApiaryWeb.SettingsLive do
     core's edition, with the deletion of one and the cancelling of a deletion for whoever
     may take them.
   - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
-    slug, its type (its domain, read only: "A software workspace") and, last, its danger
+    slug, its type (its domain, read only: "Software workspace") and, last, its danger
     zone, its deletion while it is one of several; Runs,
     `/:org/:workspace/settings/runs` (`:runs`), how long the workspace keeps runs, their
-    events and their logs, and what the nightly job last pruned. Its path before,
+    events and their logs, and what the daily job last pruned. Its path before,
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited. Deleting asks to type the
@@ -151,7 +151,9 @@ defmodule ApiaryWeb.SettingsLive do
             name={owner.user.email}
             kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
           />
-          <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
+          <span class="min-w-0 truncate font-medium" title={owner.user.email}>
+            {owner.user.email}
+          </span>
           <span :if={owner.user_id == @current_scope.user.id} class="text-[12.5px] text-faint">
             {gettext("you")}
           </span>
@@ -328,9 +330,16 @@ defmodule ApiaryWeb.SettingsLive do
            nothing changes it after. --%>
       <dl id="workspace-type" class="grid gap-1.5">
         <dt class="text-[13px]/[18px] font-medium">{gettext("Type")}</dt>
-        <dd id="workspace-type-value" class="m-0">{workspace_type(@current_scope.workspace)}</dd>
-        <dd class="m-0 text-[12.5px]/[18px] text-muted">
-          {gettext("Set when the workspace was created. It decides the words its pages use.")}
+        <dd id="workspace-type-value" class="m-0">
+          {Apiary.Lingo.Domain.for_workspace(@current_scope.workspace).label()}
+        </dd>
+        <dd id="workspace-type-description" class="m-0 text-[12.5px]/[18px] text-muted">
+          {Apiary.Lingo.Domain.for_workspace(@current_scope.workspace).description()}
+        </dd>
+        <dd id="workspace-type-fixed" class="m-0 text-[12.5px]/[18px] text-muted">
+          {gettext(
+            "Chosen when the workspace was created, and can't be changed. The type sets the words on the workspace's pages and the integrations offered to the workspace."
+          )}
         </dd>
       </dl>
     </SettingsComponents.part>
@@ -380,7 +389,7 @@ defmodule ApiaryWeb.SettingsLive do
   end
 
   # The workspace's Runs: how long a run's events and log output are kept, its retention,
-  # and what the nightly job last pruned.
+  # and what the daily job last pruned.
   defp section(%{section: :runs} = assigns) do
     ~H"""
     <SettingsComponents.part id="retention-keep">
@@ -439,7 +448,7 @@ defmodule ApiaryWeb.SettingsLive do
     <SettingsComponents.part id="retention-pruned" title={gettext("Pruned")}>
       <p :if={@retention_runs == []} id="retention-runs-empty" class="text-muted">
         {if retention_set?(@current_scope.workspace),
-          do: gettext("Nothing has been pruned yet. The pruning job runs every night."),
+          do: gettext("Nothing has been pruned yet. The pruning job runs every day."),
           else: gettext("Nothing is pruned: this workspace keeps everything.")}
       </p>
       <ul :if={@retention_runs != []} id="retention-runs" class="q-plain-list">
@@ -464,17 +473,6 @@ defmodule ApiaryWeb.SettingsLive do
       </p>
     </SettingsComponents.part>
     """
-  end
-
-  # A workspace's domain, read as its type (`Apiary.Lingo.Domain`): the software domain,
-  # the only one there is, is "A software workspace"; any other, a test's, is the name
-  # the workspace stores, which no sentence around it would read right for every name.
-  # The domain's module is matched, not asked its name: an edition's test domain need not
-  # have one.
-  defp workspace_type(workspace) do
-    if Apiary.Lingo.Domain.for_workspace(workspace) == Apiary.Lingo.Domain.Software,
-      do: gettext("A software workspace"),
-      else: workspace.domain
   end
 
   defp section_title(:organisation), do: gettext("General")

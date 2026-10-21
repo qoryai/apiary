@@ -4,6 +4,11 @@ defmodule Apiary.Nodes.GatewayHostMigrationTest do
   # `nodes` table under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
+  # Running a migration up again while later ones are applied makes Ecto warn that an
+  # older migration ran after a newer one. The log is kept from the output and shown
+  # only when a test fails.
+  @moduletag :capture_log
+
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 

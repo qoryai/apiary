@@ -162,28 +162,29 @@ defmodule ApiaryWeb.ActivityLive do
               <:col :let={row} label={gettext("When")}>
                 <.relative_time id={"entry-#{row.id}-time"} at={row.at} />
               </:col>
-              <:col :let={row} label={gettext("Who")}>
+              <:col :let={row} label={gettext("Who")} from="sm">
                 <Actor.actor actor={row.actor} id={"entry-#{row.id}-actor"} />
               </:col>
               <:col :let={row} label={gettext("What")} kind="title">
-                <span id={"entry-#{row.id}-action"}>{row.sentence}</span>
+                <span id={"entry-#{row.id}-action"} class="q-parts">{row.sentence}</span>
               </:col>
               <:col :let={row} label={gettext("Subject")}>
                 <span id={"entry-#{row.id}-subject"} class="flex min-w-0 items-baseline gap-2">
-                  <span class="max-w-[48ch] truncate">
+                  <span
+                    class="q-cut shrink-[1000] max-w-[48ch]"
+                    title={Apiary.ExternalText.line(row.subject.text)}
+                  >
                     <.link :if={row.subject.href} navigate={row.subject.href} class="hover:underline">
                       <.subject_text subject={row.subject} />
                     </.link>
                     <.subject_text :if={!row.subject.href} subject={row.subject} />
                   </span>
-                  <span :if={row.place} class="q-faint truncate">
-                    {gettext("in %{workspace}", workspace: row.place)}
-                  </span>
+                  <.place_words :if={row.place} place={row.place} />
                 </span>
               </:col>
               <:col :let={row} label={gettext("Change")} kind="faint" from="md">
                 <span id={"entry-#{row.id}-change"} class="grid">
-                  <span :for={line <- row.change}><.rich text={line} /></span>
+                  <span :for={line <- row.change} class="q-parts"><.rich text={line} /></span>
                 </span>
               </:col>
             </.table>
@@ -218,17 +219,32 @@ defmodule ApiaryWeb.ActivityLive do
     """
   end
 
+  attr :place, :string, required: true
+
+  # Where an entry happened, beside its subject, up to its cap: it gives way down to a
+  # floor of five letters, so the table holds it in its box on a phone. The words are
+  # bound once, so what shows and the title cannot differ.
+  defp place_words(assigns) do
+    assigns = assign(assigns, :words, gettext("in %{workspace}", workspace: assigns.place))
+
+    ~H"""
+    <span class="q-faint q-cut shrink min-w-[5ch] max-w-[min(28ch,20cqi)]" title={@words}>
+      {@words}
+    </span>
+    """
+  end
+
   attr :subject, :map, required: true
 
   defp subject_text(%{subject: %{mono: true}} = assigns) do
     ~H"""
-    <span class="font-mono text-[12px]">{@subject.text}</span>
+    <.external_text text={@subject.text} class="font-mono text-[12px]" />
     """
   end
 
   defp subject_text(assigns) do
     ~H"""
-    <span>{@subject.text}</span>
+    <.external_text text={@subject.text} />
     """
   end
 
@@ -388,14 +404,20 @@ defmodule ApiaryWeb.ActivityLive do
     for action <- Audit.audited_actions(),
         shown?(scope, Access.shown_as(action)),
         Enum.all?(describers, & &1.offered?(scope, action)),
-        do: {Atom.to_string(action), action_label(describers, action)}
+        do: {Atom.to_string(action), action_label(describers, action, scope)}
   end
 
   defp shown?(_scope, nil), do: true
   defp shown?(scope, feature), do: Features.visible?(scope, feature)
 
-  defp action_label(describers, action),
-    do: first(describers, :label, [action]) || Atom.to_string(action)
+  # Each describer's words for the reader where it has them (`label/2`), else its words.
+  defp action_label(describers, action, scope) do
+    Enum.find_value(describers, fn describer ->
+      if Code.ensure_loaded?(describer) and function_exported?(describer, :label, 2),
+        do: describer.label(action, scope),
+        else: describer.label(action)
+    end) || Atom.to_string(action)
+  end
 
   ## One row
 

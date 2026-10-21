@@ -13,7 +13,7 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
-    "title": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+    "title": {"$ref": "#/$defs/title"},
     "description": {"type": "string", "maxLength": 500},
     "hosts": {
       "description": "Exact DNS names, no wildcard, no IP literal: where the value is set.",
@@ -61,13 +61,21 @@
         "required": ["id", "title"],
         "properties": {
           "id": {"$ref": "#/$defs/declared"},
-          "title": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+          "title": {"$ref": "#/$defs/title"},
           "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"}
         }
       }
     }
   },
   "$defs": {
+    "title": {
+      "description": "A title a person reads: not blank, and no control character (C0, DEL, C1), format character (category Cf, the bidirectional controls among them) but ZWNJ and ZWJ, or line or paragraph separator, which would hide part of it or make it read otherwise than it is.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "\\S",
+      "not": {"pattern": "(?![\u200C\u200D])[\\p{Cc}\\p{Cf}\u2028\u2029]"}
+    },
     "declared": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
     "exact_host": {
       "type": "string",

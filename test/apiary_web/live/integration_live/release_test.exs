@@ -6,7 +6,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
   import Apiary.ConnectionsFixtures
   import Apiary.DescriptionFixtures
 
-  alias Apiary.{Connections, Integrations}
+  alias Apiary.{Connections, Integrations, Repo}
   alias Apiary.Connections.Connection
 
   @moduletag needs: :secrets
@@ -151,6 +151,16 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert to =~ "/settings/integrations/#{connection.public_id}"
   end
 
+  test "a release's description takes its direction, its invisible characters dropped and its controls shown",
+       %{conn: conn, scope: scope} do
+    about = "Mints\u202E tokens.\nPer installation\e."
+    release = ready_release!(scope, github_description(%{"description" => about}))
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert lv |> element("#release-about[dir=auto]") |> render() =~
+             "Mints tokens.\nPer installation\u{FFFD}."
+  end
+
   test "a yes/no setting says what it is", %{conn: conn, scope: scope} do
     description =
       github_description()
@@ -169,6 +179,81 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
            )
 
     assert has_element?(lv, "#release-setting-verbose-hint", "Logs every request it makes.")
+  end
+
+  test "a setting whose description has nothing left to show has no hint",
+       %{conn: conn, scope: scope} do
+    description =
+      github_description()
+      |> put_in(["settings", "properties", "verbose"], %{
+        "title" => "Verbose",
+        "type" => "boolean",
+        "description" => "\u202E\u200B"
+      })
+      |> put_in(["settings", "properties", "region"], %{
+        "title" => "Region",
+        "type" => "string",
+        "description" => "\u2066"
+      })
+
+    release = ready_release!(scope, description)
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-setting-verbose")
+    assert has_element?(lv, "#release-setting-region")
+    refute has_element?(lv, "#release-setting-verbose-hint")
+    refute has_element?(lv, "#release-setting-region-hint")
+    refute has_element?(lv, "#release-setting-verbose[aria-describedby]")
+    refute has_element?(lv, "#release-setting-region[aria-describedby]")
+  end
+
+  test "a setting whose description is only whitespace has no hint",
+       %{conn: conn, scope: scope} do
+    description =
+      github_description()
+      |> put_in(["settings", "properties", "verbose"], %{
+        "title" => "Verbose",
+        "type" => "boolean",
+        "description" => " "
+      })
+      |> put_in(["settings", "properties", "region"], %{
+        "title" => "Region",
+        "type" => "string",
+        "description" => "\u00A0\u200B\u3000"
+      })
+
+    release = ready_release!(scope, description)
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-setting-verbose")
+    assert has_element?(lv, "#release-setting-region")
+    refute has_element?(lv, "#release-setting-verbose-hint")
+    refute has_element?(lv, "#release-setting-region-hint")
+    refute has_element?(lv, "#release-setting-verbose[aria-describedby]")
+    refute has_element?(lv, "#release-setting-region[aria-describedby]")
+  end
+
+  test "a setting's hint and the program's version are shown as an integration's text is",
+       %{conn: conn, scope: scope} do
+    description =
+      github_description()
+      |> put_in(["settings", "properties", "verbose"], %{
+        "title" => "Verbose",
+        "type" => "boolean",
+        "description" => "Logs every\u202E request\u0085"
+      })
+      |> put_in(["settings", "properties", "region"], %{
+        "title" => "Region",
+        "type" => "string",
+        "description" => "Where\u200B it runs\e"
+      })
+
+    release = ready_release!(scope, description)
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-setting-verbose-hint", "Logs every request\u{FFFD}")
+    assert has_element?(lv, "#release-setting-region-hint", "Where it runs\u{FFFD}")
+    assert has_element?(lv, "bdi.q-mono", "0.1.0")
   end
 
   test "a release whose only role Qory Apiary does not know shows that role as given",
@@ -260,5 +345,66 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
 
     assert html =~ "Only owners and admins"
     assert {:ok, []} = Connections.list_connections(scope)
+  end
+
+  describe "who asked for it" do
+    # What a read release says of who asked for it, `admin`, once `change` ran on it, and
+    # the page's text, its tags left out.
+    defp said_of(conn, scope, admin, change) do
+      {:ok, release} =
+        Integrations.request_release(admin.scope, %{
+          source: "codeberg.org/acme/hooks",
+          version: "0.1.0"
+        })
+
+      serve_codeberg(github_description(), "acme/hooks")
+      {:ok, %{state: "ready"} = release} = Integrations.fetch_release(scope, release.id)
+      change.(release)
+      {:ok, lv, _html} = live(conn, ipath(scope, release))
+      text = lv |> render() |> plain()
+      [_, person] = Regex.run(~r/asked for by (Former member|\S+ \S+)/, text)
+      {person, text}
+    end
+
+    defp plain(html),
+      do: html |> String.replace(~r/<[^>]+>/, " ") |> String.split() |> Enum.join(" ")
+
+    defp by_user(release, user),
+      do: release |> Ecto.Changeset.change(requested_by_id: user.id) |> Repo.update!()
+
+    # The words of a person's letter in the page's text: the letter, then the address of its
+    # hidden text.
+    defp letter(user), do: "#{String.upcase(String.first(user.email))} #{user.email}"
+
+    test "a person removed from the organisation is named by the first letter of their account's address",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      {said, text} =
+        said_of(conn, scope, admin, fn _record -> Repo.delete!(admin.membership) end)
+
+      assert said == letter(admin.user)
+      assert text =~ admin.user.email
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      {said, _text} =
+        said_of(conn, scope, admin, fn _record ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(admin.user)
+        end)
+
+      assert said == "Former member"
+    end
+
+    test "a person who is not a member of the organisation is named by the first letter of their account's address",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      user = Apiary.AccountsFixtures.user_fixture()
+      {said, text} = said_of(conn, scope, admin, &by_user(&1, user))
+      assert said == letter(user)
+      assert text =~ user.email
+    end
   end
 end

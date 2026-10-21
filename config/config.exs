@@ -28,6 +28,11 @@ config :apiary,
 config :apiary, ApiaryWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
+  # The "/live" socket's bound on a fragmented message (`ApiaryWeb.Endpoint`), merged
+  # with each environment's `http:`. An `https:` gets it at boot
+  # (`ApiaryWeb.Endpoint.bound_https/1`): one set here would start an https listener on
+  # every install that runs the server.
+  http: [websocket_options: [max_fragmented_message_size: 4_194_304]],
   render_errors: [
     formats: [html: ApiaryWeb.ErrorHTML, json: ApiaryWeb.ErrorJSON],
     layout: false
@@ -92,21 +97,29 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id, :organisation_id, :workspace_id, :user_id]
 
-# Parameters the Phoenix logger masks in development request logs, and in the lines a
-# LiveView logs for its mount and its events. Production logs never include parameters
-# at all. A parameter whose name holds one of these words is logged as [FILTERED]:
+# Parameters the Phoenix logger masks in development request logs; the lines a LiveView
+# logs for its mount, its parameters and its events write every value as [FILTERED]
+# (`ApiaryWeb.LiveViewLog`). In production (`config/prod.exs`) the Phoenix logger is
+# off, so it writes no request, socket or channel line; the request log writes a
+# request's path, a link's token in it replaced (`ApiaryWeb.RequestLog`), and no other
+# parameter; and the level, `:info`, leaves out a LiveView's lines. A request's crash
+# report can hold parameters, with a secret and a token scrubbed
+# (`Apiary.SecretLogFilter`). A parameter whose name holds one of these words is logged
+# as [FILTERED]:
 # `value` keeps a stored secret's value out of the log, and a variable's; `code` the
 # set-up link's code (`Apiary.Setup`); `token` a link's token, which the path of an
 # invitation, a log-in link, an email change, a password link and Instance settings ›
 # Mail's test link carry; `invitation` an invitation's token, which the sign-up page's
-# query carries (`/users/register?invitation=…`).
+# query carries (`/users/register?invitation=…`); `return` what an integration hands back
+# on the link it sends a person to after an install (`/integrations/…?return=…`).
 config :phoenix, :filter_parameters, [
   "password",
   "secret",
   "value",
   "code",
   "token",
-  "invitation"
+  "invitation",
+  "return"
 ]
 
 # Use Jason for JSON parsing in Phoenix
@@ -148,6 +161,11 @@ config :apiary, Oban,
   queues: [default: 5],
   pruner: [max_age: {7, :days}],
   lifeline: [rescue_after: {30, :minutes}]
+
+# mdex's NIF (Apiary.Sources.Body) on x86_64 Linux: the build without AVX and FMA, which
+# a host may lack where the build machine has them. Read at compile time. x86_64 Windows
+# and FreeBSD take their legacy build too; arm64, macOS and musl are unchanged.
+config :mdex_native, use_legacy_artifacts: true
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

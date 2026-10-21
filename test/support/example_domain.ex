@@ -2,7 +2,9 @@ defmodule Apiary.Lingo.Domain.Example do
   @moduledoc """
   A domain for the tests only, registered beside the software domain in `config/test.exs`:
   its target is named by the `account` label in the system the `platform` label names. It
-  has no catalogue, so its locales fall back to the language's.
+  has no catalogue, so its locales fall back to the language's. A work item needs no
+  target, any target with a system and a path keeps its rules, a run gets no run
+  variables, and no environment is prebuilt.
   """
   @behaviour Apiary.Lingo.Domain
 
@@ -23,4 +25,23 @@ defmodule Apiary.Lingo.Domain.Example do
 
   @impl true
   def name, do: "example"
+
+  @impl true
+  def label, do: "Example workspace"
+
+  @impl true
+  def description, do: "For the tests only."
+
+  @impl true
+  def target_required?, do: false
+
+  @impl true
+  def check_target(%{system: system, path: path}) when is_binary(system) and is_binary(path),
+    do: :ok
+
+  @impl true
+  def run_variables(%{}, picked) when is_list(picked), do: {:ok, nil}
+
+  @impl true
+  def prebuilds?, do: false
 end

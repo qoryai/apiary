@@ -10,8 +10,6 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   import ApiaryWeb.PolicyComponents
 
-  alias ApiaryWeb.PolicyLive.Common
-
   @doc "The first render of a policy page, before the socket connects: its shape, and nothing read."
   attr :title, :string, required: true
 
@@ -173,6 +171,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   attr :v, :map, required: true
   attr :base, :string, required: true
   attr :now, :any, required: true
+  attr :reader, :string, default: nil, doc: "the reader's address"
 
   def version_view(assigns) do
     ~H"""
@@ -184,7 +183,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
         >
           <.relative_time at={@v.configuration.rendered_at} />
         </.kv>
-        <.kv label={gettext("Changed by")}>{@v.changed_by || gettext("n/a")}</.kv>
+        <.kv label={gettext("Changed by")}>
+          <.avatar :if={@v.changed_by} email={@v.changed_by} reader={@reader} size="xs" />
+          {if !@v.changed_by, do: gettext("n/a")}
+        </.kv>
         <.kv label={gettext("Change")}>{@v.change_words || gettext("First render")}</.kv>
         <.kv :if={@v.mode} label={gettext("Mode")}>
           {@v.mode}
@@ -342,16 +344,17 @@ defmodule ApiaryWeb.PolicyLive.Views do
               aria-current={entry_current(@v, item)}
             >
               <span class="q-vlist-v">v{item.version}</span>
-              <span class="min-w-0 truncate">
-                {item.words}
+              <%!-- Only the words are cut: a cut would clip the letter's tooltip. --%>
+              <span class="min-w-0">
+                <span class="block truncate">{item.words}</span>
                 <small class="block">
-                  {Enum.join(
-                    Enum.reject(
-                      [Common.local(item.who), Format.relative(item.at, @now)],
-                      &is_nil/1
-                    ),
-                    " · "
-                  )}
+                  <.avatar
+                    :if={item.who}
+                    email={item.who}
+                    reader={@reader}
+                    in_link
+                    size="xs"
+                  /><span :if={item.who}> · </span>{Format.relative(item.at, @now)}
                   <.source_chip
                     :if={item.workspace}
                     source={:workspace}
@@ -487,7 +490,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-muted">
         <span :for={note <- @export.notes}>{note}{" "}</span>
-        {gettext("Keep a policy file outside the checkout.")}
+        {gettext("Keep a policy file outside the folder the runs work in.")}
         {pgettext(
           "plain",
           "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
@@ -594,7 +597,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   end
 
   # The lead of the export: what is exported, as of which version, and in which files. A
-  # target is named as it is addressed; the file's own head keeps its system and path.
+  # target is named in its notation; the file's own head keeps its system and path.
   defp export_lead(export) do
     subject =
       if export.workspace,

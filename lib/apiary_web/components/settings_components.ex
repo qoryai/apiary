@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.SettingsComponents do
   @moduledoc """
-  The settings of an organisation and of a workspace, GitHub's way: each kind in a
-  separate place, reached from its scope, one section a page with the list of that kind's
-  sections beside it (`layout/1`), while the sidebar stays the scope's, its Organisation
-  settings or Workspace settings the current entry. Configuration lives here, set up once and changed rarely; the sidebar
-  holds the pages people use every day.
+  The settings of an organisation and of a workspace, each kind in a separate place,
+  reached from its scope, one section a page with the list of that kind's sections beside
+  it (`layout/1`), while the sidebar stays the scope's, its Organisation settings or
+  Workspace settings the current entry. Configuration lives here, set up once and changed
+  rarely; the sidebar holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
     it), People (its members, invitations and suspended memberships), Workspaces, then the
@@ -77,6 +77,17 @@ defmodule ApiaryWeb.SettingsComponents do
           label: gettext("Workspaces"),
           icon: "hero-squares-2x2",
           path: ~p"/#{organisation}/settings/workspaces",
+          place: :organisation
+        },
+      # The organisation's integrations, with the `factory` feature, for whoever may read
+      # them; each change there asks its action again.
+      can?(scope, :"adapter.read") &&
+        %Entry{
+          section: :main,
+          key: :integrations,
+          label: gettext("Integrations"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/#{organisation}/settings/integrations",
           place: :organisation
         }
     ]
@@ -490,10 +501,14 @@ defmodule ApiaryWeb.SettingsComponents do
     >
       <:col :let={workspace} label={gettext("Workspace")} kind="title">
         <span class="q-nm">
-          <.link navigate={~p"/#{@scope.organisation}/#{workspace}"} class="q-title hover:underline">
+          <.link
+            navigate={~p"/#{@scope.organisation}/#{workspace}"}
+            class="q-title hover:underline"
+            title={workspace.name}
+          >
             {workspace.name}
           </.link>
-          <span class="q-side q-mono">{workspace.slug}</span>
+          <span class="q-side q-mono" title={workspace.slug}>{workspace.slug}</span>
         </span>
       </:col>
       <:col :let={workspace} :if={@targets} label={gettext("Targets")} kind="num" from="sm">

@@ -19,7 +19,10 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
 
   and gets the tests: every route of the router is decided, no module listed as one every
   instance has declares a feature, the security policy's pages and endpoint belong to
-  `security`, and the stored secrets', variables' and integrations' pages to `secrets`. `routes/1` is the router's routes, for a test of the edition's own features.
+  `security`, the instance admins' integration pages to `factory`, a page of the Instance
+  level (`use ApiaryWeb.Features, instance: ...`) is routed under `/instance` alone, and
+  the stored secrets', variables' and integrations' pages to `secrets`. `routes/1` is the
+  router's routes, for a test of the features an edition adds.
   """
 
   use ExUnit.CaseTemplate
@@ -51,6 +54,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.UserLive.Password,
     ApiaryWeb.InvitationLive.Accept,
     ApiaryWeb.SetupLive,
+    ApiaryWeb.InstanceLive.General,
     ApiaryWeb.InstanceLive.Mail,
     ApiaryWeb.InstanceMailController,
     ApiaryWeb.InstanceLive.Configuration,
@@ -106,6 +110,31 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         # it, belong with the run endpoint.
         assert ApiaryWeb.Contract.AttachController.__feature__() == :observability
         assert ApiaryWeb.Contract.OutcomeController.__feature__() == :observability
+      end
+
+      test "the instance admins' adapter pages belong to factory" do
+        pages =
+          for {_verb, "/instance/adapters" <> _, module} <-
+                ApiaryWeb.RoutesFeaturesCase.routes(@router),
+              do: module
+
+        assert pages != []
+
+        for module <- pages do
+          assert module.__feature__() == :factory, inspect(module)
+        end
+      end
+
+      test "a page of the Instance level is routed under /instance alone" do
+        elsewhere =
+          for {verb, path, module} <- ApiaryWeb.RoutesFeaturesCase.routes(@router),
+              ApiaryWeb.Features.instance?(module),
+              path != "/instance" and not String.starts_with?(path, "/instance/"),
+              do: "#{verb} #{path} (#{inspect(module)})"
+
+        assert elsewhere == [],
+               "pages of the Instance level (`use ApiaryWeb.Features, instance: ...`) " <>
+                 "routed outside /instance:\n" <> Enum.join(elsewhere, "\n")
       end
 
       test "the stored secrets', variables' and integrations' pages belong to secrets" do

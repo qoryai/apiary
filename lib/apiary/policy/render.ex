@@ -5,14 +5,38 @@ defmodule Apiary.Policy.Render do
 
   Deterministic: members in a fixed order, lists sorted by `Apiary.Policy.Resolution`, no
   insignificant whitespace, so the same rules give the same bytes and the same digest.
-  `allow` is always written, empty when nothing is allowed; `deny` and `paths` only when
-  they hold something, so a policy without a deny renders the bytes it always did. The
-  document selects no credential: the contract's `credentials` member is never written.
+  `allow` is always written, empty when nothing is allowed; `allow_first`, `deny` and
+  `paths` only when they have an entry, so a policy without an integration's host or a
+  deny renders the bytes it always did. The document selects no credential: a policy
+  never writes the contract's `credentials` member.
   """
+
+  # With the features `factory` and `secrets`, which the documentation leaves out:
+  # `credentials` and `model_credential` are written in the document composed for a run
+  # that the handover set a model provider for (`Apiary.Policy.ComposedConfiguration`,
+  # `Apiary.Runs.ProviderCredential`), never in a policy's.
 
   alias Apiary.Policy.Effective
 
   @version 1
+
+  # The most entries the field `egress.allow_first` takes.
+  @allow_first_max 64
+
+  @doc """
+  render/1 is the document of `effective` (`document/1`) and the hosts of its
+  `allow_first` (`Apiary.Policy.Effective`): `{:ok, document, allow_first}`, or
+  `{:error, {:allow_first_too_long, count}}` when there are more than 64 hosts, the most
+  entries the field `egress.allow_first` takes.
+  """
+  @spec render(Effective.t()) ::
+          {:ok, binary, [String.t()]} | {:error, {:allow_first_too_long, pos_integer}}
+  def render(%Effective{allow_first: hosts} = effective) do
+    case length(hosts) do
+      count when count > @allow_first_max -> {:error, {:allow_first_too_long, count}}
+      _count -> {:ok, document(effective), hosts}
+    end
+  end
 
   @doc "The document's bytes."
   @spec document(Effective.t()) :: binary
@@ -47,7 +71,24 @@ defmodule Apiary.Policy.Render do
           else: []
         )
 
-    ordered(version: @version, egress: ordered(egress))
+    ordered(version: @version, egress: ordered(allow_first(egress, effective.allow_first)))
+  end
+
+  @doc """
+  allow_first/2 is the one place that writes `egress.allow_first`: it takes the members
+  of `egress`, in the document's order, and the hosts of `Apiary.Policy.Effective`'s
+  `allow_first`, and returns the members to write. The hosts go right after `allow`,
+  which `security_policy/1` always writes, in the schema's order. An empty list adds no
+  member.
+  """
+  @spec allow_first(keyword, [String.t()]) :: keyword
+  def allow_first(egress, []) when is_list(egress), do: egress
+
+  def allow_first(egress, hosts) when is_list(egress) and is_list(hosts) do
+    Enum.flat_map(egress, fn
+      {:allow, _allow} = allow -> [allow, {:allow_first, hosts}]
+      member -> [member]
+    end)
   end
 
   defp ordered(pairs), do: Jason.OrderedObject.new(pairs)

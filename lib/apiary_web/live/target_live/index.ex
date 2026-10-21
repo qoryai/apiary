@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.TargetLive.Index do
   @moduledoc """
-  The workspace's targets: the index GitHub gives an organisation's repositories. One
-  row per target, its path the only strong text: the reader's pin, its last run as a dot
-  and a time (a word only when it is running or went badly), its runs a day over fourteen
-  days, how many of them ended well, its denied attempts in those days, and its policy
-  mode only where it overrides the workspace's. Pages of 50.
+  The workspace's targets, one row per target, its path the only strong text: the
+  reader's pin, its last run as a dot and a time (a word only when it is running or went
+  badly), its runs a day over fourteen days, how many of them ended well, its denied
+  attempts in those days, and its policy mode only where it overrides the workspace's.
+  Pages of 50.
 
   Narrowed the way every list is (`docs/ui.md`): views as tabs (All, Active this week,
   Never ran), a search that takes qualifiers (`ApiaryWeb.TargetLive.Query`), one Filter
@@ -253,7 +253,7 @@ defmodule ApiaryWeb.TargetLive.Index do
                 ngettext("%{number} target", "%{number} targets", count, number: Format.number(count))
               }
             >
-              <span class="font-mono">{system}</span>
+              <span class="font-mono"><.external_text text={system} /></span>
             </.filter_item>
             <.menu_heading title={gettext("Activity")} />
             <.filter_item
@@ -313,10 +313,10 @@ defmodule ApiaryWeb.TargetLive.Index do
           <:token
             :for={token <- @query.tokens}
             patch={index_path(@current_scope, Query.toggle(@query, token))}
-            label={gettext("Remove %{filter}", filter: Query.token_text(token))}
+            label={gettext("Remove %{filter}", filter: shown_token_text(token))}
           >
             <span class="font-mono">
-              <span class="text-muted">{token_key(token)}:</span>{token_value(token)}
+              <span class="text-muted">{token_key(token)}:</span><bdi>{token_value(token)}</bdi>
             </span>
           </:token>
         </.filter_tokens>
@@ -387,11 +387,9 @@ defmodule ApiaryWeb.TargetLive.Index do
           <:col :let={row} label={gettext("Target")} kind="title" class="q-tgt-c-name">
             <.link
               id={"target-link-#{row.target.id}"}
-              navigate={
-                target_path(@current_scope, row.target.system, row.target.path, [], row.shared)
-              }
+              navigate={target_path(@current_scope, row.target)}
               class="q-tgt-name"
-              title={"#{row.target.system}/#{row.target.path}"}
+              title={target_label(row.target.system, row.target.path, true)}
             >
               <.target_name path={row.target.path} system={row.shared && row.target.system} />
             </.link>
@@ -502,7 +500,7 @@ defmodule ApiaryWeb.TargetLive.Index do
       </span>
       <.relative_time at={@last.at} />
       <span
-        :if={Runs.Run.current_state(@last.state) != "completed"}
+        :if={@last.state != "completed"}
         class={["q-tgt-lw", "q-sdot-#{@last.state}"]}
         aria-hidden="true"
       >
@@ -567,8 +565,14 @@ defmodule ApiaryWeb.TargetLive.Index do
     ~p"/#{scope.organisation}/#{scope.workspace}/targets?#{Query.to_params(query)}"
   end
 
+  # A system is a text Forager sent, shown as a page shows one where it was sent
+  # (`Apiary.ExternalText.sent/1`), in the example and in a token; the query keeps it as
+  # sent.
   defp placeholder([{system, _count} | _]),
-    do: gettext("Find a target, e.g. %{example}", example: "#{Query.system_key()}:#{system}")
+    do:
+      gettext("Find a target, e.g. %{example}",
+        example: "#{Query.system_key()}:#{Apiary.ExternalText.sent(system)}"
+      )
 
   defp placeholder([]), do: gettext("Find a target")
 
@@ -577,7 +581,12 @@ defmodule ApiaryWeb.TargetLive.Index do
   defp token_key({key, _value}), do: to_string(key)
 
   defp token_value(token),
-    do: token |> Query.token_text() |> String.split(":", parts: 2) |> List.last()
+    do: token |> shown_token_text() |> String.split(":", parts: 2) |> List.last()
+
+  defp shown_token_text({:system, system}),
+    do: "#{Query.system_key()}:#{Apiary.ExternalText.sent(system)}"
+
+  defp shown_token_text(token), do: Query.token_text(token)
 
   defp sort_label(:last_run), do: gettext("Last run")
   defp sort_label(:name), do: gettext("Name")

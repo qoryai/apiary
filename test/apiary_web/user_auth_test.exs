@@ -577,6 +577,9 @@ defmodule ApiaryWeb.UserAuthTest do
          %{conn: conn} do
       %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
       {:ok, view, _html} = live(log_in_user(conn, user), ~p"/#{organisation}/#{workspace}/runs")
+      # The page's async reads finish first, so none is killed holding the test's sandbox
+      # connection when the page ends.
+      render_async(view)
 
       # The edition hides the record from the person while the page is open.
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)

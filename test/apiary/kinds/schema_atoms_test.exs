@@ -50,7 +50,7 @@ defmodule Apiary.Kinds.SchemaAtomsTest do
 
       checks = fn ->
         for i <- 1..1000 do
-          settings = %{"url" => "probe-#{run}-#{i}-#{System.unique_integer([:positive])}"}
+          settings = %{"url" => "atom-#{run}-#{i}-#{System.unique_integer([:positive])}"}
           assert Description.check_settings(description, settings) == :ok
         end
       end
@@ -76,7 +76,7 @@ defmodule Apiary.Kinds.SchemaAtomsTest do
 
     check = fn ->
       run = System.unique_integer([:positive])
-      list = for i <- 1..1024, do: "probe-list-#{run}-#{i}"
+      list = for i <- 1..1024, do: "atom-list-#{run}-#{i}"
       assert Description.check_settings(description, %{"url" => list}) == :ok
     end
 
@@ -86,7 +86,7 @@ defmodule Apiary.Kinds.SchemaAtomsTest do
   test "a build with the aprops cast makes no atom of the property names" do
     build = fn ->
       run = System.unique_integer([:positive])
-      properties = Map.new(1..1000, &{"probe_#{run}_p#{&1}", %{"type" => "string"}})
+      properties = Map.new(1..1000, &{"atom_#{run}_p#{&1}", %{"type" => "string"}})
 
       schema = %{
         "type" => "object",

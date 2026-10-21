@@ -25,7 +25,7 @@ defmodule Apiary.NodesRacesTest do
   defp start_run(node, instance_id), do: {:ok, node_run_fixture(node, instance_id)}
 
   defp runs(node),
-    do: Repo.all(from r in Run, where: r.node_id == ^node.id, select: r.instance_id)
+    do: Repo.all(from r in Run, where: r.node_id == ^node.id, select: r.node_instance_id)
 
   test "the second start for a node's one slot waits for the first, and is refused" do
     %{scope: scope} = sign_up()

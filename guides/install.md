@@ -1,8 +1,9 @@
 # Install and configure
 
 Qory Apiary is one container image. Postgres is its only dependency and holds all of its state.
-Configuration is by environment variables, read once at boot. Pending database migrations
-run at boot, before the server accepts a request, so an upgrade is a restart
+Configuration is by environment variables, read once at boot; an instance admin changes
+some settings in **Instance settings** as well, where a variable that is set wins. Pending
+database migrations run at boot, before the server accepts a request, so an upgrade is a restart
 ([Upgrading](upgrading.md)).
 
 [From nothing to a first run](quickstart.md) is the shortest way to a running trial. This
@@ -11,7 +12,7 @@ page is the reference for an installation that stays.
 ## The pieces
 
 - **The image**, `ghcr.io/qoryai/apiary`, is built from the `Dockerfile` of the repository.
-  CI builds it on every pull request and push and publishes nothing; only a release
+  CI builds it on every proposed change and every push and publishes nothing; only a release
   publishes it, tagged with its version without the `v` (`X.Y.Z`), `X.Y` and `latest`, for
   `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as the user
   `nobody`, listens on port 4100, and its command is `bin/server`, which migrates and
@@ -222,9 +223,8 @@ value set in the environment always wins. A variable left blank counts as not se
 | `APIARY_ACCEPT_SIGNING_FINGERPRINT` | none | Empty, except to change the signing key on purpose: the fingerprint the key check names as the new key's, which the next boot records as the instance's ([The keys generated at first start](#the-keys-generated-at-first-start)). Any other value changes nothing. A fingerprint is public, not a secret. |
 <!-- feature: secrets -->
 
-`APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
-derived from it: it must never change once one exists, and losing it loses every stored
-value, for good.
+`APIARY_ENCRYPTION_SECRET` also encrypts the stored secret values, under keys derived from
+it: it must never change once one exists, and losing it loses every stored value, for good.
 <!-- /feature -->
 
 ```text
@@ -460,7 +460,7 @@ environment variable SMTP_TLS must be always, if_available or never
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `DNS_CLUSTER_QUERY` | none | A DNS name whose A and AAAA records list the other nodes to cluster with. Not set means one node, with Erlang distribution off. |
-| `RELEASE_COOKIE` | required with `DNS_CLUSTER_QUERY` | The secret the nodes connect with: a long random value, the same on every node. With `DNS_CLUSTER_QUERY` set and no `RELEASE_COOKIE`, Qory Apiary stops at start. |
+| `RELEASE_COOKIE` | required with `DNS_CLUSTER_QUERY` | The secret the nodes connect with: a long random value, the same on every node. With `DNS_CLUSTER_QUERY` set and no `RELEASE_COOKIE`, Qory Apiary stops at start. The release writes it to a file only the release user can read, in a new directory under `RELEASE_TMP`, and never puts it on a command line. Use printable ASCII on one line only, such as the output of `openssl rand -base64 32`. Every release command but `version`, `bin/migrate` included, writes there, so `RELEASE_TMP` (by default `tmp` in the release) has to be writable by the release user. |
 | `RELEASE_NODE` | `apiary@` and the first IPv4 address, other than a loopback address, that the container's host name resolves to | The node's name, read only with `DNS_CLUSTER_QUERY`. Set it to `apiary@<address>` when the other nodes reach this one at another address. |
 
 ### Features
@@ -523,8 +523,8 @@ whole database schema whatever its features, so nothing is migrated.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `AUDIT_RETENTION_DAYS` | `90` | How many days the audit trail keeps an entry: a whole number from `30` to `90`. Not set, or empty, is `90`. |
-| `AUDIT_ADDRESS_RETENTION_DAYS` | `90` | How many days an entry keeps the address and the client (the browser's user agent) it came from, after which they are cleared and the rest of the entry stays: a whole number from `1` to the value of `AUDIT_RETENTION_DAYS`. Not set, or empty, is `90`, or the value of `AUDIT_RETENTION_DAYS` when that is shorter. |
+| `AUDIT_RETENTION_DAYS` | `90` | How many days the audit trail keeps an entry: a whole number from `30` to `90`. Not set, or empty, is the value saved in **Instance settings › Configuration**, else `90`. |
+| `AUDIT_ADDRESS_RETENTION_DAYS` | `90` | How many days an entry keeps the address and the client (the browser's user agent) it came from, after which they are cleared and the rest of the entry stays: a whole number from `1` to the value of `AUDIT_RETENTION_DAYS`. Not set, or empty, is the value saved in **Instance settings › Configuration**, else `90`; either way never longer than the entries are kept. |
 | `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from, and the address the limits on signing in count by: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
@@ -536,13 +536,13 @@ names a person by their account, and the page looks the address up when it shows
 The security policy's history is part of the trail.
 <!-- /feature -->
 
-Once a day, at 02:40 UTC, a job deletes every organisation's entries older than
-`AUDIT_RETENTION_DAYS`, and each deletion is itself an entry. The address and the client
-are personal data, kept no longer than the entry and for less if you choose: the same job
-clears them from the entries older than `AUDIT_ADDRESS_RETENTION_DAYS`, 90 days unless
-set, and leaves the rest of each entry for the trail's period. The clearing writes no
-separate entry; a deletion's entry says how many it cleared beside. A value outside the
-bounds stops the boot:
+Once a day, at 02:40 UTC, a job deletes every organisation's entries older than the
+trail's period, and each deletion is itself an entry. The address and the client are
+personal data, kept no longer than the entry and for less if you choose: the same job
+clears them from the entries older than their period, 90 days unless set, and leaves the
+rest of each entry for the trail's period. The clearing writes no separate entry; a
+deletion's entry says how many it cleared beside. A variable set outside the bounds stops
+the boot:
 
 ```text
 environment variable AUDIT_RETENTION_DAYS is not valid: it is a number of days from 30 to 90, got: "365"; 90 days is the most this edition keeps.
@@ -551,9 +551,13 @@ AUDIT_RETENTION_DAYS=60
 ```
 
 An `AUDIT_ADDRESS_RETENTION_DAYS` longer than `AUDIT_RETENTION_DAYS` stops the boot too,
-since an address is not kept longer than its entry. The values are read at boot, so a
-change takes a restart. A shorter period deletes or clears what it no longer keeps at the
-next day's job; setting it longer again does not bring it back.
+since an address is not kept longer than its entry. An instance admin sets both periods
+in **Instance settings › Configuration**, under Retention, after a recent sign-in; a
+variable that is set wins, and the page shows it read only. Wherever each period comes
+from, an address is not kept longer than its entry. The variables are read at boot, so a
+change to them takes a restart; a change on the page applies from the next day's job. A
+shorter period deletes or clears what it no longer keeps at the next day's job; setting it
+longer again does not bring it back.
 
 <!-- feature: secrets -->
 ### Integrations
@@ -562,7 +566,7 @@ next day's job; setting it longer again does not bring it back.
 |---|---|---|
 | `INTEGRATION_URL_SOURCES` | `true` | Whether an integration may be added from an https address of its `description.json`: `true`, `1` or `yes`, or `false`, `0` or `no`. Not set, or empty, is `true`. Any other value stops the boot. |
 
-When a workspace adds an integration from a release, Qory Apiary reads the release's
+When an organisation adds an integration from a release, Qory Apiary reads the release's
 `description.json` and `checksums.txt` from the forge or the address it names. A release
 is on `github.com`, `gitlab.com` or `codeberg.org`, found by the repository's path and
 the version at the download address that forge gives it (on GitLab, the API's download
@@ -597,7 +601,7 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation makes in 24 hours, emailed or copied: a whole number from `1`. Not set, or empty, is `20`. |
+| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation makes in 24 hours, emailed or copied: a whole number from `1`. Not set, or empty, is the value saved in **Instance settings › Configuration**, else `20`. |
 
 A new instance is set up with its **set-up link**
 ([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
@@ -621,20 +625,24 @@ not name the person who sent it; only someone whose account is confirmed can sen
 organisation's name cannot hold a web address (`://` or `www.`), quotation marks other
 than an apostrophe, straight or curly, control characters or invisible Unicode characters;
 a name like `Acme.io` or `Dana’s` is fine, though a mail client may turn a bare domain into
-a link. Once the organisation has made `INVITATIONS_PER_DAY` invitations in the last 24
-hours, whoever makes the next is told so, and it makes no more until the oldest of them is
+a link. Once the organisation has made as many invitations in the last 24 hours as the
+instance allows a day, whoever makes the next is told so, and it makes no more until the oldest of them is
 a day old; an invitation that was accepted, revoked or deleted since still counts, and one
 whose email could not be delivered does not. Every invitation tried, delivered or not, counts against three times
-`INVITATIONS_PER_DAY`, so the organisation cannot keep sending to addresses that bounce.
+that number, so the organisation cannot keep sending to addresses that bounce.
 
 Without mail, nothing is sent: the invite page shows the invitation's link once, for
 whoever invites to copy and send themselves, and their account need not be confirmed.
 Only the link's hash is kept, so it cannot be shown again; **Make a new link** on the
 pending invitation makes another, which works for seven days again, and the old one stops
 working at once. A link copied, and each new link made, count against
-`INVITATIONS_PER_DAY` as an emailed invitation does.
+that number as an emailed invitation does.
 
-A value it does not accept stops the boot:
+An instance admin sets the number in **Instance settings › Configuration**, under
+Invitations, after a recent sign-in, and it applies at once. With `INVITATIONS_PER_DAY`
+set, the variable wins, and the page shows it read only.
+
+A value of `INVITATIONS_PER_DAY` it does not accept stops the boot:
 
 ```text
 environment variable INVITATIONS_PER_DAY is not valid: it is a whole number of invitations from 1, got: "0".
@@ -646,17 +654,23 @@ INVITATIONS_PER_DAY=50
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `DELETION_GRACE_DAYS` | `30` | How many days a deleted workspace or organisation is kept, and can be restored, before it is purged: a whole number from `1` to `90`. Not set, or empty, is `30`. |
+| `DELETION_GRACE_DAYS` | `30` | How many days a deleted workspace or organisation is kept, and can be restored, before it is purged: a whole number from `1` to `90`. Not set, or empty, is the value saved in **Instance settings › Configuration**, else `30`. |
 
 The instance's organisation is not deleted, since its owners run the instance, and neither
-is its workspace Main, its only one: the organisation's settings say so. The value is
-checked at boot all the same, and one outside the bounds stops the boot:
+is its workspace Main, its only one: the organisation's settings say so.
+`DELETION_GRACE_DAYS` is checked at boot all the same, and a value outside the bounds
+stops the boot:
 
 ```text
 environment variable DELETION_GRACE_DAYS is not valid: it is a number of days from 1 to 90, got: "0".
 Leave it unset for 30 days, or set it, for example:
 DELETION_GRACE_DAYS=14
 ```
+
+An instance admin sets the grace period in **Instance settings › Configuration**, under
+Deletion, after a recent sign-in. With `DELETION_GRACE_DAYS` set, the variable wins, and
+the page shows it read only. A change applies to what is deleted after it; what is already
+deleted keeps its purge date.
 
 A person deletes their account on **Account settings**; it is deleted at once, and its
 row stays without the address, the password or the preferences, so what the person did
@@ -683,9 +697,10 @@ Set up Qory Apiary at https://qory.example.com/setup/<code>.
 With `compose.yaml`, `docker compose logs apiary | grep 'Set up Qory Apiary'` finds it:
 the log is one JSON object per line ([Logs](#logs)), and the sentence above is the line's
 `message`. Open the link: its page asks for your email address, a password and its
-confirmation, and your organisation's name, and **Set up** creates the instance's
-organisation, its workspace Main and your account as its owner, an instance admin, and
-signs you in. The code is 32 random bytes, kept in the database until it is used; it does
+confirmation, your organisation's name, and the **Workspace type** of its workspace Main:
+**Software workspace**, for work on code, or **General workspace**, for any other work.
+The type can't be changed after. **Set up** creates the instance's organisation, its
+workspace Main and your account as its owner, an instance admin, and signs you in. The code is 32 random bytes, kept in the database until it is used; it does
 not expire before, and it works once: after it, any set-up link says "This Qory Apiary is
 already set up." and leads to the log-in page. Anyone who can read the log can use the
 link before you do, so open it as soon as the instance is up. On an instance that is set
@@ -738,6 +753,18 @@ tab if it should stop.
 The last owner of the organisation who may act is not suspended, made an admin or a member,
 or removed. Should every instance admin be locked out, `grant_instance_admin` is the way
 back.
+
+**The name.** An instance admin can rename the product in **Instance settings › General**.
+The name replaces Qory Apiary in the browser tab, the sidebar, the log-in pages and every
+email, and those places then also say “Powered by Qory Apiary”. Empty the field to go back
+to Qory Apiary. The docs keep the name Qory Apiary.
+
+**The configuration.** In **Instance settings › Configuration** an instance admin changes
+how long the audit trail keeps an entry and its address, the grace period before a purge,
+and the invitations a day, after a recent sign-in. A variable that is set wins, and the
+page shows it read only. Each change is an entry in the activity of the instance's
+organisation. Each node of a cluster reads the change at once; a node that misses it keeps
+the values it had until it starts again.
 
 ### Compose only
 

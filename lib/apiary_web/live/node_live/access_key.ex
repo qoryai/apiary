@@ -967,26 +967,61 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp secrets_words(true), do: gettext("Allowed")
   defp secrets_words(_false), do: gettext("Not allowed")
 
-  defp when_words(person, at) do
+  defp when_words(person, at, reader) do
     if person,
       do:
-        gettext("by %{person}, %{date}", person: People.email(person), date: Format.datetime(at)),
+        rich_gettext("by %{person}, %{date}",
+          person: person_letter(person, reader),
+          date: Format.datetime(at)
+        ),
       else: Format.datetime(at)
   end
 
-  defp person_words(person), do: People.email(person) || People.former_member()
+  defp reader(%{user: %{email: email}}), do: email
+  defp reader(_scope), do: nil
 
-  defp added_words(%AccessKey{arrived_by: :code} = key),
+  # A person in a sentence: their first letter, with the address as its tooltip
+  # (`ApiaryWeb.CoreComponents.avatar/1`); "Former member" for no account.
+  defp person_letter(person, reader) do
+    assigns = %{email: People.email(person) || People.former_member(), reader: reader}
+    ~H|<.avatar email={@email} reader={@reader} size="xs" />|
+  end
+
+  # A key an adapter installed with Qory Apiary enrolled with a code of the instance, which
+  # names no maker.
+  defp installed_key?(%AccessKey{arrived_by: :code}, %Node{kind: :adapter, installed_as: name}),
+    do: is_binary(name)
+
+  defp installed_key?(_key, _node), do: false
+
+  # An installed adapter's key: enrolled at its first start, for its first key; by
+  # itself, with a code from Qory Apiary, for a key after a revoked one.
+  defp added_words(key, node, first, reader) do
+    cond do
+      not installed_key?(key, node) ->
+        added_words(key, reader)
+
+      first ->
+        gettext("Enrolled at its first start, %{time}", time: Format.datetime(key.received_at))
+
+      true ->
+        gettext("Connected by itself, with a code from Qory Apiary, %{date}",
+          date: Format.datetime(key.received_at)
+        )
+    end
+  end
+
+  defp added_words(%AccessKey{arrived_by: :code} = key, reader),
     do:
-      gettext("Connected with a command by %{person}, %{date}",
-        person: person_words(key.created_by),
+      rich_gettext("Connected with a command by %{person}, %{date}",
+        person: person_letter(key.created_by, reader),
         date: Format.datetime(key.received_at)
       )
 
-  defp added_words(%AccessKey{arrived_by: :browser} = key),
+  defp added_words(%AccessKey{arrived_by: :browser} = key, reader),
     do:
-      gettext("Generated in a browser by %{person}, %{date}",
-        person: person_words(key.created_by),
+      rich_gettext("Generated in a browser by %{person}, %{date}",
+        person: person_letter(key.created_by, reader),
         date: Format.datetime(key.received_at)
       )
 
@@ -1309,7 +1344,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb>{gettext("Command")}</:crumb>
 
@@ -1448,10 +1483,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb :if={@live_action == :generate}>{gettext("Generate a key")}</:crumb>
-      <:crumb :if={@live_action == :generated}>{@key.label}</:crumb>
+      <:crumb :if={@live_action == :generated} title={@key.label}>{@key.label}</:crumb>
 
       <section
         id="key-generate"
@@ -1723,9 +1758,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
-      <:crumb>{@key.label}</:crumb>
+      <:crumb title={@key.label}>{@key.label}</:crumb>
 
       <section
         id="key-forager-file"
@@ -1858,9 +1893,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={NodeComponents.nodes_path(@current_scope, @place)}>
         {NodeComponents.nodes_label(@place)}
       </:crumb>
-      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.overview} title={@node.name}>{@node.name}</:crumb>
 
-      <NodeComponents.node_header node={@node} activity={@activity} />
+      <NodeComponents.node_header
+        node={@node}
+        activity={@activity}
+        reader={@current_scope.user.email}
+      />
       <NodeComponents.node_tabs node={@node} paths={@paths} current={:access_key} view={:access_key} />
 
       <div id="node-access-key" class="grid max-w-[72rem] gap-8">
@@ -1896,6 +1935,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               code={@code}
               may={@may}
               paths={@paths}
+              reader={@current_scope.user.email}
             />
           </div>
         </SettingsComponents.part>
@@ -1908,7 +1948,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         >
           <p id="node-keys-members" class="text-[13px]/5 text-muted">
             {gettext(
-              "%{name} has no key yet, so it isn't connected to Qory. An owner or admin connects it.",
+              "%{name} has no key yet, so it isn't connected to Qory Apiary. An owner or admin connects it.",
               name: @node.name
             )}
           </p>
@@ -1972,6 +2012,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             node={@node}
             may={@may}
             paths={@paths}
+            reader={@current_scope.user.email}
           />
           <p :if={!@full} id="node-add-intro" class="text-[13px]/5 text-muted">
             {add_intro(@node)}
@@ -1990,6 +2031,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               code={@code}
               may={@may}
               paths={@paths}
+              reader={@current_scope.user.email}
             />
           </div>
         </SettingsComponents.part>
@@ -2015,6 +2057,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :code, :any, required: true, doc: "the code whose cancelling is being confirmed, or nil"
   attr :may, :map, required: true
   attr :paths, :map, required: true
+  attr :reader, :string, default: nil, doc: "the reader's address"
 
   # A way to connect the node, as one of two equal options: when to choose it, what
   # happens, the same four facts as the other's, a command still waiting where it is the
@@ -2052,6 +2095,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         node={@node}
         may={@may}
         paths={@paths}
+        reader={@reader}
       />
       <div class="mt-auto pt-1">
         <.way_button
@@ -2073,6 +2117,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :code, :any, required: true
   attr :may, :map, required: true
   attr :paths, :map, required: true
+  attr :reader, :string, default: nil, doc: "the reader's address"
 
   # A way to connect the node, as a compact row of Add a key.
   defp way_row(assigns) do
@@ -2095,6 +2140,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           node={@node}
           may={@may}
           paths={@paths}
+          reader={@reader}
           class="mt-2"
         />
       </div>
@@ -2151,9 +2197,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :paths, :map, required: true
   attr :class, :any, default: nil
 
+  attr :adapter, :boolean,
+    default: false,
+    doc: "whether the codes are an adapter's, whose command runs on the adapter's host"
+
+  attr :reader, :string, default: nil, doc: "the reader's address"
+
+  @doc false
   # The commands got and not yet run, neither cancelled nor expired: who got each and
-  # when, until when it works, and Cancel the command…, confirmed in place.
-  defp waiting(assigns) do
+  # when, until when it works, and Cancel the command…, confirmed in place. With
+  # `adapter`, it lists an adapter's codes, for an adapter's Access key tab, and its first
+  # line names no place where the command runs: the adapter is not the host it runs on.
+  def waiting(assigns) do
     ~H"""
     <div
       :for={code <- @codes}
@@ -2161,15 +2216,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       class={["grid gap-2 rounded-field border border-line bg-base-200 p-3 text-[13px]/5", @class]}
     >
       <.listening>
-        {gettext("A command is waiting to be run on %{name}.", name: @node.name)}
+        {if @adapter,
+          do: gettext("A command is waiting to be run."),
+          else: gettext("A command is waiting to be run on %{name}.", name: @node.name)}
       </.listening>
       <p class="text-muted">
-        {gettext(
-          "%{person} got it at %{time}. It works once, until %{expires}. It was shown once: if it's lost, cancel it and get a new one.",
-          person: person_words(code.created_by),
-          time: Format.time(code.inserted_at),
-          expires: Format.time(code.expires_at)
-        )}
+        <.rich text={
+          rich_gettext(
+            "%{person} got it at %{time}. It works once, until %{expires}. It was shown once: if it's lost, cancel it and get a new one.",
+            person: person_letter(code.created_by, @reader),
+            time: Format.time(code.inserted_at),
+            expires: Format.time(code.expires_at)
+          )
+        } />
       </p>
       <%= if @code && @code.id == code.id do %>
         <.inline_confirm
@@ -2378,14 +2437,33 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :hosts, :any, required: true
   attr :confirming, :any, required: true, doc: "the act asked of this key, or false"
 
+  attr :adapter, :boolean,
+    default: false,
+    doc: "whether the key is an adapter's, which Forager never holds"
+
+  attr :first, :boolean,
+    default: true,
+    doc:
+      "for an adapter installed with Qory Apiary, whether the key is its first, with no revoked key before it"
+
+  @doc false
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
-  # An act asked of it is confirmed in place of the acts.
-  defp key_card(assigns) do
+  # An act asked of it is confirmed in place of the acts. With `adapter`, it is an
+  # adapter's key, for an adapter's Access key tab, without what only Forager's keys have:
+  # the Forager file, the Forager version it was last used with, and stored secrets; and
+  # its secret is said to be on the machine that ran the command, since the adapter the
+  # card names is not that machine; for an adapter installed with Qory Apiary, the key was
+  # enrolled at the adapter's first start, with the instance's code, and the adapter keeps
+  # its secret. Its Last used is the key's `last_used_at`, which every accepted request of
+  # an adapter's key records. An adapter's card is for an instance admin's page alone
+  # (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an adapter's key and
+  # when it was used are the instance admins'.
+  def key_card(assigns) do
     %{key: key, may: may} = assigns
 
     assigns =
       assign(assigns,
-        secrets: Apiary.Features.visible?(assigns.scope, :secrets),
+        secrets: !assigns.adapter and Apiary.Features.visible?(assigns.scope, :secrets),
         state: state(key),
         dom: "key-#{key.key_id}",
         acts: key_acts(key, may)
@@ -2437,17 +2515,34 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           />
         </dd>
         <dt class="text-faint">{gettext("Added")}</dt>
-        <dd id={"#{@dom}-added"}>{added_words(@key)}</dd>
+        <dd id={"#{@dom}-added"}>
+          <.rich text={added_words(@key, @node, @first, reader(@scope))} />
+        </dd>
         <dt class="text-faint">{gettext("Secret")}</dt>
-        <dd id={"#{@dom}-secret"}>{secret_words(@key, @node)}</dd>
+        <dd id={"#{@dom}-secret"}>
+          {cond do
+            installed_key?(@key, @node) ->
+              gettext("Kept by the adapter; never shown")
+
+            @adapter ->
+              gettext("On the machine that ran the command; never shown")
+
+            true ->
+              secret_words(@key, @node)
+          end}
+        </dd>
         <dt :if={@state == :revoked} class="text-faint">{state_words(@state)}</dt>
-        <dd :if={@state == :revoked}>{when_words(@key.revoked_by, @key.revoked_at)}</dd>
+        <dd :if={@state == :revoked}>
+          <.rich text={when_words(@key.revoked_by, @key.revoked_at, reader(@scope))} />
+        </dd>
         <dt class="text-faint">{gettext("Last used")}</dt>
         <dd id={"#{@dom}-used"}>
           <%= if @key.last_used_at do %>
             {Format.datetime(@key.last_used_at)}
-            <span :if={@key.last_forager_version} class="text-muted">
-              {gettext("Forager %{version}", version: @key.last_forager_version)}
+            <span :if={@key.last_forager_version && !@adapter} class="text-muted">
+              {gettext("Forager %{version}",
+                version: Apiary.ExternalText.sent(@key.last_forager_version)
+              )}
             </span>
           <% else %>
             {gettext("Not yet")}
@@ -2458,15 +2553,15 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dt :if={@last_run} class="text-faint">{gettext("Last run")}</dt>
         <dd :if={@last_run}>
           <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@last_run.run_id}"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@last_run.public_id}"}
             class="q-mono text-accent hover:underline"
           >
-            {gettext("run %{id}", id: short_id(@last_run.run_id))}
+            {gettext("run %{id}", id: short_id(@last_run.public_id))}
           </.link>
         </dd>
         <dt :if={@hosts} class="text-faint">{gettext("Hosts, 14 days")}</dt>
         <dd :if={@hosts}>
-          {@hosts.host ||
+          <.external_text text={@hosts.host} />{!@hosts.host &&
             ngettext("%{number} host", "%{number} hosts", @hosts.count,
               number: Format.number(@hosts.count)
             )}
@@ -2511,8 +2606,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </:action>
           </.inline_confirm>
         <% _none -> %>
-          <p :if={@state == :active} class="flex flex-wrap gap-3">
+          <p
+            :if={@state == :active and (!@adapter or :revoke in @acts)}
+            class="flex flex-wrap gap-3"
+          >
             <.button
+              :if={!@adapter}
               id={"#{@dom}-forager-file"}
               variant="link"
               patch={key_path(@paths, @key, "forager-file")}

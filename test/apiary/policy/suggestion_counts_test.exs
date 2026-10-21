@@ -59,4 +59,24 @@ defmodule Apiary.Policy.SuggestionCountsTest do
       assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(other)
     end
   end
+
+  describe "what the edition leaves out" do
+    test "the core leaves the declared hosts as they are; an edition narrows each read", %{
+      scope: scope
+    } do
+      shop = started_run(scope, shop())
+      event_fixture(shop, 10, "run.policy_applied", %{"harness_hosts" => ["api.example"]})
+      target = Repo.get!(Target, shop.target_id)
+
+      assert %{hosts: 1, targets: 1} = Policy.suggestion_counts(scope)
+
+      assert [%{host: "api.example", runs: 1, allowed: 0, denied: 0}] =
+               Policy.suggestions(scope, target)
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesRuns)
+
+      assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(scope)
+      assert %{suggested: [], covered: []} = Policy.declared_hosts(scope, target)
+    end
+  end
 end

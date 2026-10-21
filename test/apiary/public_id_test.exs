@@ -29,4 +29,26 @@ defmodule Apiary.PublicIdTest do
     refute PublicId.valid?("sec", nil)
     assert PublicId.valid?("sec", "sec_0123456789abcdef")
   end
+
+  test "valid?/2 refuses 16 bytes that are not 16 characters of the alphabet, and raises on none" do
+    # Not UTF-8: a byte 0xFF, and a lone continuation byte.
+    refute PublicId.valid?("rn", "rn_" <> <<0xFF>> <> "123456789abcdef")
+    refute PublicId.valid?("rn", "rn_0123456789abcde" <> <<0x80>>)
+    refute PublicId.valid?("wk", "wk_" <> <<0xC3, 0x28>> <> "23456789abcdef")
+
+    # A character of two bytes and one of three: 16 bytes, fewer characters.
+    refute PublicId.valid?("rn", "rn_é23456789abcdef")
+    refute PublicId.valid?("nd", "nd_€3456789abcdef")
+
+    # Uppercase, and one character too few or too many.
+    refute PublicId.valid?("rn", "rn_0123456789ABCDEF")
+    refute PublicId.valid?("rn", "rn_0123456789abcde")
+    refute PublicId.valid?("rn", "rn_0123456789abcdef0")
+
+    for prefix <- ~w(wk nd wi rn con svc sec na ac) do
+      assert PublicId.valid?(prefix, PublicId.generate(prefix))
+      assert PublicId.valid?(prefix, prefix <> "_0123456789abcdef")
+      refute PublicId.valid?(prefix, prefix <> "_" <> <<0xFF>> <> "123456789abcdef")
+    end
+  end
 end

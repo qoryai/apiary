@@ -102,13 +102,22 @@ at the commit in `.forager-contract-ref`. They take it from `FORAGER_CONTRACT_DI
 `contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
 excluded and a line says so; CI checks Forager out at that commit
 and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is
-that of Forager's release `v0.7.0`, on its `main` branch, pinned by its id. The end to end
+one of Forager after its release `v0.7.0`, pinned by its id. The end to end
 job builds qory against Forager at `.forager-e2e-ref`, pinned apart.
 
 The tests tagged `:load` measure the receiver for long and outside the sandbox, and the
 suite leaves them out (`Apiary.TestSetup.start!/1`). The one of a gateway's backlog flushed
 after an outage runs with `QORY_FEATURES` unset:
 `mix test --only load test/apiary_web/contract/backlog_load_test.exs`.
+
+## Public ids
+
+Every insert into a table with a `public_id` column (a prefix, `_` and 16 Crockford base32
+characters, `Apiary.PublicId`) goes through `Apiary.PublicId.Insert`. It runs the insert
+again with a fresh id, 3 tries in all, when the unique index `<table>_public_id_index`
+refuses it, in a savepoint when the caller is in a transaction, and for no other error. A
+column default that makes the id (such as `source_item_public_id()`) makes another on the
+next try.
 
 ## Doc comments
 

@@ -2,8 +2,9 @@ defmodule ApiaryWeb.SetupLive do
   @moduledoc """
   The set-up page, `/setup/<code>`, the link a new instance logs at every start until it
   is used (`Apiary.Setup`). With the stored code it asks for an email address, a password
-  and its confirmation, and the organisation's name; it makes the instance's first
-  account, an instance admin, its organisation and the workspace Main
+  and its confirmation, the organisation's name, and the type of Main, its domain, with
+  no type chosen until the person picks one (`Apiary.Lingo.Domain.choices/0`); it makes
+  the instance's first account, an instance admin, its organisation and the workspace Main
   (`Apiary.Setup.set_up/3`), and the edition says what is created
   (`c:Apiary.Edition.first_sign_up_line/0`). Once it is accepted, the same form is
   submitted to the log-in controller (`phx-trigger-action`, as the sign-up page does),
@@ -20,6 +21,7 @@ defmodule ApiaryWeb.SetupLive do
   use ApiaryWeb, :live_view
 
   alias Apiary.{Organisations, Setup}
+  alias Apiary.Lingo.Domain
 
   defmodule HeldCode do
     @moduledoc false
@@ -35,7 +37,9 @@ defmodule ApiaryWeb.SetupLive do
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <div :if={@state == :set_up} id="setup-done" class="grid gap-4">
         <Layouts.auth_heading>
-          {gettext("This Qory Apiary is already set up.")}
+          {if name = Apiary.ProductName.get(),
+            do: gettext("%{name} is already set up.", name: name),
+            else: gettext("This Qory Apiary is already set up.")}
         </Layouts.auth_heading>
         <.button
           :if={@current_scope && @current_scope.user}
@@ -59,7 +63,7 @@ defmodule ApiaryWeb.SetupLive do
 
       <div :if={@state == :form} class="grid gap-4">
         <Layouts.auth_heading>
-          {gettext("Set up Qory Apiary")}
+          {gettext("Set up %{name}", name: Apiary.ProductName.name())}
           <:subtitle>{@line}</:subtitle>
         </Layouts.auth_heading>
         <p id="setup-admin" class="text-sm/5 text-muted">
@@ -103,6 +107,21 @@ defmodule ApiaryWeb.SetupLive do
               )
             }
             required
+          />
+          <.input
+            field={@form[:domain]}
+            type="radio"
+            label={gettext("Workspace type")}
+            options={
+              for domain <- Domain.choices(),
+                  do: {domain.label(), domain.name(), domain.description()}
+            }
+            hint={
+              gettext(
+                "%{workspace}, your first workspace, gets this type. A workspace's type can't be changed after it is created.",
+                workspace: Organisations.default_workspace_name()
+              )
+            }
           />
           <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Setting up")}>
             {gettext("Set up")}
@@ -165,7 +184,11 @@ defmodule ApiaryWeb.SetupLive do
   def handle_event("save", %{"user" => params}, %{assigns: %{state: :form}} = socket) do
     %HeldCode{value: code} = socket.assigns.code
 
-    case Setup.set_up(code, params, password: :required, origin: socket.assigns.origin) do
+    case Setup.set_up(code, params,
+           password: :required,
+           domain: :required,
+           origin: socket.assigns.origin
+         ) do
       # The same form goes to the log-in controller, with the address the account has,
       # and signs the person in with the password the browser holds.
       {:ok, %{user: user}} ->
@@ -192,14 +215,29 @@ defmodule ApiaryWeb.SetupLive do
 
   @doc """
   not_set_up_line/0 is what the sign-up and log-in pages say before the instance is set
-  up, in place of their forms.
+  up, in place of their forms: it names the instance by the name an instance admin set,
+  and says "This Qory Apiary" where none is set.
   """
   @spec not_set_up_line() :: String.t()
-  def not_set_up_line,
-    do: gettext("This Qory Apiary is not set up yet: use the set-up link from its install.")
+  def not_set_up_line do
+    case Apiary.ProductName.get() do
+      nil ->
+        gettext("This Qory Apiary is not set up yet: use the set-up link from its install.")
+
+      name ->
+        gettext("%{name} is not set up yet: use the set-up link from its install.",
+          name: name
+        )
+    end
+  end
 
   defp change_set_up(params),
-    do: Organisations.change_sign_up(params, validate_unique: false, password: :required)
+    do:
+      Organisations.change_sign_up(params,
+        validate_unique: false,
+        password: :required,
+        domain: :required
+      )
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset),
     do: assign(socket, :form, to_form(changeset, as: "user"))

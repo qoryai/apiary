@@ -80,22 +80,24 @@ defmodule ApiaryWeb.DocsController do
   end
 
   @doc """
-  The name of the tree for `features`: `all` for every feature, the opt-in ones
-  (`Apiary.Features.opt_in/0`) included; otherwise the features in the order of
+  The name of the tree for `features`, of which it reads only the ones the documentation
+  differs by (`Apiary.Features.documented/0`): `all` for every one of those, the opt-in
+  ones (`Apiary.Features.opt_in/0`) included; otherwise those in the order of
   `Apiary.Features.all/0`, joined with `+`, as `observability+security`.
   """
   @spec tree_name([Apiary.Features.feature()]) :: String.t()
   def tree_name(features) do
-    all = Apiary.Features.all()
+    documented = Apiary.Features.documented()
 
-    case Enum.filter(all, &(&1 in features)) do
-      ^all -> "all"
+    case Enum.filter(documented, &(&1 in features)) do
+      ^documented -> "all"
       some -> Enum.map_join(some, "+", &to_string/1)
     end
   end
 
-  # `all` is every feature: what `QORY_FEATURES=all` names leaves the opt-in ones out.
-  defp tree_features("all"), do: [Apiary.Features.all()]
+  # `all` is every feature the documentation differs by: what `QORY_FEATURES=all` names
+  # leaves the opt-in ones out.
+  defp tree_features("all"), do: [Apiary.Features.documented()]
 
   defp tree_features(name) do
     case Apiary.Features.parse(String.replace(name, "+", ",")) do

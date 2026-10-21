@@ -63,9 +63,10 @@ defmodule Apiary.Nodes do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Audit, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Audit, Environments, Gateways, PublicId, Repo, Runs}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Dispatches.Slots
   alias Apiary.Nodes.{Instance, Node, Throttle}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Liveness, Run}
@@ -278,17 +279,31 @@ defmodule Apiary.Nodes do
                created_by_id: user.id
              }
              |> Node.create_changeset(attrs)
+             |> made_here()
              |> put_first_choice(attrs, workspace)
              |> validate_gateway(scope),
            {:ok, changeset} <- limit_set(asking, changeset, workspace),
-           {:ok, node} <- Repo.insert(changeset),
+           {:ok, node} <- PublicId.Insert.insert(changeset),
            {:ok, node} <- default_if_none(node, workspace),
+           _queued = queue_prebuilds(node),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"node.create", node, %{after: created(node)}) do
         {:ok, node}
       end
     end)
   end
+
+  # A new node pool applies the prebuilds' trigger for the collections assigned to its
+  # workspace (`Apiary.Environments.trigger_for_pool/2`).
+  defp queue_prebuilds(%Node{kind: :pool} = pool),
+    do: Environments.trigger_for_pool(pool, DateTime.utc_now())
+
+  defp queue_prebuilds(%Node{}), do: []
+
+  # A node, a node pool or a gateway is made here; an adapter, which is the instance's, is
+  # made through `Apiary.Adapters` alone.
+  defp made_here(changeset),
+    do: Ecto.Changeset.validate_inclusion(changeset, :kind, Node.all_kinds())
 
   # A new node or pool given no choice: the default when one resolves, else direct.
   defp put_first_choice(changeset, attrs, workspace) do
@@ -304,11 +319,11 @@ defmodule Apiary.Nodes do
   defp created(%Node{kind: :gateway} = node),
     do: Map.take(node, [:name, :kind, :public_id, :instance_limit, :url, :default_gateway])
 
-  defp created(%Node{gateway_choice: :named} = node),
-    do: Map.take(node, [:name, :kind, :public_id, :instance_limit, :gateway_choice, :gateway_id])
-
-  defp created(%Node{} = node),
-    do: Map.take(node, [:name, :kind, :public_id, :instance_limit, :gateway_choice])
+  defp created(%Node{} = node) do
+    fields = [:name, :kind, :public_id, :instance_limit, :gateway_choice]
+    fields = if node.gateway_choice == :named, do: fields ++ [:gateway_id], else: fields
+    Map.take(node, fields)
+  end
 
   # A new gateway is its level's default when no default resolves for it at its level or
   # after it (`Apiary.Gateways.default_resolves?/1`).
@@ -351,7 +366,7 @@ defmodule Apiary.Nodes do
                %Node{organisation_id: organisation_id, workspace_id: nil, created_by_id: user.id},
                Map.put(stringify(attrs), "kind", :gateway)
              ),
-           {:ok, gateway} <- Repo.insert(changeset),
+           {:ok, gateway} <- PublicId.Insert.insert(changeset),
            {:ok, gateway} <- default_if_none(gateway, nil),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"node.create", gateway, %{after: created(gateway)}) do
@@ -416,13 +431,21 @@ defmodule Apiary.Nodes do
   """
   @spec update_node(Scope.t(), Node.t(), map) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def update_node(scope, node, attrs)
+
+  # An adapter is changed through `Apiary.Adapters` alone.
+  def update_node(%Scope{}, %Node{kind: :adapter}, _attrs), do: {:error, :not_found}
+
   def update_node(%Scope{} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
       with :ok <- Gateways.lock_for(scope, node),
            asking = Access.reload(scope),
            :ok <- may_change(asking, node),
            %Node{} = current <- lock_node(scope, node) || {:error, :not_found},
-           changeset = current |> Node.changeset(attrs) |> validate_gateway(scope),
+           changeset =
+             current
+             |> Node.changeset(attrs)
+             |> validate_gateway(scope),
            :ok <- check_each(asking, edit_actions(changeset), current),
            {:ok, updated} <- Repo.update(changeset),
            :ok <- record_edit(scope, current, updated) do
@@ -443,6 +466,10 @@ defmodule Apiary.Nodes do
   """
   @spec make_default_gateway(Scope.t(), Node.t()) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def make_default_gateway(scope, gateway)
+
+  def make_default_gateway(%Scope{}, %Node{kind: :adapter}), do: {:error, :not_found}
+
   def make_default_gateway(%Scope{} = scope, %Node{} = gateway) do
     gateway_mutate(scope, :"node.edit", gateway, fn
       %Node{kind: :gateway, default_gateway: true} = current ->
@@ -496,6 +523,11 @@ defmodule Apiary.Nodes do
           {:ok, Node.t()}
           | {:error,
              Ecto.Changeset.t() | Access.reason() | {:gateway_in_use, Gateways.blockers()}}
+  def delete_node(scope, node)
+
+  # An adapter is deleted through `Apiary.Adapters` alone.
+  def delete_node(%Scope{}, %Node{kind: :adapter}), do: {:error, :not_found}
+
   def delete_node(%Scope{user: user} = scope, %Node{} = node) do
     gateway_mutate(scope, :"node.delete", node, fn current ->
       with :ok <- unblocked(current),
@@ -683,14 +715,18 @@ defmodule Apiary.Nodes do
 
   @typedoc """
   An instance running now, as the pages show it: its id and name, since when it runs (the
-  start of its oldest run alive), its newest run alive (`run_id`, the run's subject) and
-  the Forager version that run reported.
+  start of its oldest run alive), its newest run alive (`run_public_id`, the run's
+  `public_id`) and the Forager version that run reported. `row_id` is the id of its row
+  in `node_instances`, nil when it has none (rows are bounded and pruned): a page
+  addresses the instance by `row_id`, and one with no row by `run_public_id`, never by
+  the node's instance id (`instance_id`).
   """
   @type running :: %{
           instance_id: String.t(),
+          row_id: Ecto.UUID.t() | nil,
           name: String.t() | nil,
           since: DateTime.t(),
-          run_id: Ecto.UUID.t(),
+          run_public_id: String.t(),
           forager_version: String.t() | nil
         }
 
@@ -778,7 +814,7 @@ defmodule Apiary.Nodes do
     {updated, _} =
       Repo.update_all(
         from(i in Instance,
-          where: i.node_id == ^node.id and i.instance_id == ^instance_id,
+          where: i.node_id == ^node.id and i.node_instance_id == ^instance_id,
           update: [
             set: [
               last_seen_at: fragment("GREATEST(?, ?)", i.last_seen_at, ^now),
@@ -813,7 +849,7 @@ defmodule Apiary.Nodes do
               workspace_id: node.workspace_id,
               node_id: node.id,
               access_key_id: key,
-              instance_id: instance_id,
+              node_instance_id: instance_id,
               name: name,
               first_seen_at: now,
               last_seen_at: now,
@@ -822,7 +858,7 @@ defmodule Apiary.Nodes do
             }
           ],
           on_conflict: :nothing,
-          conflict_target: [:node_id, :instance_id]
+          conflict_target: [:node_id, :node_instance_id]
         )
     end
 
@@ -847,19 +883,22 @@ defmodule Apiary.Nodes do
   defp contract(_version), do: nil
 
   @doc """
-  placement/2 is what a run records of where it runs, `%{node_id:, instance_id:}`: the
-  node of the access key its registration or first batch came with, and the instance id
-  that request claimed, nil
+  placement/2 is what a run records of where it runs, `%{node_id:, node_instance_id:}`:
+  the node of the access key its registration or first batch came with, and the instance
+  id that request claimed, nil
   when it cannot be kept (`Apiary.Nodes.Instance.instance_id?/1`). The receiving side
   merges it into the run's row when it creates the run, and the instance id into the
   delivery's row (`Apiary.Runs.Ingest`).
   """
   @spec placement(Node.t() | nil, String.t() | nil) ::
-          %{node_id: Ecto.UUID.t() | nil, instance_id: String.t() | nil}
-  def placement(nil, _instance_id), do: %{node_id: nil, instance_id: nil}
+          %{node_id: Ecto.UUID.t() | nil, node_instance_id: String.t() | nil}
+  def placement(nil, _instance_id), do: %{node_id: nil, node_instance_id: nil}
 
   def placement(%Node{id: id}, instance_id),
-    do: %{node_id: id, instance_id: if(Instance.instance_id?(instance_id), do: instance_id)}
+    do: %{
+      node_id: id,
+      node_instance_id: if(Instance.instance_id?(instance_id), do: instance_id)
+    }
 
   ## The instance limit
 
@@ -868,11 +907,11 @@ defmodule Apiary.Nodes do
   inside the transaction of the batch that would create the run. A pool without a limit
   admits any, with neither a lock nor a count. Otherwise it locks the node's row
   `FOR UPDATE`, so two checks for one node take turns, reads the limit as it is now (1 for
-  a Node), and counts the distinct instance ids of the node's runs alive at `now`
-  (`Apiary.Runs.Liveness.alive/2`):
+  a Node), and counts what is in use on the node (`instances_in_use/2`): the distinct
+  instance ids of its runs alive at `now` (`Apiary.Runs.Liveness.alive/2`):
 
-  - `:already_counted` when `instance_id` is among them: it runs already, and a second
-    run of it takes no slot;
+  - `:already_counted` when `instance_id` is among those instance ids: it runs already,
+    and a second run of it takes no slot;
   - `{:error, :instance_limit}` when they are as many as the limit or more: the caller
     rolls back and stores nothing;
   - `:ok` otherwise: the run the caller then creates, in the same transaction, is the
@@ -883,6 +922,9 @@ defmodule Apiary.Nodes do
   whatever the batch locks after it, the run's row among them. Raises outside a
   transaction. `admit/4` is the whole of it, with the refusal counted.
   """
+  # With the `factory` feature, which the documentation leaves out, the runs alive counted
+  # are those that were not dispatched, and the slots the node's claims hold count its
+  # dispatched runs (`Apiary.Dispatches.Slots.held/1`).
   @spec check_instance_limit(Node.t(), String.t(), DateTime.t()) ::
           :ok | :already_counted | {:error, :instance_limit}
   def check_instance_limit(%Node{kind: :pool, instance_limit: nil}, _instance_id, _now),
@@ -900,20 +942,30 @@ defmodule Apiary.Nodes do
     cond do
       instance_id in running -> :already_counted
       is_nil(limit) -> :ok
-      length(running) >= limit -> {:error, :instance_limit}
+      length(running) + Slots.held(id) >= limit -> {:error, :instance_limit}
       true -> :ok
     end
   end
 
-  # The distinct instance ids of the node's runs alive at `now`, read from the partial
-  # index on the runs alive by node and instance.
+  # instances_in_use/2 is what counts against the instance limit of `node` at `now`: the
+  # distinct instance ids of its runs alive that were not dispatched, and the slots its
+  # claims hold (`Apiary.Dispatches.Slots.held/1`), which count its dispatched runs. The
+  # caller holds the node's row locked, as `check_instance_limit/3` does.
+  @doc false
+  @spec instances_in_use(Node.t(), DateTime.t()) :: non_neg_integer
+  def instances_in_use(%Node{id: id} = node, %DateTime{} = now),
+    do: length(running_instance_ids(node, now)) + Slots.held(id)
+
+  # The distinct instance ids of the node's runs alive at `now` that were not dispatched,
+  # read from the partial index on the runs alive by node and instance. A dispatched run
+  # counts by the slot its dispatch holds, not here.
   defp running_instance_ids(%Node{id: id, workspace_id: workspace_id}, now) do
     from(r in Run,
       as: :run,
       where: r.node_id == ^id and r.workspace_id == ^workspace_id,
-      where: not is_nil(r.instance_id),
+      where: not is_nil(r.node_instance_id) and is_nil(r.dispatch_run_id),
       distinct: true,
-      select: r.instance_id
+      select: r.node_instance_id
     )
     |> Liveness.alive(now)
     |> Repo.all()
@@ -986,7 +1038,7 @@ defmodule Apiary.Nodes do
              {_count, cleared} =
                Repo.update_all(
                  from(i in Instance,
-                   where: i.node_id == ^current.id and i.instance_id == ^instance_id,
+                   where: i.node_id == ^current.id and i.node_instance_id == ^instance_id,
                    select: i
                  ),
                  set: [cleared_at: now, cleared_by_id: user.id]
@@ -1016,7 +1068,7 @@ defmodule Apiary.Nodes do
   defp open_runs(%Node{id: id, workspace_id: workspace_id}, instance_id) do
     from r in Run,
       where: r.node_id == ^id and r.workspace_id == ^workspace_id,
-      where: r.instance_id == ^instance_id and r.state in ["pending", "running"]
+      where: r.node_instance_id == ^instance_id and r.state in ["pending", "running"]
   end
 
   ## Reading instances
@@ -1044,9 +1096,60 @@ defmodule Apiary.Nodes do
   defp get_instance_at(scope, place, node_id, instance_id) do
     scope
     |> instances_query(place)
-    |> where([i], i.node_id == ^node_id and i.instance_id == ^instance_id)
+    |> where([i], i.node_id == ^node_id and i.node_instance_id == ^instance_id)
     |> Repo.one()
   end
+
+  @doc """
+  get_instance_by_id/3 is the instance of `node`, a node of the scope's workspace or a
+  gateway of its organisation, whose row in `node_instances` has the id `id`: the id a
+  page addresses an instance by. It takes only the 36-character text form of a UUID, in
+  either case. nil for any other id (a 16-byte binary among them), and for a row of
+  another node, workspace or organisation.
+  """
+  @spec get_instance_by_id(Scope.t(), Node.t(), term) :: Instance.t() | nil
+  def get_instance_by_id(%Scope{} = scope, %Node{id: node_id} = node, id)
+      when is_binary(id) and byte_size(id) == 36 do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} ->
+        place = if is_nil(node.workspace_id), do: :organisation, else: nil
+
+        scope
+        |> instances_query(place)
+        |> where([i], i.node_id == ^node_id and i.id == ^id)
+        |> Repo.one()
+
+      :error ->
+        nil
+    end
+  end
+
+  def get_instance_by_id(%Scope{}, %Node{}, _id), do: nil
+
+  @doc """
+  get_instance_run/3 is the open run, pending or running, of the scope's workspace whose
+  `public_id` is `public_id`, a run of `node` that names its instance: the address of an
+  instance with no row in `node_instances`. The page links its newest open run, and the
+  address accepts any open run of that instance. nil for a malformed id, a run of another
+  node or workspace, a run that names no instance, and one that has ended.
+  """
+  @spec get_instance_run(Scope.t(), Node.t(), term) :: Run.t() | nil
+  def get_instance_run(
+        %Scope{organisation: %Organisation{id: organisation_id}, workspace: %Workspace{id: ws}},
+        %Node{id: node_id},
+        public_id
+      ) do
+    if Run.public_id?(public_id) do
+      Repo.one(
+        from r in Run,
+          where: r.organisation_id == ^organisation_id and r.workspace_id == ^ws,
+          where: r.node_id == ^node_id and r.public_id == ^public_id,
+          where: not is_nil(r.node_instance_id) and r.state in ["pending", "running"]
+      )
+    end
+  end
+
+  def get_instance_run(%Scope{}, %Node{}, _public_id), do: nil
 
   @doc """
   instance_of/2 is the row of the instance `run`, a run of the scope's workspace, ran as:
@@ -1054,7 +1157,7 @@ defmodule Apiary.Nodes do
   pruned or never recorded.
   """
   @spec instance_of(Scope.t(), Run.t()) :: Instance.t() | nil
-  def instance_of(%Scope{} = scope, %Run{node_id: node_id, instance_id: instance_id})
+  def instance_of(%Scope{} = scope, %Run{node_id: node_id, node_instance_id: instance_id})
       when is_binary(node_id) and is_binary(instance_id),
       do: get_instance(scope, node_id, instance_id)
 
@@ -1095,9 +1198,9 @@ defmodule Apiary.Nodes do
         do: %{},
         else:
           from(i in Instance, where: ^of_scope(scope))
-          |> where([i], i.node_id in ^ids and i.instance_id in ^instance_ids)
+          |> where([i], i.node_id in ^ids and i.node_instance_id in ^instance_ids)
           |> Repo.all()
-          |> Map.new(&{{&1.node_id, &1.instance_id}, &1})
+          |> Map.new(&{{&1.node_id, &1.node_instance_id}, &1})
 
     running =
       runs
@@ -1109,9 +1212,10 @@ defmodule Apiary.Nodes do
         {node_id,
          %{
            instance_id: instance_id,
+           row_id: row && row.id,
            name: row && row.name,
            since: runs |> Enum.map(& &1.since) |> Enum.min(DateTime),
-           run_id: newest.run_id,
+           run_public_id: newest.public_id,
            forager_version: newest.forager_version || (row && row.last_forager_version)
          }}
       end)
@@ -1170,11 +1274,11 @@ defmodule Apiary.Nodes do
     from(r in Run,
       as: :run,
       where: r.organisation_id == ^organisation.id and r.workspace_id == ^workspace.id,
-      where: r.node_id in ^ids and not is_nil(r.instance_id),
+      where: r.node_id in ^ids and not is_nil(r.node_instance_id),
       select: %{
         node_id: r.node_id,
-        instance_id: r.instance_id,
-        run_id: r.run_id,
+        instance_id: r.node_instance_id,
+        public_id: r.public_id,
         since: coalesce(r.started_at, r.inserted_at),
         forager_version: r.forager_version
       }

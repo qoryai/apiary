@@ -41,14 +41,182 @@ msgstr ""
 msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
 msgstr ""
 
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Change the model choices that use the key %{value} first: %{places}."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a model from %{provider}'s list: %{model} is not on it."
+msgstr ""
+
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a type."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another default key for %{provider} first: %{value} is its default key."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider for %{runtime}. %{provider} serves no request format that %{runtime} sends."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider for %{runtime}. %{runtime} has no environment variable for %{provider}'s key with the same authentication."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider: %{provider} is not used in this workspace."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose one of %{model}'s effort values: %{values}."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose one of %{provider}'s keys: %{value} is not one of them."
+msgstr ""
+
+#: lib/apiary/connections/provider_model.ex
+#, elixir-autogen, elixir-format
+msgid "Edit the model already listed, or enter another ID. This provider already has %{model}."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an email address, such as dana@example.com."
 msgstr ""
 
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Enter another host. Runs may not reach %{host}: it is in %{range}."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Enter the full host name, such as models.example.com. Runs may not reach a host without a dot."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Enter the host that runs reach over the network. %{host} is a name for the local machine."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is %{target} itself."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is longer than 200 characters."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is not a path such as %{owner}/docs."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} is not a target of %{owner}; runs of %{target} read only targets of %{owner}."
+msgstr "Line %{line} is not a repository of %{owner}; runs of %{target} read only repositories of %{owner}."
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line} repeats line %{first}."
+msgstr ""
+
+#: lib/apiary/connections/provider_model.ex
+#, elixir-autogen, elixir-format
+msgid "List at most %{count} effort values, each once."
+msgstr ""
+
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Percent-encode %{character} in the path, or remove it."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Remove a model first: a provider has at most %{count} models."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the %{character} and everything after it. The address takes a path, but no query or fragment."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the part before @ from the address. Enter the key among the provider's keys instead."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the address to at most 2,048 characters."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Start the address with https://, such as https://models.example.com."
+msgstr ""
+
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Together with %{target}, these come to %{bytes} characters; the most is 256."
+msgstr ""
+
+#: lib/apiary/connections/provider_model.ex
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
+msgstr ""
+
+#: lib/apiary/connections/provider_model.ex
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Use light, fast or thinking: %{tier} is not a tier."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the address as four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the host as labels of letters, digits and hyphens joined by dots, such as models.example.com."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the host in lower case: %{host}."
+msgstr ""
+
+#: lib/apiary/kinds/endpoint.ex
+#, elixir-autogen, elixir-format
+msgid "Write the port as a number from 1 to 65535, with no leading zero."
 msgstr ""
 
 #: lib/apiary/policy/rule.ex
@@ -74,9 +242,19 @@ msgstr ""
 msgid "can't be blank with a password"
 msgstr ""
 
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be longer than the audit log entries are kept: %{days}"
+msgstr ""
+
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "cannot be longer than the events are kept: the log goes with a run's events"
+msgstr ""
+
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be shorter than the IP addresses are kept: %{days}"
 msgstr ""
 
 #: lib/apiary/organisations.ex
@@ -120,6 +298,8 @@ msgid "has already been invited"
 msgstr ""
 
 ## From Ecto.Changeset.unique_constraint/3
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen
 msgid "has already been taken"
 msgstr ""
 
@@ -128,6 +308,8 @@ msgid "has an invalid entry"
 msgstr ""
 
 ## From Ecto.Changeset.validate_format/3
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen
 msgid "has invalid format"
 msgstr ""
 
@@ -165,7 +347,7 @@ msgstr ""
 
 #: lib/apiary/connections.ex
 #, elixir-autogen, elixir-format
-msgid "is already the key of a service of this workspace"
+msgid "is already the key of a service of this organisation"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
@@ -181,6 +363,11 @@ msgstr ""
 #: lib/apiary/nodes/node.ex
 #, elixir-autogen, elixir-format
 msgid "is already the name of a node in this workspace"
+msgstr ""
+
+#: lib/apiary/secrets/secret.ex
+#, elixir-autogen, elixir-format
+msgid "is already the name of a secret in this organisation, compared without case"
 msgstr ""
 
 #: lib/apiary/secrets/secret.ex
@@ -201,10 +388,6 @@ msgstr ""
 #: lib/apiary/organisations/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "is already the slug of another organisation"
-msgstr ""
-
-## From Ecto.Changeset.put_change/3
-msgid "is invalid"
 msgstr ""
 
 #: lib/apiary/variables.ex
@@ -276,6 +459,11 @@ msgstr ""
 msgid "is too long"
 msgstr ""
 
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "lock only a workspace's variable: a locked workspace variable replaces the same variable on every target"
+msgstr "lock only a workspace's variable: a locked workspace variable replaces the same variable on every repository"
+
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
@@ -286,6 +474,8 @@ msgstr ""
 msgid "must be Always with a username"
 msgstr ""
 
+#: lib/apiary/accounts/user.ex
+#: lib/apiary/names.ex
 #: lib/apiary/secrets/value.ex
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format
@@ -317,6 +507,11 @@ msgstr ""
 msgid "must be a version such as 1.4.0"
 msgstr ""
 
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "must be a whole number from 1 to %{max}, or empty for the default"
+msgstr ""
+
 ## From Ecto.Changeset.validate_acceptance/3
 msgid "must be accepted"
 msgstr ""
@@ -325,6 +520,11 @@ msgstr ""
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format
 msgid "must be at most %{count} bytes"
+msgstr ""
+
+#: lib/apiary/instance_config.ex
+#, elixir-autogen, elixir-format
+msgid "must be between %{min} and %{max} days, or empty for the default"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
@@ -365,7 +565,6 @@ msgstr ""
 
 #: lib/apiary/accounts/user.ex
 #: lib/apiary/mail/settings.ex
-#: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
 msgid "must have the @ sign and no spaces"
 msgstr ""
@@ -381,18 +580,16 @@ msgstr ""
 msgid "must not contain a web address; a name like acme.io is fine"
 msgstr ""
 
-#: lib/apiary/access_keys/access_key.ex
 #: lib/apiary/accounts/user.ex
-#: lib/apiary/connections.ex
-#: lib/apiary/nodes/node.ex
+#: lib/apiary/names.ex
 #: lib/apiary/organisations/organisation.ex
-#: lib/apiary/organisations/workspace.ex
-#: lib/apiary/secrets/secret.ex
+#: lib/apiary/work_items/work_item.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain control characters"
 msgstr ""
 
 #: lib/apiary/organisations/organisation.ex
+#: lib/apiary/work_items/work_item.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain invisible characters"
 msgstr ""
@@ -421,11 +618,6 @@ msgstr ""
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "names beginning QORY_ are reserved for Forager"
-msgstr ""
-
-#: lib/apiary/variables.ex
-#, elixir-autogen, elixir-format
-msgid "only a workspace's variable can be locked: a lock holds it against the repositories"
 msgstr ""
 
 msgid "should be %{count} byte(s)"

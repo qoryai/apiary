@@ -3,8 +3,10 @@ defmodule Apiary.Access do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Access.Action
+  alias Apiary.Adapters.Connection
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.{Edition, Features}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
 
@@ -113,6 +115,18 @@ defmodule Apiary.Access do
     Action.new(
       :"instance.mail_on",
       "turn the saved mail settings on by the test link their save sent: the instance admin who saved them, after a recent sign-in, which no role takes (Apiary.Mail.turn_on/2)",
+      asked_of: :organisation
+    ),
+    # The product's name on the instance, in Instance settings › General.
+    Action.new(
+      :"instance.rename",
+      "set the product's name on the instance: an instance admin, which no role takes (Apiary.ProductName.rename/2)",
+      asked_of: :organisation
+    ),
+    # The instance's settings, in Instance settings › Configuration.
+    Action.new(
+      :"instance.configure",
+      "change the instance's settings in Instance settings › Configuration: an instance admin after a recent sign-in, which no role takes (Apiary.InstanceConfig.save/3)",
       asked_of: :organisation
     ),
     # The audit trail.
@@ -259,51 +273,269 @@ defmodule Apiary.Access do
       audited:
         {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
     ),
-    Action.new(:"variable.read", "read the variables of the workspace and its repositories",
+    Action.new(:"variable.read", "read the variables of the workspace and its targets",
       feature: :secrets,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"variable.edit",
-      "set, change, lock and remove the variables of the workspace and its repositories",
+      "set, change, lock and remove the variables of the workspace and its targets",
       feature: :secrets,
       roles: @admins
     ),
     # What a run is connected to: runtimes, integrations and services.
     Action.new(
       :"connection.read",
-      "read the runtimes, integrations and services set up in the workspace, where each applies, the releases fetched and the workspace's service definitions",
+      "read the runtimes, integrations and services of the organisation, where each applies, the releases fetched and the organisation's service definitions",
       feature: :secrets,
       roles: @members,
+      asked_of: :organisation,
       audited: {:not, @read}
     ),
     Action.new(
       :"connection.write",
-      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's service definitions",
+      "add, change and remove a runtime, an integration, a model provider or a service, and where and how it applies; edit a model provider's models; set the organisation's default model choice; fetch an integration's release; write the organisation's service definitions",
       feature: :secrets,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    # The model a run uses: the choices of the workspace and its targets, which need the
+    # features `factory` and `secrets` both (`Apiary.ModelChoices`).
+    Action.new(
+      :"model_choice.write",
+      "set, change, lock and remove the model choices of the workspace and its targets",
+      feature: :factory,
       roles: @admins
     ),
     # The server contract.
     Action.new(:"run.post_events", "open a run and post its events",
       feature: :observability,
-      roles: [:access_key],
+      roles: [:access_key, :pool_key],
       audited: {:not, "the events the gateway posts are the record, not the audit trail"}
     ),
     Action.new(:"run_configuration.fetch", "fetch the run configuration",
       feature: :security,
-      roles: [:access_key],
+      roles: [:access_key, :pool_key],
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
+    ),
+    # A gateway's secrets request: a run's model key, sealed to the gateway's access key
+    # (`Apiary.Runs.SecretsRequest`). No other rule applies here: the secrets request
+    # checks the run and the key it verified under.
+    Action.new(:"secret.seal", "seal a run's model key to the gateway's access key",
+      feature: :factory,
+      roles: [:access_key]
+    ),
+    # The instance's adapters: an organisation's people read them and connect them; an
+    # instance admin makes, renames and deletes them and sets how often they pull, which no
+    # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`). The
+    # instance alone installs the adapters its setting lists, and gives them their codes.
+    # An instance admin starts an adapter's set-up at the system it reads from, which no
+    # role takes either.
+    Action.new(:"adapter.read", "read the instance's adapters",
+      feature: :factory,
+      roles: @members,
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"adapter.create",
+      "make an adapter of the instance: an instance admin after a recent sign-in, which no role takes",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.edit", "rename an adapter: an instance admin, which no role takes",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"adapter.set_interval",
+      "set how often an adapter pulls: an instance admin, which no role takes",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"adapter.delete",
+      "delete an adapter, which revokes its access keys: an instance admin, which no role takes",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"adapter.install",
+      "make an adapter installed with Qory Apiary, and give it its one-time codes: the instance, by itself (Apiary.Adapters.install/2)",
+      feature: :factory,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"adapter.setup",
+      "start setting an adapter up at the system it reads from, with a new setup pass: an instance admin, which no role takes",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.connect", "connect an adapter to the system it reaches",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    # What an adapter reports, each assigned to a workspace of the organisation.
+    Action.new(:"collection.assign", "assign what an adapter reports to a workspace",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    # Whether the items of what an adapter reports come into its workspace's Backlog.
+    Action.new(
+      :"collection.set_backlog",
+      "choose whether the items of a collection come into its workspace's Backlog",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    # A collection whose adapter now lists its ref under another connection: ended as a
+    # disconnect ends it, after the listing's part that names it there.
+    Action.new(
+      :"collection.move",
+      "end a collection whose adapter now lists it under another connection: the instance, by itself, after the listing's part (Apiary.Adapters.Collections.post_listing/2)",
+      feature: :factory,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
+    # A workspace's work items, people's actions. A comment's author may delete it too,
+    # while they may still comment (`author?/3`).
+    Action.new(:"work_item.read", "read the workspace's work items",
+      feature: :factory,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(:"work_item.take_in", "take an item in as a work item of the workspace",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.undo", "undo the taking in of a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.decline", "decline a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.close", "close a work item", feature: :factory, roles: @members),
+    Action.new(:"work_item.answer", "answer Qory's questions on a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.confirm", "confirm Qory's proposal for a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.explore_again", "run Explore again on a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.comment", "comment on a work item",
+      feature: :factory,
+      roles: @members
+    ),
+    Action.new(:"work_item.comment_delete", "delete a comment on a work item",
+      feature: :factory,
+      roles: @admins
+    ),
+    # An adapter's key at the server contract, asked of the adapter itself.
+    Action.new(
+      :"adapter.declare",
+      "say where a person is sent to connect the adapter and how often it pulls",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
+    Action.new(:"source_item.post", "post the items of a source",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited: {:not, "the items an adapter posts are kept as they are, not in the audit trail"}
+    ),
+    Action.new(:"work_item.read_changes", "read what changed of the work items",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
+    Action.new(:"adapter.disconnect", "end a connection of the adapter",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited:
+        {:not,
+         "an adapter's end of a connection is kept on the connection, its end and its reason, not in the audit trail"}
+    ),
+    # A node pool's key at the server contract, on the runs dispatched to its workspace:
+    # one queue per workspace, which any pool of the workspace claims from. Asked of the
+    # workspace, its queue, or of a dispatch of it the key's pool claimed (`key_subject/4`).
+    Action.new(:"dispatch.claim", "claim a run waiting in the workspace's queue",
+      feature: :factory,
+      roles: [:pool_key],
+      audited:
+        {:not,
+         "a claim is kept on its dispatch, with the key that claimed it, not in the audit trail"}
+    ),
+    Action.new(:"dispatch.dispatched", "say that a claimed run's machine was started",
+      feature: :factory,
+      roles: [:pool_key],
+      audited:
+        {:not,
+         "the start of a claimed run's machine is kept on its dispatch, not in the audit trail"}
+    ),
+    Action.new(:"dispatch.handover", "hand a claimed run over to the machine that runs it",
+      feature: :factory,
+      roles: [:pool_key]
+    ),
+    Action.new(:"dispatch.release", "give a claimed run back, to wait again or to end",
+      feature: :factory,
+      roles: [:pool_key]
+    ),
+    # The further repositories a target's runs also read (`Apiary.Targets`).
+    Action.new(
+      :"target.set_further_repositories",
+      "choose the other targets that runs of a target also read",
+      feature: :factory,
+      roles: @admins
+    ),
+    Action.new(:"dispatch.prebuilt", "record the image a prebuild built",
+      feature: :factory,
+      roles: [:pool_key]
+    ),
+    # A member asks for a build of a target's environment, for each node pool of its
+    # workspace (`Apiary.Environments.rebuild/2`).
+    Action.new(:"target.rebuild_environment", "rebuild the environment of a target",
+      feature: :factory,
+      roles: @members
     )
   ]
 
-  # The core's roles, with who holds each: a membership's level, the gateway's access key, or
-  # the instance itself. An edition adds its own (`c:Apiary.Edition.roles/0`).
+  # The actions a node pool's key takes on the runs dispatched to its workspace.
+  @dispatch_actions [
+    :"dispatch.claim",
+    :"dispatch.dispatched",
+    :"dispatch.handover",
+    :"dispatch.release",
+    :"dispatch.prebuilt"
+  ]
+
+  # The features whose actions the tables of this documentation leave out: those the
+  # documentation does not differ by (`docs: false`), which no doc names.
+  @undocumented Features.core_undocumented()
+
+  # The core's roles, with who holds each: a membership's level, the access key of a node,
+  # a gateway, a node pool or an adapter, or the instance itself. An edition adds its own
+  # (`c:Apiary.Edition.roles/0`).
   @roles [
     member: "a person at member, in the workspaces their level reaches",
     admin: "a person at admin, in every workspace; over members only",
     owner: "a person at owner, in every workspace",
-    access_key: "a gateway, with a key of the workspace",
+    access_key: "a node or a gateway, with a key of the workspace",
+    pool_key: "a node pool, with a key of the workspace",
+    adapter_key: "an adapter of the instance, with a key enrolled on it, on that adapter",
     instance: "the instance itself, in a job no person enqueued"
   ]
 
@@ -336,6 +568,10 @@ defmodule Apiary.Access do
   # What anyone with a membership may take on their own, at any level: leaving the
   # organisation. The last-owner rule still holds (`Apiary.Organisations`).
   @own [:"member.remove"]
+
+  # What anyone may take on what they wrote, by the action they wrote it with, while their
+  # role still holds that one (`author?/3`): deleting their comment on a work item.
+  @authored %{"work_item.comment_delete": :"work_item.comment"}
 
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
@@ -429,7 +665,7 @@ defmodule Apiary.Access do
 
   | Action | What | Feature |
   |---|---|---|
-  #{Enum.map_join(@actions, "\n", fn action -> "| `#{action.name}` | #{action.what} | #{cond do
+  #{@actions |> Enum.reject(&(&1.feature in @undocumented)) |> Enum.map_join("\n", fn action -> "| `#{action.name}` | #{action.what} | #{cond do
       action.part && action.feature -> "`#{action.feature}`, its part `#{action.part}`"
       action.part -> "every instance, the part `#{action.part}`"
       action.feature -> "`#{action.feature}`"
@@ -440,7 +676,7 @@ defmodule Apiary.Access do
 
   | Role | Who | Actions |
   |---|---|---|
-  #{Enum.map_join(@roles, "\n", fn {role, who} -> "| `#{role}` | #{who} | #{@actions |> Enum.filter(&(role in &1.roles)) |> Enum.map_join(", ", &"`#{&1.name}`")} |" end)}
+  #{@roles |> Enum.map(fn {role, who} -> {role, who, Enum.filter(@actions, &(role in &1.roles and &1.feature not in @undocumented))} end) |> Enum.reject(fn {_role, _who, actions} -> actions == [] end) |> Enum.map_join("\n", fn {role, who, actions} -> "| `#{role}` | #{who} | #{Enum.map_join(actions, ", ", &"`#{&1.name}`")} |" end)}
 
   Anyone with a membership, at any level, may also remove their membership: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
   Nobody suspends or activates their membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
@@ -490,7 +726,10 @@ defmodule Apiary.Access do
   (`account.password_link`, `Apiary.Accounts.build_password_link/3`), which no role takes
   either: the context function asks `instance_admin?/1`. So do saving the mail settings
   and turning them on (`instance.mail_save`, `Apiary.Mail.save_settings/3`;
-  `instance.mail_on`, `Apiary.Mail.turn_on/2`), which also ask for a recent sign-in.
+  `instance.mail_on`, `Apiary.Mail.turn_on/2`) and changing the instance's settings
+  (`instance.configure`, `Apiary.InstanceConfig.save/3`), which also ask for a recent
+  sign-in, and setting the product's name (`instance.rename`,
+  `Apiary.ProductName.rename/2`), which asks for none.
 
   ## Features
 
@@ -518,8 +757,8 @@ defmodule Apiary.Access do
   @type action :: atom
 
   @typedoc """
-  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key` and
-  `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
+  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key`, `:pool_key`
+  and `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
   """
   @type role :: atom
 
@@ -921,9 +1160,11 @@ defmodule Apiary.Access do
   defp check_in_place(scope, action, subject) do
     role = role(scope)
 
-    with :ok <- check_place(scope, action, subject) do
+    with :ok <- check_place(scope, action, subject),
+         :ok <- key_subject(role, scope, action, subject) do
       cond do
         own?(scope, action, subject) -> :ok
+        author?(scope, action, subject) -> :ok
         not_own?(scope, action, subject) -> {:error, :forbidden}
         role not in action(action).roles -> {:error, :forbidden}
         not over?(role, action, subject) -> {:error, :forbidden}
@@ -931,6 +1172,86 @@ defmodule Apiary.Access do
       end
     end
   end
+
+  # An adapter's key acts on that adapter alone, which has no organisation, as the key has
+  # none: any other subject, another adapter, an organisation, or anything else, is not
+  # found to it. Its scope narrowed to the organisation of a connection of that adapter
+  # (`Apiary.Accounts.Scope.for_connection/2`) acts on that organisation too, and on its
+  # connections to that adapter, and nothing else of it.
+  defp key_subject(
+         :adapter_key,
+         %Scope{access_key: %AccessKey{node_id: id}} = scope,
+         _action,
+         subject
+       ) do
+    organisation_id =
+      case scope.organisation do
+        %Organisation{id: organisation_id} when is_binary(organisation_id) -> organisation_id
+        _none -> nil
+      end
+
+    case subject do
+      %Node{id: ^id, kind: :adapter, organisation_id: nil, workspace_id: nil}
+      when is_binary(id) ->
+        :ok
+
+      %Organisation{id: ^organisation_id} when is_binary(organisation_id) ->
+        :ok
+
+      %Connection{adapter_id: ^id, organisation_id: ^organisation_id}
+      when is_binary(id) and is_binary(organisation_id) ->
+        :ok
+
+      _other ->
+        {:error, :not_found}
+    end
+  end
+
+  # A node pool's key acts in its pool's workspace, which its place holds it to
+  # (`check_place/3`), and there on its pool: on no other node, and not on the
+  # organisation. A dispatch action is asked of the workspace, whose queue every pool of
+  # it claims from, or of a dispatch its pool claimed (`dispatch_subject/2`), and of
+  # nothing else.
+  defp key_subject(:pool_key, %Scope{access_key: %AccessKey{} = key}, action, subject)
+       when action in @dispatch_actions,
+       do: dispatch_subject(key, subject)
+
+  defp key_subject(:pool_key, %Scope{access_key: %AccessKey{node_id: id}}, _action, subject) do
+    case subject do
+      %Node{id: ^id} when is_binary(id) -> :ok
+      %Node{} -> {:error, :not_found}
+      %Organisation{} -> {:error, :not_found}
+      _other -> :ok
+    end
+  end
+
+  defp key_subject(_role, _scope, _action, _subject), do: :ok
+
+  # What a dispatch action of a node pool's key is asked of: its workspace, the queue, of
+  # which a waiting run is claimed; or a dispatch of that workspace that its pool claimed,
+  # a row or map that carries `organisation_id` and `workspace_id`, the key's, and
+  # `pool_id`, the key's pool. A dispatch another pool claimed, or one that names no pool,
+  # is not found to the key, as one of another workspace is. The place was asked already
+  # (`check_place/3`); it is asked again here, so this answer does not rest on that one.
+  defp dispatch_subject(
+         %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id},
+         %Workspace{id: workspace_id, organisation_id: organisation_id}
+       )
+       when is_binary(organisation_id) and is_binary(workspace_id),
+       do: :ok
+
+  defp dispatch_subject(
+         %AccessKey{
+           node_id: pool_id,
+           organisation_id: organisation_id,
+           workspace_id: workspace_id
+         },
+         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: pool_id}
+       )
+       when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id),
+       do: :ok
+
+  defp dispatch_subject(_key, _subject), do: {:error, :not_found}
 
   @doc """
   check_place/3 is the place's part of the answer, steps 3 to 5 of the moduledoc: `:ok`
@@ -944,7 +1265,7 @@ defmodule Apiary.Access do
     place = place(subject)
 
     cond do
-      not in_place?(place(scope), place) -> {:error, :not_found}
+      not same_place?(scope, place) -> {:error, :not_found}
       not reaches?(scope, place) -> {:error, :not_found}
       action not in @on_marked and marked?(scope, subject) -> {:error, :not_found}
       true -> :ok
@@ -958,7 +1279,24 @@ defmodule Apiary.Access do
   place.
   """
   @spec within?(Scope.t() | nil, subject | nil) :: boolean
-  def within?(scope, subject), do: in_place?(place(scope), place(subject))
+  def within?(scope, subject), do: same_place?(scope, place(subject))
+
+  # The key of an adapter, which has no organisation and no workspace, is where its
+  # adapter is, and where nothing else of an organisation is: the instance, which no other
+  # scope is at. It reaches nothing else there: `key_subject/4` holds it to its adapter.
+  defp same_place?(
+         %Scope{
+           access_key: %AccessKey{
+             organisation_id: nil,
+             workspace_id: nil,
+             node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
+           }
+         },
+         {nil, nil}
+       ),
+       do: true
+
+  defp same_place?(scope, place), do: in_place?(place(scope), place)
 
   defp in_place?({organisation_id, _workspace_id}, {organisation_id, nil})
        when is_binary(organisation_id),
@@ -971,15 +1309,30 @@ defmodule Apiary.Access do
   defp in_place?(_scope, _subject), do: false
 
   @doc """
-  role/1 is the role the scope acts in, as it carries it: `:access_key` for the gateway's
-  key, `:instance` for the instance, the level of the person's membership there, else the
-  role the edition gives them (`c:Apiary.Edition.role/1`); nil for anyone else.
+  role/1 is the role the scope acts in, as it carries it: `:access_key` for the key of a
+  node or a gateway, `:pool_key` for a node pool's, `:instance` for the instance, the
+  level of the person's membership there, else the role the edition gives them
+  (`c:Apiary.Edition.role/1`); nil for anyone else. A key whose node the scope does not
+  carry loaded, or whose node is of a kind it does not know, gets no role.
   """
   @spec role(Scope.t() | nil) :: role | nil
-  def role(%Scope{access_key: %AccessKey{}}), do: :access_key
+  def role(%Scope{access_key: %AccessKey{} = key}), do: key_role(key)
   def role(%Scope{instance: true, user: nil, membership: nil}), do: :instance
   def role(%Scope{} = scope), do: own_level(scope) || Edition.role(scope)
   def role(_scope), do: nil
+
+  # A key's role follows its node's kind, as the key carries it
+  # (`Apiary.Accounts.Scope.for_access_key/1` loads it): `adapter_key` for an adapter's,
+  # asked before any other kind; `pool_key` for a node pool's, which holds what a node's
+  # key holds and the dispatch actions besides; `access_key` for a node's or a gateway's;
+  # none for a key whose node is not loaded or of a kind not known here, which may nothing.
+  defp key_role(%AccessKey{node: %Node{kind: :adapter}}), do: :adapter_key
+  defp key_role(%AccessKey{node: %Node{kind: :pool}}), do: :pool_key
+
+  defp key_role(%AccessKey{node: %Node{kind: kind}}) when kind in [:node, :gateway],
+    do: :access_key
+
+  defp key_role(%AccessKey{}), do: nil
 
   ## Reading again
 
@@ -1431,6 +1784,15 @@ defmodule Apiary.Access do
 
   defp own?(_scope, _action, _subject), do: false
 
+  # An action of `@authored` on what the asker wrote, `author_id` theirs, while their role
+  # still holds the action they wrote it with: a comment's author deletes it while they may
+  # still comment. The place was asked already (`check_place/3`).
+  defp author?(%Scope{user: %User{id: user_id}} = scope, action, %{author_id: user_id})
+       when is_map_key(@authored, action) and is_binary(user_id),
+       do: role(scope) in action(Map.fetch!(@authored, action)).roles
+
+  defp author?(_scope, _action, _subject), do: false
+
   # An action of `@not_own` on the asker's own membership: nobody suspends or activates
   # themselves.
   defp not_own?(
@@ -1449,6 +1811,19 @@ defmodule Apiary.Access do
   nowhere, such as an account. An access key's scope is its key's workspace.
   """
   @spec place(Scope.t() | subject | nil) :: {Ecto.UUID.t() | nil, Ecto.UUID.t() | nil} | nil
+  # The key of an adapter, which has none, is at the organisation its scope was narrowed
+  # to, through a connection of that adapter (`Apiary.Accounts.Scope.for_connection/2`).
+  def place(%Scope{
+        access_key: %AccessKey{
+          organisation_id: nil,
+          workspace_id: nil,
+          node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
+        },
+        organisation: %Organisation{id: organisation_id}
+      })
+      when is_binary(organisation_id),
+      do: {organisation_id, nil}
+
   def place(%Scope{access_key: %AccessKey{} = key}),
     do: {key.organisation_id, key.workspace_id}
 

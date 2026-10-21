@@ -84,7 +84,7 @@ defmodule ApiaryWeb.MemberLive.Workspace do
                 name={m.user.email}
                 kind={if m.user_id == @current_scope.user.id, do: "self", else: "person"}
               />
-              <span class="q-title">{m.user.email}</span>
+              <span class="q-title" title={m.user.email}>{m.user.email}</span>
               <span :if={m.user_id == @current_scope.user.id} class="q-side">{gettext("you")}</span>
               <ApiaryWeb.Extension.slot
                 name={:member_access}

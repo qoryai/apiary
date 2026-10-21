@@ -18,9 +18,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
     previous = Logger.level()
     Logger.configure(level: :debug)
     Logger.put_module_level(Phoenix.LiveView.Logger, :debug)
+    Logger.put_module_level(ApiaryWeb.LiveViewLog, :debug)
 
     on_exit(fn ->
       Logger.delete_module_level(Phoenix.LiveView.Logger)
+      Logger.delete_module_level(ApiaryWeb.LiveViewLog)
       Logger.configure(level: previous)
     end)
   end
@@ -37,14 +39,20 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
         {:ok, lv, _html} = live(conn, path)
         lv |> element("#code-new-button") |> render_click()
         html = lv |> element("#code-issued-command") |> render()
-        [code] = Regex.run(~r/qec_[0-9A-Z]{26}/, html)
+
+        [code] =
+          Regex.run(
+            ~r/#{Regex.escape(Apiary.AccessKeys.EnrolmentCode.prefix(:node))}[0-9A-Z]{26}/,
+            html
+          )
+
         render_click(element(lv, "#code-issued-done-button"))
         code
       end)
 
     assert log =~ "HANDLE EVENT \"create_code\""
     refute log =~ code
-    refute log =~ String.slice(code, 4..-1//1)
+    refute log =~ String.replace_prefix(code, Apiary.AccessKeys.EnrolmentCode.prefix(:node), "")
   end
 
   test "the overview's command is in no log line either", %{conn: conn, scope: scope} do
@@ -56,13 +64,19 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
         render_async(lv, 5_000)
         lv |> element("#onboarding-enrol") |> render_click()
         html = lv |> element("#onboarding-command") |> render()
-        [code] = Regex.run(~r/qec_[0-9A-Z]{26}/, html)
+
+        [code] =
+          Regex.run(
+            ~r/#{Regex.escape(Apiary.AccessKeys.EnrolmentCode.prefix(:node))}[0-9A-Z]{26}/,
+            html
+          )
+
         code
       end)
 
     assert log =~ "HANDLE EVENT \"get_command\""
     refute log =~ code
-    refute log =~ String.slice(code, 4..-1//1)
+    refute log =~ String.replace_prefix(code, Apiary.AccessKeys.EnrolmentCode.prefix(:node), "")
   end
 
   describe "a key generated in the browser" do

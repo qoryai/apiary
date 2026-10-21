@@ -10,7 +10,9 @@ defmodule ApiaryWeb.Contract.RawBody do
   `POST /.well-known/qory-enrolment`, whatever the
   content type, this plug reads the body
   itself, keeps it in `conn.assigns[:raw_body]` and leaves the body parameters empty; the
-  endpoint skips `Plug.Parsers` for such a request. Every other request passes untouched.
+  endpoint skips `Plug.Parsers` for such a request. Signed paths of other contracts, which
+  this documentation does not name, are read the same way where the instance serves them,
+  or where the request carries a signature. Every other request passes untouched.
 
   At most `max_bytes/0` of a delivery are read, 2 MiB, `max_bytes(:registration)` of a
   registration, 64 KiB, `max_bytes(:attach)` of an attach, 64 KiB, `max_bytes(:outcome)`
@@ -27,6 +29,34 @@ defmodule ApiaryWeb.Contract.RawBody do
   @registration_max_bytes 64 * 1024
   @outcome_max_bytes 4 * 1024
   @enrolment_max_bytes 8 * 1024
+  # The integration contract's limit, 1 MiB, for its signed paths, which this
+  # documentation does not name.
+  @adapter_max_bytes 1024 * 1024
+  # The integration contract's signed paths served here, read the same way where
+  # `served?/1` holds, as below: `POST /v1/adapter`, `POST /v1/source-collections`,
+  # `POST /v1/source-items`, `POST /v1/sources/disconnect` and
+  # `POST /v1/source-items/comments`.
+  @adapter_paths [["v1", "adapter"], ["v1", "source-collections"], ["v1", "source-items"]]
+  @adapter_three_paths [["v1", "sources", "disconnect"], ["v1", "source-items", "comments"]]
+  # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
+  # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
+  # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/handover`, `/release` and
+  # `/prebuilt`. Read the same way where `served?/1` holds, as below.
+  @pool_max_bytes 1024 * 1024
+  @pool_claim_path ["v1", "pools", "claim"]
+  @dispatch_actions ["dispatched", "handover", "release", "prebuilt"]
+  # The integration contract's paths and the provisioner contract's belong to one feature.
+  # Their bodies are read here only where the instance has it, or where the request
+  # carries a signature, which `ApiaryWeb.Features.Routes` lets through to be verified: an
+  # unsigned one where the feature is off is parsed as any request to a path the router
+  # does not know, and answered as one.
+  @gated [:adapter, :pool]
+  @gate_feature :factory
+  # A gateway's secrets request, `POST /v1/secrets`, of the `factory` and `secrets`
+  # features both, which the documentation leaves out: at most 32 KiB, the contract's
+  # limit, read the same way where both are on or where the request has a signature.
+  @secrets_path ["v1", "secrets"]
+  @secrets_max_bytes 32 * 1024
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
@@ -42,13 +72,25 @@ defmodule ApiaryWeb.Contract.RawBody do
   def max_bytes(:attach), do: @registration_max_bytes
   def max_bytes(:outcome), do: @outcome_max_bytes
   def max_bytes(:enrolment), do: @enrolment_max_bytes
+  def max_bytes(:adapter), do: @adapter_max_bytes
+  def max_bytes(:pool), do: @pool_max_bytes
+  def max_bytes(:secrets), do: @secrets_max_bytes
 
   def init(opts), do: opts
 
   def call(%Plug.Conn{method: "POST", path_info: path_info} = conn, _opts) do
     case kept(path_info) do
-      nil -> conn
-      endpoint -> keep(conn, max_bytes(endpoint))
+      nil ->
+        conn
+
+      endpoint when endpoint in @gated ->
+        if served?(conn), do: keep(conn, max_bytes(endpoint)), else: conn
+
+      :secrets ->
+        if secrets_served?(conn), do: keep(conn, max_bytes(:secrets)), else: conn
+
+      endpoint ->
+        keep(conn, max_bytes(endpoint))
     end
   end
 
@@ -61,6 +103,16 @@ defmodule ApiaryWeb.Contract.RawBody do
       @events_path -> :events
       @registration_path -> :registration
       @enrolment_path -> :enrolment
+      @secrets_path -> :secrets
+      path when path in @adapter_paths -> :adapter
+      _other -> nil
+    end
+  end
+
+  defp kept([_, _, _] = path_info) do
+    case Enum.map(path_info, &decode/1) do
+      @pool_claim_path -> :pool
+      path when path in @adapter_three_paths -> :adapter
       _other -> nil
     end
   end
@@ -70,7 +122,20 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   defp of_a_run(["v1", "runs", _run_id, "attach"]), do: :attach
   defp of_a_run(["v1", "runs", _run_id, "outcome"]), do: :outcome
+
+  defp of_a_run(["v1", "dispatches", _dispatch_id, action]) when action in @dispatch_actions,
+    do: :pool
+
   defp of_a_run(_path_info), do: nil
+
+  defp served?(conn) do
+    Apiary.Features.on?(@gate_feature) or get_req_header(conn, "x-qory-signature-ed25519") != []
+  end
+
+  defp secrets_served?(conn) do
+    (Apiary.Features.on?(@gate_feature) and Apiary.Features.on?(:secrets)) or
+      get_req_header(conn, "x-qory-signature-ed25519") != []
+  end
 
   defp decode(segment) do
     URI.decode(segment)

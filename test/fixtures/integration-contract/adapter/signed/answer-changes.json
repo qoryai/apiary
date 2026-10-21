@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Qory-Signature-Ed25519": "2otnjAmAa7ptWC_DOzMnDWUckQb4h4w4BzBW1S-fKRz7gGT_p4nBsEuDkzjuU9cEPvYuU6WXZ6EdQ4DPt2uEBw"
+  },
+  "body": "{\"version\":1,\"revision\":1,\"cursor\":\"c_00000046\",\"changes\":[{\"kind\":\"sync\",\"interval\":null},{\"kind\":\"collection\",\"collection_ref\":\"TRK\",\"status\":\"linked\"},{\"kind\":\"work_item\",\"work_item_id\":\"wi_8Kx2mQ4vT9\",\"ref\":\"TRK-1\",\"status\":\"taken_in\",\"url\":\"https://control.example.com/work-items/wi_8Kx2mQ4vT9\"},{\"kind\":\"sync\",\"interval\":1800},{\"kind\":\"work_item\",\"work_item_id\":\"wi_8Kx2mQ4vT9\",\"ref\":\"TRK-1\",\"status\":\"undone\",\"url\":\"https://control.example.com/work-items/wi_8Kx2mQ4vT9\"},{\"kind\":\"collection\",\"collection_ref\":\"OPS\",\"status\":\"unlinked\"}]}",
+  "note": "The answer to get-changes.json: the feed of changes/feed.json, compact, signed under the server key of keys.json over six lines: qory-answer-ed25519-v1, 200, the request's X-Qory-Signature-Ed25519, the lower-case hex SHA-256 of the body, and two empty lines."
+}

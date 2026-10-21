@@ -4,8 +4,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   @moduledoc """
   Fills an empty database with an instance to review the whole console against: an
   organisation, its workspaces, people, weeks of runs across about a hundred and fifty
-  repositories, nodes, keys, a security policy, secrets, variables and integrations. All
-  of it synthetic and neutral. A development tool: it refuses to run in production.
+  repositories, nodes, keys, a security policy, secrets, variables and integrations, and,
+  with the `factory` feature, two adapters' tickets and work items. All of it synthetic
+  and neutral. A development tool: it refuses to run in production.
 
       unset DATABASE_URL
       export APIARY_DEV_DATABASE=apiary_redesign_demo
@@ -52,6 +53,26 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * Where the edition allows an organisation a second workspace, **Shop ops**
       (`shop-ops`) is made too, with a smaller, separate history; the core's allows
       one.
+    * With the instance's `factory` feature: the adapter **Tracker**, made by Dana at the
+      instance, with its key, and connected for Acme. Its nine repositories on
+      git.example.com: seven assigned to Main, acme/infra among them with its Backlog
+      turned off; acme/warehouse to Shop ops, or to Main where the edition allows one
+      workspace; acme/sandbox to none. Their 42 tickets, open and closed, filed by
+      people and by bots, with labels and comments. Ten work items of those tickets,
+      taken in by members of Main: three wait for their first run; one waits to run
+      again, as the pool spot-runners gave its run back; one more, whose run was given
+      back too, is sent to Explore again, and its second run waits; two are declined,
+      two closed and one undone. A work item's Explore run gives a result once a gateway
+      takes it over, and the demo has no gateway, so no work item waits for an answer
+      or is confirmed. Beside it, a source that is no forge: the adapter **Helpdesk**,
+      whose words are incident and queue, connected for Acme too. Its two queues,
+      acme/customer-support and acme/billing-support, have no target; their 12
+      incidents are open and closed, and some have comments. None is taken in, as a take
+      in needs a target. The queues go to a workspace **Support** (`support`), which Dana
+      makes, where the edition's limit (`c:Apiary.Edition.limits/0`) allows more than
+      one workspace; where making Support would pass that limit, they stay in Main. The
+      core's limit allows one workspace, so its demo keeps the queues in Main, beside the
+      repositories. Without the feature none of it is made.
     * Dana pins three repositories.
     * Last, build-01's enrolment code is made and cancelled.
 
@@ -87,6 +108,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Run, Target}
   alias Mix.Tasks.Apiary.Demo
+  alias Mix.Tasks.Apiary.Demo.Console.Factory
   alias Mix.Tasks.Apiary.Demo.History
 
   @switches [runs: :integer, days: :integer, seed: :integer, concurrency: :integer]
@@ -277,6 +299,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         [scope_of_second(owner, scope)]
       end
 
+    if Apiary.Features.on?(:factory), do: Factory.fill(main, second && hd(second))
+
     pins(main)
 
     # Last, as it marks a fill that finished (instance/0).
@@ -290,7 +314,11 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   defp second_workspace(main, owner) do
     {name, slug} = @second
 
-    case Organisations.create_workspace(main, %{"name" => name, "slug" => slug}) do
+    case Organisations.create_workspace(main, %{
+           "name" => name,
+           "slug" => slug,
+           "domain" => "software"
+         }) do
       {:ok, _workspace} ->
         scope!(owner, slug)
 
@@ -528,8 +556,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       Connections.create_service(scope, %{
         "service" => "sentry",
         "applies_to" => "selected",
-        "target_ids" =>
-          target_ids(scope, [{"github.com", "acme/shop"}, {"github.com", "acme/web"}])
+        "workspace_ids" => [scope.workspace.id]
       })
 
     [github, tracker] =
@@ -543,12 +570,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         "settings" => %{"url" => "https://tracker.example.com"},
         "argument" => "SHOP",
         "applies_to" => "selected",
-        "target_ids" =>
-          target_ids(scope, [
-            {"github.com", "acme/shop"},
-            {"gitlab.com", "acme/shop"},
-            {"codeberg.org", "acme/shop"}
-          ])
+        "workspace_ids" => [scope.workspace.id]
       })
 
     {source, version} = @missing
@@ -557,13 +579,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     Mix.shell().info(
       "Connections: the claude runtime, npm and Sentry, two integrations; one release failed"
     )
-  end
-
-  defp target_ids(scope, pairs) do
-    for {system, path} <- pairs,
-        target = Targets.get(scope, system, path),
-        target != nil,
-        do: target.id
   end
 
   defp release!(scope, source, version) do
@@ -710,7 +725,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
     Mix.shell().info("""
 
-    A run alive now: #{ApiaryWeb.Endpoint.url()}/acme/main/runs/#{run.run_id}
+    A run alive now: #{ApiaryWeb.Endpoint.url()}/acme/main/runs/#{run.public_id}
     Sign in as #{@owner}: see `mix help apiary.demo.console`.\
     """)
   end

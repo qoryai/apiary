@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/claim.schema.json",
+  "title": "Claim",
+  "description": "The body of the signed POST /v1/pools/claim, application/json, with which the starter claims a run: a run waits in its workspace's queue, and any of that workspace's node pools may claim it, except a run of the step prebuild, which is reserved for the node pool it was queued for: only a claim for that node pool gets it. A run of the step prebuild is queued, for a live collection with a target and an environment_ref, for each node pool of the workspace the collection is assigned to, at most one waiting run per node pool, each reserved for its node pool, so the image the run reports, prebuilt.schema.json, is recorded for that node pool and the target. The control plane does not end a prebuild run for waiting. Without pool_id the claim covers the key's node pool, definitions.schema.json; with a pool_id that is not the key's node pool, the claim is refused, 403 forbidden, the same as an unknown one. The control plane holds the request up to wait_seconds while the claim can take no run, because none that it may take waits in its workspace's queue or the key's node pool is at its instance limit, and answers a signed 200 with claim-answer.schema.json when one can be claimed within that time, or a signed 204 with no body at its end. Each claimed dispatch takes a slot of the pool's instance limit at the claim, and the slot is freed once, at the first of these: the dispatch's release, the lapse of its lease before its handover, its end before its handover because its work item was closed or undone, or its run's end, so the limit counts the pool's claimed and live runs; handover.schema.json gives a dispatched run's instance id. A claim is refused, 409 no_gateway, when the choice of the key's node pool resolves to no gateway. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time",
+    "wait_seconds"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the starter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "pool_id": {
+      "description": "The key's node pool, an optional check: any other value is refused, 403 forbidden.",
+      "$ref": "definitions.schema.json#/$defs/pool_id"
+    },
+    "wait_seconds": {
+      "description": "How long the control plane may hold the request while no run can be claimed, in seconds, from 0 to 25: 0 answers at once.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 25
+    }
+  }
+}

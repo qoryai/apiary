@@ -31,7 +31,6 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         id: id,
         sentence: "Changed",
         origin: nil,
-        who: "dana",
         at: at,
         version: nil,
         digest: nil,
@@ -164,17 +163,26 @@ defmodule ApiaryWeb.PolicyComponentsTest do
   end
 
   describe "rule_form" do
-    defp rule_form(scope) do
-      render_component(&PolicyComponents.rule_form/1,
-        id: "policy-rule",
-        title: "New rule",
-        form:
-          to_form(%{"action" => "allow", "host" => "", "paths" => "", "every" => "false"},
-            as: :rule
-          ),
-        scope: scope,
-        cancel: "/acme/policy"
+    defp rule_form(scope, opts \\ []) do
+      action = Keyword.get(opts, :action, "allow")
+
+      render_component(
+        &PolicyComponents.rule_form/1,
+        [
+          id: "policy-rule",
+          title: "New rule",
+          form:
+            to_form(%{"action" => action, "host" => "", "paths" => "", "every" => "false"},
+              as: :rule
+            ),
+          scope: scope,
+          cancel: "/acme/policy"
+        ] ++ Keyword.take(opts, [:paths])
       )
+    end
+
+    defp has?(html, selector) do
+      html |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> Enum.any?()
     end
 
     defp button(html) do
@@ -193,6 +201,32 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         assert button(rule_form(:target)) == "Add target rule"
         assert button(rule_form(:organisation)) == "Add rule"
       end)
+    end
+
+    test "draws the Paths row on Allow and on Deny unless paths is false" do
+      for scope <- [:workspace, :target, :organisation] do
+        allow = rule_form(scope)
+        assert has?(allow, "label[for=policy-rule-paths]")
+        assert has?(allow, "#policy-rule-paths[name='rule[paths]']")
+        assert has?(allow, "#policy-rule-paths-hint")
+        assert has?(rule_form(scope, action: "deny"), "#policy-rule-paths-deny")
+        assert rule_form(scope, paths: true) == allow
+
+        allow = rule_form(scope, paths: false)
+        deny = rule_form(scope, action: "deny", paths: false)
+
+        for html <- [allow, deny] do
+          refute has?(html, "label[for=policy-rule-paths]")
+          refute has?(html, "#policy-rule-paths")
+          refute has?(html, "#policy-rule-paths-hint")
+          refute has?(html, "#policy-rule-paths-deny")
+          refute html =~ "Paths"
+          refute html =~ "Every path"
+          refute html =~ "A deny covers every path of the host."
+          assert has?(html, "#policy-rule-host")
+          assert has?(html, "#policy-rule-preview")
+        end
+      end
     end
   end
 
@@ -284,6 +318,51 @@ defmodule ApiaryWeb.PolicyComponentsTest do
 
       refute render_list([row(%{})], can_add: false) =~ "policy-rules-add"
       refute render_list([row(%{})], source: false) =~ "Source"
+    end
+
+    test "fits its box at every width: a host and a path wrap, each column to its floor" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      rule = fn selector ->
+        [body] =
+          Regex.run(~r/\n  #{Regex.escape(selector)} \{([^}]*)\}/, css, capture: :all_but_first)
+
+        body
+      end
+
+      host = rule.(".q-pr td.q-pr-host")
+      assert host =~ "width: auto;"
+      assert host =~ "min-width: min(28ch, 36cqi);"
+      refute host =~ "36%"
+
+      # A long host wraps; it is not cut, so a wildcard host's tooltip is not clipped.
+      host_words = rule.(".q-pr .q-host.q-pr-h")
+      assert host_words =~ "white-space: normal;"
+      assert host_words =~ "overflow-wrap: anywhere;"
+      refute host_words =~ "overflow: hidden"
+
+      # A path breaks at every width of the table, above its floor.
+      assert rule.(".q-pr td.q-pr-paths") =~ "min-width: min(36ch, 30cqi);"
+      paths = rule.(".q-pr td.q-pr-paths code.q-rule")
+      assert paths =~ "overflow-wrap: anywhere;"
+      assert paths =~ "white-space: normal;"
+      refute css =~ ~r/@container \(max-width: 999\.98px\) \{\s*\.q-pr /
+
+      # Where a rule is written breaks between its words; the paths and the use do not.
+      assert rule.(".q-pr td.q-pr-paths,\n  .q-pr td.q-pr-use") =~ "white-space: nowrap;"
+      refute rule.(".q-pr td.q-pr-paths,\n  .q-pr td.q-pr-src,\n  .q-pr td.q-pr-use") =~ "nowrap"
+      # Stated, as every table cell is nowrap otherwise.
+      assert rule.(".q-pr td.q-pr-src") =~ "white-space: normal;"
+    end
+
+    test "Source shows from 600 px of the table, its head and its cells alike" do
+      doc = LazyHTML.from_fragment(render_list([row(%{})]))
+
+      assert doc |> LazyHTML.query("thead th.q-from-sm") |> Enum.map(&LazyHTML.text/1) ==
+               ["Source"]
+
+      assert doc |> LazyHTML.query("td.q-pr-src.q-from-sm") |> Enum.count() == 1
+      assert doc |> LazyHTML.query("td.q-pr-src:not(.q-from-sm)") |> Enum.count() == 0
     end
 
     # The list as the core's pages draw it: a section with its header, Add rule a link to
@@ -750,19 +829,24 @@ defmodule ApiaryWeb.PolicyComponentsTest do
           workspace_default="enforce"
           workspace="Main"
           target="incident-bot"
-          set={%{by: "sam", at: DateTime.utc_now()}}
+          set={%{by: "sam@example.com", at: DateTime.utc_now()}}
           pick="enforce"
         />
         """)
 
       doc = card(html)
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#policy-mode-effect abbr"), "data-tip") == [
+               "sam@example.com"
+             ]
+
       assert all(doc, "#policy-mode-change, form, input, button") == []
       refute html =~ "aria-disabled"
       assert text_of(doc, "#policy-mode-source") == "Overridden"
       assert [_] = all(doc, ".q-modecard-tile .hero-eye")
 
       assert text_of(doc, "#policy-mode-effect") ==
-               "Overridden by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
+               "Overridden by Ssam@example.com today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
 
       assert text_of(doc, "#policy-mode-owners") == "Only an owner or an admin sets a mode."
     end
@@ -819,6 +903,23 @@ defmodule ApiaryWeb.PolicyComponentsTest do
                "Not served yet: it applies from the first change here."
 
       assert [_] = all(doc, "#policy-mode-change")
+    end
+
+    test "whose mode it is wraps on a phone rather than widen the page" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      [badge] =
+        Regex.run(~r/\n  \.q-modecard-title > \.badge \{([^}]*)\}/, css, capture: :all_but_first)
+
+      for declaration <- [
+            "max-width: 100%;",
+            "height: auto;",
+            "min-height: var(--size);",
+            "white-space: normal;",
+            "overflow-wrap: anywhere;"
+          ] do
+        assert badge =~ declaration
+      end
     end
   end
 end

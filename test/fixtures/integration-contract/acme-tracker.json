@@ -6,5 +6,6 @@
   "settings": {"type": "object"},
   "roles": {
     "credential": {"argument": "[A-Z]+", "hosts": ["tracker.acme.example"]}
-  }
+  },
+  "egress_hosts": ["tracker.acme.example"]
 }

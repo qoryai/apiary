@@ -48,7 +48,11 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb :if={@definition} navigate={Common.definition_path(@current_scope, @definition)}>
+      <:crumb
+        :if={@definition}
+        navigate={Common.definition_path(@current_scope, @definition)}
+        title={@definition.title}
+      >
         {@definition.title}
       </:crumb>
       <:crumb>{form_title(@live_action)}</:crumb>
@@ -113,7 +117,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb>{@definition.title}</:crumb>
+      <:crumb title={@definition.title}>{@definition.title}</:crumb>
 
       <.settings_page
         section={:integrations}
@@ -121,7 +125,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
         measure="list"
       >
         <:subtitle>
-          {gettext("A custom API of this workspace")}
+          {gettext("A custom API of this organisation")}
           <span class="text-faint" aria-hidden="true">·</span>
           <span class="q-mono">{@definition.key}</span>
         </:subtitle>
@@ -168,12 +172,20 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             <dd class="q-mono break-all">{@definition.digest}</dd>
             <dt class="text-faint">{gettext("Added")}</dt>
             <dd>
-              {Common.who(@people, @definition.created_by_id)}
+              <.avatar
+                email={Common.who(@people, @definition.created_by_id)}
+                reader={@current_scope.user.email}
+                size="xs"
+              />
               <span class="text-muted">· <.time_ago at={@definition.inserted_at} /></span>
             </dd>
             <dt class="text-faint">{gettext("Last changed")}</dt>
             <dd>
-              {Common.who(@people, @definition.updated_by_id)}
+              <.avatar
+                email={Common.who(@people, @definition.updated_by_id)}
+                reader={@current_scope.user.email}
+                size="xs"
+              />
               <span class="text-muted">· <.time_ago at={@definition.updated_at} /></span>
             </dd>
           </dl>
@@ -214,7 +226,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             submit="delete"
           >
             <%= if @users == [] do %>
-              {gettext("It is removed from this workspace. This cannot be undone.")}
+              {gettext("It is removed from this organisation. This cannot be undone.")}
             <% else %>
               {gettext("APIs are set up from it: remove them first.")}
             <% end %>
@@ -245,7 +257,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
      |> assign(
        sections: SettingsComponents.sections(scope, :workspace),
        may_write: Common.may_write?(scope),
-       people: Common.people(scope),
+       people: %{},
        problems: [],
        definition: nil,
        decoded: nil,
@@ -264,6 +276,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
          {:ok, connections} <- Connections.list_connections(scope) do
       assign(socket,
         definition: definition,
+        people: Common.people([definition.created_by_id, definition.updated_by_id]),
         decoded: ServiceDefinition.decoded(definition),
         users: Enum.filter(connections, &(&1.service_definition_id == definition.id))
       )

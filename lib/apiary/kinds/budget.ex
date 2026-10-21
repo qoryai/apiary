@@ -7,15 +7,16 @@ defmodule Apiary.Kinds.Budget do
   nesting.
 
   The work is counted in reductions, the units of work the runtime counts for each
-  process: the count follows the work the function does on its input, not how fast or
-  busy the machine is. The heap is counted in words, and with it the binaries the process
+  process: the same function on the same input does the same reductions on any machine
+  running the same OTP release, however fast or busy, so whether it fits does not depend
+  on the machine. The heap is counted in words, and with it the binaries the process
   refers to that live outside its heap (`include_shared_binaries`), a binary shared with
   other processes counted in full in each, and a part of a large binary possibly counted
   as the whole of it, again for each part the process refers to: a function that makes
   large binaries, such as JSV's error messages that copy a pattern, is held to the budget
   too, and an input of many parts of one large binary is better given as copies. The
-  time is only a bound on a process that runs while it counts few reductions, such as one
-  that waits.
+  time is only a bound on a process that runs away while it counts few reductions; it is
+  set far above what the work allows.
 
   Memory the runtime keeps outside the heap and the binaries it counts, such as a
   compiled pattern's, is not counted: a function that makes it bounds it before the work

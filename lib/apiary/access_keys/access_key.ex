@@ -63,9 +63,7 @@ defmodule Apiary.AccessKeys.AccessKey do
     |> cast(attrs, [:label])
     |> validate_required([:label])
     |> validate_length(:label, min: 1, max: 80)
-    |> validate_format(:label, ~r/\A[^[:cntrl:]]+\z/u,
-      message: dgettext_noop("errors", "must not contain control characters")
-    )
+    |> Apiary.Names.validate_characters(:label)
     |> unique_constraint([:node_id, :label],
       name: :access_keys_node_label_index,
       error_key: :label,

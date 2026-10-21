@@ -30,6 +30,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
   # instance has `security`; the rows are there in every configuration.
   defp security?, do: Apiary.Features.on?(:security)
 
+  # The id of a target, acme/shop on github.example unless given, as the address writes it.
+  defp tg(scope, system \\ "github.example", path \\ "acme/shop"),
+    do: target_id(scope, system, path)
+
   # The line of a page narrowed to one target: its runs, its policy's link where there is
   # one, and the way back to every destination.
   defp target_note(target),
@@ -80,7 +84,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     assert crumbs(view) == [{"Network access", nil}]
     assert has_element?(view, "#breadcrumb [aria-current=page]", "Network access")
 
-    narrowed = open(conn, workspace_path(scope, "/network?target=acme%2Fshop"))
+    narrowed = open(conn, workspace_path(scope, "/network?target=#{tg(scope)}"))
     assert crumbs(narrowed) == [{"Network access", nil}]
   end
 
@@ -338,19 +342,22 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{id}-toggle[aria-expanded=true][aria-controls='#{id}-runs']")
       assert text(view, "##{id}-runs") =~ "2 runs reached this destination"
 
-      # Each run names its target as it is addressed: acme/shop is on two systems.
-      first = view |> text("##{id}-run-#{b.run_id}") |> String.replace(" / ", "/")
+      # Each run names its target by its path, with its system where another system shares
+      # the path: acme/shop is on two systems.
+      first = view |> text("##{id}-run-#{b.public_id}") |> String.replace(" / ", "/")
       assert first =~ "Running"
       assert first =~ "gitlab.example/acme/shop"
       assert first =~ "1 denied"
 
-      second = text(view, "##{id}-run-#{a.run_id}")
-      assert second =~ "checkout-tax #{String.slice(a.run_id, 0, 8)}"
+      second = text(view, "##{id}-run-#{a.public_id}")
+      assert second =~ "checkout-tax #{String.slice(a.public_id, 0, 11)}"
+      # The run's title, cut to the line, is whole in its title.
+      assert has_element?(view, "##{id}-run-#{a.public_id} > span.truncate[title='checkout-tax']")
       assert second =~ "1 allowed"
 
       assert has_element?(
                view,
-               "##{id}-run-#{a.run_id}[href='#{workspace_path(scope)}/runs/#{a.run_id}/network']"
+               "##{id}-run-#{a.public_id}[href='#{workspace_path(scope)}/runs/#{a.public_id}/network']"
              )
 
       view |> element("##{id}-toggle") |> render_click()
@@ -364,7 +371,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       view = open(conn, scope)
       view |> element("##{id}-toggle") |> render_click()
-      named = text(view, "##{id}-run-#{api.run_id}")
+      named = text(view, "##{id}-run-#{api.public_id}")
       assert named =~ "acme/api"
       refute named =~ "github.example"
     end
@@ -428,7 +435,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view =
         open(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/network?system=gitlab.example&target=acme/shop"
+          workspace_path(scope, "/network?target=#{tg(scope, "gitlab.example")}")
         )
 
       assert note(view) == target_note("gitlab.example/acme/shop")
@@ -444,7 +451,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"decision" => "allowed", "system" => "gitlab.example", "target" => "acme/shop"}}"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"decision" => "allowed", "target" => tg(scope, "gitlab.example")}}"
       )
 
       render_async(view, 2_000)
@@ -483,13 +490,9 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       )
 
       view = open(conn, scope)
-      value = Apiary.Runs.Filters.target_value({"git.example:8443", "acme/shop"})
+      value = tg(scope, "git.example:8443")
       view |> form("#filter-target-form") |> render_change(%{"target" => value})
-
-      assert_patch(
-        view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
-      )
+      assert_patch(view, workspace_path(scope, "/network?target=#{value}"))
 
       render_async(view, 2_000)
       assert has_element?(view, "##{dst("colon.example")}")
@@ -558,14 +561,14 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"system" => "gitlab.example", "target" => "acme/shop"}}"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"target" => tg(scope, "gitlab.example")}}"
       )
 
       view |> element("#connections-sort-runs") |> render_click()
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"sort" => "runs", "system" => "gitlab.example", "target" => "acme/shop"}}"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"sort" => "runs", "target" => tg(scope, "gitlab.example")}}"
       )
     end
 
@@ -575,20 +578,105 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       started_run(scope, shop(), egress: [%{"host" => host, "rule" => ""}])
 
       view = open(conn, scope)
-      assert has_element?(view, ".q-cx-h > bdi", host)
+      # The row drops the override (`Apiary.ExternalText.line/1`) and isolates the rest.
+      assert has_element?(view, ".q-cx-h > bdi", "evillpmaxe.<script>")
 
       assert render(view) =~
-               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-cx-p\">:443</span>"
+               "<bdi>evillpmaxe.&lt;script&gt;</bdi><span class=\"q-cx-p\">:443</span>"
 
       view |> form("#connections-query", %{"q" => "evil"}) |> render_change()
       render_async(view, 2_000)
 
-      assert has_element?(view, "#connections-query-host-0 .q-suggest-v > bdi", host)
+      # The suggestion reads cleaned, isolated; what it chooses is the host as sent.
+      assert has_element?(
+               view,
+               "#connections-query-host-0 .q-suggest-v > bdi",
+               "evillpmaxe.<script>"
+             )
 
       assert render(view) =~
-               "<span class=\"q-suggest-v\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi></span>"
+               "<span class=\"q-suggest-v\"><bdi>evillpmaxe.&lt;script&gt;</bdi></span>"
+
+      assert view
+             |> element("#connections-query-host-0")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.attribute("data-value") == [host]
 
       refute render(view) =~ "elpmaxe.<script>"
+    end
+
+    test "a suggested host with nothing left to show reads marked, and chooses the host as sent",
+         %{conn: conn, scope: scope} do
+      host = "evil\u200B"
+      blank = "\u200B\u2066"
+      started_run(scope, shop(), egress: [%{"host" => host, "rule" => ""}])
+      started_run(scope, shop(), egress: [%{"host" => blank, "rule" => ""}])
+
+      view = open(conn, scope)
+      view |> form("#connections-query", %{"q" => "\u200B"}) |> render_change()
+      render_async(view, 2_000)
+
+      options =
+        view
+        |> element("#connections-query-hosts")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[role=option]")
+
+      labels = options |> LazyHTML.query(".q-suggest-v > bdi") |> Enum.map(&LazyHTML.text/1)
+      values = LazyHTML.attribute(options, "data-value")
+
+      assert Enum.zip(values, labels) |> Enum.sort() ==
+               Enum.sort([{host, "evil"}, {blank, "\uFFFD\uFFFD"}])
+    end
+
+    test "a host's option, a token, a run's target and the narrowed names as a page shows them",
+         %{conn: conn, scope: scope} do
+      # A host and a target's path may carry a bidirectional override and a zero-width
+      # space.
+      host = "files\u202E.cdn\u200B.example"
+      path = "acme/\u202Eshop\u200B"
+      repository = &%{"forge" => "github.example", "repository" => &1}
+      run = started_run(scope, repository.(path), egress: [%{"host" => host, "rule" => ""}])
+
+      blank =
+        started_run(scope, repository.("\u202E\u200B"), egress: [%{"host" => host, "rule" => ""}])
+
+      view = open(conn, scope)
+
+      # The option reads cleaned, isolated; it picks the host as sent.
+      assert has_element?(view, "#filter-host-form .q-filter-option bdi", "files.cdn.example")
+      assert has_element?(view, ~s(#filter-host-form input[value="#{host}"]))
+
+      id = dst(host)
+      view |> element("##{id}-toggle") |> render_click()
+      assert text(view, "##{id}-run-#{run.public_id}") =~ "acme/shop"
+      # A path sent with nothing left to show is marked, never Unassigned.
+      blank_hit = text(view, "##{id}-run-#{blank.public_id}")
+      assert blank_hit =~ "\uFFFD"
+      refute blank_hit =~ "Unassigned"
+
+      narrowed =
+        open(
+          conn,
+          workspace_path(scope, "/network") <>
+            "?" <>
+            URI.encode_query(%{"target" => tg(scope, "github.example", path), "host" => host})
+        )
+
+      assert has_element?(narrowed, "#connections-token-host .q-tok-v > bdi", "files.cdn.example")
+
+      assert has_element?(
+               narrowed,
+               ~s([aria-label="Runs, narrowed to acme/shop"])
+             )
+
+      # Only what the filter is matched by, an option's value, is as sent.
+      refute narrowed
+             |> render()
+             |> String.replace(~s(value="#{host}"), "")
+             |> String.replace(~r/ (data-copy|phx-value-host)="[^"]*"/, "") =~ "\u202E"
     end
 
     test "the query field suggests the hosts in range as one types; a choice is the host: filter",
@@ -725,6 +813,38 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert to == ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=denied"
     end
 
+    test "a target is its id: an unknown id, another workspace's and an older address are dropped and said",
+         %{conn: conn, scope: scope} do
+      other = scope_fixture()
+      started_run(other, shop(), egress: [@registry])
+
+      for query <- [
+            "target=tg_0000000000000000",
+            "target=#{tg(other)}",
+            "target=acme%2Fshop",
+            "system=gitlab.example&target=acme%2Fshop",
+            "system=gitlab.example"
+          ] do
+        assert {:error, {:live_redirect, %{to: to}}} =
+                 live(conn, workspace_path(scope, "/network?decision=denied&" <> query))
+
+        assert to == workspace_path(scope, "/network?decision=denied"), query
+
+        {:ok, view, _html} = live(conn, workspace_path(scope, "/network"))
+        render_async(view, 2_000)
+        render_patch(view, workspace_path(scope, "/network?" <> query))
+        assert_patch(view, workspace_path(scope, "/network"))
+        render_async(view, 2_000)
+
+        assert text(view, "#connections-dropped") ==
+                 "The link&#39;s target filter could not be read, so it is not applied.",
+               query
+
+        refute has_element?(view, "#connections-target-note")
+        assert has_element?(view, "##{dst("registry.example")}")
+      end
+    end
+
     test "while batches land nothing moves; the reader asks again, and what was open stays open",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
@@ -752,14 +872,15 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
         egress: [%{"host" => "billing.example"}]
       )
 
-      :ok
+      %{shop: target_id(scope, "github.com", "acme/shop")}
     end
 
     test "the line says so, with the target's runs, its policy and the whole list", %{
       conn: conn,
-      scope: scope
+      scope: scope,
+      shop: shop
     } do
-      view = open(conn, workspace_path(scope, "/network?target=acme/shop"))
+      view = open(conn, workspace_path(scope, "/network?target=#{shop}"))
 
       assert note(view) == target_note("acme/shop")
       assert has_element?(view, "##{dst("registry.example")}")
@@ -771,11 +892,11 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "#connections-rail-all") =~ "All repositories"
 
       assert attribute(view, "#connections-target-runs", "href") ==
-               workspace_path(scope, "/runs?target=acme%2Fshop")
+               workspace_path(scope, "/runs?target=#{shop}")
 
       # The name leads to the target's page; out of the sentence, each link is named by it.
       assert attribute(view, "a#connections-target-name", "href") ==
-               workspace_path(scope, "/targets/acme/shop")
+               target_page_path(scope, "github.com", "acme/shop")
 
       assert attribute(view, "#connections-target-runs", "aria-label") ==
                "Runs, narrowed to acme/shop"
@@ -785,7 +906,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       if security?() do
         assert attribute(view, "#connections-target-policy", "href") ==
-                 workspace_path(scope, "/targets/acme/shop/-/policy")
+                 target_page_path(scope, "github.com", "acme/shop", "/policy")
 
         assert attribute(view, "#connections-target-policy", "aria-describedby") ==
                  "connections-target-what"
@@ -804,11 +925,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert attribute(view, "#connections-target-all", "data-phx-link-state") == "push"
 
       # The sidebar's Runs and Network access carry the target; nothing else does.
-      assert attribute(view, "#nav-runs", "href") ==
-               workspace_path(scope, "/runs?target=acme%2Fshop")
+      assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs?target=#{shop}")
 
       assert attribute(view, "#nav-network", "href") ==
-               workspace_path(scope, "/network?target=acme%2Fshop")
+               workspace_path(scope, "/network?target=#{shop}")
 
       assert attribute(view, "#nav-runs", "aria-label") == "Runs, narrowed to acme/shop"
 
@@ -822,23 +942,24 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
     test "only the target carries, and its system only where the path is shared", %{
       conn: conn,
-      scope: scope
+      scope: scope,
+      shop: shop
     } do
       view =
-        open(conn, workspace_path(scope, "/network?target=acme/shop&decision=denied&since=7d"))
+        open(conn, workspace_path(scope, "/network?target=#{shop}&decision=denied&since=7d"))
 
-      assert attribute(view, "#nav-runs", "href") ==
-               workspace_path(scope, "/runs?target=acme%2Fshop")
+      assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs?target=#{shop}")
 
       assert attribute(view, "#connections-target-runs", "href") ==
-               workspace_path(scope, "/runs?target=acme%2Fshop")
+               workspace_path(scope, "/runs?target=#{shop}")
 
       # "Show all destinations" drops the target and keeps the rest.
       assert attribute(view, "#connections-target-all", "href") ==
                workspace_path(scope, "/network?decision=denied&since=7d")
 
       started_run(scope, shop("gitlab.com"), egress: [@registry])
-      shared = workspace_path(scope, "/network?system=gitlab.com&target=acme/shop")
+      gitlab = target_id(scope, "gitlab.com", "acme/shop")
+      shared = workspace_path(scope, "/network?target=#{gitlab}")
 
       # Named rightly from the first render, before the listing lands.
       {:ok, _view, html} = live(conn, shared)
@@ -847,7 +968,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
              |> LazyHTML.from_document()
              |> LazyHTML.query("#nav-runs")
              |> LazyHTML.attribute("href") ==
-               [workspace_path(scope, "/runs?system=gitlab.com&target=acme%2Fshop")]
+               [workspace_path(scope, "/runs?target=#{gitlab}")]
 
       # Its policy, too, is the target's from the first render, the system kept.
       if security?() do
@@ -855,7 +976,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
                |> LazyHTML.from_document()
                |> LazyHTML.query("#connections-target-policy")
                |> LazyHTML.attribute("href") ==
-                 [workspace_path(scope, "/targets/gitlab.com/acme/shop/-/policy")]
+                 [target_page_path(scope, "gitlab.com", "acme/shop", "/policy")]
       end
 
       view = open(conn, shared)
@@ -863,16 +984,16 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert note(view) == target_note("gitlab.com/acme/shop")
 
       assert attribute(view, "a#connections-target-name", "href") ==
-               workspace_path(scope, "/targets/gitlab.com/acme/shop")
+               target_page_path(scope, "gitlab.com", "acme/shop")
 
       assert attribute(view, "#connections-target-runs", "aria-label") ==
                "Runs, narrowed to gitlab.com/acme/shop"
 
       assert attribute(view, "#nav-runs", "href") ==
-               workspace_path(scope, "/runs?system=gitlab.com&target=acme%2Fshop")
+               workspace_path(scope, "/runs?target=#{gitlab}")
 
       assert attribute(view, "#connections-target-runs", "href") ==
-               workspace_path(scope, "/runs?system=gitlab.com&target=acme%2Fshop")
+               workspace_path(scope, "/runs?target=#{gitlab}")
     end
 
     test "the runs with no target: the line names them, Runs keeps them, nothing carries", %{
@@ -905,24 +1026,24 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert attribute(view, "#nav-network", "aria-label") == nil
     end
 
-    test "a path on two systems given alone covers both, with no one policy to link to", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "the targets of one path on two systems, named together, cover both, with no one policy",
+         %{conn: conn, scope: scope, shop: shop} do
       started_run(scope, shop("gitlab.com"), egress: [%{"host" => "mirror.example"}])
+      gitlab = target_id(scope, "gitlab.com", "acme/shop")
 
-      view = open(conn, workspace_path(scope, "/network?target=acme/shop&decision=denied"))
+      view =
+        open(conn, workspace_path(scope, "/network?target=#{shop},#{gitlab}&decision=denied"))
 
       # It says it covers both, each system leading to the list narrowed to its target.
       assert note(view) ==
                "Showing acme/shop only, on github.com and gitlab.com. Runs Show all destinations"
 
-      for system <- ["github.com", "gitlab.com"] do
+      for id <- [shop, gitlab] do
         assert has_element?(
                  view,
-                 ~s(#connections-target-what a[data-phx-link=patch][href="#{workspace_path(scope, "/network?decision=denied&system=#{system}&target=acme%2Fshop")}"])
+                 ~s(#connections-target-what a[data-phx-link=patch][href="#{workspace_path(scope, "/network?decision=denied&target=#{id}")}"])
                ),
-               system
+               id
       end
 
       refute has_element?(view, "a#connections-target-name")
@@ -930,39 +1051,51 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       refute has_element?(view, "#connections-rail [aria-current=true]")
 
       # The rows of both targets on the path, and of no other.
-      view = open(conn, workspace_path(scope, "/network?target=acme/shop"))
+      view = open(conn, workspace_path(scope, "/network?target=#{shop},#{gitlab}"))
       assert has_element?(view, "##{dst("registry.example")}")
       assert has_element?(view, "##{dst("mirror.example")}")
       refute has_element?(view, "##{dst("billing.example")}")
 
-      # The path is carried as it was given, without a system.
+      # The targets are carried as they were given.
       for selector <- ["#nav-runs", "#connections-target-runs"] do
         assert attribute(view, selector, "href") ==
-                 workspace_path(scope, "/runs?target=acme%2Fshop"),
+                 workspace_path(scope, "/runs?target=#{shop}%2C#{gitlab}"),
                selector
       end
 
       assert attribute(view, "#nav-network", "href") ==
-               workspace_path(scope, "/network?target=acme%2Fshop")
+               workspace_path(scope, "/network?target=#{shop}%2C#{gitlab}")
     end
 
-    test "the rail, the Filter menu and a typed repo: match the short address and write it", %{
+    test "targets on different paths, named together, have no line: the token names them", %{
       conn: conn,
-      scope: scope
+      scope: scope,
+      shop: shop
     } do
-      shop_link = "#connections-rail-t-#{RunComponents.dom_token({"github.com", "acme/shop"})}"
-      view = open(conn, workspace_path(scope, "/network?target=acme/shop"))
+      billing = target_id(scope, "github.com", "acme/billing")
+      view = open(conn, workspace_path(scope, "/network?target=#{billing},#{shop}"))
 
-      # The rail marks the one target of the path, and writes the path alone.
+      assert has_element?(view, "##{dst("registry.example")}")
+      assert has_element?(view, "##{dst("billing.example")}")
+      refute has_element?(view, "#connections-target-note")
+      assert text(view, "#connections-token-target") =~ "acme/billing,acme/shop"
+      assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs")
+    end
+
+    test "the rail, the Filter menu and a typed repo: name the target as the line does and write its id",
+         %{conn: conn, scope: scope, shop: shop} do
+      billing = target_id(scope, "github.com", "acme/billing")
+      shop_link = "#connections-rail-t-#{RunComponents.dom_token({"github.com", "acme/shop"})}"
+      view = open(conn, workspace_path(scope, "/network?target=#{shop}"))
+
+      # The rail marks the target, named by its path alone, and writes its id.
       assert has_element?(view, "#{shop_link}[aria-current=true]")
       refute has_element?(view, "#connections-rail-all[aria-current]")
 
       assert attribute(view, shop_link, "href") ==
-               workspace_path(scope, "/network?target=acme%2Fshop")
+               workspace_path(scope, "/network?target=#{shop}")
 
-      # The Filter menu holds it once, chosen.
-      shop_value = Apiary.Runs.Filters.target_value({nil, "acme/shop"})
-
+      # The Filter menu holds it once, chosen, by its id.
       values =
         view
         |> render()
@@ -970,56 +1103,111 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
         |> LazyHTML.query("#filter-target-form input[name=target]")
         |> LazyHTML.attribute("value")
 
-      assert Enum.count(values, &(&1 == shop_value)) == 1
-      refute Apiary.Runs.Filters.target_value({"github.com", "acme/shop"}) in values
+      assert Enum.count(values, &(&1 == shop)) == 1
 
       assert has_element?(
                view,
-               ~s(#filter-target-form input[name=target][value='#{shop_value}'][checked])
+               ~s(#filter-target-form input[name=target][value='#{shop}'][checked])
              )
 
-      # Choosing in the menu, or typing it, writes the path alone.
-      billing = Apiary.Runs.Filters.target_value({nil, "acme/billing"})
+      # Choosing in the menu, or typing it, writes the id.
       view |> form("#filter-target-form") |> render_change(%{"target" => billing})
-      assert_patch(view, workspace_path(scope, "/network?target=acme%2Fbilling"))
+      assert_patch(view, workspace_path(scope, "/network?target=#{billing}"))
 
       view |> form("#connections-query", %{"q" => "repo:github.com/acme/shop"}) |> render_submit()
-      assert_patch(view, workspace_path(scope, "/network?target=acme%2Fshop"))
+      assert_patch(view, workspace_path(scope, "/network?target=#{shop}"))
 
-      # Where the path is shared, they write the system.
+      # A name that names no target is search text: read, it matches no destination, and
+      # the line names it as typed. It stays in the query, never in `target`.
+      view |> form("#connections-query", %{"q" => "repo:acme/nowhere"}) |> render_submit()
+      nowhere = "?q=target%3Aacme%2Fnowhere"
+      assert_patch(view, workspace_path(scope, "/network" <> nowhere))
+      render_async(view, 2_000)
+
+      refute has_element?(view, "#connections-dropped")
+      assert note(view) == "Showing acme/nowhere only. Runs Show all destinations"
+      refute has_element?(view, "a#connections-target-name")
+      refute has_element?(view, "##{dst("registry.example")}")
+      assert text(view, "#connections-token-target") =~ "acme/nowhere"
+
+      assert attribute(view, "#connections-target-runs", "href") ==
+               workspace_path(scope, "/runs" <> nowhere)
+
+      assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs" <> nowhere)
+
+      # Where the path is shared, the rail and the line name the system.
       started_run(scope, shop("gitlab.com"), egress: [@registry])
-      view = open(conn, workspace_path(scope, "/network?system=gitlab.com&target=acme/shop"))
+      gitlab = target_id(scope, "gitlab.com", "acme/shop")
+      view = open(conn, workspace_path(scope, "/network?target=#{gitlab}"))
       gitlab_link = "#connections-rail-t-#{RunComponents.dom_token({"gitlab.com", "acme/shop"})}"
       assert has_element?(view, "#{gitlab_link}[aria-current=true]")
 
       assert attribute(view, shop_link, "href") ==
-               workspace_path(scope, "/network?system=github.com&target=acme%2Fshop")
+               workspace_path(scope, "/network?target=#{shop}")
 
       view |> form("#connections-query", %{"q" => "repo:github.com/acme/shop"}) |> render_submit()
-      assert_patch(view, workspace_path(scope, "/network?system=github.com&target=acme%2Fshop"))
+      assert_patch(view, workspace_path(scope, "/network?target=#{shop}"))
+    end
+
+    test "a typed name that names no target is named cleaned in the Runs link's label", %{
+      conn: conn,
+      scope: scope
+    } do
+      typed = "acme/\u202Enowhere\u200B"
+
+      view =
+        open(
+          conn,
+          workspace_path(scope, "/network?" <> URI.encode_query(%{"q" => "target:#{typed}"}))
+        )
+
+      assert attribute(view, "#connections-target-runs", "aria-label") ==
+               "Runs, narrowed to acme/nowhere"
+    end
+
+    test "a target chosen in the Filter menu takes the place of a typed name, and the free text stays",
+         %{conn: conn, scope: scope, shop: shop} do
+      started_run(scope, %{}, egress: [@registry])
+
+      for {typed, kept} <- [{"+registry", "q=registry&"}, {"", ""}], value <- [shop, "none"] do
+        nowhere = "/network?q=target%3Aacme%2Fnowhere" <> typed
+        view = open(conn, workspace_path(scope, nowhere))
+        view |> form("#filter-target-form") |> render_change(%{"target" => value})
+        assert_patch(view, workspace_path(scope, "/network?" <> kept <> "target=#{value}"))
+        render_async(view, 2_000)
+
+        refute note(view) =~ "nowhere"
+        assert has_element?(view, "##{dst("registry.example")}")
+      end
     end
 
     test "a patch to another target names it and its policy at once", %{
       conn: conn,
-      scope: scope
+      scope: scope,
+      shop: shop
     } do
-      view = open(conn, workspace_path(scope, "/network?target=acme/shop"))
-      render_patch(view, workspace_path(scope, "/network?target=acme/billing"))
+      view = open(conn, workspace_path(scope, "/network?target=#{shop}"))
+
+      render_patch(
+        view,
+        workspace_path(scope, "/network?target=#{target_id(scope, "github.com", "acme/billing")}")
+      )
 
       assert note(view) == target_note("acme/billing")
 
       assert attribute(view, "a#connections-target-name", "href") ==
-               workspace_path(scope, "/targets/acme/billing")
+               target_page_path(scope, "github.com", "acme/billing")
 
       if security?() do
         assert attribute(view, "#connections-target-policy", "href") ==
-                 workspace_path(scope, "/targets/acme/billing/-/policy")
+                 target_page_path(scope, "github.com", "acme/billing", "/policy")
       end
 
-      # A path no target has: no page, no policy.
-      render_patch(view, workspace_path(scope, "/network?target=acme/nowhere"))
-      refute has_element?(view, "a#connections-target-name")
-      refute has_element?(view, "#connections-target-policy")
+      # An id no target of the workspace has is dropped, and said.
+      render_patch(view, workspace_path(scope, "/network?target=tg_0000000000000000"))
+      assert_patch(view, workspace_path(scope, "/network"))
+      refute has_element?(view, "#connections-target-note")
+      assert has_element?(view, "#connections-dropped")
     end
 
     test "with many targets, the chosen one missing from the rail comes first", %{
@@ -1040,7 +1228,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view = open(conn, workspace_path(scope, "/network"))
       refute has_element?(view, quiet)
 
-      view = open(conn, workspace_path(scope, "/network?target=acme/quiet"))
+      quiet_id = target_id(scope, "github.com", "acme/quiet")
+      view = open(conn, workspace_path(scope, "/network?target=#{quiet_id}"))
       assert text(view, quiet) == "acme/quiet 1"
       assert has_element?(view, "#{quiet}[aria-current=true]")
 
@@ -1056,9 +1245,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
     test "every way of clearing drops the target, and the sidebar then links plainly", %{
       conn: conn,
-      scope: scope
+      scope: scope,
+      shop: shop
     } do
-      narrowed = workspace_path(scope, "/network?target=acme/shop")
+      narrowed = workspace_path(scope, "/network?target=#{shop}")
 
       for selector <- [
             "#connections-target-all",

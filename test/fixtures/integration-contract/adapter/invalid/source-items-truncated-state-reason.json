@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "collection_ref": "TRK",
+  "items": [
+    {
+      "ref": "TRK-11",
+      "url": "https://tracker.acme.example/TRK/TRK-11",
+      "title": "Imported ticket with many labels",
+      "body": "",
+      "body_format": "text",
+      "filed_by": {
+        "name": "Ada Example",
+        "kind": "person"
+      },
+      "labels": [
+        "bug"
+      ],
+      "state": "open",
+      "state_reason": null,
+      "comment_count": 0,
+      "created_at": "2026-10-14T08:00:00Z",
+      "updated_at": "2026-10-15T11:00:00Z",
+      "truncated": [
+        "state_reason"
+      ]
+    }
+  ]
+}

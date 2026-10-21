@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "example-gateway",
+  "title": "Example gateway",
+  "description": "Models behind a model gateway an admin runs, at the address the admin enters.",
+  "settings": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["url"],
+    "properties": {
+      "url": {"type": "string", "title": "Gateway address", "description": "The gateway's https address, such as https://models.example.internal:4000."}
+    }
+  },
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "openai-chat", "endpoint": {"setting": "url"}, "auth": {"scheme": "bearer"}},
+        {"format": "anthropic-messages", "endpoint": {"setting": "url"}, "auth": {"scheme": "bearer"}}
+      ],
+      "models": []
+    }
+  },
+  "egress_hosts": [{"setting": "url"}]
+}

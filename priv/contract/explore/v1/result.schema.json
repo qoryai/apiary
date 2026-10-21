@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/explore/v1/result.schema.json",
+  "title": "Explore result",
+  "description": "An Explore run's final response: one JSON document of this schema, the result text of the Forager contract's dev.qory.session.result event, https://qory.dev/contracts/forager/v1/events/session.result.schema.json, which the event's result string holds. The event that counts is the run's last dev.qory.session.result, last in the order of the events' sequence, or the only one when the run emits one. When that event's is_error is true, or it carries no result, or the run emits no dev.qory.session.result, the run has no explore result, and the control plane treats it as a run that returned no result. The control plane reads the document as untrusted input, at most 128 KiB, counted as the UTF-8 bytes of the event's result string once the event is read: the document's text as that string carries it, not the escaped form in which the event's JSON writes it. It refuses a document that breaks this schema or is larger. Every text value is shown as plain text, never as Markdown or HTML, and never followed as an instruction. Every object refuses a member this schema does not define. With the verdict understood, complexity, understanding, scope and approach are required and questions is absent; with the verdict not_understood, questions is required, understanding is optional, and complexity, scope and approach are absent. knowledge is optional with either verdict. The document is a step's result, not a request, and is not signed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "verdict"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "verdict": {
+      "description": "understood, when the agent understood the ticket; not_understood, when it did not and asks its questions.",
+      "type": "string",
+      "enum": [
+        "understood",
+        "not_understood"
+      ]
+    },
+    "complexity": {
+      "description": "How much work the ticket is, and why.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "reason"
+      ],
+      "properties": {
+        "level": {
+          "description": "simple, standard or complex.",
+          "type": "string",
+          "enum": [
+            "simple",
+            "standard",
+            "complex"
+          ]
+        },
+        "reason": {
+          "description": "Why the ticket is at that level.",
+          "$ref": "#/$defs/short_text"
+        }
+      }
+    },
+    "understanding": {
+      "description": "The agent's understanding of the ticket.",
+      "$ref": "#/$defs/long_text"
+    },
+    "scope": {
+      "description": "What the work covers and what it leaves out.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "in",
+        "out"
+      ],
+      "properties": {
+        "in": {
+          "description": "What the work covers, 1 to 50 entries.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/short_text"
+          }
+        },
+        "out": {
+          "description": "What the work leaves out, 0 to 50 entries.",
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/short_text"
+          }
+        }
+      }
+    },
+    "approach": {
+      "description": "How the agent would do the work, and the approaches it did not choose.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "alternatives"
+      ],
+      "properties": {
+        "summary": {
+          "description": "The chosen approach.",
+          "$ref": "#/$defs/short_text"
+        },
+        "alternatives": {
+          "description": "The approaches the agent did not choose, 0 to 10.",
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "summary",
+              "reason"
+            ],
+            "properties": {
+              "summary": {
+                "description": "The approach.",
+                "$ref": "#/$defs/short_text"
+              },
+              "reason": {
+                "description": "Why it is not the chosen approach.",
+                "$ref": "#/$defs/short_text"
+              }
+            }
+          }
+        }
+      }
+    },
+    "questions": {
+      "description": "What the agent needs answered before it can say how to do the work, 1 to 20 questions.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/short_text"
+      }
+    },
+    "knowledge": {
+      "description": "What the agent learned that is worth keeping, each with the pages it came from, 0 to 50 entries.",
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "sources"
+        ],
+        "properties": {
+          "text": {
+            "description": "What the agent learned.",
+            "$ref": "#/$defs/short_text"
+          },
+          "sources": {
+            "description": "The pages it came from, 1 to 10.",
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "$ref": "#/$defs/source"
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "verdict"
+        ],
+        "properties": {
+          "verdict": {
+            "const": "understood"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "complexity",
+          "understanding",
+          "scope",
+          "approach"
+        ],
+        "properties": {
+          "questions": false
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "verdict"
+        ],
+        "properties": {
+          "verdict": {
+            "const": "not_understood"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "questions"
+        ],
+        "properties": {
+          "complexity": false,
+          "scope": false,
+          "approach": false
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "text": {
+      "description": "Text that may span lines: tab, line feed and carriage return are its only control characters, and U+0000 to U+0008, U+000B, U+000C, U+000E to U+001F, U+007F and U+0080 to U+009F are refused. So are the characters https://qory.dev/contracts/integration/v1/description.schema.json refuses in a prose line, $defs line, beyond control characters: the bidirectional controls, the marks U+061C, U+200E and U+200F, the embeddings and overrides U+202A to U+202E and the isolates U+2066 to U+2069; the separators U+2028 and U+2029; and the format characters U+00AD, U+180E, U+200B, U+2060 to U+2064, U+FEFF and U+FFF9 to U+FFFB.",
+      "type": "string",
+      "pattern": "^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]*$"
+    },
+    "short_text": {
+      "description": "A short text, such as a reason, a summary, a question or a scope entry: 1 to 2000 characters.",
+      "$ref": "#/$defs/text",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "long_text": {
+      "description": "A long text, 1 to 20000 characters.",
+      "$ref": "#/$defs/text",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "source": {
+      "description": "A page a piece of knowledge came from: an absolute https URL, at most 2048 characters. Its authority, the part after https:// up to the first /, ? or #, is not empty and holds no @, so the URL carries no user information, and no backslash, U+005C, which a browser reads as /, so a browser's authority ends where this one ends; a path, a query or a fragment may follow it. Nowhere does it hold a space, U+0020, a control character, U+0000 to U+001F, U+007F and U+0080 to U+009F, or a character $defs text refuses beyond control characters.",
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://[^\u0000-\u0020\u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb@/?#\\\\]+([/?#][^\u0000-\u0020\u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]*)?$"
+    }
+  }
+}

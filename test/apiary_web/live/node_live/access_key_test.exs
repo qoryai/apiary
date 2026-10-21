@@ -67,6 +67,12 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   # The text of an element as rendered, its marks gone and its spaces kept.
   defp text(html), do: html |> LazyHTML.from_fragment() |> LazyHTML.text()
 
+  # The reader's letter in the page's text: the letter, then the hidden text, the address
+  # and "(you)"; with `:tip`, its tooltip.
+  defp me(scope, part \\ :text)
+  defp me(scope, :tip), do: "#{scope.user.email} (you)"
+  defp me(scope, :text), do: String.upcase(String.first(scope.user.email)) <> me(scope, :tip)
+
   # The pin as the page shows it: K2's list, in YAML's flow form and as JSON.
   defp pin_lines do
     [%{"alg" => "ed25519", "public_key" => public_key}] = SigningKey.apiary_public_key()
@@ -176,8 +182,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{made.key_id}-added",
-               "Generated in a browser by #{scope.user.email}, #{Format.datetime(made.received_at)}"
+               "Generated in a browser by #{me(scope)}, #{Format.datetime(made.received_at)}"
              )
+
+      assert has_element?(lv, ~s{#key-#{made.key_id}-added abbr[data-tip="#{me(scope, :tip)}"]})
 
       assert has_element?(
                lv,
@@ -220,7 +228,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{enrolled.key_id}-added",
-               "Connected with a command by #{scope.user.email}"
+               "Connected with a command by #{me(scope)}"
              )
 
       assert has_element?(
@@ -251,7 +259,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
       assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
-      assert has_element?(lv, "#key-#{key.key_id}", "by #{scope.user.email}")
+
+      assert has_element?(
+               lv,
+               "#key-#{key.key_id}",
+               "by #{me(scope)}"
+             )
+
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
       refute has_element?(lv, "#key-#{key.key_id}-forager-file")
     end
@@ -619,7 +633,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       # The code as the machine sends it, the server key's fingerprint after it, inside
       # the command alone.
-      assert code =~ ~r/\Aqec_[0-9A-Z]{26}\.#{Regex.escape(fingerprint)}\z/
+      prefix = Regex.escape(Apiary.AccessKeys.EnrolmentCode.prefix(:node))
+      assert code =~ ~r/\A#{prefix}[0-9A-Z]{26}\.#{Regex.escape(fingerprint)}\z/
 
       assert lv |> element("#code-issued-command") |> render() |> text() |> String.trim() ==
                "qory access-key enrol #{server} #{code}"
@@ -853,7 +868,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#node-codes")
 
       assert words(lv, "#code-#{row.id}") =~
-               "A command is waiting to be run on build-01. #{scope.user.email} got it at #{got}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
+               "A command is waiting to be run on build-01. #{me(scope)} got it at #{got}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
 
       assert has_element?(lv, "#code-new-button", "Get a new command")
 
@@ -1647,7 +1662,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{added.key_id}-added",
-               "Generated in a browser by #{scope.user.email}, #{Format.datetime(added.received_at)}"
+               "Generated in a browser by #{me(scope)}, #{Format.datetime(added.received_at)}"
              )
 
       # Back to the key's page: opened again, nothing says the secret is shown, or offers
@@ -1779,8 +1794,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
           assert_receive {:DOWN, ^ref, :process, _pid, _reason}
         end)
 
-      assert log =~ "FunctionClauseError"
-      assert log =~ ~s{"value" => "[FILTERED]"}
+      assert log =~
+               "(FunctionClauseError) no function clause matching in " <>
+                 "ApiaryWeb.NodeLive.AccessKey.handle_event/3"
+
+      # The event's payload, as a crash report of the page's process writes it
+      # (`Apiary.SecretLogFilter`).
+      assert log =~ ~s{payload: "[FILTERED]"}
       refute log =~ ~r/qak_/i
       assert AccessKeys.list_for_node(scope, node) == []
     end
@@ -1991,7 +2011,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "Connect build-01")
 
       assert words(lv, "#node-keys-members") ==
-               "build-01 has no key yet, so it isn't connected to Qory. An owner or admin connects it."
+               "build-01 has no key yet, so it isn't connected to Qory Apiary. An owner or admin connects it."
 
       refute has_element?(lv, "#node-ways")
       refute has_element?(lv, "#code-#{row.id}")

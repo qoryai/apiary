@@ -380,15 +380,33 @@ defmodule Apiary.ContractFixtures do
     end
   end
 
-  @doc "The commit of qoryai/forager in `.forager-contract-ref`."
-  def pinned_ref do
+  @doc "The commit of qoryai/forager in `.forager-contract-ref`: its first line of data."
+  def pinned_ref, do: hd(ref_lines())
+
+  @doc """
+  The files core copies byte for byte from Forager's contract directory, each a path from
+  the project's root: the lines of `.forager-contract-ref` after the commit. A schema or
+  `runtimes.json` is under `priv/contract/`; a fixture, `fixtures/<path>` of the contract,
+  is under `test/fixtures/forager-contract/<path>`, so no fixture key is in a release.
+  """
+  def vendored, do: tl(ref_lines())
+
+  @doc """
+  contract_path/1 is the path in Forager's contract directory of `path`, a vendored file
+  (`vendored/0`).
+  """
+  def contract_path("priv/contract/" <> file), do: file
+  def contract_path("test/fixtures/forager-contract/" <> file), do: "fixtures/" <> file
+
+  # The lines of `.forager-contract-ref` that are not empty and no comment.
+  defp ref_lines do
     Mix.Project.project_file()
     |> Path.dirname()
     |> Path.join(".forager-contract-ref")
     |> File.read!()
     |> String.split("\n")
     |> Enum.map(&String.trim/1)
-    |> Enum.find(&(&1 != "" and not String.starts_with?(&1, "#")))
+    |> Enum.filter(&(&1 != "" and not String.starts_with?(&1, "#")))
   end
 
   defp pinned_dir do
@@ -425,6 +443,28 @@ defmodule Apiary.ContractFixtures do
       {_output, _status} ->
         nil
     end
+  end
+
+  @doc """
+  The contract's recorded runs, `fixtures/run/<id>/events.jsonl`, sorted; none without
+  Forager's contract directory.
+  """
+  def recorded_runs do
+    case contract_dir() do
+      nil -> []
+      dir -> dir |> Path.join("fixtures/run/*/events.jsonl") |> Path.wildcard() |> Enum.sort()
+    end
+  end
+
+  @doc """
+  served_record?/1 says whether the record in `file` is of a run a server accepted: its
+  first line is `dev.qory.run.registered`, which a gateway writes, sequence 1, only once
+  the server accepted the run's registration. A record without it is of a run that had
+  no server, and is never replayed through one.
+  """
+  def served_record?(file) do
+    first = file |> File.read!() |> String.split("\n", trim: true) |> List.first()
+    match?(%{"type" => "dev.qory.run.registered"}, first && Jason.decode!(first))
   end
 
   @doc "contract_json!/1 decodes `fixtures/<path>` of Forager's contract directory."

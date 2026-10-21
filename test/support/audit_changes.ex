@@ -9,14 +9,25 @@ defmodule Apiary.AuditChanges do
   import Apiary.AccessKeysFixtures
   import Apiary.AccountsFixtures, only: [unique_user_email: 0, valid_user_attributes: 1]
   import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
+
+  import Apiary.DispatchedRunsFixtures,
+    only: [
+      dispatched!: 1,
+      handover_place_fixture: 1,
+      prebuild_handed_over!: 2,
+      prebuilt_meta: 1
+    ]
+
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1]
   import Ecto.Query
 
   alias Apiary.{
     Access,
     AccessKeys,
     Accounts,
+    Adapters,
     Audit,
     Deletion,
     Nodes,
@@ -25,10 +36,12 @@ defmodule Apiary.AuditChanges do
     Repo,
     Retention,
     Secrets,
+    Targets,
     Variables
   }
 
   alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.{Collection, Collections}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
 
   @mail_attrs %{
@@ -39,6 +52,25 @@ defmodule Apiary.AuditChanges do
     "smtp_password" => "a relay password",
     "mail_from" => ""
   }
+
+  # People's comments on a work item's Thread, each made by its function of
+  # `Apiary.WorkItems`: about the work item.
+  @work_item_comments [
+    :"work_item.comment",
+    :"work_item.comment_delete"
+  ]
+
+  # The audited actions of a person on the work items, each made by its function of
+  # `Apiary.WorkItems`.
+  @work_item_moves [
+    :"work_item.take_in",
+    :"work_item.undo",
+    :"work_item.decline",
+    :"work_item.close",
+    :"work_item.answer",
+    :"work_item.confirm",
+    :"work_item.explore_again"
+  ]
 
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
@@ -61,6 +93,8 @@ defmodule Apiary.AuditChanges do
       :"account.password_link",
       :"instance.mail_save",
       :"instance.mail_on",
+      :"instance.rename",
+      :"instance.configure",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -81,8 +115,26 @@ defmodule Apiary.AuditChanges do
       :"security_policy.set_mode",
       :"secret.write",
       :"variable.edit",
-      :"connection.write"
-    ]
+      :"connection.write",
+      :"model_choice.write",
+      :"adapter.create",
+      :"adapter.edit",
+      :"adapter.set_interval",
+      :"adapter.delete",
+      :"adapter.install",
+      :"adapter.setup",
+      :"adapter.connect",
+      :"adapter.declare",
+      :"collection.assign",
+      :"collection.set_backlog",
+      :"collection.move",
+      :"dispatch.handover",
+      :"dispatch.release",
+      :"target.set_further_repositories",
+      :"dispatch.prebuilt",
+      :"target.rebuild_environment",
+      :"secret.seal"
+    ] ++ @work_item_moves ++ @work_item_comments
   end
 
   @doc """
@@ -225,6 +277,39 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # An instance admin's, in the trail of the instance's organisation, about the
+  # organisation.
+  def make(:"instance.rename", _ctx) do
+    admin = password_link_admin()
+    before = entries()
+    {:ok, "Acme Agents"} = Apiary.ProductName.rename(admin, %{"product_name" => "Acme Agents"})
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
+  # An instance admin's, after a recent sign-in, in the trail of the instance's
+  # organisation, about the organisation.
+  def make(:"instance.configure", _ctx) do
+    admin = password_link_admin() |> mail_signed_in(0)
+    before = entries()
+
+    {:ok, %{invitations_per_day: 50}} =
+      Apiary.InstanceConfig.save(admin, :invitations, %{"invitations_per_day" => "50"})
+
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
   # The admin who saved, by the test link the save sent them. The link is the secret.
   def make(:"instance.mail_on", _ctx) do
     {admin, token} = mail_saved()
@@ -275,7 +360,10 @@ defmodule Apiary.AuditChanges do
   def make(:"workspace.create", %{scope: scope}) do
     scope = mark_only_workspace(scope)
     before = entries()
-    {:ok, workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
+
+    {:ok, workspace} =
+      Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "software"})
+
     %{scope: scope, subject: {"workspace", workspace.id}, before: before}
   end
 
@@ -334,12 +422,271 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"node", node.id}, before: before}
   end
 
+  # An adapter is the instance's: an instance admin, signed in just now, makes, renames and
+  # deletes one, in the trail of the instance's organisation.
+  def make(:"adapter.create", _ctx) do
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, adapter} = Adapters.create_adapter(admin, %{name: "Acme tracker"})
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
+  end
+
+  # The instance, by itself, installs an adapter its setting lists.
+  def make(:"adapter.install", _ctx) do
+    instance = Scope.for_instance(instance_organisation())
+    before = entries()
+    {:ok, adapter} = Adapters.install(instance, "tracker")
+
+    %{scope: instance, actor: :instance, subject: {"node", adapter.id}, before: before}
+  end
+
+  # An instance admin starts the set-up of an adapter that declares where, in the trail
+  # of the instance's organisation, about the adapter, never with the pass.
+  def make(:"adapter.setup", _ctx) do
+    %{adapter: adapter} = settable_adapter_fixture()
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, url} = Adapters.setup(admin, adapter)
+    %{"state" => pass} = URI.decode_query(URI.parse(url).query)
+
+    %{
+      scope: in_instance(admin),
+      subject: {"node", adapter.id},
+      secret: pass,
+      before: before
+    }
+  end
+
+  def make(:"adapter.edit", _ctx) do
+    adapter = adapter_fixture()
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, _} = Adapters.rename_adapter(admin, adapter, %{name: "Acme tracker"})
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
+  end
+
+  # An instance admin sets how often a declared adapter pulls.
+  def make(:"adapter.set_interval", _ctx) do
+    adapter = declared_adapter()
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, _} = Adapters.update_sync_interval(admin, adapter, %{sync_interval: 3600})
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
+  end
+
+  def make(:"adapter.delete", _ctx) do
+    adapter = adapter_fixture()
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, _} = Adapters.delete_adapter(admin, adapter)
+    %{scope: in_instance(admin), subject: {"node", adapter.id}, before: before}
+  end
+
+  # An owner connects the instance's adapter to their organisation, whose trail holds the
+  # entry, about the organisation.
+  def make(:"adapter.connect", %{scope: scope}) do
+    %{adapter: adapter} = connectable_adapter_fixture()
+    before = entries()
+    {:ok, url, _session} = Adapters.connect(scope, adapter)
+    %{"state" => pass} = URI.decode_query(URI.parse(url).query)
+
+    %{
+      scope: scope,
+      subject: {"organisation", scope.organisation.id},
+      secret: pass,
+      before: before
+    }
+  end
+
+  # An owner assigns a collection of their organisation's connection to a workspace, in
+  # the organisation's trail, about the workspace.
+  def make(:"collection.assign", ctx) do
+    {connection, collection, workspace} = prepare(:"collection.assign", ctx)
+    before = entries()
+    {:ok, 1} = Collections.assign_collections(ctx.scope, connection, [collection.id], workspace)
+    %{scope: ctx.scope, subject: {"workspace", workspace.id}, before: before}
+  end
+
+  # An owner turns off the Backlog of a target of the workspace, whose collection is
+  # assigned there, in the workspace's trail, about the target.
+  def make(:"collection.set_backlog", ctx) do
+    target = prepare(:"collection.set_backlog", ctx)
+    before = entries()
+    {:ok, 1} = Collections.set_backlog(ctx.scope, target, false)
+    %{scope: ctx.scope, subject: {"target", target.id}, before: before}
+  end
+
+  # The adapter lists a ref live under the organisation's connection under another
+  # organisation's connection: the instance ends the organisation's collection, in the
+  # trail of the organisation, about the collection.
+  def make(:"collection.move", %{scope: scope}) do
+    %{mine: mine, theirs: theirs, key_scope: key_scope} = moving(scope)
+    {:ok, :accepted} = Collections.post_listing(key_scope, listed(mine, "first"))
+    collection = Repo.get_by!(Collection, connection_id: mine.id)
+    before = entries()
+    {:ok, :accepted} = Collections.post_listing(key_scope, listed(theirs, "second"))
+
+    %{
+      scope: Scope.for_instance(scope.organisation),
+      actor: :instance,
+      subject: {"collection", collection.id},
+      before: before
+    }
+  end
+
+  # An owner chooses what the runs of a target of the workspace also read, in the
+  # workspace's trail, about the target.
+  def make(:"target.set_further_repositories", ctx) do
+    target = prepare(:"target.set_further_repositories", ctx)
+    before = entries()
+    {:ok, _saved} = Targets.set_further_repositories(ctx.scope, target, "acme/docs")
+    %{scope: ctx.scope, subject: {"target", target.id}, before: before}
+  end
+
+  # A member asks for a build of the environment of a target of the workspace, whose
+  # collection names one, for the workspace's node pool, in the workspace's trail, about
+  # the target.
+  def make(:"target.rebuild_environment", ctx) do
+    target = prepare(:"target.rebuild_environment", ctx)
+    before = entries()
+    {:ok, 1} = Apiary.Environments.rebuild(ctx.scope, target)
+    %{scope: ctx.scope, subject: {"target", target.id}, before: before}
+  end
+
+  # An adapter's key declares, in the trail of the instance's organisation, and the
+  # entry's actor is the key.
+  def make(:"adapter.declare", _ctx) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    key_scope = Scope.for_access_key(key)
+    before = entries()
+    {:ok, _declared} = Adapters.declare(key_scope, declaration())
+
+    %{
+      scope: key_scope,
+      subject: {"node", adapter.id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
+  # A node pool's starter has the run of a dispatch its pool claimed handed over, in the
+  # trail of the workspace's organisation, about the run registered for it; the entry's
+  # actor is the pool's key.
+  def make(:"dispatch.handover", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(key)
+    before = entries()
+
+    {:ok, %{run: run}} =
+      Apiary.Dispatches.handover(key, dispatch.public_id, %{body: "{}"})
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"run", run.id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
+  # A gateway's secrets request seals a run's model key to its access key, in the trail of
+  # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
+  # the entry keeps nothing of the key's value.
+  def make(:"secret.seal", %{scope: scope}) do
+    {ctx, key, now} = sealed_run(scope)
+    body = secrets_request(ctx.run, ctx.attached.digest, [ctx.provider.public_id], now)
+    before = entries()
+
+    {:ok, _answer} =
+      Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"run", ctx.run.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: Apiary.SealedRunsFixtures.model_key()
+    }
+  end
+
+  # A node pool's starter gives back the run of a dispatch its pool claimed, before its
+  # handover, in the trail of the workspace's organisation, about the pool; the entry's
+  # actor is the pool's key.
+  def make(:"dispatch.release", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(key)
+    before = entries()
+
+    :ok =
+      Apiary.Dispatches.release(key, dispatch.public_id, %{
+        reason: "The job could not start.",
+        retry: false
+      })
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"node", key.node_id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
+  # A node pool's starter reports the image a prebuild its pool claimed built, after its
+  # handover, in the trail of the workspace's organisation, about the run registered for
+  # it; the entry's actor is the pool's key.
+  def make(:"dispatch.prebuilt", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    %{dispatch: dispatch, dispatch_run: queued, run: run} = prebuild_handed_over!(scope, key)
+    before = entries()
+    :ok = Apiary.Dispatches.prebuilt(key, dispatch.public_id, prebuilt_meta(queued))
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"run", run.id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
+  # A member takes a ticket of the workspace's Backlog in, in the workspace's trail,
+  # about the new work item.
+  def make(:"work_item.take_in", %{scope: scope} = ctx) do
+    ticket = prepare(:"work_item.take_in", ctx)
+    before = entries()
+    {:ok, work_item} = Apiary.WorkItems.take_in(scope, ticket.public_id)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
+  # A member undoes, declines or closes a work item of the workspace, answers the questions
+  # of its run, confirms its run's proposal or asks for another run, about it.
+  def make(action, %{scope: scope} = ctx) when action in @work_item_moves do
+    work_item = prepare(action, ctx)
+    before = entries()
+    {:ok, _work_item} = attempt(action, scope, work_item)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
+  # A member comments on a work item of the workspace, or deletes a comment there.
+  def make(action, %{scope: scope} = ctx) when action in @work_item_comments do
+    subject = prepare(action, ctx)
+    before = entries()
+    {:ok, _comment} = attempt(action, scope, subject)
+    %{scope: scope, subject: subject_of(subject), before: before}
+  end
+
   def make(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
     instance = instance_fixture(node, name: "build-01.example.com")
-    node_run_fixture(node, instance.instance_id)
+    node_run_fixture(node, instance.node_instance_id)
     before = entries()
-    {:ok, _} = Nodes.clear_instance(scope, node, instance.instance_id)
+    {:ok, _} = Nodes.clear_instance(scope, node, instance.node_instance_id)
     %{scope: scope, subject: {"node", node.id}, before: before}
   end
 
@@ -389,6 +736,25 @@ defmodule Apiary.AuditChanges do
     before = entries()
     {:ok, connection} = Apiary.Connections.create_service(scope, %{service: "sentry"})
     %{scope: scope, subject: {"connection", connection.id}, before: before}
+  end
+
+  # A model provider is added, then the workspace's choice names it, in the workspace's
+  # trail, about the choice. The key's value is the secret no entry may hold.
+  def make(:"model_choice.write", %{scope: scope}) do
+    value = "sk-audit-model-key"
+
+    {:ok, provider} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: value}]
+      })
+
+    before = entries()
+
+    {:ok, choice} =
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+    %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
 
   def make(:"organisation.delete", %{scope: scope}) do
@@ -473,7 +839,21 @@ defmodule Apiary.AuditChanges do
     {before, Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")}
   end
 
-  # An instance admin whose sign-in is no longer recent signs in again first.
+  # Anyone but an instance admin: the owner of an organisation that is not the instance's.
+  def refuse(:"instance.rename", %{scope: scope}) do
+    before = entries()
+    {before, Apiary.ProductName.rename(scope, %{"product_name" => "Acme Agents"})}
+  end
+
+  # An instance admin whose sign-in is no longer recent signs in again first, for the
+  # instance's settings as for its mail.
+  def refuse(:"instance.configure", _ctx) do
+    admin = password_link_admin() |> mail_signed_in(-21)
+    before = entries()
+
+    {before, Apiary.InstanceConfig.save(admin, :invitations, %{"invitations_per_day" => "50"})}
+  end
+
   def refuse(:"instance.mail_save", _ctx) do
     admin = mail_admin() |> mail_signed_in(-21)
     before = entries()
@@ -520,10 +900,122 @@ defmodule Apiary.AuditChanges do
     {before, Deletion.purge_workspace(%{scope | workspace: workspace})}
   end
 
+  # Anyone but the instance, here an owner, installs no adapter.
+  def refuse(:"adapter.install", %{scope: scope}) do
+    before = entries()
+    {before, Adapters.install(scope, "tracker")}
+  end
+
+  # A listing's part of an ended connection names the ref live under the organisation's
+  # connection: it is refused, and moves nothing.
+  def refuse(:"collection.move", %{scope: scope}) do
+    %{mine: mine, theirs: theirs, key_scope: key_scope} = moving(scope)
+    {:ok, :accepted} = Collections.post_listing(key_scope, listed(mine, "first"))
+    {:ok, _ended} = Adapters.Connections.end_connection(key_scope, theirs.public_id)
+    before = entries()
+    {before, Collections.post_listing(key_scope, listed(theirs, "second"))}
+  end
+
+  # A node's key declares no adapter.
+  def refuse(:"adapter.declare", %{scope: scope}) do
+    connectable_adapter_fixture()
+    %{access_key: key} = node_key_fixture(scope, node_fixture(scope))
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    before = entries()
+    {before, Adapters.declare(Scope.for_access_key(key), declaration())}
+  end
+
+  # A request with a credential the run does not have seals nothing.
+  def refuse(:"secret.seal", %{scope: scope}) do
+    {ctx, key, now} = sealed_run(scope)
+    body = secrets_request(ctx.run, ctx.attached.digest, ["forge"], now)
+    before = entries()
+
+    {before,
+     Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)}
+  end
+
+  # A dispatch another pool of the workspace claimed is not the key's to hand over.
+  def refuse(:"dispatch.handover", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(claimer)
+    before = entries()
+    {before, Apiary.Dispatches.handover(other, dispatch.public_id, %{body: "{}"})}
+  end
+
+  # A dispatch another pool of the workspace claimed is not the key's to give back.
+  def refuse(:"dispatch.release", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+    %{dispatch: dispatch} = dispatched!(claimer)
+    before = entries()
+
+    {before,
+     Apiary.Dispatches.release(other, dispatch.public_id, %{
+       reason: "The job could not start.",
+       retry: false
+     })}
+  end
+
+  # A dispatch another pool of the workspace claimed is not the key's to report on.
+  def refuse(:"dispatch.prebuilt", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    %{dispatch: dispatch, dispatch_run: queued} = prebuild_handed_over!(scope, claimer)
+    before = entries()
+    {before, Apiary.Dispatches.prebuilt(other, dispatch.public_id, prebuilt_meta(queued))}
+  end
+
   # A member where the change is an owner's or an admin's; where every member may make it,
   # a person who was a member when the scope was loaded and is no longer.
   def refuse(action, ctx),
     do: refuse_as_member(action, ctx, &prepare(action, &1), &attempt(action, &1, &2))
+
+  # An adapter connected to the scope's organisation (`mine`) and to another
+  # organisation (`theirs`), and its key's scope.
+  defp moving(scope) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {mine, _nonce} = connection_fixture(scope, adapter, :connected)
+    %{scope: other} = sign_up_fixture()
+    {theirs, _nonce} = connection_fixture(other, adapter, :connected)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    %{mine: mine, theirs: theirs, key_scope: Scope.for_access_key(key)}
+  end
+
+  # A complete listing of `connection` naming the ref `TRK`.
+  defp listed(connection, id) do
+    %{
+      time: DateTime.utc_now(:second),
+      connection_id: connection.public_id,
+      collections: [
+        %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+      ],
+      listing: %{id: id, part: 1, started_at: DateTime.utc_now(:second), complete: true}
+    }
+  end
+
+  # What an adapter declares as it starts (`Apiary.Adapters.Wire.declaration/1`).
+  defp declaration do
+    %{
+      time: DateTime.utc_now(:second),
+      connect_url: "https://tracker-adapter.acme.example/connect",
+      default_interval: 900,
+      minimum_interval: 300,
+      sends_changes: false,
+      description: Apiary.DescriptionFixtures.read_description()
+    }
+  end
+
+  # An adapter that has declared how it pulls.
+  defp declared_adapter do
+    %{access_key: key} = connectable_adapter_fixture()
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    {:ok, declared} = Adapters.declare(Scope.for_access_key(key), declaration())
+    declared
+  end
 
   defp prepare(:"member.change_level", %{scope: scope}), do: member_fixture(scope).membership
   defp prepare(:"member.remove", %{scope: scope}), do: member_fixture(scope).membership
@@ -549,12 +1041,141 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
+  defp prepare(:"adapter.edit", _ctx), do: adapter_fixture()
+  defp prepare(:"adapter.set_interval", _ctx), do: declared_adapter()
+  defp prepare(:"adapter.delete", _ctx), do: adapter_fixture()
+  defp prepare(:"adapter.connect", _ctx), do: adapter_fixture()
+
+  defp prepare(:"adapter.setup", _ctx),
+    do: settable_adapter_fixture() |> Map.fetch!(:adapter)
+
+  # A collection the adapter listed for the organisation's connection, and a workspace
+  # made after it, so assigning it there changes its link.
+  defp prepare(:"collection.assign", %{scope: scope}) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(key), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections: [
+          %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+        ],
+        listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
+      })
+
+    collection = Repo.get_by!(Collection, connection_id: connection.id)
+    {connection, collection, workspace_fixture(scope.organisation)}
+  end
+
+  # A target of the scope's workspace, as a run's labels make it.
+  defp prepare(:"target.set_further_repositories", %{scope: scope}) do
+    :ok =
+      Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        %{system: "code.example.com", path: "acme/shop"}
+      ])
+
+    Targets.get(scope, "code.example.com", "acme/shop")
+  end
+
+  # A target of the scope's workspace, a node pool there, then a collection assigned there
+  # with the target and an `environment_ref`, made after the pool, so nothing is queued
+  # for it yet.
+  defp prepare(:"target.rebuild_environment", %{scope: scope}) do
+    pool_fixture(scope)
+
+    collection_fixture(scope,
+      external_ref: "SHOP",
+      target_system: "code.example.com",
+      target_path: "acme/shop",
+      environment_ref: "env-1"
+    )
+
+    :ok =
+      Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        %{system: "code.example.com", path: "acme/shop"}
+      ])
+
+    Targets.get(scope, "code.example.com", "acme/shop")
+  end
+
+  # A collection with a target, listed for the organisation's connection and assigned to
+  # the scope's workspace, which makes the target there.
+  defp prepare(:"collection.set_backlog", %{scope: scope}) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, :accepted} =
+      Collections.post_listing(Scope.for_access_key(key), %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections: [
+          %{
+            ref: "SHOP",
+            url: "https://tracker.acme.example/SHOP",
+            title: "acme/shop",
+            target: %{system: "code.example.com", path: "acme/shop"}
+          }
+        ],
+        listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
+      })
+
+    collection = Repo.get_by!(Collection, connection_id: connection.id)
+
+    {:ok, _changed} =
+      Collections.assign_collections(scope, connection, [collection.id], scope.workspace)
+
+    Repo.get_by!(Apiary.Runs.Target,
+      workspace_id: scope.workspace.id,
+      system: "code.example.com",
+      path: "acme/shop"
+    )
+  end
+
+  defp prepare(:"work_item.take_in", %{scope: scope}),
+    do: Apiary.WorkItemsFixtures.backlog_ticket_fixture(scope)
+
+  # A work item whose run asked, or proposed, or gave no result, as the action needs.
+  defp prepare(:"work_item.answer", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    result = Apiary.WorkItemsFixtures.questions_result(["Which basket?"])
+    Apiary.WorkItemsFixtures.explore_run_fixture(work_item, result: result)
+    work_item
+  end
+
+  defp prepare(:"work_item.confirm", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    result = Apiary.WorkItemsFixtures.understood_result()
+    Apiary.WorkItemsFixtures.explore_run_fixture(work_item, result: result)
+    work_item
+  end
+
+  defp prepare(:"work_item.explore_again", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    Apiary.WorkItemsFixtures.explore_run_fixture(work_item)
+    work_item
+  end
+
+  # A comment by the owner, which a member may not delete.
+  defp prepare(:"work_item.comment_delete", %{scope: scope}) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    {:ok, comment} = Apiary.WorkItems.comment(scope, work_item, "Seen on staging")
+    comment
+  end
+
+  defp prepare(action, %{scope: scope})
+       when action in @work_item_moves or action in @work_item_comments,
+       do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
   defp prepare(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
-    {node, instance_fixture(node).instance_id}
+    {node, instance_fixture(node).node_instance_id}
   end
 
   defp prepare(:"organisation.restore", %{scope: scope}) do
@@ -587,7 +1208,7 @@ defmodule Apiary.AuditChanges do
     do: Deletion.restore_organisation(scope, organisation.id)
 
   defp attempt(:"workspace.create", scope, _),
-    do: Organisations.create_workspace(scope, %{"name" => "Data"})
+    do: Organisations.create_workspace(scope, %{"name" => "Data", "domain" => "software"})
 
   defp attempt(:"workspace.delete", scope, workspace),
     do: Deletion.delete_workspace(scope, workspace.id, workspace.slug)
@@ -646,6 +1267,59 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"node.create", scope, _),
     do: Nodes.create_node(scope, %{kind: "node", name: "build-01"})
 
+  defp attempt(:"adapter.create", scope, _),
+    do: Adapters.create_adapter(scope, %{name: "Acme tracker"})
+
+  defp attempt(:"adapter.edit", scope, adapter),
+    do: Adapters.rename_adapter(scope, adapter, %{name: "Acme tracker"})
+
+  defp attempt(:"adapter.set_interval", scope, adapter),
+    do: Adapters.update_sync_interval(scope, adapter, %{sync_interval: 3600})
+
+  defp attempt(:"adapter.delete", scope, adapter), do: Adapters.delete_adapter(scope, adapter)
+
+  defp attempt(:"adapter.connect", scope, adapter),
+    do: Adapters.connect(scope, adapter)
+
+  defp attempt(:"adapter.setup", scope, adapter), do: Adapters.setup(scope, adapter)
+
+  defp attempt(:"collection.assign", scope, {connection, collection, workspace}),
+    do: Collections.assign_collections(scope, connection, [collection.id], workspace)
+
+  defp attempt(:"collection.set_backlog", scope, target),
+    do: Collections.set_backlog(scope, target, false)
+
+  defp attempt(:"target.set_further_repositories", scope, target),
+    do: Targets.set_further_repositories(scope, target, "acme/docs")
+
+  defp attempt(:"target.rebuild_environment", scope, target),
+    do: Apiary.Environments.rebuild(scope, target)
+
+  defp attempt(:"work_item.take_in", scope, ticket),
+    do: Apiary.WorkItems.take_in(scope, ticket.public_id)
+
+  defp attempt(:"work_item.undo", scope, work_item), do: Apiary.WorkItems.undo(scope, work_item)
+
+  defp attempt(:"work_item.decline", scope, work_item),
+    do: Apiary.WorkItems.decline(scope, work_item)
+
+  defp attempt(:"work_item.close", scope, work_item), do: Apiary.WorkItems.close(scope, work_item)
+
+  defp attempt(:"work_item.answer", scope, work_item),
+    do: Apiary.WorkItems.answer(scope, work_item, 1, %{"1" => "The one at checkout."})
+
+  defp attempt(:"work_item.confirm", scope, work_item),
+    do: Apiary.WorkItems.confirm(scope, work_item, 1)
+
+  defp attempt(:"work_item.explore_again", scope, work_item),
+    do: Apiary.WorkItems.explore_again(scope, work_item, 1)
+
+  defp attempt(:"work_item.comment", scope, work_item),
+    do: Apiary.WorkItems.comment(scope, work_item, "Seen on staging")
+
+  defp attempt(:"work_item.comment_delete", scope, comment),
+    do: Apiary.WorkItems.delete_comment(scope, comment.public_id)
+
   defp attempt(:"node.edit", scope, node), do: Nodes.update_node(scope, node, %{name: "build-02"})
   defp attempt(:"node.delete", scope, node), do: Nodes.delete_node(scope, node)
 
@@ -660,6 +1334,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"connection.write", scope, _),
     do: Apiary.Connections.create_service(scope, %{service: "sentry"})
+
+  defp attempt(:"model_choice.write", scope, _),
+    do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
 
   defp attempt(:"retention.edit", scope, _),
     do: Retention.update_retention(scope, %{events_retention_days: 30})
@@ -691,6 +1368,10 @@ defmodule Apiary.AuditChanges do
   # The instance's own organisation (`c:Apiary.Edition.instance_organisation_id/0`).
   defp instance_organisation,
     do: Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
+
+  # `scope`'s person in the instance's organisation, whose trail holds what they change of
+  # the instance.
+  defp in_instance(scope), do: Scope.in_organisation(scope, instance_organisation())
 
   # A fresh instance admin, by a release command: their scope.
   defp password_link_admin do
@@ -747,4 +1428,16 @@ defmodule Apiary.AuditChanges do
 
     workspace
   end
+
+  defp subject_of(%Apiary.WorkItems.WorkItem{id: id}), do: {"work_item", id}
+  defp subject_of(%Apiary.WorkItems.Comment{work_item_id: id}), do: {"work_item", id}
+
+  defp sealed_run(scope) do
+    ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
+    {key, _seed} = ctx.secrets_key
+    {ctx, key, ApiaryWeb.Contract.SignedRequest.now()}
+  end
+
+  defp secrets_request(run, digest, credentials, now),
+    do: Apiary.SealedRunsFixtures.secrets_request(run, digest, credentials, now)
 end

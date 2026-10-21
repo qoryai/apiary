@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "collection_ref": "R_1001",
+  "items": [
+    {
+      "ref": "I_2001",
+      "url": "https://github.com/acme/shop/issues/42",
+      "type": "issue",
+      "title": "Prices show without tax",
+      "body": "The basket shows prices **without** tax.",
+      "body_format": "markdown",
+      "filed_by": {
+        "name": "octo-acme",
+        "kind": "person"
+      },
+      "labels": [
+        "bug",
+        "good first issue"
+      ],
+      "state": "open",
+      "state_reason": null,
+      "comment_count": 2,
+      "created_at": "2026-10-14T16:00:00Z",
+      "updated_at": "2026-10-15T11:58:00Z",
+      "target": {
+        "system": "github.com",
+        "path": "acme/shop"
+      }
+    }
+  ]
+}

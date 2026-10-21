@@ -22,7 +22,8 @@ defmodule Apiary.Runs.ProjectorTest do
         Map.drop(run, [
           :__meta__,
           :id,
-          :run_id,
+          :public_id,
+          :node_run_id,
           :organisation_id,
           :workspace_id,
           :inserted_at,
@@ -634,7 +635,7 @@ defmodule Apiary.Runs.ProjectorTest do
             workspace_id: run.workspace_id,
             run_id: run.id,
             sequence: sequence,
-            event_id: Ecto.UUID.generate(),
+            node_event_id: Ecto.UUID.generate(),
             type: "dev.qory.session.started",
             time: now,
             data: %{},

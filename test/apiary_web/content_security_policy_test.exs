@@ -44,7 +44,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   # Routes no request can load, each with the reason.
   @skipped %{
     "/dev/storybook/assets/*asset" =>
-      "the storybook's static files are served before it; the route raises for the rest"
+      "the storybook's static files are served before it; the route raises for the rest",
+    "/integrations/:connection_id" =>
+      "a redirect or a line of text, never a page: it leads a person of the connection's " <>
+        "organisation to the integration's page, and raises not found for anyone else " <>
+        "(`test/apiary_web/controllers/adapter_redirect_controller_test.exs` holds it)"
   }
 
   # Routes that answer 404 to anyone here, each with the reason.
@@ -52,6 +56,22 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     "/docs" => "the documentation's directory is the test's own, and empty",
     "/docs/*path" => "a path under /docs that has no file"
   }
+
+  # The pages of the feature `factory`, not built yet: where the feature is on, each raises
+  # not found as it mounts, which the endpoint renders as a path that does not exist and
+  # a test's request raises again (`test/apiary_web/factory_shell_test.exs` holds them).
+  @not_built "the page is not built yet: it raises not found as it mounts"
+
+  @skipped Map.merge(
+             @skipped,
+             Map.new(
+               [
+                 "/instance/adapters/new/:entry",
+                 "/:org/:workspace/backlog/:item_id"
+               ],
+               &{&1, @not_built}
+             )
+           )
 
   # The query a route's page needs to draw.
   @query %{"/dev/storybook/visual_tests" => "?start=a&end=z"}
@@ -223,8 +243,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp feature_on?(%{plug: plug}), do: module_on?(plug)
 
   defp module_on?(module) do
-    not function_exported?(Code.ensure_loaded!(module), :__feature__, 0) or
-      Features.on?(module.__feature__())
+    gate = ApiaryWeb.Features.gate(module)
+    is_nil(gate) or ApiaryWeb.Features.on?(gate)
   end
 
   # The policy as it must read, written out here so that a change to it is a change to
@@ -350,8 +370,18 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     for %{verb: verb} = route <- ApiaryWeb.Router.__routes__(),
         verb in [:get, :*],
         not Map.has_key?(@skipped, route.path),
+        not hidden_tab?(route),
         do: route
   end
+
+  # A target's Policy tab and its paths belong to the `security` feature, on a page of
+  # `observability`: where `security` is off, the page raises not found as it mounts, which
+  # the endpoint renders as a path that does not exist and a test's request raises again
+  # (`test/apiary_web/live/target_live/show_test.exs` holds it).
+  defp hidden_tab?(%{path: "/:org/:workspace/targets/:target_id/" <> _}),
+    do: not Features.on?(:security)
+
+  defp hidden_tab?(_route), do: false
 
   # The addresses of `route`, its parameters filled; `{:unknown, names}` for parameters
   # this test does not fill.
@@ -400,14 +430,18 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("key_id", "/:org/gateways/" <> _, p), do: p.gateway_key_id
   defp value_of("code_id", "/:org/gateways/" <> _, p), do: p.gateway_code_id
   defp value_of("node_id", _path, p), do: p.node_id
+  # An adapter's key and waiting code, on its Access key tab.
+  defp value_of("key_id", "/instance/adapters/" <> _, p), do: p.adapter_key_id
+  defp value_of("code_id", "/instance/adapters/" <> _, p), do: p.adapter_code_id
   defp value_of("instance", _path, p), do: p.instance
   defp value_of("code_id", _path, p), do: p.code_id
   defp value_of("run_id", _path, p), do: p.run_id
+  defp value_of("number", _path, p), do: p.work_item_number
   defp value_of("n", _path, _p), do: 1
+  defp value_of("adapter_id", _path, p), do: p.adapter_id
   defp value_of("release_id", _path, p), do: p.release_id
   defp value_of("value_id", _path, p), do: p.value_id
   defp value_of("section", _path, _p), do: "runs"
-  defp value_of("glob", _path, p), do: p.target_glob
   defp value_of("path", "/docs/*path", _p), do: "no-such-page.html"
   defp value_of("page", "/dev/dashboard" <> _, _p), do: "home"
   defp value_of("node", "/dev/dashboard" <> _, _p), do: Atom.to_string(node())
@@ -422,8 +456,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   defp value_of("target_id", path, p) do
     cond do
-      String.contains?(path, "/settings/integrations/") -> p.target_id
+      # A connection's list names a workspace, by its id.
+      String.contains?(path, "/settings/integrations/") -> p.workspace_id
       String.contains?(path, "/policy/targets/") -> p.target_id
+      # A target's page names it by its public id.
+      String.contains?(path, "/targets/:target_id") -> p.target_public_id
       true -> nil
     end
   end
@@ -512,9 +549,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       instance: "i_1",
       key_id: key.key_id,
       code_id: code.id,
-      run_id: run.run_id,
+      run_id: run.public_id,
       target_id: target.id,
-      target_glob: target.path,
+      workspace_id: scope.workspace.id,
+      target_public_id: target.public_id,
       invitation_token: invitation,
       login_token: login_token,
       password_token: password_token,
@@ -524,7 +562,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
     base
     |> Map.merge(security_params(scope))
-    |> Map.merge(secrets_params(scope, target))
+    |> Map.merge(factory_params(scope))
+    |> Map.merge(secrets_params(scope))
   end
 
   # The storybook's stories, and those of them that are a component's. The storybook is
@@ -547,6 +586,39 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     defp stories, do: {[], []}
   end
 
+  # The records of the `factory` feature: an adapter with a key and a waiting code, so its
+  # Access key tab and the pages that revoke them are there, and a work item whose proposal
+  # waits at Confirm, so its page draws every part and its edit page is there; or
+  # placeholders where the instance has not got it, whose pages answer as paths that do
+  # not exist.
+  defp factory_params(scope) do
+    if Features.on?(:factory) do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      Apiary.WorkItemsFixtures.explore_run_fixture(work_item, result: understood_result())
+
+      admin = instance_admin_scope()
+      adapter = adapter_fixture(%{name: "Acme tracker"})
+      %{access_key: adapter_key} = enrolled_key_fixture(admin, adapter)
+      {:ok, adapter_code, _code} = Apiary.Adapters.create_code(admin, adapter)
+
+      %{
+        adapter_id: adapter.public_id,
+        adapter_key_id: adapter_key.key_id,
+        adapter_code_id: adapter_code.id,
+        work_item_number: work_item.number
+      }
+    else
+      %{
+        adapter_id: "na_x",
+        adapter_key_id: "x1",
+        adapter_code_id: Ecto.UUID.generate(),
+        work_item_number: 1
+      }
+    end
+  end
+
+  defp understood_result, do: Apiary.WorkItemsFixtures.understood_result()
+
   # The records of the `security` feature; placeholders where the instance has not got
   # it, whose pages answer as paths that do not exist.
   defp security_params(scope) do
@@ -559,7 +631,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   end
 
   # The records of the `secrets` feature, as `security_params/1` has the policy's.
-  defp secrets_params(scope, target) do
+  defp secrets_params(scope) do
     if Features.on?(:secrets) do
       {:ok, secret} =
         Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x", value_id: "main-app"})
@@ -588,7 +660,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
 
-      {:ok, runtime} = Connections.put_target(scope, runtime, target.id)
+      {:ok, runtime} = Connections.put_workspace(scope, runtime, scope.workspace.id)
 
       release = ready_release!(scope, github_description())
       {:ok, integration} = Connections.create_integration(scope, release.id, %{})

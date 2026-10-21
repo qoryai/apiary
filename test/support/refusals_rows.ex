@@ -19,10 +19,11 @@ defmodule ApiaryWeb.RefusalsRows do
 
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
-  locked rule, a stored secret, a variable, a target, an access key, a node with a running
-  instance, an active key and an outstanding enrolment code, a node pool with a limit, a
-  gateway, the workspace's default, and a second gateway, a run that has not ended, and a
-  pending invitation; and another organisation, with its owner.
+  locked rule, a stored secret, a variable, a target with a collection assigned to the
+  workspace, an access key, a node with a running instance, an active key and an
+  outstanding enrolment code, a node pool with a limit, a gateway, the workspace's
+  default, and a second gateway, a run that has not ended, and a pending invitation; and
+  another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -123,6 +124,18 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
       {:"instance.mail_save", :admin, "/instance/mail", "save",
        %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
+      # So is the product's name.
+      {:"instance.rename", :owner, "/instance/general", "save",
+       %{"instance" => %{"product_name" => "Acme Agents"}}, answer: :not_found_at_mount},
+      {:"instance.rename", :admin, "/instance/general", "save",
+       %{"instance" => %{"product_name" => "Acme Agents"}}, answer: :not_found_at_mount},
+      # So are the instance's settings.
+      {:"instance.configure", :owner, "/instance/configuration", "save",
+       %{"part" => "invitations", "config" => %{"invitations_per_day" => "50"}},
+       answer: :not_found_at_mount},
+      {:"instance.configure", :admin, "/instance/configuration", "save",
+       %{"part" => "invitations", "config" => %{"invitations_per_day" => "50"}},
+       answer: :not_found_at_mount},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",
@@ -172,10 +185,36 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"mode" => "enforce"}},
       {:"security_policy.set_mode", :demoted_admin, "/:org/:workspace/policy", "mode_set",
        %{"mode" => "enforce"}, prelude: [{"mode_open", %{"mode" => "enforce"}}]},
-      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
+      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/policy",
        "mode_open", %{"mode" => "enforce"}},
-      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
+      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/policy",
        "mode_set", %{"mode" => "enforce"}},
+      # A target's Backlog card: its switch, which a member sees disabled.
+      {:"collection.set_backlog", :member, "/:org/:workspace/targets/:target_page", "set_backlog",
+       %{}},
+      {:"collection.set_backlog", :demoted_admin, "/:org/:workspace/targets/:target_page",
+       "set_backlog", %{}},
+      {:"collection.set_backlog", :removed_member, "/:org/:workspace/targets/:target_page",
+       "set_backlog", %{}},
+      # What a target's runs also read, on its form page: a member, and another
+      # organisation's owner naming this one's target, do not reach the page; a demoted
+      # admin's page was open.
+      {:"target.set_further_repositories", :member,
+       "/:org/:workspace/targets/:target_page/also-read", "save",
+       %{"target" => %{"further_repositories" => "acme/docs"}}, answer: :not_found_at_mount},
+      {:"target.set_further_repositories", :demoted_admin,
+       "/:org/:workspace/targets/:target_page/also-read", "save",
+       %{"target" => %{"further_repositories" => "acme/docs"}}},
+      {:"target.set_further_repositories", :other_owner,
+       "/:other_org/:other_ws/targets/:target_page/also-read", "save",
+       %{"target" => %{"further_repositories" => "acme/docs"}}, answer: :not_found_at_mount},
+      # A target's Rebuild, which every member may use: a member removed since the page
+      # opened is refused and the card read again, with nothing said; another
+      # organisation's owner naming this one's target does not reach the page.
+      {:"target.rebuild_environment", :removed_member, "/:org/:workspace/targets/:target_page",
+       "rebuild_environment", %{}, answer: :ignored},
+      {:"target.rebuild_environment", :other_owner, "/:other_org/:other_ws/targets/:target_page",
+       "rebuild_environment", %{}, answer: :not_found_at_mount},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy/rules/new", "rule_save",
        %{}, prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # Another organisation's owner, on its own policy, naming this one's rule.
@@ -184,10 +223,10 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "change_action",
        %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.edit", :other_owner,
-       "/:other_org/:other_ws/targets/:target_page/-/policy", "remove", %{"id" => :rule_open},
+       "/:other_org/:other_ws/targets/:other_target_page/policy", "remove", %{"id" => :rule_open},
        answer: :not_found},
       {:"security_policy.edit", :other_owner,
-       "/:other_org/:other_ws/targets/:target_page/-/policy", "change_action",
+       "/:other_org/:other_ws/targets/:other_target_page/policy", "change_action",
        %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.lock", :member, "/:org/:workspace/policy", "lock_toggle",
        %{"id" => :rule_open}},
@@ -217,16 +256,16 @@ defmodule ApiaryWeb.RefusalsRows do
       # A member's allow for a target under the workspace's locked deny: the New rule page
       # reads the lock and saves nothing. The workspace's rules have no act on a target's
       # page: an event naming one there is dropped.
-      {:"security_policy.lock", :member,
-       "/:org/:workspace/targets/:target_page/-/policy/rules/new", "rule_save", %{},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/policy/rules/new",
+       "rule_save", %{},
        prelude: [
          {"rule_validate", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
        ],
        answer: :ignored},
-      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/policy",
        "change_action", %{"id" => :rule_locked}, answer: :ignored},
-      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
-       "remove", %{"id" => :rule_locked}, answer: :ignored},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/policy", "remove",
+       %{"id" => :rule_locked}, answer: :ignored},
 
       # The nodes. Without the page or the confirmation open, from a member: refused, as
       # the page offers them no button.
@@ -385,8 +424,10 @@ defmodule ApiaryWeb.RefusalsRows do
 
   # Reads: a page asks them on mount and for what it shows, and changes nothing; their
   # refusals are the Access hook's (`test/apiary_web/access_test.exs`). The instance's own
-  # jobs: no page offers them. The server contract: an access key's, at a signed request,
-  # which the contract's tests refuse (`test/apiary_web/contract/`). Taken on the strength
+  # jobs, the installer's pass among them: no page offers them. The server contract: an
+  # access key's, at a signed request, which the contract's tests refuse
+  # (`test/apiary_web/contract/`), and a node pool's (`test/apiary/pool_key_role_test.exs`).
+  # Taken on the strength
   # of an invitation's token, which no role is: nobody is refused it by their level. The
   # release commands: run on the instance's host by whoever controls it, never offered by
   # a page (`test/apiary/instance_admin_test.exs`). A sign-up's: it creates an
@@ -394,11 +435,15 @@ defmodule ApiaryWeb.RefusalsRows do
   # the core offers it to a signed-in person. An edition's: creating a workspace, which
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one, and the context's tests
-  # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
+  # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`),
+  # or an adapter's changes (`test/apiary/adapters_test.exs`), or yet the changes of the
+  # work items and of what an adapter reports, whose pages are not built.
   # Turning the instance's mail on is following the test link a save sent, a controller's
   # redirect, not a page's event: the link's tests refuse it to anyone but the instance
   # admin it was sent to (`test/apiary/mail_settings_test.exs`,
-  # `test/apiary_web/live/instance_live/mail_test.exs`).
+  # `test/apiary_web/live/instance_live/mail_test.exs`). Starting an adapter's set-up is a
+  # controller's POST too, not a page's event: its tests refuse it to anyone but an
+  # instance admin (`test/apiary_web/controllers/adapter_setup_controller_test.exs`).
   @impl true
   def exempt do
     %{
@@ -409,10 +454,31 @@ defmodule ApiaryWeb.RefusalsRows do
         :"audit.read",
         :"node.read",
         :"secret.read",
-        :"variable.read"
+        :"variable.read",
+        :"adapter.read",
+        :"work_item.read"
       ],
-      jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
-      contract: [:"run.post_events", :"run_configuration.fetch"],
+      jobs: [
+        :"organisation.purge",
+        :"workspace.purge",
+        :"audit.prune",
+        :"adapter.install",
+        :"collection.move"
+      ],
+      contract: [
+        :"run.post_events",
+        :"run_configuration.fetch",
+        :"secret.seal",
+        :"adapter.declare",
+        :"source_item.post",
+        :"work_item.read_changes",
+        :"adapter.disconnect",
+        :"dispatch.claim",
+        :"dispatch.dispatched",
+        :"dispatch.handover",
+        :"dispatch.release",
+        :"dispatch.prebuilt"
+      ],
       token: [:"invitation.accept"],
       link: [:"instance.mail_on"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
@@ -421,7 +487,24 @@ defmodule ApiaryWeb.RefusalsRows do
       no_page: [
         :"secret.use",
         :"connection.read",
-        :"connection.write"
+        :"connection.write",
+        :"model_choice.write",
+        :"adapter.create",
+        :"adapter.edit",
+        :"adapter.set_interval",
+        :"adapter.delete",
+        :"adapter.connect",
+        :"adapter.setup",
+        :"collection.assign",
+        :"work_item.take_in",
+        :"work_item.undo",
+        :"work_item.decline",
+        :"work_item.close",
+        :"work_item.answer",
+        :"work_item.confirm",
+        :"work_item.explore_again",
+        :"work_item.comment",
+        :"work_item.comment_delete"
       ]
     }
   end
@@ -465,13 +548,24 @@ defmodule ApiaryWeb.RefusalsRows do
         first_seen_at: DateTime.utc_now()
       })
 
+    # The target's collection, assigned to the workspace, for its Backlog card: the
+    # `factory` feature's.
+    if :factory in Apiary.Features.enabled() do
+      connection = Apiary.WorkItemsFixtures.ticket_connection_fixture(owner)
+
+      Apiary.WorkItemsFixtures.source_collection_fixture(owner, connection, %{
+        target_system: target.system,
+        target_path: target.path
+      })
+    end
+
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
     pool = pool_fixture(owner, name: "spot-runners", instance_limit: 5)
     %{access_key: node_key} = node_key_fixture(owner, node)
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
-    node_run_fixture(node, instance.instance_id)
+    node_run_fixture(node, instance.node_instance_id)
     # After the node and the pool, which stay direct.
     gateway = gateway_fixture(owner, name: "edge-01")
     second_gateway = gateway_fixture(owner, name: "edge-02")
@@ -484,13 +578,14 @@ defmodule ApiaryWeb.RefusalsRows do
 
     # The same path in the other organisation, whose page its owner names this one's ids
     # from.
-    Repo.insert!(%Target{
-      organisation_id: other.organisation.id,
-      workspace_id: other.workspace.id,
-      system: target.system,
-      path: target.path,
-      first_seen_at: DateTime.utc_now()
-    })
+    other_target =
+      Repo.insert!(%Target{
+        organisation_id: other.organisation.id,
+        workspace_id: other.workspace.id,
+        system: target.system,
+        path: target.path,
+        first_seen_at: DateTime.utc_now()
+      })
 
     %{
       owner: owner,
@@ -513,6 +608,7 @@ defmodule ApiaryWeb.RefusalsRows do
       secret: secret,
       variable: variable,
       target: target,
+      other_target: other_target,
       key: key,
       node: node,
       pool: pool,
@@ -545,9 +641,10 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:secret, world), do: world.secret.public_id
   def value(:variable, world), do: {:id, world.variable.id}
   def value(:target, world), do: {:id, world.target.id}
-  # A target's page is its path alone where no other target of its workspace has it.
-  def value(:target_page, world), do: world.target.path
-  def value(:run, world), do: {:id, world.run.run_id}
+  # A target's page is its public id.
+  def value(:target_page, world), do: world.target.public_id
+  def value(:other_target_page, world), do: world.other_target.public_id
+  def value(:run, world), do: {:id, world.run.node_run_id}
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:pool, world), do: {:id, world.pool.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
@@ -555,7 +652,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:second_gateway, world), do: {:id, world.second_gateway.public_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
-  def value(:instance, world), do: world.instance.instance_id
+  def value(:instance, world), do: world.instance.id
   def value(_name, _world), do: nil
 
   # The organisation, the other one, whose pages its owner sends this one's ids from, and

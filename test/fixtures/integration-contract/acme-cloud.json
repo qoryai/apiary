@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "acme-cloud",
+  "title": "Acme cloud",
+  "description": "Models of Acme cloud: a key minted for each run.",
+  "program_version": "0.1.0",
+  "settings": {"type": "object"},
+  "roles": {
+    "credential": {"argument": "[a-z][a-z0-9-]{0,79}", "hosts": ["api.acme-cloud.example"]},
+    "model_provider": {
+      "apis": [
+        {"format": "openai-chat", "endpoint": "https://api.acme-cloud.example/v1", "auth": {"scheme": "bearer"}},
+        {"format": "openai-responses", "endpoint": "https://api.acme-cloud.example/v1", "auth": {"scheme": "bearer"}}
+      ],
+      "models": [
+        {"id": "acme/large-2", "title": "Acme Large 2", "effort": ["low", "medium", "high"]},
+        {"id": "acme/small-1", "title": "Acme Small 1"}
+      ]
+    }
+  },
+  "egress_hosts": ["api.acme-cloud.example"]
+}

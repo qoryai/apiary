@@ -35,8 +35,11 @@ defmodule Apiary.Runs.Registration do
   the run, which is held to it, its heartbeats' interval notwithstanding
   (`Apiary.Runs.Liveness`).
 
-  `register/3` stores the run. A key `Apiary.Access` does not let post (`run.post_events`)
-  is `{:error, :not_found}`. Then, when several answers apply, the first of these is given:
+  `register/3` stores the run. First, under any key and before anything that depends on
+  the key, a run id the instance gave a run itself is `{:error, :run_id_used}`: such a run
+  is never registered here. Then a key `Apiary.Access` does not let post
+  (`run.post_events`) is `{:error, :not_found}`. Then, when several answers apply, the
+  first of these is given:
 
     1. a repeat: a run of this id that registered with the same bytes, under any active
        key of the node or node pool that registered it (`Apiary.Runs.Sender`), so a key
@@ -87,7 +90,24 @@ defmodule Apiary.Runs.Registration do
   `fetch/3` is the reload: the run configuration in force for a run, read by its
   registration's labels, for the active keys of the node that registered it alone, or of
   the gateway that attached it and its attaching instance for a run through a gateway
-  (`Apiary.Runs.Sender`).
+  (`Apiary.Runs.Sender`). A run Qory set run variables for (`Apiary.Runs.Run`,
+  `registration_variables`) is given them after the document's last member, as its
+  attach was: the document is composed for the run with them
+  (`Apiary.Policy.ComposedConfiguration`), and its digest is the SHA-256 of the bytes
+  sent. A run whose attach composed its
+  configuration (`Apiary.Policy.ComposedConfiguration`: a run given an image, kept in
+  `configured_image`, or one that must build on its pool's default image, of a workspace
+  whose policy names an image) is given
+  the configuration in force now composed the same way, under the composed document's
+  digest, so every reload names the image the run started in; a workspace that serves no
+  configuration gives `{"version":1,"image":…}` to such a run that was given no policy at
+  its attach, while the workspace has never stored a run configuration, and not found to
+  every other. A run that attached is reloaded with what it started in
+  (`started_image_from`): a policy in force that selects another image than the run
+  started in is composed with the start's image, at the top level for a run given it there,
+  as the policy's `image` for a run that started in the image its policy named, and left
+  out for a run that started in none. The rest of the policy applies at once, and its image
+  from the next attach.
 
   The run is projected from sequence 1, which its registration stands for
   (`Apiary.Runs.Run.projected_from/1`).
@@ -97,10 +117,11 @@ defmodule Apiary.Runs.Registration do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Gateways, Nodes, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Gateways, Nodes, PublicId, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Policy.{Render, RunConfiguration, Serving}
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Policy.{ComposedConfiguration, Render, RunConfiguration, Serving}
   alias Apiary.Runs.{About, Batch, Run, RunKey, Sender}
 
   # The body's members, by the names the contract gives them.
@@ -341,6 +362,25 @@ defmodule Apiary.Runs.Registration do
   def register(%Scope{access_key: %AccessKey{} = access_key}, registration, meta),
     do: register(access_key, registration, meta)
 
+  # The moduledoc's first step, "a run id the instance gave a run itself", which names no
+  # queue, as the queue is left out of the documentation at `/docs`
+  # (`Apiary.Dispatches.DispatchRun`): a run id that names a run of a workspace's queue,
+  # on the whole instance and in any of its states (waiting, claimed, handed over or
+  # ended), is `{:error, :run_id_used}`, under any key, a node's, a node pool's or a
+  # gateway's alike, and whatever the key may do.
+  # The provisioner contract has it so (its `handover.schema.json`): such a run is
+  # registered only by its handover, never at the run endpoint, and its id is refused
+  # there first, before the stored answer to a repeat and before the instance limit; the
+  # Forager contract gives the other causes and their order. Asked before `may_post/1`
+  # too, so that every key is given the one answer for such an id, and the answer never
+  # depends on the key's kind or rights. The parse (`400 invalid_request`) and the `time`
+  # (`401`) come before, in the controller, as every check after the body does: nothing
+  # is looked up for a request that is not fresh. A run of the queue is given its id, a
+  # fresh UUID, when it is queued, before anyone outside the instance learns it, and the
+  # id never changes, so no registration can come between the queue and this lookup.
+  # The refusal stores nothing beyond what every verified request leaves (the endpoint's
+  # rate and the instance's sighting): no run, no count of the instance limit, no use
+  # recorded on the key. A lookup the database cannot answer is `{:error, :unavailable}`.
   def register(
         %AccessKey{} = access_key,
         %__MODULE__{} = registration,
@@ -352,7 +392,8 @@ defmodule Apiary.Runs.Registration do
     # A verified key carries its workspace and node; one that does not is given them here.
     access_key = Repo.preload(access_key, [:workspace, :node])
 
-    with :ok <- may_post(Scope.for_access_key(access_key)),
+    with :ok <- not_queued(registration.run_id),
+         :ok <- may_post(Scope.for_access_key(access_key)),
          {:ok, held} <- held(access_key, registration, digest) do
       case held do
         {:repeat, run} ->
@@ -363,6 +404,17 @@ defmodule Apiary.Runs.Registration do
                do: admit(held, route, access_key, registration, meta, digest, now)
       end
     end
+  end
+
+  # A run id no run of a workspace's queue has, on the whole instance (`dispatch_runs`,
+  # whose `run_id` is unique on the instance): `:ok`; one that a run of the queue has, in
+  # any state, is used.
+  defp not_queued(run_id) do
+    if Repo.exists?(from d in DispatchRun, where: d.run_id == ^run_id),
+      do: {:error, :run_id_used},
+      else: :ok
+  rescue
+    exception -> unavailable(exception)
   end
 
   # Where the run goes, by the node's recorded choice as it resolves now
@@ -414,7 +466,8 @@ defmodule Apiary.Runs.Registration do
     run =
       Repo.one(
         from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^registration.run_id
+          where:
+            r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^registration.run_id
       )
 
     case run do
@@ -458,6 +511,111 @@ defmodule Apiary.Runs.Registration do
   @spec configuration(AccessKey.t(), term) :: {:ok, settings} | {:error, :unavailable}
   def configuration(access_key, labels), do: settings(access_key, labels)
 
+  @doc """
+  The run configuration an attach gives a run of the key's workspace whose registration's
+  labels are `labels`, composed for it (`Apiary.Policy.ComposedConfiguration.shape/5`):
+  `opts` say the `image` the run is given (a string, nil, or a function that reads it,
+  asked only when the image is used), whether it must build on its pool's default image
+  (`prebuild`, a boolean, or a function that reads it), and whether the image is `fixed` for the run, as after its
+  attach (false unless given). `{:ok, settings, image}`, with the image the document names at
+  its top level, nil for none, which the run keeps; a run given no image, of a workspace
+  whose policy names none, is given `configuration/2`'s, the same bytes and digest.
+  `{:error, :unavailable}` as `configuration/2`.
+
+  `opts` also take `run`, the run whose document it is, nil unless given: its document is
+  composed with the run variables Qory set for it (`Apiary.Policy.ComposedConfiguration`),
+  and is `{:error, :unavailable}` when what it is composed with cannot be read, or when
+  its `egress.allow_first` would have more than the 64 entries the contract takes.
+  """
+  @spec configuration(AccessKey.t(), term, keyword) ::
+          {:ok, settings, String.t() | nil} | {:error, :unavailable}
+  def configuration(access_key, labels, opts) do
+    with {:ok, members} <- ComposedConfiguration.members(opts[:run]) do
+      configured(access_key, labels, opts, members)
+    end
+  rescue
+    _exception -> {:error, :unavailable}
+  end
+
+  defp configured(access_key, labels, opts, members) do
+    case composed(
+           access_key,
+           labels,
+           opts[:image],
+           Keyword.get(opts, :prebuild, false),
+           Keyword.get(opts, :fixed, false),
+           true,
+           members
+         ) do
+      {:ok, settings, image} ->
+        {:ok, settings, image}
+
+      :unmanaged ->
+        document = Render.no_policy_document()
+        {:ok, settings(document, Render.digest(document), false), nil}
+
+      {:error, _reason} ->
+        {:error, :unavailable}
+    end
+  end
+
+  # The run configuration in force for the labels, composed with the image for a run
+  # (`Apiary.Policy.ComposedConfiguration.serve/7`), the composed document kept: `{:ok,
+  # settings, image}`; `:unmanaged` where the workspace serves none and nothing is
+  # composed; `{:error, reason}` where the configuration cannot be read or the document
+  # cannot be composed. Where it serves none, a document is composed from no policy only
+  # when `from_no_policy?` is true (a boolean, or a function that reads it). `members` are
+  # the run's (`Apiary.Policy.ComposedConfiguration.members/1`), nil for none.
+  defp composed(access_key, labels, image, prebuild?, fixed?, from_no_policy?, members) do
+    %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
+
+    case Serving.fetch(access_key, labels) do
+      {:ok, %RunConfiguration{} = configuration} ->
+        case ComposedConfiguration.serve(
+               organisation_id,
+               workspace_id,
+               configuration,
+               image,
+               prebuild?,
+               fixed?,
+               members
+             ) do
+          :as_is ->
+            {:ok, settings(configuration.document, configuration.digest, true), nil}
+
+          {:ok, composed} ->
+            {:ok, settings(composed.document, composed.digest, true), composed.image}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, :unmanaged} ->
+        with true <- asked(from_no_policy?),
+             {:ok, composed} <-
+               ComposedConfiguration.serve(
+                 organisation_id,
+                 workspace_id,
+                 nil,
+                 image,
+                 prebuild?,
+                 fixed?,
+                 members
+               ) do
+          {:ok, settings(composed.document, composed.digest, false), composed.image}
+        else
+          {:error, reason} -> {:error, reason}
+          _none -> :unmanaged
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp asked(fun) when is_function(fun, 0), do: fun.()
+  defp asked(value), do: value
+
   defp settings(access_key, labels) do
     case Serving.fetch(access_key, labels) do
       {:ok, %RunConfiguration{document: document, digest: digest}} ->
@@ -485,9 +643,12 @@ defmodule Apiary.Runs.Registration do
 
   @doc """
   The run configuration a run was given under `digest`, for the key its place is read under
-  (`Apiary.Runs.Sender.place_key/2`): the document of no policy, or the stored configuration
-  of the run's workspace with that digest. One no longer stored is read again, as the run's
-  registration's labels name it. A registration's repeat and an attach's are given it.
+  (`Apiary.Runs.Sender.place_key/2`): the document of no policy, the stored configuration
+  of the run's workspace with that digest, or the document composed for a run with that
+  digest (`Apiary.Policy.ComposedConfiguration`). One no longer stored is read again, as
+  the run's registration's labels name it, composed with what the run started in
+  (`Apiary.Policy.ComposedConfiguration.started/1`). A registration's repeat and an
+  attach's are given it.
   """
   @spec answered(AccessKey.t(), Run.t(), String.t()) :: {:ok, settings} | {:error, :unavailable}
   def answered(access_key, %Run{} = run, digest) when is_binary(digest) do
@@ -495,21 +656,48 @@ defmodule Apiary.Runs.Registration do
 
     stored =
       if digest == Render.digest(no_policy),
-        do: no_policy,
-        else:
-          Repo.one(
-            from c in RunConfiguration,
-              where: c.workspace_id == ^run.workspace_id and c.digest == ^digest,
-              limit: 1,
-              select: c.document
-          )
+        do: {no_policy, false},
+        else: stored(run.workspace_id, digest)
 
     case stored do
-      nil -> settings(access_key, run.registration_labels)
-      document -> {:ok, settings(document, digest, document != no_policy)}
+      nil ->
+        with {:ok, settings, _image} <-
+               configuration(access_key, run.registration_labels,
+                 image: ComposedConfiguration.started(run),
+                 prebuild: fn -> ComposedConfiguration.prebuild?(run) end,
+                 fixed: true,
+                 run: run
+               ),
+             do: {:ok, settings}
+
+      {document, managed} ->
+        {:ok, settings(document, digest, managed)}
     end
   rescue
     exception -> unavailable(exception)
+  end
+
+  # The document of the workspace with that digest, stored or composed, and whether it is
+  # a run configuration the workspace serves; nil when neither holds it.
+  defp stored(workspace_id, digest) do
+    document =
+      Repo.one(
+        from c in RunConfiguration,
+          where: c.workspace_id == ^workspace_id and c.digest == ^digest,
+          limit: 1,
+          select: c.document
+      )
+
+    cond do
+      is_binary(document) ->
+        {document, true}
+
+      composed = ComposedConfiguration.fetch(workspace_id, digest) ->
+        {composed.document, not is_nil(composed.run_configuration_id)}
+
+      true ->
+        nil
+    end
   end
 
   # The refusals left, in the contract's order: the instance limit, then a run id that is
@@ -573,17 +761,42 @@ defmodule Apiary.Runs.Registration do
     do: settings(access_key, registration.labels)
 
   defp answer({:gateway, gateway, keys}, access_key, registration, meta, now) do
+    issue_through(
+      gateway,
+      keys,
+      %{
+        run_id: registration.run_id,
+        workspace: access_key.workspace.public_id,
+        node_id: access_key.node.public_id,
+        instance_id: meta[:instance_id]
+      },
+      now,
+      registration.attach_seconds
+    )
+  end
+
+  # issue_through/5 is the run key of a run registered through `gateway`, whose active
+  # keys are `keys`, at most two: the run's `run_id`, `workspace` and `node_id`, by their
+  # public ids, and `instance_id` from `grant`; issued at `now` in whole seconds, its attach
+  # window `attach_window(attach_seconds)` from then. `{:ok, %{run_key: run_key, through:
+  # fields}}`, the run's fields of a run through a gateway, or `{:error, :unavailable}`,
+  # logged, when no run key can be made for the gateway's address. A handover of a run of
+  # the queue makes its run key here too (`Apiary.Dispatches.Handover`).
+  @doc false
+  @spec issue_through(Nodes.Node.t(), [AccessKey.t()], map, DateTime.t(), pos_integer | nil) ::
+          {:ok, %{run_key: String.t(), through: map}} | {:error, :unavailable}
+  def issue_through(%Nodes.Node{} = gateway, keys, %{} = grant, %DateTime{} = now, attach_seconds) do
     issued = DateTime.truncate(now, :second)
-    attach_by = DateTime.add(issued, attach_window(registration.attach_seconds), :second)
+    attach_by = DateTime.add(issued, attach_window(attach_seconds), :second)
 
     grant = %{
-      run_id: registration.run_id,
-      workspace: access_key.workspace.public_id,
-      node_id: access_key.node.public_id,
+      run_id: grant.run_id,
+      workspace: grant.workspace,
+      node_id: grant.node_id,
       gateway: gateway.public_id,
       gateway_url: gateway.url,
       gateway_public_keys: Enum.map(keys, & &1.public_key),
-      instance_id: meta[:instance_id],
+      instance_id: grant.instance_id,
       issued: issued,
       attach_by: attach_by
     }
@@ -640,44 +853,79 @@ defmodule Apiary.Runs.Registration do
   # winner's, and the run id is used otherwise, which rolls back. An insert that loses to
   # a run of another workspace through the same gateway, under the same id, finds no row
   # here: the run id is used.
+  #
+  # The insert does nothing on any conflict, a collision of the new public id too. It
+  # then finds no row and the public id taken by another run: that try is a collision, and
+  # the insert runs again with a new id (`Apiary.PublicId.Insert`). When every try finds
+  # the id taken, the registration is unavailable, as one the database fails.
   defp insert(access_key, registration, meta, digest, answer, now) do
-    {inserted, _rows} =
-      Repo.insert_all(
-        Run,
-        [
-          %{
-            id: Ecto.UUID.generate(),
-            organisation_id: access_key.organisation_id,
-            workspace_id: access_key.workspace_id,
-            run_id: registration.run_id,
-            access_key_id: access_key.id,
-            state: "pending",
-            forager_version: forager_version(registration, meta),
-            contract_version: meta.contract_version,
-            registered_at: now,
-            registration_labels: registration.labels,
-            registration_about: registration.about,
-            registration_digest: digest,
-            registration_interval_seconds: registration.interval_seconds,
-            registration_answer_digest: answer[:digest],
-            # The registration stands for the record's sequence 1, never posted.
-            projected_sequence: Run.projected_from(%{registered_at: now}),
-            inserted_at: now,
-            updated_at: now
-          }
-          |> Map.merge(Nodes.placement(access_key.node, meta[:instance_id]))
-          |> Map.merge(answer[:through] || %{})
-        ],
-        on_conflict: :nothing
-      )
+    result =
+      PublicId.Insert.run(Run, fn _try ->
+        public_id = Run.new_public_id()
 
-    run =
-      Repo.one(
-        from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^registration.run_id,
-          lock: "FOR UPDATE"
-      )
+        {inserted, _rows} =
+          insert_row(public_id, access_key, registration, meta, digest, answer, now)
 
+        run =
+          Repo.one(
+            from r in Run,
+              where:
+                r.workspace_id == ^access_key.workspace_id and
+                  r.node_run_id == ^registration.run_id,
+              lock: "FOR UPDATE"
+          )
+
+        if is_nil(run) and Repo.exists?(from r in Run, where: r.public_id == ^public_id),
+          do: {:error, :public_id_taken},
+          else: {inserted, run}
+      end)
+
+    case result do
+      {:error, :public_id_taken} ->
+        Logger.error(
+          "a registration could not be stored: its public id was taken #{PublicId.Insert.max_tries()} times"
+        )
+
+        {:error, :unavailable}
+
+      {inserted, run} ->
+        stored(inserted, run, access_key, answer, digest)
+    end
+  end
+
+  defp insert_row(public_id, access_key, registration, meta, digest, answer, now) do
+    Repo.insert_all(
+      Run,
+      [
+        %{
+          id: Ecto.UUID.generate(),
+          public_id: public_id,
+          organisation_id: access_key.organisation_id,
+          workspace_id: access_key.workspace_id,
+          node_run_id: registration.run_id,
+          access_key_id: access_key.id,
+          state: "pending",
+          forager_version: forager_version(registration, meta),
+          contract_version: meta.contract_version,
+          registered_at: now,
+          registration_labels: registration.labels,
+          registration_about: registration.about,
+          registration_digest: digest,
+          registration_interval_seconds: registration.interval_seconds,
+          registration_answer_digest: answer[:digest],
+          # The registration stands for the record's sequence 1, never posted.
+          projected_sequence: Run.projected_from(%{registered_at: now}),
+          inserted_at: now,
+          updated_at: now
+        }
+        |> Map.merge(Nodes.placement(access_key.node, meta[:instance_id]))
+        |> Map.merge(answer[:through] || %{})
+      ],
+      on_conflict: :nothing
+    )
+  end
+
+  defp stored(inserted, run, access_key, answer, digest) do
     cond do
       is_nil(run) ->
         {:error, :run_id_used}
@@ -735,7 +983,12 @@ defmodule Apiary.Runs.Registration do
   does not have the `security` feature, or `Apiary.Access` refuses
   `run_configuration.fetch`. That last is never the document of no policy, which would
   take the policy in force off a run that started under it: a policy removed mid-run
-  never loosens a run already started.
+  never loosens a run already started, one given an image included. Only a run whose
+  attach answer was composed from no policy, where the workspace served no run
+  configuration at its attach (`{"version":1,"image":…}` for a run given an image, or the
+  document of no policy with the run variables Qory set for it), receives that again
+  there, and only while the workspace has never stored a run configuration: such a run
+  started under no policy of the workspace and cannot have taken one on a reload since.
   `{:error, :workspace_not_served}` for a run through a gateway that may no longer serve
   the run's workspace (`Apiary.Runs.Sender.serves?/2`).
   `{:error, :unavailable}` when the configuration cannot be read.
@@ -754,15 +1007,25 @@ defmodule Apiary.Runs.Registration do
          %Run{} = run <- Repo.one(Sender.run_query(access_key, run_id)),
          true <- reload_allowed?(access_key, run, instance_id),
          true <- Sender.serves?(run, access_key) || :not_served do
-      case Serving.fetch(Sender.place_key(run, access_key), run.registration_labels) do
-        {:ok, %RunConfiguration{document: document, digest: digest}} ->
-          {:ok, settings(document, digest, true)}
+      with {:ok, members} <- ComposedConfiguration.members(run) do
+        case composed(
+               Sender.place_key(run, access_key),
+               run.registration_labels,
+               ComposedConfiguration.started(run),
+               fn -> ComposedConfiguration.prebuild?(run) end,
+               true,
+               fn -> given_no_policy?(run) end,
+               members
+             ) do
+          {:ok, settings, _image} ->
+            {:ok, settings}
 
-        {:error, :unmanaged} ->
-          without_run_configuration()
+          :unmanaged ->
+            without_run_configuration()
 
-        {:error, _reason} ->
-          {:error, :unavailable}
+          {:error, _reason} ->
+            {:error, :unavailable}
+        end
       end
     else
       :not_served -> {:error, :workspace_not_served}
@@ -772,14 +1035,29 @@ defmodule Apiary.Runs.Registration do
     _exception -> {:error, :unavailable}
   end
 
-  # Who may reload a run: an active key of the node that registered it, and no other; for a
-  # run through a gateway, the instance of the gateway that attached it. A reload reads,
-  # and gives a run whose attaching instance is not known yet none. A run its batches
-  # created, which never registered, and a run whose node is gone are reloaded by none.
-  defp reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run, instance_id),
+  # Whether the run can never have been given a policy: its attach answer was a document
+  # composed from none, with its image or its members alone, and the workspace has never
+  # stored a run configuration since, so no reload can have returned one for the run.
+  # Only such a run is reloaded from no policy; any other is reloaded with none,
+  # `not_found`, so a workspace that stops serving its policy mid-run never loosens a run,
+  # one that took the policy on a reload included.
+  defp given_no_policy?(%Run{workspace_id: workspace_id, attach_answer_digest: digest}),
+    do:
+      ComposedConfiguration.from_no_policy?(workspace_id, digest) and
+        not Apiary.Policy.managed_workspace?(workspace_id)
+
+  # reload_allowed?/3 is whether `access_key`, from the instance `instance_id`, may reload
+  # `run`, as the reload and the secrets request (`Apiary.Runs.SecretsRequest`) check it:
+  # an active key of the node that registered it, and no other; for a run through a
+  # gateway, the instance of the gateway that attached it. A run whose attaching instance
+  # is not known yet is reloaded by none, nor is a run its batches created, which never
+  # registered, nor a run whose node is gone.
+  @doc false
+  @spec reload_allowed?(AccessKey.t(), Run.t(), String.t() | nil) :: boolean
+  def reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run, instance_id),
     do: Sender.may_send?(run, access_key, instance_id) and place_in_use?(run)
 
-  defp reload_allowed?(_access_key, _run, _instance_id), do: false
+  def reload_allowed?(_access_key, _run, _instance_id), do: false
 
   # A run through a gateway is held to its own place, which may not be the gateway key's:
   # out of use, it is reloaded by none.

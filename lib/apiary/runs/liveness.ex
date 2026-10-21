@@ -17,7 +17,11 @@ defmodule Apiary.Runs.Liveness do
       or else from the moment the workspace first heard of it (`inserted_at`, which for a
       run that registered is its `registered_at`);
     * a run through a gateway that its gateway has not attached is lost at the end of its
-      attach window (`attach_by`), and not before, whatever its interval.
+      attach window (`attach_by`), and not before, whatever its interval;
+    * a run whose attach set a deadline for its end (`backstop_at`) is lost once that
+      deadline has passed, `pending` or `running`, however recently it was heard from. A
+      run is given one at its attach only, and a run with its outcome or its exit is
+      neither pending nor running, so it is left alone.
 
   **A heartbeat's time.** A heartbeat counts as heard at its `time`, corrected by the
   run's clock offset, plus a tolerance of 300 seconds, and never after its arrival
@@ -41,7 +45,9 @@ defmodule Apiary.Runs.Liveness do
   Each rule is one `UPDATE … WHERE`, so several nodes ticking at once do not disagree:
   the row is changed by whichever gets there first and the other matches nothing. No
   stored value can make a rule raise: the interval is bounded inside the SQL. `lost` is
-  not final: a later heartbeat or the exit corrects the state through the projector.
+  not final: a later heartbeat or the exit corrects the state through the projector, but
+  for a run past its `backstop_at`, which no heartbeat or start brings back
+  (`past_backstop?/2`): only its exit or its starter's outcome changes it.
 
   **Alive.** The two rules are one condition each, shared: `alive/2` is their negation,
   for whatever counts the runs that are still alive, as a node's running instances and
@@ -62,6 +68,7 @@ defmodule Apiary.Runs.Liveness do
 
   require Logger
 
+  alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Event, Projector, Run}
@@ -90,6 +97,14 @@ defmodule Apiary.Runs.Liveness do
     sweep(now)
     lost = mark(running_silent(now), now) ++ mark(pending_silent(now), now)
     Enum.each(lost, &Runs.broadcast_changed/1)
+    # Then the runs a workspace's queue handed over that ended, lost by the rules above or
+    # by their outcome or exit: their dispatches end and free their slots once
+    # (`Apiary.Dispatches.RunEnd`).
+    Apiary.Dispatches.broadcast(RunEnd.lose(now))
+    # Then the runs of the queue ended by their outcome or exit whose registered run is
+    # settled since, and whose outcome is not yet stored: what each gave is stored
+    # (`Apiary.Dispatches.Settle`).
+    Apiary.Dispatches.broadcast(Settle.sweep(now))
     lost
   end
 
@@ -159,6 +174,19 @@ defmodule Apiary.Runs.Liveness do
     DateTime.compare(DateTime.add(heard_at, beat * @missed, :second), at) != :lt
   end
 
+  @doc """
+  Whether `at` is past `run`'s `backstop_at`, the deadline its attach set for its end: by
+  then a run that has neither its outcome nor its exit is lost, and no heartbeat or start
+  that arrives after it brings the run back. False for a run with none.
+  """
+  @spec past_backstop?(map(), DateTime.t()) :: boolean()
+  def past_backstop?(run, %DateTime{} = at) do
+    case Map.get(run, :backstop_at) do
+      %DateTime{} = backstop_at -> DateTime.compare(backstop_at, at) == :lt
+      _none -> false
+    end
+  end
+
   # The interval is bounded here as well as in the fold, so the arithmetic cannot
   # overflow whatever the column holds: the registration's, else the attach's, else the
   # heartbeats', else the default.
@@ -201,8 +229,16 @@ defmodule Apiary.Runs.Liveness do
 
   # The two rules, as conditions on a run named `:run`: a running run silent since its
   # last heartbeat, its run.started's arrival or its first event; a pending run silent
-  # since its first event.
-  defp silent(:running, now) do
+  # since its first event. Either past its `backstop_at`, whatever was heard.
+  defp silent(:running, now), do: dynamic(^heard(:running, now) or ^past_backstop(now))
+  defp silent(:pending, now), do: dynamic(^heard(:pending, now) or ^past_backstop(now))
+
+  # Null for a run with none, which no comparison with null may leave unknown: `alive/2`
+  # negates the rule.
+  defp past_backstop(now),
+    do: dynamic([run: r], not is_nil(r.backstop_at) and r.backstop_at < ^now)
+
+  defp heard(:running, now) do
     started =
       from e in Event,
         where: e.run_id == parent_as(:run).id and e.type == "dev.qory.run.started",
@@ -230,7 +266,7 @@ defmodule Apiary.Runs.Liveness do
 
   # A run through a gateway that is not attached yet waits for its gateway until the end of
   # its attach window; once attached, it is measured from its attach.
-  defp silent(:pending, now) do
+  defp heard(:pending, now) do
     dynamic(
       [run: r],
       fragment(

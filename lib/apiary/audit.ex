@@ -59,7 +59,11 @@ defmodule Apiary.Audit do
   organisation's trail too, by the person or the instance, naming the account by user id
   and never holding the link. Saving the instance's mail settings and turning them on
   (`Apiary.Mail.save_settings/3`, `turn_on/2`) are an `instance.mail_save` and an
-  `instance.mail_on` there, by the instance admin, never holding the password. A new
+  `instance.mail_on` there, by the instance admin, never holding the password. Setting the
+  product's name (`Apiary.ProductName.rename/2`) is an `instance.rename` there, by the
+  instance admin, with the name before and after, nil for none. Saving the instance's
+  settings (`Apiary.InstanceConfig.save/3`) is an `instance.configure` there, by the
+  instance admin, with the values before and after. A new
   organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
@@ -78,8 +82,10 @@ defmodule Apiary.Audit do
   the purge of a deleted workspace or organisation (`Apiary.Deletion`), whose entries go
   with it: the trail keeps an organisation's entries for `retention_days/0` days, an
   instance setting, and a daily job per organisation (`Apiary.Audit.PruneJob`) deletes the
-  older ones. The setting is from 30 days to the edition's ceiling
-  (`c:Apiary.Edition.audit_retention_max_days/0`), 90 days in the core, and 90 when unset.
+  older ones. The setting is `AUDIT_RETENTION_DAYS`, or the value saved in Instance
+  settings › Configuration (`Apiary.InstanceConfig`), from 30 days to the edition's
+  ceiling (`c:Apiary.Edition.audit_retention_max_days/0`), 90 days in the core, and 90
+  when neither sets it.
   The address and the client an entry came from are personal data kept for no longer,
   `address_retention_days/0`, after which the same job clears them and leaves the rest.
   Each prune that deleted entries is itself an entry, by the instance.
@@ -97,6 +103,7 @@ defmodule Apiary.Audit do
   alias Apiary.{Access, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Adapters.Collection
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
@@ -104,8 +111,10 @@ defmodule Apiary.Audit do
   alias Apiary.Runs.{Run, Target}
   alias Apiary.Connections.{Connection, ServiceDefinition}
   alias Apiary.Integrations.Release
+  alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Secrets.Secret
   alias Apiary.Variables.Variable
+  alias Apiary.WorkItems.WorkItem
 
   @subject_kinds %{
     Organisation => "organisation",
@@ -120,8 +129,11 @@ defmodule Apiary.Audit do
     Secret => "secret",
     Variable => "variable",
     Connection => "connection",
+    ModelChoice => "model_choice",
     ServiceDefinition => "service_definition",
-    Release => "integration_release"
+    Release => "integration_release",
+    WorkItem => "work_item",
+    Collection => "collection"
   }
 
   @default_retention_days 90
@@ -387,6 +399,11 @@ defmodule Apiary.Audit do
   defp actor(_scope),
     do: raise(ArgumentError, "an audit entry needs a person, an access key or the instance")
 
+  # A key without an organisation is an adapter's, which is the instance's: it acts in the
+  # trail of the instance's organisation, as its adapter's entries are.
+  defp organisation_id(%Scope{access_key: %AccessKey{organisation_id: nil}}),
+    do: Apiary.Edition.instance_organisation_id()
+
   defp organisation_id(%Scope{access_key: %AccessKey{organisation_id: id}}), do: id
   defp organisation_id(%Scope{organisation: %Organisation{id: id}}), do: id
   defp organisation_id(_scope), do: nil
@@ -404,6 +421,12 @@ defmodule Apiary.Audit do
 
   defp place(%Organisation{id: id}), do: {id, nil}
   defp place(%Workspace{id: id, organisation_id: organisation_id}), do: {organisation_id, id}
+
+  # An adapter and its access keys have no organisation: they are the instance's, and
+  # their entries are in the trail of the instance's organisation, the one it is when the
+  # entry is written (`c:Apiary.Edition.instance_organisation_id/0`), and stay there.
+  defp place(%module{organisation_id: nil, workspace_id: nil}) when module in [Node, AccessKey],
+    do: {Apiary.Edition.instance_organisation_id(), nil}
 
   defp place(%{organisation_id: organisation_id, workspace_id: workspace_id}),
     do: {organisation_id, workspace_id}
@@ -508,8 +531,12 @@ defmodule Apiary.Audit do
           nodes: %{Ecto.UUID.t() => String.t()},
           workspaces: %{Ecto.UUID.t() => String.t()},
           targets: %{Ecto.UUID.t() => String.t()},
-          runs: %{Ecto.UUID.t() => Ecto.UUID.t()},
-          organisations: %{Ecto.UUID.t() => String.t()}
+          runs: %{Ecto.UUID.t() => String.t()},
+          organisations: %{Ecto.UUID.t() => String.t()},
+          collections: %{Ecto.UUID.t() => String.t()},
+          item_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}},
+          collection_nouns: %{Ecto.UUID.t() => %{one: String.t(), other: String.t()}},
+          connection_collection_nouns: %{String.t() => %{one: String.t(), other: String.t()}}
         }
 
   @doc """
@@ -517,13 +544,29 @@ defmodule Apiary.Audit do
   in one query per kind: the email address of each person (the person named as actor, or
   in `details` as `user_id`), the label and key id of each access key, the name of each
   node, a deleted one's too, the name of each workspace (an entry's, or its subject),
-  `system/path` of each target, and the run id of each run, and the name of each other organisation an entry names by id, under a key
-  that ends in `_id` in its `details`, `before` or `after`: the other side of a change
-  that concerns two organisations, which an edition records. Only what the scope's
-  organisation holds is looked up, people and those organisations aside. A person whose account is deleted, a key or a row
-  that is gone has no key: the page says so. A workspace marked for deletion is still
-  named until it is purged.
+  `system/path` of each target, the run id of each run, and the name of each other
+  organisation an entry names by id, under a key that ends in `_id` in its `details`,
+  `before` or `after`: the other side of a change that concerns two organisations, which
+  an edition records. Only what the scope's organisation holds is looked up, people and
+  those organisations aside; in the instance's organisation, the nodes and access keys of
+  the instance, which no organisation holds, too. A person whose account is deleted, a key
+  or a row that is gone has no key: the page says so. A workspace marked for deletion is
+  still named until it is purged.
   """
+  # For the entries of the `factory` feature, which the documentation leaves out, names/2
+  # also looks up the title of each source's collection; for the target of each entry
+  # that turned a Backlog on or off (`collection.set_backlog`), what its sources call its
+  # items, where they name it (Apiary.Adapters.target_item_nouns/2); for the work item of
+  # each take in (`work_item.take_in`), what its source calls its items, where it names
+  # them (Apiary.WorkItems.item_nouns/2); for the collection of each entry about a
+  # collection, what the source behind the connection its `details` name by public id
+  # (`connection_id`) calls its items and its collections, where it names them
+  # (`collection_nouns`), even once the collection is gone; and for each entry that
+  # assigns collections to a workspace or unassigns them (`collection.assign`), what the
+  # source behind the connection its `details` name calls its collections, by that public
+  # id (`connection_collection_nouns`), where it names them. A model choice
+  # (`Apiary.ModelChoices`) is a subject too, and the target its `details` have by
+  # `target_id` is looked up with the targets.
   @spec names(Scope.t(), [Entry.t()]) :: names
   def names(%Scope{organisation: %Organisation{id: organisation_id}}, entries)
       when is_list(entries) do
@@ -546,8 +589,61 @@ defmodule Apiary.Audit do
       ids.(&[&1.workspace_id, if(&1.subject_kind == "workspace", do: &1.subject_id)])
 
     nodes = ids.(&[if(&1.subject_kind == "node", do: &1.subject_id)])
-    targets = ids.(&[if(&1.subject_kind == "target", do: &1.subject_id)])
+
+    targets =
+      ids.(
+        &[
+          if(&1.subject_kind == "target", do: &1.subject_id),
+          if(&1.subject_kind == "model_choice", do: details(&1, "target_id"))
+        ]
+      )
+
     runs = ids.(&[if(&1.subject_kind == "run", do: &1.subject_id)])
+
+    backlog_targets =
+      ids.(
+        &[
+          if(&1.subject_kind == "target" and &1.action == "collection.set_backlog",
+            do: &1.subject_id
+          )
+        ]
+      )
+
+    taken_in =
+      ids.(
+        &[
+          if(&1.subject_kind == "work_item" and &1.action == "work_item.take_in",
+            do: &1.subject_id
+          )
+        ]
+      )
+
+    collections = ids.(&[if(&1.subject_kind == "collection", do: &1.subject_id)])
+
+    # Each entry about a collection, by its collection, with the connection its details
+    # name; an entry that names none, or a public id of no connection, has no nouns.
+    sources =
+      for %Entry{subject_kind: "collection", subject_id: id} = entry <- entries,
+          uuid?(id),
+          connection_id = details(entry, "connection_id"),
+          is_binary(connection_id),
+          into: %{},
+          do: {id, connection_id}
+
+    # The connection each entry that assigns or unassigns collections names.
+    assigning =
+      for %Entry{action: "collection.assign"} = entry <- entries,
+          connection_id = details(entry, "connection_id"),
+          is_binary(connection_id),
+          uniq: true,
+          do: connection_id
+
+    nouns =
+      Apiary.Adapters.connection_nouns(organisation_id, Map.values(sources) ++ assigning)
+
+    # The instance's nodes and keys, which have no organisation, have their entries in the
+    # trail of the instance's organisation, and are named there alone.
+    instance? = organisation_id == Apiary.Edition.instance_organisation_id()
 
     organisations =
       ids.(fn entry ->
@@ -563,14 +659,21 @@ defmodule Apiary.Audit do
         lookup(
           keys,
           from(k in AccessKey,
-            where: k.organisation_id == ^organisation_id,
+            where:
+              k.organisation_id == ^organisation_id or
+                (^instance? and is_nil(k.organisation_id)),
             select: {k.id, %{label: k.label, key_id: k.key_id}}
           )
         ),
       nodes:
         lookup(
           nodes,
-          from(n in Node, where: n.organisation_id == ^organisation_id, select: {n.id, n.name})
+          from(n in Node,
+            where:
+              n.organisation_id == ^organisation_id or
+                (^instance? and is_nil(n.organisation_id)),
+            select: {n.id, n.name}
+          )
         ),
       workspaces:
         lookup(
@@ -591,10 +694,36 @@ defmodule Apiary.Audit do
       runs:
         lookup(
           runs,
-          from(r in Run, where: r.organisation_id == ^organisation_id, select: {r.id, r.run_id})
+          from(r in Run,
+            where: r.organisation_id == ^organisation_id,
+            select: {r.id, r.public_id}
+          )
         ),
-      organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name}))
+      organisations: lookup(organisations, from(o in Organisation, select: {o.id, o.name})),
+      collections:
+        lookup(
+          collections,
+          from(c in Collection,
+            where: c.organisation_id == ^organisation_id,
+            select: {c.id, c.title}
+          )
+        ),
+      item_nouns:
+        Apiary.Adapters.target_item_nouns(organisation_id, backlog_targets)
+        |> Map.merge(Apiary.WorkItems.item_nouns(organisation_id, taken_in))
+        |> Map.merge(source_nouns(sources, nouns, :item)),
+      collection_nouns: source_nouns(sources, nouns, :collection),
+      connection_collection_nouns: source_nouns(Map.new(assigning, &{&1, &1}), nouns, :collection)
     }
+  end
+
+  # The nouns `which`, `:item` or `:collection`, of the connections `sources` names, by
+  # the id each is named under; one whose source names none has no key.
+  defp source_nouns(sources, nouns, which) do
+    for {id, connection_id} <- sources,
+        %{^which => %{} = noun} <- [nouns[connection_id]],
+        into: %{},
+        do: {id, noun}
   end
 
   defp lookup([], _query), do: %{}
@@ -675,34 +804,22 @@ defmodule Apiary.Audit do
 
   @doc """
   retention_days/0 is how many days the instance keeps an audit entry:
-  `AUDIT_RETENTION_DAYS`, checked at boot (`boot!/0`), #{@default_retention_days} when
-  unset.
+  `AUDIT_RETENTION_DAYS`, checked at boot (`boot!/0`), or the value saved in Instance
+  settings › Configuration (`Apiary.InstanceConfig`), #{@default_retention_days} when
+  neither sets it; never more than the edition's ceiling.
   """
   @spec retention_days() :: pos_integer
-  def retention_days do
-    case Application.fetch_env(:apiary, :audit_retention_days) do
-      {:ok, days} -> days
-      :error -> boot!()
-    end
-  end
+  def retention_days, do: Apiary.InstanceConfig.value(:audit_retention_days)
 
   @doc """
   address_retention_days/0 is how many days the instance keeps the address and the client
   an audit entry came from: `AUDIT_ADDRESS_RETENTION_DAYS`, checked at boot (`boot!/0`),
-  #{@default_address_retention_days} when unset, or the trail's period when that is
-  shorter.
+  or the value saved in Instance settings › Configuration (`Apiary.InstanceConfig`),
+  #{@default_address_retention_days} when neither sets it; never longer than the trail's
+  period.
   """
   @spec address_retention_days() :: pos_integer
-  def address_retention_days do
-    case Application.fetch_env(:apiary, :audit_address_retention_days) do
-      {:ok, days} ->
-        days
-
-      :error ->
-        boot!()
-        Application.fetch_env!(:apiary, :audit_address_retention_days)
-    end
-  end
+  def address_retention_days, do: Apiary.InstanceConfig.value(:audit_address_retention_days)
 
   @doc """
   retention_min_days/0 is the fewest days the trail keeps an entry, the least
@@ -772,17 +889,25 @@ defmodule Apiary.Audit do
 
   @doc """
   boot!/0 reads `AUDIT_RETENTION_DAYS` and `AUDIT_ADDRESS_RETENTION_DAYS` as
-  `config/runtime.exs` left them, checks them and fixes both periods for the life of the
-  node; it returns the trail's. Called at boot; raises on a value
-  `parse_retention_days/1` or `parse_address_retention_days/2` refuses, and on subject
-  kinds `subject_kinds/2` refuses, so the instance does not start.
+  `config/runtime.exs` left them and checks them, the address's period against the
+  trail's that the variable gives, or #{@default_retention_days} days where it is not
+  set. It keeps each variable's value for the life of the node, under
+  `:audit_retention_days` and `:audit_address_retention_days`: the number of days where
+  the variable is set and not blank, nil otherwise, so the value saved in Instance
+  settings › Configuration applies (`Apiary.InstanceConfig`). It reads no saved value,
+  since it runs before the database is reached. It returns the trail's period the
+  variable gives, #{@default_retention_days} where it is not set. Called at boot; raises
+  on a value `parse_retention_days/1` or `parse_address_retention_days/2` refuses, and on
+  subject kinds `subject_kinds/2` refuses, so the instance does not start.
   """
   @spec boot!() :: pos_integer
   def boot! do
     subject_kinds()
 
+    retention_setting = Application.get_env(:apiary, :audit_retention_setting)
+
     days =
-      case parse_retention_days(Application.get_env(:apiary, :audit_retention_setting)) do
+      case parse_retention_days(retention_setting) do
         {:ok, days} ->
           days
 
@@ -809,8 +934,15 @@ defmodule Apiary.Audit do
           """
       end
 
-    Application.put_env(:apiary, :audit_retention_days, days)
-    Application.put_env(:apiary, :audit_address_retention_days, address_days)
+    Application.put_env(:apiary, :audit_retention_days, set(retention_setting, days))
+    Application.put_env(:apiary, :audit_address_retention_days, set(setting, address_days))
     days
   end
+
+  # The value a variable sets: the days read from it where it is set and not blank, nil
+  # where it is not set, or is blank.
+  defp set(setting, days) when is_binary(setting),
+    do: if(String.trim(setting) == "", do: nil, else: days)
+
+  defp set(nil, _days), do: nil
 end

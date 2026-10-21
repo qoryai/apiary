@@ -78,7 +78,7 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
 
     assert {:error, :gateway_not_serving} = Task.await(registration, 10_000)
     assert Repo.get!(Node, gateway.id).deleted_at
-    refute Repo.exists?(from r in Run, where: r.run_id == ^run_id)
+    refute Repo.exists?(from r in Run, where: r.node_run_id == ^run_id)
   end
 
   test "a deletion that waits on a registration's commit finds its run",
@@ -98,7 +98,7 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
           Repo.insert!(%Run{
             organisation_id: scope.organisation.id,
             workspace_id: scope.workspace.id,
-            run_id: run_id
+            node_run_id: run_id
           })
 
           send(test, :held)
@@ -130,32 +130,16 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
 
   test "a deletion that waits on an attach's commit finds the run attached",
        %{scope: scope, gateway: gateway, gateway_key: gateway_key, node: node, key: key} do
-    test = self()
-
     {:ok, %{run: run, run_key: run_key}} =
       register_run(key, gateway_registration(), instance_id())
 
-    # The node goes directly from now on, so only the run holds the gateway; and the run's
-    # attach window ends a second from now.
+    # The node goes directly from now on, so only the run holds the gateway.
     {:ok, _} = Nodes.update_node(scope, node, %{gateway_choice: "direct"})
-    attach_by = DateTime.add(DateTime.utc_now(), 1, :second)
-    Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [attach_by: attach_by])
     {:ok, body} = Attach.parse(attach_body(run_key))
 
-    # The attach's transaction: the run is attached within its window, and the gateway's
-    # row held `FOR SHARE` until told to commit.
-    attach =
-      Task.async(fn ->
-        Repo.transaction(fn ->
-          assert {:ok, %{run: attached, repeated: false}} =
-                   Attach.attach(gateway_key, run.run_id, body, %{})
-
-          send(test, :attached)
-          receive do: (:commit -> attached)
-        end)
-      end)
-
-    assert_receive :attached, 10_000
+    # The attach's transaction: the run is attached within its window, which ends a second
+    # from now, and the gateway's row held `FOR SHARE` until told to commit.
+    {attach, attach_by} = held_attach(gateway_key, run, body, 1)
 
     # Past the window, the run as committed neither waits nor is attached.
     Process.sleep(max(DateTime.diff(attach_by, DateTime.utc_now(), :millisecond), 0) + 100)
@@ -174,6 +158,51 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
              Task.await(deletion, 10_000)
 
     assert Repo.get!(Node, gateway.id).deleted_at == nil
+  end
+
+  # The run's attach window ends `seconds` from now, and an attach of it is held, uncommitted,
+  # until told to commit, and returned with the end of the window. A window that closed
+  # before the attach read its clock, on a slow machine, is opened again for twice as long,
+  # up to 8 seconds, which the 10 seconds the attach's answer is waited for cover.
+  # The window is set before the attach's transaction, not in it: a second change of the
+  # run's row in that transaction would have its foreign key checked again, and that check
+  # holds the gateway's row as the attach's lock does.
+  defp held_attach(gateway_key, run, body, seconds)
+
+  defp held_attach(_gateway_key, _run, _body, seconds) when seconds > 8,
+    do: flunk("the attach never came within its window")
+
+  defp held_attach(gateway_key, run, body, seconds) do
+    test = self()
+    attach_by = DateTime.add(DateTime.utc_now(), seconds, :second)
+    Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [attach_by: attach_by])
+
+    attach =
+      Task.async(fn ->
+        Repo.transaction(fn ->
+          case Attach.attach(gateway_key, run.node_run_id, body, %{}) do
+            {:error, :run_key_expired} ->
+              send(test, :expired)
+              Repo.rollback(:expired)
+
+            answer ->
+              assert {:ok, %{run: attached, repeated: false}} = answer
+              send(test, :attached)
+              receive do: (:commit -> attached)
+          end
+        end)
+      end)
+
+    receive do
+      :attached ->
+        {attach, attach_by}
+
+      :expired ->
+        assert {:error, :expired} = Task.await(attach, 10_000)
+        held_attach(gateway_key, run, body, seconds * 2)
+    after
+      10_000 -> flunk("the attach never answered")
+    end
   end
 
   # Until `count` backends of this database wait on a lock: the sides held by the others.

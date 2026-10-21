@@ -4,7 +4,7 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Connections
+  alias Apiary.{Connections, Repo}
 
   @moduletag needs: :secrets
 
@@ -96,7 +96,7 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
     assert has_element?(
              lv,
              "#settings-section-integrations",
-             "A custom API of this workspace"
+             "A custom API of this organisation"
            )
 
     assert has_element?(lv, "#definition-users h2", "Where it is set up")
@@ -176,6 +176,57 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
 
     assert_raise ApiaryWeb.NotFound, fn ->
       live(conn, ipath(scope, "/#{theirs.public_id}"))
+    end
+  end
+
+  describe "who added it and who changed it last" do
+    # What a custom API's page says of who added the definition `admin` added and who
+    # changed it last, once `change` ran on it, its tags left out.
+    defp said_of(conn, scope, admin, change) do
+      definition = definition!(admin.scope)
+      change.(definition)
+      {:ok, lv, _html} = live(conn, ipath(scope, "/#{definition.public_id}"))
+      text = lv |> render() |> plain()
+      [_, added] = Regex.run(~r/Added (.*?) ·/, text)
+      [_, changed] = Regex.run(~r/Last changed (.*?) ·/, text)
+      assert added == changed
+      added
+    end
+
+    defp plain(html),
+      do: html |> String.replace(~r/<[^>]+>/, " ") |> String.split() |> Enum.join(" ")
+
+    defp by_user(definition, user) do
+      definition
+      |> Ecto.Changeset.change(created_by_id: user.id, updated_by_id: user.id)
+      |> Repo.update!()
+    end
+
+    test "a person removed from the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      said = said_of(conn, scope, admin, fn _record -> Repo.delete!(admin.membership) end)
+      assert said == "#{String.upcase(String.first(admin.user.email))} #{admin.user.email}"
+    end
+
+    test "a deleted account is a former member", %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+
+      said =
+        said_of(conn, scope, admin, fn _record ->
+          {:ok, _deleted} = Apiary.Accounts.delete_user(admin.user)
+        end)
+
+      assert said =~ "Former member"
+      refute said =~ Apiary.Accounts.User.short_name(admin.user.email)
+    end
+
+    test "a person who is not a member of the organisation is named by their account",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      user = Apiary.AccountsFixtures.user_fixture()
+      said = said_of(conn, scope, admin, &by_user(&1, user))
+      assert said == "#{String.upcase(String.first(user.email))} #{user.email}"
     end
   end
 end

@@ -2,7 +2,7 @@ defmodule Apiary.Connections.SettingsBudgetTest do
   # The budget of the settings check (`Apiary.Integrations.Description.check_settings/2`),
   # end to end: a release found as the product finds it, whose settings schema makes the
   # check's work grow exponentially, and the writes of Connections, which check settings
-  # inside a transaction that holds the workspace's row lock. Each is refused as invalid
+  # while they hold the organisation's integrations lock. Each is refused as invalid
   # settings within the budget, the warning it logs says which it ran out of, reductions
   # or heap, the caller lives on and the next write takes the lock. The budget counts
   # work, not time, so the reason is asserted and the time is not: a check its time
@@ -17,6 +17,9 @@ defmodule Apiary.Connections.SettingsBudgetTest do
   alias Apiary.Connections.Connection
 
   @moduletag needs: :secrets
+
+  # Without the budget, the checks of the writes below took 33 s, 5.7 s and 1.19 GB, and
+  # 24.5 s.
 
   @url "https://downloads.example.com/acme/tracker/description.json"
 
@@ -147,5 +150,23 @@ defmodule Apiary.Connections.SettingsBudgetTest do
     )
 
     assert Repo.get!(Connection, connection.id).release_id == first.id
+  end
+
+  test "create_integration takes valid settings of a release whose description holds many long strings",
+       %{scope: scope} do
+    # 1000 definitions, each described in a string of 200 bytes: once the description is
+    # read, each string is a part of its bytes, which the check's budget would count in
+    # full for each string it were given.
+    defs =
+      Map.new(1..1000, fn i ->
+        text = String.slice("t#{i}-" <> String.duplicate("x", 200), 0, 200)
+        {"t#{i}", %{"type" => "string", "description" => text}}
+      end)
+
+    release = release!(scope, %{"type" => "string"}, defs)
+    assert byte_size(release.description) in 240_000..262_144
+
+    assert {:ok, _connection} =
+             Connections.create_integration(scope, release.id, %{"settings" => %{"url" => "s"}})
   end
 end

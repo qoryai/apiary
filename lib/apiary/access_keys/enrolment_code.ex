@@ -1,14 +1,22 @@
 defmodule Apiary.AccessKeys.EnrolmentCode do
+  # The prefix of each kind's code, the one place the prefixes are written: the codes made,
+  # the check at enrolment that a code is its node's kind's, the log filter and the tests
+  # read them from here. The moduledoc names a node's, a node pool's and a gateway's alone.
+  @prefixes %{node: "qecn_", pool: "qecp_", gateway: "qecg_", adapter: "qeci_"}
+
   @moduledoc """
   An enrolment code of a node: what an owner or an admin gives a machine so that it
   enrols an access key for that node or node pool, single use and valid for a short while
   (`Apiary.AccessKeys.create_enrolment_code/3`).
 
-  A code is `qec_` and 26 Crockford base32 characters, 130 random bits, in upper case
-  (`generate/0`). A person may type it in either case and in groups: `normalise/1` reads
-  it in upper case, `I` and `L` as `1`, `O` as `0`, and drops hyphens; `U` and every
-  character outside the alphabet are refused. The server's fingerprints that follow the
-  code on the wire, after a `.`, are not part of what is stored.
+  A code is the prefix of its node's kind (`prefix/1`), `#{@prefixes.node}` for a node,
+  `#{@prefixes.pool}` for a node pool and `#{@prefixes.gateway}` for a gateway, then 26
+  Crockford base32 characters, 130 random bits, in upper case (`generate/1`). A person
+  may type it in either case and in groups: `normalise/1` reads the prefix in lower case
+  and the rest in upper case, `I` and `L` as `1`, `O` as `0`, and drops hyphens; `U` and
+  every character outside the alphabet are refused. The server's fingerprints that follow
+  the code on the wire, after a `.`, are not part of what is hashed and stored; the whole
+  code before them, its prefix with it, is (`hash/1`).
 
   The row keeps the code's SHA-256 only (`hash/1`), never the code: with 130 random bits a
   fast hash is enough. It carries the settings the key it brings gets, the stored-secrets
@@ -22,7 +30,6 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   @typedoc "An enrolment code of a node."
   @type t :: %__MODULE__{}
 
-  @prefix "qec_"
   @alphabet ~c"0123456789ABCDEFGHJKMNPQRSTVWXYZ"
   @integrity_kind "access_key_enrolment_code"
   @integrity_version 1
@@ -61,21 +68,47 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
     |> validate_format(:label_hint, ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/)
   end
 
+  @doc "prefix/1 is the prefix of a code of a node of `kind`."
+  @spec prefix(Apiary.Nodes.Node.kind()) :: String.t()
+  def prefix(kind), do: Map.fetch!(@prefixes, kind)
+
+  # Every kind's prefix, by kind: for the log filter and the tests, which read them from
+  # here alone.
+  @doc false
+  def prefixes, do: @prefixes
+
   @doc """
-  generate/0 is a fresh code: `qec_` and 26 upper-case Crockford base32 characters, 130
-  random bits.
+  of_kind?/2 says whether `code` carries the prefix of `kind` (`prefix/1`), compared as
+  written.
   """
-  @spec generate() :: String.t()
-  def generate do
+  @spec of_kind?(String.t(), Apiary.Nodes.Node.kind()) :: boolean
+  def of_kind?(code, kind) when is_binary(code), do: String.starts_with?(code, prefix(kind))
+
+  @doc """
+  prefixed?/1 says whether `code` carries the prefix of a kind of node (`prefix/1`),
+  compared as written.
+  """
+  @spec prefixed?(String.t()) :: boolean
+  def prefixed?(code) when is_binary(code),
+    do: Enum.any?(Map.keys(@prefixes), &of_kind?(code, &1))
+
+  @doc """
+  generate/1 is a fresh code of a node of `kind`: the kind's prefix (`prefix/1`) and 26
+  upper-case Crockford base32 characters, 130 random bits.
+  """
+  @spec generate(Apiary.Nodes.Node.kind()) :: String.t()
+  def generate(kind) do
     <<random::bitstring-size(130), _rest::bitstring>> = :crypto.strong_rand_bytes(17)
-    @prefix <> for(<<chunk::5 <- random>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
+    prefix(kind) <> for(<<chunk::5 <- random>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
   end
 
   @doc """
-  normalise/1 reads a code as a person may type it: `qec_` in either case, then the 26
-  characters in either case and in groups, `I` and `L` read as `1`, `O` as `0`, hyphens
-  dropped. `{:ok, code}` in the form `generate/0` makes, or `:error` for anything else,
-  `U` included.
+  normalise/1 reads a code as a person may type it: the prefix of a kind of node
+  (`prefix/1`) in either case, then the 26 characters in either case and in groups, `I`
+  and `L` read as `1`, `O` as `0`, hyphens dropped; the case of ASCII letters alone is
+  changed, so a character outside ASCII is refused. `{:ok, code}` in the form
+  `generate/1` makes, the prefix in lower case, or `:error` for anything else, `U`
+  included.
 
   It is for a page, where a person types a code. The enrolment endpoint does not use it:
   `qory` sends the code normalised, and the wire refuses a code in any other form, by the
@@ -83,19 +116,38 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   """
   @spec normalise(term) :: {:ok, String.t()} | :error
   def normalise(value) when is_binary(value) do
-    with <<prefix::binary-size(4), rest::binary>> <- value,
-         "qec_" <- String.downcase(prefix),
-         body = rest |> String.replace("-", "") |> String.upcase(),
+    with {prefix, rest} <- split_prefix(value),
+         body = rest |> String.replace("-", "") |> String.upcase(:ascii),
          body = body |> String.replace(["I", "L"], "1") |> String.replace("O", "0"),
          26 <- byte_size(body),
-         true <- body |> String.to_charlist() |> Enum.all?(&(&1 in @alphabet)) do
-      {:ok, @prefix <> body}
+         true <- alphabet?(body) do
+      {:ok, prefix <> body}
     else
       _ -> :error
     end
   end
 
   def normalise(_value), do: :error
+
+  # Byte by byte: the alphabet is ASCII, so a byte outside it, the first byte of a
+  # character that takes more than one, or bytes that are not UTF-8 at all, is refused.
+  defp alphabet?(body),
+    do: for(<<byte <- body>>, reduce: true, do: (ok -> ok and byte in @alphabet))
+
+  # The prefix of a kind of node a typed code starts with, in either case, and the rest.
+  defp split_prefix(value) do
+    Enum.find_value(Map.values(@prefixes), :error, fn prefix ->
+      size = byte_size(prefix)
+
+      case value do
+        <<typed::binary-size(^size), rest::binary>> ->
+          if String.downcase(typed, :ascii) == prefix, do: {prefix, rest}
+
+        _shorter ->
+          nil
+      end
+    end)
+  end
 
   @doc "hash/1 is the SHA-256 of a code in its normal form (`normalise/1`), as stored."
   @spec hash(String.t()) :: <<_::256>>

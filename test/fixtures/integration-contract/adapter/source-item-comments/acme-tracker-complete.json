@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "item_ref": "TRK-1",
+  "comments": [
+    {
+      "ref": "C-11",
+      "url": "https://tracker.acme.example/TRK/TRK-1#C-11",
+      "author": {
+        "name": "Ada Example",
+        "kind": "person"
+      },
+      "body": "Happens on every browser.",
+      "body_format": "text",
+      "created_at": "2026-10-14T08:10:00Z",
+      "updated_at": "2026-10-14T08:10:00Z"
+    },
+    {
+      "ref": "C-12",
+      "url": "https://tracker.acme.example/TRK/TRK-1#C-12",
+      "author": {
+        "name": "Tracker bot",
+        "kind": "automation"
+      },
+      "body": "Linked to release 4.2.",
+      "body_format": "text",
+      "created_at": "2026-10-14T09:00:00Z",
+      "updated_at": "2026-10-14T09:00:00Z"
+    }
+  ],
+  "complete": {
+    "since": "2026-10-15T11:59:55Z"
+  }
+}

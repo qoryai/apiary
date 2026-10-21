@@ -249,6 +249,15 @@ defmodule Apiary.SecretsTest do
       assert changeset.errors[:note]
       assert {:error, changeset} = Secrets.update_secret(scope, secret, %{note: "two\nlines"})
       assert changeset.errors[:note]
+
+      for cp <- [0x202E, 0x2068, 0x061C, 0x9B] do
+        note = "Opens#{<<cp::utf8>>} pull requests"
+        assert {:error, changeset} = Secrets.update_secret(scope, secret, %{note: note})
+        assert errors_on(changeset) == %{note: ["must not contain control characters"]}
+      end
+
+      note = "Opens pull requests 👩#{<<0x200D::utf8>>}💻"
+      assert {:ok, %{note: ^note}} = Secrets.update_secret(scope, secret, %{note: note})
     end
   end
 
@@ -690,6 +699,83 @@ defmodule Apiary.SecretsTest do
 
       changeset = Secrets.change_secret(secret, %{"name" => "X", "value" => value})
       refute_value(changeset, value)
+    end
+  end
+
+  describe "no changeset handed back keeps a sealed value" do
+    # No nonce nor ciphertext in the changeset's data or changes, nor in those of the values
+    # under it, and none of the rows' sealed bytes anywhere in it.
+    defp refute_sealed(%Ecto.Changeset{} = changeset, rows) do
+      for field <- [:nonce, :ciphertext] do
+        assert Map.get(changeset.data, field) == nil
+        refute Map.has_key?(changeset.changes, field)
+      end
+
+      for %Ecto.Changeset{} = value <- List.wrap(changeset.changes[:values]),
+          do: refute_sealed(value, [])
+
+      bytes = :erlang.term_to_binary(changeset)
+
+      for row <- rows, sealed <- [row.nonce, row.ciphertext] do
+        assert is_binary(sealed)
+        assert :binary.match(bytes, sealed) == :nomatch
+      end
+    end
+
+    test "not on a new secret refused", %{scope: scope} do
+      taken = create!(scope, %{name: "TAKEN", value_id: "main"})
+
+      assert {:error, changeset} =
+               Secrets.create_secret(scope, %{
+                 name: "taken",
+                 values: %{
+                   "0" => %{value_id: "a", value: "x"},
+                   "1" => %{value_id: "b", value: "y"}
+                 }
+               })
+
+      assert changeset.errors[:name]
+      refute_sealed(changeset, [row!(taken, "main")])
+
+      refute_sealed(Secrets.change_secret(%Secret{}), [])
+      refute_sealed(Secrets.change_secret(taken, %{"name" => "bad name"}), [row!(taken, "main")])
+    end
+
+    test "not on an edited value refused, its row read again", %{scope: scope} do
+      secret = create!(scope, %{name: "KEYS", value_id: "main"})
+      row = row!(secret, "main")
+
+      assert {:error, changeset} = Secrets.set_value(scope, secret, "main", "")
+      assert changeset.errors[:value]
+      assert changeset.data.value_id == "main"
+      refute_sealed(changeset, [row])
+
+      assert {:error, changeset} = Secrets.rename_value(scope, secret, "main", "Not A Slug")
+      assert changeset.errors[:value_id]
+      assert changeset.data.value_id == "main"
+      refute_sealed(changeset, [row])
+    end
+
+    test "not on a value the database refused, encrypted before it", %{scope: scope} do
+      secret = create!(scope, %{name: "KEYS", value_id: "main"})
+      {:ok, secret} = Secrets.add_value(scope, secret, %{value_id: "bot", value: "bot value"})
+      rows = [row!(secret, "main"), row!(secret, "bot")]
+
+      # A new value whose value id the secret has.
+      assert {:error, changeset} =
+               Secrets.add_value(scope, secret, %{value_id: "main", value: "x"})
+
+      assert {"is already a value ID of this secret", _} = changeset.errors[:value_id]
+      refute_sealed(changeset, rows)
+
+      # A value renamed to a value id the secret has.
+      assert {:error, changeset} = Secrets.rename_value(scope, secret, "bot", "main")
+      assert {"is already a value ID of this secret", _} = changeset.errors[:value_id]
+      assert changeset.data.value_id == "bot"
+      refute_sealed(changeset, rows)
+
+      assert reveal(scope, secret, "main") == {:ok, @value}
+      assert reveal(scope, secret, "bot") == {:ok, "bot value"}
     end
   end
 

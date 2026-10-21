@@ -21,7 +21,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   alias Apiary.Connections.Connection
   alias Apiary.Integrations.Description
   alias Apiary.Kinds.Runtimes
-  alias Apiary.Organisations
   alias ApiaryWeb.People
 
   ## Paths
@@ -100,10 +99,13 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def connection_path(scope, id, :delete),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{id}/delete"
 
-  @doc "remove_target_path/3 is the confirmation, on its row, of taking a target from a connection."
-  def remove_target_path(scope, connection, target_id),
+  @doc """
+  remove_target_path/3 is the confirmation, on its row, of taking the workspace
+  `workspace_id` from a connection's list.
+  """
+  def remove_target_path(scope, connection, workspace_id),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{connection.public_id}/targets/#{target_id}/remove"
+      ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{connection.public_id}/targets/#{workspace_id}/remove"
 
   @doc "definition_path/3 is the workspace's custom APIs (service definitions): new, one, its edit or its deletion."
   def definition_path(scope, definition, rest \\ nil)
@@ -125,9 +127,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc "settings_path/1 is the workspace's settings, the breadcrumb's step before the section."
   def settings_path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings"
-
-  @doc "secrets_path/1 is Secrets and variables, where the workspace's secrets are stored."
-  def secrets_path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets"
 
   ## The line every page says once
 
@@ -170,16 +169,17 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
   title in the catalogue or an integration's in its description, with the name it has
-  there beside it (`claude`, `github`); a service's name alone, `{name, nil}`. The
-  machine name is nil where it is the title.
+  there beside it (`claude`, `tracker`); a service's name alone, `{name, nil}`. The
+  machine name is nil where it is the title. Both are shown as an external system's text
+  is (`Apiary.ExternalText.line/1`): an integration's description gives them.
   """
   def names(%Connection{kind: kind, name: name} = connection)
       when kind in ["runtime", "integration"] do
     title = title(connection)
-    {title, if(title != name, do: name)}
+    {Apiary.ExternalText.line(title), if(title != name, do: Apiary.ExternalText.line(name))}
   end
 
-  def names(%Connection{name: name}), do: {name, nil}
+  def names(%Connection{name: name}), do: {Apiary.ExternalText.line(name), nil}
 
   defp title(%Connection{kind: "runtime", name: name}) do
     case Runtimes.fetch(name) do
@@ -196,12 +196,19 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   end
 
   @doc """
-  label/1 is a connection's title with its machine name beside it, "GitHub (github)", for
+  label/1 is a connection's title with its machine name beside it, "Tracker (tracker)", for
   a sentence, a heading or a message that names it in plain text (`names/1`).
   """
   def label(%Connection{} = connection), do: connection |> names() |> label()
   def label({title, nil}), do: title
   def label({title, name}), do: gettext("%{title} (%{name})", title: title, name: name)
+
+  @doc """
+  hint/1 is a setting's description, as a page shows an integration's text
+  (`Apiary.ExternalText.line/1`): nil where it has none, or one with nothing left to show,
+  or only whitespace (`Apiary.ExternalText.present/1`), so the setting has no hint.
+  """
+  def hint(%{description: description}), do: Apiary.ExternalText.present(description)
 
   @doc """
   name/1 is a connection's title and, in mono beside it, its machine name (`names/1`),
@@ -215,37 +222,40 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   def name(assigns) do
     ~H"""
-    <span class={@class}>{elem(@names, 0)}</span><span
+    <span class={@class}><.external_text text={elem(@names, 0)} /></span><span
       :if={elem(@names, 1)}
       class="q-mono text-[12.5px] font-normal text-muted"
-    > ({elem(@names, 1)})</span>
+    > (<.external_text text={elem(@names, 1)} />)</span>
     """
   end
 
-  @doc "applies_word/2 is where a connection applies, in a few words: every target, or how many chosen."
-  def applies_word(%Connection{applies_to: "all"}), do: gettext("Every target")
+  @doc "applies_word/2 is where a connection applies, in a few words: every workspace, or how many chosen."
+  def applies_word(%Connection{applies_to: "all"}), do: gettext("Every workspace")
 
-  def applies_word(%Connection{applies_to: "selected", targets: targets}) when is_list(targets) do
-    case length(targets) do
-      0 -> gettext("No target yet")
-      n -> ngettext("%{count} chosen target", "%{count} chosen targets", n)
+  def applies_word(%Connection{applies_to: "selected", workspaces: workspaces})
+      when is_list(workspaces) do
+    case length(workspaces) do
+      0 -> gettext("No workspace yet")
+      n -> ngettext("%{count} chosen workspace", "%{count} chosen workspaces", n)
     end
   end
 
-  @doc "people/1 is the members of the scope's organisation by user id, for who added or changed a thing."
-  def people(scope) do
-    for %{user: user} <- Organisations.list_members(scope),
-        email = People.email(user),
-        into: %{},
-        do: {user.id, email}
-  end
+  @doc """
+  people/1 is the email address of the account of each id of `ids`, by user id, read in
+  one query (`ApiaryWeb.People.accounts/1`), for who added or changed a thing.
+  """
+  def people(ids), do: People.accounts(ids)
 
-  @doc "who/2 is the person `id` among `people`, or nil for none."
-  def who(people, id), do: People.member(people, id)
+  @doc """
+  who/2 is the person `id` among `people`, named by their account
+  (`ApiaryWeb.People.account/2`): "Former member" for a deleted account or an id no
+  account has, nil for none.
+  """
+  def who(people, id), do: People.account(people, id)
 
-  @doc "may_write?/1 says whether the scope may change the workspace's integrations."
+  @doc "may_write?/1 says whether the scope may change the organisation's integrations."
   def may_write?(scope),
-    do: Apiary.Access.can?(scope, :"connection.write", scope.workspace)
+    do: Apiary.Access.can?(scope, :"connection.write", scope.organisation)
 
   @doc """
   only_admins/1 is the line a person who may not change the section reads: a reader
@@ -259,7 +269,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
         ApiaryWeb.Access.who_may(
           scope,
           :"connection.write",
-          gettext("Only owners and admins change the integrations of a workspace.")
+          gettext("Only owners and admins change the integrations of the organisation.")
         )
   end
 
@@ -365,7 +375,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc """
   refusal/3 is the sentence for a refusal of `Apiary.Connections` or
-  `Apiary.Integrations` to `scope`, the workspace's `connections` naming those an overlap
+  `Apiary.Integrations` to `scope`, the organisation's `connections` naming those an overlap
   is with.
   """
   def refusal(scope, reason, connections \\ [])
@@ -401,7 +411,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: gettext("That runtime is not in Forager's catalogue.")
 
   defp sentence(:service_unknown, _),
-    do: gettext("That API is neither built in nor a custom API of this workspace.")
+    do: gettext("That API is neither built in nor a custom API of this organisation.")
 
   defp sentence(:release_not_ready, _), do: gettext("The release is not ready to add.")
 
@@ -414,7 +424,8 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   defp sentence({:integration_source_mismatch, _}, _),
     do: gettext("That release is from another source.")
 
-  defp sentence(:target_not_found, _), do: gettext("That target is not one of this workspace's.")
+  defp sentence(:workspace_not_found, _),
+    do: gettext("That workspace is not one of this organisation's.")
 
   defp sentence({:integration_settings_not_allowed, names}, _),
     do: gettext("It takes no such settings: %{names}.", names: Enum.join(List.wrap(names), ", "))

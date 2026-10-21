@@ -30,4 +30,16 @@ defmodule Apiary.EditionTest do
       assert Task.await(Task.async(fn -> Apiary.Edition.hidden(scope) end)) == [:secrets]
     end
   end
+
+  describe "model_choice_chain/1" do
+    test "the core answers the organisation's chain", %{scope: scope} do
+      assert Apiary.Edition.Core.model_choice_chain(scope.organisation.id) == "organisation"
+      assert Apiary.Edition.model_choice_chain(scope.organisation.id) == "organisation"
+    end
+
+    test "a test's stub answers the operator's chain", %{scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OperatorChain)
+      assert Apiary.Edition.model_choice_chain(scope.organisation.id) == "operator"
+    end
+  end
 end

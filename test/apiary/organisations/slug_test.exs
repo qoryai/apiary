@@ -62,7 +62,8 @@ defmodule Apiary.Organisations.SlugTest do
             {"Admin", "admin-2"},
             {"API", "api-2"},
             {"New", "new-2"},
-            {"Settings", "settings-2"}
+            {"Settings", "settings-2"},
+            {"Integrations", "integrations-2"}
           ] do
         %{organisation: organisation} = sign_up_fixture(%{organisation_name: name})
         assert organisation.slug == slug

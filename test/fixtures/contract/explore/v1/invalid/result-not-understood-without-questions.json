@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "verdict": "not_understood",
+  "understanding": "The ticket says the parser fails on some dates, but names no date that fails."
+}

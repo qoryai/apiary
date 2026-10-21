@@ -21,6 +21,10 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
   setup :register_and_log_in_user
 
+  # A fragment without its ids and the values its controls send, which keep what Forager
+  # sent as it was sent.
+  defp strip_ids(html), do: String.replace(html, ~r/ (id|phx-value-[a-z]+|href)="[^"]*"/, "")
+
   describe "Overview" do
     test "names the node, its kind and its maker, under three tabs", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
@@ -31,8 +35,29 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-public-id", node.public_id)
       assert has_element?(lv, "#node-kind", "Node")
       assert has_element?(lv, "#node-state", "Never seen")
-      assert has_element?(lv, "#node-made", scope.user.email)
+
+      assert has_element?(
+               lv,
+               "#node-made",
+               "made by #{String.upcase(String.first(scope.user.email))}#{scope.user.email} (you), "
+             )
+
+      assert has_element?(lv, ~s{#node-made abbr[data-tip="#{scope.user.email} (you)"]})
+      # About says who made it the same way.
+      assert has_element?(lv, ~s{#node-about dd abbr[data-tip="#{scope.user.email} (you)"]})
       assert has_element?(lv, "#breadcrumb", "Nodes")
+
+      # The node's name, cut where the segment is short, is whole in its title; the fixed
+      # words before it carry none.
+      titled =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#breadcrumb .q-trail-link .truncate[title]")
+        |> LazyHTML.attribute("title")
+
+      assert titled == ["build-01"]
+      refute has_element?(lv, "#breadcrumb .truncate[title='Nodes']")
 
       assert has_element?(lv, ~s{nav#node-tabs[aria-label="Node"]})
       assert has_element?(lv, ~s{#node-tabs-overview[aria-current="page"]}, "Overview")
@@ -334,7 +359,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
     test "a node's running instance, its run, and Clear instance", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
-      instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
+      instance = instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
 
       run =
         node_run_fixture(node, "i_1", %{
@@ -349,7 +374,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-instance-name", "build-01.example.com")
       assert has_element?(lv, "#node-instance", "i_1")
       assert has_element?(lv, "#node-instance", "Running since")
-      assert has_element?(lv, ~s{#node-instance a[href$="/runs/#{run.run_id}"]})
+      assert has_element?(lv, ~s{#node-instance a[href$="/runs/#{run.public_id}"]})
 
       assert has_element?(
                lv,
@@ -360,18 +385,25 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       refute render(lv) =~ "Once runners use"
 
       render_async(lv)
-      assert has_element?(lv, "#node-runs-table #run-#{run.run_id} .q-rowlink", "Fix the build")
 
       assert has_element?(
                lv,
-               "#node-runs-table #run-#{run.run_id} .q-rl-about",
+               "#node-runs-table #run-#{run.public_id} .q-rowlink",
+               "Fix the build"
+             )
+
+      assert has_element?(
+               lv,
+               "#node-runs-table #run-#{run.public_id} .q-rl-about",
                "Implementation · ticket ENG-17"
              )
 
       assert has_element?(lv, ~s{#node-runs-all[href*="node=#{node.public_id}"]})
 
+      # Clear instance is addressed by the id of the instance's row, not the node's
+      # instance id.
       lv |> element("#node-instance-clear") |> render_click()
-      assert_patch(lv, node_path(scope, node, "/instances/i_1/clear"))
+      assert_patch(lv, node_path(scope, node, "/instances/#{instance.id}/clear"))
       # The instance's line is the confirmation, in place: no dialog.
       refute has_element?(lv, "#clear-instance-dialog")
       refute has_element?(lv, "#node-instance-clear")
@@ -403,7 +435,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       instance_fixture(pool, instance_id: "i_1", name: "spot-1")
       node_run_fixture(pool, "i_1")
       node_run_fixture(pool, "i_2")
-      node_run_fixture(pool, "i_3", %{state: "succeeded"})
+      node_run_fixture(pool, "i_3", %{state: "completed"})
 
       Repo.update_all(from(n in Node, where: n.id == ^pool.id),
         set: [instance_limit_refused: 4, instance_limit_refused_at: ago(60)]
@@ -416,11 +448,31 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-running tr", "spot-1")
       assert has_element?(lv, "#node-running tr", "i_2")
       refute has_element?(lv, "#node-running tr", "i_3")
+
+      # An instance's name is cut, whole in its title, and its id beside it titled too.
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='spot-1']", "spot-1")
+      assert has_element?(lv, "#node-running .q-nm > .q-side.q-mono[title='i_1']", "i_1")
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='i_2']", "i_2")
       assert has_element?(lv, "#node-refused", "4 starts were refused at the instance limit")
 
       {:ok, _} = Nodes.update_node(scope, pool, %{instance_limit: ""})
       send(lv.pid, :tick)
       assert has_element?(lv, "#node-state", "2 running")
+    end
+
+    test "a running instance's id and Forager's version: cleaned, in its row and its title",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners", instance_limit: 10)
+      node_run_fixture(pool, "i\u202E_9", %{forager_version: "0.7\u200B.0"})
+      node_run_fixture(pool, "\u200B")
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='i_9'] > bdi", "i_9")
+      assert has_element?(lv, "#node-running tr", "0.7.0")
+      # An id sent with nothing left to show is marked.
+      assert has_element?(lv, "#node-running .q-nm > .q-cut[title='\uFFFD'] > bdi", "\uFFFD")
+      refute lv |> element("#node-running") |> render() |> strip_ids() =~ ~r/[\x{202E}\x{200B}]/u
     end
 
     test "a pool whose instances were pruned says when its key was last used, not Never seen",
@@ -528,10 +580,11 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       {:ok, lv, _html} = live(conn, node_path(scope, pool))
 
-      lv |> element("#node-running [id$='-clear']") |> render_click()
-      assert_patch(lv, node_path(scope, pool, "/instances/i_1/clear"))
+      # An instance with no row is addressed by its newest open run's public id.
+      lv |> element("#node-instance-#{run.public_id}-clear") |> render_click()
+      assert_patch(lv, node_path(scope, pool, "/runs/#{run.public_id}/clear-instance"))
       # Its row is the confirmation, in place of its cells.
-      row = "#node-running tr.q-confirming"
+      row = "#node-running tr#node-instance-#{run.public_id}.q-confirming"
       assert has_element?(lv, "#{row} #clear-instance", "Clear i_1?")
       refute has_element?(lv, "#{row} [id$='-menu']")
       lv |> element("#{row} #clear-instance-confirm") |> render_click()
@@ -541,9 +594,15 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
     test "an instance that does not run now confirms its clearing at the top of the instances",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope)
-      instance_fixture(node, instance_id: "i_1", name: "build-01.example.com", seen_at: ago(3600))
 
-      {:ok, lv, _html} = live(conn, node_path(scope, node, "/instances/i_1/clear"))
+      instance =
+        instance_fixture(node,
+          instance_id: "i_1",
+          name: "build-01.example.com",
+          seen_at: ago(3600)
+        )
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/instances/#{instance.id}/clear"))
       refute has_element?(lv, "#clear-instance-dialog")
       assert has_element?(lv, "#node-instances #clear-instance", "Clear build-01.example.com?")
       assert has_element?(lv, "#node-instance", "Last seen")
@@ -557,14 +616,235 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
     test "an instance the node does not have has no confirmation", %{conn: conn, scope: scope} do
       node = node_fixture(scope)
 
+      for rest <- [
+            "/instances/#{Ecto.UUID.generate()}/clear",
+            "/runs/rn_0123456789abcdef/clear-instance"
+          ] do
+        {:ok, _lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
+        assert html =~ "This node has no such instance."
+      end
+    end
+
+    test "the node's instance id is not an address of the instance", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
+      run = node_run_fixture(node, "i_1")
+
+      for rest <- ["/instances/i_1/clear", "/runs/i_1/clear-instance"] do
+        {:ok, lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
+        assert html =~ "This node has no such instance."
+        refute has_element?(lv, "#clear-instance")
+      end
+
+      assert Repo.get!(Run, run.id).state == "pending"
+    end
+
+    test "a running instance is cleared by its row's id, the audit entry as before", %{
+      conn: conn,
+      scope: scope
+    } do
+      pool = pool_fixture(scope)
+      instance = instance_fixture(pool, instance_id: "i_1", name: "spot-1")
+      run = node_run_fixture(pool, "i_1")
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+
+      assert has_element?(
+               lv,
+               ~s{#node-instance-#{instance.id}-clear[href="#{node_path(scope, pool, "/instances/#{instance.id}/clear")}"]}
+             )
+
+      refute render(lv) =~ "/instances/i_1/"
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool, "/instances/#{instance.id}/clear"))
+
+      assert has_element?(
+               lv,
+               "#node-running tr#node-instance-#{instance.id}.q-confirming #clear-instance",
+               "Clear spot-1?"
+             )
+
+      lv |> element("#clear-instance-confirm") |> render_click()
+      assert_patch(lv, node_path(scope, pool))
+      assert render(lv) =~ "spot-1 is cleared: its open run is marked lost."
+      assert Repo.get!(Run, run.id).state == "lost"
+
+      assert %{cleared_at: %DateTime{}, cleared_by_id: cleared_by} =
+               Repo.get!(Apiary.Nodes.Instance, instance.id)
+
+      assert cleared_by == scope.user.id
+
+      entry =
+        Repo.one!(
+          from e in Apiary.Audit.Entry,
+            where: e.action == "node.clear_instance" and e.subject_id == ^pool.id
+        )
+
+      assert entry.details == %{"instance_id" => "i_1", "name" => "spot-1", "runs" => 1}
+    end
+
+    test "the 16 raw bytes of a row's id are not an address of the instance", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
+      run = node_run_fixture(node, "i_1")
+
+      # A row whose id is 16 bytes that also read as text, so the address can carry them.
+      raw = "abcdefghijklmnop"
+      {:ok, id} = Ecto.UUID.cast(raw)
+
+      Repo.update_all(from(i in Apiary.Nodes.Instance, where: i.id == ^instance.id),
+        set: [id: id]
+      )
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/instances/#{id}/clear"))
+      assert has_element?(lv, "#node-instance #clear-instance", "Clear build-01.example.com?")
+
+      encoded = for <<byte <- raw>>, into: "", do: "%" <> Base.encode16(<<byte>>)
+
+      {:ok, lv, html} =
+        live(conn, node_path(scope, node, "/instances/#{encoded}/clear"))
+        |> follow_redirect(conn)
+
+      assert html =~ "This node has no such instance."
+      refute has_element?(lv, "#clear-instance")
+      assert Repo.get!(Run, run.id).state == "pending"
+    end
+
+    test "the page's DOM ids name an instance by its row or its newest open run, never by the node's instance id",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope)
+      instance = instance_fixture(pool, instance_id: "i-alpha-41", name: "spot-1")
+      node_run_fixture(pool, "i-alpha-41")
+      run = node_run_fixture(pool, "i-beta-42")
+
+      dom_ids = fn lv ->
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[id]")
+        |> LazyHTML.attribute("id")
+      end
+
+      refute_instance_ids = fn lv ->
+        ids = dom_ids.(lv)
+        assert ids != []
+        refute Enum.any?(ids, &(&1 =~ "alpha-41" or &1 =~ "beta-42"))
+      end
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+      assert has_element?(lv, "#node-running tr#node-instance-#{instance.id}", "spot-1")
+      assert has_element?(lv, "#node-instance-#{instance.id}-menu")
+      assert has_element?(lv, "#node-instance-#{instance.id}-clear")
+      assert has_element?(lv, "#node-running tr#node-instance-#{run.public_id}", "i-beta-42")
+      assert has_element?(lv, "#node-instance-#{run.public_id}-menu")
+      assert has_element?(lv, "#node-instance-#{run.public_id}-clear")
+      refute_instance_ids.(lv)
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool, "/instances/#{instance.id}/clear"))
+      assert has_element?(lv, "tr#node-instance-#{instance.id}.q-confirming", "Clear spot-1?")
+      refute_instance_ids.(lv)
+
+      {:ok, lv, _html} =
+        live(conn, node_path(scope, pool, "/runs/#{run.public_id}/clear-instance"))
+
+      assert has_element?(
+               lv,
+               "tr#node-instance-#{run.public_id}.q-confirming",
+               "Clear i-beta-42?"
+             )
+
+      refute_instance_ids.(lv)
+    end
+
+    test "an instance with no row is cleared by its newest open run", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      run = node_run_fixture(node, "i_9")
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node))
+
+      assert has_element?(
+               lv,
+               ~s{#node-instance-clear[href="#{node_path(scope, node, "/runs/#{run.public_id}/clear-instance")}"]}
+             )
+
+      {:ok, lv, _html} =
+        live(conn, node_path(scope, node, "/runs/#{run.public_id}/clear-instance"))
+
+      assert has_element?(lv, "#node-instance #clear-instance", "Clear i_9?")
+      lv |> element("#clear-instance-confirm") |> render_click()
+      assert_patch(lv, node_path(scope, node))
+      assert render(lv) =~ "i_9 is cleared: its open run is marked lost."
+      assert Repo.get!(Run, run.id).state == "lost"
+
+      # Its run has ended: the address names no instance to clear.
       {:ok, _lv, html} =
-        live(conn, node_path(scope, node, "/instances/i_none/clear")) |> follow_redirect(conn)
+        live(conn, node_path(scope, node, "/runs/#{run.public_id}/clear-instance"))
+        |> follow_redirect(conn)
 
       assert html =~ "This node has no such instance."
     end
 
+    test "another node's or another workspace's ids are not this node's instances", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      sibling = node_fixture(scope)
+      sibling_instance = instance_fixture(sibling, instance_id: "i_1")
+      sibling_run = node_run_fixture(sibling, "i_1")
+
+      elsewhere = node_fixture(%{scope | workspace: workspace_fixture(scope.organisation)})
+      elsewhere_instance = instance_fixture(elsewhere, instance_id: "i_1")
+      elsewhere_run = node_run_fixture(elsewhere, "i_1")
+
+      # This node runs the same instance id: the others' ids still do not reach it.
+      instance_fixture(node, instance_id: "i_1")
+      this_run = node_run_fixture(node, "i_1")
+
+      for rest <- [
+            "/instances/#{sibling_instance.id}/clear",
+            "/runs/#{sibling_run.public_id}/clear-instance",
+            "/instances/#{elsewhere_instance.id}/clear",
+            "/runs/#{elsewhere_run.public_id}/clear-instance"
+          ] do
+        {:ok, lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
+        assert html =~ "This node has no such instance.", rest
+        refute has_element?(lv, "#clear-instance")
+      end
+
+      for run <- [sibling_run, elsewhere_run, this_run],
+          do: assert(Repo.get!(Run, run.id).state == "pending")
+    end
+
+    test "a malformed id, invalid UTF-8 among them, is no instance", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      node_run_fixture(node, "i_1")
+
+      for rest <- [
+            "/instances/not-a-uuid/clear",
+            "/instances/%FF%FE/clear",
+            "/instances/rn_0123456789abcdef/clear",
+            "/runs/rn_%FF%FE%FD%FC%FB%FA%F9%F8%F7%F6%F5%F4%F3%F2%F1%F0/clear-instance",
+            "/runs/%C3%28/clear-instance",
+            "/runs/#{Ecto.UUID.generate()}/clear-instance"
+          ] do
+        {:ok, _lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
+        assert html =~ "This node has no such instance.", rest
+      end
+    end
+
     test "a member sees the instances, not Clear instance, and is refused it", %{scope: scope} do
       node = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1")
       run = node_run_fixture(node, "i_1")
       conn = member_conn(scope)
 
@@ -572,10 +852,15 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-state", "Running")
       refute has_element?(lv, "#node-instance-clear")
 
-      {:ok, lv, html} =
-        live(conn, node_path(scope, node, "/instances/i_1/clear")) |> follow_redirect(conn)
+      for rest <- ["/instances/#{instance.id}/clear", "/runs/#{run.public_id}/clear-instance"] do
+        {:ok, _lv, html} = live(conn, node_path(scope, node, rest)) |> follow_redirect(conn)
+        assert html =~ "Only owners and admins clear instances."
+      end
 
-      assert html =~ "Only owners and admins clear instances."
+      {:ok, lv, _html} =
+        live(conn, node_path(scope, node, "/instances/#{instance.id}/clear"))
+        |> follow_redirect(conn)
+
       refute has_element?(lv, "#clear-instance")
 
       render_hook(lv, "clear_instance", %{})

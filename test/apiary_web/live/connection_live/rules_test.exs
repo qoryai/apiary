@@ -9,7 +9,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
+  import ApiaryWeb.TargetComponents, only: [target_path: 3]
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
@@ -88,9 +88,15 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   end
 
   describe "a target's version and rule, named and addressed" do
-    test "its system only where its path is shared; a caller that does not say names it in full",
+    test "named with its system only where its path is shared; addressed by its public id",
          %{scope: scope} do
-      target = %{id: "t", system: "github.example", path: "acme/shop"}
+      target = %{
+        id: "t",
+        public_id: "tg_0123456789abcdef",
+        system: "github.example",
+        path: "acme/shop"
+      }
+
       shared = MapSet.new(["acme/shop"])
 
       assert Rules.version_label("t", target, false) == "acme/shop"
@@ -101,19 +107,52 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert Rules.version_label(nil, target, true) == "the workspace's policy"
 
       assert Rules.version_path(scope, target, 3) ==
-               workspace_path(scope, "/targets/acme/shop/-/policy/versions/3")
+               workspace_path(scope, "/targets/tg_0123456789abcdef/policy/versions/3")
 
-      assert Rules.version_path(scope, target, 3, %{"compare" => 2}, shared) ==
-               workspace_path(
-                 scope,
-                 "/targets/github.example/acme/shop/-/policy/versions/3?compare=2"
-               )
+      assert Rules.version_path(scope, target, 3, %{"compare" => 2}) ==
+               workspace_path(scope, "/targets/tg_0123456789abcdef/policy/versions/3?compare=2")
 
       assert Rules.rule_path(scope, target, "x.example") ==
-               workspace_path(scope, "/targets/acme/shop/-/policy?rule=x.example")
+               workspace_path(scope, "/targets/tg_0123456789abcdef/policy?rule=x.example")
+    end
+  end
 
-      assert Rules.rule_path(scope, target, "x.example", true) ==
-               workspace_path(scope, "/targets/github.example/acme/shop/-/policy?rule=x.example")
+  describe "a target's path and a row's path, as a page shows a text a run sent" do
+    # A bidirectional override and a zero-width space, which a path may carry.
+    test "the version's holder and the toast's path are cleaned" do
+      target = %{id: "t", system: "git\u202E.example", path: "acme/\u202Eshop\u200B"}
+      assert Rules.version_label("t", target, true) == "git.example/acme/shop"
+      assert Rules.version_label("t", target) == "git.example/acme/shop"
+
+      assert Rules.version_label("t", target, MapSet.new([target.path])) ==
+               "git.example/acme/shop"
+
+      assert Rules.version_label("t", target, MapSet.new(["acme/shop"])) == "acme/shop"
+
+      rule = %{paths: ["/v1/*"], action: "allow"}
+
+      assert Rules.toast(rule, :allow, "api.example", "/v1/\u202Eitems", :workspace) ==
+               "/v1/items on api.example is allowed for the workspace."
+    end
+
+    test "a target's path, in the panel and the toast", %{conn: conn, scope: scope} do
+      docs = %{"host" => "docs.cdn.example", "decision" => "denied", "rule" => ""}
+      path = "acme/\u202Edocs\u200B"
+      started_run(scope, %{"forge" => "github.example", "repository" => path}, egress: [docs])
+      target = Enum.find(Policy.list_targets(scope), &(&1.target.path == path)).target
+
+      view = open(conn, scope)
+      view |> element("##{dst("docs.cdn.example")}-allow") |> render_click()
+      assert text(view, "#rule-panel-target") =~ "acme/docs · 1 run"
+      refute view |> element("#rule-panel") |> render() =~ "\u202E"
+
+      view
+      |> form("#rule-panel-form", %{"for" => "target", "target" => target.id})
+      |> render_change()
+
+      view |> form("#rule-panel-form") |> render_submit()
+      assert text(view, "#flash-info") =~ "docs.cdn.example is allowed for acme/docs."
+      refute view |> element("#flash-info") |> render() =~ "\u202E"
     end
   end
 
@@ -140,6 +179,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       core = refusal.()
       assert String.ends_with?(core, ". Only an owner can change or unlock it.")
+
+      assert core =~
+               "Locked by #{String.upcase(String.first(scope.user.email))}#{scope.user.email} on "
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LockWorded)
       sentence = Apiary.EditionStubs.LockWorded.sentence()
@@ -286,6 +328,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     } do
       view = open(conn, scope)
       cdn = dst("files.cdn.example")
+      # no line after the row yet: its reason is in the present
+      refute has_element?(view, "##{cdn}-after")
+      assert text(view, "##{cdn} .q-why-l") == "No rule matches. Enforce mode denies it."
       view |> element("##{cdn}-allow") |> render_click()
       view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
       assert text(view, "#rule-panel-submit") == "Allow for the workspace"
@@ -298,9 +343,18 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(tr##{cdn}.q-denied[data-decision=denied]))
       line = text(view, "##{cdn}-after")
       assert line =~ "Rule added"
+      refute line =~ "Rule changed"
 
       assert line =~
                "Allowed for the workspace in v#{configuration.version} · of the workspace's policy by you"
+
+      # the row's reason, in the cell, the fold and the title, is in the past tense
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "##{cdn} .q-why-l") == past
+      assert text(view, "##{cdn} .q-why-l b") == "No rule matched."
+      assert text(view, "##{cdn} .q-cx-fold") == past
+      assert has_element?(view, ~s(##{cdn} .q-why-l[title="#{past}"]))
+      refute text(view, "##{cdn}") =~ "No rule matches"
 
       refute line =~ "run"
 
@@ -357,12 +411,12 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       scope: scope
     } do
       github = target(scope, "github.example")
-      view = open(conn, scope, "/network?system=github.example&target=acme/shop")
+      view = open(conn, scope, "/network?target=#{github.public_id}")
 
-      # The path is on two systems: its policy's address keeps the system.
+      # The path is on two systems: its policy's address is the chosen target's id.
       assert has_element?(
                view,
-               ~s(#connections-target-policy[href="#{workspace_path(scope, "/targets/github.example/acme/shop/-/policy")}"]),
+               ~s(#connections-target-policy[href="#{target_path(scope, github, ["policy"])}"]),
                "Its policy"
              )
 
@@ -380,8 +434,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       line = text(view, "##{dst("files.cdn.example")}-after")
       assert line =~ "Allowed for this repository in v1 · of github.example/acme/shop by you"
 
-      # The rule and its version are at the target's own address, its system kept.
-      policy = workspace_path(scope, "/targets/github.example/acme/shop/-/policy")
+      # The rule and its version are at the target's address, by its id.
+      policy = target_path(scope, github, ["policy"])
 
       assert has_element?(
                view,
@@ -430,6 +484,102 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert text(view, "##{cdn}-after a##{cdn}-after-rule") == "Show the rule"
       assert text(view, "##{cdn}-after") =~ "Allowed for the workspace"
+    end
+  end
+
+  describe "the line after a rule that was changed" do
+    @denied_by_rule %{
+      "host" => "files.cdn.example",
+      "decision" => "denied",
+      "rule" => "files.cdn.example",
+      "outcome" => "refused"
+    }
+    @allowed_by_rule %{"host" => "files.cdn.example", "rule" => "files.cdn.example"}
+
+    test "a deny rule changed to allow says Rule changed on the denied row", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      # the later run's attempt is the destination's last
+      started_run(scope, shop(), ago: 10, egress: [@denied_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = open(conn, scope)
+      cdn = dst("files.cdn.example")
+      assert has_element?(view, ~s(tr##{cdn}[data-decision=denied]))
+      assert text(view, "##{cdn}-after .badge") == "Rule changed"
+
+      assert text(view, "##{cdn}-after") =~
+               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
+
+      refute text(view, "##{cdn}-after") =~ "Rule added"
+    end
+
+    test "a rule another person changed names them by their letter, the address its hint",
+         %{conn: conn, scope: scope} do
+      admin = member_fixture(scope, :admin)
+      {:ok, _} = Policy.deny(admin.scope, nil, %{host: "registry.example"})
+
+      view = open(conn, scope)
+      registry = dst("registry.example")
+      letter = String.upcase(String.first(admin.user.email))
+
+      assert text(view, "##{registry}-after") =~
+               "Denied for the workspace in v2 · of the workspace's policy by #{letter} #{admin.user.email} "
+
+      assert has_element?(view, ~s{##{registry}-after abbr[data-tip="#{admin.user.email}"]})
+    end
+
+    test "an allow rule changed to deny says Rule changed", %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "registry.example"})
+
+      view = open(conn, scope)
+      registry = dst("registry.example")
+      assert has_element?(view, ~s(tr##{registry}[data-decision=allowed]))
+      assert text(view, "##{registry}-after .badge") == "Rule changed"
+
+      assert text(view, "##{registry}-after") =~
+               "Rule changed Denied for the workspace in v2 · of the workspace's policy by you"
+    end
+
+    test "the newest change decides: a rule added in v2 whose paths changed in v3", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      started_run(scope, shop(), ago: 10, egress: [@allowed_by_rule])
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example", paths: ["/v1/*"]})
+
+      # the history's newest page, newest first
+      assert [{"rule_changed", 3}, {"rule_added", 2}] =
+               for(
+                 change <- Policy.list_changes(scope, nil, 1).items,
+                 change.subject == "files.cdn.example",
+                 do: {change.action, change.version_after}
+               )
+
+      view = open(conn, scope)
+      cdn = dst("files.cdn.example")
+      assert text(view, "##{cdn}-after .badge") == "Rule changed"
+
+      assert text(view, "##{cdn}-after") =~
+               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
+    end
+
+    test "a denied row with no rule, which a changed rule now allows, gives its reason in the past tense",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      view = open(conn, scope)
+      cdn = dst("files.cdn.example")
+      assert has_element?(view, ~s(tr##{cdn}.q-denied[data-decision=denied]))
+      assert text(view, "##{cdn}-after .badge") == "Rule changed"
+      past = "No rule matched. Enforce mode denied it."
+      assert text(view, "##{cdn} .q-why-l") == past
+      assert text(view, "##{cdn} .q-cx-fold") == past
+      assert has_element?(view, ~s(##{cdn} .q-why-l[title="#{past}"]))
     end
   end
 
@@ -491,7 +641,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, "button##{dst("files.cdn.example")}-allow.q-act-i")
 
       # with repo set the rows are weighed against that target's policy, and it answers
-      view = open(conn, scope, "/network?system=github.example&target=acme/shop")
+      view = open(conn, scope, "/network?target=#{target(scope, "github.example").public_id}")
       assert has_element?(view, "button##{dst("files.cdn.example")}-allow.q-act-i")
       refute has_element?(view, "##{dst("files.cdn.example")}-after")
     end
@@ -620,6 +770,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # the row is the record and stays let through; the line after says what holds now
       assert has_element?(view, ~s(tr##{id}[data-decision=allowed]))
       assert text(view, "##{id}-after") =~ "Denied for the workspace in v"
+      past = "No rule matched. Observe mode let it through."
+      assert text(view, "##{id} .q-why-l") == past
+      assert has_element?(view, ~s(##{id} .q-why-l[title="#{past}"]))
 
       assert has_element?(
                view,
