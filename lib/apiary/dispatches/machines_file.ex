@@ -67,20 +67,24 @@ defmodule Apiary.Dispatches.MachinesFile do
 
   # boot!/0 reads the file at the path `APIARY_MACHINES_FILE` is set to, as
   # `config/runtime.exs` left the setting, and keeps what it read for the life of the
-  # node; nil for a setting unset or blank. Raises `ArgumentError` with one line for a
+  # node; nil for a setting unset or blank, whitespace alone included. Raises `ArgumentError` with one line for a
   # file `read/1` refuses, so the instance does not start.
   @doc false
   @spec boot!() :: t | nil
   def boot! do
     file =
       case Application.get_env(:apiary, :machines_file_setting) do
-        blank when blank in [nil, ""] ->
+        nil ->
           nil
 
         path ->
-          case read(path) do
-            {:ok, file} -> file
-            {:error, line} -> raise ArgumentError, line
+          if String.trim(path) == "" do
+            nil
+          else
+            case read(path) do
+              {:ok, file} -> file
+              {:error, line} -> raise ArgumentError, line
+            end
           end
       end
 
@@ -199,7 +203,7 @@ defmodule Apiary.Dispatches.MachinesFile do
 
       [extra | _rest] ->
         fix(
-          "Remove #{member(at, extra)}",
+          "Remove the member #{inspect(extra)} from #{place(at)}",
           path,
           "#{place(at)} takes only #{Enum.join(members, ", ")}."
         )

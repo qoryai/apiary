@@ -53,8 +53,8 @@ defmodule Apiary.Dispatches.MachinesFileTest do
     do: %{"machines" => ["small", "large"], "workspaces" => %{"acme/factory" => entry}}
 
   describe "no file" do
-    test "with the setting unset or blank, nothing is read and no workspace has an entry" do
-      for setting <- [nil, ""] do
+    test "with the setting unset or blank, whitespace alone included, nothing is read and no workspace has an entry" do
+      for setting <- [nil, "", " ", "\t\n "] do
         assert boot_with(setting) == nil
         assert Application.get_env(:apiary, :machines_file) == nil
         assert MachinesFile.machine("acme", "factory") == nil
@@ -169,17 +169,23 @@ defmodule Apiary.Dispatches.MachinesFileTest do
 
     test "has a member it does not take", %{tmp_dir: dir} do
       assert refused(dir, %{"machines" => [], "machine" => "small"}) ==
-               "Remove machine | the top level takes only machines, workspaces."
+               "Remove the member \"machine\" from the top level | " <>
+                 "the top level takes only machines, workspaces."
 
       assert refused(dir, workspace(%{"machine" => "small", "size" => 2})) ==
-               "Remove workspaces.acme/factory.size | " <>
+               "Remove the member \"size\" from workspaces.acme/factory | " <>
+                 "workspaces.acme/factory takes only machine, stack, workflow."
+
+      # A key with a line break is shown escaped: the line stays one line.
+      assert refused(dir, workspace(%{"machine" => "small", "size\nlarge" => 2})) ==
+               "Remove the member \"size\\nlarge\" from workspaces.acme/factory | " <>
                  "workspaces.acme/factory takes only machine, stack, workflow."
 
       assert refused(
                dir,
                workspace(%{"stack" => Map.put(@stack, "ref", "main"), "workflow" => "hello"})
              ) ==
-               "Remove workspaces.acme/factory.stack.ref | " <>
+               "Remove the member \"ref\" from workspaces.acme/factory.stack | " <>
                  "workspaces.acme/factory.stack takes only commit, path, url."
     end
 
