@@ -102,7 +102,11 @@ defmodule Apiary.Dispatches.Handover do
   #
   # The answer has the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and
   # the run's target, or no target for an explore run whose work item has none. An explore
-  # run's input has the same domain and the same target, from the same values.
+  # run's input has the same domain and the same target, from the same values. For every
+  # step but prebuild, the answer has the stack and the workflow of the workspace's entry
+  # in the machines file (`Apiary.Dispatches.MachinesFile.stack/2`), by the slugs of the
+  # key's organisation and workspace, and neither without one. A prebuild's answer has
+  # neither: the job builds the target's environment and starts no stack.
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
@@ -148,7 +152,17 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Inputs, RunEnd, RunSettings, Slots}
+
+  alias Apiary.Dispatches.{
+    Dispatch,
+    DispatchRun,
+    Inputs,
+    MachinesFile,
+    RunEnd,
+    RunSettings,
+    Slots
+  }
+
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
@@ -181,7 +195,8 @@ defmodule Apiary.Dispatches.Handover do
   A handover answered: the registered run, its run key, the run of the queue, the name of
   its workspace's domain, the run's target (nil for an explore run without one), its work
   item (nil for a prebuild), its run settings (nil for none,
-  `Apiary.Dispatches.RunSettings`) and the step's input.
+  `Apiary.Dispatches.RunSettings`), its stack and workflow (nil for none,
+  `Apiary.Dispatches.MachinesFile`) and the step's input.
   """
   @type handed_over :: %{
           run: Run.t(),
@@ -191,6 +206,7 @@ defmodule Apiary.Dispatches.Handover do
           target: %{system: String.t(), path: String.t()} | nil,
           work_item: WorkItem.t() | nil,
           run_settings: Jason.OrderedObject.t() | nil,
+          stack: MachinesFile.stack() | nil,
           inputs: Jason.OrderedObject.t()
         }
 
@@ -480,7 +496,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
     case collection(dispatch_run) do
       {:ok, target} ->
-        formed(dispatch_run, workspace, target, nil, nil, fn _domain ->
+        formed(dispatch_run, workspace, target, nil, nil, nil, fn _domain ->
           {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
         end)
 
@@ -494,19 +510,21 @@ defmodule Apiary.Dispatches.Handover do
   # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
   # `RunSettings.causes/0` lists, or refuse the handover. The answer and the input get the same target and the same domain, and the
   # input the bytes of the answer's limit that the rest of the answer leaves.
-  defp formed(%{run: %DispatchRun{} = dispatch_run, held: held}, workspace) do
+  defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
+    stack = stack(locked.key, workspace)
 
     with false <- is_nil(target) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
-      formed(dispatch_run, workspace, target, work_item, settings, fn domain ->
+      formed(dispatch_run, workspace, target, work_item, settings, stack, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
           domain: domain,
           target: target,
           work_item: work_item,
-          run_settings: settings && settings.wire
+          run_settings: settings && settings.wire,
+          stack: stack
         }
 
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
@@ -532,6 +550,7 @@ defmodule Apiary.Dispatches.Handover do
         target: rest.target,
         work_item: rest.work_item,
         run_settings: rest.run_settings,
+        stack: rest.stack,
         inputs: Jason.OrderedObject.new([])
       })
 
@@ -547,9 +566,14 @@ defmodule Apiary.Dispatches.Handover do
     |> Keyword.get(:answer_limit, @answer_bytes)
   end
 
+  # The stack and the workflow of the workspace's entry in the machines file, by the
+  # slugs of the key's organisation and of `workspace`, the key's workspace; nil for none.
+  defp stack(%AccessKey{organisation: organisation}, %Workspace{slug: slug}),
+    do: MachinesFile.stack(organisation.slug, slug)
+
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
-  defp formed(dispatch_run, workspace, target, work_item, settings, inputs) do
+  defp formed(dispatch_run, workspace, target, work_item, settings, stack, inputs) do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
@@ -572,6 +596,7 @@ defmodule Apiary.Dispatches.Handover do
            target: target,
            work_item: work_item,
            run_settings: settings && settings.wire,
+           stack: stack,
            inputs: inputs
          }
        }}

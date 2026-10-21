@@ -23,7 +23,9 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #   5. a run claimed is `200`, signed: the contract's `claim-answer.schema.json`, its
   #      `revision` the request's, inside the signed body. A prebuild's answer has its
   #      collection's target and no `work_item`. An explore run whose work item has no
-  #      target has neither `access` nor `target`.
+  #      target has neither `access` nor `target`. `machine` is the machine type of the
+  #      workspace's entry in the machines file (`Apiary.Dispatches.MachinesFile`), and
+  #      absent without one.
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
   # pool at its instance limit, the request is held, up to its `wait_seconds`: it listens
@@ -189,7 +191,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
             {"pool_id", pool.public_id},
             {"lease_until", DispatchAnswer.time(dispatch.lease_until)},
             {"step", run.step}
-          ] ++ DispatchAnswer.what_for(claimed)
+          ] ++ DispatchAnswer.what_for(claimed) ++ DispatchAnswer.machine(conn.assigns.access_key)
         )
       )
 

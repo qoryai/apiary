@@ -115,6 +115,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
       target: handed.target,
       work_item: handed.work_item,
       run_settings: handed.run_settings,
+      stack: handed.stack,
       inputs: handed.inputs
     })
   end
