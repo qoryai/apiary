@@ -7,7 +7,7 @@ defmodule Apiary.RetentionTest do
 
   alias Apiary.Organisations.Workspace
   alias Apiary.Retention
-  alias Apiary.Runs.{Connection, Delivery, Event, LogChunk, Projector, Rebuild, Run}
+  alias Apiary.Runs.{Connection, Delivery, Event, LogChunk, Projector, Rebuild, Run, Step}
 
   @now ~U[2026-12-01 03:00:00.000000Z]
 
@@ -37,6 +37,19 @@ defmodule Apiary.RetentionTest do
 
     Repo.update_all(from(r in Run, where: r.id == ^run.id),
       set: [last_event_at: days_ago(days), event_count: 15]
+    )
+
+    Repo.get!(Run, run.id)
+  end
+
+  # A run of the synthetic record with steps, projected, last heard from `days` days ago.
+  defp steps_run(scope, days) do
+    run = run_fixture(scope)
+    events_fixture(run, steps_record())
+    {:ok, run} = Projector.project(run)
+
+    Repo.update_all(from(r in Run, where: r.id == ^run.id),
+      set: [last_event_at: days_ago(days), event_count: 14]
     )
 
     Repo.get!(Run, run.id)
@@ -217,6 +230,33 @@ defmodule Apiary.RetentionTest do
                from(d in Delivery, where: d.node_run_id == ^young.node_run_id),
                :count
              ) == 1
+    end
+
+    test "a run's steps go with its events, and a step's log lines with its log", %{
+      scope: scope
+    } do
+      scope = retain(scope, events_retention_days: 90, log_retention_days: 30)
+      ancient = steps_run(scope, 100)
+      middle = steps_run(scope, 60)
+      young = steps_run(scope, 10)
+
+      dry = Retention.prune_workspace(scope.workspace, now: @now, dry_run: true)
+      wet = Retention.prune_workspace(scope.workspace, now: @now)
+      assert Map.delete(dry, :dry_run) == Map.delete(wet, :dry_run)
+
+      # 14 events and 4 log chunks of the run past the events cut-off; 4 log events and 4
+      # log chunks of the run past the log cut-off. No count holds the steps.
+      assert %{runs_pruned: 2, events_deleted: 18, log_chunks_deleted: 8} = wet
+
+      assert count(Step, ancient) == 0
+      assert count(Event, ancient) == 0
+
+      assert count(Step, middle) == 3
+      assert count(LogChunk, middle) == 0
+      assert log_events(middle) == 0
+
+      assert count(Step, young) == 3
+      assert count(LogChunk, young) == 4
     end
 
     test "both settings: the log first, the events later, nothing counted twice", %{scope: scope} do

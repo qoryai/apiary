@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.Record do
   @moduledoc """
   The record of one run, as the run page reads it: its events in windows by sequence, the
-  timeline laid out from them, its log chunks and its connections.
+  timeline laid out from them, its log chunks, its connections and its steps.
 
   Every function takes the caller's scope first and the run second, and reads only rows
   that carry the scope's organisation, the scope's workspace and the run's row id. A run
@@ -23,7 +23,7 @@ defmodule Apiary.Runs.Record do
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, LogChunk, Run}
+  alias Apiary.Runs.{Connection, Event, LogChunk, Run, Step}
   alias Apiary.Runs.Record.Timeline
 
   @policy_applied "dev.qory.run.policy_applied"
@@ -41,6 +41,8 @@ defmodule Apiary.Runs.Record do
   @max_cells 65_535
   @resizes_read 100
   @connections_page 50
+  # The highest step number a step's column holds.
+  @max_step 2_147_483_647
 
   ## SQL that bounds what an array of an event gives. Macros, because a fragment's text is
   ## fixed at compile time.
@@ -602,6 +604,49 @@ defmodule Apiary.Runs.Record do
     Edition.client_reads(scope, :run_connections, run, query)
   end
 
+  ## The steps
+
+  @doc """
+  The run's steps (`Apiary.Runs.Step`), by number: each a step of its host work or of a
+  session's join, with its name, kind, state, exit code, duration and the sequences and
+  times of its start and its exit. `[]` for a run with none.
+  """
+  @spec steps(Scope.t(), Run.t()) :: [Step.t()]
+  def steps(%Scope{} = scope, %Run{} = run) do
+    Repo.all(from s in steps_of(scope, run), order_by: s.step)
+  end
+
+  @doc """
+  The log lines of the run's step `step`: its `dev.qory.run.log` chunks with that `step`,
+  `%{sequence, stream, bytes}` each, in sequence order. At most `limit:` chunks
+  (#{@default_log_limit} by default, #{@max_log_limit} at most) after the sequence
+  `after:` (0 by default), so a long step is read a page at a time from the last
+  sequence of the page before. `[]` for a step without lines, for a number the run has
+  no step of and for a number outside 1 to #{@max_step}.
+  """
+  @spec step_log(Scope.t(), Run.t(), integer, keyword) :: [map]
+  def step_log(scope, run, step, opts \\ [])
+
+  def step_log(%Scope{}, %Run{}, step, _opts) when step not in 1..@max_step, do: []
+
+  def step_log(%Scope{} = scope, %Run{} = run, step, opts) when is_integer(step) do
+    after_sequence = Keyword.get(opts, :after, 0)
+
+    limit =
+      case log_limit(opts[:limit]) do
+        :all -> @max_log_limit
+        limit -> limit
+      end
+
+    Repo.all(
+      from l in log_chunks(scope, run),
+        where: l.step == ^step and l.sequence > ^after_sequence,
+        order_by: l.sequence,
+        limit: ^limit,
+        select: %{sequence: l.sequence, stream: l.stream, bytes: l.bytes}
+    )
+  end
+
   ## The log
 
   @doc """
@@ -911,6 +956,13 @@ defmodule Apiary.Runs.Record do
       where:
         l.organisation_id == ^organisation_id(scope) and l.workspace_id == ^workspace_id(scope),
       where: l.run_id == ^id
+  end
+
+  defp steps_of(%Scope{} = scope, %Run{id: id}) do
+    from s in Step,
+      where:
+        s.organisation_id == ^organisation_id(scope) and s.workspace_id == ^workspace_id(scope),
+      where: s.run_id == ^id
   end
 
   defp organisation_id(%Scope{organisation: %Organisation{id: id}}), do: id

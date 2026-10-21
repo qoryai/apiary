@@ -883,6 +883,42 @@ and folds nothing from `dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's
 `dev.qory.run.log`, `dev.qory.run.resized` and runtime events carry its number as
 `session`, which is stored with the event; the projection reads nothing from it.
 
+## The steps of a run
+
+A step is one named unit of a run's host work or of a session's join, such as a fetch, a
+compose, the fetch of an image or the start of a wall. Each step is a
+`dev.qory.run.step_started`, with `step`, its number in the run from 1, `name` and
+`kind`, then a `dev.qory.run.step_exited` with the same `step`, `state`, `exit_code` and
+`duration_ms`; the step's log lines are the `dev.qory.run.log` events with its number as
+`step`. Both types are stored like every other, and the projection folds them into
+`run_steps`, one row per number of a run (`Apiary.Runs.Step`), and keeps each log chunk's
+`step` (`Apiary.Runs.LogChunk`). `Apiary.Runs.Record.steps/2` reads a run's steps and
+`Apiary.Runs.Record.step_log/4` the log lines of one.
+
+What the projection reads:
+
+- `step` is an integer from 1 to 2147483647; a step event whose `step` is anything else
+  is stored and folded into nothing, and a log chunk with such a `step` has none.
+- `name` is cut to 1024 bytes on a character boundary. `kind` is `fetch`, `compose`,
+  `image`, `setup`, `join` or `wall`, and any other value is absent.
+- The exit's `state` is `succeeded`, `failed` or `cancelled`; any other value, or none, is
+  `failed`, as for a run's exit. `exit_code` outside -2147483647 to 2147483647 and a
+  negative `duration_ms` are absent.
+- A step is `running` from its start until its exit is folded.
+- The contract writes each number once and one exit after its start. Should a run send
+  two starts or two exits with one number, the one with the lower sequence decides, in any
+  order of arrival; an exit folded before its start is kept, and the start fills the rest.
+- A run the gateway ends during a step has no `dev.qory.run.step_exited` for it: Forager
+  writes that exit in the session's record alone, which a server never receives. Once the
+  run's `dev.qory.run.exited` is folded, every step of the run without an exit is
+  `cancelled`, the contract's state of a step stopped before it ended, and keeps no exit
+  code, duration or exit sequence. An exit that arrives after that sets the step's state
+  as it says. A run that Qory marks lost without a `dev.qory.run.exited` leaves its open
+  step `running`.
+
+Retention deletes a run's steps with its events, and a step's log lines with the log
+(`Apiary.Retention`).
+
 A run through a gateway belongs to the node that registered it, with that node's instance
 and key: a gateway is a separate kind of node, whose key is refused at registration
 (`gateway_key`), and no gateway opens a run. The gateway that attached the run delivers its
