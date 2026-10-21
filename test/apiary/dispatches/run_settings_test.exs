@@ -357,7 +357,6 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       refute log =~ "elsewhere.example.com"
     end
 
-    @tag needs: :security
     test "never for a deny rule that covers the provider's host", ctx do
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
       {:ok, rule} = Apiary.Policy.deny(ctx.scope, nil, %{host: "*.anthropic.com"})
