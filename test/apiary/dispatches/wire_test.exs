@@ -263,7 +263,7 @@ defmodule Apiary.Dispatches.WireTest do
                {:ok, %{time: ~U[2026-10-15 12:00:20Z], external: nil}}
 
       assert handover(fixture("handover/handover.json")) ==
-               {:ok, %{time: ~U[2026-10-15 12:01:00Z]}}
+               {:ok, %{time: ~U[2026-10-15 12:01:00Z], run_code: false}}
 
       assert release(fixture("release/retry.json")) ==
                {:ok,
@@ -492,6 +492,16 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert handover(Map.put(@handover, "about", "x")) == :error
       assert {:ok, _} = handover(@handover)
+    end
+
+    test "takes run_code, a boolean, false when left out" do
+      assert {:ok, %{run_code: true}} = handover(Map.put(@handover, "run_code", true))
+      assert {:ok, %{run_code: false}} = handover(Map.put(@handover, "run_code", false))
+      assert {:ok, %{run_code: false}} = handover(@handover)
+
+      for value <- ["true", 1, nil, %{}] do
+        assert handover(Map.put(@handover, "run_code", value)) == :error, inspect(value)
+      end
     end
   end
 

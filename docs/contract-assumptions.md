@@ -393,11 +393,19 @@ the run in the handover's transaction, with the run of the queue and its dispatc
 through the gateway the pool's choice resolves to: the run's `run_id` is the one the run of
 the queue was given, and so is its instance id; its labels and its run variables come from
 the target, the work item's or the prebuild's collection's, and what it is about from the
-step and the work item, never from the request, whose body is `version` and `time` alone;
+step and the work item, never from the request, whose body is `version`, `time` and,
+optionally, `run_code`;
 a prebuild's input is the `environment_ref` its run of the queue was queued for, which the
 starter reports back, unchanged, in its `prebuilt`;
 its run key names the gateway and the pool, with an attach window of 600 seconds, and is
-given once, in the signed `200`, with `Cache-Control: no-store`. The refusals come in the contract's order: `403` `forbidden` for
+given once, in the signed `200`, with `Cache-Control: no-store`. A handover whose body has
+`run_code` `true` is answered `version`, `revision`, `run_id`, `run_code` and `step` alone,
+`run_code` in place of `run_key`: a run code, `qecr_` and 26 characters, then `.` and the
+fingerprint of the instance's key, which the machine redeems
+once at enrolment for the run key, within 15 minutes of the handover (Enrolment). The run
+key is made at the first redemption, issued then, with its attach window of 600 seconds
+from then; until the redemption the run's attach window is the code's 15 minutes, so a run
+whose code is never redeemed is lost at the code's expiry. The refusals come in the contract's order: `403` `forbidden` for
 an unknown dispatch, another pool's, or a key the action is refused to, one answer; `410`
 `gone` for a dispatch that ended;
 `409` `handed_over`, `lease_expired`, `not_dispatched` and `no_gateway`; and `503`
@@ -824,6 +832,18 @@ A signed answer is signed under `qory-enrol-answer-ed25519-v1`; its line 3 is th
 `proof`, and its body lists `apiary_public_key`. The `201` carries `version`,
 `access_key_id`, `node_id`, `node_kind`, `stored_secrets` and `apiary_public_key`. An
 unsigned answer lists no key. A refusal changes nothing: the code stays outstanding.
+
+A run code (`qecr_`, `Apiary.Runs.RunCode`), which a run's handover answers in place of its
+run key, is answered in the same order, and the two `409`s of the ledger and the limit
+never apply to it: no access key is made, and its public key enters no ledger. Its `401`
+is also a code at or past its 15 minutes from the handover, a code of a run that has
+ended (no longer pending or running, released, given its outcome, its events pruned, or
+its run of the queue ended), and a code redeemed before by another public key. Its `201`
+carries `version`, `run_id`, `run_key` and `apiary_public_key`: the run key is made at the
+first redemption, its `issued` that time and its `attach_by` 600 seconds after, and the
+run keeps it with the public key that redeemed the code. The same public key is given the
+same `run_id`, `run_key` and `apiary_public_key` again while the code's 15 minutes last,
+signed over the request's proof: the same request gets the same answer byte for byte.
 
 ## The log and the terminal
 

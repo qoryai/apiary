@@ -75,4 +75,16 @@ defmodule Apiary.AccessKeys.EnrolmentCodeTest do
       end
     end
   end
+
+  describe "a run code" do
+    test "is the run prefix and 26 characters, of no node's kind, and no code a page reads" do
+      code = EnrolmentCode.generate(:run)
+      assert code =~ ~r/\Aqecr_[0-9A-HJKMNP-TV-Z]{26}\z/
+      assert EnrolmentCode.run_code?(code)
+      refute EnrolmentCode.prefixed?(code)
+      refute Enum.any?(@kinds, &EnrolmentCode.of_kind?(code, &1))
+      assert EnrolmentCode.normalise(code) == :error
+      refute EnrolmentCode.generate(:run) == code
+    end
+  end
 end

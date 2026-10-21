@@ -201,6 +201,17 @@ defmodule Apiary.Runs.Run do
     field :attach_interval_seconds, :integer
     field :attach_answer_digest, :string
     field :gateway_instance_id, :string
+    # A run handed over with a run code (`Apiary.Runs.RunCode`), in place of a run key:
+    # the code's SHA-256, never the code; when the code expires, 15 minutes after the
+    # handover; what its run key grants, fixed at the handover; and the public key that
+    # redeemed the code first, nil until then. Until the redemption the run has no run key
+    # payload, its `run_key_issued_at` is the handover and its `attach_by` the code's
+    # expiry; the redemption sets the run key's four fields and the public key together.
+    # All nil for every other run. Not folded: a rebuild keeps them.
+    field :run_code_sha256, :binary, redact: true
+    field :run_code_expires_at, :utc_datetime_usec
+    field :run_code_grant, :map
+    field :run_code_public_key, :binary
 
     # The run of a workspace's queue this run is, set when its dispatch is handed over and
     # the run registered for it, unique; nil for every other run.
@@ -301,8 +312,11 @@ defmodule Apiary.Runs.Run do
   Whether the run goes through a gateway: its registration was given a run key, whatever
   has become of the gateway since.
   """
+  # A run handed over with a run code (`Apiary.Runs.RunCode`) goes through a gateway
+  # before its code is redeemed too, with no run key payload until then.
   @spec through_gateway?(t() | map()) :: boolean()
   def through_gateway?(%{run_key_payload: payload}) when is_binary(payload), do: true
+  def through_gateway?(%{run_code_sha256: hash}) when is_binary(hash), do: true
   def through_gateway?(_run), do: false
 
   @doc """
