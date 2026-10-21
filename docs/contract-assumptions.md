@@ -850,13 +850,13 @@ The terminal tab replays at the recorded size. The bytes never cross the LiveVie
 so the sequence of the sizes has to reach the reader beside the bytes: the log endpoint
 answers one size at a time. `x-qory-log-size` (`<cols>x<rows>`) is the size in force right
 after `after`: of the later of the last resize and the last session's start at or below
-it, else of the run's first session's start. An answer stops short of the next resize or
-the next session's start with a size, and once every chunk before it is sent,
-`x-qory-log-through` is that event's sequence, so the next question is answered at the
-new size. The reader sets the
-screen to each answer's size before writing its bytes, and xterm.js reflows as a terminal
-does. A resize that arrives after the chunks past it (delivery is in any order) is applied
-on the next load, not to what is already on the screen.
+it, else of the run's first session's start, and absent inside a session on pipes. An
+answer stops short of the next resize or the next session's start, and once every chunk
+before it is sent, `x-qory-log-through` is that event's sequence, so the next question is
+answered at the new size. The reader sets the screen to each answer's size before writing
+its bytes, and xterm.js reflows as a terminal does. A resize that arrives after the chunks
+past it (delivery is in any order) is applied on the next load, not to what is already on
+the screen.
 
 A run without a size is a run on pipes: the endpoint sends no size header and the page fits
 the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never

@@ -716,11 +716,11 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The first event after `after_sequence` that sets a size, `%{sequence, cols, rows}`, or
-  nil: a `dev.qory.run.resized` that is a size, or a `dev.qory.session.started` other than
-  the run's first whose `terminal` is one. It is where a read of the log has to stop,
-  since the chunks after it were written to a terminal of another size. The run's first
-  session's start is the size from the log's beginning (`terminal_size/3`), so a read
-  does not stop there.
+  nil: a `dev.qory.run.resized` that is a size, or any `dev.qory.session.started` other
+  than the run's first, whose `cols` and `rows` are nil when it is on pipes. It is where a
+  read of the log has to stop, since the chunks after it were written to a terminal of
+  another size, or to none. The run's first session's start is the size from the log's
+  beginning (`terminal_size/3`), so a read does not stop there.
   """
   def next_resize(%Scope{} = scope, %Run{} = run, after_sequence) do
     first_start =
@@ -742,14 +742,15 @@ defmodule Apiary.Runs.Record do
         select: {e.sequence, e.type, e.data}
     )
     |> Enum.find_value(fn {sequence, type, data} ->
-      case size(sizing(type, data)) do
-        {cols, rows} -> %{sequence: sequence, cols: cols, rows: rows}
-        nil -> nil
+      case {type, size(sizing(type, data))} do
+        {_type, {cols, rows}} -> %{sequence: sequence, cols: cols, rows: rows}
+        {@session_started, nil} -> %{sequence: sequence, cols: nil, rows: nil}
+        {_resized, nil} -> nil
       end
     end)
   end
 
-  # What says the size: a resize's data, a session's start's `terminal`.
+  # The size of each: a resize's data, a session's start's `terminal`.
   defp sizing(@session_started, %{"terminal" => terminal}), do: terminal
   defp sizing(@session_started, _data), do: nil
   defp sizing(_resized, data), do: data

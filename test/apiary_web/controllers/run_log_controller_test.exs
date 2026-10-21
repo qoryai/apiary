@@ -192,6 +192,48 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert {between.resp_body, through(between), size(between)} == {"c", "7", "120x40"}
     end
 
+    test "a session on pipes between two on a terminal is answered without a size", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = run_fixture(scope)
+
+      on_terminal = fn session, cols, rows ->
+        session_started_data(%{
+          "session" => session,
+          "interactive" => true,
+          "terminal" => %{"cols" => cols, "rows" => rows}
+        })
+      end
+
+      events_fixture(run, [
+        {1, "run.started", started_data()},
+        {2, "session.started", on_terminal.(1, 120, 40)},
+        drawn(3, "a"),
+        drawn(4, "b"),
+        {5, "session.started", session_started_data(%{"session" => 2})},
+        {6, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("p")}},
+        {7, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("q")}},
+        {8, "session.started", on_terminal.(3, 80, 24)},
+        drawn(9, "c")
+      ])
+
+      {:ok, run} = Projector.project(run)
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/log"
+
+      # Session 1 at its size, stopping at session 2's start.
+      first = get(conn, path)
+      assert {first.resp_body, through(first), size(first)} == {"ab", "5", "120x40"}
+
+      # Session 2 is on pipes: its chunks have no size, up to session 3's start.
+      second = get(conn, "#{path}?after=5")
+      assert {second.resp_body, through(second), size(second)} == {"pq", "8", nil}
+
+      # Session 3 at its size.
+      third = get(conn, "#{path}?after=8")
+      assert {third.resp_body, through(third), size(third)} == {"c", "9", "80x24"}
+    end
+
     test "a run without a size is answered as before: every chunk, no size", %{
       conn: conn,
       scope: scope

@@ -16,10 +16,11 @@ defmodule ApiaryWeb.RunLogController do
   A run on a pseudo-terminal whose record says its size is answered at that size: the
   bytes of one answer were all written to a terminal of `x-qory-log-size`, `<cols>x<rows>`,
   the size in force right after `after`, which each `dev.qory.run.resized` and each
-  session's `dev.qory.session.started` sets. An answer stops short of the next resize or
-  the next session's start with a size (`Apiary.Runs.Record.next_resize/3`), and once
-  every chunk before it is sent `x-qory-log-through` is that event's sequence, so the
-  reader's next question is answered at the new size.
+  session's `dev.qory.session.started` sets; an answer inside a session on pipes has no
+  size. An answer stops short of the next resize or the next session's start
+  (`Apiary.Runs.Record.next_resize/3`), and once every chunk before it is sent
+  `x-qory-log-through` is that event's sequence, so the reader's next question is
+  answered at the new size.
   No header on a run on pipes, on a single stream of pipes and on a download, which is every chunk whatever the size.
 
   Scoped like the page: the pipeline resolves the organisation and workspace of the path
