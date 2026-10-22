@@ -106,34 +106,40 @@ defmodule Apiary.Dispatches.MachineLogStore do
     end
   end
 
-  # delete_unchanged/2 deletes the file of `key` only where its modification time is still
-  # `modified_at`, Unix seconds, as `files/0` listed it: `:changed` leaves a file written
-  # again since, by an upload's rename among others, as it is. A file not there is `:ok`.
+  # delete_unchanged/2 deletes the file of `key` where its modification time is still
+  # `modified_at`, Unix seconds, as `files/0` listed it: `:ok`. A file written again since
+  # is left, `:changed`; a file not there is `:gone`. The check and the delete are two
+  # calls, so a rename between them is not seen here: a caller that races a write holds
+  # off that write first (`Apiary.Dispatches.MachineLogs.prune/1`).
   @doc false
-  @spec delete_unchanged(String.t(), integer) :: :ok | :changed | {:error, error}
+  @spec delete_unchanged(String.t(), integer) :: :ok | :changed | :gone | {:error, error}
   def delete_unchanged(key, modified_at) when is_integer(modified_at) do
     with {:ok, _dir, path} <- path(key) do
       case File.lstat(path, time: :posix) do
-        {:ok, %File.Stat{mtime: ^modified_at}} -> delete(key)
+        {:ok, %File.Stat{mtime: ^modified_at}} -> remove(path)
         {:ok, %File.Stat{}} -> :changed
-        {:error, :enoent} -> :ok
+        {:error, :enoent} -> :gone
         {:error, _reason} = error -> error
       end
     end
   end
 
-  # delete_temporary/1 deletes the temporary file `name` that `files/0` listed.
+  defp remove(path) do
+    case File.rm(path) do
+      :ok -> :ok
+      {:error, :enoent} -> :gone
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # delete_temporary/1 deletes the temporary file `name` that `files/0` listed: `:ok`, or
+  # `:gone` for a file not there any more.
   @doc false
-  @spec delete_temporary(String.t()) :: :ok | {:error, error}
+  @spec delete_temporary(String.t()) :: :ok | :gone | {:error, error}
   def delete_temporary(name) do
     with dir when is_binary(dir) <- dir() || {:error, :no_folder},
-         true <- Regex.match?(@temporary, name) || {:error, :invalid_key} do
-      case File.rm(Path.join(dir, name)) do
-        :ok -> :ok
-        {:error, :enoent} -> :ok
-        {:error, _reason} = error -> error
-      end
-    end
+         true <- Regex.match?(@temporary, name) || {:error, :invalid_key},
+         do: remove(Path.join(dir, name))
   end
 
   defp file(dir, name) do

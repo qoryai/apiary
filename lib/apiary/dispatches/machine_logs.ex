@@ -96,6 +96,9 @@ defmodule Apiary.Dispatches.MachineLogs do
       Repo.transact(fn ->
         with {:ok, key} <- Dispatches.current_key(key_id),
              {:ok, dispatch} <- dispatch_of(key, dispatch_id),
+             # The record first: its key to the dispatch locks the dispatch's row
+             # `FOR KEY SHARE` until the commit, before the file is written, which the
+             # retention job's delete of a file with no record waits on (`prune/1`).
              :ok <- insert(dispatch, log, truncated) do
           store(dispatch, log)
         end
@@ -357,11 +360,26 @@ defmodule Apiary.Dispatches.MachineLogs do
     end
   end
 
-  # An upload of the dispatch since the listing renames its file over the old one, or
-  # commits its record: the file is left then, read again just before the delete.
+  # A file listed with no record, deleted with its dispatch's row locked `FOR UPDATE`. An
+  # upload takes `FOR KEY SHARE` on that row when it writes its record, through the
+  # record's key to the dispatch, before it writes its file, and holds it until it
+  # commits (`upload/3`). So the delete waits for an upload in progress, and finds its
+  # record once it committed; an upload that starts later waits for the delete. With the
+  # row held, a record leaves the file, and so does a file written since the listing, by
+  # an upload rolled back since. With no dispatch row, nothing can upload for it.
   defp delete_orphan({:key, key, mtime}) do
-    not Repo.exists?(from l in MachineLog, where: l.storage_key == ^key) and
-      MachineLogStore.delete_unchanged(key, mtime) == :ok
+    {:ok, deleted?} =
+      Repo.transact(fn ->
+        Repo.one(from d in Dispatch, where: d.public_id == ^key, select: d.id, lock: "FOR UPDATE")
+
+        deleted? =
+          not Repo.exists?(from l in MachineLog, where: l.storage_key == ^key) and
+            MachineLogStore.delete_unchanged(key, mtime) == :ok
+
+        {:ok, deleted?}
+      end)
+
+    deleted?
   end
 
   ## The purge

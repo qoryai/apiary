@@ -348,7 +348,16 @@ defmodule Apiary.Dispatches.MachineLogsTest do
       {:ok, [{:key, ^key, now}]} = MachineLogStore.files()
       assert MachineLogStore.delete_unchanged(key, now) == :ok
       refute File.exists?(path)
-      assert MachineLogStore.delete_unchanged(key, now) == :ok
+      # A file not there is not counted as deleted.
+      assert MachineLogStore.delete_unchanged(key, now) == :gone
+    end
+
+    test "a temporary file not there any more is :gone, so the job does not count it", ctx do
+      File.mkdir_p!(ctx.dir)
+      name = ".dp_0000000000000003.abc.tmp"
+      File.write!(Path.join(ctx.dir, name), "half")
+      assert MachineLogStore.delete_temporary(name) == :ok
+      assert MachineLogStore.delete_temporary(name) == :gone
     end
 
     test "the job leaves a file of another name alone", ctx do
