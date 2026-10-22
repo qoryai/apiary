@@ -117,7 +117,7 @@ defmodule Apiary.TimeLimitsTest do
       assert TimeLimits.delete_limit(scope, :workspace, "hello") == {:error, :not_found}
     end
 
-    test "a target of another workspace is not found", %{scope: scope} do
+    test "a target of another workspace is not found", %{scope: scope, target: target} do
       other = workspace_fixture(scope.organisation, "Other site")
 
       foreign =
@@ -130,6 +130,21 @@ defmodule Apiary.TimeLimitsTest do
         })
 
       assert TimeLimits.put_limit(scope, foreign, "hello", 90) == {:error, :not_found}
+
+      # A scope of another organisation reaches neither this workspace's target nor,
+      # given this workspace, the workspace.
+      %{scope: stranger} = sign_up_fixture()
+      assert TimeLimits.put_limit(stranger, target, "hello", 90) == {:error, :not_found}
+      assert TimeLimits.delete_limit(stranger, target, "hello") == {:error, :not_found}
+
+      assert TimeLimits.put_limit(
+               %{stranger | workspace: scope.workspace},
+               :workspace,
+               "hello",
+               90
+             ) ==
+               {:error, :not_found}
+
       assert TimeLimits.resolve(scope, foreign, "hello") == {:error, :not_found}
       assert Repo.aggregate(TimeLimit, :count) == 0
     end
@@ -240,7 +255,7 @@ defmodule Apiary.TimeLimitsTest do
       assert {:ok, {:ok, %Resolution{minutes: 120, level: :target}}} =
                TimeLimits.resolve(scope, target, "hello")
 
-      for file <- Path.wildcard("lib/apiary/time_limits{.ex,/*.ex}") do
+      for file <- ["lib/apiary/time_limits.ex" | Path.wildcard("lib/apiary/time_limits/*.ex")] do
         refute File.read!(file) =~ ~r/repositor|forge|github|\bcode\b/i, file
       end
     end
