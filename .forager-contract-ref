@@ -35,12 +35,13 @@
 # a step; and a run code, `qecr_`, which a machine redeems once at enrolment for its
 # run's run key, answered `$defs/run_answer` of `enrolment.schema.json`, with the run's
 # `documents`; and a run key's `gateway_url` of `https://`, a host and an optional port
-# alone, at most 300 characters.
+# alone, at most 300 characters; and a gateway's relay that signs a run code's enrolment
+# as the gateway, `qory-request-ed25519-v1`, over the raw body, with no timestamp header.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-03a359d03759d480f3115e12df03a5e5438a96f7
+b57ca8e075405edac0a4fa5c54336f21abb3a051
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json

@@ -24,9 +24,10 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       refused by the key checks, as the fixture request is;
     * the relay's signature of that request (`run_enrolment.relay`): the request string of
       a POST under the fixture gateway key, the body byte for byte as its last line, and
-      the signature under that key. Forager's contract at the pinned commit has no
-      `relay` vector yet; until it does, the request string and the signature are checked
-      against the format alone.
+      the signature under that key, each the known answer's; and that request, with the
+      known answer's headers, passes `ApiaryWeb.Contract.SignedRequest.relayed/1` under
+      the fixture gateway key held on a gateway, and fails with one byte of its body
+      changed.
 
   The instance never signs under the fixture signing key, so an answer's signature is
   replayed here, through `Apiary.SigningKey.sign/2`, not through the endpoint;
@@ -41,8 +42,9 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{AccessKeys, ContractSchema, Repo, SigningKey}
-  alias Apiary.AccessKeys.EnrolmentCode
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
+  alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag :contract
 
@@ -439,7 +441,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
                known["signature"]
     end
 
-    test "the relay's signature: a POST under the gateway's access key, the body byte for byte as the last line, and the known answer's when the contract has one",
+    test "the relay's signature: a POST under the gateway's access key, the body byte for byte as the last line, and the known answer's",
          %{known: known} do
       body = contract_file!("known-answers/enrolment-run-request.json")
       gateway = fixture_key!("gateway_key")
@@ -466,12 +468,45 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       {:ok, raw} = Ed25519.decode(signature, 64)
       assert Ed25519.verify(message, raw, gateway.public_key)
 
-      # Forager's contract at 03a359d has no relay vector: the next pin brings one.
-      if relay = known["relay"] do
-        assert relay["lines"] == lines
-        assert relay["length"] == byte_size(message)
-        assert relay["signature"] == signature
-      end
+      relay = known["relay"]
+      assert relay["access_key_id"] == gateway.access_key_id
+      assert relay["body"] == "fixtures/known-answers/enrolment-run-request.json"
+      assert relay["lines"] == lines
+      assert relay["length"] == byte_size(message)
+      assert relay["signature"] == signature
+    end
+
+    # The relay's request as the endpoint reads it: a POST to the enrolment path with the
+    # known answer's headers, its body kept byte for byte (`ApiaryWeb.Contract.RawBody`).
+    defp relayed_conn(relay, body) do
+      Plug.Test.conn(:post, "/.well-known/qory-enrolment", body)
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Plug.Conn.put_req_header("x-qory-contract-version", "1")
+      |> Plug.Conn.put_req_header("x-qory-access-key-id", relay["access_key_id"])
+      |> Plug.Conn.put_req_header("x-qory-instance-id", Enum.at(relay["lines"], 2))
+      |> Plug.Conn.put_req_header("x-qory-signature-ed25519", relay["signature"])
+      |> ApiaryWeb.Contract.RawBody.call(ApiaryWeb.Contract.RawBody.init([]))
+    end
+
+    test "the relay's request passes relayed/1 under the fixture gateway key on a gateway, and fails with one body byte changed",
+         %{known: known} do
+      %{scope: scope} = sign_up_fixture()
+      gateway = gateway_fixture(scope)
+      key = fixture_access_key!(scope, gateway, "gateway_key")
+      relay = known["relay"]
+      assert Enum.at(relay["lines"], 2) == "i_gYKDhIWGh4iJiouMjY6PkA"
+
+      body = contract_file!("known-answers/enrolment-run-request.json")
+      conn = relayed_conn(relay, body)
+      assert conn.assigns.raw_body == body
+
+      assert {:ok, %AccessKey{id: id, node_id: node_id}} = SignedRequest.relayed(conn)
+      assert {id, node_id} == {key.id, gateway.id}
+
+      # The name `run-01` sent as `run-02`: one byte of the body changed.
+      changed = String.replace(body, ~s("run-01"), ~s("run-02"))
+      assert byte_size(changed) == byte_size(body) and changed != body
+      assert SignedRequest.relayed(relayed_conn(relay, changed)) == :unauthorized
     end
 
     test "the invalid run answers are refused by the schema, and are no body the builder makes",
