@@ -2,7 +2,8 @@ defmodule ApiaryWeb.ActivityModelChoiceTest do
   # The Activity lines of a model choice: the label of `model_choice.write` in the filter,
   # the sentence by the change in the entry's details, the subject by the place of the
   # choice and the line for the workflow. The organisation's default is written under
-  # `connection.write`, and says the same sentences.
+  # `provider.write`, and before the split of `connection.write` under that; it says the
+  # same sentences.
   use Apiary.DataCase, async: true
 
   import Apiary.ConnectionsFixtures, only: [target!: 2]
@@ -41,7 +42,7 @@ defmodule ApiaryWeb.ActivityModelChoiceTest do
           {"choice_locked", "Locked a model choice"},
           {"choice_unlocked", "Unlocked a model choice"}
         ],
-        action <- ["model_choice.write", "connection.write"] do
+        action <- ["model_choice.write", "provider.write", "connection.write"] do
       assert shown(action, entry(action, %{"change" => change, "level" => 5})) == sentence
     end
   end
@@ -79,15 +80,20 @@ defmodule ApiaryWeb.ActivityModelChoiceTest do
 
     assert %{text: "x/y's model choice"} = subject.(gone)
 
-    default = entry("connection.write", %{"level" => 6, "name" => scope.organisation.name})
-    assert %{text: text} = Core.subject(default, :"connection.write", names, scope, nil)
-    assert text == "#{scope.organisation.name}'s default model choice"
+    for action <- [:"provider.write", :"connection.write"] do
+      default =
+        entry(Atom.to_string(action), %{"level" => 6, "name" => scope.organisation.name})
+
+      assert %{text: text} = Core.subject(default, action, names, scope, nil)
+      assert text == "#{scope.organisation.name}'s default model choice"
+    end
   end
 
   test "the change line is the workflow at levels 2 and 4, and nothing at the others" do
     for {level, action} <- [
           {2, :"model_choice.write"},
           {4, :"model_choice.write"},
+          {4, :"provider.write"},
           {4, :"connection.write"}
         ] do
       details = %{"change" => "choice_set", "level" => level, "workflow" => "hello"}

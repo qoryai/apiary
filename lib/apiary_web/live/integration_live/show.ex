@@ -533,7 +533,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   defp settings(assigns) do
     ~H"""
     <p :if={!@may_write} id="connection-readonly" class="text-[13px]/5 text-muted">
-      {Common.only_admins(@current_scope)}
+      {Common.only_admins(@current_scope, Connections.write_action(@connection))}
     </p>
 
     <.form
@@ -731,7 +731,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
      socket
      |> assign(
        sections: SettingsComponents.sections(scope, :workspace),
-       may_write: Common.may_write?(scope),
        confirming: nil,
        find: to_form(%{"text" => ""}, as: :find),
        candidates: [],
@@ -790,6 +789,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
     assign(socket,
       connection: connection,
+      may_write: Common.may_write?(scope, connection),
       names: Common.names(connection),
       description: description,
       definition: definition,
@@ -861,7 +861,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     if action in @writes and not socket.assigns.may_write do
       {:noreply,
        socket
-       |> put_flash(:error, Common.only_admins(scope))
+       |> put_flash(
+         :error,
+         Common.only_admins(scope, Connections.write_action(socket.assigns.connection))
+       )
        |> push_patch(to: Common.connection_path(scope, socket.assigns.connection))}
     else
       left = socket.assigns.confirming
@@ -1180,7 +1183,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         {:error, _} -> []
       end
 
-    Common.refusal(scope, reason, connections)
+    Common.refusal(
+      scope,
+      reason,
+      connections,
+      Connections.write_action(socket.assigns.connection)
+    )
   end
 
   defp candidates_found(candidates) do

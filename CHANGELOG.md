@@ -56,6 +56,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An integration's settings check counts large text toward its memory limit.
 - An integration's settings check refuses a schema, or settings checked as regular
   expressions, whose patterns would take more than 16 MiB of memory once compiled.
+- The access action `connection.write` is split in three. `provider.write` covers model
+  providers, their keys and models, and the organisation's default model choice;
+  `runtime.write` covers runtimes; `connection.write` keeps integrations, services, an
+  integration's release and the organisation's service definitions. Owners and admins hold
+  all three, so what they may do is as before; an edition can grant one without the
+  others. A change to a model provider or a runtime leaves an audit entry of its new
+  action, and the Audit log's “Integration changed” filter finds the entries of all
+  three, those written before the split included.
 <!-- /feature -->
 
 ### Security

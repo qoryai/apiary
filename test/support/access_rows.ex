@@ -117,6 +117,8 @@ defmodule Apiary.AccessRows do
       {:"variable.edit", yes: @owners ++ [:admin]},
       {:"connection.read", yes: @owners ++ [:member, :admin]},
       {:"connection.write", yes: @owners ++ [:admin]},
+      {:"provider.write", yes: @owners ++ [:admin]},
+      {:"runtime.write", yes: @owners ++ [:admin]},
       {:"model_choice.write", yes: @owners ++ [:admin]},
       {:"time_limit.edit", yes: @owners ++ [:admin]},
       {:"run.post_events", yes: [:access_key, :pool_key, :hidden]},

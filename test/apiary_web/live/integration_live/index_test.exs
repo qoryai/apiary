@@ -475,6 +475,38 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert Apiary.Repo.all(Release) == []
     end
 
+    test "offers the cards for what its reader may write: agents under runtime.write",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoRuntimeWrite)
+      {:ok, lv, _html} = live(conn, ipath(scope))
+
+      refute has_element?(lv, "#integrations-readonly")
+      refute has_element?(lv, "#add-group-agent")
+      assert has_element?(lv, "#add-group-apis")
+      assert has_element?(lv, "#add-group-programs")
+
+      assert {:error, {:live_redirect, %{flash: flash}}} =
+               live(conn, ipath(scope, "/new-runtime"))
+
+      assert flash["error"] =~ "Only owners and admins"
+      assert {:ok, _lv, _html} = live(conn, ipath(scope, "/new-service"))
+    end
+
+    test "offers the cards for what its reader may write: the rest under connection.write",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoConnectionWrite)
+      {:ok, lv, _html} = live(conn, ipath(scope))
+
+      refute has_element?(lv, "#integrations-readonly")
+      assert has_element?(lv, "#add-group-agent")
+      refute has_element?(lv, "#add-group-apis")
+      refute has_element?(lv, "#add-group-programs")
+
+      assert {:ok, _lv, _html} = live(conn, ipath(scope, "/new-runtime"))
+      assert {:error, {:live_redirect, _}} = live(conn, ipath(scope, "/new-service"))
+      assert {:error, {:live_redirect, _}} = live(conn, ipath(scope, "/add"))
+    end
+
     test "an event its controls don't send changes nothing", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
 

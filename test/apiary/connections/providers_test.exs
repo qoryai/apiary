@@ -196,7 +196,7 @@ defmodule Apiary.Connections.ProvidersTest do
              }) == {:error, {:integration_settings_not_allowed, ["address"]}}
     end
 
-    test "is for a reader with connection.write only", %{scope: scope} do
+    test "is for a reader with provider.write only", %{scope: scope} do
       %{scope: member} = member_fixture(scope)
       provider = openrouter!(scope)
 

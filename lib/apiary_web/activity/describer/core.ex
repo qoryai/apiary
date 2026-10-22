@@ -19,6 +19,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   alias Apiary.{Access, Adapters, Features}
   alias ApiaryWeb.{Format, SourceComponents}
 
+  # What `connection.write` was before its split: an integration, a service, a runtime or a
+  # model provider. The entries stored before the split are under `connection.write`.
+  @connection_writes [:"connection.write", :"provider.write", :"runtime.write"]
+  @choice_writes [:"model_choice.write" | @connection_writes]
+
   @impl true
   def label(:"organisation.create"), do: gettext("Organisation created")
   def label(:"organisation.rename"), do: gettext("Organisation renamed")
@@ -60,6 +65,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"secret.write"), do: gettext("Stored secret changed")
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
+  def label(:"provider.write"), do: gettext("Integration changed")
+  def label(:"runtime.write"), do: gettext("Integration changed")
   def label(:"model_choice.write"), do: gettext("Model choice changed")
   def label(:"time_limit.edit"), do: gettext("Time limit changed")
   def label(:"collection.assign"), do: assign_label(nil)
@@ -121,10 +128,15 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # a time limit of a workspace or a target, a build of a target's environment asked for,
   # the installing of an adapter and the start of its set-up have labels yet, so the
   # filter offers those alone, where the reader is shown the feature (the page asks it);
-  # the others' entries show as any change. Nothing writes `dispatch.handover` or
+  # the others' entries show as any change. The filter offers `connection.write` alone of
+  # the three actions that split it (`@connection_writes`), and its entries are those of
+  # the three (`Apiary.Audit.list_entries/3`). Nothing writes `dispatch.handover` or
   # `dispatch.prebuilt` any more: the filter offers neither, and their labels and words
   # stay for the entries stored before.
   @impl true
+  def offered?(_scope, action) when action in [:"provider.write", :"runtime.write"],
+    do: false
+
   def offered?(scope, action) do
     case Access.shown_as(action) do
       :factory ->
@@ -421,7 +433,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"secret.write", %{"change" => change}, _actor), do: said_secret(change)
   defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
-  defp said(:"connection.write", %{"change" => change}, _actor), do: said_connection(change)
+
+  defp said(action, %{"change" => change}, _actor) when action in @connection_writes,
+    do: said_connection(change)
+
   defp said(:"model_choice.write", %{"change" => change}, _actor), do: said_choice(change)
 
   defp said(:"work_item.undo", _details, _actor),
@@ -500,7 +515,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"security_policy.edit", _details, _actor), do: gettext("Changed the policy")
   defp said(:"secret.write", _details, _actor), do: gettext("Changed a stored secret")
   defp said(:"variable.edit", _details, _actor), do: gettext("Changed a variable")
-  defp said(:"connection.write", _details, _actor), do: gettext("Changed an integration")
+
+  defp said(action, _details, _actor) when action in @connection_writes,
+    do: gettext("Changed an integration")
+
   defp said(_action, _details, _actor), do: nil
 
   defp said_secret("created"), do: gettext("Created a stored secret")
@@ -549,7 +567,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_connection("provider_default_model_changed"),
     do: gettext("Changed a model provider's default model")
 
-  # The organisation's default model choice is written under `connection.write`.
+  # The organisation's default model choice is written under `provider.write`, and before
+  # the split of `connection.write` under that.
   defp said_connection("choice_" <> _ = change), do: said_choice(change)
   defp said_connection(_change), do: gettext("Changed an integration")
 
@@ -852,32 +871,36 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       do: nil
 
   # A model choice for a workflow, levels 2 and 4: the workflow, in a line. The
-  # organisation's default is written under `connection.write`, the rest under
-  # `model_choice.write`.
+  # organisation's default is written under `provider.write` (`connection.write` before the
+  # split), the rest under `model_choice.write`.
   def change(action, _before, _after, %{"level" => level, "workflow" => workflow})
-      when action in [:"model_choice.write", :"connection.write"] and level in [2, 4] and
+      when action in @choice_writes and level in [2, 4] and
              is_binary(workflow),
       do: gettext("%{kind} runs", kind: workflow)
 
   # A model provider's change: the host, the key's value ID or the model ID before and
   # after, or the key's value ID or the model's ID.
-  def change(:"connection.write", before, after_, %{"change" => "provider_keys_changed"} = d),
-    do: from_to(before["value_id"], after_["value_id"]) || value_id(d["value_id"])
+  def change(action, before, after_, %{"change" => "provider_keys_changed"} = d)
+      when action in @connection_writes,
+      do: from_to(before["value_id"], after_["value_id"]) || value_id(d["value_id"])
 
-  def change(:"connection.write", before, after_, %{"change" => "provider_address_changed"}),
-    do: from_to(before["host"], after_["host"])
+  def change(action, before, after_, %{"change" => "provider_address_changed"})
+      when action in @connection_writes,
+      do: from_to(before["host"], after_["host"])
 
-  def change(:"connection.write", before, after_, %{"change" => "provider_default_key_changed"}),
-    do: from_to(before["default_value_id"], after_["default_value_id"])
+  def change(action, before, after_, %{"change" => "provider_default_key_changed"})
+      when action in @connection_writes,
+      do: from_to(before["default_value_id"], after_["default_value_id"])
 
-  def change(:"connection.write", before, after_, %{"change" => "provider_default_model_changed"}),
+  def change(action, before, after_, %{"change" => "provider_default_model_changed"})
+      when action in @connection_writes,
       do: from_to(before["default_model_id"], after_["default_model_id"])
 
-  def change(:"connection.write", _before, _after, %{
+  def change(action, _before, _after, %{
         "change" => "provider_model_" <> _,
         "model_id" => id
       })
-      when is_binary(id),
+      when action in @connection_writes and is_binary(id),
       do: [{:m, id}]
 
   def change(_policy, before, after_, %{"change" => "mode_changed"} = details),

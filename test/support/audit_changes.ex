@@ -110,6 +110,8 @@ defmodule Apiary.AuditChanges do
       :"secret.write",
       :"variable.edit",
       :"connection.write",
+      :"provider.write",
+      :"runtime.write",
       :"model_choice.write",
       :"time_limit.edit",
       :"adapter.create",
@@ -687,6 +689,26 @@ defmodule Apiary.AuditChanges do
   def make(:"connection.write", %{scope: scope}) do
     before = entries()
     {:ok, connection} = Apiary.Connections.create_service(scope, %{service: "sentry"})
+    %{scope: scope, subject: {"connection", connection.id}, before: before}
+  end
+
+  # A model provider is added: the key's value is the secret no entry may hold.
+  def make(:"provider.write", %{scope: scope}) do
+    value = "sk-audit-provider-key"
+    before = entries()
+
+    {:ok, provider} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: value}]
+      })
+
+    %{scope: scope, subject: {"connection", provider.id}, before: before, secret: value}
+  end
+
+  def make(:"runtime.write", %{scope: scope}) do
+    before = entries()
+    {:ok, connection} = Apiary.Connections.create_runtime(scope, %{runtime: "claude"})
     %{scope: scope, subject: {"connection", connection.id}, before: before}
   end
 
@@ -1274,6 +1296,16 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"connection.write", scope, _),
     do: Apiary.Connections.create_service(scope, %{service: "sentry"})
+
+  defp attempt(:"provider.write", scope, _),
+    do:
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: "sk-audit-provider-key"}]
+      })
+
+  defp attempt(:"runtime.write", scope, _),
+    do: Apiary.Connections.create_runtime(scope, %{runtime: "claude"})
 
   defp attempt(:"model_choice.write", scope, _),
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
