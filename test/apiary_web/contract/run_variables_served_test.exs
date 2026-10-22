@@ -4,7 +4,11 @@ defmodule ApiaryWeb.Contract.RunVariablesServedTest do
   # composed for the run, under the digest of the bytes sent: a run that reports that
   # digest is not behind, the digest maps back to the stored configuration, and a
   # policy's change still moves it.
-  use ApiaryWeb.ConnCase, async: true
+  use ApiaryWeb.ConnCase, async: false
+
+  # Without the `registry` feature, whose members `ApiaryWeb.RegistryTokenTest` covers:
+  # the features are the whole node's, so the module is not async.
+  setup {Apiary.DataCase, :without_registry}
 
   import Apiary.ContractFixtures
   import Apiary.NodesFixtures

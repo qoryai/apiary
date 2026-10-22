@@ -19,6 +19,9 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
+  # Without the `registry` feature, whose credential `ApiaryWeb.RegistryTokenTest`
+  # covers: the features are the whole node's, so the module is not async.
+  setup {Apiary.DataCase, :without_registry}
 
   setup do
     %{scope: scope} = sign_up_fixture()

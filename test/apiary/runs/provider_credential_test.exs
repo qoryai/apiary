@@ -3,7 +3,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   # run configuration, and the provider's hosts in its allow list and its allow_first list
   # (`Apiary.Runs.ProviderCredential`, `Apiary.Policy.ComposedConfiguration`); every digest
   # sent for it is the SHA-256 of the bytes sent.
-  use Apiary.DataCase, async: true
+  use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [with_log: 1]
@@ -18,6 +18,9 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   alias Apiary.Runs.{ProviderCredential, Registration, Run}
 
   @moduletag needs: :factory
+  # Without the `registry` feature, whose members `ApiaryWeb.RegistryTokenTest`
+  # covers: the features are the whole node's, so the module is not async.
+  setup {Apiary.DataCase, :without_registry}
 
   defp sha256(bytes), do: Render.digest(bytes)
 
