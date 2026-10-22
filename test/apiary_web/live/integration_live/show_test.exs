@@ -520,6 +520,38 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert {:error, {:live_redirect, _}} = live(conn, ipath(scope, runtime, "/delete"))
     end
 
+    test "is written by who may write its kind: a runtime under runtime.write",
+         %{conn: conn, scope: scope} do
+      {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
+      {:ok, service} = Connections.create_service(scope, %{service: "sentry"})
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoRuntimeWrite)
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
+      assert has_element?(lv, "#connection-readonly", "Only owners and admins")
+      refute has_element?(lv, "#delete-connection")
+
+      {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
+      refute has_element?(lv, "#connection-readonly")
+      assert has_element?(lv, "#delete-connection")
+    end
+
+    test "is written by who may write its kind: a service under connection.write",
+         %{conn: conn, scope: scope} do
+      {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
+      {:ok, service} = Connections.create_service(scope, %{service: "sentry"})
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoConnectionWrite)
+
+      {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
+      assert has_element?(lv, "#connection-readonly", "Only owners and admins")
+      refute has_element?(lv, "#delete-connection")
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
+      refute has_element?(lv, "#connection-readonly")
+      assert has_element?(lv, "#delete-connection")
+    end
+
     test "a member's writes, sent as events, are refused and change nothing", %{scope: scope} do
       shop = workspace!(scope, "Shop")
       billing = workspace!(scope, "Billing")

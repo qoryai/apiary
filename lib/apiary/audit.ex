@@ -506,6 +506,13 @@ defmodule Apiary.Audit do
   defp filter_action(query, action) when is_atom(action) and not is_nil(action),
     do: filter_action(query, Atom.to_string(action))
 
+  # The Action filter offers `connection.write` for the three actions that split it, so
+  # its entries are those of the three, as they were one action.
+  @connection_writes ["connection.write", "provider.write", "runtime.write"]
+
+  defp filter_action(query, "connection.write"),
+    do: where(query, [e], e.action in ^@connection_writes)
+
   defp filter_action(query, action) when is_binary(action) do
     if action in Enum.map(Access.actions(), &Atom.to_string/1),
       do: where(query, [e], e.action == ^action),
