@@ -7,15 +7,18 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   # they made.
   #
   # The rules under test: every end locks the run of the queue first, then the registered
-  # run, then writes the dispatches. So the backstop and an exit's projection that come at
-  # once, or any of the ends together, take turns: the first decides the end cause, the
-  # slot is freed once, by the first end, and none of them deadlocks. A release after the handover is refused
-  # `machine_exists`, or `gone` once the run ended, and ends nothing. For a prebuild
-  # handed over, the lost-run check holds its environment record before the run of the
-  # queue, as a release and a trigger of its collection hold it: so the check takes turns
-  # with them at the record, the record keeps the end that decided, and none deadlocks. What a run
-  # gave is stored by its end or by a settle (`Apiary.Dispatches.Settle`), which locks the
-  # run of the queue alone: it takes turns with a projection and the lost-run check there, and what is stored is the same whichever comes first.
+  # run, then writes the dispatches. So the ends these tests start together take turns:
+  # the backstop with an exit's projection, and the lost-run check with the liveness check
+  # and two releases. The first decides the end cause, the slot is freed once, by the
+  # first end, and none of them deadlocks. No test here races a release with an exit's
+  # projection. A release after the handover is refused `machine_exists`, or `gone` once
+  # the run ended, and ends nothing. For a prebuild handed over, the lost-run check holds
+  # its environment record before the run of the queue, as a release and a trigger of its
+  # collection hold it: so the check takes turns with them at the record, the record keeps
+  # the end that decided, and none of them deadlocks. What a run gave is stored by its end
+  # or by a settle (`Apiary.Dispatches.Settle`), which locks the run of the queue alone: it
+  # takes turns with a projection and the lost-run check there, and what is stored is the
+  # same whichever comes first.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -458,7 +461,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     end
   end
 
-  test "every end at once: one decides, the slot is freed once, and none deadlocks", ctx do
+  test "the checks and two releases at once: one decides, the slot is freed once",
+       ctx do
     for _round <- 1..3 do
       handed = handed_over!(ctx)
       at = past_backstop(handed)
@@ -478,7 +482,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       {cause, _run} = ended!(ctx, handed)
       assert cause in [:lost, :run_ended]
 
-      # A second round of every end changes nothing.
+      # A second round of the same ends changes nothing.
       before = Repo.get!(Dispatch, handed.dispatch.id)
       together(Enum.take(ends, sides(length(ends))))
       assert Repo.get!(Dispatch, handed.dispatch.id) == before
