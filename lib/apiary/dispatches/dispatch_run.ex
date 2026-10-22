@@ -3,9 +3,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # workspace, which any node pool of the workspace may claim from.
   #
   # `run_id` is the run's id, a UUID Qory gives it when it queues the run, unique on the
-  # instance: the `run_id` the contract carries, and, once the run is handed over, the run
-  # id of the run registered for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names this
-  # row). A run released before its handover with retry, or whose lease lapsed, waits
+  # instance: the `run_id` the contract carries, and, once the run is claimed, the run id
+  # of the run its claim registered (`Apiary.Runs.Run`, whose `dispatch_run_id` names this
+  # row). A run released before its handover, or whose lease lapsed, waits
   # again with the same `run_id`; any other new run is a new row with a new one.
   #
   # `step` is the step the run is for, in the contract's pattern. `take_in` is the take in
@@ -33,7 +33,7 @@ defmodule Apiary.Dispatches.DispatchRun do
   # (`Apiary.Dispatches.Settle`, `result_outcomes/0`), and `result` the run's result, a
   # JSON object, for a `:proposal` or `:questions` only, until retention clears it
   # (`Apiary.Retention`). Only a run that is not a prebuild has an outcome: one ended
-  # `run_ended`, once decided, and `:error` for one whose handover could not form it
+  # `run_ended`, once decided, and `:error` for one whose claim could not form it
   # (`Apiary.Dispatches.Handover`). Qory writes both; no changeset casts them
   # (`20261019001000_keep_what_a_run_of_the_queue_gave`).
   #
@@ -49,19 +49,21 @@ defmodule Apiary.Dispatches.DispatchRun do
   # The causes a run of the queue, or a dispatch of one, ends for, and where each is named:
   # `released`, the starter's release (release.schema.json); `closed` and `undone`, its
   # work item closed or undone before its handover (refusal.schema.json, 410 gone);
-  # `run_ended`, the run ended by its outcome or its exit after its handover, and a stale
-  # dispatch with its run (handover.schema.json); `lost`, a handed-over run the liveness
+  # `run_ended`, the run ended by its exit after its handover, or, for a run that is not
+  # a prebuild, by an outcome stored on it before a run of the queue was refused one, and
+  # a stale
+  # dispatch with its run; `lost`, a handed-over run the liveness
   # check ended; `collection_ended`, the collection of a prebuild ended, was assigned to
   # none or to another workspace, has no target or no `environment_ref`, or its
   # connection ended, before its handover; `superseded`, a claimed prebuild whose lease
   # lapsed while another prebuild of its collection and pool waited or went back to
   # waiting (`Apiary.Dispatches.Slots`); `variables_invalid`, `ticket_gone` and
-  # `inputs_invalid`, a claimed run whose handover could not form its run variables, its
+  # `inputs_invalid`, a claimed run whose claim could not form its run variables, its
   # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone;
-  # `prebuilt`, a prebuild handed over whose starter reported the image it built
-  # (prebuilt.schema.json), its registered run left to its outcome; `provider_gone`,
+  # `prebuilt`, a prebuild handed over that a report of the image it built ended, which
+  # no request makes any more, its registered run left to its outcome; `provider_gone`,
   # `runtime_unserved`, `key_gone` and `model_gone`, a claimed explore run whose model
-  # choice its handover could not form: its model provider is gone, fails its integrity
+  # choice its claim could not form: its model provider is gone, fails its integrity
   # code, does not apply to the workspace, has a description the catalogue changed since
   # the provider was added, or has an endpoint address the endpoint rule refuses
   # (`provider_gone`); no longer serves the runtime (`runtime_unserved`); no longer has

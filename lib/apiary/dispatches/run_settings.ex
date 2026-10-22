@@ -1,17 +1,17 @@
 defmodule Apiary.Dispatches.RunSettings do
   @moduledoc false
 
-  # The `run_settings` of a handover answer (`handover-answer.schema.json`) and the values
-  # a run keeps of them (`Apiary.Runs.Run`): what the model choices of the run's workspace
-  # and target come to (`Apiary.ModelChoices.Resolution`), checked again at the handover.
-  # The choices and the time limits are read for the workflow of the workspace's entry in
-  # the machines file (`Apiary.Dispatches.MachinesFile.stack/2`); for an entry with no
-  # workflow, only the choices without one apply.
+  # The `run_settings` of a run's documents and the values a run keeps of them
+  # (`Apiary.Runs.Run`): what the model choices of the run's workspace and target come to
+  # (`Apiary.ModelChoices.Resolution`), checked again at the claim. The choices and the
+  # time limits are read for the workflow of the workspace's entry in the machines file
+  # (`Apiary.Dispatches.MachinesFile.stack/2`); for an entry with no workflow, only the
+  # choices without one apply.
   # `Apiary.Dispatches.Handover` calls `hold/1` before it locks anything else, and
   # `build/1` once its run of the queue and its dispatch are locked.
   #
   # Only an explore run has `run_settings`, and only with both features `factory` and
-  # `secrets` on; without either, the answer has none. With them on and no choice at any
+  # `secrets` on; without either, the documents have none. With them on and no choice at any
   # level, it has `runtime` alone, and the run uses the gateway's key.
   #
   # ## What it holds
@@ -21,12 +21,12 @@ defmodule Apiary.Dispatches.RunSettings do
   # secrets `FOR SHARE`, by id, and reads the choices again. Each read that names a
   # provider not yet locked locks it the same way. It reads the choices at most four times
   # and locks at most three times: when the fourth read still names a provider not yet
-  # locked, the choices changed while the handover read them (`:unstable`), and the
-  # handover is refused with nothing written. A change to a provider takes its row
-  # `FOR UPDATE`, and a change to its keys the keys' secret's row, in the same order, so a
-  # change and a handover of its run take turns: a change waits for a handover that holds
-  # the row, and the run keeps the provider as it was before the change; a change that
-  # came first is seen by the handover, which reads the provider after the lock.
+  # locked, the choices changed while the claim read them (`:unstable`), and the claim is
+  # refused with nothing written. A change to a provider takes its row `FOR UPDATE`, and
+  # a change to its keys the keys' secret's row, in the same order, so a change and a
+  # claim of its run take turns: a change waits for a claim that holds the row, and the
+  # run keeps the provider as it was before the change; a change that came first is seen
+  # by the claim, which reads the provider after the lock.
   #
   # ## What it checks
   #
@@ -56,13 +56,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # run's workspace and target come to for the workflow of the workspace's entry in the
   # machines file (`Apiary.TimeLimits.Resolution`, `Apiary.Dispatches.MachinesFile`), left
   # out when no limit resolves or the entry has no workflow. The limits are read without a
-  # lock in `hold/1`. The answer has no key, no secret and no id of a key, and neither has
-  # the stored copy. Beside it, the run keeps the provider's row id, its keys'
+  # lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
+  # has the stored copy. Beside it, the run keeps the provider's row id, its keys'
   # secret's row id, the chosen key's value id, the provider's chain and the API the run
   # uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
   # address, its `auth` and, when the description lists them, its `key_prefixes`), for
-  # the reads that follow the handover. The run settings take at most 64 KiB encoded;
-  # more refuses the handover.
+  # the reads that follow the claim. The run settings take at most 64 KiB encoded; more
+  # refuses the claim.
   #
   # Reads, and takes the locks above; writes nothing. It logs a provider that fails its
   # integrity code, by its public id.
@@ -89,11 +89,11 @@ defmodule Apiary.Dispatches.RunSettings do
   # choices. A fourth read that names a provider not yet locked is `:unstable`.
   @lock_rounds 3
 
-  @typedoc "The causes the handover ends a run for here."
+  @typedoc "The causes the claim ends a run for here."
   @type cause :: :provider_gone | :runtime_unserved | :key_gone | :model_gone
 
   @typedoc """
-  What a handover writes: `wire`, the answer's `run_settings`; `stored`, the same as a
+  What a claim writes: `wire`, the documents' `run_settings`; `stored`, the same as a
   map, for the run's column; and `columns`, the run's provider columns, empty where no
   provider was chosen.
   """
@@ -113,7 +113,7 @@ defmodule Apiary.Dispatches.RunSettings do
   @spec causes() :: [cause]
   def causes, do: [:provider_gone, :runtime_unserved, :key_gone, :model_gone]
 
-  # hold/1 is what the handover of the run of the queue `dispatch_run` holds before it
+  # hold/1 is what the claim of the run of the queue `dispatch_run` holds before it
   # locks anything: nil for a run that has no `run_settings`, else what `build/1` takes.
   @doc false
   @spec hold(DispatchRun.t()) :: map | :unstable | nil
@@ -295,7 +295,7 @@ defmodule Apiary.Dispatches.RunSettings do
       :ok
     else
       Logger.error(
-        "a handover ends its run: the model provider #{provider.public_id} fails its integrity code"
+        "a claim ends its run: the model provider #{provider.public_id} fails its integrity code"
       )
 
       {:end, :provider_gone}
@@ -318,7 +318,7 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp with_time_limit(built, _held), do: built
 
-  # The settings within the column's bound, or the handover is refused.
+  # The settings within the column's bound, or the claim is refused.
   defp sealed(%{wire: wire} = built) do
     if byte_size(Jason.encode!(wire)) <= @max_bytes, do: {:ok, built}, else: :unavailable
   end

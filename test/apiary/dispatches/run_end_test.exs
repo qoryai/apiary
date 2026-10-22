@@ -1,12 +1,10 @@
 defmodule Apiary.Dispatches.RunEndTest do
   # The end of a run a workspace's queue handed over (`Apiary.Dispatches.RunEnd`): by its
-  # starter's outcome or its exit, by its starter's release after the handover, or by the
-  # lost-run check, at its gateway's `attach_by`, at its backstop, or after 600 s without a
-  # heartbeat. Each ends the run of
-  # the queue and its dispatch once and frees the slot once; the first end decides the
-  # cause, and the registered run still takes its starter's later outcome. Runs that were
-  # not handed over keep the lost-run check as it was. A prebuild lost after a newer
-  # prebuild's build was recorded records no failure.
+  # exit, whatever its state, or by the lost-run check, at its gateway's `attach_by`, at its
+  # backstop, or after 600 s without a heartbeat. Each ends the run of the queue and its
+  # dispatch once and frees the slot once; the first end decides the cause. The pool's
+  # outcome is refused, not found, and ends nothing. Runs that were not handed over keep
+  # the lost-run check as it was.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -21,11 +19,10 @@ defmodule Apiary.Dispatches.RunEndTest do
   alias Apiary.Dispatches
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd, Slots}
   alias Apiary.Environments.Record
-  alias Apiary.Runs.{Attach, Batch, Event, Fold, Ingest, Liveness, Outcome, Projector, Run}
+  alias Apiary.Runs.{Attach, Event, Fold, Liveness, Outcome, Projector, Run}
 
   @moduletag needs: :factory
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
 
   setup do
@@ -56,8 +53,14 @@ defmodule Apiary.Dispatches.RunEndTest do
            ) == [handed.dispatch_run.id]
   end
 
-  defp release(%DispatchRun{id: id}, now \\ Dispatches.now()),
-    do: Repo.transact(fn -> Dispatches.end_run_released(id, now) end)
+  # The registered run of `dispatch_run` cancelled, `released`, as a release after the
+  # handover recorded it before such a release was refused `machine_exists`.
+  defp released_before!(%DispatchRun{id: id}) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.dispatch_run_id == ^id),
+        set: [released_at: Dispatches.now(), state: "cancelled", reason: "released"]
+      )
+  end
 
   # The run of the queue and its dispatch as an end leaves them.
   defp assert_ended(%{dispatch_run: dispatch_run, dispatch: dispatch}, cause) do
@@ -167,18 +170,16 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :lost)
     end
 
-    test "the starter's later outcome is taken and may set the run failed; the end stays lost",
-         ctx do
+    test "the pool's outcome after the loss is refused, not found, and changes nothing", ctx do
       handed = handed_over!(ctx)
       Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
-      freed = dispatch!(handed.dispatch).slot_freed_at
+      lost = run!(handed.run)
 
-      assert {:ok, %{run: %Run{state: "failed", lost_at: nil}, repeated: false}} =
-               give_outcome(ctx.key, handed.run, "failed", "no_longer_needed")
+      assert give_outcome(ctx.key, handed.run, "failed", "no_longer_needed") ==
+               {:error, :not_found}
 
-      assert %Run{outcome_state: "failed", reason: "no_longer_needed"} = run!(handed.run)
+      assert run!(handed.run) == lost
       assert_ended(handed, :lost)
-      assert dispatch!(handed.dispatch).slot_freed_at == freed
     end
 
     test "an exit stored before it and not yet folded ends the run as its exit", ctx do
@@ -426,15 +427,16 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :lost)
     end
 
-    test "a starter's outcome that arrives after its end still changes the record", ctx do
+    test "the pool's outcome after its end is refused, not found, and changes nothing", ctx do
       handed = handed_over!(ctx)
       Liveness.check(DateTime.add(handed.run.last_heartbeat_at, 601, :second))
       assert_ended(handed, :lost)
+      lost = run!(handed.run)
 
-      assert {:ok, %{run: %Run{state: "failed"}, repeated: false}} =
-               give_outcome(ctx.key, handed.run, "failed", "no_longer_needed")
+      assert give_outcome(ctx.key, handed.run, "failed", "no_longer_needed") ==
+               {:error, :not_found}
 
-      assert %Run{outcome_state: "failed", reason: "no_longer_needed"} = run!(handed.run)
+      assert run!(handed.run) == lost
       assert_ended(handed, :lost)
     end
 
@@ -517,7 +519,7 @@ defmodule Apiary.Dispatches.RunEndTest do
 
     test "is refused 410 gone once the run was released, before or after it attached", ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
-      assert {:ok, _released} = release(ctx.dispatch_run)
+      released_before!(ctx.dispatch_run)
 
       # A repeat of the attach, by the instance that attached it.
       assert ctx.attach.() == {:error, :gone}
@@ -525,7 +527,7 @@ defmodule Apiary.Dispatches.RunEndTest do
     end
 
     test "of a run released before its gateway attached it is 410 gone", ctx do
-      assert {:ok, %{run: %Run{state: "cancelled"}}} = release(ctx.dispatch_run)
+      released_before!(ctx.dispatch_run)
       assert ctx.attach.() == {:error, :gone}
     end
   end
@@ -556,10 +558,9 @@ defmodule Apiary.Dispatches.RunEndTest do
       {:ok, queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, place.pool, "env-1") end)
 
-      %{dispatch: dispatch} = dispatched!(place.key)
-
-      {:ok, %{run: run, run_key: run_key}} =
-        Dispatches.handover(place.key, dispatch.public_id, %{body: @body})
+      %{dispatch: dispatch, registered: run, run_code: code} = dispatched!(place.key)
+      run_key = redeemed_run_key!(code)
+      run = Repo.get!(Run, run.id)
 
       {gateway_key, _seed} = place.gateway_key
       {:ok, body} = Attach.parse(attach_body(run_key))
@@ -660,262 +661,151 @@ defmodule Apiary.Dispatches.RunEndTest do
                Projector.project(ctx.handed.run)
     end
 
-    test "ended by its starter's outcome alone records the build failed, lost, and queues nothing",
-         ctx do
-      assert {:ok, %{run: _run}} = ctx.attach.()
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
-      assert_ended(ctx.handed, :run_ended)
-
-      assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: %DateTime{}} =
-               failed = record!(ctx.record)
-
-      assert_build_kept(ctx)
-      assert_nothing_queued(ctx)
-
-      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
-      assert record!(ctx.record) == failed
+    # Its exit with `data`, stored and folded onto the registered run.
+    defp exited!(ctx, data) do
+      event_fixture(ctx.handed.run, 9, "run.exited", data)
+      assert {:ok, %Run{exited_at: %DateTime{}} = run} = Projector.project(ctx.handed.run)
+      run
     end
 
-    test "its exit folds onto the registered run and ends nothing of the queue; its prebuilt then records the build",
-         ctx do
+    for {state, data} <- [
+          {"failed", %{"state" => "failed", "exit_code" => 1}},
+          {"lost", %{"state" => "failed", "reason" => "session_lost"}}
+        ] do
+      test "its #{state} exit, once folded, ends it run_ended and records the build failed, #{state}",
+           ctx do
+        assert {:ok, %{run: _run}} = ctx.attach.()
+        assert %Run{exit_state: unquote(state)} = exited!(ctx, unquote(Macro.escape(data)))
+        assert_ended(ctx.handed, :run_ended)
+        cause = String.to_existing_atom(unquote(state))
+
+        assert %Record{failure_cause: ^cause, failure_reason: nil, failed_at: %DateTime{}} =
+                 failed = record!(ctx.record)
+
+        assert_build_kept(ctx)
+        assert_nothing_queued(ctx)
+        assert Slots.held(ctx.place.pool.id) == 0
+
+        # The lost-run check changes nothing of the queue or the record, and the pool's
+        # outcome is refused.
+        assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
+        assert give_outcome(ctx.place.key, ctx.handed.run, "failed") == {:error, :not_found}
+        assert_ended(ctx.handed, :run_ended)
+        assert record!(ctx.record) == failed
+      end
+    end
+
+    test "its cancelled exit ends it run_ended and records no failure", ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
-      exited!(ctx)
-      assert_live(ctx.handed)
+      assert %Run{exit_state: "cancelled"} = exited!(ctx, %{"state" => "cancelled"})
+      assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
-
-      # The lost-run check before its backstop leaves it.
-      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second)) == []
-      assert_live(ctx.handed)
-
-      exited = run!(ctx.handed.run)
-      assert %Record{commit: "b2", failure_cause: nil} = prebuilt!(ctx, ctx.handed)
-      assert_ended(ctx.handed, :prebuilt)
-      assert run!(ctx.handed.run) == exited
       assert Slots.held(ctx.place.pool.id) == 0
     end
 
-    test "after its exit, its release records the build failed, given back", ctx do
+    test "its failed exit whose end was not written: the lost-run check ends it run_ended, failed",
+         ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
-      exited!(ctx)
 
-      assert :ok =
-               Dispatches.release(ctx.place.key, ctx.handed.dispatch.public_id, %{
-                 reason: "The build failed.",
-                 retry: false
-               })
+      # The exit folded, and the projection stopped before the end of the run of the queue.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.handed.run.id),
+          set: [state: "failed", exit_state: "failed", exited_at: DateTime.utc_now()]
+        )
 
-      assert_ended(ctx.handed, :released)
-
-      assert %Record{failure_cause: :released, failure_reason: "The build failed."} =
-               record!(ctx.record)
-
+      assert_live(ctx.handed)
+      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second))
+      assert_ended(ctx.handed, :run_ended)
+      assert %Record{failure_cause: :failed, failure_reason: nil} = record!(ctx.record)
       assert_build_kept(ctx)
+      assert_nothing_queued(ctx)
     end
 
-    test "after its exit, its starter's outcome alone records the build failed, lost",
+    test "its failed exit records nothing when the record's image is of a newer ref", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+
+      # The image on the record was built by a prebuild that took its ref after this one.
+      newer = DateTime.add(ctx.handed.dispatch_run.environment_ref_at, 60, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Record, where: r.id == ^ctx.record.id),
+          set: [built_queued_at: newer]
+        )
+
+      kept = record!(ctx.record)
+      exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+      assert_ended(ctx.handed, :run_ended)
+      assert record!(ctx.record) == kept
+    end
+
+    test "its starter's outcome is refused, not found, and ends nothing", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      assert give_outcome(ctx.place.key, ctx.handed.run, "failed") == {:error, :not_found}
+      assert %Run{outcome_state: nil} = run!(ctx.handed.run)
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == ctx.record
+    end
+
+    test "its succeeded exit, once folded, ends it run_ended, frees its slot and records no failure",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
-
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
       assert_ended(ctx.handed, :run_ended)
-      assert %Record{failure_cause: :lost, failure_reason: nil} = record!(ctx.record)
-      assert_build_kept(ctx)
+      assert record!(ctx.record) == ctx.record
+      assert Slots.held(ctx.place.pool.id) == 0
+      assert_nothing_queued(ctx)
     end
 
-    test "after its exit, nothing by its backstop: the lost-run check ends it lost, timed_out",
+    test "its succeeded exit whose end was not written: the lost-run check ends it run_ended, no failure",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+
+      # The exit folded, and the projection stopped before the end of the run of the queue.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.handed.run.id),
+          set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+        )
+
+      assert_live(ctx.handed)
+      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second))
+      assert_ended(ctx.handed, :run_ended)
+      assert record!(ctx.record) == ctx.record
+    end
+
+    test "after its exit, its release is gone and records nothing", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx)
+
+      assert Dispatches.release(ctx.place.key, ctx.handed.dispatch.public_id, %{
+               reason: "The build failed."
+             }) == {:error, :gone}
+
+      assert_ended(ctx.handed, :run_ended)
+      assert record!(ctx.record) == ctx.record
+    end
+
+    test "after its exit, its starter's outcome is refused and records nothing", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx)
+
+      assert give_outcome(ctx.place.key, ctx.handed.run, "failed") == {:error, :not_found}
+      assert_ended(ctx.handed, :run_ended)
+      assert record!(ctx.record) == ctx.record
+    end
+
+    test "after its succeeded exit, the lost-run check past its backstop changes nothing",
          ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
       exited!(ctx)
+      assert_ended(ctx.handed, :run_ended)
 
-      assert Liveness.check(run.backstop_at) == []
-      assert_live(ctx.handed)
+      assert Liveness.check(DateTime.add(run.backstop_at, 1, :second)) == []
+      assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
-
-      after_it = DateTime.add(run.backstop_at, 1, :microsecond)
-      Liveness.check(after_it)
-      assert_ended(ctx.handed, :lost)
-
-      assert %Record{failure_cause: :timed_out, failure_reason: nil, failed_at: ^after_it} =
-               record!(ctx.record)
 
       # The registered run keeps its exit's fold.
       assert %Run{state: "completed"} = run!(ctx.handed.run)
       assert_build_kept(ctx)
-    end
-
-    test "after its exit and its prebuilt, a failed outcome records no failure", ctx do
-      assert {:ok, %{run: _run}} = ctx.attach.()
-      exited!(ctx)
-      recorded = prebuilt!(ctx, ctx.handed)
-
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
-      assert_ended(ctx.handed, :prebuilt)
-      assert record!(ctx.record) == recorded
-    end
-
-    # A second prebuild of the collection for the pool, queued for `env-2` after the one
-    # handed over, claimed, said started and handed over: its registered run, and its
-    # attach.
-    defp newer!(ctx) do
-      {:ok, queued} =
-        Repo.transact(fn ->
-          Dispatches.queue_prebuild(ctx.collection, ctx.place.pool, "env-2")
-        end)
-
-      %{dispatch: dispatch} = dispatched!(ctx.place.key)
-      assert dispatch.dispatch_run_id == queued.id
-
-      {:ok, %{run: run, run_key: run_key}} =
-        Dispatches.handover(ctx.place.key, dispatch.public_id, %{body: @body})
-
-      {gateway_key, _seed} = ctx.place.gateway_key
-      {:ok, body} = Attach.parse(attach_body(run_key))
-
-      %{
-        dispatch_run: queue_run!(queued),
-        dispatch: dispatch!(dispatch),
-        run: run,
-        attach: fn ->
-          Attach.attach(gateway_key, queued.run_id, body, %{instance_id: instance_id()})
-        end
-      }
-    end
-
-    defp prebuilt!(ctx, %{dispatch: dispatch, dispatch_run: dispatch_run}) do
-      assert :ok =
-               Dispatches.prebuilt(
-                 ctx.place.key,
-                 dispatch.public_id,
-                 prebuilt_meta(dispatch_run, commit: "b2")
-               )
-
-      record!(ctx.record)
-    end
-
-    test "lost at its attach_by after a newer prebuild's build was recorded records no failure, and ends lost",
-         ctx do
-      newer = newer!(ctx)
-      recorded = prebuilt!(ctx, newer)
-      assert %Record{commit: "b2", failure_cause: nil} = recorded
-
-      # The newer one, never attached, its run of the queue ended by its prebuilt, may be
-      # found lost by the liveness rules at the same second.
-      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
-      assert_ended(ctx.handed, :lost)
-      assert_ended(newer, :prebuilt)
-      assert record!(ctx.record) == recorded
-    end
-
-    test "lost at its attach_by before a newer prebuild's build records the failure, which the build then clears",
-         ctx do
-      # The newer one attached, so its attach_by, of the same second, does not lose it.
-      newer = newer!(ctx)
-      assert {:ok, %{run: _newer_run}} = newer.attach.()
-      after_it = DateTime.add(ctx.handed.run.attach_by, 1, :microsecond)
-
-      # The newer one, silent since its attach, may read as lost by the liveness rules; its
-      # run of the queue waits for its backstop.
-      Liveness.check(after_it)
-      assert_ended(ctx.handed, :lost)
-      assert_live(newer)
-      assert %Record{failure_cause: :lost, failed_at: ^after_it} = record!(ctx.record)
-
-      assert %Record{commit: "b2", failure_cause: nil, failed_at: nil} = prebuilt!(ctx, newer)
-    end
-
-    test "past its backstop after a newer prebuild's build was recorded records no failure, and ends lost",
-         ctx do
-      assert {:ok, %{run: run}} = ctx.attach.()
-      newer = newer!(ctx)
-      recorded = prebuilt!(ctx, newer)
-
-      Liveness.check(DateTime.add(run.backstop_at, 1, :microsecond))
-      assert_ended(ctx.handed, :lost)
-      assert record!(ctx.record) == recorded
-    end
-
-    test "past its backstop before a newer prebuild's build records the failure, which the build then clears",
-         ctx do
-      assert {:ok, %{run: run}} = ctx.attach.()
-      newer = newer!(ctx)
-      assert {:ok, %{run: newer_run}} = newer.attach.()
-      after_it = DateTime.add(run.backstop_at, 1, :microsecond)
-      # Both heard a second before: neither is silent.
-      beat!(run, DateTime.add(run.backstop_at, -1, :second))
-      beat!(newer_run, DateTime.add(run.backstop_at, -1, :second))
-
-      Liveness.check(after_it)
-      assert_ended(ctx.handed, :lost)
-      assert_live(newer)
-      assert %Record{failure_cause: :timed_out, failed_at: ^after_it} = record!(ctx.record)
-
-      assert %Record{commit: "b2", failure_cause: nil, failed_at: nil} = prebuilt!(ctx, newer)
-    end
-
-    test "its prebuilt ends its run of the queue prebuilt and leaves the registered run to its outcome, which a succeeded one decides, completed",
-         ctx do
-      recorded = prebuilt!(ctx, ctx.handed)
-      assert_ended(ctx.handed, :prebuilt)
-      assert Slots.held(ctx.place.pool.id) == 0
-
-      assert %Run{released_at: nil, outcome_state: nil, reason: nil} =
-               left = run!(ctx.handed.run)
-
-      refute left.state == "cancelled"
-
-      assert {:ok, %{repeated: false}} =
-               give_outcome(ctx.place.key, ctx.handed.run, "succeeded")
-
-      assert %Run{state: "completed", released_at: nil} = run!(ctx.handed.run)
-      assert_ended(ctx.handed, :prebuilt)
-      assert record!(ctx.record) == recorded
-    end
-
-    test "after its prebuilt, a failed outcome records no failure, and the image stays", ctx do
-      assert {:ok, %{run: _run}} = ctx.attach.()
-      recorded = prebuilt!(ctx, ctx.handed)
-
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
-      assert %Run{state: "failed"} = run!(ctx.handed.run)
-      assert_ended(ctx.handed, :prebuilt)
-      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx.record)
-      assert record!(ctx.record) == recorded
-    end
-
-    test "after its prebuilt, past its attach_by never attached, the lost-run check records no failure, and the image stays",
-         ctx do
-      recorded = prebuilt!(ctx, ctx.handed)
-
-      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
-      assert_ended(ctx.handed, :prebuilt)
-      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx.record)
-      assert record!(ctx.record) == recorded
-    end
-
-    test "after its prebuilt, past its backstop, the lost-run check records no failure, and the image stays",
-         ctx do
-      assert {:ok, %{run: run}} = ctx.attach.()
-      recorded = prebuilt!(ctx, ctx.handed)
-
-      Liveness.check(DateTime.add(run.backstop_at, 1, :microsecond))
-      assert_ended(ctx.handed, :prebuilt)
-      assert %Record{commit: "b2", failure_cause: nil} = record!(ctx.record)
-      assert record!(ctx.record) == recorded
-    end
-
-    test "after its prebuilt, an attach of a run never attached is refused 410 gone",
-         ctx do
-      # Never attached: refused.
-      prebuilt!(ctx, ctx.handed)
-      assert ctx.attach.() == {:error, :gone}
-      assert %Run{attached_at: nil} = run!(ctx.handed.run)
-    end
-
-    test "after its prebuilt, the gateway that attached it is answered its repeat", ctx do
-      assert {:ok, %{run: _run}} = ctx.attach.()
-      prebuilt!(ctx, ctx.handed)
-      assert {:ok, %{repeated: true}} = ctx.attach.()
     end
 
     test "a record that is not there is not made", ctx do
@@ -954,220 +844,31 @@ defmodule Apiary.Dispatches.RunEndTest do
     assert record!(record) == record
   end
 
-  describe "end_run_released/2" do
-    test "records the run cancelled, released, with no outcome; the dispatch ends released",
+  describe "the run's exit, and no outcome" do
+    test "the pool's outcome is refused, not found, and ends nothing; the exit ends it once",
          ctx do
       handed = handed_over!(ctx)
-      now = Dispatches.now()
       :ok = Dispatches.subscribe(ctx.scope.workspace.id)
 
-      assert {:ok, %{run: run, changed: [workspace_id]}} = release(handed.dispatch_run, now)
-      assert workspace_id == ctx.scope.workspace.id
-
-      assert %Run{
-               state: "cancelled",
-               reason: "released",
-               released_at: ^now,
-               outcome_state: nil,
-               outcome_reason: nil,
-               lost_at: nil
-             } = run
-
-      assert run!(handed.run) == run
-      assert_ended(handed, :released)
-      assert dispatch!(handed.dispatch).slot_freed_at == now
-      assert Slots.held(ctx.pool.id) == 0
-      # Told by the caller once its transaction commits, not here.
+      assert give_outcome(ctx.key, handed.run, "succeeded") == {:error, :not_found}
+      assert %Run{outcome_state: nil} = run!(handed.run)
+      assert_live(handed)
       refute_received {Dispatches, :changed}
-    end
-
-    test "a second release, or one after any end, is :ended and changes nothing", ctx do
-      handed = handed_over!(ctx)
-      {:ok, _released} = release(handed.dispatch_run)
-      before = {run!(handed.run), dispatch!(handed.dispatch)}
-
-      assert release(handed.dispatch_run) == {:error, :ended}
-      assert {run!(handed.run), dispatch!(handed.dispatch)} == before
-
-      lost = handed_over!(ctx)
-      Liveness.check(DateTime.add(lost.run.backstop_at, 1, :second))
-      assert release(lost.dispatch_run) == {:error, :ended}
-      assert run!(lost.run).state == "lost"
-      assert_ended(lost, :lost)
-    end
-
-    test "a run waiting or claimed is :not_handed_over, an unknown one :not_found", ctx do
-      work_item = work_item_fixture(ctx.scope)
-      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-      assert release(queued) == {:error, :not_handed_over}
-
-      {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-      assert release(queued) == {:error, :not_handed_over}
-      assert %Dispatch{ended_at: nil, slot_freed_at: nil} = dispatch!(dispatch)
-
-      assert release(%DispatchRun{id: Ecto.UUID.generate()}) == {:error, :not_found}
-    end
-
-    test "runs only inside the caller's transaction", ctx do
-      handed = handed_over!(ctx)
-
-      assert_raise ArgumentError, fn ->
-        Dispatches.end_run_released(handed.dispatch_run.id, Dispatches.now())
-      end
-    end
-
-    test "the starter's later outcome is taken, never outcome_given, and may set failed",
-         ctx do
-      handed = handed_over!(ctx)
-      {:ok, _released} = release(handed.dispatch_run)
-      freed = dispatch!(handed.dispatch).slot_freed_at
-
-      assert {:ok, %{run: %Run{state: "failed", reason: "crashed"}, repeated: false}} =
-               give_outcome(ctx.key, handed.run, "failed", "crashed")
-
-      assert %Run{outcome_state: "failed", released_at: %DateTime{}} = run!(handed.run)
-      assert_ended(handed, :released)
-      assert dispatch!(handed.dispatch).slot_freed_at == freed
-    end
-
-    test "the release decides over an exit, and a rebuild gives the same run", ctx do
-      handed = handed_over!(ctx)
-      {:ok, _released} = release(handed.dispatch_run)
 
       event_fixture(handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
-
-      assert {:ok,
-              %Run{
-                state: "cancelled",
-                reason: "released",
-                exit_state: "completed",
-                exited_at: %DateTime{}
-              }} = Projector.project(handed.run)
-
-      assert {:ok, %Run{state: "cancelled", reason: "released", released_at: %DateTime{}}} =
-               Projector.rebuild(run!(handed.run))
-
-      assert_ended(handed, :released)
-    end
-
-    test "a stale dispatch of the run ends with it, run_ended; the live one released", ctx do
-      work_item = work_item_fixture(ctx.scope)
-      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-      {:ok, %{dispatch: first}} = Dispatches.claim(ctx.key, Dispatches.now())
-
-      # Its lease lapses: stale, its slot freed, and the run waits again.
-      Repo.transact(fn -> {:ok, Slots.free(ctx.pool.id, first.lease_until)} end)
-      assert %Dispatch{stale_at: %DateTime{}, ended_at: nil} = dispatch!(first)
-
-      handed = handed_over(ctx.scope, ctx.key, queue_run!(queued), %{})
-      first_freed = dispatch!(first).slot_freed_at
-
-      {:ok, _released} = release(handed.dispatch_run)
-
-      assert_ended(handed, :released)
-      assert %Dispatch{end_cause: :run_ended, ended_at: %DateTime{}} = dispatch!(first)
-      assert dispatch!(first).slot_freed_at == first_freed
-    end
-
-    test "after the run's exit folded, its end not yet written, is :ended and changes nothing",
-         ctx do
-      handed = handed_over!(ctx)
-
-      # The projection committed the exit's fold and has not written its end yet.
-      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
-        set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
-      )
-
-      folded = run!(handed.run)
-
-      assert release(handed.dispatch_run) == {:error, :ended}
-      assert run!(handed.run) == folded
-      assert_live(handed)
-
-      # The end the projection writes next is the exit's, and frees the slot once; the run,
-      # settled by its exit, has what it gave stored, and its work item is told.
-      assert [_workspace_id, {:work_item, _, _}] = RunEnd.run_ended(folded)
-      assert_ended(handed, :run_ended)
-      freed = dispatch!(handed.dispatch).slot_freed_at
-
-      assert release(handed.dispatch_run) == {:error, :ended}
-      assert RunEnd.run_ended(folded) == []
-      assert Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second)) == []
-      assert %Run{state: "completed", released_at: nil, reason: nil} = run!(handed.run)
-      assert_ended(handed, :run_ended)
-      assert dispatch!(handed.dispatch).slot_freed_at == freed
-      assert Slots.held(ctx.pool.id) == 0
-    end
-
-    test "after an exit its projection skipped unfolded, is :ended and changes nothing",
-         ctx do
-      handed = handed_over!(ctx)
-
-      exited =
-        event_fixture(handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
-
-      # Marked projected as a pass that raised on it leaves it: the run never folded it.
-      Repo.update_all(from(e in Event, where: e.id == ^exited.id),
-        set: [projected_at: DateTime.utc_now()]
-      )
-
-      unfolded = run!(handed.run)
-      assert %Run{exited_at: nil, exit_state: nil, released_at: nil} = unfolded
-
-      assert release(handed.dispatch_run) == {:error, :ended}
-      assert run!(handed.run) == unfolded
-      assert_live(handed)
-
-      # The lost-run check ends it as its exit, as without the release, and frees the slot.
-      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
-      assert_ended(handed, :run_ended)
-      assert %Run{released_at: nil} = run!(handed.run)
-      assert Slots.held(ctx.pool.id) == 0
-    end
-
-    test "sends no end; the starter's outcome after it does", ctx do
-      gateway = gateway_fixture(ctx.scope)
-      %{access_key: gateway_key} = contract_key_fixture(ctx.scope, node: gateway)
-      handed = handed_over!(ctx, %{gateway_id: gateway.id, gateway_instance_id: instance_id()})
-      {:ok, _released} = release(handed.dispatch_run)
-
-      batch = fn sequence ->
-        {:ok, batch} =
-          [
-            wire_event(handed.run.node_run_id, sequence, "run.heartbeat", %{
-              "elapsed_seconds" => 1
-            })
-          ]
-          |> Jason.encode!()
-          |> Batch.parse()
-
-        Ingest.ingest(gateway_key, batch, %{contract_version: 1, instance_id: instance_id()})
-      end
-
-      assert {:ok, %{status: 202, end: nil}} = batch.(2)
-
-      {:ok, _given} = give_outcome(ctx.key, handed.run, "failed")
-      assert {:ok, %{status: 202, end: %{state: "failed", reason: nil}}} = batch.(3)
-    end
-  end
-
-  describe "the run's outcome or exit" do
-    test "the outcome ends the run of the queue, run_ended, and frees the slot once", ctx do
-      handed = handed_over!(ctx)
-      :ok = Dispatches.subscribe(ctx.scope.workspace.id)
-
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.key, handed.run, "succeeded")
+      assert {:ok, %Run{state: "completed"}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
       assert_received {Dispatches, :changed}
       freed = dispatch!(handed.dispatch).slot_freed_at
 
-      # A repeat, then the backstop and a release: nothing moves.
-      assert {:ok, %{repeated: true}} = give_outcome(ctx.key, handed.run, "succeeded")
+      # The backstop and a release: nothing moves.
       assert Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second)) == []
-      assert release(handed.dispatch_run) == {:error, :ended}
+
+      assert Dispatches.release(ctx.key, handed.dispatch.public_id, %{reason: "stopped"}) ==
+               {:error, :gone}
+
       assert_ended(handed, :run_ended)
       assert dispatch!(handed.dispatch).slot_freed_at == freed
-      assert run!(handed.run).state == "completed"
     end
 
     test "the exit, once folded, ends it run_ended", ctx do
@@ -1192,13 +893,15 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :run_ended)
     end
 
-    test "a starter's outcome that gives the reason released has it dropped" do
+    test "an outcome that gives the reason released or image_missing has it dropped" do
       body = %{"version" => 1, "time" => "2026-10-17T12:00:00Z", "state" => "cancelled"}
 
-      assert {:ok, %Outcome{state: "cancelled", reason: nil}} =
-               Outcome.parse(Map.put(body, "reason", "released"))
+      for reason <- ["released", "image_missing"] do
+        assert {:ok, %Outcome{state: "cancelled", reason: nil}} =
+                 Outcome.parse(Map.put(body, "reason", reason))
 
-      assert "released" in Outcome.reserved_reasons()
+        assert reason in Outcome.reserved_reasons()
+      end
     end
   end
 

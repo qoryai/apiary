@@ -300,16 +300,16 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     refute Repo.exists?(from w in WorkItem, where: w.adapter_id == ^helpdesk.id)
 
     assert work_items |> Enum.map(& &1.state) |> Enum.frequencies() ==
-             %{exploring: 5, declined: 2, closed: 2, undone: 1}
+             %{exploring: 7, closed: 2, undone: 1}
 
-    # Spread across members, five people own the live ones.
+    # Spread across members, seven people own the live ones.
     owners = for %{state: :exploring, owner_id: id} <- work_items, uniq: true, do: id
-    assert length(owners) == 5
+    assert length(owners) == 7
 
     live = for %{state: :exploring, id: id} <- work_items, do: id
 
     assert live |> Apiary.WorkItems.Explore.statuses() |> Map.values() |> Enum.frequencies() ==
-             %{queued: 4, cancelled: 1}
+             %{queued: 7}
 
     # The Backlog and the Work items list, as Lea, a member, reads them.
     lea = scope_of("lea@example.com", main)
@@ -325,18 +325,18 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     assert counts == %{
              open: open - 7,
-             taken: 5,
-             declined: 2,
+             taken: 7,
+             declined: 0,
              closed: closed,
              total: open + closed
            }
 
-    for view <- [:taken, :declined, :closed] do
+    for view <- [:taken, :closed] do
       assert %{rows: [_ | _]} = Apiary.Sources.Backlog.list_tickets(lea, view: view)
     end
 
     assert %{rows: rows} = Apiary.WorkItems.list_work_items(lea, view: :open)
-    assert length(rows) == 5
+    assert length(rows) == 7
 
     # The incidents in the Backlog of the queues' workspace, to a member of it: in Main,
     # beside the repositories, a page names neither adapter's words.

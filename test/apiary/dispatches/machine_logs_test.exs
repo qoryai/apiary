@@ -50,6 +50,13 @@ defmodule Apiary.Dispatches.MachineLogsTest do
     dispatched!(ctx.key).dispatch
   end
 
+  # A dispatch claimed, before `dispatched`, which its starter may release.
+  defp claimed!(ctx) do
+    {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+    dispatch
+  end
+
   defp upload(ctx, %Dispatch{public_id: id}, log \\ @log, truncated \\ false),
     do: Dispatches.upload_machine_log(ctx.key, id, %{log: log, truncated: truncated})
 
@@ -96,8 +103,8 @@ defmodule Apiary.Dispatches.MachineLogsTest do
     end
 
     test "is accepted after the dispatch ended", ctx do
-      dispatch = dispatch!(ctx)
-      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "stopped", retry: false})
+      dispatch = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "stopped"})
       assert %Dispatch{ended_at: %DateTime{}} = Repo.get!(Dispatch, dispatch.id)
       assert upload(ctx, dispatch) == :ok
     end

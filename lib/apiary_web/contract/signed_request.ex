@@ -208,6 +208,27 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
+  @doc """
+  relayed/1 is the access key that signed `conn`, a POST, as a gateway's relay signs a
+  run code's enrolment (`ApiaryWeb.Contract.EnrolmentController`): `{:ok, access_key}`,
+  with its node, or `:unauthorized`. The request string and the checks are a signed
+  request's, from the key id's shape to the signature under a key of a node, a node pool
+  or a gateway, and the instance id is required, once, of the contract's form. It reads
+  the request and the key alone: nothing is recorded and nothing is signed.
+  """
+  @spec relayed(Plug.Conn.t()) :: {:ok, AccessKey.t()} | :unauthorized
+  def relayed(%Plug.Conn{method: "POST"} = conn) do
+    with {:ok, instance_id} <- present(conn, "x-qory-instance-id"),
+         {:ok, _instance_id} <- instance_id(instance_id),
+         {:ok, access_key, _signature} <- verify(conn) do
+      {:ok, access_key}
+    else
+      _ -> :unauthorized
+    end
+  end
+
+  def relayed(_conn), do: :unauthorized
+
   # A key of a node, a node pool or a gateway: the Forager contract's. Any other kind's key
   # is not a node's key here, refused as one the instance does not hold.
   defp lookup(key_id) do

@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.RunLive.RunCodePagesTest do
-  # The pages that show a run handed over with a run code (`Apiary.Runs.RunCode`) before its
-  # code is redeemed: the run has no run key yet. The run page with each tab, the runs list
+  # The pages that show a run handed over with a run code (`Apiary.Runs.RunCode`) before
+  # its code is redeemed: the run has no run key yet. The run page with each tab, the runs list
   # and the workspace overview show it as they show any run through a gateway not yet
   # attached; once its code expires unredeemed, the overview shows it lost with the tip of
   # a run never picked up.
@@ -23,16 +23,13 @@ defmodule ApiaryWeb.RunLive.RunCodePagesTest do
     place = handover_place_fixture(scope)
     work_item = work_item_fixture(scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(place.key, Dispatches.now())
+
+    {:ok, %{dispatch: dispatch, registered: registered}} =
+      Dispatches.claim(place.key, Dispatches.now())
+
     :ok = Dispatches.dispatched(place.key, dispatch.public_id, %{external: nil})
 
-    {:ok, handed} =
-      Dispatches.handover(place.key, dispatch.public_id, %{
-        body: ~s({"version":1,"time":"2026-10-18T12:00:00Z","run_code":true}),
-        run_code: true
-      })
-
-    run = Repo.get!(Run, handed.run.id)
+    run = Repo.get!(Run, registered.id)
     nil = run.run_key_payload
     %{run: run}
   end

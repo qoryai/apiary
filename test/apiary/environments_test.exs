@@ -13,6 +13,7 @@ defmodule Apiary.EnvironmentsTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -32,6 +33,7 @@ defmodule Apiary.EnvironmentsTest do
   # prebuild for them, and a connection whose listings the trigger's tests post.
   setup do
     %{scope: scope} = sign_up_fixture()
+    _gateway = workspace_gateway!(scope)
     pool = pool_fixture(scope)
     connectable = connectable_adapter_fixture()
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
@@ -413,6 +415,7 @@ defmodule Apiary.EnvironmentsTest do
 
       # Another organisation's explore run, claimed, lapses in the same sweep.
       %{scope: other} = sign_up_fixture()
+      _gateway = workspace_gateway!(other)
       other_pool = pool_fixture(other)
       %{access_key: other_key} = enrolled_key_fixture(other, other_pool)
       {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(other), 1) end)

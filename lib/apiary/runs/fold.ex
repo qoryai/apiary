@@ -75,10 +75,12 @@ defmodule Apiary.Runs.Fold do
 
   The run's starter's outcome (`Apiary.Runs.Outcome`), stored on the run and not folded,
   decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
-  applies it, so its state and reason are the run's, and the exit's stay beside them. A run
-  whose end Qory recorded without an outcome (`released_at`, not folded either) is
-  cancelled with the reason `released`, whatever its exit said, until its starter's
-  outcome decides; that step comes just before the outcome's.
+  applies it, so its state and reason are the run's, and the exit's stay beside them. A
+  run of a workspace's queue takes no outcome; one stored on it before that rule is
+  applied as any other. A run whose end Qory recorded without an outcome (`released_at`,
+  not folded either) is cancelled with the reason `released`, whatever its exit said;
+  that step comes just before the outcome's, so an outcome stored before decides over
+  it.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's,
   the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
@@ -97,8 +99,8 @@ defmodule Apiary.Runs.Fold do
   whose attach set a deadline for its end (`backstop_at`, `Apiary.Runs.Liveness`), only
   when it arrived by then, as does a start. Neither revives a run the lost-run check ended
   for its silence (`silenced_at`), whenever it arrived: that end freed the run's slot, and
-  only its exit or its starter's outcome changes the run then. A lower offset alone
-  revives nothing and undoes no revive. So the one order that can show is a revive by a
+  only its exit changes the run then, as a run of the queue takes no outcome. A lower
+  offset alone revives nothing and undoes no revive. So the one order that can show is a revive by a
   heartbeat that a lower offset, folded after it, would have kept from reviving: from
   an earlier heartbeat delivered after it across a clock set back between the two. The
   next lost-run check settles it.
@@ -237,9 +239,10 @@ defmodule Apiary.Runs.Fold do
   # settle/1 is the last step of every fold, and what a rebuild's reset and an end Qory
   # records apply: a run its starter released after a queue handed it over
   # (`released_at`, `Apiary.Dispatches.RunEnd`) is cancelled with the reason `released`,
-  # whatever its exit said, and not lost; then its starter's outcome, should it have one,
-  # decides over that as over all the rest (`outcome/1`). No outcome is recorded for a
-  # release. Every other run is `outcome/1` alone.
+  # whatever its exit said, and not lost; then its outcome, should one have been stored
+  # before a run of the queue was refused one, decides over that as over all the rest
+  # (`outcome/1`). No outcome is recorded for a release. Every other run is `outcome/1`
+  # alone.
   @doc false
   @spec settle(map()) :: map()
   def settle(run), do: run |> released() |> outcome()

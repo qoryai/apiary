@@ -17,8 +17,6 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
   @moduletag needs: :factory
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-
   setup do
     %{scope: scope} = sign_up_fixture()
     Map.put(handover_place_fixture(scope), :scope, scope)
@@ -28,9 +26,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
   defp handed_over!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(ctx.key)
-
-    assert {:ok, %{run: run}} = Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
+    %{dispatch: dispatch, registered: run} = dispatched!(ctx.key)
     %{work_item: work_item, queued: queued, dispatch: dispatch, run: run}
   end
 
@@ -82,8 +78,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
       assert {:error, :gone} =
                Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: true
+                 reason: "The job could not start."
                })
 
       assert [%DispatchRun{attempt: 1, end_cause: :run_refused}] = runs_of(handed.work_item)
@@ -106,7 +101,8 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert Liveness.check(DateTime.add(now, 60, :second)) == []
     end
 
-    test "folded and not yet ended, is not queued again by the starter's release", ctx do
+    test "folded and not yet ended, the starter's release is machine_exists, and it ends run_refused",
+         ctx do
       handed = handed_over!(ctx)
       now = Dispatches.now()
 
@@ -115,10 +111,9 @@ defmodule Apiary.Dispatches.RunRefusedTest do
         set: [state: "failed", reason: "model_key_missing", refused_at: now]
       )
 
-      assert {:error, :gone} =
+      assert {:error, :machine_exists} =
                Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: true
+                 reason: "The job could not start."
                })
 
       assert_live(handed)
@@ -127,15 +122,15 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert [%DispatchRun{attempt: 1, end_cause: :run_refused}] = runs_of(handed.work_item)
     end
 
-    test "keeps the code when the starter's outcome later replaces the run's reason", ctx do
+    test "keeps its code: the starter's outcome after it is refused, not found", ctx do
       handed = handed_over!(ctx)
       refuse!(handed.run, "variable_reserved")
       {:ok, _run} = Projector.project(handed.run)
+      refused = run!(handed.run)
 
-      assert {:ok, %{run: %Run{state: "failed"}}} =
-               give_outcome(ctx.key, handed.run, "failed", "job_failed")
-
-      assert %Run{reason: "job_failed", refused_at: %DateTime{}} = run!(handed.run)
+      assert give_outcome(ctx.key, handed.run, "failed", "job_failed") == {:error, :not_found}
+      assert %Run{reason: "variable_reserved", refused_at: %DateTime{}} = run!(handed.run)
+      assert run!(handed.run) == refused
       assert_ended(handed, :run_refused, "variable_reserved")
     end
 
@@ -161,35 +156,28 @@ defmodule Apiary.Dispatches.RunRefusedTest do
   end
 
   describe "a refusal after the end" do
-    test "of a release changes nothing, and the run queued next stays waiting", ctx do
+    test "of a loss changes nothing, and queues nothing", ctx do
       handed = handed_over!(ctx)
+      Liveness.check(DateTime.add(handed.run.attach_by, 1, :second))
 
-      assert :ok =
-               Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: true
-               })
-
-      assert [_first, %DispatchRun{state: :waiting, attempt: 2} = next] =
-               runs_of(handed.work_item)
-
+      assert [%DispatchRun{state: :ended, end_cause: :lost}] = runs_of(handed.work_item)
       before = dispatch!(handed.dispatch)
 
       refuse!(handed.run, "model_key_missing")
       {:ok, _run} = Projector.project(handed.run)
 
-      assert_ended(handed, :released)
+      assert_ended(handed, :lost)
       assert dispatch!(handed.dispatch) == before
-      assert queue_run!(next).state == :waiting
-      assert length(runs_of(handed.work_item)) == 2
+      assert length(runs_of(handed.work_item)) == 1
     end
 
-    test "of an outcome changes nothing: the run stays ended run_ended", ctx do
+    test "of an exit changes nothing: the run stays ended run_ended", ctx do
       handed = handed_over!(ctx)
-      assert {:ok, _given} = give_outcome(ctx.key, handed.run, "succeeded")
+      event_fixture(handed.run, 1, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+      assert {:ok, %Run{exited_at: %DateTime{}}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
 
-      refuse!(handed.run, "model_key_missing")
+      refuse!(handed.run, "model_key_missing", 2)
       {:ok, _run} = Projector.project(handed.run)
 
       assert_ended(handed, :run_ended)
@@ -233,9 +221,12 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert_ended(handed, :run_ended)
     end
 
-    test "a run cancelled by its starter's outcome ends run_ended", ctx do
+    test "a run cancelled by its exit ends run_ended; the starter's outcome is refused",
+         ctx do
       handed = handed_over!(ctx)
-      assert {:ok, _given} = give_outcome(ctx.key, handed.run, "cancelled", "stopped")
+      assert give_outcome(ctx.key, handed.run, "cancelled", "stopped") == {:error, :not_found}
+      event_fixture(handed.run, 1, "run.exited", %{"state" => "cancelled", "reason" => "stopped"})
+      assert {:ok, %Run{state: "cancelled"}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
     end
 
@@ -249,16 +240,15 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert %Dispatch{end_cause: :lost} = dispatch!(handed.dispatch)
     end
 
-    test "a run released by its starter ends released", ctx do
+    test "a release after the handover is machine_exists, and the run stays live", ctx do
       handed = handed_over!(ctx)
 
-      assert :ok =
+      assert {:error, :machine_exists} =
                Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: false
+                 reason: "The job could not start."
                })
 
-      assert_ended(handed, :released)
+      assert_live(handed)
     end
   end
 

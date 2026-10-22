@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "time": "2026-10-15T12:20:00Z",
-  "run_id": "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
-  "image": "registry.example.com:5000/Acme/shop-env@sha256:3b9d0a5f7c1e2d4b6a8f0c2e4d6b8a0f1c3e5d7b9a1f3c5e7d9b1a3f5c7e9d1b",
-  "size": 734003200,
-  "environment_ref": "env-3f2a91c4",
-  "commit": "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
-}

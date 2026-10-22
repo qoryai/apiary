@@ -356,7 +356,7 @@ defmodule Apiary.Connections do
   (`Apiary.Policy.Grammar.exact_host?/1`). `Apiary.Policy` renders them into the
   workspace's policy (`Apiary.Policy.Resolution`).
 
-  Model providers are left out: a run whose handover set a model provider gets the
+  Model providers are left out: a run whose claim set a model provider gets the
   provider's hosts in the document composed for the run
   (`Apiary.Policy.ComposedConfiguration`), and `provider_hosts/1` has the hosts of their
   API endpoints. A connection that fails its integrity code, or
@@ -1455,9 +1455,9 @@ defmodule Apiary.Connections do
       when is_binary(kind) do
     write_connection(scope, provider, fn scope, _organisation, current ->
       # The model choices and the pending or running runs that use the provider, read
-      # without a lock under the provider's row lock. A handover holds the row `FOR SHARE`
+      # without a lock under the provider's row lock. A claim holds the row `FOR SHARE`
       # until it commits (`Apiary.Dispatches.RunSettings`), so a run it registers is read
-      # here, and a handover that comes after reads the provider as deleted.
+      # here, and a claim that comes after reads the provider as deleted.
       with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
            {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-

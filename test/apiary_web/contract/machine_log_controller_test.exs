@@ -87,7 +87,7 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
       target: "/v1/dispatches/#{id(dispatch)}/machine-log",
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 
@@ -110,7 +110,8 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
   # A dispatch of a fresh work item, claimed and its job started, not handed over.
   defp dispatch!(ctx) do
     {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
-    dispatched!(ctx.key).dispatch
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+    dispatch
   end
 
   # The body of a refusal of `status`, after a check that it is valid under the contract's
@@ -156,7 +157,7 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
     assert stored?(upload(ctx, handed_over, body()))
 
     ended = dispatch!(ctx)
-    :ok = Dispatches.release(ctx.key, ended.public_id, %{reason: "stopped", retry: false})
+    :ok = Dispatches.release(ctx.key, ended.public_id, %{reason: "stopped"})
     assert %Dispatch{ended_at: %DateTime{}} = Repo.get!(Dispatch, ended.id)
     assert stored?(upload(ctx, ended, body()))
 

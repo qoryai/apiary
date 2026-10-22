@@ -116,12 +116,14 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
   # work items (a take in, its undo, a decline, a close, an answer to Qory's questions, a
   # confirmation of its proposal, a run of Explore again and the comments), the assigning
-  # of collections, the turning of a target's Backlog on or off, the handover of a claimed
-  # run, its release, the image a prebuild built, the choosing of what a target's runs also
-  # read, the setting of a model choice or a time limit of a workspace or a target, a
-  # build of a target's environment asked for, the installing of an adapter and the start
-  # of its set-up have labels yet, so the filter offers those alone, where the reader is
-  # shown the feature (the page asks it); the others' entries show as any change.
+  # of collections, the turning of a target's Backlog on or off, the release of a claimed
+  # run, the choosing of what a target's runs also read, the setting of a model choice or
+  # a time limit of a workspace or a target, a build of a target's environment asked for,
+  # the installing of an adapter and the start of its set-up have labels yet, so the
+  # filter offers those alone, where the reader is shown the feature (the page asks it);
+  # the others' entries show as any change. Nothing writes `dispatch.handover` or
+  # `dispatch.prebuilt` any more: the filter offers neither, and their labels and words
+  # stay for the entries stored before.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -140,9 +142,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"time_limit.edit",
           :"collection.assign",
           :"collection.set_backlog",
-          :"dispatch.handover",
           :"dispatch.release",
-          :"dispatch.prebuilt",
           :"target.set_further_repositories",
           :"target.rebuild_environment",
           :"adapter.install",

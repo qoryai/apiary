@@ -12,8 +12,9 @@ defmodule Apiary.Dispatches.Dispatch do
   # minutes from the claim in whole seconds, as the claim answer gives it. `dispatched_at`
   # is when the starter said it started the job; `external_type`, `external_ref` and
   # `external_url` are that job at the system that runs it, as the starter named it then:
-  # external, set together or not at all. `handed_over_at` is when its handover was
-  # answered, before `lease_until`; `stale_at` when its lease lapsed before a handover, at
+  # external, set together or not at all. `handed_over_at` is when it was handed over, at
+  # its first `dispatched` or at the first redemption of its run's code, whichever came
+  # first, before `lease_until`; `stale_at` when its lease lapsed before a handover, at
   # or after `lease_until`, never both. `ended_at` and `end_cause` are set together
   # (`Apiary.Dispatches.DispatchRun.end_causes/0`). `slot_freed_at` is when the slot of the
   # pool's instance limit it took at the claim was freed, once. At most one dispatch of a

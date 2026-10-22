@@ -69,6 +69,10 @@ defmodule Apiary.Runs.RunKeyTest do
     for attrs <- [
           [gateway_url: "http://127.0.0.1:8443"],
           [gateway_url: "https://gateway.example/path"],
+          [gateway_url: "https://edge_01.example"],
+          [gateway_url: "https://gateway.example:0"],
+          [gateway_url: "https://gateway.example."],
+          [gateway_url: "https://" <> String.duplicate("a", 1600)],
           [gateway_public_keys: []],
           [gateway_public_keys: List.duplicate(<<1::256>>, 2)],
           [node_id: "ng_0000000000000000"],
@@ -76,9 +80,6 @@ defmodule Apiary.Runs.RunKeyTest do
         ] do
       assert RunKey.issue(grant(attrs), @key) == {:error, :invalid}, inspect(attrs)
     end
-
-    assert RunKey.issue(grant(gateway_url: "https://" <> String.duplicate("a", 1600)), @key) ==
-             {:error, :too_long}
   end
 
   test "anything but a run key the given keys signed is refused" do

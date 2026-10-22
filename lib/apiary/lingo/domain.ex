@@ -66,7 +66,7 @@ defmodule Apiary.Lingo.Domain do
   also reads, joined with commas. It names no target. A domain without it gives a run no
   such label.
   """
-  # Qory adds it to a run it hands over, with the `factory` feature, which the
+  # Qory adds it to a run a claim registers, with the `factory` feature, which the
   # documentation leaves out: the other paths are those its target's runs also read
   # (`Apiary.Targets.further_repositories/1`).
   @callback paths_label() :: String.t()
@@ -108,7 +108,7 @@ defmodule Apiary.Lingo.Domain do
   The run variables of a run whose target is `target`, with `picked` the further paths in
   its system that the run also reads, in order: `{:ok, variables}`, `{:ok, nil}` for a
   domain that gives a run none, or `{:error, reason}` for a target or a list that breaks
-  the domain's rules. A handover asks it again of the target it hands over.
+  the domain's rules. A claim asks it again of the target of the run it registers.
   """
   @callback run_variables(target, picked :: [String.t()]) ::
               {:ok, variables | nil} | {:error, atom}

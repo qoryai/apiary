@@ -4,7 +4,7 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   # read them from here. The moduledoc names a node's, a node pool's and a gateway's alone.
   @prefixes %{node: "qecn_", pool: "qecp_", gateway: "qecg_", adapter: "qeci_"}
   # The prefix of a run code (`Apiary.Runs.RunCode`), which enrols no key and belongs to no
-  # node: a run's handover answers with it, and enrolment redeems it for the run's run key.
+  # node: a claim answers with it, and enrolment redeems it for the run's run key.
   @run_prefix "qecr_"
 
   @moduledoc """

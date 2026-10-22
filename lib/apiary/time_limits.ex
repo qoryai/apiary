@@ -96,7 +96,7 @@ defmodule Apiary.TimeLimits do
   # limits_for/3 is what a resolution reads of the limits for the runs of `workflow` of
   # `workspace` at `target`, nil for none: the workspace's limits for the workflow, and
   # the target's, read without a lock, as `Apiary.TimeLimits.Resolution.resolve/1` takes
-  # them. `Apiary.Dispatches.RunSettings` reads them for a handover.
+  # them. `Apiary.Dispatches.RunSettings` reads them for a claim.
   @spec limits_for(Workspace.t(), Target.t() | nil, String.t()) :: Resolution.input()
   def limits_for(%Workspace{} = workspace, target, workflow) when is_binary(workflow) do
     target_id = target && target.id

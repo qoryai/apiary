@@ -56,7 +56,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #
   # - `variables`, the run variables Qory set for the run (`runs.registration_variables`,
   #   `Apiary.Runs.RunVariables.document/1`);
-  # - with the `secrets` feature too, for a run the handover set a model provider for:
+  # - with the `secrets` feature too, for a run its claim set a model provider for:
   #   `credentials`, the provider's API credential, and `model_credential`, its name
   #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after

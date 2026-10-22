@@ -20,7 +20,6 @@ defmodule ApiaryWeb.ActivityDispatchReleaseTest do
       details: %{
         "dispatch_id" => "dp_0123456789abcdef",
         "step" => "explore",
-        "retry" => true,
         "handed_over" => handed_over,
         "waits" => true,
         "reason" => @reason

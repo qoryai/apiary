@@ -34,9 +34,10 @@ defmodule Apiary.Runs.Attach do
        id. A run attached before its instance id was kept has none, and the first
        instance of its gateway that attaches it again is given the answer and becomes its
        attaching instance;
-    5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
-       ended it, its starter ended it without one, it was lost after its attach, or its
-       events were pruned. So is a run whose record is gone;
+    5. a run that has ended is `{:error, :gone}`: its exit arrived, an outcome stored on
+       it ended it (a run of a workspace's queue takes none, and one stored on it before
+       that rule ends it all the same), it was released after its handover, it was lost
+       after its attach, or its events were pruned. So is a run whose record is gone;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -392,10 +393,11 @@ defmodule Apiary.Runs.Attach do
 
   defp repeat?(_run, _gateway, _instance_id), do: false
 
-  # Its exit arrived, its starter's outcome ended it, its starter released it after a
-  # queue handed it over (cancelled, `released_at`, `Apiary.Dispatches.RunEnd`), or it was
-  # lost after its attach; or retention pruned its events, and the workspace wants nothing
-  # more of it.
+  # Its exit arrived, an outcome stored on it ended it (a run of the queue takes none; one
+  # stored before that rule ends it all the same), its starter released it after a queue
+  # handed it over (cancelled, `released_at`, `Apiary.Dispatches.RunEnd`), or it was lost
+  # after its attach; or retention pruned its events, and the workspace wants nothing more
+  # of it.
   defp ended?(%Run{} = run) do
     run.state in @ended or not is_nil(run.exited_at) or not is_nil(run.outcome_state) or
       not is_nil(run.events_pruned_at) or (run.state == "lost" and not is_nil(run.attached_at))
@@ -505,8 +507,9 @@ defmodule Apiary.Runs.Attach do
 
   defp image(_run, _workspace, _dispatched), do: nil
 
-  # A run a workspace's queue handed over is lost should it have neither an outcome nor an
-  # exit by its step's limit after its attach (`Apiary.Dispatches.RunEnd`); any other run
+  # A run a workspace's queue handed over is lost should it have no exit by its step's
+  # limit after its attach, nor, for a run that is not a prebuild, an outcome stored on it
+  # before a run of the queue was refused one (`Apiary.Dispatches.RunEnd`). Any other run
   # has no such deadline.
   defp backstop_at(nil, _now), do: nil
 

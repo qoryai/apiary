@@ -16,8 +16,10 @@ defmodule Apiary.Dispatches.Slots do
   # - `free/2` frees what is due at `now`, for one pool, for every pool (`:all`) or for
   #   the dispatches of some runs of the queue (`{:runs, ids}`, as an undo asks): a
   #   dispatch whose lease lapsed before its handover (`now` at or after `lease_until`,
-  #   neither handed over, stale nor ended) is marked stale at `now`, its slot freed, and
-  #   its run, claimed, waits in its workspace's queue again with the same `run_id` and
+  #   neither handed over, stale nor ended) is marked stale at `now`, its slot freed, the
+  #   run registered at its claim deleted with its run code
+  #   (`Apiary.Dispatches.Handover.drop/1`), and its run, claimed, waits in its
+  #   workspace's queue again with the same `run_id` and
   #   the same `queued_at`, so it takes back its place in the queue; except a prebuild
   #   whose collection and node pool have another prebuild waiting: one prebuild waits per
   #   collection and pool (`Apiary.Dispatches.queue_prebuild/3`), and the one that waits
@@ -72,24 +74,22 @@ defmodule Apiary.Dispatches.Slots do
   #      lock; a claim takes a waiting run `FOR UPDATE SKIP LOCKED`, which waits on none;
   #   6. the dispatches.
   #
-  # A handover (`Apiary.Dispatches.Handover`) keeps the order: for an explore run, first
-  # the rows of the model providers its choices name and of their keys' secrets, each
-  # `FOR SHARE` (`Apiary.Dispatches.RunSettings`), which come before every lock above;
-  # then the free of its run (`{:runs, [id]}`), which locks a lapsed prebuild's
-  # environment record before its run, then its run of the queue `FOR UPDATE`
-  # (`Apiary.Dispatches.RunEnd`), then its dispatch, and only then, beyond these, the
-  # gateway's row `FOR SHARE` and the run it registers, as a run of the queue is locked
-  # before the run registered for it.
+  # A claim (`Apiary.Dispatches`) keeps the order: the pool's row, as 2., then the
+  # gateway's row `FOR SHARE`, then the free of its pool, then the waiting run it takes,
+  # as 5., and its dispatch, inserted; then, for an explore run, the rows of the model
+  # providers its choices name and of their keys' secrets, each `FOR SHARE`
+  # (`Apiary.Dispatches.RunSettings`), which no path that locks anything above locks
+  # after, and the run it registers (`Apiary.Dispatches.Handover.register/2`), as a run
+  # of the queue is locked before the run registered for it. A `dispatched` keeps it too:
+  # the free of its run, its run of the queue, then its dispatch.
   #
   # A release (`Apiary.Dispatches.Release`) keeps it as well, and holds one row before
   # the free of its run: for an explore run, its work item `FOR UPDATE`, as a close
   # (`Apiary.WorkItems.close_locked/3`) and `Apiary.Dispatches.queue_next/2` hold a work
   # item before its runs; for a prebuild, its environment record `FOR UPDATE`, as 3.
   # has it. Then the free of its run, which locks that record again where its lease
-  # lapsed, its run of the queue, its dispatch, and after its handover the run
-  # registered for it (`Apiary.Dispatches.RunEnd.released/2`). A prebuild given back with
-  # retry before its handover locks the one that waits of its collection and pool after
-  # its dispatch (`wait_again/3`): under the record it holds, which every path that locks
+  # lapsed, its run of the queue, and its dispatch. A prebuild given back locks the one
+  # that waits of its collection and pool after its dispatch (`wait_again/3`): under the record it holds, which every path that locks
   # the one that waits holds first, but a claim, whose `FOR UPDATE SKIP LOCKED` waits on
   # none. A path that locks a work item locks it before any run of the queue, never after.
   #
@@ -122,7 +122,7 @@ defmodule Apiary.Dispatches.Slots do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover}
   alias Apiary.Environments.Record
   alias Apiary.Repo
 
@@ -206,10 +206,11 @@ defmodule Apiary.Dispatches.Slots do
         {stale_runs, stale_workspaces} = Enum.unzip(stale)
         stale_runs = MapSet.new(stale_runs)
 
-        {prebuilds, others} =
-          runs
-          |> Enum.filter(&(MapSet.member?(stale_runs, &1.id) and &1.state == :claimed))
-          |> Enum.split_with(&(&1.step == DispatchRun.prebuild()))
+        claimed = Enum.filter(runs, &(MapSet.member?(stale_runs, &1.id) and &1.state == :claimed))
+        {prebuilds, others} = Enum.split_with(claimed, &(&1.step == DispatchRun.prebuild()))
+
+        # The runs registered at their claims go, with their run codes.
+        _dropped = Handover.drop(Enum.map(claimed, & &1.id))
 
         {_count, _rows} =
           Repo.update_all(
@@ -285,7 +286,7 @@ defmodule Apiary.Dispatches.Slots do
   end
 
   # wait_again/3 takes the claimed `prebuilds`, whose dispatch lapsed or was released
-  # with retry before its handover, back to the queue, under the lock of their
+  # before its handover, back to the queue, under the lock of their
   # environment records, which the caller holds, per collection and pool: while another
   # prebuild waits, each ends `superseded`, and the one that waits takes the record's
   # `queued_ref`; else one waits again, with its `run_id` and its `queued_at`, and the

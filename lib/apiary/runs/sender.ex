@@ -69,7 +69,7 @@ defmodule Apiary.Runs.Sender do
   for any other.
   """
   @spec may_send?(Run.t(), AccessKey.t()) :: boolean
-  # A run handed over with a run code goes through a gateway before its code is redeemed,
+  # A run registered with a run code goes through a gateway before its code is redeemed,
   # with no run key yet: nobody sends for it until its gateway attaches it.
   def may_send?(%Run{} = run, %AccessKey{node_id: node_id}) do
     cond do

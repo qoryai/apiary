@@ -368,8 +368,8 @@ defmodule Apiary.Runs.Registration do
   # on the whole instance and in any of its states (waiting, claimed, handed over or
   # ended), is `{:error, :run_id_used}`, under any key, a node's, a node pool's or a
   # gateway's alike, and whatever the key may do.
-  # The provisioner contract has it so (its `handover.schema.json`): such a run is
-  # registered only by its handover, never at the run endpoint, and its id is refused
+  # The provisioner contract has it so: such a run is registered only by its claim,
+  # never at the run endpoint, and its id is refused
   # there first, before the stored answer to a repeat and before the instance limit; the
   # Forager contract gives the other causes and their order. Asked before `may_post/1`
   # too, so that every key is given the one answer for such an id, and the answer never
@@ -485,7 +485,7 @@ defmodule Apiary.Runs.Registration do
   defp held(%Run{} = run), do: {:ok, {:used, run}}
 
   # The same bytes under a key of the node that registered the run: the holder's retry of
-  # the registration it sent, under the key it holds now. A run handed over with a run code
+  # the registration it sent, under the key it holds now. A run registered with a run code
   # is given its run key at the code's redemption alone (`Apiary.Runs.RunCode`), so it has
   # no repeat here.
   defp repeat?(%Run{} = run, access_key, digest),
@@ -784,8 +784,8 @@ defmodule Apiary.Runs.Registration do
   # public ids, and `instance_id` from `grant`; issued at `now` in whole seconds, its attach
   # window `attach_window(attach_seconds)` from then. `{:ok, %{run_key: run_key, through:
   # fields}}`, the run's fields of a run through a gateway, or `{:error, :unavailable}`,
-  # logged, when no run key can be made for the gateway's address. A handover of a run of
-  # the queue makes its run key here too (`Apiary.Dispatches.Handover`).
+  # logged, when no run key can be made for the gateway's address. A claim of a run of the
+  # queue checks that a run key can be made here too (`Apiary.Dispatches.Handover`).
   @doc false
   @spec issue_through(Nodes.Node.t(), [AccessKey.t()], map, DateTime.t(), pos_integer | nil) ::
           {:ok, %{run_key: String.t(), through: map}} | {:error, :unavailable}
@@ -798,7 +798,7 @@ defmodule Apiary.Runs.Registration do
   # through_grant/3 is what the run key of a run through `gateway`, whose active keys are
   # `keys`, grants, but its two times: the gateway by its public id, its address and its
   # keys' public keys, and the run's `run_id`, `workspace`, `node_id` and `instance_id`
-  # from `grant`. A handover with a run code keeps it until the code is redeemed
+  # from `grant`. A claim keeps it with the run code until the code is redeemed
   # (`Apiary.Runs.RunCode`).
   @doc false
   @spec through_grant(Nodes.Node.t(), [AccessKey.t()], map) :: map

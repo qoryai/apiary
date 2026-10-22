@@ -1754,11 +1754,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         "It never started: its gateway did not pick it up in the time it was given, and now it can't."
 
       backstop = fn word ->
-        "No exit or outcome came within #{word} of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
+        "No exit came within #{word} of its gateway picking it up, so it was marked lost. It may still be going; only its exit changes the record now."
       end
 
       ended_silent =
-        "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. It may still be going; only its exit or its outcome changes the record now."
+        "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. It may still be going; only its exit changes the record now."
 
       gateway =
         now

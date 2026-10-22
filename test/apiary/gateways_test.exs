@@ -112,29 +112,38 @@ defmodule Apiary.GatewaysTest do
                url
       end
 
-      long = "https://" <> String.duplicate("a", 2041) <> ".example"
+      # 300 characters at most, as the contracts' gateway_url allows.
+      label = String.duplicate("a", 63)
+      host = Enum.join([label, label, label, label, String.duplicate("b", 36)], ".")
+      longest = "https://" <> host
+      assert String.length(longest) == 300
+
+      assert {:ok, %Node{url: ^longest}} =
+               Nodes.create_node(scope, %{kind: "gateway", name: unique_node_name(), url: longest})
 
       assert {:error, changeset} =
-               Nodes.create_node(scope, %{kind: "gateway", name: "x", url: long})
+               Nodes.create_node(scope, %{kind: "gateway", name: "x", url: longest <> "b"})
 
-      assert "should be at most 2048 character(s)" in errors_on(changeset).url
+      assert %{url: ["should be at most 300 character(s)"]} = errors_on(changeset)
 
       assert {:error, changeset} = Nodes.create_node(scope, %{kind: "gateway", name: "x"})
       assert %{url: ["can't be blank"]} = errors_on(changeset)
     end
 
-    test "its host is a DNS name, an IPv4 address or an IPv6 address in brackets", %{
+    test "its host is DNS labels or an IPv6 address in brackets", %{
       scope: scope
     } do
-      # 63 characters a label, 253 a name.
+      # 63 characters a label; a name of digits alone is labels too, as the contracts'
+      # gateway_url has it.
       label = String.duplicate("a", 63)
-      longest = Enum.join([label, label, label, String.duplicate("b", 61)], ".")
-      assert byte_size(longest) == 253
+      longest = Enum.join([label, label, label, String.duplicate("b", 62)], ".")
+      assert byte_size(longest) == 254
 
       for url <-
             ~w(https://edge.example.com https://edge-01.example.com:8443 https://10.0.0.5
                https://[2001:db8::1]:443 https://[::ffff:10.0.0.5] https://Edge.Example.com
-               https://edge.example.com. https://1.2.3.4.example https://localhost:65535) ++
+               https://1.2.3.4.example https://localhost:65535 https://10.0.0.256
+               https://10.0.0 https://010.0.0.5) ++
               ["https://#{label}.example", "https://#{longest}"] do
         assert {:ok, %Node{url: ^url}} =
                  Nodes.create_node(scope, %{kind: "gateway", name: unique_node_name(), url: url}),
@@ -148,11 +157,12 @@ defmodule Apiary.GatewaysTest do
                https://edge,x.example https://edge~x.example https://edge_01.example
                https://edge..example https://.edge.example https://edge.example..
                https://-edge.example https://edge-.example https://edge.-x.example
-               https://10.0.0.256 https://10.0.0 https://010.0.0.5 https://10.0.0.5.
+               https://10.0.0.5.
                https://2001:db8::1 https://[2001:db8::1 https://[2001:db8:::1]
                https://[fe80::1%25eth0] https://[10.0.0.5] https://edge.example.com:
-               https://edge.example.com:08443| ++
-              ["https://#{label}a.example", "https://#{longest}b", "https://edge example.com"] do
+               https://edge.example.com:08443 https://edge.example.com.
+               https://edge.example.com.:8443| ++
+              ["https://#{label}a.example", "https://edge example.com"] do
         assert {:error, changeset} =
                  Nodes.create_node(scope, %{kind: "gateway", name: "x", url: url})
 

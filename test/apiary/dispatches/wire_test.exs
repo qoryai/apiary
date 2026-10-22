@@ -2,8 +2,8 @@ defmodule Apiary.Dispatches.WireTest do
   # The bodies a node pool's starter posts, read as the provisioner contract has them:
   # every request fixture vendored from the commit in
   # `test/fixtures/contract/provisioner/v1/.contract-ref`, valid and invalid, and each
-  # field refused in turn, with members twice, integers written with a fraction, members
-  # the schema does not define, and labels on a handover.
+  # field refused in turn, with members twice, integers written with a fraction, and
+  # members the schema does not define.
   use ExUnit.Case, async: true
 
   alias Apiary.Dispatches.Wire
@@ -14,11 +14,11 @@ defmodule Apiary.Dispatches.WireTest do
   @base "https://qory.dev/contracts/"
 
   # The vendored schemas, by their URL under the contracts' base: the provisioner
-  # contract's, and the integration contract's it refers to, vendored beside them under
-  # `integration/v1/` from the same commit of the integrations; and Forager's, which the
-  # handover answer's `run_settings` refers to, from Forager's contract directory
-  # (`Apiary.ContractFixtures.contract_dir/0`), so a test that builds the handover
-  # answer's schema is tagged `:contract`. Nothing is fetched.
+  # contract's, the run contract's documents under `run/v1/`, and the integration
+  # contract's they refer to under `integration/v1/`; and Forager's, which the documents'
+  # `run_settings` refers to, from Forager's contract directory
+  # (`Apiary.ContractFixtures.contract_dir/0`), so a test that builds the documents'
+  # schema is tagged `:contract`. Nothing is fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -45,15 +45,15 @@ defmodule Apiary.Dispatches.WireTest do
 
   # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
   # schema its name starts with, the longest that matches.
-  @schemas ~w(claim-answer handover-answer claim dispatched handover release prebuilt machine-log refusal)
+  @schemas ~w(claim-answer claim dispatched release machine-log refusal)
 
   defp schema_of("invalid/" <> name),
     do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
 
   defp schema_of(path), do: path |> Path.split() |> hd()
 
-  defp validator(schema) do
-    JSV.build!(%{"$ref" => @base <> "provisioner/v1/#{schema}.schema.json"},
+  defp validator(schema, contract \\ "provisioner/v1") do
+    JSV.build!(%{"$ref" => @base <> "#{contract}/#{schema}.schema.json"},
       resolver: {Resolver, [@vendored | forager()]},
       formats: true
     )
@@ -74,9 +74,7 @@ defmodule Apiary.Dispatches.WireTest do
   @readers %{
     "claim" => &Wire.claim/1,
     "dispatched" => &Wire.dispatched/1,
-    "handover" => &Wire.handover/1,
     "release" => &Wire.release/1,
-    "prebuilt" => &Wire.prebuilt/1,
     "machine-log" => &Wire.machine_log/1
   }
 
@@ -90,9 +88,7 @@ defmodule Apiary.Dispatches.WireTest do
 
   defp claim(body), do: read(&Wire.claim/1, body)
   defp dispatched(body), do: read(&Wire.dispatched/1, body)
-  defp handover(body), do: read(&Wire.handover/1, body)
   defp release(body), do: read(&Wire.release/1, body)
-  defp prebuilt(body), do: read(&Wire.prebuilt/1, body)
   defp machine_log(body), do: read(&Wire.machine_log/1, body)
 
   @claim %{"version" => 1, "time" => "2026-10-15T12:00:00Z", "wait_seconds" => 10}
@@ -102,27 +98,15 @@ defmodule Apiary.Dispatches.WireTest do
     "url" => "https://ci.example.com/acme/shop/runs/8812"
   }
   @dispatched %{"version" => 1, "time" => "2026-10-15T12:00:20Z", "external" => @external}
-  @handover %{"version" => 1, "time" => "2026-10-15T12:01:00Z"}
   @release %{
     "version" => 1,
     "time" => "2026-10-15T12:02:00Z",
-    "reason" => "The job could not start.",
-    "retry" => false
+    "reason" => "The job could not start."
   }
-  @digest "@sha256:" <> String.duplicate("3b9d", 16)
-  @prebuilt %{
-    "version" => 1,
-    "time" => "2026-10-15T12:20:00Z",
-    "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
-    "image" => "registry.example.com:5000/acme/shop-env" <> @digest,
-    "size" => 734_003_200,
-    "environment_ref" => "env-3f2a91c4",
-    "commit" => "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
-  }
-
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "022bfb7ced59a916bd97f1e9e1a20ff403b63d3e"},
+          {"provisioner/v1", "c110d3c98e003cada889b77ce5ecb7b0ba6a69a4"},
+          {"run/v1", "c110d3c98e003cada889b77ce5ecb7b0ba6a69a4"},
           {"integration/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"},
           {"explore/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"}
         ] do
@@ -142,24 +126,25 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   @tag :contract
-  test "a work item's url in an answer is https, or http to a loopback address alone" do
-    loopback = Jason.decode!(fixture("claim-answer/explore-loopback.json"))
+  test "a work item's url in a run's documents is https, or http to a loopback address alone" do
+    documents = Path.join(@vendored, "run/v1/fixtures")
+    read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
+    valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
+
+    loopback = read.("documents/explore-loopback.json")
     assert loopback["work_item"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
-    assert valid?("claim-answer", loopback)
+    assert valid?.(loopback)
 
-    http = Jason.decode!(fixture("invalid/claim-answer-work-item-url-http.json"))
+    http = read.("invalid/documents-work-item-url-http.json")
     assert http["work_item"]["url"] == "http://control.example.com/work-items/wi_8Kx2mQ4vT9"
-    refute valid?("claim-answer", http)
-
-    # The same rule holds in a handover's answer, whose work item is the same definition.
-    answer = Jason.decode!(fixture("handover-answer/explore.json"))
+    refute valid?.(http)
 
     for url <- [
           "http://localhost/work-items/wi_8Kx2mQ4vT9",
           "http://[::1]:4000/work-items/wi_8Kx2mQ4vT9",
           "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
         ] do
-      assert valid?("handover-answer", put_in(answer, ["work_item", "url"], url)), url
+      assert valid?.(put_in(loopback, ["work_item", "url"], url)), url
     end
 
     for url <- [
@@ -167,7 +152,7 @@ defmodule Apiary.Dispatches.WireTest do
           "http://127.0.0.2/work-items/wi_8Kx2mQ4vT9",
           "ftp://127.0.0.1/work-items/wi_8Kx2mQ4vT9"
         ] do
-      refute valid?("handover-answer", put_in(answer, ["work_item", "url"], url)), url
+      refute valid?.(put_in(loopback, ["work_item", "url"], url)), url
     end
   end
 
@@ -189,17 +174,18 @@ defmodule Apiary.Dispatches.WireTest do
 
     answers =
       for path <- all,
-          String.starts_with?(path, ["claim-answer/", "handover-answer/"]) or
+          String.starts_with?(path, "claim-answer/") or
             (String.starts_with?(path, "invalid/") and String.contains?(path, "-answer-")),
           do: path
 
     refusals = for "refusal/" <> _ = path <- all, do: path
 
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
-    assert length(requests) == 10
-    assert length(invalid_requests) == 19
-    assert length(answers) == 64
-    assert length(refusals) == 7
+
+    assert length(requests) == 7
+    assert length(invalid_requests) == 11
+    assert length(answers) == 16
+    assert length(refusals) == 3
   end
 
   test "each refusal fixture is a code, written as the control plane writes a refusal" do
@@ -212,15 +198,7 @@ defmodule Apiary.Dispatches.WireTest do
         code
       end
 
-    assert Enum.sort(codes) == [
-             "handed_over",
-             "machine_log_exists",
-             "no_gateway",
-             "not_handed_over",
-             "not_prebuild",
-             "run_mismatch",
-             "unavailable"
-           ]
+    assert Enum.sort(codes) == ["machine_exists", "machine_log_exists", "no_gateway"]
   end
 
   describe "the contract's fixtures" do
@@ -237,12 +215,9 @@ defmodule Apiary.Dispatches.WireTest do
                "claim/without-pool-id.json",
                "dispatched/with-external.json",
                "dispatched/without-external.json",
-               "handover/handover.json",
-               "handover/run-code.json",
                "machine-log/truncated.json",
                "machine-log/whole.json",
-               "prebuilt/prebuilt.json",
-               "release/retry.json"
+               "release/no-capacity.json"
              ]
     end
 
@@ -255,7 +230,7 @@ defmodule Apiary.Dispatches.WireTest do
                {:ok, %{time: ~U[2026-10-15 12:00:00Z], pool_id: nil, wait_seconds: 25}}
     end
 
-    test "the dispatched, the handover and the release are read to their values" do
+    test "the dispatched and the release are read to their values" do
       assert dispatched(fixture("dispatched/with-external.json")) ==
                {:ok,
                 %{
@@ -270,30 +245,11 @@ defmodule Apiary.Dispatches.WireTest do
       assert dispatched(fixture("dispatched/without-external.json")) ==
                {:ok, %{time: ~U[2026-10-15 12:00:20Z], external: nil}}
 
-      assert handover(fixture("handover/handover.json")) ==
-               {:ok, %{time: ~U[2026-10-15 12:01:00Z], run_code: false}}
-
-      assert handover(fixture("handover/run-code.json")) ==
-               {:ok, %{time: ~U[2026-10-15 12:01:00Z], run_code: true}}
-
-      assert release(fixture("release/retry.json")) ==
+      assert release(fixture("release/no-capacity.json")) ==
                {:ok,
                 %{
                   time: ~U[2026-10-15 12:02:00Z],
-                  reason: "The job could not start: no runner was free.",
-                  retry: true
-                }}
-
-      assert prebuilt(fixture("prebuilt/prebuilt.json")) ==
-               {:ok,
-                %{
-                  time: ~U[2026-10-15 12:20:00Z],
-                  run_id: "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
-                  image:
-                    "registry.example.com:5000/acme/shop-env@sha256:3b9d0a5f7c1e2d4b6a8f0c2e4d6b8a0f1c3e5d7b9a1f3c5e7d9b1a3f5c7e9d1b",
-                  size: 734_003_200,
-                  environment_ref: "env-3f2a91c4",
-                  commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
+                  reason: "The machine could not be created: the provider had no capacity."
                 }}
     end
 
@@ -318,16 +274,8 @@ defmodule Apiary.Dispatches.WireTest do
                "machine-log-undefined-member.json",
                "machine-log-version-2.json",
                "machine-log-without-log.json",
-               "prebuilt-image-digest-63.json",
-               "prebuilt-image-tag.json",
-               "prebuilt-image-upper-case.json",
-               "prebuilt-image-without-name.json",
-               "prebuilt-size-0.json",
-               "prebuilt-size-above-maximum.json",
-               "prebuilt-size-fraction.json",
-               "prebuilt-undefined-member.json",
-               "prebuilt-without-commit.json",
-               "release-reason-nul.json"
+               "release-reason-nul.json",
+               "release-with-retry.json"
              ]
     end
   end
@@ -367,9 +315,7 @@ defmodule Apiary.Dispatches.WireTest do
 
       for {body, reader} <- [
             {@dispatched, &Wire.dispatched/1},
-            {@handover, &Wire.handover/1},
-            {@release, &Wire.release/1},
-            {@prebuilt, &Wire.prebuilt/1}
+            {@release, &Wire.release/1}
           ] do
         raw = String.replace(Jason.encode!(body), ~s("version":1), ~s("version":1.0))
         assert read(reader, raw) == :error, raw
@@ -380,19 +326,15 @@ defmodule Apiary.Dispatches.WireTest do
       assert claim(Map.put(@claim, "workspace", "ws_f1xt0re000000000")) == :error
       assert dispatched(Map.put(@dispatched, "run_id", "x")) == :error
       assert dispatched(put_in(@dispatched, ["external", "name"], "CI")) == :error
-      assert handover(Map.put(@handover, "run_id", "x")) == :error
       assert release(Map.put(@release, "run_id", "x")) == :error
-      assert prebuilt(Map.put(@prebuilt, "tag", "latest")) == :error
-      assert prebuilt(Map.put(@prebuilt, "target", "acme/shop")) == :error
+      assert release(Map.put(@release, "retry", true)) == :error
     end
 
     test "a version other than 1, or a time not in whole seconds of UTC" do
       for {body, reader} <- [
             {@claim, &Wire.claim/1},
             {@dispatched, &Wire.dispatched/1},
-            {@handover, &Wire.handover/1},
-            {@release, &Wire.release/1},
-            {@prebuilt, &Wire.prebuilt/1}
+            {@release, &Wire.release/1}
           ],
           change <- [
             &Map.put(&1, "version", 2),
@@ -464,9 +406,7 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert quick(fn -> claim(Map.merge(@claim, many)) end) == :error
       assert quick(fn -> dispatched(put_in(@dispatched, ["external"], many)) end) == :error
-      assert quick(fn -> handover(Map.merge(@handover, many)) end) == :error
       assert quick(fn -> release(Map.merge(@release, many)) end) == :error
-      assert quick(fn -> prebuilt(Map.merge(@prebuilt, many)) end) == :error
     end
 
     test "a string just over its bound in bytes is refused, and one at it is read" do
@@ -493,30 +433,6 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert dispatched(put_in(@dispatched, ["external", "type"], String.duplicate("a", 41))) ==
                :error
-    end
-  end
-
-  describe "a handover" do
-    test "carrying labels, or anything else a registration would carry, is refused" do
-      assert handover(Map.put(@handover, "labels", ["linux"])) == :error
-      assert handover(Map.put(@handover, "labels", [])) == :error
-      assert handover(Map.put(@handover, "labels", %{})) == :error
-
-      assert handover(Map.put(@handover, "run_id", "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d")) ==
-               :error
-
-      assert handover(Map.put(@handover, "about", "x")) == :error
-      assert {:ok, _} = handover(@handover)
-    end
-
-    test "takes run_code, a boolean, false when left out" do
-      assert {:ok, %{run_code: true}} = handover(Map.put(@handover, "run_code", true))
-      assert {:ok, %{run_code: false}} = handover(Map.put(@handover, "run_code", false))
-      assert {:ok, %{run_code: false}} = handover(@handover)
-
-      for value <- ["true", 1, nil, %{}] do
-        assert handover(Map.put(@handover, "run_code", value)) == :error, inspect(value)
-      end
     end
   end
 
@@ -605,7 +521,7 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   describe "a release" do
-    test "refuses a reason that is not 1 to 200 characters, and a retry that is not a boolean" do
+    test "refuses a reason that is not 1 to 200 characters, and any retry" do
       for change <- [
             &Map.put(&1, "reason", ""),
             &Map.put(&1, "reason", String.duplicate("r", 201)),
@@ -614,10 +530,8 @@ defmodule Apiary.Dispatches.WireTest do
             &Map.put(&1, "reason", "The job\u0000could not start."),
             &Map.put(&1, "reason", "\u0000"),
             &Map.delete(&1, "reason"),
-            &Map.put(&1, "retry", "true"),
-            &Map.put(&1, "retry", 1),
-            &Map.put(&1, "retry", nil),
-            &Map.delete(&1, "retry")
+            &Map.put(&1, "retry", true),
+            &Map.put(&1, "retry", false)
           ] do
         changed = change.(@release)
         assert release(changed) == :error, inspect(changed)
@@ -635,109 +549,8 @@ defmodule Apiary.Dispatches.WireTest do
     test "counts a reason's characters, not its bytes" do
       reason = String.duplicate("é", 200)
 
-      assert {:ok, %{reason: ^reason, retry: false}} =
+      assert {:ok, %{reason: ^reason}} =
                release(Map.put(@release, "reason", reason))
-    end
-  end
-
-  describe "a prebuilt" do
-    test "is read to its values, an image without a registry host among them" do
-      assert {:ok, read} = prebuilt(@prebuilt)
-      assert read.size == 734_003_200
-
-      for image <- [
-            "acme/shop-env" <> @digest,
-            "shop" <> @digest,
-            "localhost:5000/a__b/c---d/e.f_g" <> @digest,
-            "registry.example.com/acme/shop-env" <> @digest
-          ] do
-        assert {:ok, %{image: ^image}} = prebuilt(Map.put(@prebuilt, "image", image)), image
-      end
-    end
-
-    test "takes a size from 1 to 2^53 - 1, and refuses one outside it or not an integer" do
-      for size <- [1, 9_007_199_254_740_991] do
-        assert {:ok, %{size: ^size}} = prebuilt(Map.put(@prebuilt, "size", size))
-      end
-
-      for size <- [0, -1, 9_007_199_254_740_992, "1", nil, true, 1.0] do
-        assert prebuilt(Map.put(@prebuilt, "size", size)) == :error, inspect(size)
-      end
-    end
-
-    test "refuses a run_id that is not a UUID in the canonical lower-case form" do
-      for run_id <- [
-            nil,
-            "",
-            "0192F0C1-7D4E-7A2B-8C3D-4E5F6A7B8C9D",
-            "0192f0c17d4e7a2b8c3d4e5f6a7b8c9d",
-            "{0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d}",
-            "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9g",
-            "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d\n",
-            1
-          ] do
-        assert prebuilt(Map.put(@prebuilt, "run_id", run_id)) == :error, inspect(run_id)
-      end
-    end
-
-    test "refuses an image not pinned by its digest, as the contract has it" do
-      for image <- [
-            nil,
-            "",
-            @digest,
-            "acme/shop-env:latest",
-            "acme/shop-env:latest" <> @digest,
-            "Acme/shop-env" <> @digest,
-            "acme/shop-env@sha256:" <> String.duplicate("3B9D", 16),
-            "acme/shop-env@sha256:" <> String.duplicate("3b9d", 15) <> "3b9",
-            "acme/shop-env@sha256:" <> String.duplicate("3b9d", 16) <> "0",
-            "acme/shop-env@sha512:" <> String.duplicate("3b9d", 16),
-            "-acme/shop" <> @digest,
-            "acme/shop-" <> @digest,
-            "acme//shop" <> @digest,
-            "registry.example.com:123456/acme" <> @digest,
-            "acme/shop env" <> @digest,
-            "acme/shop\u0000" <> @digest,
-            1
-          ] do
-        assert prebuilt(Map.put(@prebuilt, "image", image)) == :error, inspect(image)
-      end
-    end
-
-    test "takes a name of 255 characters, and refuses one of 256, before the pattern" do
-      name = fn n -> "a/" <> String.duplicate("b", n - 2) end
-      at_bound = name.(255) <> @digest
-      assert String.length(at_bound) == 327
-      assert {:ok, %{image: ^at_bound}} = prebuilt(Map.put(@prebuilt, "image", at_bound))
-      assert prebuilt(Map.put(@prebuilt, "image", name.(256) <> @digest)) == :error
-    end
-
-    test "refuses quickly an image crafted to make its pattern backtrack" do
-      for image <- [
-            String.duplicate("a-", 160) <> "@",
-            String.duplicate("a.", 120) <> "a" <> String.duplicate("-", 80),
-            String.duplicate("a_", 160),
-            String.duplicate("a/", 163) <> "@",
-            String.duplicate("a", 327)
-          ] do
-        assert byte_size(image) <= 327
-        assert quick(fn -> prebuilt(Map.put(@prebuilt, "image", image)) end) == :error
-      end
-    end
-
-    test "refuses an environment_ref or a commit that is not 1 to 200 characters, or holds U+0000" do
-      for field <- ["environment_ref", "commit"],
-          value <- ["", String.duplicate("r", 201), "env\u00001", nil, 1, "run-" <> <<0xFF>>] do
-        assert Wire.prebuilt(Map.put(@prebuilt, field, value)) == :error,
-               "#{field} #{inspect(value)}"
-      end
-
-      at_bound = String.duplicate("\u{1F600}", 200)
-
-      for field <- ["environment_ref", "commit"] do
-        assert {:ok, _} = prebuilt(Map.put(@prebuilt, field, at_bound))
-        assert prebuilt(Map.delete(@prebuilt, field)) == :error
-      end
     end
   end
 

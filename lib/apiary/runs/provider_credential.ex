@@ -1,13 +1,13 @@
 defmodule Apiary.Runs.ProviderCredential do
   @moduledoc false
 
-  # The model key of a run that the handover set a model provider for
+  # The model key of a run that its claim set a model provider for
   # (`Apiary.Dispatches.RunSettings`), as its run configuration contains it: one entry of the
   # contract's `credentials`, an API credential, and the hosts the provider needs, which
   # the run's `egress.allow` and `egress.allow_first` gain
   # (`Apiary.Policy.ComposedConfiguration`). Both come from
   # the run's stored provider columns and the provider's row, so a choice changed after
-  # the handover changes neither.
+  # the claim changes neither.
   #
   # The entry has, in the schema's order: `name`, the provider's public id, the same for
   # every run of the provider; `format`, `endpoint` and `auth` of the API the run uses
@@ -71,7 +71,7 @@ defmodule Apiary.Runs.ProviderCredential do
   # provider of an operator's chain: only while the edition returns "operator" for the
   # run's organisation (`c:Apiary.Edition.model_choice_chain/1`), and only for a gateway
   # of another organisation whose gateways serve the run's
-  # (`Apiary.Gateways.serving_organisations/1`). The handover
+  # (`Apiary.Gateways.serving_organisations/1`). The claim
   # (`Apiary.Dispatches.Handover`) and the secrets request
   # (`Apiary.Runs.SecretsRequest`) both check it.
   @spec sealable_to?(String.t(), Ecto.UUID.t(), Ecto.UUID.t()) :: boolean

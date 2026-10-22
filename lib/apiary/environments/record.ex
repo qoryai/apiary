@@ -13,7 +13,7 @@ defmodule Apiary.Environments.Record do
   # `built_target_system` and `built_target_path` are the target that build was built
   # for, the registered run's target when it was recorded, or none. `built_queued_at` is
   # when the prebuild that made the image took the `environment_ref` it built, its run of
-  # the queue's `environment_ref_at`, written with the image, or none: a `prebuilt` or a
+  # the queue's `environment_ref_at`, written with the image, or none: a build or a
   # failure of a prebuild that took its ref before it leaves the record as it is
   # (`Apiary.Environments.newer_build?/2`). `failure_cause`
   # (`failure_causes/0`), `failure_reason` (a starter's release alone has one) and
@@ -31,7 +31,7 @@ defmodule Apiary.Environments.Record do
   @typedoc "A collection's environment record for one node pool."
   @type t :: %__MODULE__{}
 
-  @failure_causes [:released, :lost, :timed_out]
+  @failure_causes [:released, :lost, :timed_out, :failed]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -62,7 +62,7 @@ defmodule Apiary.Environments.Record do
   end
 
   # failure_causes/0 is every cause a build is recorded as failed for: the starter's
-  # release, the run lost, or the run past its time.
+  # release, the run lost, the run past its time, or the run's exit `failed`.
   @doc false
   @spec failure_causes() :: [atom]
   def failure_causes, do: @failure_causes

@@ -290,12 +290,12 @@ defmodule Apiary.Runs.Ingest do
   # A batch whose subject is the run id of a run of a workspace's queue
   # (`dispatch_runs.run_id`, unique on the instance, in any of its states), from a key that
   # does not reach a run under that id, is `{:error, :run_id_used}`, before or after the
-  # handover, as its registration would be (`Apiary.Runs.Registration.register/3`): such a
-  # run is registered only by its handover, so no batch opens it, and nothing of the batch,
+  # claim, as its registration would be (`Apiary.Runs.Registration.register/3`): such a
+  # run is registered only by its claim, so no batch opens it, and nothing of the batch,
   # the delivery included, is stored. A key reaches the run when it is a key of the run's
   # workspace, or a gateway's that may serve the run's workspace
   # (`Apiary.Gateways.may_serve?/2`), at the workspace's level or the organisation's.
-  # Before the handover there is no run, so no key reaches one. After it, a key that
+  # Before the claim there is no run, so no key reaches one. After it, a key that
   # reaches the run keeps the answer it had: the gateway that attached it is taken,
   # another key of its workspace, the pool's included, and another gateway that may serve
   # its workspace are `wrong_gateway`, and a run whose events were pruned is `410`. Left
@@ -338,8 +338,8 @@ defmodule Apiary.Runs.Ingest do
 
   # For a gateway's batch that finds no run: true when no run of the queue has this run id,
   # so the batch is answered as before (`wrong_gateway`), and when the run registered for
-  # it by its handover is in a workspace the gateway may serve; false otherwise, the run
-  # not handed over yet among them.
+  # it by its claim is in a workspace the gateway may serve; false otherwise, the run not
+  # claimed yet among them.
   defp reaches_queued?(gateway, run_id) do
     held =
       Repo.one(

@@ -51,17 +51,14 @@ defmodule Apiary.Environments do
   # (`Apiary.Dispatches.queue_prebuild/3`). A caller calls `trigger/2` once per
   # transaction: two calls would lock in two orders.
   #
-  # ## A build given back: `lock_record/2` and `record_release_failure/3`
+  # ## A build given back: `lock_record/2`
   #
   # `lock_record(pool_id, collection_id)` locks the record of a prebuild's pool and
   # collection `FOR UPDATE`, inside the caller's transaction: a starter's release of the
   # prebuild holds it before the free of its run and before its run of the queue, as a
   # free of lapsed leases holds it (`Apiary.Dispatches.Release`, `Apiary.Dispatches.Slots`).
-  # `record_release_failure(record, reason, now)` then records the last build as failed,
-  # `released`, with the starter's `reason` and `now`: the last good build, `image`,
-  # `size`, `commit`, `built_at` and `reported_ref`, is left as it was, and nothing is
-  # queued. A release of a prebuild whose ref is older than the image's records nothing
-  # (`newer_build?/2`).
+  # A release records no failure: a starter releases a prebuild only before its handover.
+  # A record whose `failure_cause` is `released` was written before that rule.
   #
   # ## A build lost: `record_end_failure/3`
   #
@@ -69,9 +66,10 @@ defmodule Apiary.Environments do
   # lost-run check ends a prebuild after its handover (`Apiary.Dispatches.RunEnd`), on the
   # record of its collection and of the pool that claimed it, which the check locks with
   # `lock_record/2` before its run of the queue: `lost` when the prebuild's gateway never
-  # attached it by its run key's `attach_by`, `timed_out` when it had neither an outcome
-  # nor an exit by its backstop, with `now` and no reason. The last good build is left as
-  # it was, and nothing is queued. A prebuild whose ref is older than the image's records
+  # attached it by its run key's `attach_by`, `timed_out` when it had no exit by its
+  # backstop, with `now` and no reason; and when its exit ends it, `failed` for a `failed`
+  # exit and `lost` for a `lost` one. The last good build is left as it was,
+  # and nothing is queued. A prebuild whose ref is older than the image's records
   # nothing (`newer_build?/2`).
   #
   # ## A run's image: `image_for/2`
@@ -86,9 +84,8 @@ defmodule Apiary.Environments do
   #
   # ## A build recorded: `record_build/4`
   #
-  # `record_build(dispatch_run, build, built_target, now)` records the build a prebuild's
-  # `prebuilt` reported (`Apiary.Dispatches.Prebuilt`) on the record of its pool and
-  # collection, which the caller locked first (`lock_record/2`): `image`, `size`, `commit`,
+  # `record_build(dispatch_run, build, built_target, now)` records the build of a prebuild
+  # on the record of its pool and collection, which the caller locked first (`lock_record/2`): `image`, `size`, `commit`,
   # `reported_ref`, the `environment_ref` the job reported, kept as it is even when it
   # differs from `queued_ref`, `built_at`, `now`, and the built target
   # (`built_target_system`, `built_target_path`), the registered run's target. The last
@@ -110,7 +107,7 @@ defmodule Apiary.Environments do
   # prebuild that took its `environment_ref` after `dispatch_run` took its
   # (`built_queued_at` later than the run's `environment_ref_at`), asked under the record's
   # lock: the run's ref is older than the image's, and an older build never replaces a
-  # newer one. Then neither a `prebuilt` nor a
+  # newer one. Then neither a build nor a
   # failure of `dispatch_run` is written on the record: the image and the last build's
   # failure stay as they are, and the run ends as it would otherwise. A record that is
   # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and
@@ -216,30 +213,13 @@ defmodule Apiary.Environments do
     )
   end
 
-  # record_release_failure/3 records the last build of `record`, locked by
-  # `lock_record/2`, as failed by the starter's release, with its `reason`, at `now`,
-  # inside the caller's transaction (the moduledoc).
-  @doc false
-  @spec record_release_failure(Record.t(), String.t(), DateTime.t()) :: :ok
-  def record_release_failure(%Record{id: id}, reason, %DateTime{} = now)
-      when is_binary(id) and is_binary(reason) do
-    in_transaction!("record_release_failure/3")
-
-    {1, _rows} =
-      Repo.update_all(from(r in Record, where: r.id == ^id),
-        set: [failure_cause: :released, failure_reason: reason, failed_at: now, updated_at: now]
-      )
-
-    :ok
-  end
-
   # record_end_failure/3 records the last build of `record`, locked by `lock_record/2`,
-  # as failed by the end of its prebuild, `cause` (`:lost` or `:timed_out`), at `now`,
-  # inside the caller's transaction (the moduledoc).
+  # as failed by the end of its prebuild, `cause` (`:lost`, `:timed_out` or `:failed`), at
+  # `now`, inside the caller's transaction (the moduledoc).
   @doc false
-  @spec record_end_failure(Record.t(), :lost | :timed_out, DateTime.t()) :: :ok
+  @spec record_end_failure(Record.t(), :lost | :timed_out | :failed, DateTime.t()) :: :ok
   def record_end_failure(%Record{id: id}, cause, %DateTime{} = now)
-      when is_binary(id) and cause in [:lost, :timed_out] do
+      when is_binary(id) and cause in [:lost, :timed_out, :failed] do
     in_transaction!("record_end_failure/3")
 
     {1, _rows} =
@@ -301,9 +281,9 @@ defmodule Apiary.Environments do
 
   ## A build recorded
 
-  # record_build/4 records the build of the prebuild `dispatch_run` its `prebuilt`
-  # reported, built for `built_target` (nil for none), at `now`, inside the caller's
-  # transaction, which locked the record first (the moduledoc).
+  # record_build/4 records the build of the prebuild `dispatch_run`, built for
+  # `built_target` (nil for none), at `now`, inside the caller's transaction, which locked
+  # the record first (the moduledoc).
   @doc false
   @spec record_build(
           Apiary.Dispatches.DispatchRun.t(),
@@ -514,7 +494,7 @@ defmodule Apiary.Environments do
           image: String.t() | nil,
           built_at: DateTime.t() | nil,
           commit: String.t() | nil,
-          failure: :released | :lost | :timed_out | nil,
+          failure: :released | :lost | :timed_out | :failed | nil,
           running: boolean,
           waiting: boolean
         }

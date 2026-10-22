@@ -12,7 +12,7 @@ defmodule Apiary.Dispatches.Settle do
   # (`Apiary.Explore.Result.settled?/2`); nothing while it is not. So the row holds what
   # Explore reads from the event: a run not settled whose latest result event gives no
   # verdict, after one that did, has what was stored cleared again, and reads as running
-  # until it settles, when the sweep stores what that event gave. A run whose handover
+  # until it settles, when the sweep stores what that event gave. A run whose claim
   # could not form it ends `error` in the same write as its end
   # (`Apiary.Dispatches.Handover`), and no other run has an outcome.
   #

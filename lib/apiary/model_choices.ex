@@ -51,7 +51,7 @@ defmodule Apiary.ModelChoices do
   # resolution reads only these.
   #
   # The organisation's default has no workspace, so the workspace is not asked of it: a
-  # run whose workspace the default's provider does not reach is ended at its handover.
+  # run whose workspace the default's provider does not reach is ended at its claim.
   #
   # Only the organisation's chain is written here; an edition writes the operator's chain
   # (`c:Apiary.Edition.model_choice_chain/1`).

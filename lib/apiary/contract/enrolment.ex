@@ -229,25 +229,38 @@ defmodule Apiary.Contract.Enrolment do
   end
 
   # run_answer_body/1 is the body of the `201` to a run code (`$defs/run_answer`,
-  # `fixtures/known-answers/enrolment-run-answer.json`), its members in the contract's
-  # order: `version`, `run_id`, the run's id in lower case, `run_key` and
-  # `apiary_public_key`, the server's keys as `Apiary.SigningKey.apiary_public_key/1` lists
-  # them. The redemption makes no access key (`Apiary.Runs.RunCode`).
+  # `fixtures/known-answers/enrolment-run-answer.json`), in this order: `version`,
+  # `run_id`, the run's id in lower case, `run_key`, `apiary_public_key`, the server's
+  # keys as `Apiary.SigningKey.apiary_public_key/1` lists them, and `documents`, the run's
+  # documents as the claim encoded them (`Apiary.Dispatches.Handover`), written as they
+  # are, and left out when nil. The redemption makes no access key
+  # (`Apiary.Runs.RunCode`).
   @doc false
   @spec run_answer_body(%{
-          run_id: String.t(),
-          run_key: String.t(),
-          apiary_public_key: [map, ...]
+          required(:run_id) => String.t(),
+          required(:run_key) => String.t(),
+          optional(:documents) => binary | nil,
+          required(:apiary_public_key) => [map, ...]
         }) :: binary
-  def run_answer_body(%{run_id: run_id, run_key: run_key, apiary_public_key: [_ | _] = keys})
+  def run_answer_body(
+        %{run_id: run_id, run_key: run_key, apiary_public_key: [_ | _] = keys} = answer
+      )
       when is_binary(run_id) and is_binary(run_key) do
+    documents =
+      case Map.get(answer, :documents) do
+        nil -> []
+        documents when is_binary(documents) -> [{"documents", Jason.Fragment.new(documents)}]
+      end
+
     Jason.encode!(
-      Jason.OrderedObject.new([
-        {"version", 1},
-        {"run_id", run_id},
-        {"run_key", run_key},
-        {"apiary_public_key", keys(keys)}
-      ])
+      Jason.OrderedObject.new(
+        [
+          {"version", 1},
+          {"run_id", run_id},
+          {"run_key", run_key},
+          {"apiary_public_key", keys(keys)}
+        ] ++ documents
+      )
     )
   end
 

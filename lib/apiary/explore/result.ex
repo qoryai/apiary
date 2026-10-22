@@ -46,7 +46,8 @@ defmodule Apiary.Explore.Result do
   # `version` is the integer 1 however the text wrote it.
   #
   # `outcome/1` says what one result event gave, and `given/3` what a run ended by its
-  # outcome or its exit gave once it is settled (`settled?/2`): the reading Explore shows
+  # exit, or by an outcome stored before a run of the queue was refused one, gave once it
+  # is settled (`settled?/2`): the reading Explore shows
   # (`Apiary.WorkItems.Explore`) and the one Qory keeps on the run of the queue
   # (`Apiary.Dispatches.Settle`).
   #
@@ -122,7 +123,8 @@ defmodule Apiary.Explore.Result do
   def outcome(%{data: %{"is_error" => false}}), do: {:none, nil}
   def outcome(_event), do: {:error, nil}
 
-  # given/3 is what a run ended by its outcome or its exit gave, from `run`, the run
+  # given/3 is what a run ended by its exit, or by an outcome stored before a run of the
+  # queue was refused one, gave, from `run`, the run
   # registered for it or nil, and `event`, its result event with the highest sequence or
   # nil, at `now`: a proposal or questions as soon as its result says so, `:unsettled`
   # while it has none and is not settled, and otherwise `:none`, `:error` or `:refused`.
@@ -136,7 +138,8 @@ defmodule Apiary.Explore.Result do
     end
   end
 
-  # settled?/2 says whether a run ended by its outcome or its exit, registered as `run`
+  # settled?/2 says whether a run ended by its exit, or by an outcome stored before a run
+  # of the queue was refused one, registered as `run`
   # (nil for none), has at `now` every event that will count: its exit is folded (the
   # projector folds the events before it first), it is lost, its events are pruned, it
   # has no outcome, or its outcome arrived `settle_seconds/0` ago or more.
