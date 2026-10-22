@@ -245,9 +245,10 @@ defmodule ApiaryWeb.TargetLive.Show do
       ) do
     case socket.assigns.runs do
       runs when is_list(runs) ->
+        # The broadcast carries the row; the run's node, read with the list, does not change.
         if Enum.any?(runs, &(&1.id == run.id)) do
-          {:noreply,
-           assign(socket, :runs, Enum.map(runs, &if(&1.id == run.id, do: run, else: &1)))}
+          runs = Enum.map(runs, &if(&1.id == run.id, do: Map.put(run, :node, &1.node), else: &1))
+          {:noreply, assign(socket, :runs, runs)}
         else
           {:noreply, update(socket, :new_runs, &(&1 + 1))}
         end

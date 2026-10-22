@@ -2062,7 +2062,14 @@ defmodule ApiaryWeb.RunComponents do
         <% end %>
       </td>
       <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">
-        <.external_text text={shown_sent(@run.host)} />{if !@run.host, do: gettext("n/a")}
+        <%= case place_of(@run, @nodes && @nodes[@run.node_id]) do %>
+          <% {:pool, name} -> %>
+            {name}
+          <% {:host, host} -> %>
+            <.external_text text={shown_sent(host)} />
+          <% nil -> %>
+            {gettext("n/a")}
+        <% end %>
       </td>
       <td :if={@nodes} class="q-rl-c5 q-rl-faint" role="cell">
         <.node_name :if={@run.node_id} scope={@scope} node={Map.get(@nodes, @run.node_id)} />
@@ -2178,10 +2185,7 @@ defmodule ApiaryWeb.RunComponents do
             <.external_text text={@preview.run.runtime} />
             <.external_text text={@preview.run.runtime_version} />
           </span>
-          <span
-            :if={@preview.run.host}
-            class="font-mono text-[12px]"
-          ><.external_text text={@preview.run.host} /></span>
+          <.ran_on run={@preview.run} class="font-mono text-[12px]" />
           <span class="font-mono text-[12px]">{short_id(@preview.run.public_id)}</span>
         </p>
         <dl class="q-pv-kv">
@@ -2267,6 +2271,51 @@ defmodule ApiaryWeb.RunComponents do
     do: if(Apiary.Features.visible?(scope, :nodes), do: label)
 
   defp key_label(_scope, _run), do: nil
+
+  @doc """
+  place_of/1 is where a run ran, as the pages show it in place of a host: `{:pool, name}`,
+  the name of the node pool whose dispatch handed the run over; `{:host, host}`, the host
+  the run's `run.started` reported, for every other run; nil for a run with neither. A
+  pool's run whose node was not read is nil, so that the host, a machine of the pool's
+  operator, is not shown in the pool's name's place. `Apiary.Runs.Place` is the same in
+  a query. place_of/2 is the same with the run's node given, for a page that reads the
+  nodes apart from the runs.
+  """
+  @spec place_of(map) :: {:pool, String.t()} | {:host, String.t()} | nil
+  def place_of(run), do: place_of(run, Map.get(run, :node))
+
+  @spec place_of(map, map | nil) :: {:pool, String.t()} | {:host, String.t()} | nil
+  def place_of(%{dispatch_run_id: id}, node) when is_binary(id) do
+    case node do
+      %{kind: :pool, name: name} -> {:pool, name}
+      _not_read -> nil
+    end
+  end
+
+  def place_of(%{host: host}, _node) when is_binary(host), do: {:host, host}
+  def place_of(_run, _node), do: nil
+
+  @doc """
+  Where a run ran (`place_of/1`), in one span: a pool's name as text, a host in `class`;
+  nothing for a run with neither.
+  """
+  attr :run, :map, required: true
+  attr :id, :string, default: nil
+  attr :class, :string, default: nil, doc: "the classes of a host's span"
+
+  def ran_on(assigns) do
+    assigns = assign(assigns, :place, place_of(assigns.run))
+
+    ~H"""
+    <%= case @place do %>
+      <% {:pool, name} -> %>
+        <span id={@id}>{name}</span>
+      <% {:host, host} -> %>
+        <span id={@id} class={@class}><.external_text text={host} /></span>
+      <% nil -> %>
+    <% end %>
+    """
+  end
 
   @doc """
   The node a run ran on, by name: a link to its page while it is in use and the reader may

@@ -172,11 +172,7 @@ defmodule ApiaryWeb.RunLive.Show do
                     join([shown_sent(@run.runtime), shown_sent(@run.runtime_version)])
                   } />
                 </span>
-                <span
-                  :if={@run.host}
-                  id="run-host"
-                  class="font-mono text-[12.5px]"
-                ><.external_text text={@run.host} /></span>
+                <.ran_on run={@run} id="run-host" class="font-mono text-[12.5px]" />
                 <span :if={@run.started_at} id="run-started-at">
                   <span class="sr-only">{gettext("Started")}</span>
                   <.relative_time id="run-started" at={@run.started_at} />
@@ -839,7 +835,15 @@ defmodule ApiaryWeb.RunLive.Show do
             ><.external_text text={@run.runtime_version} /></span>
           </dd>
           <dt>{gettext("Host")}</dt>
-          <dd class="font-mono"><.external_text text={@run.host} />{if !@run.host, do: na()}</dd>
+          <%!-- A pool's run shows its pool's name (`place_of/1`). --%>
+          <%= case place_of(@run) do %>
+            <% {:pool, name} -> %>
+              <dd id="rail-host">{name}</dd>
+            <% {:host, host} -> %>
+              <dd id="rail-host" class="font-mono"><.external_text text={host} /></dd>
+            <% nil -> %>
+              <dd id="rail-host" class="font-mono">{na()}</dd>
+          <% end %>
           <dt>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>
@@ -1691,7 +1695,21 @@ defmodule ApiaryWeb.RunLive.Show do
     scope
     |> Record.items(run, light, full: MapSet.to_list(full))
     |> with_versions(socket)
+    |> with_pool(run)
   end
+
+  # A pool's run starts on its pool: the Run started item shows the pool's name in place
+  # of the host its `run.started` reported (`place_of/1`).
+  defp with_pool(items, %Run{dispatch_run_id: id} = run) when is_binary(id) do
+    pool = with {:pool, name} <- place_of(run), do: name
+
+    Enum.map(items, fn
+      %{kind: :run_started} = item -> Map.put(item, :host, pool)
+      item -> item
+    end)
+  end
+
+  defp with_pool(items, _run), do: items
 
   # The version each policy applied names, where this workspace rendered it. The run's own
   # are held already; any other digest costs one indexed read, and a build asks for at
