@@ -766,6 +766,41 @@ page shows it read only. Each change is an entry in the activity of the instance
 organisation. Each node of a cluster reads the change at once; a node that misses it keeps
 the values it had until it starts again.
 
+### Load the demo into a test instance
+
+To try Qory Apiary with data in it, load the demo into a new instance: synthetic runs,
+people and nodes, all under `example.com` and other example names. Never load it into an
+instance people work in.
+
+1. Set up the instance with the organisation name **Acme**
+   ([Set up a new instance](#set-up-a-new-instance)).
+2. Run on the release:
+
+   ```sh
+   bin/apiary eval 'Apiary.Release.demo()'
+   ```
+
+The command fills Acme and its workspace Main: 6,000 runs over the last 56 days in about
+150 repositories, 11 people at every level and two invitations pending, and nodes with
+their access keys. Dana (`dana@example.com`) is an owner of Acme, so an instance admin.
+<!-- feature: security -->
+Main gets a security policy with its history.
+<!-- /feature -->
+With mail set, each person the demo adds gets a log-in email and an invitation email at
+their example address. The runs take the longest to write; `Apiary.Release.demo(runs: 1000)`
+writes 1,000 instead.
+
+Nobody knows the password of an account the demo makes. To sign in as Dana, print a link
+that sets her password:
+
+```sh
+bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
+```
+
+The command refuses an instance that is not set up, whose organisation is not Acme, or
+whose workspace Main has runs or nodes already, and then makes nothing. It prints what it
+made, and last the address to open.
+
 ### Compose only
 
 `docker compose` reads these, and the release does not. Compose takes a variable from the
