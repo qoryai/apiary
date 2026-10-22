@@ -312,6 +312,67 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
     end
   end
 
+  describe "dispatched as a keep-alive" do
+    # A `dispatched` whose `time` is `seconds` before the clock, so each request is a new
+    # signed body.
+    defp keep_alive(ctx, seconds) do
+      time = (SignedRequest.now() - seconds) |> DateTime.from_unix!() |> DateTime.to_iso8601()
+      pool_post(ctx, ctx.dispatch, "dispatched", %{"time" => time})
+    end
+
+    test "every 60 s is 204 while the dispatch lives, past its lease too, and 410 once it ends",
+         ctx do
+      assert keep_alive(ctx, 0).status == 204
+
+      for n <- 1..11 do
+        back!(ctx, 60)
+        first = Repo.get!(Dispatch, ctx.dispatch.id).dispatched_at
+        assert keep_alive(ctx, n).status == 204
+        # A repeat records nothing.
+        assert Repo.get!(Dispatch, ctx.dispatch.id).dispatched_at == first
+      end
+
+      # 11 minutes after the claim: past its lease, the dispatch handed over lives.
+      assert DateTime.compare(Dispatches.now(), Repo.get!(Dispatch, ctx.dispatch.id).lease_until) ==
+               :gt
+
+      assert %Dispatch{stale_at: nil, ended_at: nil} = Repo.get!(Dispatch, ctx.dispatch.id)
+
+      # The code never redeemed, the dispatch ends 15 minutes after the claim: 410.
+      back!(ctx, 4 * 60 + 1)
+      assert [%Run{state: "lost"}] = Liveness.check(Dispatches.now())
+      conn = keep_alive(ctx, 12)
+      assert conn.status == 410
+      assert Jason.decode!(conn.resp_body) == %{"error" => "gone"}
+    end
+
+    test "a first one after lease_until is 204 when the code was redeemed before it", ctx do
+      assert enrol(body(ctx.code, ed25519_key_pair())).status == 201
+      back!(ctx, 600 + 1)
+
+      assert keep_alive(ctx, 0).status == 204
+
+      assert %Dispatch{dispatched_at: %DateTime{}, stale_at: nil} =
+               Repo.get!(Dispatch, ctx.dispatch.id)
+
+      # The redeemed dispatch never goes stale: the sweep past its lease leaves it.
+      Dispatches.sweep(Dispatches.now())
+      assert %Dispatch{stale_at: nil, ended_at: nil} = Repo.get!(Dispatch, ctx.dispatch.id)
+      assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, ctx.queued.id)
+    end
+
+    test "a first one after lease_until with the code unredeemed is 409 lease_expired", ctx do
+      back!(ctx, 600)
+
+      conn = keep_alive(ctx, 0)
+      assert conn.status == 409
+      assert Jason.decode!(conn.resp_body) == %{"error" => "lease_expired"}
+
+      assert %Dispatch{dispatched_at: nil, handed_over_at: nil} =
+               Repo.get!(Dispatch, ctx.dispatch.id)
+    end
+  end
+
   describe "a code never redeemed" do
     test "ends its run lost at the code's expiry, 15 minutes after the claim, its slot freed",
          ctx do
