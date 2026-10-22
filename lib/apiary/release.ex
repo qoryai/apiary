@@ -435,14 +435,14 @@ defmodule Apiary.Release do
   `Apiary.Release.demo(runs: 3000)`.
 
   The instance is set up first with the organisation name Acme (slug `acme`). The demo
-  fills Acme and its workspace Main: 6,000 runs over 56 days in about 150 repositories;
-  people at every level, Dana (`dana@example.com`) an owner and so an instance admin, and
-  two invitations pending; nodes and their keys; with the `security` feature, the
-  security policy; and, with the `secrets` feature, secrets, variables and integrations.
-  With mail set, each person the demo adds gets a log-in email, and each person it
-  invites gets an invitation email. Refused, with nothing made, on an instance
-  that is not set up, whose organisation is not Acme, or whose Main is missing or has
-  runs or nodes.
+  fills Acme and its workspace Main: about 6,000 runs over 56 days in about 150
+  repositories; 11 more people at every level, Dana (`dana@example.com`) an owner and so
+  an instance admin, and two invitations pending; nodes and their keys; with the
+  `security` feature, the security policy; and, with the `secrets` feature, secrets,
+  variables and integrations. With mail set, each person the demo adds gets a log-in
+  email, and each person it invites gets an invitation email. Refused, with nothing made,
+  on an instance that is not set up, whose organisation is not Acme, or whose Main is
+  missing or has runs or nodes.
 
   Nobody knows the password of an account the demo makes: each has a random one. The
   output says how to print a link that sets Dana's (`password_link/1`).
