@@ -15,8 +15,12 @@ defmodule Apiary.Stacks do
   #
   # `put_stack/3` and `delete_stack/1` set and remove the stack at one place. Only tests
   # call them: no action, route or page does, and they check no access. The access check
-  # comes with the action. A write records the person who saved the value and that
-  # person's organisation (`saved_by_organisation_id`), the scope's.
+  # comes with the action. A write records the person who saved the value and, in
+  # `saved_by_organisation_id`, the scope's organisation when the scope reaches it
+  # through a membership there alone (`saved_by/1`). A scope that reaches it any other
+  # way, such as an instance admin or an operator's person acting in a client, or the
+  # instance acting by itself, records nil: the owner of a reference saved so is
+  # unknown, and the run hides the harness.
   #
   # ## Refused on save
   #
@@ -37,7 +41,7 @@ defmodule Apiary.Stacks do
   alias Apiary.{Contract, Edition, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.MachinesFile
-  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias Apiary.Runs.Target
   alias Apiary.Stacks.{Resolution, Stack}
 
@@ -157,9 +161,10 @@ defmodule Apiary.Stacks do
   # changeset}` with the reason on its field. Only tests call it: no action, route or page
   # does, and it checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term) :: {:ok, Stack.t()} | {:error, Ecto.Changeset.t()}
-  def put_stack(%Scope{organisation: %Organisation{id: saved_by}} = scope, place, stack) do
+  def put_stack(%Scope{organisation: %Organisation{}} = scope, place, stack) do
     columns = columns(place)
     user_id = scope.user && scope.user.id
+    saved_by = saved_by(scope)
 
     Repo.transact(fn ->
       current = lock_row(columns)
@@ -194,6 +199,21 @@ defmodule Apiary.Stacks do
       end
     end)
   end
+
+  @doc false
+  # saved_by/1 is the organisation a write by `scope` records: the scope's organisation
+  # when the scope's membership is in it and the scope reaches it through that
+  # membership alone (`reach` nil or `:membership`), else nil.
+  @spec saved_by(Scope.t()) :: Ecto.UUID.t() | nil
+  def saved_by(%Scope{
+        organisation: %Organisation{id: id},
+        membership: %Membership{organisation_id: id},
+        reach: reach
+      })
+      when reach in [nil, :membership],
+      do: id
+
+  def saved_by(%Scope{}), do: nil
 
   # The columns of a place: its organisation, workspace, target and workflow.
   defp columns({:organisation, %Organisation{id: id}}),

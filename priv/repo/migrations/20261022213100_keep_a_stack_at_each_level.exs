@@ -11,8 +11,9 @@ defmodule Apiary.Repo.Migrations.KeepAStackAtEachLevel do
   #   * the workspace: `workspace_id`;
   #   * the organisation's default: neither.
   #
-  # `saved_by_organisation_id` is the organisation of the person who saved the value; it
-  # becomes NULL when that organisation is deleted. One row per place: the unique index
+  # `saved_by_organisation_id` is the organisation a member saved the value in, NULL for
+  # a value saved any other way (`Apiary.Stacks.saved_by/1`); it becomes NULL when that
+  # organisation is deleted. One row per place: the unique index
   # reads a missing workspace or target as the nil UUID and a missing workflow as the
   # empty text. A target or a workspace takes its rows with it. The check on `stack`
   # takes a name, or an `https://` text of at most 2,560 characters; `Apiary.Stacks`

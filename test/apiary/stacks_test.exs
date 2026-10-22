@@ -10,7 +10,7 @@ defmodule Apiary.StacksTest do
   alias Apiary.Dispatches.MachinesFile
   alias Apiary.Runs.Target
   alias Apiary.Stacks
-  alias Apiary.Stacks.Stack
+  alias Apiary.Stacks.{Resolution, Stack}
 
   @moduletag :tmp_dir
 
@@ -112,6 +112,58 @@ defmodule Apiary.StacksTest do
       assert second.saved_by_organisation_id == other.organisation.id
       assert second.created_by_id == ctx.scope.user.id
       assert second.updated_by_id == other.user.id
+    end
+
+    test "records a member's organisation, whose reference is shown to its runs", ctx do
+      default!(ctx)
+      assert Stacks.saved_by(ctx.scope) == ctx.scope.organisation.id
+
+      {:ok, stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+
+      assert stack.saved_by_organisation_id == ctx.scope.organisation.id
+      assert Resolution.owner(stack) == ctx.scope.organisation.id
+      assert %{stack: @reference, harness_hidden: false} = run_stack(ctx)
+    end
+
+    test "records no organisation for an instance admin who is not a member", ctx do
+      default!(ctx)
+      admin = instance_admin_scope()
+      refute admin.organisation.id == ctx.scope.organisation.id
+
+      # The admin acting in the run's organisation by a reach an edition gives, with no
+      # membership there; and with the admin's membership of the instance's organisation.
+      without_membership = %{
+        admin
+        | organisation: ctx.scope.organisation,
+          workspace: ctx.scope.workspace,
+          membership: nil,
+          reach: :instance_admin
+      }
+
+      with_other_membership = %{
+        admin
+        | organisation: ctx.scope.organisation,
+          workspace: ctx.scope.workspace
+      }
+
+      for scope <- [without_membership, with_other_membership] do
+        assert Stacks.saved_by(scope) == nil
+        {:ok, stack} = Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, @reference)
+
+        assert stack.saved_by_organisation_id == nil
+        assert Resolution.owner(stack) == nil
+        assert %{stack: @reference, harness_hidden: true} = run_stack(ctx)
+      end
+    end
+
+    test "records no organisation for a member who reaches it another way", ctx do
+      scope = %{ctx.scope | reach: {:operator, ctx.scope.organisation.id}}
+      assert Stacks.saved_by(scope) == nil
+    end
+
+    test "records no organisation for the instance acting by itself", ctx do
+      scope = Apiary.Accounts.Scope.for_instance(ctx.scope.organisation, ctx.scope.workspace)
+      assert Stacks.saved_by(scope) == nil
     end
 
     test "keeps one row per place", ctx do

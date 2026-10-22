@@ -1,7 +1,8 @@
 defmodule Apiary.Stacks.Stack do
   # A stack set at a level of an organisation: `stack`, a stack name or a stack reference
-  # (`Apiary.Contract.Stack`), and `saved_by_organisation_id`, the organisation of the
-  # person who saved it, nil once that organisation is deleted.
+  # (`Apiary.Contract.Stack`), and `saved_by_organisation_id`, the organisation a member
+  # saved it in, nil for a stack saved any other way (`Apiary.Stacks.saved_by/1`) and
+  # once that organisation is deleted.
   #
   # Its level is read from the columns it has set (`level/1`):
   #
