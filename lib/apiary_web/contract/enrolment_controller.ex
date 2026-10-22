@@ -208,10 +208,11 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     })
   end
 
-  defp run_answer(%{run_id: run_id}, run_key) do
+  defp run_answer(%{run_id: run_id} = redeemed, run_key) do
     Enrolment.run_answer_body(%{
       run_id: run_id,
       run_key: run_key,
+      documents: redeemed[:documents],
       apiary_public_key: SigningKey.apiary_public_key()
     })
   end

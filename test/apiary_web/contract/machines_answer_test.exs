@@ -3,7 +3,9 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   # file (`Apiary.Dispatches.MachinesFile`), as a node pool's starter receives it: absent
   # without a file or an entry or with an entry of a stack alone, present for an explore
   # run and a prebuild alike; each answer valid under the vendored
-  # `claim-answer.schema.json`, so the module is tagged `:contract`. Not async: the file
+  # `claim-answer.schema.json`, so the module is tagged `:contract`. The run's documents
+  # have the entry's stack name and workflow for an explore run, and neither for a
+  # prebuild. Not async: the file
   # read at boot and the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
@@ -50,12 +52,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     def resolve(url, _roots), do: {:error, {:not_vendored, url}}
   end
 
-  @commit "0123456789abcdef0123456789abcdef01234567"
-  @stack %{
-    "url" => "https://forge.example.com/acme/stacks",
-    "commit" => @commit,
-    "path" => "examples/hello"
-  }
+  @stack "core"
 
   setup %{tmp_dir: dir} do
     setting = Application.fetch_env(:apiary, :machines_file_setting)
@@ -139,6 +136,15 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     claim.resp_body
   end
 
+  # The documents the claim stored on the run it registered, decoded.
+  defp documents(claim) do
+    code = Jason.decode!(claim)["run_code"]
+    [head, _fingerprint] = String.split(code, ".")
+    hash = Apiary.AccessKeys.EnrolmentCode.hash(head)
+    run = Repo.get_by!(Apiary.Runs.Run, run_code_sha256: hash)
+    Jason.decode!(run.run_documents)
+  end
+
   defp explore!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
@@ -172,6 +178,9 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       claim = claim(ctx)
       assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "large"
+      documents = documents(claim)
+      assert %{"stack" => "core", "workflow" => "hello"} = documents
+      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
     end
 
     test "of a workspace with a machine alone has the machine", ctx do
@@ -180,6 +189,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       claim = claim(ctx)
       assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "small"
+      refute Map.has_key?(documents(claim), "stack")
     end
 
     test "of a workspace with a stack alone has no machine", ctx do
@@ -214,6 +224,9 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       claim = claim(ctx)
       assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "small"
+      documents = documents(claim)
+      refute Map.has_key?(documents, "stack") or Map.has_key?(documents, "workflow")
+      assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end
   end
 end

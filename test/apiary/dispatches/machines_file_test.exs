@@ -9,12 +9,7 @@ defmodule Apiary.Dispatches.MachinesFileTest do
 
   @moduletag :tmp_dir
 
-  @commit "0123456789abcdef0123456789abcdef01234567"
-  @stack %{
-    "url" => "https://forge.example.com/acme/stacks",
-    "commit" => @commit,
-    "path" => "examples/hello"
-  }
+  @stack "core"
 
   setup do
     setting = Application.fetch_env(:apiary, :machines_file_setting)
@@ -77,12 +72,7 @@ defmodule Apiary.Dispatches.MachinesFileTest do
           }
         })
 
-      stack = %{
-        url: "https://forge.example.com/acme/stacks",
-        commit: @commit,
-        path: "examples/hello",
-        workflow: "hello"
-      }
+      stack = %{name: "core", workflow: "hello"}
 
       assert %{machines: ["small", "large"], workspaces: workspaces} = boot_with(path)
       assert map_size(workspaces) == 4
@@ -116,24 +106,10 @@ defmodule Apiary.Dispatches.MachinesFileTest do
                %{machines: ["small"], workspaces: %{}}
 
       longest = "a" <> String.duplicate("b", 63)
-      folder = String.duplicate("d/", 127) <> "e"
-      url = "https://forge.example.com/" <> String.duplicate("u", 2048 - 26)
-      assert String.length(folder) == 255
-
-      entry = %{
-        "machine" => longest,
-        "stack" => %{"url" => url, "commit" => @commit, "path" => folder},
-        "workflow" => longest
-      }
+      entry = %{"machine" => longest, "stack" => longest, "workflow" => longest}
 
       assert boot_with(file!(dir, %{"machines" => [longest], "workspaces" => %{"a/b" => entry}}))
-
-      assert MachinesFile.stack("a", "b") == %{
-               url: url,
-               commit: @commit,
-               path: folder,
-               workflow: longest
-             }
+      assert MachinesFile.stack("a", "b") == %{name: longest, workflow: longest}
     end
   end
 
@@ -180,13 +156,6 @@ defmodule Apiary.Dispatches.MachinesFileTest do
       assert refused(dir, workspace(%{"machine" => "small", "size\nlarge" => 2})) ==
                "Remove the member \"size\\nlarge\" from workspaces.acme/factory | " <>
                  "workspaces.acme/factory takes only machine, stack, workflow."
-
-      assert refused(
-               dir,
-               workspace(%{"stack" => Map.put(@stack, "ref", "main"), "workflow" => "hello"})
-             ) ==
-               "Remove the member \"ref\" from workspaces.acme/factory.stack | " <>
-                 "workspaces.acme/factory.stack takes only commit, path, url."
     end
 
     test "has machines that are not a list of names, each once", %{tmp_dir: dir} do
@@ -248,54 +217,17 @@ defmodule Apiary.Dispatches.MachinesFileTest do
 
     test "gives a workspace a stack or a workflow the contract refuses", %{tmp_dir: dir} do
       at = "workspaces.acme/factory"
-      with_stack = &workspace(%{"stack" => &1, "workflow" => "hello"})
 
-      assert refused(dir, with_stack.("https://forge.example.com/acme/stacks")) ==
-               "Write #{at}.stack as a JSON object | #{at}.stack is not an object."
-
-      assert refused(dir, with_stack.(Map.delete(@stack, "commit"))) ==
-               "Add commit to #{at}.stack | a stack has url, commit and path."
-
-      url_line =
-        "Correct #{at}.stack.url | the value is not an https address with no query and no " <>
-          "fragment, at most 2048 characters."
-
-      for url <- [
-            "http://forge.example.com/acme/stacks",
-            "https://forge.example.com/acme/stacks?ref=main",
-            "https://forge.example.com/acme/stacks#main",
-            "https://forge.example.com/" <> String.duplicate("u", 2048 - 25),
-            "forge.example.com/acme/stacks",
-            nil
-          ] do
-        assert refused(dir, with_stack.(Map.put(@stack, "url", url))) == url_line
-      end
-
-      # A URL with a credential is refused, and the line leaves the credential out.
-      line =
-        refused(dir, with_stack.(Map.put(@stack, "url", "https://ci:s3cret@forge.example.com/a")))
-
-      assert line == url_line
-      refute line =~ "s3cret"
-
-      for commit <- [String.upcase(@commit), String.slice(@commit, 0, 39), "main", 1] do
-        assert refused(dir, with_stack.(Map.put(@stack, "commit", commit))) ==
-                 "Correct #{at}.stack.commit | #{inspect(commit)} is not 40 lower-case " <>
-                   "hexadecimal digits."
-      end
-
-      for folder <- [
-            "/examples/hello",
-            "examples/hello/",
-            "examples/../hello",
-            "..",
-            "examples//hello",
-            "examples/hel lo",
+      for stack <- [
+            "Core",
+            "1core",
             "",
-            String.duplicate("d/", 127) <> "ee"
+            "a" <> String.duplicate("b", 64),
+            %{"url" => "https://forge.example.com/acme/stacks"},
+            1
           ] do
-        assert refused(dir, with_stack.(Map.put(@stack, "path", folder))) =~
-                 ~r/\ACorrect #{at}\.stack\.path \| .* is not a relative folder: /
+        assert refused(dir, workspace(%{"stack" => stack, "workflow" => "hello"})) =~
+                 ~r/\ACorrect #{at}\.stack \| .* is not a stack name: a lower-case letter, /
       end
 
       for workflow <- ["Hello", "/hello", "", 1] do

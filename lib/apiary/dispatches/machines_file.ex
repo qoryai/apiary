@@ -11,11 +11,7 @@ defmodule Apiary.Dispatches.MachinesFile do
   #       "workspaces": {
   #         "acme/factory": {
   #           "machine": "small",
-  #           "stack": {
-  #             "url": "https://forge.example.com/acme/stacks",
-  #             "commit": "0123456789abcdef0123456789abcdef01234567",
-  #             "path": "examples/hello"
-  #           },
+  #           "stack": "core",
   #           "workflow": "hello"
   #         }
   #       }
@@ -24,11 +20,10 @@ defmodule Apiary.Dispatches.MachinesFile do
   # `machines` is the list of machine type names, each a lower-case letter, then up to 63
   # lower-case letters, digits and hyphens, each listed once. `workspaces` has one member
   # per workspace, `<organisation slug>/<workspace slug>`, each with an optional `machine`
-  # from `machines`, and an optional `stack` with `workflow`: both or neither. A stack is
-  # its `url` (https, no query, no fragment, at most 2048 characters), its `commit` (40
-  # lower-case hexadecimal digits) and its `path` (a relative folder, at most 255
-  # characters, no `..` segment), as the provisioner contract's `stack` has them, and
-  # `workflow` is a name of the same form as a machine type's. Both members of the top
+  # from `machines`, and an optional `stack` with `workflow`: both or neither. `stack` is
+  # the name of the stack the run uses, as the run documents' `stack` has it, and
+  # `workflow` the workflow of that stack the run starts, each a name of the same form as
+  # a machine type's. Both members of the top
   # level are optional, and a key given twice in one object, or a member not listed here,
   # is refused.
   #
@@ -40,25 +35,18 @@ defmodule Apiary.Dispatches.MachinesFile do
   # a workspace without an entry, neither answer changes.
   #
   # A file that is missing, cannot be read or breaks a rule above stops the boot with one
-  # line that starts with the fix and contains the entry at fault. The line leaves out a
-  # stack's `url`, which may contain a credential.
+  # line that starts with the fix and contains the entry at fault.
 
-  alias Apiary.Adapters.Wire
   alias Apiary.Organisations.Slug
 
   @variable "APIARY_MACHINES_FILE"
   @top ~w(machines workspaces)
   @entry ~w(machine stack workflow)
-  @stack ~w(commit path url)
   @name ~r/\A[a-z][a-z0-9-]{0,63}\z/
-  @commit ~r/\A[0-9a-f]{40}\z/
-  @path ~r/\A[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*\z/
-  @parent ~r/(^|\/)\.\.(\/|$)/
-  @max_path 255
   @name_rule "a lower-case letter, then up to 63 lower-case letters, digits and hyphens"
 
-  @typedoc "A stack a run starts, and the workflow of the stack the run invokes."
-  @type stack :: %{url: String.t(), commit: String.t(), path: String.t(), workflow: String.t()}
+  @typedoc "The name of the stack a run uses, and the workflow of the stack the run starts."
+  @type stack :: %{name: String.t(), workflow: String.t()}
 
   @typedoc "The entry of one workspace: its machine type and its stack, nil for none."
   @type entry :: %{machine: String.t() | nil, stack: stack | nil}
@@ -316,68 +304,17 @@ defmodule Apiary.Dispatches.MachinesFile do
         fix("Add stack to #{at}", path, "stack and workflow come together.")
 
       {{:ok, stack}, {:ok, workflow}} ->
-        with {:ok, stack} <- stack(stack, member(at, "stack"), path),
+        with :ok <- stack(stack, member(at, "stack"), path),
              :ok <- workflow(workflow, member(at, "workflow"), path) do
-          {:ok, Map.put(stack, :workflow, workflow)}
+          {:ok, %{name: stack, workflow: workflow}}
         end
     end
   end
 
-  defp stack(json, at, path) do
-    with {:ok, stack} <- object(json, at, path),
-         :ok <- only(stack, @stack, at, path),
-         :ok <- given(stack, @stack, at, path),
-         :ok <- url(stack["url"], member(at, "url"), path),
-         :ok <- commit(stack["commit"], member(at, "commit"), path),
-         :ok <- folder(stack["path"], member(at, "path"), path) do
-      {:ok, %{url: stack["url"], commit: stack["commit"], path: stack["path"]}}
-    end
-  end
-
-  defp given(stack, members, at, path) do
-    case Enum.reject(members, &Map.has_key?(stack, &1)) do
-      [] ->
-        :ok
-
-      [missing | _rest] ->
-        fix("Add #{missing} to #{at}", path, "a stack has url, commit and path.")
-    end
-  end
-
-  # The value is left out of the line: a URL may contain a credential.
-  defp url(url, at, path) do
-    if Wire.url?(url) and not String.contains?(url, ["?", "#"]) do
-      :ok
-    else
-      fix(
-        "Correct #{at}",
-        path,
-        "the value is not an https address with no query and no fragment, " <>
-          "at most 2048 characters."
-      )
-    end
-  end
-
-  defp commit(commit, at, path) do
-    if is_binary(commit) and Regex.match?(@commit, commit),
+  defp stack(stack, at, path) do
+    if name?(stack),
       do: :ok,
-      else:
-        fix("Correct #{at}", path, "#{shown(commit)} is not 40 lower-case hexadecimal digits.")
-  end
-
-  defp folder(folder, at, path) do
-    if is_binary(folder) and byte_size(folder) <= @max_path and Regex.match?(@path, folder) and
-         not Regex.match?(@parent, folder) do
-      :ok
-    else
-      fix(
-        "Correct #{at}",
-        path,
-        "#{shown(folder)} is not a relative folder: names of letters, digits, dots, " <>
-          "underscores and hyphens, separated by slashes, with no .. segment, at most " <>
-          "#{@max_path} characters."
-      )
-    end
+      else: fix("Correct #{at}", path, "#{shown(stack)} is not a stack name: #{@name_rule}.")
   end
 
   defp workflow(workflow, at, path) do

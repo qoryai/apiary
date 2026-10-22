@@ -99,8 +99,12 @@ defmodule Apiary.Dispatches.Handover do
   # provider's chain and the API of the provider the run uses; later reads take those,
   # never the choices. Its input is formed with the name of the workspace's domain
   # (`Apiary.Lingo.Domain.name/1`) and the run's target, or none for an explore run whose
-  # work item has none, and takes at most 1 MiB with the rest of the run's answer
-  # measured beside it: it leaves out its oldest comments first (`comments_omitted`).
+  # work item has none, and takes what the rest of the run's documents leave of their
+  # limit: it leaves out its oldest comments first (`comments_omitted`). The documents'
+  # limit is what the 201 to the code's redemption leaves them within 1 MiB, the rest of
+  # that 201 measured with a run key of the run's grant, less 1,024 bytes. The claim
+  # encodes the documents once and keeps the bytes on the registered run
+  # (`runs.run_documents`), which every redemption answers as they are.
   #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run
@@ -176,12 +180,16 @@ defmodule Apiary.Dispatches.Handover do
   }
   # The attach window of the run key made, and given to nobody, at the claim, in seconds.
   @attach_seconds 600
-  # The most bytes the run's documents take, encoded: 1 MiB.
-  @documents_bytes 1_048_576
+  # The most bytes the 201 to the run code's redemption takes, encoded: 1 MiB, what the
+  # gateway's relay passes back.
+  @answer_bytes 1_048_576
+  # The bytes kept free in that 201 beside what the claim measures: a second key of the
+  # server's, should it rotate before the redemption, and the digits of the run key's times.
+  @answer_margin 1_024
 
   @typedoc """
   A run registered at its claim: the registered run, its run code, the address of the
-  gateway the code is bound to, and what the run's documents are made from
+  gateway the claim resolved to, and what the run's documents are made from
   (`ApiaryWeb.Contract.DispatchAnswer.documents/1`).
   """
   @type registered :: %{
@@ -225,7 +233,7 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # register/2 registers the run of the queue `claimed.run`, which the claim took, with
-  # a run code bound to the gateway `claimed.gateway`, inside the claim's transaction:
+  # a run code, through the gateway `claimed.gateway`, inside the claim's transaction:
   # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
   # ended, or `{:error, :unavailable}` (the moduledoc). `claimed` has the key, the
   # dispatch, the run of the queue, the gateway and its workspace, the gateway's active
@@ -250,6 +258,21 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   defp register_held(%{gateway: {gateway, workspace}, keys: keys} = locked) do
+    pool = locked.key.node
+
+    grant =
+      Registration.through_grant(gateway, keys, %{
+        run_id: locked.run.run_id,
+        workspace: workspace.public_id,
+        node_id: pool.public_id,
+        instance_id: locked.run.run_id
+      })
+
+    # The run key of the grant, given to nobody: the 201 to the code's redemption carries
+    # a run key of this grant, as long, and the documents take what the rest leaves.
+    issued = Registration.issue_grant(grant, locked.now, @attach_seconds)
+    locked = Map.put(locked, :documents_limit, documents_limit(locked.run, issued))
+
     case locked |> formed(workspace) |> sealable(gateway, workspace, keys) do
       {:end, cause} ->
         {:ended, end_claimed(locked.run, cause, locked.now)}
@@ -266,25 +289,48 @@ defmodule Apiary.Dispatches.Handover do
         {:error, :unavailable}
 
       {:ok, formed} ->
-        pool = locked.key.node
+        documents = formed.answer |> DispatchAnswer.documents() |> Jason.encode!()
 
-        grant =
-          Registration.through_grant(gateway, keys, %{
-            run_id: locked.run.run_id,
-            workspace: workspace.public_id,
-            node_id: pool.public_id,
-            instance_id: locked.run.run_id
-          })
-
-        with {:ok, _given_to_nobody} <-
-               Registration.issue_grant(grant, locked.now, @attach_seconds) do
+        with {:ok, _given_to_nobody} <- issued,
+             :ok <- within(documents, locked.documents_limit) do
           %{code: code, through: through} = RunCode.issue(grant, locked.now)
-          run = insert_run(locked, formed, Map.put(through, :gateway_id, gateway.id))
+
+          run =
+            insert_run(
+              locked,
+              formed,
+              through |> Map.put(:gateway_id, gateway.id) |> Map.put(:run_documents, documents)
+            )
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
         end
     end
+  end
+
+  # The most bytes the run's documents take, encoded: what the 201 to the code's
+  # redemption leaves them, measured with the run key `issued` and the server's keys as
+  # they are now, less `@answer_margin`. A run key that cannot be made measures nothing:
+  # the claim is refused after the run is formed.
+  defp documents_limit(%DispatchRun{run_id: run_id}, {:ok, %{run_key: run_key}}) do
+    rest =
+      Apiary.Contract.Enrolment.run_answer_body(%{
+        run_id: run_id,
+        run_key: run_key,
+        documents: "{}",
+        apiary_public_key: Apiary.SigningKey.apiary_public_key()
+      })
+
+    answer_limit() - (byte_size(rest) - 2) - @answer_margin
+  end
+
+  defp documents_limit(_dispatch_run, _not_issued), do: answer_limit() - @answer_margin
+
+  defp within(documents, limit) when byte_size(documents) <= limit, do: :ok
+
+  defp within(_documents, _limit) do
+    Logger.error("a claim could not be made: the run's documents do not fit their limit")
+    {:error, :unavailable}
   end
 
   # drop/1 deletes the runs registered for the runs of the queue `dispatch_run_ids` that
@@ -553,6 +599,7 @@ defmodule Apiary.Dispatches.Handover do
       formed(dispatch_run, workspace, target, work_item, settings, stack, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
+          documents_limit: locked.documents_limit,
           domain: domain,
           target: target,
           work_item: work_item,
@@ -570,25 +617,25 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # The bytes of `documents_limit/0` that the run's documents leave its input: the limit
-  # less the documents encoded with an empty input.
-  defp budget(%{dispatch_run: dispatch_run} = rest) do
+  # The bytes of the documents' limit that the rest of the run's documents leave its
+  # input: the limit less the documents encoded with an empty input.
+  defp budget(%{dispatch_run: dispatch_run, documents_limit: limit} = rest) do
     empty =
       rest
       |> Map.merge(%{step: dispatch_run.step, inputs: Jason.OrderedObject.new([])})
       |> DispatchAnswer.documents()
       |> Jason.encode!()
 
-    max(documents_limit() - (byte_size(empty) - 2), 1)
+    max(limit - (byte_size(empty) - 2), 1)
   end
 
-  # documents_limit/0 is the most bytes the run's documents take, encoded: 1 MiB. A test
-  # sets `config :apiary, Apiary.Dispatches.Handover, documents_limit: bytes`
+  # answer_limit/0 is the most bytes the 201 to a run code's redemption takes, encoded:
+  # 1 MiB. A test sets `config :apiary, Apiary.Dispatches.Handover, answer_limit: bytes`
   # (`Application.put_env/3`, in a module that is not async), to see the input cut.
-  defp documents_limit do
+  defp answer_limit do
     :apiary
     |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:documents_limit, @documents_bytes)
+    |> Keyword.get(:answer_limit, @answer_bytes)
   end
 
   # The stack and the workflow of the workspace's entry in the machines file, by the

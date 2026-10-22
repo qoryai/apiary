@@ -212,6 +212,9 @@ defmodule Apiary.Runs.Run do
     field :run_code_expires_at, :utc_datetime_usec
     field :run_code_grant, :map
     field :run_code_public_key, :binary
+    # For such a run: its documents, encoded at the claim, which every redemption of its
+    # code answers byte for byte. Nil for every other run. Not folded.
+    field :run_documents, :binary
 
     # The run of a workspace's queue this run is, set when its claim registers it, unique;
     # nil for every other run.

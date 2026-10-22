@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.Contract.RunCodeTest do
   # A run claimed with a run code, through the endpoints alone: the claim's `200` has the
-  # code; the enrolment's `201` to the code has the run's id, its run key and the
-  # instance's keys, signed over the request's proof, and hands the dispatch over; a retry
+  # code; the enrolment's `201` to the code has the run's id, its run key, its documents
+  # as the claim stored them, byte for byte, and the instance's keys, signed over the
+  # request's proof, and hands the dispatch over; a retry
   # by the same public key is the same members, byte for byte for the same request;
   # another public key, an expired code, a code of a claim whose lease lapsed or that was
   # released, a code of a run that ended and a proof that does not verify are refused as
@@ -151,7 +152,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
   end
 
   describe "the redemption" do
-    test "answers 201, signed, the run's id, its run key and the instance's keys, and makes no access key",
+    test "answers 201, signed, the run's id, its run key, its documents and the instance's keys, and makes no access key",
          ctx do
       keys = Repo.aggregate(AccessKey, :count)
       pair = ed25519_key_pair()
@@ -167,10 +168,16 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
                "version" => 1,
                "run_id" => ^run_id,
                "run_key" => run_key,
+               "documents" => documents,
                "apiary_public_key" => apiary_public_key
              } = answer
 
-      assert map_size(answer) == 4
+      assert map_size(answer) == 5
+
+      # The documents the claim stored, written as they are.
+      stored = run!(ctx).run_documents
+      assert conn.resp_body =~ ~s("documents":) <> stored <> ~s(,"apiary_public_key":)
+      assert %{"step" => "explore", "domain" => "software", "inputs" => %{}} = documents
       assert apiary_public_key == SigningKey.apiary_public_key()
       assert conn.resp_body =~ ~r/\A\{"version":1,"run_id":"[0-9a-f-]{36}","run_key":"qrk_/
 

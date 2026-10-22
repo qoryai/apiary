@@ -48,8 +48,9 @@ defmodule Apiary.Runs.RunCode do
   # claim's lease lapses before the handover, or when the dispatch ends, at a release
   # among others.
   #
-  # The answer is `{:ok, %{run_id: run_id, run_key: run_key}}`. No access key is made, and no
-  # public key enters the ledger of access keys. Nothing here logs the code, the proof, a key
+  # The answer is `{:ok, %{run_id: run_id, run_key: run_key, documents: documents}}`, the
+  # documents as the claim encoded them (`runs.run_documents`), the same bytes to every
+  # redemption. No access key is made, and no public key enters the ledger of access keys. Nothing here logs the code, the proof, a key
   # or the run key.
 
   import Ecto.Query, only: [from: 2]
@@ -105,7 +106,7 @@ defmodule Apiary.Runs.RunCode do
   # fingerprint (`Apiary.SigningKey.fingerprint/0`); `code_limit`, the code's limit.
   @doc false
   @spec redeem(Enrolment.t(), keyword) ::
-          {:ok, %{run_id: String.t(), run_key: String.t()}}
+          {:ok, %{run_id: String.t(), run_key: String.t(), documents: binary | nil}}
           | {:error, :unauthorized | :key_unproven | {:rate_limited, pos_integer}}
   def redeem(%Enrolment{} = request, opts \\ []) do
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
@@ -156,10 +157,10 @@ defmodule Apiary.Runs.RunCode do
         :outstanding ->
           run_key = redeemed(run, public_key, now)
           if dispatch, do: :ok = Handover.hand_over(dispatch_run, dispatch, now)
-          {:ok, %{run_id: run.node_run_id, run_key: run_key}}
+          {:ok, %{run_id: run.node_run_id, run_key: run_key, documents: run.run_documents}}
 
         :redeemed ->
-          {:ok, %{run_id: run.node_run_id, run_key: given(run)}}
+          {:ok, %{run_id: run.node_run_id, run_key: given(run), documents: run.run_documents}}
       end
     end
   end

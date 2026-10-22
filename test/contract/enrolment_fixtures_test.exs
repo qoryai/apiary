@@ -403,6 +403,22 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       assert run_id == Jason.decode!(body)["run_id"]
     end
 
+    test "an answer with the run's documents validates, the documents written as they are",
+         %{run_key: run_key} do
+      documents = ~s({"step":"explore","domain":"software","inputs":{"version":1}})
+
+      built =
+        Enrolment.run_answer_body(%{
+          run_id: "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+          run_key: run_key,
+          documents: documents,
+          apiary_public_key: server_keys(:one)
+        })
+
+      assert built =~ ~s("documents":) <> documents <> ~s(,"apiary_public_key":)
+      assert ContractSchema.validate(schema(), Jason.decode!(built)) == :ok
+    end
+
     test "the answer's signature, under the fixture signing key with the request's proof as line 3, is the known answer's",
          %{known: known, request: request} do
       body = contract_file!("known-answers/enrolment-run-answer.json")

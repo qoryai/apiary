@@ -352,9 +352,11 @@ has `revision` 3. A claim answer is a request for a machine: `version`, `revisio
 `access`, its `target` nor its `work_item`. The machines file, a JSON file at the path
 `APIARY_MACHINES_FILE` is set to and read at boot (`Apiary.Dispatches.MachinesFile`), has
 an entry per workspace, by `<organisation slug>/<workspace slug>`: a claim answer has
-`machine`, the machine type of the entry of the run's workspace, for every step. With the
-variable unset, or for a workspace without an entry or without a machine type in it, the
-answer leaves `machine` out. The claim registers the run, and the run endpoint refuses,
+`machine`, the machine type of the entry of the run's workspace, for every step, and the
+run's documents have `stack` and `workflow`, the name of the entry's stack and its
+workflow, for every step but `prebuild`. With the variable unset, or for a workspace
+without an entry or without that part of one, the answer and the documents leave those
+members out. The claim registers the run, and the run endpoint refuses,
 under any key, a registration whose `run_id` is that of such a run, waiting, claimed,
 handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager
@@ -393,7 +395,17 @@ its dispatch held, through the gateway the pool's choice resolves to: the run's 
 is the one the run of the queue was given, and so is its instance id; its labels and its
 run variables come from the target, the work item's or the prebuild's collection's, and
 what it is about from the step and the work item, never from the request; a prebuild's
-input is the `environment_ref` its run of the queue was queued for. The registered run
+input is the `environment_ref` its run of the queue was queued for. The claim encodes
+the run's documents once (the run contract's `documents.schema.json`: `step`, `domain`,
+`access` and `target` together or neither, `work_item`, `run_settings`, `stack` and
+`workflow`, and `inputs`) and keeps the bytes on the registered run
+(`runs.run_documents`); every redemption of the run code answers them as they are. The
+201 of that redemption takes at most 1 MiB, what the gateway's relay passes back: the
+claim measures the rest of the 201 with a run key of the run's grant and the server's
+keys, keeps 1,024 bytes free for a second server key, and gives the documents the rest;
+an explore run's input leaves out its oldest comments to fit, and a claim whose documents
+cannot fit is `503` `unavailable`. A prebuild's documents have no `image_destination`:
+Qory Apiary keeps no registry destination for an image. The registered run
 has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
 `.` and the fingerprint of the instance's key, which the machine redeems once at
 enrolment for the run key, within 15 minutes of the claim (Enrolment). The run key names
@@ -813,10 +825,11 @@ is also a code at or past its 15 minutes from the claim, a code of a run that ha
 ended (no longer pending or running, released, given its outcome, its events pruned, or
 its run of the queue ended), a code whose registered run was deleted because its dispatch
 left the claim before its handover, and a code redeemed before by another public key. Its `201`
-carries `version`, `run_id`, `run_key` and `apiary_public_key`: the run key is made at the
+carries `version`, `run_id`, `run_key`, `documents`, the run's documents as its claim
+encoded them (A run of the queue), and `apiary_public_key`: the run key is made at the
 first redemption, its `issued` that time and its `attach_by` 600 seconds after, and the
 run keeps it with the public key that redeemed the code. The same public key is given the
-same `run_id` and `run_key` again while the code's 15 minutes last, with
+same `run_id`, `run_key` and `documents` again while the code's 15 minutes last, with
 `apiary_public_key` as the server's keys are at that moment, signed over the request's
 proof: while the server's keys are unchanged, the same request gets the same answer byte
 for byte.

@@ -25,8 +25,8 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
     end
   end
 
-  # documents/1 is a run's documents (`run-documents.schema.json`, `$defs/documents`),
-  # in this order: the run's `step`, the
+  # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
+  # this order: the run's `step`, the
   # workspace's `domain`, the run's `access` and `target` (none for a run without a
   # target), its `work_item` (none for a prebuild), its `run_settings` (none for none, a
   # `Jason.OrderedObject`), its `stack` and `workflow` (none for none and for a
@@ -57,12 +57,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # The `stack` and the `workflow` of a run's documents, both or neither.
   defp stack(nil), do: []
 
-  defp stack(%{url: url, commit: commit, path: path, workflow: workflow}) do
-    [
-      {"stack", Jason.OrderedObject.new([{"url", url}, {"commit", commit}, {"path", path}])},
-      {"workflow", workflow}
-    ]
-  end
+  defp stack(%{name: name, workflow: workflow}), do: [{"stack", name}, {"workflow", workflow}]
 
   # reach/2 is the `access` of a run of `step` and its `target`, both present for a run
   # with a target and both left out for one without, as the contract requires them
