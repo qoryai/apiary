@@ -13,7 +13,19 @@ defmodule Apiary.TestSetup do
   - **The tags it leaves out.**
     - A test tagged `needs: feature` exercises that feature; the suite runs in CI under
       more than one QORY_FEATURES, and a run without the feature leaves such tests out
-      (`{:needs, feature}`).
+      (`{:needs, feature}`). A test that exercises two features or more is tagged
+      `needs: [feature_1, feature_2]`, and a run with any of them off leaves it out.
+      ExUnit keeps one value for a tag key, so a `@tag needs:` on a test replaces the
+      module's `@moduletag needs:`: a test that adds a feature to the module's lists all
+      of them. ExUnit's filter compares a tag value as text, which raises for a list of
+      atoms, so `__before_compile__/1` replaces a list by its first feature that is off,
+      or by nil when none is, in the tags of the module's tests (`needs_tag/2`).
+      `Apiary.DataCase` and `ApiaryWeb.ConnCase` set it with `@before_compile
+      Apiary.TestSetup`, and so does every template built on them. A module that has
+      `use ExUnit.Case` alone sets the same line after it to take a list. Without the
+      line, in a run with a feature off, ExUnit logs an ArgumentError, leaves every test of
+      the module out of the result, and `mix test` exits 0. `unhooked/0` finds such
+      modules, and a suite checks it with one test.
     - A test tagged `with_features:` runs under the features it names, whatever the
       suite's (`Apiary.DataCase.setup_features/1`), and so passes or fails alike under
       each: it runs where the suite has every feature, and a run with fewer leaves it out
@@ -56,6 +68,7 @@ defmodule Apiary.TestSetup do
     end
 
     off = Apiary.Features.all() -- Apiary.Features.enabled()
+    :persistent_term.put({__MODULE__, :off}, off)
 
     exclude =
       List.wrap(exclude) ++
@@ -71,5 +84,75 @@ defmodule Apiary.TestSetup do
     Apiary.OrganisationsFixtures.ensure_instance_organisation!()
 
     Ecto.Adapters.SQL.Sandbox.mode(Apiary.Repo, :manual)
+  end
+
+  @doc """
+  off/0 is the features the suite runs without: those of `Apiary.Features.all/0` that
+  `Apiary.Features.enabled/0` lacked as `start!/1` ran. A test that switches the features
+  for its run (`with_features:`) does not change it. When `start!/1` has not run, it is
+  computed from `Apiary.Features.enabled/0` at each call.
+  """
+  @spec off() :: [atom]
+  def off do
+    :persistent_term.get({__MODULE__, :off}, nil) ||
+      Apiary.Features.all() -- Apiary.Features.enabled()
+  end
+
+  @doc """
+  unhooked/0 is `{module, test name}` for each test, in the loaded modules of ExUnit
+  tests, whose `needs:` is a list: the module lacks `@before_compile Apiary.TestSetup`.
+  In a run with a feature off ExUnit logs an ArgumentError, leaves every test of such a
+  module out of the result, and `mix test` exits 0. A suite asserts that `unhooked/0` is
+  empty once its test modules are loaded, in a test of a module that is not async.
+  """
+  @spec unhooked() :: [{module, atom}]
+  def unhooked do
+    for {module, _} <- :code.all_loaded(),
+        function_exported?(module, :__ex_unit__, 0),
+        test <- module.__ex_unit__().tests,
+        is_list(test.tags[:needs]),
+        do: {module, test.name}
+  end
+
+  @doc """
+  needs_tag/2 is the value ExUnit's filter takes for a test's `needs:`, given the
+  features that are `off`: a single feature as it is, and for a list the first feature
+  of it that is off, or nil when none is. Raises `ArgumentError` for a list with an
+  element that is no atom.
+  """
+  @spec needs_tag(atom | [atom], [atom]) :: atom
+  def needs_tag(needs, off) when is_list(needs) do
+    if not Enum.all?(needs, &is_atom/1) do
+      raise ArgumentError, "needs: is a feature or a list of features, got #{inspect(needs)}"
+    end
+
+    Enum.find(needs, &(&1 in off))
+  end
+
+  def needs_tag(needs, _off), do: needs
+
+  @doc false
+  # Runs after the `__before_compile__` of ExUnit.Case, so `super()` is the `__ex_unit__/0`
+  # that one defines. The runner calls it and filters on the tags of the tests it returns.
+  defmacro __before_compile__(_env) do
+    quote do
+      defoverridable __ex_unit__: 0
+
+      def __ex_unit__ do
+        off = Apiary.TestSetup.off()
+        module = super()
+
+        tests =
+          Enum.map(module.tests, fn
+            %{tags: %{needs: needs} = tags} = test when is_list(needs) ->
+              %{test | tags: %{tags | needs: Apiary.TestSetup.needs_tag(needs, off)}}
+
+            test ->
+              test
+          end)
+
+        %{module | tests: tests}
+      end
+    end
   end
 end

@@ -18,6 +18,8 @@ defmodule Apiary.DataCase do
 
   using do
     quote do
+      @before_compile Apiary.TestSetup
+
       alias Apiary.Repo
 
       import Ecto
@@ -146,7 +148,8 @@ defmodule Apiary.DataCase do
 
   The other tag, `@tag needs: :security` (or `@moduletag`), marks a test that exercises a
   feature; `Apiary.TestSetup.start!/1` leaves it out when the suite runs without that
-  feature.
+  feature. `@tag needs: [:security, :secrets]` marks a test that exercises both, and the
+  suite leaves it out when either is off.
   """
   def setup_features(%{with_features: features} = tags) when is_list(features) do
     if features == [] do
