@@ -444,23 +444,20 @@ of its work item, its registered run is deleted with the run code, and the code 
 nothing from then on.
 
 Once handed over, such a run ends with its registered run, in one of three ways, the first
-to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded
-ends it `run_ended`; a `dev.qory.run.refused` once folded ends it `run_refused`, for a
-run that is not a prebuild; and the lost-run check ends it `lost` when its gateway never
-attached it by its `attach_by`, or when it has no exit by its backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
-(Liveness). A prebuild's
-`dev.qory.run.exited` folds onto its registered run as any exit does, and ends the run of
-the queue `run_ended` only when its state is `failed` or `lost`: its build failed. So a
-`failed` or `lost` exit, or the lost-run check ends it, the check at its `attach_by` or
-at its backstop with no such exit by then. No request
+to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded, whatever
+its state, ends it `run_ended`; a `dev.qory.run.refused` once folded ends it `run_refused`,
+for a run that is not a prebuild; and the lost-run check ends it `lost` when its gateway
+never attached it by its `attach_by`, or when it has no exit by its backstop, 1200 seconds
+after its attach for the step `explore` and 2100 for `prebuild` (Liveness). No request
 records the image a prebuild built: the provisioner contract has no `prebuilt`. A prebuild
 the lost-run check ends `lost` records that end as its last build's failure on the
 environment record of its collection and of the pool that claimed it, `lost` at its
-`attach_by` and `timed_out` at its backstop, with no reason; a prebuild its `failed` or
-`lost` exit ends, `run_ended`, records it there too, `failed` or `lost` as its exit, with
-no reason. The record keeps its last good build, nothing is queued, and the check and the
-projection's end hold that record before the run of the queue, as a release does; a prebuild whose `environment_ref` is older
-than the record's image's records no failure, and ends all the same. Its dispatch ends with it, with the same end
+`attach_by` and `timed_out` at its backstop, with no reason. A prebuild its exit ends,
+`run_ended`, records it there too when the exit's state is `failed` or `lost`, as that
+state, with no reason; any other exit records no failure. The record keeps its last good
+build, nothing is queued, and the check and the projection's end hold that record before
+the run of the queue, as a release does; a prebuild whose `environment_ref` is older than
+the record's image's records no failure, and ends all the same. Its dispatch ends with it, with the same end
 cause, a stale dispatch of it with `run_ended`, and the slot the dispatch took at its claim
 is freed once (`dispatches.slot_freed_at`, set only where it is empty). An end after the
 first changes none of them. A run of the queue takes no outcome: the outcome endpoint

@@ -1,6 +1,6 @@
 defmodule Apiary.Dispatches.RunEndTest do
   # The end of a run a workspace's queue handed over (`Apiary.Dispatches.RunEnd`): by its
-  # exit (for a prebuild, a `failed` or `lost` exit alone), or by the lost-run check, at its
+  # exit, whatever its state, or by the lost-run check, at its
   # gateway's `attach_by` or at its backstop. Each ends the run of the queue and its
   # dispatch once and frees the slot once; the first end decides the cause. The pool's
   # outcome is refused, not found, and ends nothing. Runs that were not handed over keep
@@ -469,11 +469,12 @@ defmodule Apiary.Dispatches.RunEndTest do
       end
     end
 
-    test "its cancelled exit ends nothing of the queue", ctx do
+    test "its cancelled exit ends it run_ended and records no failure", ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       assert %Run{exit_state: "cancelled"} = exited!(ctx, %{"state" => "cancelled"})
-      assert_live(ctx.handed)
+      assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
+      assert Slots.held(ctx.place.pool.id) == 0
     end
 
     test "its failed exit whose end was not written: the lost-run check ends it run_ended, failed",
@@ -519,29 +520,41 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ctx.record
     end
 
-    test "its succeeded exit folds onto the registered run and ends nothing of the queue",
+    test "its succeeded exit, once folded, ends it run_ended, frees its slot and records no failure",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
-      assert_live(ctx.handed)
+      assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
-
-      # The lost-run check before its backstop leaves it.
-      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second)) == []
-      assert_live(ctx.handed)
-
-      assert Slots.held(ctx.place.pool.id) == 1
+      assert Slots.held(ctx.place.pool.id) == 0
+      assert_nothing_queued(ctx)
     end
 
-    test "after its exit, its release is machine_exists and records nothing", ctx do
+    test "its succeeded exit whose end was not written: the lost-run check ends it run_ended, no failure",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+
+      # The exit folded, and the projection stopped before the end of the run of the queue.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.handed.run.id),
+          set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+        )
+
+      assert_live(ctx.handed)
+      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second))
+      assert_ended(ctx.handed, :run_ended)
+      assert record!(ctx.record) == ctx.record
+    end
+
+    test "after its exit, its release is gone and records nothing", ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
 
       assert Dispatches.release(ctx.place.key, ctx.handed.dispatch.public_id, %{
                reason: "The build failed."
-             }) == {:error, :machine_exists}
+             }) == {:error, :gone}
 
-      assert_live(ctx.handed)
+      assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
     end
 
@@ -550,25 +563,19 @@ defmodule Apiary.Dispatches.RunEndTest do
       exited!(ctx)
 
       assert give_outcome(ctx.place.key, ctx.handed.run, "failed") == {:error, :not_found}
-      assert_live(ctx.handed)
+      assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
     end
 
-    test "after its exit, nothing by its backstop: the lost-run check ends it lost, timed_out",
+    test "after its succeeded exit, the lost-run check past its backstop changes nothing",
          ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
       exited!(ctx)
+      assert_ended(ctx.handed, :run_ended)
 
-      assert Liveness.check(run.backstop_at) == []
-      assert_live(ctx.handed)
+      assert Liveness.check(DateTime.add(run.backstop_at, 1, :second)) == []
+      assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
-
-      after_it = DateTime.add(run.backstop_at, 1, :microsecond)
-      Liveness.check(after_it)
-      assert_ended(ctx.handed, :lost)
-
-      assert %Record{failure_cause: :timed_out, failure_reason: nil, failed_at: ^after_it} =
-               record!(ctx.record)
 
       # The registered run keeps its exit's fold.
       assert %Run{state: "completed"} = run!(ctx.handed.run)
