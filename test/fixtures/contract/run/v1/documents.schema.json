@@ -352,7 +352,7 @@
       }
     },
     "stack": {
-      "description": "The stack that the run uses: a stack name or a stack reference. A name, such as core, selects a stack that the machine finds by name. A reference is where the stack lives, such as https://code.example.com/team/stacks#main:core: an https URL, then #, then a ref, which is a branch, a tag or a commit, then :, then the folder of the stack at that ref, . for the root. Present exactly when workflow and harness_hidden are present, and absent, with them, when the run uses no stack. A run of the step prebuild has no stack.",
+      "description": "The stack that the run uses: a stack name or a stack reference. A name, such as core, selects a stack that the machine looks up by name in its stacks file. A reference is where the stack lives, such as https://code.example.com/team/stacks#main:core: an https URL, then #, then a ref, which is a branch, a tag or a commit, then :, then the folder of the stack at that ref, . for the root. Present exactly when workflow and harness_hidden are present, and absent, with them, when the run uses no stack. A run of the step prebuild has no stack.",
       "type": "string",
       "oneOf": [
         {
@@ -418,23 +418,72 @@
       "$ref": "#/$defs/image_place"
     },
     "environment_image": {
-      "description": "The organisation's existing environment image for this environment definition, by digest, as image defines it. The build starts the target image from it and builds no environment image. A run of the step prebuild has exactly one of environment_destination and environment_image, and a run of any other step has neither.",
-      "$ref": "#/$defs/image"
+      "description": "The organisation's existing environment image for this environment definition: a place at the registry, then @sha256: and 64 lower-case hexadecimal digits, as image_by_digest defines an image by its digest. The build starts the target image from it and builds no environment image. A run of the step prebuild has exactly one of environment_destination and environment_image, and a run of any other step has neither.",
+      "$ref": "#/$defs/image_by_digest"
     },
     "image_place": {
-      "description": "A place at the registry, with no tag and no digest: a host, an optional port, then a path, as the OCI distribution spec writes an image name. The host is DNS labels joined by dots, each of upper-case or lower-case letters, digits and hyphens that starts and ends with a letter or a digit, and a port is a colon and 1 to 5 digits. The host contains a dot, has a port, or is exactly localhost. Docker reads a lower-case first part with no dot, no port and other than localhost, such as registry/env, as a path on Docker Hub, so such a name is refused. A first part with upper case and with no dot, no port and other than localhost, such as Registry/env, is refused too. The path is one or more components, each after a /; a component is runs of lower-case letters and digits, joined by a dot, one or two underscores, or one or more hyphens. At most 255 characters.",
+      "description": "A place at the registry, with no tag and no digest: a host, an optional port, then a path, as the OCI distribution spec writes an image name. The host is DNS labels joined by dots, each of upper-case or lower-case letters, digits and hyphens that starts and ends with a letter or a digit, and a port is a colon and 1 to 5 digits. The host contains a dot, has a port, or is exactly localhost. A Docker Hub host, docker.io, index.docker.io, registry-1.docker.io, registry.hub.docker.com or registry.docker.com, in any case and with or without a port, is refused. Docker reads a lower-case first part with no dot, no port and other than localhost, such as registry/env, as a path on Docker Hub, so such a name is refused. A first part with upper case and with no dot, no port and other than localhost, such as Registry/env, is refused too. The path is one or more components, each after a /; a component is runs of lower-case letters and digits, joined by a dot, one or two underscores, or one or more hyphens. At most 255 characters.",
       "type": "string",
       "maxLength": 255,
-      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?::[0-9]{1,5})?|[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?:[0-9]{1,5}|localhost)(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+$"
-    },
-    "image": {
-      "description": "An image pinned by its digest: NAME, then @sha256:, then 64 lower-case hexadecimal digits. NAME is a lower-case OCI reference name: an optional registry host followed by a slash, then one or more path components separated by slashes. The host is lower-case DNS labels separated by dots, each of lower-case ASCII letters, digits and hyphens, starting and ending with a letter or a digit, with an optional port of 1 to 5 digits after a colon. Each path component is lower-case ASCII letters and digits, with a dot, an underscore, two underscores or one or more hyphens between two runs of them. NAME is at most 255 characters, so the whole value is at most 327. A tag, such as :latest, and upper case are refused, so the value identifies one build, and the image at that digest does not change.",
-      "type": "string",
-      "maxLength": 327,
-      "pattern": "^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::[0-9]{1,5})?/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*@sha256:[0-9a-f]{64}$",
+      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?::[0-9]{1,5})?|[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?:[0-9]{1,5}|localhost)(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+$",
       "allOf": [
         {
-          "pattern": "^[^@]{0,255}@"
+          "not": {
+            "pattern": "^[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Ii][Oo](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Ii][Nn][Dd][Ee][Xx]\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Ii][Oo](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Rr][Ee][Gg][Ii][Ss][Tt][Rr][Yy]-1\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Ii][Oo](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Rr][Ee][Gg][Ii][Ss][Tt][Rr][Yy]\\.[Hh][Uu][Bb]\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Cc][Oo][Mm](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Rr][Ee][Gg][Ii][Ss][Tt][Rr][Yy]\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Cc][Oo][Mm](?::[0-9]{1,5})?/"
+          }
+        }
+      ]
+    },
+    "image_by_digest": {
+      "description": "An image by its digest: a place at the registry as image_place defines it, then @sha256:, then 64 lower-case hexadecimal digits, such as registry.example.com/environments/0123456789abcdef@sha256: and the 64 digits. The host contains a dot, has a port, or is exactly localhost, and a Docker Hub host, docker.io, index.docker.io, registry-1.docker.io, registry.hub.docker.com or registry.docker.com, in any case and with or without a port, is refused. A name with no host, such as env@sha256: and the 64 digits, is refused, because Docker pulls such a name from Docker Hub. A tag, such as :latest, is refused, because the image at a tag can change, and the image at a digest cannot. Upper-case hexadecimal digits are refused too. At most 327 characters, so the place is at most 255.",
+      "type": "string",
+      "maxLength": 327,
+      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?::[0-9]{1,5})?|[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?:[0-9]{1,5}|localhost)(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+@sha256:[0-9a-f]{64}$",
+      "allOf": [
+        {
+          "not": {
+            "pattern": "^[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Ii][Oo](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Ii][Nn][Dd][Ee][Xx]\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Ii][Oo](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Rr][Ee][Gg][Ii][Ss][Tt][Rr][Yy]-1\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Ii][Oo](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Rr][Ee][Gg][Ii][Ss][Tt][Rr][Yy]\\.[Hh][Uu][Bb]\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Cc][Oo][Mm](?::[0-9]{1,5})?/"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^[Rr][Ee][Gg][Ii][Ss][Tt][Rr][Yy]\\.[Dd][Oo][Cc][Kk][Ee][Rr]\\.[Cc][Oo][Mm](?::[0-9]{1,5})?/"
+          }
         }
       ]
     },

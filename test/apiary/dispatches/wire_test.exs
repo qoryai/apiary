@@ -105,8 +105,8 @@ defmodule Apiary.Dispatches.WireTest do
   }
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "aeca423af8d8621317081568b23c978ac81121db"},
-          {"run/v1", "aeca423af8d8621317081568b23c978ac81121db"},
+          {"provisioner/v1", "c110d3c98e003cada889b77ce5ecb7b0ba6a69a4"},
+          {"run/v1", "c110d3c98e003cada889b77ce5ecb7b0ba6a69a4"},
           {"integration/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"},
           {"explore/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"}
         ] do
