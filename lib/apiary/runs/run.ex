@@ -223,6 +223,10 @@ defmodule Apiary.Runs.Run do
     # folded: a rebuild keeps them.
     field :released_at, :utc_datetime_usec
     field :backstop_at, :utc_datetime_usec
+    # For such a run: when the lost-run check ended it for 600 s without a heartbeat and
+    # moved its `backstop_at` back to the end of that silence (`Apiary.Dispatches.RunEnd`).
+    # Nil for every other run. Not folded: a rebuild keeps it.
+    field :silenced_at, :utc_datetime_usec
     # For such a run, not a prebuild: the image its attach gave it, its pool's recorded
     # image for its target (`Apiary.Environments.image_for/2`), named at the top level of
     # every run configuration it is answered from then on

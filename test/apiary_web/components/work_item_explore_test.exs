@@ -1196,7 +1196,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "The run's result did not pass Qory's check.",
              "Qory reads a result only in the format Explore uses, and at most 128 KiB. This one was not, so Qory does not show it."},
             {:lost, %{state: :lost, outcome: nil}, "Lost", "The run was lost.",
-             "It stopped reporting before it ended. There is nothing for Qory to show or for a member to confirm."},
+             "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
              "The run was cancelled.",
              "It was cancelled before it ended. There is nothing for Qory to show or for a member to confirm."}

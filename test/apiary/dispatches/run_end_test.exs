@@ -295,7 +295,12 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_received {:run_changed, %Run{state: "lost"}}
 
       # The loss is kept, and the deadline for its end is the end of its silence.
-      assert %Run{state: "lost", lost_at: ^lost_at, backstop_at: ^silence_end} = run!(handed.run)
+      assert %Run{
+               state: "lost",
+               lost_at: ^lost_at,
+               backstop_at: ^silence_end,
+               silenced_at: ^after_it
+             } = run!(handed.run)
 
       # A heartbeat that arrives after it brings the run back no more.
       event_fixture(handed.run, 2, "run.heartbeat", %{"elapsed_seconds" => 700},
@@ -320,8 +325,12 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert Liveness.check(after_it) == []
       assert_ended(handed, :lost)
 
-      assert %Run{state: "lost", lost_at: ^after_it, backstop_at: backstop_at} =
-               run!(handed.run)
+      assert %Run{
+               state: "lost",
+               lost_at: ^after_it,
+               backstop_at: backstop_at,
+               silenced_at: ^after_it
+             } = run!(handed.run)
 
       assert backstop_at == DateTime.add(handed.run.last_heartbeat_at, 600, :second)
     end
@@ -357,7 +366,20 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       Liveness.check(DateTime.add(handed.run.last_heartbeat_at, 3600, :second))
       assert_ended(handed, :run_ended)
-      assert run!(handed.run).backstop_at == handed.run.backstop_at
+      assert %Run{silenced_at: nil, backstop_at: backstop_at} = run!(handed.run)
+      assert backstop_at == handed.run.backstop_at
+    end
+
+    test "a run silent past its backstop keeps the backstop, and no silence end", ctx do
+      handed = handed_over!(ctx)
+      backstop_at = handed.run.backstop_at
+      beat!(handed.run, DateTime.add(backstop_at, -300, :second))
+
+      Liveness.check(DateTime.add(backstop_at, 301, :second))
+      assert_ended(handed, :lost)
+
+      assert %Run{state: "lost", backstop_at: ^backstop_at, silenced_at: nil} =
+               run!(handed.run)
     end
   end
 

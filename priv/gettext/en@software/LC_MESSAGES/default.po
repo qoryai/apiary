@@ -635,6 +635,11 @@ msgstr ""
 msgid "%{host}, locked"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{hours} and %{minutes}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{hours} h %{minutes} m"
@@ -1574,6 +1579,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} hour"
 msgid_plural "%{number} hours"
@@ -1656,6 +1662,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} minute"
 msgid_plural "%{number} minutes"
@@ -8198,11 +8205,6 @@ msgstr ""
 msgid "It stays on the Access key tab."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "It stopped reporting before it ended. There is nothing for Qory to show or for a member to confirm."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It stops working at once. A machine that runs it after this is refused."
@@ -9680,10 +9682,13 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "No exit or outcome came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
-msgid_plural "No exit or outcome came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
-msgstr[0] ""
-msgstr[1] ""
+msgid "No exit or outcome came within %{duration} of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."
+msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -11716,6 +11721,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary prunes each workspace's runs as that workspace's retention says (Workspace settings › Runs)."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. It may still be going; only its exit or its outcome changes the record now."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex

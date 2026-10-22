@@ -53,7 +53,8 @@ defmodule Apiary.Dispatches.RunEnd do
   #   (600) before `now` (**silent**): with the gateway down, no exit reaches Qory Apiary,
   #   and the end frees the slot. A silent run is lost for good: its state is set `lost`
   #   (`lost_at` kept where it has one) and its `backstop_at` moved back to the end of its
-  #   silence, so no later heartbeat or start revives it (`Apiary.Runs.Liveness`). It also
+  #   silence, so no later heartbeat or start revives it (`Apiary.Runs.Liveness`), with
+  #   `silenced_at` set to when it ended; a run already past its backstop keeps it. It also
   #   ends, `run_ended`, one whose outcome or exit came and whose end was not written,
   #   should a projection have stopped between its pass and
   #   its end, and one whose exit its projection skipped unfolded
@@ -473,12 +474,16 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # The silent run lost for good: `lost`, with the `lost_at` it has or `now`, and its
   # `backstop_at` moved back to the end of its silence, which no later heartbeat or start
-  # passes (`Apiary.Runs.Liveness.past_backstop?/2`).
+  # passes (`Apiary.Runs.Liveness.past_backstop?/2`). `silenced_at` is set to `now` only
+  # when the silence ended before that deadline, which then moves: a run past the
+  # deadline its attach set ended there.
   defp silenced(%Run{} = run, now) do
     silence_end = DateTime.add(last_heard(run, run.attached_at), @silence, :second)
 
-    backstop_at =
-      if past?(run.backstop_at, silence_end), do: run.backstop_at, else: silence_end
+    moved =
+      if past?(run.backstop_at, silence_end),
+        do: [],
+        else: [backstop_at: silence_end, silenced_at: now]
 
     changes =
       if run.state in ["pending", "running"],
@@ -486,7 +491,7 @@ defmodule Apiary.Dispatches.RunEnd do
         else: []
 
     run
-    |> Ecto.Changeset.change([backstop_at: backstop_at, updated_at: now] ++ changes)
+    |> Ecto.Changeset.change([updated_at: now] ++ moved ++ changes)
     |> Repo.update!()
   end
 
