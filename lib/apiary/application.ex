@@ -54,6 +54,7 @@ defmodule Apiary.Application do
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
+    Apiary.Dispatches.MachineLogs.boot!()
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Source.boot!()
     ApiaryWeb.Features.boot!()

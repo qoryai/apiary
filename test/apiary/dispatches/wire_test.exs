@@ -76,7 +76,8 @@ defmodule Apiary.Dispatches.WireTest do
     "dispatched" => &Wire.dispatched/1,
     "handover" => &Wire.handover/1,
     "release" => &Wire.release/1,
-    "prebuilt" => &Wire.prebuilt/1
+    "prebuilt" => &Wire.prebuilt/1,
+    "machine-log" => &Wire.machine_log/1
   }
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!()
@@ -92,6 +93,7 @@ defmodule Apiary.Dispatches.WireTest do
   defp handover(body), do: read(&Wire.handover/1, body)
   defp release(body), do: read(&Wire.release/1, body)
   defp prebuilt(body), do: read(&Wire.prebuilt/1, body)
+  defp machine_log(body), do: read(&Wire.machine_log/1, body)
 
   @claim %{"version" => 1, "time" => "2026-10-15T12:00:00Z", "wait_seconds" => 10}
   @external %{
@@ -723,6 +725,64 @@ defmodule Apiary.Dispatches.WireTest do
         assert {:ok, _} = prebuilt(Map.put(@prebuilt, field, at_bound))
         assert prebuilt(Map.delete(@prebuilt, field)) == :error
       end
+    end
+  end
+
+  # The contract's `machine-log/whole.json`; its other fixtures are put over it in turn.
+  @machine_log %{
+    "version" => 1,
+    "time" => "2026-10-15T12:10:00Z",
+    "log" => "2026-10-15T12:01:05Z machine created: small\n2026-10-15T12:09:15Z machine stopped\n"
+  }
+
+  describe "a machine log" do
+    test "is read to its values, truncated false when absent" do
+      assert {:ok, %{log: log, truncated: false, time: ~U[2026-10-15 12:10:00Z]}} =
+               machine_log(@machine_log)
+
+      assert log == @machine_log["log"]
+
+      assert {:ok, %{truncated: true}} = machine_log(Map.put(@machine_log, "truncated", true))
+      assert {:ok, %{truncated: false}} = machine_log(Map.put(@machine_log, "truncated", false))
+      assert {:ok, %{log: ""}} = machine_log(Map.put(@machine_log, "log", ""))
+    end
+
+    test "takes a log of 786,432 characters and refuses one of 786,433" do
+      at_bound = String.duplicate("a", 786_432)
+      assert {:ok, %{log: ^at_bound}} = machine_log(Map.put(@machine_log, "log", at_bound))
+
+      assert machine_log(Map.put(@machine_log, "log", String.duplicate("a", 786_433))) ==
+               :error
+
+      # 786,432 characters in 786,433 bytes: the bound is in characters.
+      wide = String.duplicate("a", 786_431) <> "é"
+      assert {String.length(wide), byte_size(wide)} == {786_432, 786_433}
+      assert {:ok, %{log: ^wide}} = machine_log(Map.put(@machine_log, "log", wide))
+      assert machine_log(Map.put(@machine_log, "log", wide <> "a")) == :error
+    end
+
+    test "refuses each body the contract's invalid fixtures have, and every other wrong value" do
+      for body <- [
+            Map.put(@machine_log, "version", 2),
+            Map.put(@machine_log, "gzip", true),
+            Map.delete(@machine_log, "log"),
+            Map.put(@machine_log, "log", "machine created\u0000\n"),
+            Map.delete(@machine_log, "time"),
+            Map.delete(@machine_log, "version"),
+            Map.put(@machine_log, "log", nil),
+            Map.put(@machine_log, "log", 1),
+            Map.put(@machine_log, "truncated", "true"),
+            Map.put(@machine_log, "truncated", nil),
+            Map.put(@machine_log, "time", "2026-10-15T12:10:00.5Z")
+          ] do
+        assert machine_log(body) == :error, inspect(body)
+      end
+
+      assert machine_log(~s({"version":1,"time":"2026-10-15T12:10:00Z","log":"a","log":"b"})) ==
+               :error
+
+      assert machine_log(~s({"version":1.0,"time":"2026-10-15T12:10:00Z","log":"a"})) ==
+               :error
     end
   end
 end

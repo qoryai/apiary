@@ -206,6 +206,7 @@ defmodule Apiary.Retention do
           try do
             results = opts |> workspaces() |> Enum.map(&prune_workspace(&1, opts))
             prune_instances(opts)
+            prune_machine_logs(opts)
             {:ok, results}
           after
             unlock()
@@ -694,6 +695,23 @@ defmodule Apiary.Retention do
     unless Keyword.get(opts, :dry_run, false) do
       pruned = Apiary.Nodes.prune_instances(Keyword.get(opts, :now) || DateTime.utc_now())
       if pruned > 0, do: Logger.info("retention pruned node instances=#{pruned}")
+    end
+
+    :ok
+  end
+
+  # Under the job's lock, after the workspaces, the dispatches' machine logs older than
+  # the instance's setting, and the files of no record
+  # (`Apiary.Dispatches.MachineLogs.prune/1`), with one log line,
+  # `retention pruned machine logs=… files=…`, when it deleted any; a dry run deletes
+  # none. The documentation leaves it out, as it leaves out the `factory` feature.
+  defp prune_machine_logs(opts) do
+    unless Keyword.get(opts, :dry_run, false) do
+      %{machine_logs_deleted: logs, files_deleted: files} =
+        Apiary.Dispatches.MachineLogs.prune(now: Keyword.get(opts, :now))
+
+      if logs + files > 0,
+        do: Logger.info("retention pruned machine logs=#{logs} files=#{files}")
     end
 
     :ok
