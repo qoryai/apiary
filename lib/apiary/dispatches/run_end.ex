@@ -61,13 +61,19 @@ defmodule Apiary.Dispatches.RunEnd do
   # has committed, in a separate transaction (`refused/1`): the pass holds the registered
   # run, and the run of the queue is locked before it.
   #
-  # **Locks.** For a prebuild, the lost-run check and a projection's end first hold its
-  # environment record `FOR UPDATE` (`hold/1`, `Apiary.Environments.lock_record/2`), from
-  # the run of the queue read without a lock, for its columns that never change, as a
-  # release holds it (`Apiary.Dispatches.Release`): so each of them and a trigger of its
-  # collection take turns at the record, and none waits for another at the run. Then the
-  # run of the queue is locked `FOR UPDATE`, then the registered run, then the dispatches
-  # are written.
+  # **Locks.** The lost-run check and a projection's end first hold one row (`hold/1`),
+  # from the run of the queue read without a lock, for its columns that never change. For
+  # a prebuild, its environment record `FOR UPDATE` (`Apiary.Environments.lock_record/2`),
+  # as a release holds it (`Apiary.Dispatches.Release`): so each of them and a trigger of
+  # its collection take turns at the record. For any other run, its work item
+  # `FOR KEY SHARE`, which a release and a close hold `FOR UPDATE` before the run of the
+  # queue: so the end and either of them take turns at the work item. An end by an exit
+  # writes the run of the queue a second time (`settled/4`), and Postgres then checks its
+  # foreign key with a `FOR KEY SHARE` lock on the work item. Taken there alone, after the
+  # run of the queue, that lock waits on a release that holds the work item and waits on
+  # the run of the queue: a deadlock (40P01). Then the run of the queue is locked
+  # `FOR UPDATE`, then the registered run, then the dispatches are written. `refused/1`
+  # holds nothing first: it writes the run of the queue once.
   # Every path that locks a run of the queue together with its dispatches or its
   # registered run locks the run of the queue first (`Apiary.Dispatches.Slots`), so two
   # ends of one run take turns there and the second finds it ended. A projection and an
@@ -83,6 +89,7 @@ defmodule Apiary.Dispatches.RunEnd do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle, Slots}
   alias Apiary.Environments.Record
   alias Apiary.Runs.{Event, Run}
+  alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
 
@@ -123,11 +130,15 @@ defmodule Apiary.Dispatches.RunEnd do
     Repo.one(from d in DispatchRun, where: d.id == ^id, lock: "FOR UPDATE")
   end
 
-  # hold/1 holds what an end of the run of the queue `dispatch_run_id` writes besides it,
-  # before the run of the queue is locked, inside the caller's transaction: for a prebuild,
-  # its environment record of its collection and pool, `FOR UPDATE`
-  # (`Apiary.Environments.lock_record/2`), read from the run of the queue without a lock,
-  # for its columns that never change; nil for any other run, or none.
+  # hold/1 locks what an end of the run of the queue `dispatch_run_id` locks before the
+  # run of the queue, inside the caller's transaction, from the run of the queue read
+  # without a lock, for its columns that never change. For a prebuild, its environment
+  # record of its collection and pool `FOR UPDATE` (`Apiary.Environments.lock_record/2`),
+  # returned. For any other run, its work item `FOR KEY SHARE`, and nil returned: an end
+  # that writes the run of the queue twice in its transaction makes Postgres check
+  # `dispatch_runs_work_item_id_fkey` again at the second write, with that same lock on
+  # the work item, which then comes after the run of the queue unless taken here. A
+  # prebuild has no work item (`dispatch_runs_step_shape_check`). nil for no run.
   @doc false
   @spec hold(Ecto.UUID.t() | nil) :: Record.t() | nil
   def hold(nil), do: nil
@@ -137,12 +148,21 @@ defmodule Apiary.Dispatches.RunEnd do
 
     from(d in DispatchRun,
       where: d.id == ^dispatch_run_id,
-      select: {d.step, d.pool_id, d.source_collection_id}
+      select: {d.step, d.pool_id, d.source_collection_id, d.work_item_id}
     )
     |> Repo.one()
     |> case do
-      {@prebuild, pool_id, collection_id} when is_binary(pool_id) and is_binary(collection_id) ->
+      {@prebuild, pool_id, collection_id, nil}
+      when is_binary(pool_id) and is_binary(collection_id) ->
         Environments.lock_record(pool_id, collection_id)
+
+      {_step, _pool_id, _collection_id, work_item_id} when is_binary(work_item_id) ->
+        _id =
+          Repo.one(
+            from w in WorkItem, where: w.id == ^work_item_id, select: w.id, lock: "FOR KEY SHARE"
+          )
+
+        nil
 
       _other ->
         nil

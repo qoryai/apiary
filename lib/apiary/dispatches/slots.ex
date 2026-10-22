@@ -96,7 +96,8 @@ defmodule Apiary.Dispatches.Slots do
   # The lost-run check's end of a prebuild handed over (`Apiary.Dispatches.RunEnd`) keeps
   # it too: the prebuild's environment record `FOR UPDATE`, as 3. has it, then its run of
   # the queue, its registered run and its dispatches, then the free of its run, which
-  # finds none lapsed.
+  # finds none lapsed. The end of any other run handed over, by the check or by an exit's
+  # projection, holds its work item `FOR KEY SHARE` in place of the record, then the same.
   #
   # So a prebuild comes to wait, or the one that waits takes another `environment_ref`,
   # only under the lock of its record, and whoever comes second sees what the first
