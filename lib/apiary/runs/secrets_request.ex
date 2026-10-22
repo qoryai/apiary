@@ -121,8 +121,9 @@ defmodule Apiary.Runs.SecretsRequest do
          {:ok, public_key} <- recipient_key(run, access_key),
          {:ok, body, secret} <- sealed(run, credentials, access_key, public_key, digest, now),
          :ok <- record(access_key, run, model) do
-      # The registry credential's secret counts from here: the seal, its size and its
-      # audit entry succeeded, so the answer goes out with it.
+      # The registry credential's secret counts from here: the seal and its size check
+      # succeeded, and so did the seal's audit entry, which only a run with a model key
+      # has. The answer goes out with the secret.
       if secret, do: :ok = Credential.store(run, secret)
       {:ok, body}
     end
