@@ -2178,10 +2178,7 @@ defmodule ApiaryWeb.RunComponents do
             <.external_text text={@preview.run.runtime} />
             <.external_text text={@preview.run.runtime_version} />
           </span>
-          <span
-            :if={@preview.run.host}
-            class="font-mono text-[12px]"
-          ><.external_text text={@preview.run.host} /></span>
+          <.ran_on run={@preview.run} class="font-mono text-[12px]" />
           <span class="font-mono text-[12px]">{short_id(@preview.run.public_id)}</span>
         </p>
         <dl class="q-pv-kv">
@@ -2267,6 +2264,46 @@ defmodule ApiaryWeb.RunComponents do
     do: if(Apiary.Features.visible?(scope, :nodes), do: label)
 
   defp key_label(_scope, _run), do: nil
+
+  @doc """
+  place_of/1 is where a run ran, as the run's header, its preview and its Timeline show
+  it: `{:pool, name}`, the name of the node pool whose dispatch handed the run over;
+  `{:host, host}`, the host the run's `run.started` reported, for every other run; nil
+  for a run with neither. A pool's run whose node was not read is nil, so that the host,
+  a machine of the pool's operator, is not shown in the pool's name's place.
+  """
+  @spec place_of(map) :: {:pool, String.t()} | {:host, String.t()} | nil
+  def place_of(%{dispatch_run_id: id} = run) when is_binary(id) do
+    case Map.get(run, :node) do
+      %{kind: :pool, name: name} -> {:pool, name}
+      _not_read -> nil
+    end
+  end
+
+  def place_of(%{host: host}) when is_binary(host), do: {:host, host}
+  def place_of(_run), do: nil
+
+  @doc """
+  Where a run ran (`place_of/1`), in one span: a pool's name as text, a host in `class`;
+  nothing for a run with neither.
+  """
+  attr :run, :map, required: true
+  attr :id, :string, default: nil
+  attr :class, :string, default: nil, doc: "the classes of a host's span"
+
+  def ran_on(assigns) do
+    assigns = assign(assigns, :place, place_of(assigns.run))
+
+    ~H"""
+    <%= case @place do %>
+      <% {:pool, name} -> %>
+        <span id={@id}>{name}</span>
+      <% {:host, host} -> %>
+        <span id={@id} class={@class}><.external_text text={host} /></span>
+      <% nil -> %>
+    <% end %>
+    """
+  end
 
   @doc """
   The node a run ran on, by name: a link to its page while it is in use and the reader may
