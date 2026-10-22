@@ -512,6 +512,8 @@ for each other and never on each other at once:
    it: the change reads the choices that use the provider, or the model, without a lock,
    and refuses while one does. No change to a provider takes a lock on an adapter's
    connection.
+   A write of a time limit (`Apiary.TimeLimits`) takes the security policy's order, then
+   the limit's row `FOR UPDATE`.
    The handover of an explore run (`Apiary.Dispatches.RunSettings`) reads the choices
    without a lock, then takes the rows of the providers they name `FOR SHARE`, by id,
    then the rows of those providers' keys' secrets `FOR SHARE`, by id, before the

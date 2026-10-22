@@ -21,7 +21,9 @@ defmodule Apiary.Runs.Liveness do
     * a run whose attach set a deadline for its end (`backstop_at`) is lost once that
       deadline has passed, `pending` or `running`, however recently it was heard from. A
       run is given one at its attach only, and a run with its outcome or its exit is
-      neither pending nor running, so it is left alone.
+      neither pending nor running, so it is left alone. When the check ends the dispatch
+      of a run of the queue that went 600 seconds without a heartbeat, it moves that
+      run's deadline back to the end of that silence, so the run stays lost.
 
   **A heartbeat's time.** A heartbeat counts as heard at its `time`, corrected by the
   run's clock offset, plus a tolerance of 300 seconds, and never after its arrival

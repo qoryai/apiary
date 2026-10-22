@@ -2,9 +2,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
   the organisation, its members and invitations, its workspaces, their access keys, nodes,
-  runs, retention, security policy, stored secrets and variables, model choices, the trail's pruning
-  and the instance's commands. The page asks it after the edition's describer, and it says
-  nil for an action it does not know, as it does for the edition's.
+  runs, retention, security policy, stored secrets and variables, model choices, time
+  limits, the trail's pruning and the instance's commands. The page asks it after the
+  edition's describer, and it says nil for an action it does not know, as it does for the
+  edition's.
   """
 
   @behaviour ApiaryWeb.Activity.Describer
@@ -60,6 +61,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
   def label(:"model_choice.write"), do: gettext("Model choice changed")
+  def label(:"time_limit.edit"), do: gettext("Time limit changed")
   def label(:"collection.assign"), do: assign_label(nil)
 
   def label(:"collection.set_backlog"), do: backlog_label(nil)
@@ -116,10 +118,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # confirmation of its proposal, a run of Explore again and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the handover of a claimed
   # run, its release, the image a prebuild built, the choosing of what a target's runs also
-  # read, the setting of a model choice of a workspace or a target, a build of a target's
-  # environment asked for, the installing of an adapter and the start of its set-up have
-  # labels yet, so the filter offers those alone, where the reader is shown the feature
-  # (the page asks it); the others' entries show as any change.
+  # read, the setting of a model choice or a time limit of a workspace or a target, a
+  # build of a target's environment asked for, the installing of an adapter and the start
+  # of its set-up have labels yet, so the filter offers those alone, where the reader is
+  # shown the feature (the page asks it); the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -135,6 +137,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.comment",
           :"work_item.comment_delete",
           :"model_choice.write",
+          :"time_limit.edit",
           :"collection.assign",
           :"collection.set_backlog",
           :"dispatch.handover",
@@ -275,6 +278,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
     gettext("Took in one of the Backlog's %{items} as a work item", items: items)
   end
+
+  # A time limit (`Apiary.TimeLimits`), by the change in the entry's details, under
+  # whichever action its writer checked.
+  def sentence(_action, %{subject_kind: "time_limit", details: %{"change" => change}}, _names),
+    do: said_time_limit(change)
 
   def sentence(action, entry, _names) do
     details = entry.details || %{}
@@ -552,6 +560,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_choice("choice_unlocked"), do: gettext("Unlocked a model choice")
   defp said_choice(_change), do: gettext("Changed a model choice")
 
+  defp said_time_limit("time_limit_set"), do: gettext("Set a time limit")
+  defp said_time_limit("time_limit_removed"), do: gettext("Removed a time limit")
+  defp said_time_limit(_change), do: gettext("Changed a time limit")
+
   # What was acted on, as it is called now.
   @impl true
   def subject(entry, action, names, scope, workspace) do
@@ -665,6 +677,19 @@ defmodule ApiaryWeb.Activity.Describer.Core do
             )
         end
 
+      # A time limit, by the place it was set at: the target or the workspace as it is
+      # called now, else as the entry named it.
+      "time_limit" ->
+        details = entry.details || %{}
+
+        name =
+          case details["target_id"] do
+            id when is_binary(id) -> names.targets[id]
+            _workspace -> names.workspaces[entry.workspace_id]
+          end
+
+        text(gettext("%{name}'s time limit", name: name || details["name"] || gettext("n/a")))
+
       # An integration, a release and a service definition are named in the entry itself.
       kind when kind in ["connection", "integration_release", "service_definition"] ->
         case (entry.details || %{})["name"] do
@@ -684,6 +709,20 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   # The change in a few words: what was, and what is.
   @impl true
+  # A time limit, under whichever action its writer checked: the workflow, in a line, then
+  # the minutes it set, or the minutes before and after.
+  def change(_action, before, after_, %{"change" => "time_limit_" <> _, "workflow" => workflow})
+      when is_binary(workflow) do
+    minutes =
+      case {minutes(before["minutes"]), minutes(after_["minutes"])} do
+        {nil, to} -> to
+        {_from, nil} -> nil
+        {from, to} -> from_to(from, to)
+      end
+
+    Enum.reject([gettext("%{kind} runs", kind: workflow), minutes], &is_nil/1)
+  end
+
   def change(action, before, after_, _details)
       when action in [:"organisation.rename", :"workspace.rename"],
       do: from_to(before["name"], after_["name"])
@@ -812,13 +851,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       when action in [:"secret.write", :"variable.edit"],
       do: nil
 
-  # A model choice at a run kind, levels 2 and 4: the run kind, in a line. The
+  # A model choice for a workflow, levels 2 and 4: the workflow, in a line. The
   # organisation's default is written under `connection.write`, the rest under
   # `model_choice.write`.
-  def change(action, _before, _after, %{"level" => level, "run_kind" => kind})
+  def change(action, _before, _after, %{"level" => level, "workflow" => workflow})
       when action in [:"model_choice.write", :"connection.write"] and level in [2, 4] and
-             is_binary(kind),
-      do: gettext("%{kind} runs", kind: kind)
+             is_binary(workflow),
+      do: gettext("%{kind} runs", kind: workflow)
 
   # A model provider's change: the host, the key's value ID or the model ID before and
   # after, or the key's value ID or the model's ID.
@@ -851,6 +890,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(_policy, _before, _after, %{"change" => _change} = details), do: version(details)
 
   def change(_action, _before, _after, _details), do: nil
+
+  defp minutes(n) when is_integer(n),
+    do: ngettext("%{number} minute", "%{number} minutes", n, number: Format.number(n))
+
+  defp minutes(_other), do: nil
 
   defp value_id(id) when is_binary(id), do: [{:m, id}]
   defp value_id(_id), do: nil

@@ -113,6 +113,7 @@ defmodule Apiary.Audit do
   alias Apiary.Integrations.Release
   alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Secrets.Secret
+  alias Apiary.TimeLimits.TimeLimit
   alias Apiary.Variables.Variable
   alias Apiary.WorkItems.WorkItem
 
@@ -130,6 +131,7 @@ defmodule Apiary.Audit do
     Variable => "variable",
     Connection => "connection",
     ModelChoice => "model_choice",
+    TimeLimit => "time_limit",
     ServiceDefinition => "service_definition",
     Release => "integration_release",
     WorkItem => "work_item",
@@ -565,8 +567,8 @@ defmodule Apiary.Audit do
   # assigns collections to a workspace or unassigns them (`collection.assign`), what the
   # source behind the connection its `details` name calls its collections, by that public
   # id (`connection_collection_nouns`), where it names them. A model choice
-  # (`Apiary.ModelChoices`) is a subject too, and the target its `details` have by
-  # `target_id` is looked up with the targets.
+  # (`Apiary.ModelChoices`) and a time limit (`Apiary.TimeLimits`) are subjects too, and
+  # the target their `details` have by `target_id` is looked up with the targets.
   @spec names(Scope.t(), [Entry.t()]) :: names
   def names(%Scope{organisation: %Organisation{id: organisation_id}}, entries)
       when is_list(entries) do
@@ -594,7 +596,7 @@ defmodule Apiary.Audit do
       ids.(
         &[
           if(&1.subject_kind == "target", do: &1.subject_id),
-          if(&1.subject_kind == "model_choice", do: details(&1, "target_id"))
+          if(&1.subject_kind in ["model_choice", "time_limit"], do: details(&1, "target_id"))
         ]
       )
 

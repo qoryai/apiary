@@ -95,9 +95,11 @@ defmodule Apiary.Runs.Fold do
   order of arrival and after a rebuild. A heartbeat a pass folds revives a lost or pending
   run only when it counts as heard within three intervals of its arrival, and, for a run
   whose attach set a deadline for its end (`backstop_at`, `Apiary.Runs.Liveness`), only
-  when it arrived by then, as does a start; a lower offset
-  alone revives nothing and undoes no revive. So the one order that can show is a revive
-  by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
+  when it arrived by then, as does a start. Neither revives a run the lost-run check ended
+  for its silence (`silenced_at`), whenever it arrived: that end freed the run's slot, and
+  only its exit or its starter's outcome changes the run then. A lower offset alone
+  revives nothing and undoes no revive. So the one order that can show is a revive by a
+  heartbeat that a lower offset, folded after it, would have kept from reviving: from
   an earlier heartbeat delivered after it across a clock set back between the two. The
   next lost-run check settles it.
 
@@ -611,11 +613,11 @@ defmodule Apiary.Runs.Fold do
   def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 
-  # A start revives the run as a heartbeat does, from the attaching instance alone, and
-  # not past the run's backstop.
+  # A start revives the run as a heartbeat does, from the attaching instance alone, not
+  # past the run's backstop, and not once its silence ended it.
   defp started_state(run, event) do
     if ended?(run) or not attaching_instance?(run, event) or
-         Liveness.past_backstop?(run, received_at(event)),
+         Liveness.past_backstop?(run, received_at(event)) or silenced?(run),
        do: run,
        else: %{run | state: "running", lost_at: nil}
   end
@@ -723,7 +725,8 @@ defmodule Apiary.Runs.Fold do
   # is that heartbeat's by the smallest offset, whatever the order the events were folded
   # in. A heartbeat this pass folded and heard within three intervals of its arrival says
   # the run is alive: a lost run runs again, and so does a run whose `run.started` has not
-  # arrived yet. An exit is not undone. A lower offset alone revives nothing.
+  # arrived yet, but not past its backstop or once its silence ended it. An exit is not
+  # undone. A lower offset alone revives nothing.
   defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
     heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
     run = Map.put(acc.run, :last_heartbeat_at, heard_at)
@@ -734,12 +737,15 @@ defmodule Apiary.Runs.Fold do
         Map.get(run, :heartbeat_interval_seconds)
 
     if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at) and
-         not Liveness.past_backstop?(run, received_at),
+         not Liveness.past_backstop?(run, received_at) and not silenced?(run),
        do: %{acc | run: revive(run)},
        else: %{acc | run: run}
   end
 
   defp count_beat(acc), do: acc
+
+  # A run the lost-run check ended for its silence (`Apiary.Dispatches.RunEnd`).
+  defp silenced?(run), do: match?(%DateTime{}, Map.get(run, :silenced_at))
 
   defp revive(%{state: state} = run) when state in ["lost", "pending"] do
     if exited?(run), do: run, else: %{run | state: "running", lost_at: nil}

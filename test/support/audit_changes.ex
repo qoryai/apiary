@@ -117,6 +117,7 @@ defmodule Apiary.AuditChanges do
       :"variable.edit",
       :"connection.write",
       :"model_choice.write",
+      :"time_limit.edit",
       :"adapter.create",
       :"adapter.edit",
       :"adapter.set_interval",
@@ -757,6 +758,14 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
 
+  # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
+  # the limit.
+  def make(:"time_limit.edit", %{scope: scope}) do
+    before = entries()
+    {:ok, limit} = Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)
+    %{scope: scope, subject: {"time_limit", limit.id}, before: before}
+  end
+
   def make(:"organisation.delete", %{scope: scope}) do
     before = entries()
     {:ok, _} = Deletion.delete_organisation(scope, scope.organisation.slug)
@@ -1337,6 +1346,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"model_choice.write", scope, _),
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
+
+  defp attempt(:"time_limit.edit", scope, _),
+    do: Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)
 
   defp attempt(:"retention.edit", scope, _),
     do: Retention.update_retention(scope, %{events_retention_days: 30})
