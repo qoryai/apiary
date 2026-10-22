@@ -4,7 +4,8 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
   # (`ApiaryWeb.Contract.HandoverController`), as a node pool's starter sends them: the
   # answers signed but a `401`, `Cache-Control: no-store`, the handover answer held to the
   # vendored `handover-answer.schema.json` and an explore run's input to the explore
-  # contract's `inputs.schema.json`, and each refusal's status and code. The order of the
+  # contract's `inputs.schema.json`, the run-code answer to the contract's
+  # `handover/run-code.json` among them, and each refusal's status and code. The order of the
   # refusals is `Apiary.Dispatches.HandoverTest`'s; where the feature is off,
   # `ApiaryWeb.Contract.PoolRequestTest`'s. Not async, as the other contract tests of a
   # pool: the features are the whole node's.
@@ -29,6 +30,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
   @moduletag needs: :factory
 
   @vendored Path.expand("../../fixtures/contract", __DIR__)
+  @fixtures Path.join(@vendored, "provisioner/v1/fixtures")
   @base "https://qory.dev/contracts/"
 
   # The vendored schemas by their URL under the contracts' base, the explore contract's
@@ -142,6 +144,9 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
     do: json |> Jason.decode!(objects: :ordered_objects) |> Map.get(:values) |> keys()
 
   defp keys(values), do: Enum.map(values, &elem(&1, 0))
+
+  # A fixture of the provisioner contract, as the file has it.
+  defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!()
 
   defp comment!(work_item, ref, name) do
     at = DateTime.utc_now(:second)
@@ -359,6 +364,32 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert answer["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
       ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
       assert keys(ordered["inputs"].values) == ~w(version environment_ref)
+    end
+
+    @tag :contract
+    test "of the contract's handover/run-code.json is 200, signed, the run-code answer of the contract's five members",
+         ctx do
+      {_work_item, queued} = queued!(ctx)
+      dispatch = started!(ctx)
+
+      body =
+        "handover/run-code.json" |> fixture() |> Jason.decode!() |> Map.put("time", now_time())
+
+      conn = post(ctx, dispatch, "handover", body)
+
+      assert conn.status == 200
+      assert signed_answer?(conn)
+      assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
+      answer = Jason.decode!(conn.resp_body)
+
+      assert {:ok, _} =
+               JSV.validate(answer, validator("provisioner/v1/handover-answer.schema.json"))
+
+      assert members(conn.resp_body) == members(fixture("handover-answer/explore-run-code.json"))
+      assert members(conn.resp_body) == ~w(version revision run_id run_code step)
+      assert answer["revision"] == 3
+      assert answer["run_id"] == queued.run_id
+      assert answer["step"] == "explore"
     end
 
     test "is refused with each status and code, signed", ctx do
