@@ -261,7 +261,14 @@ defmodule Apiary.Dispatches.ReleaseTest do
     test "gone comes before machine_exists: a dispatch handed over whose run ended", ctx do
       {_work_item, queued} = queued!(ctx)
       {dispatch, run} = handed_over!(ctx)
-      {:ok, _given} = give_outcome(ctx.key, Repo.get!(Run, run.id), "succeeded")
+      run = Repo.get!(Run, run.id)
+
+      Apiary.RunEventsFixtures.event_fixture(run, 1, "run.exited", %{
+        "state" => "succeeded",
+        "exit_code" => 0
+      })
+
+      {:ok, _run} = Apiary.Runs.Projector.project(run)
       before = state(queued, dispatch)
 
       assert %DispatchRun{state: :ended} = queue_run!(queued)

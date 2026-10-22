@@ -122,15 +122,15 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert [%DispatchRun{attempt: 1, end_cause: :run_refused}] = runs_of(handed.work_item)
     end
 
-    test "keeps the code when the starter's outcome later replaces the run's reason", ctx do
+    test "keeps its code: the starter's outcome after it is refused, not found", ctx do
       handed = handed_over!(ctx)
       refuse!(handed.run, "variable_reserved")
       {:ok, _run} = Projector.project(handed.run)
+      refused = run!(handed.run)
 
-      assert {:ok, %{run: %Run{state: "failed"}}} =
-               give_outcome(ctx.key, handed.run, "failed", "job_failed")
-
-      assert %Run{reason: "job_failed", refused_at: %DateTime{}} = run!(handed.run)
+      assert give_outcome(ctx.key, handed.run, "failed", "job_failed") == {:error, :not_found}
+      assert %Run{reason: "variable_reserved", refused_at: %DateTime{}} = run!(handed.run)
+      assert run!(handed.run) == refused
       assert_ended(handed, :run_refused, "variable_reserved")
     end
 
@@ -171,12 +171,13 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert length(runs_of(handed.work_item)) == 1
     end
 
-    test "of an outcome changes nothing: the run stays ended run_ended", ctx do
+    test "of an exit changes nothing: the run stays ended run_ended", ctx do
       handed = handed_over!(ctx)
-      assert {:ok, _given} = give_outcome(ctx.key, handed.run, "succeeded")
+      event_fixture(handed.run, 1, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+      assert {:ok, %Run{exited_at: %DateTime{}}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
 
-      refuse!(handed.run, "model_key_missing")
+      refuse!(handed.run, "model_key_missing", 2)
       {:ok, _run} = Projector.project(handed.run)
 
       assert_ended(handed, :run_ended)
@@ -220,9 +221,12 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert_ended(handed, :run_ended)
     end
 
-    test "a run cancelled by its starter's outcome ends run_ended", ctx do
+    test "a run cancelled by its exit ends run_ended; the starter's outcome is refused",
+         ctx do
       handed = handed_over!(ctx)
-      assert {:ok, _given} = give_outcome(ctx.key, handed.run, "cancelled", "stopped")
+      assert give_outcome(ctx.key, handed.run, "cancelled", "stopped") == {:error, :not_found}
+      event_fixture(handed.run, 1, "run.exited", %{"state" => "cancelled", "reason" => "stopped"})
+      assert {:ok, %Run{state: "cancelled"}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
     end
 

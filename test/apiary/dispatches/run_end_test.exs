@@ -1,10 +1,10 @@
 defmodule Apiary.Dispatches.RunEndTest do
   # The end of a run a workspace's queue handed over (`Apiary.Dispatches.RunEnd`): by its
-  # starter's outcome or its exit (for a prebuild, a `failed` or `lost` exit alone), or by
-  # the lost-run check, at its gateway's `attach_by` or at its backstop. Each ends the run of
-  # the queue and its dispatch once and frees the slot once; the first end decides the
-  # cause, and the registered run still takes its starter's later outcome. Runs that were
-  # not handed over keep the lost-run check as it was.
+  # exit (for a prebuild, a `failed` or `lost` exit alone), or by the lost-run check, at its
+  # gateway's `attach_by` or at its backstop. Each ends the run of the queue and its
+  # dispatch once and frees the slot once; the first end decides the cause. The pool's
+  # outcome is refused, not found, and ends nothing. Runs that were not handed over keep
+  # the lost-run check as it was.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -156,18 +156,16 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :lost)
     end
 
-    test "the starter's later outcome is taken and may set the run failed; the end stays lost",
-         ctx do
+    test "the pool's outcome after the loss is refused, not found, and changes nothing", ctx do
       handed = handed_over!(ctx)
       Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
-      freed = dispatch!(handed.dispatch).slot_freed_at
+      lost = run!(handed.run)
 
-      assert {:ok, %{run: %Run{state: "failed", lost_at: nil}, repeated: false}} =
-               give_outcome(ctx.key, handed.run, "failed", "no_longer_needed")
+      assert give_outcome(ctx.key, handed.run, "failed", "no_longer_needed") ==
+               {:error, :not_found}
 
-      assert %Run{outcome_state: "failed", reason: "no_longer_needed"} = run!(handed.run)
+      assert run!(handed.run) == lost
       assert_ended(handed, :lost)
-      assert dispatch!(handed.dispatch).slot_freed_at == freed
     end
 
     test "an exit stored before it and not yet folded ends the run as its exit", ctx do
@@ -448,22 +446,24 @@ defmodule Apiary.Dispatches.RunEndTest do
           {"failed", %{"state" => "failed", "exit_code" => 1}},
           {"lost", %{"state" => "failed", "reason" => "session_lost"}}
         ] do
-      test "its #{state} exit, once folded, ends it run_ended and records the build failed, lost, as its starter's outcome does",
+      test "its #{state} exit, once folded, ends it run_ended and records the build failed, #{state}",
            ctx do
         assert {:ok, %{run: _run}} = ctx.attach.()
         assert %Run{exit_state: unquote(state)} = exited!(ctx, unquote(Macro.escape(data)))
         assert_ended(ctx.handed, :run_ended)
+        cause = String.to_existing_atom(unquote(state))
 
-        assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: %DateTime{}} =
+        assert %Record{failure_cause: ^cause, failure_reason: nil, failed_at: %DateTime{}} =
                  failed = record!(ctx.record)
 
         assert_build_kept(ctx)
         assert_nothing_queued(ctx)
         assert Slots.held(ctx.place.pool.id) == 0
 
-        # The lost-run check and a later outcome change nothing of the queue or the record.
+        # The lost-run check changes nothing of the queue or the record, and the pool's
+        # outcome is refused.
         assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
-        assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
+        assert give_outcome(ctx.place.key, ctx.handed.run, "failed") == {:error, :not_found}
         assert_ended(ctx.handed, :run_ended)
         assert record!(ctx.record) == failed
       end
@@ -476,7 +476,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ctx.record
     end
 
-    test "its failed exit whose end was not written: the lost-run check ends it run_ended, lost",
+    test "its failed exit whose end was not written: the lost-run check ends it run_ended, failed",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
 
@@ -489,7 +489,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_live(ctx.handed)
       Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second))
       assert_ended(ctx.handed, :run_ended)
-      assert %Record{failure_cause: :lost, failure_reason: nil} = record!(ctx.record)
+      assert %Record{failure_cause: :failed, failure_reason: nil} = record!(ctx.record)
       assert_build_kept(ctx)
       assert_nothing_queued(ctx)
     end
@@ -511,20 +511,12 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == kept
     end
 
-    test "ended by its starter's outcome alone records the build failed, lost, and queues nothing",
-         ctx do
+    test "its starter's outcome is refused, not found, and ends nothing", ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
-      assert_ended(ctx.handed, :run_ended)
-
-      assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: %DateTime{}} =
-               failed = record!(ctx.record)
-
-      assert_build_kept(ctx)
-      assert_nothing_queued(ctx)
-
-      assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
-      assert record!(ctx.record) == failed
+      assert give_outcome(ctx.place.key, ctx.handed.run, "failed") == {:error, :not_found}
+      assert %Run{outcome_state: nil} = run!(ctx.handed.run)
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == ctx.record
     end
 
     test "its succeeded exit folds onto the registered run and ends nothing of the queue",
@@ -553,15 +545,13 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ctx.record
     end
 
-    test "after its exit, its starter's outcome alone records the build failed, lost",
-         ctx do
+    test "after its exit, its starter's outcome is refused and records nothing", ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
 
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
-      assert_ended(ctx.handed, :run_ended)
-      assert %Record{failure_cause: :lost, failure_reason: nil} = record!(ctx.record)
-      assert_build_kept(ctx)
+      assert give_outcome(ctx.place.key, ctx.handed.run, "failed") == {:error, :not_found}
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == ctx.record
     end
 
     test "after its exit, nothing by its backstop: the lost-run check ends it lost, timed_out",
@@ -621,18 +611,24 @@ defmodule Apiary.Dispatches.RunEndTest do
     assert record!(record) == record
   end
 
-  describe "the run's outcome or exit" do
-    test "the outcome ends the run of the queue, run_ended, and frees the slot once", ctx do
+  describe "the run's exit, and no outcome" do
+    test "the pool's outcome is refused, not found, and ends nothing; the exit ends it once",
+         ctx do
       handed = handed_over!(ctx)
       :ok = Dispatches.subscribe(ctx.scope.workspace.id)
 
-      assert {:ok, %{repeated: false}} = give_outcome(ctx.key, handed.run, "succeeded")
+      assert give_outcome(ctx.key, handed.run, "succeeded") == {:error, :not_found}
+      assert %Run{outcome_state: nil} = run!(handed.run)
+      assert_live(handed)
+      refute_received {Dispatches, :changed}
+
+      event_fixture(handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+      assert {:ok, %Run{state: "completed"}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
       assert_received {Dispatches, :changed}
       freed = dispatch!(handed.dispatch).slot_freed_at
 
-      # A repeat, then the backstop and a release: nothing moves.
-      assert {:ok, %{repeated: true}} = give_outcome(ctx.key, handed.run, "succeeded")
+      # The backstop and a release: nothing moves.
       assert Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second)) == []
 
       assert Dispatches.release(ctx.key, handed.dispatch.public_id, %{reason: "stopped"}) ==
@@ -640,7 +636,6 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert_ended(handed, :run_ended)
       assert dispatch!(handed.dispatch).slot_freed_at == freed
-      assert run!(handed.run).state == "completed"
     end
 
     test "the exit, once folded, ends it run_ended", ctx do
@@ -665,13 +660,15 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :run_ended)
     end
 
-    test "a starter's outcome that gives the reason released has it dropped" do
+    test "an outcome that gives the reason released or image_missing has it dropped" do
       body = %{"version" => 1, "time" => "2026-10-17T12:00:00Z", "state" => "cancelled"}
 
-      assert {:ok, %Outcome{state: "cancelled", reason: nil}} =
-               Outcome.parse(Map.put(body, "reason", "released"))
+      for reason <- ["released", "image_missing"] do
+        assert {:ok, %Outcome{state: "cancelled", reason: nil}} =
+                 Outcome.parse(Map.put(body, "reason", reason))
 
-      assert "released" in Outcome.reserved_reasons()
+        assert reason in Outcome.reserved_reasons()
+      end
     end
   end
 

@@ -169,6 +169,7 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
             Enum.with_index([
               "timeout",
               "no_session",
+              "image_missing",
               "Not A Code",
               42,
               String.duplicate("a", 65)

@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
   # A run of the queue handed over before its work item closed goes on to its end: the
   # removal of the adapter its ticket came through closes the work item
-  # (`Apiary.Adapters.delete_adapter/2`), and the run's result, in its batch, and its
-  # outcome are taken after it as before.
+  # (`Apiary.Adapters.delete_adapter/2`), and the run's result and its exit, in its
+  # batches, are taken after it as before.
   use ApiaryWeb.ConnCase, async: true
 
   import Apiary.ContractFixtures
@@ -64,7 +64,7 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
     }
   end
 
-  test "the removal closes the work item; the run's result and outcome are then taken", ctx do
+  test "the removal closes the work item; the run's result and exit are then taken", ctx do
     {:ok, _deleted} = Adapters.delete_adapter(instance_admin_scope(), ctx.adapter)
 
     assert %WorkItem{state: :closed} = Repo.get!(WorkItem, ctx.work_item.id)
@@ -95,22 +95,14 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
              from e in Event, where: e.run_id == ^run.id and e.type == "dev.qory.runtime.result"
            )
 
-    # The outcome, under the pool's key, the node the run is bound to.
-    time = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    # The exit, in a batch through the same gateway, ends the run of the queue.
+    exited = wire_event(ctx.run_id, 4, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
 
-    conn =
-      signed_post(
-        build_conn(),
-        ctx.pool.key.key_id,
-        ctx.pool.secret,
-        Jason.encode!(%{"version" => 1, "state" => "succeeded", "time" => time}),
-        target: "/v1/runs/#{ctx.run_id}/outcome",
-        content_type: "application/json",
-        delivery: nil
-      )
+    conn = signed_post(build_conn(), ctx.gateway.key.key_id, ctx.gateway.secret, [exited])
+    assert response(conn, 202) == ""
+    assert {:ok, %Run{state: "completed"}} = Apiary.Runs.Projector.project(run)
 
-    assert json_response(conn, 200) == %{"version" => 1}
-    assert signed_answer?(conn)
-    assert %Run{outcome_state: "succeeded"} = Repo.get!(Run, run.id)
+    assert %DispatchRun{state: :ended, end_cause: :run_ended} =
+             Repo.get!(DispatchRun, ctx.queued.id)
   end
 end

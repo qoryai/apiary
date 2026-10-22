@@ -1,7 +1,7 @@
 defmodule Apiary.Dispatches.SettleTest do
   # What a run of the queue gave, kept on its row (`Apiary.Dispatches.Settle`), through
-  # the writers that store it: the end of the run by its outcome or its exit
-  # (`Apiary.Dispatches.RunEnd`), a projection that folded an exit or a result event
+  # the writers that store it: the end of the run by its exit, or by an outcome given
+  # before a run of the queue was refused one (`Apiary.Dispatches.RunEnd`), a projection that folded an exit or a result event
   # (`Apiary.Runs.Projector`), and the sweep of the lost-run check (`Apiary.Runs.Liveness`);
   # and the handover's error (`Apiary.Dispatches.Handover`). Only a run that is not a
   # prebuild and ended `run_ended` is settled; `updated_at` never changes; a result that
@@ -18,7 +18,7 @@ defmodule Apiary.Dispatches.SettleTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, WorkItems}
-  alias Apiary.Dispatches.{DispatchRun, Settle}
+  alias Apiary.Dispatches.{DispatchRun, RunEnd, Settle}
   alias Apiary.Explore.Result
   alias Apiary.Runs.{Event, Liveness, Projector, Run}
   alias Apiary.WorkItems.{Confirmation, Explore, WorkItem}
@@ -57,8 +57,35 @@ defmodule Apiary.Dispatches.SettleTest do
         "exit_code" => 0
       })
 
+  # An outcome given before a run of the queue was refused one, as the rows written then
+  # hold it: stored on the run, and the run of the queue ended `run_ended` by it in the
+  # same transaction, as the outcome's write ended it then (`RunEnd.finish/5`). The pool's
+  # outcome today is refused, not found.
   defp outcome!(ctx, handed) do
-    assert {:ok, %{repeated: false}} = give_outcome(ctx.key, handed.run, "succeeded")
+    assert give_outcome(ctx.key, handed.run, "succeeded") == {:error, :not_found}
+    now = DateTime.utc_now()
+
+    {:ok, changed} =
+      Repo.transact(fn ->
+        dispatch_run = RunEnd.lock(handed.dispatch_run.id)
+
+        {1, _rows} =
+          Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+            set: [
+              outcome_state: "succeeded",
+              outcome_time: DateTime.truncate(now, :second),
+              outcome_received_at: now,
+              outcome_digest: :crypto.hash(:sha256, "succeeded"),
+              state: "completed",
+              updated_at: now
+            ]
+          )
+
+        run = Repo.one!(from r in Run, where: r.id == ^handed.run.id, lock: "FOR UPDATE")
+        {:ok, RunEnd.finish(dispatch_run, run, :run_ended, now, nil)}
+      end)
+
+    Dispatches.broadcast(changed)
     run!(handed)
   end
 
@@ -115,8 +142,8 @@ defmodule Apiary.Dispatches.SettleTest do
       assert %DispatchRun{end_cause: :run_ended, updated_at: ended_at} = queue_run!(handed)
       assert stored(handed) == {:none, nil}
 
-      # The outcome that follows changes nothing of it.
-      outcome!(ctx, handed)
+      # The pool's outcome that follows is refused, and changes nothing of it.
+      assert give_outcome(ctx.key, handed.run, "succeeded") == {:error, :not_found}
       assert stored(handed) == {:none, nil}
       assert queue_run!(handed).updated_at == ended_at
     end
@@ -190,9 +217,8 @@ defmodule Apiary.Dispatches.SettleTest do
       place = handover_place_fixture(ctx.scope)
       handed = prebuild_handed_over!(ctx.scope, place.key)
       result!(handed, 8, understood_result())
-      exited!(handed, 9)
+      event_fixture(handed.run, 9, "run.exited", %{"state" => "failed", "exit_code" => 1})
       project!(handed)
-      outcome!(%{ctx | key: place.key}, handed)
 
       assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
       assert stored(handed) == {nil, nil}

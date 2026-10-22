@@ -1,6 +1,6 @@
 defmodule Apiary.Dispatches.ReleaseRacesTest do
   # The release of a claimed run of the queue (`Apiary.Dispatches.Release`) racing
-  # another release, `dispatched`, the redemption of the run code, the starter's outcome,
+  # another release, `dispatched`, the redemption of the run code, the run's exit,
   # the lapse of the lease and the sweep, a close of its work item and a trigger of its
   # collection, each on a separate
   # connection, outside the SQL sandbox, so each commits and each waits on the other's
@@ -307,18 +307,19 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     end
   end
 
-  describe "a release and the starter's outcome" do
-    test "the outcome first: the release waits, then is gone, and writes nothing", ctx do
+  describe "a release and the run's exit" do
+    test "the exit's end first: the release waits, then is gone, and writes nothing", ctx do
       claimed = started!(ctx)
       :ok = dispatched(ctx, claimed).()
       run = Repo.get!(Run, claimed.run.id)
+      exited!(run)
 
       {first, first_pid} =
         hold(fn ->
-          Repo.transact(fn -> {:ok, give_outcome(ctx.key, run, "succeeded")} end)
+          Repo.transact(fn -> {:ok, Apiary.Runs.Projector.project(run)} end)
         end)
 
-      assert {:ok, {:ok, _given}} = first.result
+      assert {:ok, {:ok, %Run{}}} = first.result
 
       second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
@@ -486,6 +487,14 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     end
   end
 
+  # The run's exit, stored, which its projection folds and ends the run of the queue by.
+  defp exited!(run),
+    do:
+      Apiary.RunEventsFixtures.event_fixture(run, 9, "run.exited", %{
+        "state" => "succeeded",
+        "exit_code" => 0
+      })
+
   test "everything at once: one release or the handover decides, and none deadlocks", ctx do
     for _round <- 1..3 do
       claimed = started!(ctx)
@@ -511,9 +520,11 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       refute handed_over? and Enum.member?(releases, :ok)
 
       # Whatever came first, nothing is left holding the slot, but a run handed over,
-      # which its outcome ends.
+      # which its exit ends.
       if queue_run!(claimed).state == :handed_over do
-        {:ok, _given} = give_outcome(ctx.key, Repo.get!(Run, claimed.run.id), "succeeded")
+        run = Repo.get!(Run, claimed.run.id)
+        exited!(run)
+        {:ok, _run} = Apiary.Runs.Projector.project(run)
       end
 
       end_waiting!(claimed)

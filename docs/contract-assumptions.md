@@ -444,35 +444,32 @@ of its work item, its registered run is deleted with the run code, and the code 
 nothing from then on.
 
 Once handed over, such a run ends with its registered run, in one of three ways, the first
-to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
-`dev.qory.run.exited` once folded, end it `run_ended`; a `dev.qory.run.refused` once
-folded ends it `run_refused`,
-for a run that is not a prebuild; and the lost-run check ends it `lost` when its gateway
-never attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
-backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
+to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded
+ends it `run_ended`; a `dev.qory.run.refused` once folded ends it `run_refused`, for a
+run that is not a prebuild; and the lost-run check ends it `lost` when its gateway never
+attached it by its `attach_by`, or when it has no exit by its backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
 (Liveness). A prebuild's
 `dev.qory.run.exited` folds onto its registered run as any exit does, and ends the run of
-the queue `run_ended` only when its state is `failed` or `lost`: its build failed. So its
-starter's outcome, a `failed` or `lost` exit, or the lost-run check ends it, the check at
-its `attach_by` or at its backstop with no outcome and no such exit by then. No request
+the queue `run_ended` only when its state is `failed` or `lost`: its build failed. So a
+`failed` or `lost` exit, or the lost-run check ends it, the check at its `attach_by` or
+at its backstop with no such exit by then. No request
 records the image a prebuild built: the provisioner contract has no `prebuilt`. A prebuild
 the lost-run check ends `lost` records that end as its last build's failure on the
 environment record of its collection and of the pool that claimed it, `lost` at its
-`attach_by` and `timed_out` at its backstop, with no reason; a prebuild its starter's
-outcome or its `failed` or `lost` exit ends, `run_ended`, records it there too, `lost`,
-with no reason. The record keeps its last good build, nothing is queued, and the
-check and the outcome hold that record before the run of the queue, as a release does; a prebuild whose `environment_ref` is older
+`attach_by` and `timed_out` at its backstop, with no reason; a prebuild its `failed` or
+`lost` exit ends, `run_ended`, records it there too, `failed` or `lost` as its exit, with
+no reason. The record keeps its last good build, nothing is queued, and the check and the
+projection's end hold that record before the run of the queue, as a release does; a prebuild whose `environment_ref` is older
 than the record's image's records no failure, and ends all the same. Its dispatch ends with it, with the same end
 cause, a stale dispatch of it with `run_ended`, and the slot the dispatch took at its claim
 is freed once (`dispatches.slot_freed_at`, set only where it is empty). An end after the
-first changes none of them. The starter's outcome after a loss is taken as any first
-outcome is, and its state and reason decide the run's, `failed` among them; it is never
-`409` `outcome_given`, and it changes neither the end cause nor the slot. `released` is a
-reason Qory sets itself: a starter's outcome that gives it has it dropped, and is kept
-without it.
+first changes none of them. A run of the queue takes no outcome: the outcome endpoint
+answers a pool's key for a run the pool claimed `404`, as it answers a key for a run the
+key is not bound to, and stores nothing (`Apiary.Runs.Outcome`). A node's keys keep the
+outcome endpoint for the runs the node registers itself.
 Each end locks the run of the queue first, then the registered run, then writes the
-dispatches, so two ends of one run take turns, and an outcome that comes as the check
-loses the run is either taken first, its end cause `run_ended`, or after it, the end cause
+dispatches, so two ends of one run take turns, and an exit that comes as the check loses
+the run is either taken first, its end cause `run_ended`, or after it, the end cause
 staying `lost`.
 
 A run its gateway refused before it started (`dev.qory.run.refused`, with a code such as
@@ -481,11 +478,10 @@ projection that folded the refusal ends the run of the queue after its pass has 
 in a transaction that locks the run of the queue first, then the registered run, as an
 exit's end does. The run of the queue keeps the refusal's code as `end_detail` (nil when
 the event's code is not a code), and its dispatch ends with the same end cause; the slot is
-freed once. The registered run stays failed with the code as its reason and `refused_at`; a
-starter's outcome that follows replaces its reason and leaves `end_detail`. The starter's
+freed once. The registered run stays failed with the code as its reason and `refused_at`. The starter's
 release of the dispatch after this end is `410` `gone` and queues nothing, and the claim
-never offers the run again. A refusal that comes after any other end, or while an outcome
-or an exit decides over it, changes nothing: the run keeps the end cause that came first. A
+never offers the run again. A refusal that comes after any other end, or while an exit
+decides over it, changes nothing: the run keeps the end cause that came first. A
 refusal folded whose end the projection did not write is ended by the lost-run check at its
 next tick. A prebuild's refusal ends nothing of the queue. A work item's Explore reads a
 run ended `run_refused` as a run with no result and the outcome `error`, as it reads the
@@ -762,7 +758,9 @@ codes, or is `released`, a reason Qory sets itself (A run of the queue), is drop
 outcome kept. `time` is held to 300 seconds of the server's clock,
 outside of which the answer is `401`, unsigned. A member the contract does not name is
 `400 invalid_request` with `"body"`. After the refusals every signed request gets, and the
-body's: a key `Apiary.Access` does not let post is `404`; the same outcome again under any
+body's: a key `Apiary.Access` does not let post is `404`, and so is a run of a
+workspace's queue, which a node pool claimed, whatever the key (A run of the queue);
+the same outcome again under any
 active key of the run's node is `200` again, nothing stored or changed: the same state and
 reason as stored, after the rules above, whatever the bytes, so a new `time`, a reason the
 rules drop and no state at all (cancelled, `stopped`) are the same outcome, and the first
@@ -973,7 +971,7 @@ Every `dev.qory.run.exited` carries `state`, how the run ended: `succeeded`, it 
 code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's codes are reserved:
 `timeout`, `interrupted`, `no_session`, `stopped`, `session_lost`, `gateway_lost`,
-`batch_refused` and `run_closed`, and so are old names Forager no longer writes, which
+`batch_refused`, `run_closed` and `image_missing`, and so are old names Forager no longer writes, which
 records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's

@@ -4,8 +4,9 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
   # run key; the gateway the run key names attaches the run and is given the run
   # configuration in force with the run variables, the labels and what the run is about,
   # as the claim stored them, under the digest of the configuration with the variables; a
-  # reload returns the same; a batch is answered the same digest; and the run's outcome,
-  # under the pool's key, ends the run of the queue and frees its slot. Not async, as the
+  # reload returns the same; a batch is answered the same digest; the pool's outcome is
+  # refused as for a run its key is not bound to; and the run's exit ends the run of the
+  # queue and frees its slot. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
@@ -151,8 +152,20 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
     assert response(batch, 202) == ""
     assert get_resp_header(batch, "x-qory-run-configuration") == [digest]
 
-    # The outcome, the pool's, ends the run of the queue and frees its slot.
-    assert json_response(outcome(ctx, run_id), 200) == %{"version" => 1}
+    # The pool's outcome is refused as one for a run the pool's key is not bound to, the
+    # same status and body, and changes nothing.
+    refused = outcome(ctx, run_id)
+    unbound = outcome(ctx, Ecto.UUID.generate())
+    assert json_response(refused, 404) == %{"error" => "not_found"}
+    assert refused.resp_body == unbound.resp_body
+    assert signed_answer?(refused) and signed_answer?(unbound)
+    assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, queued.id)
+    assert %Run{outcome_state: nil} = Repo.get!(Run, stored.id)
+
+    # Its exit ends the run of the queue and frees its slot.
+    exited = wire_event(run_id, 3, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+    assert response(gateway_batch(ctx, [exited]), 202) == ""
+    {:ok, _run} = Apiary.Runs.Projector.project(Repo.get!(Run, stored.id))
 
     assert %DispatchRun{state: :ended, end_cause: :run_ended} =
              Repo.get!(DispatchRun, queued.id)
