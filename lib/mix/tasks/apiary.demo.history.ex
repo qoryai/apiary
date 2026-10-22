@@ -60,6 +60,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.{Event, Liveness, Projector, Run, Target}
+  alias Mix.Tasks.Apiary.Demo.Shell
 
   @switches [
     workspace: :string,
@@ -284,6 +285,17 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     # The query log of a history is millions of lines nobody asked for.
     Logger.configure(level: :warning)
 
+    fill(opts)
+  end
+
+  @doc false
+  # fill/1 writes the history the task's switches `opts` describe, as `run/1` does, on a
+  # started application. `passwords: :random` gives each account it makes a random
+  # password nobody is told, as the release command does (`Apiary.Release.demo/1`);
+  # without it the account has no password, as under the task. `as:`, an owner of the
+  # organisation, writes it in that owner's name in place of the first owner's.
+  @spec fill(keyword) :: :ok
+  def fill(opts) do
     runs = Keyword.get(opts, :runs, 15_000)
     repositories = Keyword.get(opts, :repositories, 150)
     days = Keyword.get(opts, :days, 120)
@@ -292,31 +304,33 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     :rand.seed(:exsss, {seed, 1_234, 5_678})
     now = until!(opts[:until])
-    scope = owner_scope!(opts[:workspace])
+    scope = as(owner_scope!(opts[:workspace]), opts[:as])
     %Scope{organisation: organisation, workspace: workspace} = scope
 
-    Mix.shell().info("Filling #{organisation.slug}/#{workspace.slug}")
+    Shell.info("Filling #{organisation.slug}/#{workspace.slug}")
 
     keys = keys!(scope)
-    if !opts[:skip_members], do: people(scope)
+    if !opts[:skip_members], do: people(scope, opts[:passwords])
 
     catalogue = catalogue(repositories, days)
     plan = plan(runs, days, catalogue, now)
     ctx = %{scope: scope, keys: keys, seed: seed, now: now, days: days}
 
-    Mix.shell().info("Writing #{length(plan)} runs in #{length(catalogue)} repositories")
+    Shell.info("Writing #{length(plan)} runs in #{length(catalogue)} repositories")
     started = System.monotonic_time(:millisecond)
     write(plan, ctx, concurrency)
     seconds = div(System.monotonic_time(:millisecond) - started, 1000)
-    Mix.shell().info("Written in #{seconds} s")
+    Shell.info("Written in #{seconds} s")
 
     settle(ctx)
 
+    # With the security feature, the workspace gets the demo's security policy and its
+    # history, under the task and under the release command (`Apiary.Release.demo/1`).
     if Apiary.Features.on?(:security), do: policy(scope, keys)
 
-    Mix.shell().info("""
+    Shell.info("""
 
-    #{ApiaryWeb.Endpoint.url()}/#{organisation.slug}/#{workspace.slug}/runs\
+    #{Apiary.Setup.public_url()}/#{organisation.slug}/#{workspace.slug}/runs\
     """)
   end
 
@@ -325,7 +339,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp until!(until) do
     case DateTime.from_iso8601(until) do
       {:ok, time, 0} -> time
-      _ -> Mix.raise("--until takes a UTC time in ISO 8601, such as 2026-06-01T12:00:00Z")
+      _ -> Shell.raise!("--until takes a UTC time in ISO 8601, such as 2026-06-01T12:00:00Z")
     end
   end
 
@@ -338,7 +352,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
           where: is_nil(w.deletion_marked_at),
           order_by: [asc: w.inserted_at, asc: w.id],
           limit: 1
-      ) || Mix.raise("there is no workspace yet: sign up first")
+      ) || Shell.raise!("there is no workspace yet: sign up first")
 
     owner_scope!(workspace)
   end
@@ -350,7 +364,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
            Repo.get_by(Workspace, organisation_id: organisation.id, slug: workspace_slug) do
       owner_scope!(workspace)
     else
-      _ -> Mix.raise("no workspace #{slugs}: name it organisation/workspace, by their slugs")
+      _ -> Shell.raise!("no workspace #{slugs}: name it organisation/workspace, by their slugs")
     end
   end
 
@@ -364,10 +378,17 @@ defmodule Mix.Tasks.Apiary.Demo.History do
           order_by: [asc: m.inserted_at, asc: m.id],
           limit: 1,
           preload: :user
-      ) || Mix.raise("#{organisation.slug} has no owner")
+      ) || Shell.raise!("#{organisation.slug} has no owner")
 
     scope_of(membership.user, organisation, workspace) ||
-      Mix.raise("the first owner of #{organisation.slug} does not reach #{workspace.slug}")
+      Shell.raise!("the first owner of #{organisation.slug} does not reach #{workspace.slug}")
+  end
+
+  defp as(scope, nil), do: scope
+
+  defp as(%Scope{organisation: organisation, workspace: workspace}, %User{} = user) do
+    scope_of(user, organisation, workspace) ||
+      Shell.raise!("#{user.email} does not reach #{organisation.slug}/#{workspace.slug}")
   end
 
   defp scope_of(%User{} = user, %Organisation{} = organisation, %Workspace{} = workspace) do
@@ -413,7 +434,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     case Nodes.create_node(scope, %{"kind" => kind, "name" => name}) do
       {:ok, node} -> node
-      {:error, reason} -> Mix.raise("the node #{name} was not made: #{inspect(reason)}")
+      {:error, reason} -> Shell.raise!("the node #{name} was not made: #{inspect(reason)}")
     end
   end
 
@@ -426,7 +447,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
            "allow_secrets" => false
          }) do
       {:ok, key} -> key
-      {:error, reason} -> Mix.raise("the key #{label} was not made: #{inspect(reason)}")
+      {:error, reason} -> Shell.raise!("the key #{label} was not made: #{inspect(reason)}")
     end
   end
 
@@ -439,11 +460,11 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   ## People
 
-  defp people(scope) do
+  defp people(scope, passwords) do
     made =
       for {name, level} <- @people do
         email = "#{name}@example.com"
-        user = Accounts.get_user_by_email(email) || register!(email)
+        user = account!(email, passwords)
 
         if member?(scope.organisation, user) do
           :kept
@@ -464,13 +485,35 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       end
 
     joined = Enum.count(made, &(&1 != :kept))
-    Mix.shell().info("#{joined} people joined, #{length(pending)} invitations pending")
+    Shell.info("#{joined} people joined, #{length(pending)} invitations pending")
   end
 
-  defp register!(email) do
+  @doc false
+  # account!/2 is the account of `email`, made as `people/2` makes one when there is
+  # none: `passwords` is the option of `fill/1`.
+  @spec account!(String.t(), :random | nil) :: User.t()
+  def account!(email, passwords),
+    do: Accounts.get_user_by_email(email) || register!(email, passwords)
+
+  defp register!(email, passwords) do
     {:ok, user} = Accounts.register_user(%{email: email})
     token = capture(&Accounts.deliver_login_instructions(user, &1))
     {:ok, {user, _expired}} = Accounts.login_user_by_magic_link(token)
+    if passwords == :random, do: random_password!(user), else: user
+  end
+
+  # A password of 32 random bytes, set as Settings sets one and then dropped: nobody can
+  # sign in with it. The account signs in by a link, or after its password is set by one
+  # (`Apiary.Release.password_link/1`).
+  defp random_password!(user) do
+    password = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+    {:ok, {user, _expired}} =
+      Accounts.update_user_password(user, %{
+        password: password,
+        password_confirmation: password
+      })
+
     user
   end
 
@@ -479,7 +522,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       case Organisations.invite_member(scope, %{"email" => email}, url_fun) do
         {:ok, invitation} -> {:ok, invitation}
         {:ok, invitation, {:link, _url}} -> {:ok, invitation}
-        {:error, reason} -> Mix.raise("#{email} was not invited: #{inspect(reason)}")
+        {:error, reason} -> Shell.raise!("#{email} was not invited: #{inspect(reason)}")
       end
     end)
   end
@@ -491,13 +534,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     fun.(fn token ->
       send(parent, {ref, token})
-      "#{ApiaryWeb.Endpoint.url()}/demo/#{token}"
+      "#{Apiary.Setup.public_url()}/demo/#{token}"
     end)
 
     receive do
       {^ref, token} -> token
     after
-      0 -> Mix.raise("no token was handed over")
+      0 -> Shell.raise!("no token was handed over")
     end
   end
 
@@ -808,7 +851,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       done = done + written
 
       if div(done, 1_000) > div(done - written, 1_000) or done == total,
-        do: Mix.shell().info("  #{done} / #{total}")
+        do: Shell.info("  #{done} / #{total}")
 
       done
     end)
@@ -1178,7 +1221,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "source" => if(managed, do: "fetched", else: "config"),
       "digest" => digest("policy#{epoch}#{mode}")
     }
-    |> put_if(managed, "url", "#{ApiaryWeb.Endpoint.url()}/v1/runs")
+    |> put_if(managed, "url", "#{Apiary.Setup.public_url()}/v1/runs")
     |> put_if(managed, "run_configuration", "sha256=" <> digest("configuration#{epoch}"))
   end
 
@@ -1993,7 +2036,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     {:ok, _key} = AccessKeys.revoke_access_key(scope, Map.fetch!(ctx.keys, "legacy-ci"))
 
-    Mix.shell().info("ci-fleet has a second key, legacy-ci's is revoked")
+    Shell.info("ci-fleet has a second key, legacy-ci's is revoked")
   end
 
   # Each host a run named, an instance of the run's node: first and last seen at the
@@ -2078,7 +2121,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
           count + Enum.count(changes, &match?({:ok, _}, &1.(scope)))
       end
 
-    Mix.shell().info("Policy: #{added} baseline hosts added, #{own} changes to repositories")
+    Shell.info("Policy: #{added} baseline hosts added, #{own} changes to repositories")
   end
 
   ## Chance

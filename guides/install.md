@@ -792,6 +792,39 @@ services:
 `POOL_SIZE`, `PORT` and `SMTP_PORT` have to be integers. A value that is not one stops the
 boot with an error that does not name the variable.
 
+## Load the demo into a test instance
+
+To try Qory Apiary with data in it, load the demo into a new instance: synthetic runs,
+people and nodes, all under `example.com` and other example names. Never load it into an
+instance people work in.
+
+1. Set up the instance with the organisation name **Acme**
+   ([Set up a new instance](#set-up-a-new-instance)).
+2. Run on the release:
+
+   ```sh
+   bin/apiary eval 'Apiary.Release.demo()'
+   ```
+
+The command fills Acme and its workspace Main: about 6,000 runs over the last 56 days in
+about 150 repositories, 11 more people at every level and two invitations pending, and
+nodes with their access keys. Dana (`dana@example.com`) is an owner of Acme, the instance's
+organisation, so an instance admin.
+With mail set, each person the demo adds gets a log-in email, and each person it invites
+gets an invitation email, at their example address. The runs take the longest to write;
+`Apiary.Release.demo(runs: 1000)` writes 1,000 instead.
+
+Nobody knows the password of an account the demo makes. To sign in as Dana, print a link
+that sets the password:
+
+```sh
+bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
+```
+
+The command makes nothing and stops when the instance is not set up, its organisation is
+not Acme, or its workspace Main already has runs or nodes. Otherwise it prints what it
+made, and last the address to open.
+
 ## Backups
 
 Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
