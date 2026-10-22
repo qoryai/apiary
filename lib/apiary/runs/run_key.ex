@@ -19,7 +19,8 @@ defmodule Apiary.Runs.RunKey do
     * `workspace`, the run's workspace, by its public id (`ws_`);
     * `node_id`, the node or node pool that registered the run, by its public id;
     * `gateway`, the gateway its choice resolved to, by its public id (`ng_`);
-    * `gateway_url`, the gateway's address: `https://`, a host and an optional port;
+    * `gateway_url`, the gateway's address: `https://`, a host and an optional port, at
+      most 300 characters, as the contracts have it (`Apiary.Contract.GatewayUrl`);
     * `gateway_public_key`, the gateway's active keys, one or two, oldest first, each
       `{"alg": "ed25519", "public_key": <base64url>}`;
     * `instance_id`, the instance id the registration was signed from;
@@ -34,7 +35,7 @@ defmodule Apiary.Runs.RunKey do
   in an error.
   """
 
-  alias Apiary.Contract.{Ed25519, SignedMessage}
+  alias Apiary.Contract.{Ed25519, GatewayUrl, SignedMessage}
   alias Apiary.SigningKey
 
   @prefix "qrk_"
@@ -48,7 +49,6 @@ defmodule Apiary.Runs.RunKey do
   @workspace ~r/\Aws_[0-9a-hjkmnp-tv-z]{16}\z/
   @node ~r/\An[dp]_[0-9a-hjkmnp-tv-z]{16}\z/
   @gateway ~r/\Ang_[0-9a-hjkmnp-tv-z]{16}\z/
-  @gateway_url ~r/\Ahttps:\/\/[^\/?#@\s]+\z/
   @public_key ~r/\A[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\z/
   @instance_id ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
@@ -240,10 +240,7 @@ defmodule Apiary.Runs.RunKey do
 
   defp like?(value, pattern), do: is_binary(value) and Regex.match?(pattern, value)
 
-  defp gateway_url?(url) do
-    like?(url, @gateway_url) and
-      match?({:ok, %URI{host: host}} when is_binary(host) and host != "", URI.new(url))
-  end
+  defp gateway_url?(url), do: GatewayUrl.valid?(url)
 
   defp public_keys(entries) when is_list(entries) and length(entries) in 1..2 do
     keys =

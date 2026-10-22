@@ -659,10 +659,15 @@ members, in order: `version` 1, `signer` (the signing key's fingerprint), `run_i
 (`ng_`), `gateway_url` (the gateway's `https` origin), `gateway_public_key` (the gateway's
 active keys, at most two, oldest first, each `{"alg":"ed25519","public_key":…}`),
 `instance_id` (the registration's), `issued` and `attach_by` (UTC, whole seconds;
-`attach_by` is `issued` and the window granted). A gateway's address is always
-`https://` (`Apiary.Nodes.Node.validate_url/1`, `nodes_url_check`). A run key that cannot
-be made, one that would be longer than 2048 characters for a very long address, say, is
-`503`, logged as "no run key could be made for a run through a gateway: too_long".
+`attach_by` is `issued` and the window granted). A gateway's address is the contracts'
+`gateway_url` (`Apiary.Contract.GatewayUrl`): `https://`, a host of DNS labels or an IPv6
+address in brackets, and an optional port from 1 to 65535, with no user information,
+percent-encoding, underscore, trailing dot, path or query, at most 300 characters. A
+gateway's form checks it (`Apiary.Nodes.Node.validate_url/1`), the database holds every
+gateway written since the check to it (`nodes_url_check`), and a run key is made only
+for such an address. A run key that cannot be made, for a gateway written before with an
+address outside that rule, say, is `503`, logged as "no run key could be made for a run
+through a gateway: invalid".
 
 The run is stored as a direct one is, on the registering key's node and instance, but
 with no interval, no answer digest and no Forager version unless `User-Agent` names one,

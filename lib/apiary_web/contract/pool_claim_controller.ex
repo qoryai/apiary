@@ -32,7 +32,9 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #      absent without one. `run_code` is the code the machine redeems for the run's key
   #      (`Apiary.Runs.RunCode`), given once, in this answer, and logged nowhere;
   #      `gateway_url` is the address of the gateway the pool's choice resolved to at the
-  #      claim; `max_lifetime_minutes` is 1470 for every claim, the most the contract
+  #      claim, the run key's `gateway_url`, which the run key is made only for when it
+  #      passes `Apiary.Contract.GatewayUrl.valid?/1`, else the claim is `503`
+  #      `unavailable`; `max_lifetime_minutes` is 1470 for every claim, the most the contract
   #      allows, the minutes the starter lets the machine live.
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
