@@ -1,6 +1,7 @@
 defmodule Apiary.Contract.GatewayUrlTest do
   # A gateway's address as the contracts take it (`Apiary.Contract.GatewayUrl`): the
-  # pattern of the vendored provisioner contract's `gateway_url`, character for character,
+  # pattern of the vendored provisioner contract's `gateway_url` and of Forager's run key's,
+  # character for character,
   # and each case the rule accepts or refuses, through the check a gateway's form, a run
   # key and a claim answer use.
   use ExUnit.Case, async: true
@@ -15,6 +16,19 @@ defmodule Apiary.Contract.GatewayUrlTest do
   test "the pattern and the length are the vendored claim answer's gateway_url" do
     rule =
       @claim_answer |> File.read!() |> Jason.decode!() |> get_in(["properties", "gateway_url"])
+
+    assert GatewayUrl.pattern() == rule["pattern"]
+    assert GatewayUrl.max_length() == rule["maxLength"]
+  end
+
+  @tag :contract
+  test "the pattern and the length are Forager's run key gateway_url" do
+    rule =
+      Apiary.ContractFixtures.contract_dir()
+      |> Path.join("run-key.schema.json")
+      |> File.read!()
+      |> Jason.decode!()
+      |> get_in(["properties", "gateway_url"])
 
     assert GatewayUrl.pattern() == rule["pattern"]
     assert GatewayUrl.max_length() == rule["maxLength"]
