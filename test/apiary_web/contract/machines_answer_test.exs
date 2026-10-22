@@ -147,19 +147,19 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     Jason.decode!(run.run_documents)
   end
 
-  # The target row of the work items `explore!/1` queues.
+  # The target row of the work items `explore!/1` queues: tickets.example.com, acme/shop.
   defp target!(ctx) do
     Repo.insert!(%Target{
       organisation_id: ctx.scope.organisation.id,
       workspace_id: ctx.scope.workspace.id,
-      system: "forge.example.com",
+      system: "tickets.example.com",
       path: "acme/shop",
       first_seen_at: DateTime.utc_now()
     })
   end
 
   defp explore!(ctx) do
-    work_item = work_item_fixture(ctx.scope)
+    work_item = work_item_fixture(ctx.scope, %{target_system: "tickets.example.com"})
     {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     work_item
   end
