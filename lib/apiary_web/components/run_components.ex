@@ -2266,8 +2266,8 @@ defmodule ApiaryWeb.RunComponents do
   defp key_label(_scope, _run), do: nil
 
   @doc """
-  place_of/1 is where a run ran, as the run's header, its preview and its Timeline show
-  it: `{:pool, name}`, the name of the node pool whose dispatch handed the run over;
+  place_of/1 is where a run ran, as the run's header, its preview, its Timeline and its
+  Details tab's Host row show it: `{:pool, name}`, the name of the node pool whose dispatch handed the run over;
   `{:host, host}`, the host the run's `run.started` reported, for every other run; nil
   for a run with neither. A pool's run whose node was not read is nil, so that the host,
   a machine of the pool's operator, is not shown in the pool's name's place.

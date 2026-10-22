@@ -835,7 +835,15 @@ defmodule ApiaryWeb.RunLive.Show do
             ><.external_text text={@run.runtime_version} /></span>
           </dd>
           <dt>{gettext("Host")}</dt>
-          <dd class="font-mono"><.external_text text={@run.host} />{if !@run.host, do: na()}</dd>
+          <%!-- A pool's run shows its pool's name (`place_of/1`). --%>
+          <%= case place_of(@run) do %>
+            <% {:pool, name} -> %>
+              <dd id="rail-host">{name}</dd>
+            <% {:host, host} -> %>
+              <dd id="rail-host" class="font-mono"><.external_text text={host} /></dd>
+            <% nil -> %>
+              <dd id="rail-host" class="font-mono">{na()}</dd>
+          <% end %>
           <dt>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>

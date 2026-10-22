@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
   @moduledoc """
-  Where a run ran, as the run page's header, its Run started item and the runs list's
-  preview show it (`ApiaryWeb.RunComponents.place_of/1`): for a run a node pool's dispatch
+  Where a run ran, as the run page's header, its Run started item, its Details tab's Host
+  row and the runs list's preview show it (`ApiaryWeb.RunComponents.place_of/1`): for a run a node pool's dispatch
   handed over, the pool's name, never the host its `run.started` reported; for any other
   run, that host.
   """
@@ -74,6 +74,17 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
 
     lv = run_page(conn, scope, local_run)
     assert lv |> element("#e-1 .q-s") |> render() =~ "on dev-laptop, without a wall"
+  end
+
+  test "the Details tab's Host row: a pool's run shows the pool's name, any other run its host",
+       %{conn: conn, scope: scope, pool_run: pool_run, local_run: local_run} do
+    lv = run_page(conn, scope, pool_run)
+    assert has_element?(lv, "#run-details #rail-host", "mac-pool")
+    refute has_element?(lv, "#run-details #rail-host.font-mono")
+    refute lv |> element("#run-details #rail-host") |> render() =~ "dev-laptop"
+
+    lv = run_page(conn, scope, local_run)
+    assert has_element?(lv, "#run-details #rail-host.font-mono > bdi", "dev-laptop")
   end
 
   test "the runs list's preview: a pool's run shows the pool's name, any other run its host",
