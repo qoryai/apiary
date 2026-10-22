@@ -156,7 +156,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
 
       # The members, in the fixture's order.
-      fixture = @fixtures |> Path.join("claim-answer/explore.json") |> File.read!()
+      fixture = @fixtures |> Path.join("claim-answer/default-machine.json") |> File.read!()
 
       assert conn.resp_body
              |> Jason.decode!(objects: :ordered_objects)
@@ -175,9 +175,11 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "version" => 1,
                "revision" => 1,
                "dispatch_id" => dispatch.public_id,
+               "pool_id" => ctx.pool.public_id,
                "lease_until" => lease_until,
                "run_code" => run_code,
-               "gateway_url" => "https://gateway.example"
+               "gateway_url" => "https://gateway.example",
+               "max_lifetime_minutes" => 1470
              }
 
       assert [head, fingerprint] = String.split(run_code, ".")
@@ -240,7 +242,10 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
 
       assert members(conn.resp_body) ==
-               @fixtures |> Path.join("claim-answer/prebuild.json") |> File.read!() |> members()
+               @fixtures
+               |> Path.join("claim-answer/default-machine.json")
+               |> File.read!()
+               |> members()
 
       dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^run.id)
       lease_until = dispatch.lease_until |> DateTime.truncate(:second) |> DateTime.to_iso8601()
@@ -249,9 +254,11 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "version" => 1,
                "revision" => 1,
                "dispatch_id" => dispatch.public_id,
+               "pool_id" => ctx.pool.public_id,
                "lease_until" => lease_until,
                "run_code" => answer["run_code"],
-               "gateway_url" => "https://gateway.example"
+               "gateway_url" => "https://gateway.example",
+               "max_lifetime_minutes" => 1470
              }
 
       assert Repo.get!(DispatchRun, run.id).state == :claimed
@@ -269,7 +276,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
 
       assert members(conn.resp_body) ==
-               ~w(version revision dispatch_id lease_until run_code gateway_url max_lifetime_minutes)
+               ~w(version revision dispatch_id pool_id lease_until run_code gateway_url max_lifetime_minutes)
 
       assert answer["max_lifetime_minutes"] == 1470
       assert claimed_run_id(conn) == run.run_id

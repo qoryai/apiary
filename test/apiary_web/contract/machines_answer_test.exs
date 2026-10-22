@@ -159,7 +159,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       |> Map.get(:values)
       |> Enum.map(&elem(&1, 0))
 
-  @claim ~w(version revision dispatch_id lease_until)
+  @claim ~w(version revision dispatch_id pool_id lease_until)
   @code ~w(run_code gateway_url max_lifetime_minutes)
 
   describe "an explore run" do
