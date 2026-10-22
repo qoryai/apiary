@@ -437,12 +437,10 @@ defmodule Apiary.Release do
   The instance is set up first with the organisation name Acme (slug `acme`). The demo
   fills Acme and its workspace Main: about 6,000 runs over 56 days in about 150
   repositories; 11 more people at every level, Dana (`dana@example.com`) an owner and so
-  an instance admin, and two invitations pending; nodes and their keys; with the
-  `security` feature, the security policy; and, with the `secrets` feature, secrets,
-  variables and integrations. With mail set, each person the demo adds gets a log-in
-  email, and each person it invites gets an invitation email. Refused, with nothing made,
-  on an instance that is not set up, whose organisation is not Acme, or whose Main is
-  missing or has runs or nodes.
+  an instance admin, and two invitations pending; and nodes and their keys. With mail
+  set, each person the demo adds gets a log-in email, and each person it invites gets an
+  invitation email. The command makes nothing and stops when the instance is not set up,
+  its organisation is not Acme, or its workspace Main already has runs or nodes.
 
   Nobody knows the password of an account the demo makes: each has a random one. The
   output says how to print a link that sets Dana's (`password_link/1`).
@@ -450,11 +448,10 @@ defmodule Apiary.Release do
   A release command runs no endpoint and no job queue. The demo's links take the
   configured address (`Apiary.Setup.public_url/0`). The processes of the application
   that the demo's steps call are started for the command, Oban among them with no queue
-  and no plugin: the job the demo queues for each integration release it requests is
-  inserted and not run here, and the demo fetches the release itself
-  (`Apiary.Integrations.fetch_release/2`), as under Mix. The instance's queue runs the
-  job later and finds the release fetched. Prints one line on stderr as it starts, then
-  what it made; returns `{:ok, summary}` or `{:error, reason}`.
+  and no plugin: a job the demo queues is inserted and not run here, and the demo does
+  that job's work itself, as under Mix. The instance's queue runs the job later and finds
+  nothing left to do. Prints one line on stderr as it starts, then what it made; returns
+  `{:ok, summary}` or `{:error, reason}`.
   """
   @spec demo(keyword) :: {:ok, map} | {:error, atom}
   def demo(opts \\ []) do

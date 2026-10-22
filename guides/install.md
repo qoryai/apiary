@@ -810,9 +810,6 @@ The command fills Acme and its workspace Main: about 6,000 runs over the last 56
 about 150 repositories, 11 more people at every level and two invitations pending, and
 nodes with their access keys. Dana (`dana@example.com`) is an owner of Acme, the instance's
 organisation, so an instance admin.
-<!-- feature: security -->
-Main gets a security policy with its history.
-<!-- /feature -->
 With mail set, each person the demo adds gets a log-in email, and each person it invites
 gets an invitation email, at their example address. The runs take the longest to write;
 `Apiary.Release.demo(runs: 1000)` writes 1,000 instead.
@@ -824,8 +821,8 @@ that sets the password:
 bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
 ```
 
-The command refuses an instance that is not set up, whose organisation is not Acme, or
-whose workspace Main has runs or nodes already, and then makes nothing. It prints what it
+The command makes nothing and stops when the instance is not set up, its organisation is
+not Acme, or its workspace Main already has runs or nodes. Otherwise it prints what it
 made, and last the address to open.
 
 ## Backups

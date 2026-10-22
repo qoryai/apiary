@@ -324,6 +324,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     settle(ctx)
 
+    # With the security feature, the workspace gets the demo's security policy and its
+    # history, under the task and under the release command (`Apiary.Release.demo/1`).
     if Apiary.Features.on?(:security), do: policy(scope, keys)
 
     Shell.info("""
