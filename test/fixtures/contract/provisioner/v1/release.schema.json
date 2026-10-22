@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/release.schema.json",
+  "title": "Release",
+  "description": "The body of the signed POST /v1/dispatches/<dispatch_id>/release, application/json: the starter gives the dispatch back before it says dispatched, dispatched.schema.json, and says why, for example when it cannot create the machine. A release is accepted only before dispatched, and only while the run code is not redeemed. It ends the dispatch and frees the slot the dispatch took at the claim, claim.schema.json. The run code stops working the moment the release ends the dispatch. Whether the work is claimed again is the control plane's decision: the starter does not ask for it. Any later request naming that dispatch answers 410 gone, except a machine log, which the control plane accepts after the dispatch ends, machine-log.schema.json. After dispatched, a release is refused 409 machine_exists. Once the run code is redeemed, a release is refused 409 machine_exists even before dispatched, because a machine exists. A release and a redemption of the same dispatch take effect one after the other, never both. A release that takes effect first makes the run code unusable. After a redemption that takes effect first, the release is refused 409 machine_exists. A release is one step, so of two concurrent releases of a dispatch that has neither ended nor gone stale, one is answered with the signed 204 and acts, and the other is answered 410 gone, the dispatch having ended. A dispatch_id that is unknown, or of another node pool than the key's, is refused 403 forbidden, with the same signed body either way, so nobody learns whether an id exists; the control plane decides this before any 409 or 410. The signature with the pool's access key and that check authorise the request, not the id. A release is refused for the first of these that applies, in this order: 403 forbidden, as above; 410 gone, the dispatch ended, as refusal.schema.json describes; 409 machine_exists, dispatched was accepted for the dispatch, or the machine redeemed its run code; 409 lease_expired, the dispatch is stale: neither dispatched nor the redemption of the run code came before lease_until, as claim-answer.schema.json describes. On success the control plane answers a signed 204 with no body. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time",
+    "reason"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the starter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "reason": {
+      "description": "Why the starter gives the dispatch back, display text, 1 to 200 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+    }
+  }
+}

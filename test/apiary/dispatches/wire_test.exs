@@ -14,11 +14,11 @@ defmodule Apiary.Dispatches.WireTest do
   @base "https://qory.dev/contracts/"
 
   # The vendored schemas, by their URL under the contracts' base: the provisioner
-  # contract's, and the integration contract's it refers to, vendored beside them under
-  # `integration/v1/` from the same commit of the integrations; and Forager's, which the
-  # handover answer's `run_settings` refers to, from Forager's contract directory
-  # (`Apiary.ContractFixtures.contract_dir/0`), so a test that builds the handover
-  # answer's schema is tagged `:contract`. Nothing is fetched.
+  # contract's, the run contract's documents under `run/v1/`, and the integration
+  # contract's they refer to under `integration/v1/`; and Forager's, which the documents'
+  # `run_settings` refers to, from Forager's contract directory
+  # (`Apiary.ContractFixtures.contract_dir/0`), so a test that builds the documents'
+  # schema is tagged `:contract`. Nothing is fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -45,15 +45,15 @@ defmodule Apiary.Dispatches.WireTest do
 
   # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
   # schema its name starts with, the longest that matches.
-  @schemas ~w(claim-answer handover-answer claim dispatched handover release machine-log refusal)
+  @schemas ~w(claim-answer claim dispatched release machine-log refusal)
 
   defp schema_of("invalid/" <> name),
     do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
 
   defp schema_of(path), do: path |> Path.split() |> hd()
 
-  defp validator(schema) do
-    JSV.build!(%{"$ref" => @base <> "provisioner/v1/#{schema}.schema.json"},
+  defp validator(schema, contract \\ "provisioner/v1") do
+    JSV.build!(%{"$ref" => @base <> "#{contract}/#{schema}.schema.json"},
       resolver: {Resolver, [@vendored | forager()]},
       formats: true
     )
@@ -105,7 +105,8 @@ defmodule Apiary.Dispatches.WireTest do
   }
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "022bfb7ced59a916bd97f1e9e1a20ff403b63d3e"},
+          {"provisioner/v1", "aeca423af8d8621317081568b23c978ac81121db"},
+          {"run/v1", "aeca423af8d8621317081568b23c978ac81121db"},
           {"integration/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"},
           {"explore/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"}
         ] do
@@ -125,24 +126,25 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   @tag :contract
-  test "a work item's url in an answer is https, or http to a loopback address alone" do
-    loopback = Jason.decode!(fixture("claim-answer/explore-loopback.json"))
+  test "a work item's url in a run's documents is https, or http to a loopback address alone" do
+    documents = Path.join(@vendored, "run/v1/fixtures")
+    read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
+    valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
+
+    loopback = read.("documents/explore-loopback.json")
     assert loopback["work_item"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
-    assert valid?("claim-answer", loopback)
+    assert valid?.(loopback)
 
-    http = Jason.decode!(fixture("invalid/claim-answer-work-item-url-http.json"))
+    http = read.("invalid/documents-work-item-url-http.json")
     assert http["work_item"]["url"] == "http://control.example.com/work-items/wi_8Kx2mQ4vT9"
-    refute valid?("claim-answer", http)
-
-    # The same rule holds in a handover's answer, whose work item is the same definition.
-    answer = Jason.decode!(fixture("handover-answer/explore.json"))
+    refute valid?.(http)
 
     for url <- [
           "http://localhost/work-items/wi_8Kx2mQ4vT9",
           "http://[::1]:4000/work-items/wi_8Kx2mQ4vT9",
           "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
         ] do
-      assert valid?("handover-answer", put_in(answer, ["work_item", "url"], url)), url
+      assert valid?.(put_in(loopback, ["work_item", "url"], url)), url
     end
 
     for url <- [
@@ -150,7 +152,7 @@ defmodule Apiary.Dispatches.WireTest do
           "http://127.0.0.2/work-items/wi_8Kx2mQ4vT9",
           "ftp://127.0.0.1/work-items/wi_8Kx2mQ4vT9"
         ] do
-      refute valid?("handover-answer", put_in(answer, ["work_item", "url"], url)), url
+      refute valid?.(put_in(loopback, ["work_item", "url"], url)), url
     end
   end
 
@@ -167,28 +169,23 @@ defmodule Apiary.Dispatches.WireTest do
           Map.has_key?(@readers, kind),
           do: path
 
-    # The bodies of the handover, a route Qory Apiary does not serve.
-    handovers = for "handover/" <> _ = path <- all, do: path
-
     invalid_requests =
       for "invalid/" <> name = path <- all, not String.contains?(name, "-answer-"), do: path
 
     answers =
       for path <- all,
-          String.starts_with?(path, ["claim-answer/", "handover-answer/"]) or
+          String.starts_with?(path, "claim-answer/") or
             (String.starts_with?(path, "invalid/") and String.contains?(path, "-answer-")),
           do: path
 
     refusals = for "refusal/" <> _ = path <- all, do: path
 
-    assert Enum.sort(requests ++ handovers ++ invalid_requests ++ answers ++ refusals) ==
-             Enum.sort(all)
+    assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
 
-    assert length(requests) == 8
-    assert length(handovers) == 2
-    assert length(invalid_requests) == 19
-    assert length(answers) == 64
-    assert length(refusals) == 7
+    assert length(requests) == 7
+    assert length(invalid_requests) == 11
+    assert length(answers) == 16
+    assert length(refusals) == 3
   end
 
   test "each refusal fixture is a code, written as the control plane writes a refusal" do
@@ -201,15 +198,7 @@ defmodule Apiary.Dispatches.WireTest do
         code
       end
 
-    assert Enum.sort(codes) == [
-             "handed_over",
-             "machine_log_exists",
-             "no_gateway",
-             "not_handed_over",
-             "not_prebuild",
-             "run_mismatch",
-             "unavailable"
-           ]
+    assert Enum.sort(codes) == ["machine_exists", "machine_log_exists", "no_gateway"]
   end
 
   describe "the contract's fixtures" do
@@ -228,7 +217,7 @@ defmodule Apiary.Dispatches.WireTest do
                "dispatched/without-external.json",
                "machine-log/truncated.json",
                "machine-log/whole.json",
-               "release/retry.json"
+               "release/no-capacity.json"
              ]
     end
 
@@ -256,11 +245,11 @@ defmodule Apiary.Dispatches.WireTest do
       assert dispatched(fixture("dispatched/without-external.json")) ==
                {:ok, %{time: ~U[2026-10-15 12:00:20Z], external: nil}}
 
-      assert release(fixture("release/retry.json")) ==
+      assert release(fixture("release/no-capacity.json")) ==
                {:ok,
                 %{
                   time: ~U[2026-10-15 12:02:00Z],
-                  reason: "The job could not start: no runner was free."
+                  reason: "The machine could not be created: the provider had no capacity."
                 }}
     end
 
@@ -285,7 +274,8 @@ defmodule Apiary.Dispatches.WireTest do
                "machine-log-undefined-member.json",
                "machine-log-version-2.json",
                "machine-log-without-log.json",
-               "release-reason-nul.json"
+               "release-reason-nul.json",
+               "release-with-retry.json"
              ]
     end
   end

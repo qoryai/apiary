@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/machine-log.schema.json",
+  "title": "Machine log",
+  "description": "The body of the signed POST /v1/dispatches/<dispatch_id>/machine-log, application/json: the starter uploads the log of the machine it created for the dispatch, from the machine's creation to its end. The control plane accepts one machine log per dispatch, before or after the dispatch ends, and shows it as plain text, to instance admins only. Before the upload, the starter replaces each line that contains qak_, qrk_ or qecr_. The body is plain JSON, not compressed, because the signature covers the raw body. JSON escaping can make the body larger than the log: a line feed is written as 2 bytes. So the starter keeps the last part of the log such that the log is at most 768 KiB as UTF-8 and the request body, as serialized and sent, is at most 1 MiB, the request limit, refusal.schema.json, and sets truncated when it cut anything. A dispatch_id that is unknown, or of another node pool than the key's, is refused 403 forbidden, with the same signed body either way, so nobody learns whether an id exists. The signature with the pool's access key and that check authorise the request, not the id. A machine log is refused for the first of these that applies, in this order: 403 forbidden, as above; 409 machine_log_exists, the dispatch has a machine log already. It is never refused 410 gone or 409 lease_expired. On success the control plane answers a signed 204 with no body. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time",
+    "log"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the starter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+    },
+    "log": {
+      "description": "The log text, at most 768 KiB as UTF-8: the lines of the machine the starter created for the dispatch, from the machine's creation to its end, with each line that contains qak_, qrk_ or qecr_ replaced. The starter keeps the last part of the log such that the log is at most 768 KiB as UTF-8 and the request body, as serialized and sent, is at most 1 MiB, refusal.schema.json, and sets truncated when it cut anything. The text contains no U+0000, which the control plane refuses, invalid_request. This schema checks the bound in characters, at most 786432.",
+      "type": "string",
+      "maxLength": 786432,
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+    },
+    "truncated": {
+      "description": "true when the starter cut the log, so that log is at most 768 KiB as UTF-8 and the request body, as serialized and sent, is at most 1 MiB, and log is the last part of the log. Absent or false when log is the whole log.",
+      "type": "boolean"
+    }
+  }
+}

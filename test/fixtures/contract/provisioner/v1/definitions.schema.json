@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/provisioner/v1/definitions.schema.json",
+  "title": "Provisioner definitions",
+  "description": "The values the provisioner contract's schemas share, by name under $defs. Some of them refer in turn to the integration contract's definitions, https://qory.dev/contracts/integration/v1/definitions.schema.json. The requests of this contract come from a node pool's starter: the program that serves a node pool, claims requests for machines, creates a machine for each and passes the machine its run code and gateway URL. Every request is signed with the pool's access key: a key of the pool kind, node_kind pool in https://qory.dev/contracts/forager/v1/enrolment.schema.json, enrolled for the node pool, which the starter holds. The key belongs to one node pool, the np_ node_id of its enrolment answer: the key's node pool. The integration contract's definitions describe the signature, the replay rule, the time window, the unsigned answers and the pinning of the server key for the access key that signs that contract's requests and the program that holds it; they apply to the pool's access key and the starter as they do to that key and that program. The answers are signed under the control plane's server key, or left unsigned, exactly as the answers to the integration contract's requests are. X-Qory-Contract-Version names the revision of this contract the starter implements, and the claim answer, claim-answer.schema.json, whose content the revision bounds, names it in its signed body, as the integration contract's definitions describe for that contract. The control plane serves revision 1 alone, and answers with revision 1: a request whose X-Qory-Contract-Version names another revision is refused 400 unsupported_contract_version, refusal.schema.json. The run code and the gateway URL in the claim answer, claim-answer.schema.json, are part of that revision. A retry is built anew, as they describe. An integer is written without a fraction or an exponent, and no object repeats a member, at any depth; the control plane refuses either, 400 invalid_request. An unsigned answer is handled as they describe. This document validates nothing itself.",
+  "$defs": {
+    "dispatch_id": {
+      "description": "The dispatch's public id in the control plane, dp_ and 16 lower-case Crockford base32 characters: one claim, a request for one machine. Each claim makes a new dispatch, with a new dispatch_id, and a dispatch_id is never claimed again. The id authorises nothing: the request's signature with the pool's access key and the control plane's check that the dispatch is of the key's node pool authorise a request.",
+      "type": "string",
+      "pattern": "^dp_[0-9a-hjkmnp-tv-z]{16}$"
+    },
+    "pool_id": {
+      "description": "A node pool's id, np_, as the Forager contract writes one.",
+      "type": "string",
+      "pattern": "^np_[0-9a-hjkmnp-tv-z]{16}$"
+    },
+    "job_system": {
+      "description": "The name of the system that runs a job, as the starter names it, such as example-ci, stored as data and never parsed: a lower-case ASCII letter, then lower-case ASCII letters, digits, spaces and hyphens, 1 to 40 characters in all.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9 -]{0,39}$"
+    }
+  }
+}

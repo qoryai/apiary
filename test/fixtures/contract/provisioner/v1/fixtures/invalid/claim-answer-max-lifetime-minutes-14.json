@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "revision": 1,
+  "dispatch_id": "dp_8w3k0q9t2v7m4r6x",
+  "pool_id": "np_f1xt0re000000000",
+  "lease_until": "2026-10-15T12:05:00Z",
+  "run_code": "qecr_01JB8Z3K5Q7R9T2V4W6X8Y0A1C.uoES-kuj1vk0sq0qoGlmAg",
+  "gateway_url": "https://gateway.example:8443",
+  "max_lifetime_minutes": 14
+}
