@@ -19,10 +19,6 @@ defmodule Apiary.Release do
   """
   @app :apiary
 
-  # The demo's connections to the database: its history is written by 6 processes at once
-  # (`demo/0`), and a release command's repository has 2 unless told.
-  @demo_pool 8
-
   @doc """
   Runs every pending migration, `bin/migrate`'s and `Apiary.Release.Migrator`'s at boot:
   the core's and the edition's folders (`c:Apiary.Edition.migrations_paths/0`), which
@@ -441,9 +437,10 @@ defmodule Apiary.Release do
   The instance is set up first with the organisation name Acme (slug `acme`). The demo
   fills Acme and its workspace Main: 6,000 runs over 56 days in about 150 repositories;
   people at every level, Dana (`dana@example.com`) an owner and so an instance admin, and
-  two invitations pending; nodes and their keys; the security policy; and, with the
-  `secrets` feature, secrets, variables and integrations. With mail set, the people it
-  adds get their log-in and invitation emails. Refused, with nothing made, on an instance
+  two invitations pending; nodes and their keys; with the `security` feature, the
+  security policy; and, with the `secrets` feature, secrets, variables and integrations.
+  With mail set, each person the demo adds gets a log-in email, and each person it
+  invites gets an invitation email. Refused, with nothing made, on an instance
   that is not set up, whose organisation is not Acme, or whose Main is missing or has
   runs or nodes.
 
@@ -470,8 +467,13 @@ defmodule Apiary.Release do
 
     fill = fn _repo -> with_demo_processes(fn -> demo_now(opts) end) end
 
+    # The history is written by `concurrency:` processes at once (6), and a release
+    # command's repository has 2 connections unless told: two more than the writers, and
+    # 8 at least.
+    pool_size = max(Keyword.get(opts, :concurrency, 6) + 2, 8)
+
     for repo <- repos() do
-      {:ok, result, _} = Ecto.Migrator.with_repo(repo, fill, pool_size: @demo_pool)
+      {:ok, result, _} = Ecto.Migrator.with_repo(repo, fill, pool_size: pool_size)
       result
     end
     |> List.first()
