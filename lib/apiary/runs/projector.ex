@@ -453,8 +453,9 @@ defmodule Apiary.Runs.Projector do
 
   # A run a workspace's queue handed over whose pass folded its exit ends the queue's run
   # with it, once its passes have committed, in a separate transaction that locks the
-  # queue's run first (`Apiary.Dispatches.RunEnd.run_ended/1`); the workspaces whose slots
-  # changed are told. A failure is logged and the lost-run check ends it at its next
+  # queue's run before the registered run, after its work item or, for a prebuild, its
+  # environment record (`Apiary.Dispatches.RunEnd.run_ended/1`); the workspaces whose
+  # slots changed are told. A failure is logged and the lost-run check ends it at its next
   # tick (`Apiary.Dispatches.RunEnd.lose/1`).
   defp end_handed_over(%Run{dispatch_run_id: id, exited_at: %DateTime{}} = run)
        when is_binary(id) do

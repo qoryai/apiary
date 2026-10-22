@@ -6,19 +6,23 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   # delete it again before they end; the adapters, which outlive an organisation, by what
   # they made.
   #
-  # The rules under test: every end locks the run of the queue first, then the registered
-  # run, then writes the dispatches. So the ends these tests start together take turns:
-  # the backstop with an exit's projection, and the lost-run check with the liveness check
-  # and two releases. The first decides the end cause, the slot is freed once, by the
-  # first end, and none of them deadlocks. No test here races a release with an exit's
-  # projection. A release after the handover is refused `machine_exists`, or `gone` once
-  # the run ended, and ends nothing. For a prebuild handed over, the lost-run check holds
-  # its environment record before the run of the queue, as a release and a trigger of its
-  # collection hold it: so the check takes turns with them at the record, the record keeps
-  # the end that decided, and none of them deadlocks. What a run gave is stored by its end
-  # or by a settle (`Apiary.Dispatches.Settle`), which locks the run of the queue alone: it
-  # takes turns with a projection and the lost-run check there, and what is stored is the
-  # same whichever comes first.
+  # The rules under test: an end of a run that is not a prebuild holds its work item
+  # `FOR KEY SHARE` first, as a release holds it `FOR UPDATE` first; then every end locks
+  # the run of the queue, then the registered run, then writes the dispatches. So the ends
+  # these tests start together take turns: the backstop with an exit's projection; the
+  # lost-run check with the liveness check and two releases; two releases with an exit's
+  # projection, whose end writes the run of the queue twice; and all of them at once. The
+  # first decides the end cause, the slot is freed once, by the first end, and none of
+  # them deadlocks: the tests of a release and an exit's end also assert that no
+  # statement on any connection fails with `deadlock_detected` (40P01). A release after
+  # the handover is refused `machine_exists`, or `gone` once the run ended, and ends
+  # nothing. For a prebuild handed over, the lost-run check holds its environment record
+  # before the run of the queue, as a release and a trigger of its collection hold it: so
+  # the check takes turns with them at the record, the record keeps the end that decided,
+  # and none of them deadlocks. What a run gave is stored by its end or by a settle
+  # (`Apiary.Dispatches.Settle`), which locks the run of the queue alone: it takes turns
+  # with a projection and the lost-run check there, and what is stored is the same
+  # whichever comes first.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -119,6 +123,111 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         assert {:ok, %Run{}} = projected
         {cause, _run} = ended!(ctx, handed)
         assert cause in [:lost, :run_ended]
+      end
+    end
+  end
+
+  describe "a release and an exit's end" do
+    # Each statement that fails with a deadlock (40P01), on any connection, said to the
+    # test as `{:deadlock, query}`.
+    setup do
+      handler = "run-end-races-deadlocks-#{System.unique_integer([:positive])}"
+      test = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn
+          _event, _measurements, %{result: {:error, %Postgrex.Error{postgres: pg}}} = meta, _
+          when pg.code == :deadlock_detected ->
+            send(test, {:deadlock, meta.query})
+
+          _event, _measurements, _meta, _config ->
+            :ok
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+    end
+
+    defp exited!(handed),
+      do: event_fixture(handed.run, 9, "run.exited", %{"state" => "failed", "exit_code" => 1})
+
+    # The run of the queue ended once, `run_ended`, by the exit, and no release acted or
+    # failed: each is `machine_exists`, or `gone` once the run ended.
+    defp ended_by_exit!(ctx, handed, releases) do
+      assert Enum.all?(releases, &(&1 in [{:error, :machine_exists}, {:error, :gone}]))
+      assert {:run_ended, %Run{}} = ended!(ctx, handed)
+      refute_received {:deadlock, _query}
+    end
+
+    test "the work item held as a release holds it: the exit's end waits there, before the run of the queue",
+         ctx do
+      handed = handed_over!(ctx)
+      exited!(handed)
+      work_item_id = handed.dispatch_run.work_item_id
+
+      {first, first_pid} =
+        hold(fn ->
+          Repo.one!(from w in WorkItem, where: w.id == ^work_item_id, lock: "FOR UPDATE")
+        end)
+
+      second = start(fn -> Projector.project(handed.run) end)
+      await_blocked(second.backend, first_pid)
+
+      # Waiting on the work item, the end holds nothing of the run of the queue yet.
+      assert %DispatchRun{state: :handed_over} =
+               continue(first, fn ->
+                 Repo.one(
+                   from d in DispatchRun,
+                     where: d.id == ^handed.dispatch_run.id,
+                     lock: "FOR UPDATE NOWAIT"
+                 )
+               end)
+
+      commit(first)
+
+      assert {:ok, %Run{}} = Task.await(second.task)
+      ended_by_exit!(ctx, handed, [])
+    end
+
+    test "two releases and the exit's projection at once: one end, none deadlocks", ctx do
+      for _round <- 1..8 do
+        handed = handed_over!(ctx)
+        exited!(handed)
+
+        sides = [
+          fn -> {:projection, Projector.project(handed.run)} end,
+          fn -> {:release, release(ctx, handed)} end,
+          fn -> {:release, release(ctx, handed)} end
+        ]
+
+        answers = together(Enum.take(sides, sides(length(sides))))
+
+        assert {:projection, {:ok, %Run{}}} = List.keyfind(answers, :projection, 0)
+        ended_by_exit!(ctx, handed, for({:release, answer} <- answers, do: answer))
+      end
+    end
+
+    test "every end at once, with the exit's projection: one end, none deadlocks", ctx do
+      for _round <- 1..8 do
+        handed = handed_over!(ctx)
+        exited!(handed)
+        at = past_backstop(handed)
+
+        # The projection first, so a pool too small for every side still runs it.
+        sides = [
+          fn -> {:projection, Projector.project(handed.run)} end,
+          fn -> {:check, Liveness.check(at)} end,
+          fn -> {:lose, RunEnd.lose(at)} end,
+          fn -> {:release, release(ctx, handed)} end,
+          fn -> {:release, release(ctx, handed)} end
+        ]
+
+        answers = together(Enum.take(sides, sides(length(sides))))
+        assert {:projection, {:ok, %Run{}}} = List.keyfind(answers, :projection, 0)
+        ended_by_exit!(ctx, handed, for({:release, answer} <- answers, do: answer))
       end
     end
   end

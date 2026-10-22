@@ -152,10 +152,10 @@ defmodule Apiary.Runs.RunCode do
     )
   end
 
-  # Under the lock of the run of the queue, as every path that ends one takes it first
-  # (`Apiary.Dispatches.RunEnd`), then the run's projection lock, then its row
-  # `FOR UPDATE`, as an attach takes them. A run deleted meanwhile, with its code, is no
-  # code; nor is a code relayed by another node than the run's gateway.
+  # Under the lock of the run of the queue, which every path that ends one takes before
+  # the registered run (`Apiary.Dispatches.RunEnd`), then the run's projection lock, then
+  # its row `FOR UPDATE`, as an attach takes them. A run deleted meanwhile, with its code,
+  # is no code; nor is a code relayed by another node than the run's gateway.
   defp redeem_locked(
          %{id: id, dispatch_run_id: dispatch_run_id},
          request,

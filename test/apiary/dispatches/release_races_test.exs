@@ -10,11 +10,13 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   # made.
   #
   # The rules under test: a release holds its run's work item or environment record
-  # first, then frees what lapsed of its run, then locks the run of the queue, then its
-  # dispatch, as every end, `dispatched`, the redemption and the sweep lock them; so a
-  # release and any of them take turns, whoever comes second finds what the first wrote,
-  # one release acts, a release after the handover is `machine_exists`, the slot is freed
-  # once, and none deadlocks.
+  # first, as the end by the run's exit holds the same row first (a work item
+  # `FOR KEY SHARE`, `Apiary.Dispatches.RunEnd`), then frees what lapsed of its run, then
+  # locks the run of the queue, then its dispatch, as every end, `dispatched`, the
+  # redemption and the sweep lock them; so a release and any of them take turns, whoever
+  # comes second finds what the first wrote, one release acts, a release after the
+  # handover is `machine_exists`, the slot is freed once, and none deadlocks. The release
+  # and the exit's end at once, several rounds, are in `Apiary.Dispatches.RunEndRacesTest`.
   use ExUnit.Case, async: false
 
   import Ecto.Query
