@@ -13,7 +13,7 @@ defmodule Apiary.Environments.Record do
   # `built_target_system` and `built_target_path` are the target that build was built
   # for, the registered run's target when it was recorded, or none. `built_queued_at` is
   # when the prebuild that made the image took the `environment_ref` it built, its run of
-  # the queue's `environment_ref_at`, written with the image, or none: a `prebuilt` or a
+  # the queue's `environment_ref_at`, written with the image, or none: a build or a
   # failure of a prebuild that took its ref before it leaves the record as it is
   # (`Apiary.Environments.newer_build?/2`). `failure_cause`
   # (`failure_causes/0`), `failure_reason` (a starter's release alone has one) and

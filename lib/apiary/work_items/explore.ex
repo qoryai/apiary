@@ -11,9 +11,8 @@ defmodule Apiary.WorkItems.Explore do
   # `step/4` is where one run of a take in stands:
   #
   #   * waiting or claimed: `:queued`; handed over: `:running`;
-  #   * ended lost: `:lost`; ended released, by its starter after its handover or before
-  #     it without a retry: `:cancelled`; ended with its work item closed or undone, before
-  #     its handover: `:cancelled`;
+  #   * ended lost: `:lost`; ended released: `:cancelled`; ended with its work item closed
+  #     or undone, before its handover: `:cancelled`;
   #   * ended before its handover because the handover could not form what the run is
   #     made from (`variables_invalid`, `ticket_gone`, `inputs_invalid`): `:no_result`
   #     with the outcome `:error`, and no registered run;

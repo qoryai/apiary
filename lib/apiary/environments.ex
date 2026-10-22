@@ -86,9 +86,8 @@ defmodule Apiary.Environments do
   #
   # ## A build recorded: `record_build/4`
   #
-  # `record_build(dispatch_run, build, built_target, now)` records the build a prebuild's
-  # `prebuilt` reported (`Apiary.Dispatches.Prebuilt`) on the record of its pool and
-  # collection, which the caller locked first (`lock_record/2`): `image`, `size`, `commit`,
+  # `record_build(dispatch_run, build, built_target, now)` records the build of a prebuild
+  # on the record of its pool and collection, which the caller locked first (`lock_record/2`): `image`, `size`, `commit`,
   # `reported_ref`, the `environment_ref` the job reported, kept as it is even when it
   # differs from `queued_ref`, `built_at`, `now`, and the built target
   # (`built_target_system`, `built_target_path`), the registered run's target. The last
@@ -110,7 +109,7 @@ defmodule Apiary.Environments do
   # prebuild that took its `environment_ref` after `dispatch_run` took its
   # (`built_queued_at` later than the run's `environment_ref_at`), asked under the record's
   # lock: the run's ref is older than the image's, and an older build never replaces a
-  # newer one. Then neither a `prebuilt` nor a
+  # newer one. Then neither a build nor a
   # failure of `dispatch_run` is written on the record: the image and the last build's
   # failure stay as they are, and the run ends as it would otherwise. A record that is
   # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and
@@ -301,9 +300,9 @@ defmodule Apiary.Environments do
 
   ## A build recorded
 
-  # record_build/4 records the build of the prebuild `dispatch_run` its `prebuilt`
-  # reported, built for `built_target` (nil for none), at `now`, inside the caller's
-  # transaction, which locked the record first (the moduledoc).
+  # record_build/4 records the build of the prebuild `dispatch_run`, built for
+  # `built_target` (nil for none), at `now`, inside the caller's transaction, which locked
+  # the record first (the moduledoc).
   @doc false
   @spec record_build(
           Apiary.Dispatches.DispatchRun.t(),

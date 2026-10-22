@@ -188,8 +188,8 @@ defmodule Apiary.Runs.Outcome do
   # and the outcome never write over each other: whichever comes second reads the other's.
   # A run a workspace's queue handed over has the queue's run locked before them, as every
   # path that locks the two does, a prebuild's environment record before that, and ends it
-  # with the outcome (`run_ended`) unless it ended before, lost, released or, for a
-  # prebuild, by its prebuilt, a prebuild so ended recording its last build as failed
+  # with the outcome (`run_ended`) unless it ended before, lost or released, a prebuild so
+  # ended recording its last build as failed
   # (`Apiary.Dispatches.RunEnd`): the workspaces whose slots that changed are told once the
   # transaction commits.
   defp store(%Run{id: id, dispatch_run_id: dispatch_run_id}, access_key, outcome, digest, now) do

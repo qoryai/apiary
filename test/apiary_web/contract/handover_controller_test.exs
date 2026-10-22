@@ -584,8 +584,7 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
     body = %{
       "version" => 1,
       "time" => now_time(),
-      "reason" => "The job could not start.",
-      "retry" => true
+      "reason" => "The job could not start."
     }
 
     conn = post(ctx, dispatch, "release", body)

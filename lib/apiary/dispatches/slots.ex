@@ -87,8 +87,8 @@ defmodule Apiary.Dispatches.Slots do
   # item before its runs; for a prebuild, its environment record `FOR UPDATE`, as 3.
   # has it. Then the free of its run, which locks that record again where its lease
   # lapsed, its run of the queue, its dispatch, and after its handover the run
-  # registered for it (`Apiary.Dispatches.RunEnd.released/2`). A prebuild given back with
-  # retry before its handover locks the one that waits of its collection and pool after
+  # registered for it (`Apiary.Dispatches.RunEnd.released/2`). A prebuild given back
+  # before its handover locks the one that waits of its collection and pool after
   # its dispatch (`wait_again/3`): under the record it holds, which every path that locks
   # the one that waits holds first, but a claim, whose `FOR UPDATE SKIP LOCKED` waits on
   # none. A path that locks a work item locks it before any run of the queue, never after.
@@ -285,7 +285,7 @@ defmodule Apiary.Dispatches.Slots do
   end
 
   # wait_again/3 takes the claimed `prebuilds`, whose dispatch lapsed or was released
-  # with retry before its handover, back to the queue, under the lock of their
+  # before its handover, back to the queue, under the lock of their
   # environment records, which the caller holds, per collection and pool: while another
   # prebuild waits, each ends `superseded`, and the one that waits takes the record's
   # `queued_ref`; else one waits again, with its `run_id` and its `queued_at`, and the

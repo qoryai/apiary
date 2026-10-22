@@ -156,7 +156,7 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
     assert stored?(upload(ctx, handed_over, body()))
 
     ended = dispatch!(ctx)
-    :ok = Dispatches.release(ctx.key, ended.public_id, %{reason: "stopped", retry: false})
+    :ok = Dispatches.release(ctx.key, ended.public_id, %{reason: "stopped"})
     assert %Dispatch{ended_at: %DateTime{}} = Repo.get!(Dispatch, ended.id)
     assert stored?(upload(ctx, ended, body()))
 

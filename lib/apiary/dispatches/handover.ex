@@ -27,8 +27,7 @@ defmodule Apiary.Dispatches.Handover do
   #
   # The release asks the same, in the same transaction (`transact/5`), and holds one row
   # between steps 2 and 3: its run's work item or environment record
-  # (`Apiary.Dispatches.Release`). So does a prebuilt, which holds a prebuild's
-  # environment record (`Apiary.Dispatches.Prebuilt`).
+  # (`Apiary.Dispatches.Release`).
   #
   # ## `dispatched/3`
   #
@@ -186,8 +185,7 @@ defmodule Apiary.Dispatches.Handover do
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
     "dispatch.handover": "a handover could not be made",
-    "dispatch.release": "a release could not be made",
-    "dispatch.prebuilt": "a prebuilt could not be recorded"
+    "dispatch.release": "a release could not be made"
   }
   # The attach window of a run registered by its handover, in seconds.
   @attach_seconds 600

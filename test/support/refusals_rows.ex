@@ -477,7 +477,6 @@ defmodule ApiaryWeb.RefusalsRows do
         :"dispatch.dispatched",
         :"dispatch.handover",
         :"dispatch.release",
-        :"dispatch.prebuilt",
         :"dispatch.machine_log"
       ],
       token: [:"invitation.accept"],

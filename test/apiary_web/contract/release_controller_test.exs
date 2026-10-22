@@ -85,13 +85,8 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
     )
   end
 
-  defp body(retry),
-    do: %{
-      "version" => 1,
-      "time" => now_time(),
-      "reason" => "The job could not start.",
-      "retry" => retry
-    }
+  defp body(_retry),
+    do: %{"version" => 1, "time" => now_time(), "reason" => "The job could not start."}
 
   defp release(ctx, dispatch, retry, opts \\ []) do
     body = Keyword.get(opts, :body, body(retry))

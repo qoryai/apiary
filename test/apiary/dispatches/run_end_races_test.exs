@@ -294,8 +294,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     defp release_prebuild(ctx, handed) do
       fn ->
         Dispatches.release(ctx.place.key, handed.dispatch.public_id, %{
-          reason: @reason,
-          retry: false
+          reason: @reason
         })
       end
     end

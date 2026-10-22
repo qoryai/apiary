@@ -404,8 +404,7 @@ the queue was given, and so is its instance id; its labels and its run variables
 the target, the work item's or the prebuild's collection's, and what it is about from the
 step and the work item, never from the request, whose body is `version`, `time` and,
 optionally, `run_code`;
-a prebuild's input is the `environment_ref` its run of the queue was queued for, which the
-starter reports back, unchanged, in its `prebuilt`;
+a prebuild's input is the `environment_ref` its run of the queue was queued for;
 its run key names the gateway and the pool, with an attach window of 600 seconds, and is
 given once, in the signed `200`, with `Cache-Control: no-store`. A handover whose body has
 `run_code` `true` is answered `version`, `revision`, `run_id`, `run_code` and `step` alone,
@@ -440,19 +439,17 @@ handover ends it `released`; a `dev.qory.run.refused` once folded ends it `run_r
 for a run that is not a prebuild; and the lost-run check ends it `lost` when its gateway
 never attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
 backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
-(Liveness). A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
-registered run ends: the registered run is left as it is, to its starter's outcome, which
-decides its state as any outcome does; the lost-run check passes it by from then on, and the
-liveness rules alone find it lost should neither an outcome nor an exit come. A prebuild's
+(Liveness). A prebuild's
 `dev.qory.run.exited` folds onto its registered run as any exit does and ends nothing of the
-queue: its one session may be the fetch, whose exit comes before the build runs. So its
-`prebuilt`, a release, its starter's outcome, or the lost-run check ends it, the check at its
-`attach_by` or at its backstop with none of the three by then, whatever its exit; a release
-or a `prebuilt` after its exit acts as before it. A prebuild the lost-run check ends `lost`
+queue: its one session may be the fetch, whose exit comes before the build runs. So a
+release, its starter's outcome, or the lost-run check ends it, the check at its
+`attach_by` or at its backstop with neither of the two by then, whatever its exit; a release
+after its exit acts as before it. No request records the image a prebuild built: the
+provisioner contract has no `prebuilt`. A prebuild the lost-run check ends `lost`
 records that end as its last build's failure on the environment record of its collection
 and of the pool that claimed it, `lost` at its `attach_by` and `timed_out` at its backstop,
-with no reason; a prebuild its starter's outcome ends, `run_ended`, with neither its
-`prebuilt` nor a release first, records it there too, `lost`, with no reason. The record
+with no reason; a prebuild its starter's outcome ends, `run_ended`, with no release
+first, records it there too, `lost`, with no reason. The record
 keeps its last good build, nothing is queued, and the check and the outcome hold that record
 before the run of the queue, as a release does; a prebuild whose `environment_ref` is older
 than the record's image's records no failure, and ends all the same. Its dispatch ends with it, with the same end
@@ -487,8 +484,9 @@ next tick. A prebuild's refusal ends nothing of the queue. A work item's Explore
 run ended `run_refused` as a run with no result and the outcome `error`, as it reads the
 end causes of a handover that cannot form a run (`Apiary.WorkItems.Explore`).
 
-The release gives a run back (`release.schema.json`), with the starter's `reason` and
-`retry`, in one transaction (`Apiary.Dispatches.Release`). The refusals come in the
+The release gives a run back (`release.schema.json`), with the starter's `reason`, in one
+transaction (`Apiary.Dispatches.Release`). Whether the run waits again is Qory Apiary's to
+decide, and the body has no member for it. The refusals come in the
 contract's order: `403` `forbidden` for an unknown dispatch, another pool's, or a key the
 action is refused to, one answer, decided before any lock and writing nothing; then a lease
 that lapsed unswept is freed, and that is committed whatever follows; `410` `gone` for a dispatch that ended, of a run that
@@ -498,16 +496,14 @@ dispatch not handed over that is stale or past its `lease_until`; and `503` `una
 last, after which nothing was written. A dispatch handed over is never `409`, whatever its
 `lease_until`: the contract answers a release after the handover as a success, so
 `lease_expired` refuses a dispatch not handed over alone. Else the signed `204`, with no
-body. Before the handover the dispatch ends `released` and its slot is freed: an
-explore run with `retry` waits again with the same `run_id` and `queued_at`, and without it
-ends `released`, its work item left exploring; a prebuild with `retry` waits again with its
-environment record's `queued_ref`, or ends `superseded` while another prebuild of its
-collection and pool waits, and without it ends `released`, the record keeping the last
-build as failed with the reason. After the handover the run ends with its registered run,
-`released`, as above; an explore run with `retry` then queues the next run of its take in,
-with a new `run_id`, only while its work item explores that take in, and queues nothing
-once the take in's runs are used up; a prebuild queues nothing, whatever `retry` says, and
-its record keeps the last build as failed with the reason, its last good build as it was.
+body. Before the handover the dispatch ends `released`, its slot is freed, and the run
+waits again, as when its lease lapses: an explore run with the same `run_id` and
+`queued_at`, its work item left exploring; a prebuild with its environment record's
+`queued_ref`, or it ends `superseded` while another prebuild of its collection and pool
+waits, and no failure is recorded. After the handover the run ends with its registered run,
+`released`, as above, and nothing is queued: an explore run's work item reads the run as
+cancelled, and a member may send it to Explore again; a prebuild's record keeps the last
+build as failed with the reason, its last good build as it was.
 The contract has the reason recorded as a prebuild's failure and says nothing of an explore
 run's: Qory Apiary keeps every release's reason in its audit entry too, and shows it
 nowhere. A
@@ -515,44 +511,6 @@ release holds its run's work item, or a prebuild's environment record, before an
 the queue, then locks as the handover does; a work item is never locked after a run of the
 queue, so a release, a close, the handover and the sweep take turns, and of two releases
 at once one acts and the other is `410` `gone`.
-
-The prebuilt reports the image a prebuild built (`prebuilt.schema.json`), with the run's
-`run_id`, the `image`, its `size`, the `environment_ref` the job read from its handover's
-input and the `commit` it built from, in one transaction (`Apiary.Dispatches.Prebuilt`).
-The refusals come in the contract's order: `403` `forbidden` for
-an unknown dispatch, another pool's, or a key the action is refused to, one answer, decided
-before any lock and writing nothing; then a lease that lapsed unswept is freed, and that is
-committed whatever follows; `410` `gone` for a dispatch that ended, of a run that ended, a
-second prebuilt among them, or of a run whose outcome came first, its exit not counting;
-`409`
-`lease_expired` for a dispatch not handed over that is stale or past its `lease_until`;
-`409` `not_prebuild` for a dispatch of another step; `409` `not_handed_over` for a dispatch
-not handed over yet; `409` `run_mismatch` for a `run_id` that is not the dispatch's run;
-and `503` `unavailable` last, after which nothing was written. Else the signed `204`, with
-no body. The run of the queue ends, `prebuilt`, as above, its dispatch with it and its slot
-freed once; the registered run is not cancelled and records no `released_at`, and its
-gateway's attach is `410` from then on, but for the gateway that attached it, whose repeat
-is answered as before. The prebuild's environment record
-then keeps the build: the image, its size, its commit, when it was recorded, the
-`environment_ref` reported, as it is even where it differs from the record's `queued_ref`,
-and the target it was built for, the registered run's target, which its handover named
-from the collection's target as it was then. The last failure is cleared and nothing is
-queued, so a reported ref that differs never queues a prebuild again. `retired_at` is
-cleared only when the prebuild took its `environment_ref` after the record was retired: the
-ref came back and this build is of it, so the record is served again. A prebuild that took
-its ref before the retirement, claimed before the ref went absent and landing late, is
-stored and the record stays retired, even when a new ref has come since. The record also keeps when the prebuild that made the image took the
-`environment_ref` it built: when it was queued, or later, when the ref changed while it
-waited or it waited again with the record's `queued_ref` (`dispatch_runs.environment_ref_at`;
-its `queued_at`, which orders the queue, stays). A `prebuilt`, or a release's failure, of a
-prebuild that took its ref before that leaves the record as it is, the image and the last
-failure, and the run ends all the same, answered as above. The
-audit entry, by the pool's key, about the registered run, keeps the dispatch's public id,
-the size, the commit and the `environment_ref` reported, and is written only where the build
-was recorded; the image is on the record alone. A prebuilt holds the prebuild's environment record before anything of
-the queue, then locks as the release does, so a prebuilt, a release, the sweep and the end
-of the collection take turns, and of two prebuilts at once one acts and the other is `410`
-`gone`.
 
 The machine log is what the machine a starter created for a dispatch wrote, uploaded once
 per dispatch, before or after the dispatch ends, whether or not a run opened
@@ -732,7 +690,7 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
-| `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue (A run of the queue, under The run endpoint), lost after its attach, or its events pruned; or its record is gone; or it is a prebuild whose `prebuilt` ended its run of the queue | empty |
+| `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue (A run of the queue, under The run endpoint), lost after its attach, or its events pruned; or its record is gone; or it is a prebuild whose run of the queue ended `prebuilt`, as a report of the image it built ended one before that report left the provisioner contract | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |

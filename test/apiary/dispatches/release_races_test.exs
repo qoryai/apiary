@@ -120,11 +120,8 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   defp release(ctx, claimed, retry),
     do: fn -> release_now(ctx, claimed, retry) end
 
-  defp release_now(ctx, %{dispatch: dispatch}, retry) do
-    Dispatches.release(ctx.key, dispatch.public_id, %{
-      reason: "The job could not start.",
-      retry: retry
-    })
+  defp release_now(ctx, %{dispatch: dispatch}, _retry) do
+    Dispatches.release(ctx.key, dispatch.public_id, %{reason: "The job could not start."})
   end
 
   defp handover(ctx, %{dispatch: dispatch}) do

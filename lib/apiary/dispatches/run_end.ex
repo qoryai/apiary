@@ -4,7 +4,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # The end of a run of the queue once it was handed over (`Apiary.Dispatches.DispatchRun`,
   # `:handed_over`), with its dispatches and the slot its dispatch holds. The run registered
   # for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names it) ends in one of four ways,
-  # a prebuild in one of four, and the first to come decides the end cause:
+  # a prebuild in one of three, and the first to come decides the end cause:
   #
   # - its starter's outcome, or its exit once folded: `run_ended`. The outcome's write ends
   #   it in its transaction (`hold/1`, `lock/1`, then `finish/5`, from
@@ -33,20 +33,10 @@ defmodule Apiary.Dispatches.RunEnd do
   #   registered run stays failed with that code as its reason (`Apiary.Runs.Fold`). A
   #   refusal that comes after an outcome, an exit or any other end changes nothing, and a
   #   prebuild's refusal ends nothing of the queue;
-  # - for a prebuild, its starter's `prebuilt` (`prebuilt/2`, from
-  #   `Apiary.Dispatches.Prebuilt`): `prebuilt`. The run of the queue and its dispatch end
-  #   and the slot is freed, but the registered run is left as it is: nothing is set on it,
-  #   and its starter's outcome decides its state as any outcome does, with no end of the
-  #   queue written again. A gateway that
-  #   never attached it is refused `410` from then on (`Apiary.Runs.Attach`); one that
-  #   attached it keeps it. The lost-run check passes it by, as it ended, so it records no
-  #   failure for it either, and a registered run with neither an outcome nor an exit is
-  #   lost by the liveness rules alone. A prebuilt that finds the outcome given is too
-  #   late, as a release is; one after the exit is not;
   # - the lost-run check (`lose/1`, from `Apiary.Runs.Liveness`): `lost`, for a run its
   #   gateway never attached by its `attach_by`, or with neither an outcome nor an exit by
   #   its `backstop_at`, which its attach sets to the attach and `backstop_seconds/1` of its
-  #   step; for a prebuild, with neither its prebuilt, a release nor an outcome by then,
+  #   step; for a prebuild, with neither a release nor an outcome by then,
   #   whatever its exit. The check marks the registered run lost by its rules first; this
   #   ends the run of the queue. It also ends, `run_ended`, one whose outcome or exit came
   #   and whose end was not written, should a projection have stopped between its pass and
@@ -60,13 +50,12 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`Apiary.Environments.record_end_failure/3`): `lost` when its gateway never attached
   # it by its run key's `attach_by`, `timed_out` when nothing ended it by its backstop.
   # Its run of the queue and its dispatch end `lost` either way. A prebuild its starter's
-  # outcome ends, `run_ended`, neither its prebuilt nor a release having come first,
+  # outcome ends, `run_ended`, no release having come first,
   # records its last build's failure there too, `lost`. The record keeps its last good
   # build, and nothing is queued. A prebuild whose ref is older than the record's image's
   # records no failure (`Apiary.Environments.newer_build?/2`, asked under the record's
   # lock), and ends all the same. A prebuild that ends any other way writes nothing here:
-  # its starter's release records its failure itself (`Apiary.Dispatches.Release`), and
-  # its prebuilt its build.
+  # its starter's release records its failure itself (`Apiary.Dispatches.Release`).
   #
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
@@ -84,7 +73,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # **Locks.** For a prebuild, the lost-run check, an outcome and a projection's end first
   # hold its environment record `FOR UPDATE` (`hold/1`, `Apiary.Environments.lock_record/2`),
   # from the run of the queue read without a lock, for its columns that never change, as a
-  # release and a prebuilt hold it (`Apiary.Dispatches.Release`, `Apiary.Dispatches.Prebuilt`):
+  # release holds it (`Apiary.Dispatches.Release`):
   # so each of them and a trigger of its collection take turns at the record, and none
   # waits for another at the run. Then the run of the
   # queue is locked `FOR UPDATE`, then the registered run (its row, and for a release its
@@ -197,36 +186,6 @@ defmodule Apiary.Dispatches.RunEnd do
   # for any other cause.
   defp detail(:run_refused, %Run{reason: reason}), do: reason
   defp detail(_cause, _run), do: nil
-
-  # prebuilt/2 ends the run of the queue `dispatch_run_id`, a prebuild whose starter
-  # reported the image it built after its handover, `prebuilt`, at `now`, inside the
-  # caller's transaction (the moduledoc): answered as `released/2` answers, but the
-  # registered run, locked as for a release, is left as it is.
-  @doc false
-  @spec prebuilt(Ecto.UUID.t(), DateTime.t()) ::
-          {:ok, %{run: Run.t() | nil, changed: [Ecto.UUID.t()]}}
-          | {:error, :ended | :not_handed_over | :not_found}
-  def prebuilt(dispatch_run_id, %DateTime{} = now) when is_binary(dispatch_run_id) do
-    in_transaction!()
-
-    case lock(dispatch_run_id) do
-      nil ->
-        {:error, :not_found}
-
-      %DispatchRun{state: :handed_over} = dispatch_run ->
-        run = registered(dispatch_run.id)
-
-        if too_late?(dispatch_run, run),
-          do: {:error, :ended},
-          else: {:ok, %{run: run, changed: end_locked(dispatch_run, :prebuilt, now)}}
-
-      %DispatchRun{state: :ended} ->
-        {:error, :ended}
-
-      %DispatchRun{} ->
-        {:error, :not_handed_over}
-    end
-  end
 
   # released/2 ends the run of the queue `dispatch_run_id` released by its starter after
   # its handover, at `now`, inside the caller's transaction (the moduledoc): `{:ok, %{run:
@@ -429,7 +388,7 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # A prebuild lost: its build failed, `lost` at its run key's `attach_by`, never
   # attached, else `timed_out` at its backstop. A prebuild its starter's outcome ended,
-  # neither its prebuilt nor a release having come first: its build failed, `lost`. The
+  # no release having come first: its build failed, `lost`. The
   # last good build kept either way. A prebuild whose ref is older than the record's
   # image's records nothing.
   defp build_ended(

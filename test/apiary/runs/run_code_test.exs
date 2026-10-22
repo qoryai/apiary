@@ -220,7 +220,7 @@ defmodule Apiary.Runs.RunCodeTest do
 
     test "of a code of a run its starter released", ctx do
       :ok =
-        Dispatches.release(ctx.key, ctx.dispatch.public_id, %{reason: "stopped", retry: false})
+        Dispatches.release(ctx.key, ctx.dispatch.public_id, %{reason: "stopped"})
 
       assert redeem(ctx, ed25519_key_pair(), DateTime.utc_now()) == {:error, :unauthorized}
       assert Repo.get!(Run, ctx.run.id).run_key_payload == nil

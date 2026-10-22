@@ -22,7 +22,6 @@ defmodule Apiary.PoolKeyRoleTest do
     :"dispatch.dispatched",
     :"dispatch.handover",
     :"dispatch.release",
-    :"dispatch.prebuilt",
     :"dispatch.machine_log"
   ]
 
@@ -246,10 +245,9 @@ defmodule Apiary.PoolKeyRoleTest do
       end
     end
 
-    test "leave an audit entry for a handover, a release and a prebuilt, and none for a claim, its start or its machine log" do
+    test "leave an audit entry for a handover and a release, and none for a claim, its start or its machine log" do
       assert Access.action(:"dispatch.handover").audited == true
       assert Access.action(:"dispatch.release").audited == true
-      assert Access.action(:"dispatch.prebuilt").audited == true
       assert {:not, claim} = Access.action(:"dispatch.claim").audited
       assert {:not, dispatched} = Access.action(:"dispatch.dispatched").audited
       assert is_binary(claim) and claim != ""
@@ -258,7 +256,7 @@ defmodule Apiary.PoolKeyRoleTest do
       assert is_binary(machine_log) and machine_log != ""
 
       assert Enum.filter(@dispatch_actions, &Audit.audited?/1) ==
-               [:"dispatch.handover", :"dispatch.release", :"dispatch.prebuilt"]
+               [:"dispatch.handover", :"dispatch.release"]
     end
   end
 

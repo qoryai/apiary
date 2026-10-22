@@ -282,7 +282,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
     end
 
     test "of a run that ended is 401, unsigned", ctx do
-      body = %{"version" => 1, "time" => now_time(), "reason" => "stopped", "retry" => false}
+      body = %{"version" => 1, "time" => now_time(), "reason" => "stopped"}
 
       released =
         signed_post(build_conn(), ctx.key.key_id, ctx.seed, body,

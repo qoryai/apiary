@@ -82,11 +82,8 @@ defmodule Apiary.Dispatches.ReleaseTest do
     {dispatch, run}
   end
 
-  defp release(key, dispatch, retry, opts \\ []) do
-    Dispatches.release(key, id(dispatch), %{
-      reason: Keyword.get(opts, :reason, @reason),
-      retry: retry
-    })
+  defp release(key, dispatch, _retry, opts \\ []) do
+    Dispatches.release(key, id(dispatch), %{reason: Keyword.get(opts, :reason, @reason)})
   end
 
   defp id(%Dispatch{public_id: public_id}), do: public_id
@@ -246,7 +243,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       entry!(ctx, dispatch, {"node", ctx.pool.id}, %{
         "step" => "explore",
-        "retry" => true,
         "handed_over" => false,
         "waits" => true
       })
@@ -270,7 +266,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       entry!(ctx, dispatch, {"node", ctx.pool.id}, %{
         "step" => "explore",
-        "retry" => false,
         "handed_over" => false,
         "ended" => true
       })
@@ -300,7 +295,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       entry!(ctx, dispatch, {"node", ctx.pool.id}, %{
         "step" => "prebuild",
-        "retry" => true,
         "handed_over" => false,
         "waits" => true
       })
@@ -328,7 +322,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       entry!(ctx, dispatch, {"node", ctx.pool.id}, %{
         "step" => "prebuild",
-        "retry" => true,
         "handed_over" => false,
         "superseded" => true
       })
@@ -359,7 +352,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       entry!(ctx, dispatch, {"node", ctx.pool.id}, %{
         "step" => "prebuild",
-        "retry" => false,
         "handed_over" => false,
         "ended" => true
       })
@@ -384,7 +376,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       entry!(ctx, dispatch, {"run", run.id}, %{
         "step" => "explore",
-        "retry" => true,
         "handed_over" => true,
         "next_run" => next.run_id
       })
@@ -400,7 +391,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
       entry!(ctx, dispatch, {"run", run.id}, %{
         "step" => "explore",
-        "retry" => false,
         "handed_over" => true,
         "ended" => true
       })

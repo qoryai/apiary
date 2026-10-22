@@ -5,7 +5,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
   # Adapters; and the Activity filter's words for the work item comments, the handover,
-  # the release, the prebuilt, a build asked for, an adapter installed and a set-up
+  # the release, a build asked for, an adapter installed and a set-up
   # started.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
@@ -390,7 +390,6 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"dispatch.handover", "Runs handed over"} in options
       assert {"dispatch.release", "Runs given back"} in options
-      assert {"dispatch.prebuilt", "Images recorded"} in options
 
       assert {"target.set_further_repositories", "Also read"} in options
       assert {"target.rebuild_environment", "Builds asked for"} in options
@@ -417,7 +416,6 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"collection.set_backlog",
             :"dispatch.handover",
             :"dispatch.release",
-            :"dispatch.prebuilt",
             :"target.set_further_repositories",
             :"target.rebuild_environment",
             :"adapter.install",

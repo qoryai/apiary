@@ -5,7 +5,7 @@ defmodule Apiary.Dispatches.DispatchRun do
   # `run_id` is the run's id, a UUID Qory gives it when it queues the run, unique on the
   # instance: the `run_id` the contract carries, and, once the run is handed over, the run
   # id of the run registered for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names this
-  # row). A run released before its handover with retry, or whose lease lapsed, waits
+  # row). A run released before its handover, or whose lease lapsed, waits
   # again with the same `run_id`; any other new run is a new row with a new one.
   #
   # `step` is the step the run is for, in the contract's pattern. `take_in` is the take in
@@ -58,8 +58,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   # waiting (`Apiary.Dispatches.Slots`); `variables_invalid`, `ticket_gone` and
   # `inputs_invalid`, a claimed run whose handover could not form its run variables, its
   # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone;
-  # `prebuilt`, a prebuild handed over whose starter reported the image it built
-  # (prebuilt.schema.json), its registered run left to its outcome; `provider_gone`,
+  # `prebuilt`, a prebuild handed over that a report of the image it built ended, which
+  # no request makes any more, its registered run left to its outcome; `provider_gone`,
   # `runtime_unserved`, `key_gone` and `model_gone`, a claimed explore run whose model
   # choice its handover could not form: its model provider is gone, fails its integrity
   # code, does not apply to the workspace, has a description the catalogue changed since

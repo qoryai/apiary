@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.Contract.PoolRequestTest do
-  # A node pool's starter's signed requests to the provisioner contract's five routes,
+  # A node pool's starter's signed requests to the provisioner contract's four routes,
   # through `ApiaryWeb.Contract.AdapterRequest` with `kind: :pool`: the signature under the
   # pool's access key, the refusals in their order, the time's window, the replay rule,
   # every other kind of key refused as an unknown key is, the answers signed but a 401, and
   # the routes where the feature is off. A claim accepted, with an empty queue and no
-  # wait, is answered `204`, signed; a `dispatched`, a handover, a release or a prebuilt
-  # accepted, of a dispatch no pool has, `403` `forbidden`, signed. Every request names
+  # wait, is answered `204`, signed; a `dispatched`, a handover or a release accepted, of a
+  # dispatch no pool has, `403` `forbidden`, signed. Every request names
   # revision 3 of the provisioner contract, the one served, unless a test says otherwise.
   # Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -29,8 +29,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     @claim,
     @dispatch <> "/dispatched",
     @dispatch <> "/handover",
-    @dispatch <> "/release",
-    @dispatch <> "/prebuilt"
+    @dispatch <> "/release"
   ]
   @unauthorized %{"error" => "unauthorized"}
   @not_found %{"error" => "not_found"}
@@ -64,16 +63,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
     cond do
       String.ends_with?(target, "/release") ->
-        Map.merge(base, %{"reason" => "The job could not start.", "retry" => true})
-
-      String.ends_with?(target, "/prebuilt") ->
-        Map.merge(base, %{
-          "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
-          "image" => "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16),
-          "size" => 734_003_200,
-          "environment_ref" => "env-1",
-          "commit" => "9c1e4a7b"
-        })
+        Map.merge(base, %{"reason" => "The job could not start."})
 
       true ->
         base
@@ -102,8 +92,8 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   defp used_at(key), do: Repo.get!(AccessKey, key.id).last_used_at
 
   # An accepted request's answer: a claim of an empty queue with no wait, `204` with no
-  # body; a `dispatched`, a handover, a release or a prebuilt of `@dispatch`, which no pool
-  # has, `403` `forbidden`.
+  # body; a `dispatched`, a handover or a release of `@dispatch`, which no pool has, `403`
+  # `forbidden`.
   defp accepted?(conn, @claim), do: conn.status == 204 and conn.resp_body == ""
   defp accepted?(conn, _target), do: json_response(conn, 403) == @forbidden
 
@@ -128,7 +118,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   end
 
   describe "a verified request" do
-    test "on each route is accepted: a claim of an empty queue 204, a dispatched, a handover, a release or a prebuilt of a dispatch no pool has 403 forbidden, signed",
+    test "on each route is accepted: a claim of an empty queue 204, a dispatched, a handover or a release of a dispatch no pool has 403 forbidden, signed",
          ctx do
       for target <- @targets do
         conn = signed(ctx, target, body(target))
@@ -137,7 +127,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       end
 
       # Each was accepted: its signature recorded, and the key's use.
-      assert seen_count() == 5
+      assert seen_count() == length(@targets)
       assert %DateTime{} = used_at(ctx.key)
     end
 

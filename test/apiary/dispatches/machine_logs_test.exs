@@ -97,7 +97,7 @@ defmodule Apiary.Dispatches.MachineLogsTest do
 
     test "is accepted after the dispatch ended", ctx do
       dispatch = dispatch!(ctx)
-      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "stopped", retry: false})
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "stopped"})
       assert %Dispatch{ended_at: %DateTime{}} = Repo.get!(Dispatch, dispatch.id)
       assert upload(ctx, dispatch) == :ok
     end

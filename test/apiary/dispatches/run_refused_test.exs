@@ -82,8 +82,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
       assert {:error, :gone} =
                Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: true
+                 reason: "The job could not start."
                })
 
       assert [%DispatchRun{attempt: 1, end_cause: :run_refused}] = runs_of(handed.work_item)
@@ -117,8 +116,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
       assert {:error, :gone} =
                Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: true
+                 reason: "The job could not start."
                })
 
       assert_live(handed)
@@ -166,8 +164,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
       assert :ok =
                Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: true
+                 reason: "The job could not start."
                })
 
       assert [_first, %DispatchRun{state: :waiting, attempt: 2} = next] =
@@ -254,8 +251,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
       assert :ok =
                Dispatches.release(ctx.key, handed.dispatch.public_id, %{
-                 reason: "The job could not start.",
-                 retry: false
+                 reason: "The job could not start."
                })
 
       assert_ended(handed, :released)

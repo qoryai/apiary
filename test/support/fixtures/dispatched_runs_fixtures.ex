@@ -194,24 +194,6 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
-  What a prebuilt of `dispatch_run` reports, as `Apiary.Dispatches.prebuilt/3` takes it:
-  its `run_id`, the `environment_ref` it was queued for, an image pinned
-  by its digest, its size and a commit; `attrs` change any of them.
-  """
-  def prebuilt_meta(%DispatchRun{} = dispatch_run, attrs \\ %{}) do
-    Map.merge(
-      %{
-        run_id: dispatch_run.run_id,
-        image: "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16),
-        size: 734_003_200,
-        environment_ref: dispatch_run.environment_ref,
-        commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
-      },
-      Map.new(attrs)
-    )
-  end
-
-  @doc """
   The attributes of a run registered through a gateway as of `now`, running: registered
   and its run key issued a minute before, attached 30 seconds before, last heard 5 seconds
   before.

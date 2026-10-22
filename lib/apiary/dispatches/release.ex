@@ -3,7 +3,8 @@ defmodule Apiary.Dispatches.Release do
 
   # A node pool's starter gives back the run of a dispatch its pool claimed (the
   # provisioner contract's `release.schema.json`): `release/3`, with the starter's
-  # `reason` and whether the run should wait for another claim, `retry`.
+  # `reason`. Whether the run waits again is Qory's to decide, not the starter's: before
+  # the handover it always waits again, and after it the run ends.
   # `Apiary.Dispatches` delegates it here.
   #
   # ## What it asks first
@@ -34,18 +35,16 @@ defmodule Apiary.Dispatches.Release do
   #
   # ## Before the handover
   #
-  # The dispatch ends, `released`, and the slot it took is freed once. Then:
+  # The dispatch ends, `released`, and the slot it took is freed once. Then the run waits
+  # again, as when its lease lapses:
   #
-  #   - an explore run, with `retry`, waits in its workspace's queue again with the same
-  #     `run_id` and the same `queued_at`, so it takes back its place in the queue; without
-  #     it, the run ends, `released`, and a stale dispatch of it `run_ended`
-  #     (`Apiary.Dispatches.Handover.end_claimed/3`). The work item is left as it is;
-  #   - a prebuild, with `retry`, goes back to the queue as a lapsed one does, under its
-  #     record's lock (`Apiary.Dispatches.Slots.wait_again/3`): it waits again with the
-  #     record's `queued_ref`, or ends `superseded` while another prebuild of its
-  #     collection and pool waits. No failure is recorded. Without `retry`, the run ends,
-  #     `released`, and the record keeps the last build as failed, `released`, with the
-  #     reason (`Apiary.Environments.record_release_failure/3`).
+  #   - an explore run waits in its workspace's queue again with the same `run_id` and the
+  #     same `queued_at`, so it takes back its place in the queue. The work item is left as
+  #     it is;
+  #   - a prebuild goes back to the queue as a lapsed one does, under its record's lock
+  #     (`Apiary.Dispatches.Slots.wait_again/3`): it waits again with the record's
+  #     `queued_ref`, or ends `superseded` while another prebuild of its collection and
+  #     pool waits. No failure is recorded.
   #
   # ## After the handover
   #
@@ -54,15 +53,9 @@ defmodule Apiary.Dispatches.Release do
   # recorded, the dispatch ends with it and its slot is freed once. A registered run whose
   # outcome or exit came first is too late for it, `{:error, :gone}`, and nothing is
   # written; for a prebuild, whose exit ends nothing of the queue, its outcome alone is.
-  # Then:
-  #
-  #   - an explore run with `retry` queues the next run of its take in
-  #     (`Apiary.Dispatches.queue_next/2`), a new run with a new `run_id`, only while its
-  #     work item is exploring and its take in is the run's; a take in whose runs are used
-  #     up, or one with a run that has not ended, queues nothing, and the release is
-  #     answered as a success all the same;
-  #   - a prebuild, whatever `retry` says, queues nothing: its record keeps the last build
-  #     as failed, `released`, with the reason, and its last good build as it was.
+  # Nothing is queued: an explore run's work item reads its run as cancelled, and a member
+  # may run Explore again; a prebuild's record keeps the last build as failed,
+  # `released`, with the reason, and its last good build as it was.
   #
   # A prebuild whose ref is older than the record's image's records no failure, before the
   # handover or after it (`Apiary.Environments.newer_build?/2`, asked under the
@@ -73,10 +66,10 @@ defmodule Apiary.Dispatches.Release do
   # `:ok` once the release is written, with one entry in the audit trail, in the
   # transaction: `dispatch.release`, by the pool's key, about the run registered for it
   # after the handover, and about the pool before it, its `details` the dispatch's public
-  # id, the step, `retry`, `handed_over`, then what came of the run, one of `waits`
-  # (true: it waits again), `superseded` (true: it ended so), `next_run` (the `run_id` of
-  # the run queued next) or `ended` (true: it ended), and the `reason`. The reason is kept
-  # there and shown nowhere. A refusal writes no entry: it commits what the lapse of step
+  # id, the step, `handed_over`, then what came of the run, one of `waits` (true: it waits
+  # again), `superseded` (true: it ended so) or `ended` (true: it ended), and the
+  # `reason`. The reason is kept there and shown nowhere. A refusal writes no entry: it
+  # commits what the lapse of step
   # 4 wrote, and nothing else. An exception rolls the transaction back, is logged by its
   # module alone, never the key or the reason, and is `{:error, :unavailable}`. Once it
   # commits, the registered run is broadcast as changed and the workspaces whose queue or
@@ -84,13 +77,13 @@ defmodule Apiary.Dispatches.Release do
   #
   # Locks, in the order `Apiary.Dispatches.Slots` gives: the work item or the record,
   # the records a lapse needs, the run of the queue, the dispatch, then after the handover
-  # the registered run, or before it, for a prebuild given back with retry, the one that
-  # waits of its collection and pool, under the record. A work item is never locked after
-  # the run of the queue: the next run is queued under the lock taken first.
+  # the registered run, or before it, for a prebuild, the one that waits of its
+  # collection and pool, under the record. A work item is never locked after the run of
+  # the queue.
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Audit, Dispatches, Environments, Repo}
+  alias Apiary.{Audit, Environments, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, RunEnd, Slots}
@@ -101,18 +94,14 @@ defmodule Apiary.Dispatches.Release do
 
   @type refusal :: :unauthorized | :forbidden | :gone | :lease_expired | :unavailable
 
-  @type release :: %{reason: String.t(), retry: boolean}
+  @type release :: %{reason: String.t()}
 
   # release/3 gives back the run of the dispatch `dispatch_id` of the pool of
-  # `access_key`, with the starter's `reason` and `retry`: the moduledoc.
+  # `access_key`, with the starter's `reason`: the moduledoc.
   @doc false
   @spec release(AccessKey.t(), term, release) :: :ok | {:error, refusal}
-  def release(
-        %AccessKey{key_id: key_id},
-        dispatch_id,
-        %{reason: reason, retry: retry} = release
-      )
-      when is_binary(reason) and is_boolean(retry) do
+  def release(%AccessKey{key_id: key_id}, dispatch_id, %{reason: reason} = release)
+      when is_binary(reason) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
       |> Handover.transact(dispatch_id, :"dispatch.release", &hold/1, fn locked ->
@@ -151,18 +140,18 @@ defmodule Apiary.Dispatches.Release do
   defp give_back(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}} = locked, release) do
     case RunEnd.released(locked.run.id, locked.now) do
       {:ok, %{run: run, changed: changed}} ->
-        {came, queued} = after_end(locked, release)
-        record(locked, release, came, run || locked.key.node)
-        {:done, {:ok, %{run: run}}, changed ++ queued}
+        :ok = build_failed(locked, release)
+        record(locked, release, %{"ended" => true}, run || locked.key.node)
+        {:done, {:ok, %{run: run}}, changed}
 
       {:error, :ended} ->
         {:refused, :gone}
     end
   end
 
-  ## Before the handover
+  ## Before the handover: the run waits again
 
-  defp give_back(%{run: %DispatchRun{step: @prebuild}} = locked, %{retry: true} = release) do
+  defp give_back(%{run: %DispatchRun{step: @prebuild}} = locked, release) do
     changed = end_dispatch(locked)
     run = locked.run
     queued_refs = queued_refs(locked.held, run)
@@ -176,7 +165,7 @@ defmodule Apiary.Dispatches.Release do
     {:done, {:ok, %{run: nil}}, changed}
   end
 
-  defp give_back(%{run: %DispatchRun{} = run} = locked, %{retry: true} = release) do
+  defp give_back(%{run: %DispatchRun{} = run} = locked, release) do
     changed = end_dispatch(locked)
 
     {1, _rows} =
@@ -186,13 +175,6 @@ defmodule Apiary.Dispatches.Release do
       )
 
     record(locked, release, %{"waits" => true}, locked.key.node)
-    {:done, {:ok, %{run: nil}}, changed}
-  end
-
-  defp give_back(%{run: %DispatchRun{} = run} = locked, %{retry: false} = release) do
-    changed = Handover.end_claimed(run, :released, locked.now)
-    :ok = build_failed(locked, release)
-    record(locked, release, %{"ended" => true}, locked.key.node)
     {:done, {:ok, %{run: nil}}, changed}
   end
 
@@ -213,32 +195,6 @@ defmodule Apiary.Dispatches.Release do
 
   defp queued_refs(nil, %DispatchRun{}), do: %{}
 
-  # After the end: the next run of an explore run's take in with retry, while its work
-  # item, held since the start, explores that take in; a prebuild's build recorded as
-  # failed. What came of the run, and the workspaces a queued run changed.
-  defp after_end(%{run: %DispatchRun{step: @prebuild}} = locked, release) do
-    :ok = build_failed(locked, release)
-    {%{"ended" => true}, []}
-  end
-
-  defp after_end(
-         %{
-           run: %DispatchRun{take_in: take_in},
-           held: %WorkItem{state: :exploring, take_in: take_in} = work_item
-         },
-         %{retry: true}
-       ) do
-    case Dispatches.queue_next(work_item, take_in) do
-      {:ok, %DispatchRun{} = next} ->
-        {%{"next_run" => next.run_id}, [next.workspace_id]}
-
-      {:error, none} when none in [:used_up, :running, :no_run] ->
-        {%{"ended" => true}, []}
-    end
-  end
-
-  defp after_end(_locked, _release), do: {%{"ended" => true}, []}
-
   # A prebuild's last build failed, `released`, with the reason; the last good build kept.
   # A prebuild whose ref is older than the record's image's records nothing.
   defp build_failed(
@@ -258,7 +214,6 @@ defmodule Apiary.Dispatches.Release do
       %{
         "dispatch_id" => dispatch.public_id,
         "step" => run.step,
-        "retry" => release.retry,
         "handed_over" => not is_nil(dispatch.handed_over_at),
         "reason" => release.reason
       }

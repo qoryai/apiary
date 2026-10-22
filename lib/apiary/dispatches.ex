@@ -21,7 +21,7 @@ defmodule Apiary.Dispatches do
   # runs, of the same `of`, for the step `step/0`, in the work item's workspace, its row
   # locked `FOR UPDATE` first as `queue/2` locks it, and only then the take in's runs read.
   # Every new run counts toward `of`; a run back in the queue after a lapsed lease or a
-  # release with retry before its handover is the same run, not a new one. While a run of
+  # release before its handover is the same run, not a new one. While a run of
   # the take in has not ended, waiting, claimed or handed over, it is `{:error, :running}`;
   # once the highest attempt is its `of`, `{:error, :used_up}`; a take in with no run is
   # `{:error, :no_run}`, as its first run is `queue/2`'s to write. Two at once for one take
@@ -49,8 +49,7 @@ defmodule Apiary.Dispatches do
   # current take in: `{:error, :claimed}` while a dispatch holds one, neither stale nor
   # ended before its handover, and once one was handed over, after its run ended too (a
   # dispatch keeps `handed_over_at`). Else it ends the take in's waiting runs, end cause
-  # `undone`, a run back in the queue after a lapsed lease or a release with retry among
-  # them, and answers `:ok`; a stale dispatch of a run it ends ends with it, end cause
+  # `undone`, a run back in the queue after a lapsed lease or a release among them, and answers `:ok`; a stale dispatch of a run it ends ends with it, end cause
   # `run_ended`. A lease that lapsed and was not yet swept is lapsed first
   # (`Apiary.Dispatches.Slots.free/2`), so the run it held waits again. The runs of the
   # take in are locked `FOR UPDATE` before their dispatches are looked at, so a claim of
@@ -108,8 +107,8 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
-  # ## The starter on a dispatch: `dispatched/3`, `handover/3`, `release/3`, `prebuilt/3`
-  # and `upload_machine_log/3`
+  # ## The starter on a dispatch: `dispatched/3`, `handover/3`, `release/3` and
+  # `upload_machine_log/3`
   #
   # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
   # `access_key` started the job for a dispatch its pool claimed, and
@@ -122,17 +121,10 @@ defmodule Apiary.Dispatches do
   # ended.
   #
   # `release(access_key, dispatch_id, meta)` gives the dispatch's run back, with the
-  # starter's reason and whether it should wait for another claim, in one transaction, or
-  # refuses in the contract's order (`Apiary.Dispatches.Release`): before the handover the
-  # dispatch ends, `released`, and its run waits again or ends; after it the run ends with
-  # its registered run, `released`, and an explore run with retry queues the next run of
-  # its take in (`queue_next/2`).
-  #
-  # `prebuilt(access_key, dispatch_id, meta)` records the image the job for a prebuild
-  # built, on the environment record of its collection and the pool that claimed it, and
-  # ends its run of the queue and its dispatch, `prebuilt`, the registered run left to its
-  # outcome, in one transaction, or refuses in the contract's order
-  # (`Apiary.Dispatches.Prebuilt`).
+  # starter's reason, in one transaction, or refuses in the contract's order
+  # (`Apiary.Dispatches.Release`): before the handover the dispatch ends, `released`, and
+  # its run waits again; after it the run ends with its registered run, `released`, and
+  # nothing is queued.
   #
   # `upload_machine_log(access_key, dispatch_id, meta)` stores the dispatch's machine log,
   # once per dispatch, before or after the dispatch ends, and `machine_log(scope,
@@ -174,7 +166,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, MachineLogs, Prebuilt, Release}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, MachineLogs, Release}
   alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Nodes.Node
@@ -767,19 +759,11 @@ defmodule Apiary.Dispatches do
     do: Handover.handover(access_key, dispatch_id, meta)
 
   # release/3 gives back the run of the dispatch `dispatch_id`, with the starter's reason
-  # and retry (`Apiary.Dispatches.Release.release/3`).
+  # (`Apiary.Dispatches.Release.release/3`).
   @doc false
   @spec release(AccessKey.t(), term, Release.release()) :: :ok | {:error, Release.refusal()}
   def release(%AccessKey{} = access_key, dispatch_id, meta),
     do: Release.release(access_key, dispatch_id, meta)
-
-  # prebuilt/3 records the image the job for the prebuild of the dispatch `dispatch_id`
-  # built, and ends its run (`Apiary.Dispatches.Prebuilt.prebuilt/3`).
-  @doc false
-  @spec prebuilt(AccessKey.t(), term, Prebuilt.prebuilt()) ::
-          :ok | {:error, Prebuilt.refusal()}
-  def prebuilt(%AccessKey{} = access_key, dispatch_id, meta),
-    do: Prebuilt.prebuilt(access_key, dispatch_id, meta)
 
   # upload_machine_log/3 stores the machine log of the dispatch `dispatch_id`, once
   # (`Apiary.Dispatches.MachineLogs.upload/3`).

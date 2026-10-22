@@ -501,10 +501,6 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @admins
     ),
-    Action.new(:"dispatch.prebuilt", "record the image a prebuild built",
-      feature: :factory,
-      roles: [:pool_key]
-    ),
     Action.new(:"dispatch.machine_log", "upload the log of a claimed run's machine",
       feature: :factory,
       roles: [:pool_key],
@@ -526,7 +522,6 @@ defmodule Apiary.Access do
     :"dispatch.dispatched",
     :"dispatch.handover",
     :"dispatch.release",
-    :"dispatch.prebuilt",
     :"dispatch.machine_log"
   ]
 
