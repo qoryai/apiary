@@ -62,9 +62,9 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
   use ApiaryWeb, :controller
 
   alias Apiary.{AccessKeys, SigningKey}
-  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.Enrolment
-  alias Apiary.Runs.RateLimit
+  alias Apiary.Runs.{RateLimit, RunCode}
   alias ApiaryWeb.Contract.{ContractVersion, SignedAnswer}
 
   @content_type "application/json"
@@ -79,7 +79,10 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
          :ok <- within_rate(origin),
          {:ok, _version} <- version(conn),
          {:ok, request} <- Enrolment.decode(conn.assigns[:raw_body]) do
-      case AccessKeys.enrol(request, origin: origin, code_limit: code_limit()) do
+      case redeem(request, origin) do
+        {:ok, %{run_key: run_key} = redeemed} ->
+          signed(conn, request, 201, run_answer(redeemed, run_key))
+
         {:ok, key} ->
           signed(conn, request, 201, answer(key))
 
@@ -161,7 +164,22 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     end
   end
 
-  # The code's own limit, which `Apiary.AccessKeys.enrol/2` counts once the key is proven.
+  # A run code (`qecr_`) is a run's, redeemed for its run key by `Apiary.Runs.RunCode`; any
+  # other code a node's. A run code is answered in the order above, and steps 10 and 11
+  # never apply to it: its `401` is also a code at or past its 15 minutes, a code of a run
+  # that has ended, and a code redeemed before by another public key; its `201` has the
+  # run's id, its run key and the instance's keys (`Apiary.Contract.Enrolment`,
+  # `run_answer_body/1`), and makes no access key. The same public key is answered the
+  # same run id and run key again while the code's 15 minutes last, with the server's keys
+  # as they are at that moment.
+  defp redeem(%Enrolment{code_head: head} = request, origin) do
+    if EnrolmentCode.run_code?(head),
+      do: RunCode.redeem(request, code_limit: code_limit()),
+      else: AccessKeys.enrol(request, origin: origin, code_limit: code_limit())
+  end
+
+  # The code's limit, which `Apiary.AccessKeys.enrol/2` and `Apiary.Runs.RunCode.redeem/2`
+  # count once the key is proven.
   defp code_limit do
     config = Application.get_env(:apiary, __MODULE__, [])
     [rate: Keyword.get(config, :code_rate, 1), burst: Keyword.get(config, :code_burst, 5)]
@@ -186,6 +204,14 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
       node_id: node.public_id,
       node_kind: node.kind,
       stored_secrets: key.allow_secrets,
+      apiary_public_key: SigningKey.apiary_public_key()
+    })
+  end
+
+  defp run_answer(%{run_id: run_id}, run_key) do
+    Enrolment.run_answer_body(%{
+      run_id: run_id,
+      run_key: run_key,
       apiary_public_key: SigningKey.apiary_public_key()
     })
   end

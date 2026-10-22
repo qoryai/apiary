@@ -485,9 +485,13 @@ defmodule Apiary.Runs.Registration do
   defp held(%Run{} = run), do: {:ok, {:used, run}}
 
   # The same bytes under a key of the node that registered the run: the holder's retry of
-  # the registration it sent, under the key it holds now.
+  # the registration it sent, under the key it holds now. A run handed over with a run code
+  # is given its run key at the code's redemption alone (`Apiary.Runs.RunCode`), so it has
+  # no repeat here.
   defp repeat?(%Run{} = run, access_key, digest),
-    do: run.registration_digest == digest and Sender.registered_by?(run, access_key)
+    do:
+      run.registration_digest == digest and is_nil(run.run_code_sha256) and
+        Sender.registered_by?(run, access_key)
 
   # A repeat is given the answer the registration was given, nothing stored or admitted: the
   # same run key, signed again, for a run through a gateway; the run configuration, as
@@ -786,28 +790,48 @@ defmodule Apiary.Runs.Registration do
   @spec issue_through(Nodes.Node.t(), [AccessKey.t()], map, DateTime.t(), pos_integer | nil) ::
           {:ok, %{run_key: String.t(), through: map}} | {:error, :unavailable}
   def issue_through(%Nodes.Node{} = gateway, keys, %{} = grant, %DateTime{} = now, attach_seconds) do
-    issued = DateTime.truncate(now, :second)
-    attach_by = DateTime.add(issued, attach_window(attach_seconds), :second)
+    with {:ok, issued} <- issue_grant(through_grant(gateway, keys, grant), now, attach_seconds) do
+      {:ok, %{issued | through: Map.put(issued.through, :gateway_id, gateway.id)}}
+    end
+  end
 
-    grant = %{
+  # through_grant/3 is what the run key of a run through `gateway`, whose active keys are
+  # `keys`, grants, but its two times: the gateway by its public id, its address and its
+  # keys' public keys, and the run's `run_id`, `workspace`, `node_id` and `instance_id`
+  # from `grant`. A handover with a run code keeps it until the code is redeemed
+  # (`Apiary.Runs.RunCode`).
+  @doc false
+  @spec through_grant(Nodes.Node.t(), [AccessKey.t()], map) :: map
+  def through_grant(%Nodes.Node{} = gateway, keys, %{} = grant) do
+    %{
       run_id: grant.run_id,
       workspace: grant.workspace,
       node_id: grant.node_id,
       gateway: gateway.public_id,
       gateway_url: gateway.url,
       gateway_public_keys: Enum.map(keys, & &1.public_key),
-      instance_id: grant.instance_id,
-      issued: issued,
-      attach_by: attach_by
+      instance_id: grant.instance_id
     }
+  end
 
-    case RunKey.issue(grant) do
+  # issue_grant/3 is the run key of `grant` (`through_grant/3`), issued at `now` in whole
+  # seconds, its attach window `attach_window(attach_seconds)` from then: `{:ok, %{run_key:
+  # run_key, through: fields}}`, the run key's fields of the run, its gateway's row aside,
+  # or `{:error, :unavailable}`, logged, when no run key can be made for the gateway's
+  # address.
+  @doc false
+  @spec issue_grant(map, DateTime.t(), pos_integer | nil) ::
+          {:ok, %{run_key: String.t(), through: map}} | {:error, :unavailable}
+  def issue_grant(%{} = grant, %DateTime{} = now, attach_seconds) do
+    issued = DateTime.truncate(now, :second)
+    attach_by = DateTime.add(issued, attach_window(attach_seconds), :second)
+
+    case RunKey.issue(Map.merge(grant, %{issued: issued, attach_by: attach_by})) do
       {:ok, run_key, payload} ->
         {:ok,
          %{
            run_key: run_key,
            through: %{
-             gateway_id: gateway.id,
              run_key_payload: payload,
              run_key_signature: run_key |> RunKey.parts() |> elem(1),
              run_key_issued_at: usec(issued),

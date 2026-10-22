@@ -1,0 +1,253 @@
+defmodule Apiary.Runs.RunCode do
+  @moduledoc false
+
+  # A run code: what a run's handover answers in place of its run key when the starter asks
+  # for one (`run_code` of the provisioner contract's handover, `Apiary.Dispatches.Handover`),
+  # and what the machine redeems once at enrolment for that run key (the Forager contract's
+  # `qecr_`, `ApiaryWeb.Contract.EnrolmentController`). The run key is never in the start
+  # data a machine can read back; the code works once, for 15 minutes.
+  #
+  # **Its form.** `qecr_` and 26 upper-case Crockford base32 characters, 130 random bits
+  # (`Apiary.AccessKeys.EnrolmentCode.generate/1`), then `.` and the fingerprint of the
+  # server's key, as every enrolment code is given. The run keeps the code's SHA-256 alone
+  # (`runs.run_code_sha256`), never the code.
+  #
+  # **At the handover** (`issue/2`) the run is registered with no run key: its
+  # `run_key_issued_at` is the handover, its `attach_by` the code's expiry, `ttl_seconds/0`
+  # after the handover, and what its run key will grant is kept (`run_code_grant`). The
+  # lost-run check and liveness read `attach_by` as for any run through a gateway not yet
+  # attached, so a run whose code is never redeemed is lost at the code's expiry.
+  #
+  # **At the redemption** (`redeem/2`), in the order of every enrolment code:
+  #
+  #   1. a timestamp more than 300 seconds from the clock, a code that carries another
+  #      fingerprint than the server key's or two, or a code no run has, of a workspace and
+  #      an organisation in use, is `{:error, :unauthorized}`;
+  #   2. then, in one transaction, under the run's projection lock and its row
+  #      `FOR UPDATE`: a code at or past its expiry, or of a run that has ended (no longer
+  #      `pending` or `running`, released, given its outcome, its events pruned, or its run
+  #      of the queue ended), is `{:error, :unauthorized}`, and so is a code redeemed before
+  #      by another public key;
+  #   3. a key the key checks refuse, or a proof that does not verify under it, is
+  #      `{:error, :key_unproven}`;
+  #   4. past the code's limit, `{:error, {:rate_limited, seconds}}`;
+  #   5. the first redemption makes the run key from the grant kept at the handover,
+  #      issued at the redemption in whole seconds, its `attach_by` 600 seconds after, and
+  #      writes the run key's payload, its signature, `run_key_issued_at`, `attach_by` and
+  #      the public key in one write. A repeat by the same public key is answered the run key
+  #      the run has, byte for byte, and changes nothing.
+  #
+  # The answer is `{:ok, %{run_id: run_id, run_key: run_key}}`. No access key is made, and no
+  # public key enters the ledger of access keys. Nothing here logs the code, the proof, a key
+  # or the run key.
+
+  import Ecto.Query, only: [from: 2]
+
+  alias Apiary.{AccessKeys, Repo, SigningKey}
+  alias Apiary.AccessKeys.EnrolmentCode
+  alias Apiary.Contract.{Ed25519, Enrolment}
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Organisations.Organisation
+  alias Apiary.Runs.{Projector, Registration, Run, RateLimit, RunKey}
+
+  # The attach window from the redemption, in seconds: the Forager contract's
+  # `$defs/run_answer`.
+  @attach_seconds 600
+  # A run code's limit at enrolment, as `Apiary.Runs.RateLimit` counts it: requests a
+  # second, and at once; an enrolment code's.
+  @code_limit [rate: 1, burst: 5]
+
+  # ttl_seconds/0 is how long a run code works after its handover: an enrolment code's 15
+  # minutes.
+  @doc false
+  @spec ttl_seconds() :: pos_integer
+  def ttl_seconds, do: AccessKeys.code_ttl_minutes() * 60
+
+  # issue/2 is a fresh run code for a run handed over at `now`, whose run key will grant
+  # `grant` (`Apiary.Runs.Registration.through_grant/3`): `%{code: code, through: fields}`,
+  # the code as the machine is given it, with the fingerprint of the server's key, and the
+  # run's fields that keep it: its SHA-256, its expiry `ttl_seconds/0` after `now` in whole
+  # seconds, the grant, and `run_key_issued_at` and `attach_by`, the handover and the
+  # code's expiry.
+  @doc false
+  @spec issue(map, DateTime.t()) :: %{code: String.t(), through: map}
+  def issue(%{} = grant, %DateTime{} = now) do
+    code = EnrolmentCode.generate(:run)
+    issued = DateTime.truncate(now, :second)
+    expires_at = usec(DateTime.add(issued, ttl_seconds(), :second))
+
+    %{
+      code: Enrolment.issued_code(code, SigningKey.fingerprint()),
+      through: %{
+        run_code_sha256: EnrolmentCode.hash(code),
+        run_code_expires_at: expires_at,
+        run_code_grant: dump(grant),
+        run_key_issued_at: usec(issued),
+        attach_by: expires_at
+      }
+    }
+  end
+
+  # redeem/2 redeems the run code of `request` for its run's run key: the moduledoc.
+  #
+  # `opts`: `now`, the time it is (the current time); `fingerprint`, the signing key's
+  # fingerprint (`Apiary.SigningKey.fingerprint/0`); `code_limit`, the code's limit.
+  @doc false
+  @spec redeem(Enrolment.t(), keyword) ::
+          {:ok, %{run_id: String.t(), run_key: String.t()}}
+          | {:error, :unauthorized | :key_unproven | {:rate_limited, pos_integer}}
+  def redeem(%Enrolment{} = request, opts \\ []) do
+    now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+    fingerprint = Keyword.get_lazy(opts, :fingerprint, &SigningKey.fingerprint/0)
+    code_limit = Keyword.merge(@code_limit, Keyword.get(opts, :code_limit, []))
+
+    with true <- EnrolmentCode.run_code?(request.code_head) || {:error, :unauthorized},
+         true <- Enrolment.fresh?(request, now) || {:error, :unauthorized},
+         true <- Enrolment.issued_under?(request, fingerprint) || {:error, :unauthorized},
+         id when is_binary(id) <- find_run(request.code_head) || {:error, :unauthorized} do
+      Repo.transact(fn -> redeem_locked(id, request, now, code_limit) end)
+    end
+  end
+
+  # The run whose code's SHA-256 is the code's, of a workspace and an organisation in use,
+  # read without a lock: its projection lock and its row are taken next.
+  defp find_run(head) do
+    in_use =
+      from(o in Organisation, as: :organisation, select: o.id)
+      |> Apiary.Edition.active_organisations(:organisation)
+
+    Repo.one(
+      from r in Run,
+        join: w in assoc(r, :workspace),
+        join: o in assoc(r, :organisation),
+        where: r.run_code_sha256 == ^EnrolmentCode.hash(head),
+        where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
+        where: o.id in subquery(in_use),
+        select: r.id
+    )
+  end
+
+  # Under the run's projection lock, then its row, as an attach takes them.
+  defp redeem_locked(id, request, now, code_limit) do
+    Projector.lock(id)
+    run = Repo.one!(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
+
+    with {:ok, state} <- code_state(run, request, now),
+         {:ok, public_key} <- proven(request),
+         :ok <- within_code_limit(run, code_limit) do
+      case state do
+        :outstanding -> {:ok, %{run_id: run.node_run_id, run_key: redeemed(run, public_key, now)}}
+        :redeemed -> {:ok, %{run_id: run.node_run_id, run_key: given(run)}}
+      end
+    end
+  end
+
+  # Outstanding, or redeemed by the very public key the request carries (the repeat);
+  # anything else, a code expired or of a run that ended among it, is no code.
+  defp code_state(%Run{} = run, request, now) do
+    cond do
+      DateTime.compare(run.run_code_expires_at, now) != :gt or ended?(run) ->
+        {:error, :unauthorized}
+
+      is_nil(run.run_code_public_key) ->
+        {:ok, :outstanding}
+
+      same_public_key?(run.run_code_public_key, request.public_key) ->
+        {:ok, :redeemed}
+
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  defp ended?(%Run{} = run) do
+    run.state not in Run.alive_states() or not is_nil(run.released_at) or
+      not is_nil(run.outcome_state) or not is_nil(run.events_pruned_at) or
+      queue_ended?(run)
+  end
+
+  # The run of the queue the run is, read without a lock: one that ended, or none, ends
+  # the code.
+  defp queue_ended?(%Run{dispatch_run_id: nil}), do: true
+
+  defp queue_ended?(%Run{dispatch_run_id: id}),
+    do: Repo.one(from d in DispatchRun, where: d.id == ^id, select: d.state) != :handed_over
+
+  defp same_public_key?(<<_::binary-size(32)>> = stored, encoded) do
+    case Ed25519.decode(encoded, 32) do
+      {:ok, sent} -> Plug.Crypto.secure_compare(stored, sent)
+      :error -> false
+    end
+  end
+
+  # The key checks first, then the proof under the key: either refused is one answer,
+  # which the caller sends unsigned, as for every enrolment code.
+  defp proven(request) do
+    with {:ok, public_key} <- Ed25519.decode_public_key(request.public_key),
+         true <- Enrolment.proof_verifies?(request, public_key) do
+      {:ok, public_key}
+    else
+      _refused -> {:error, :key_unproven}
+    end
+  end
+
+  # The code's limit, counted only for a request that came this far: a code accepted, a
+  # key proven.
+  defp within_code_limit(%Run{id: id}, code_limit) do
+    case RateLimit.check({:run_code, id}, code_limit) do
+      :ok -> :ok
+      {:error, seconds} -> {:error, {:rate_limited, seconds}}
+    end
+  end
+
+  # The first redemption: the run key made from the grant, issued at `now`, and the run's
+  # run key fields and the public key written in one write. The grant passed a run key's
+  # rules when the handover made the code, so the run key is made.
+  defp redeemed(%Run{id: id, run_code_grant: grant}, public_key, now) do
+    {:ok, %{run_key: run_key, through: through}} =
+      Registration.issue_grant(load(grant), now, @attach_seconds)
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^id),
+        set: Map.to_list(through) ++ [run_code_public_key: public_key, updated_at: now]
+      )
+
+    run_key
+  end
+
+  # The run key the first redemption made, byte for byte.
+  defp given(%Run{run_key_payload: payload, run_key_signature: signature}),
+    do: RunKey.assemble(payload, signature)
+
+  # The grant as the run keeps it: string keys, the gateway's public keys in base64url.
+  defp dump(grant) do
+    %{
+      "run_id" => grant.run_id,
+      "workspace" => grant.workspace,
+      "node_id" => grant.node_id,
+      "gateway" => grant.gateway,
+      "gateway_url" => grant.gateway_url,
+      "gateway_public_keys" => Enum.map(grant.gateway_public_keys, &Ed25519.encode/1),
+      "instance_id" => grant.instance_id
+    }
+  end
+
+  defp load(%{} = kept) do
+    %{
+      run_id: kept["run_id"],
+      workspace: kept["workspace"],
+      node_id: kept["node_id"],
+      gateway: kept["gateway"],
+      gateway_url: kept["gateway_url"],
+      gateway_public_keys:
+        Enum.map(kept["gateway_public_keys"], fn key ->
+          {:ok, raw} = Ed25519.decode(key, 32)
+          raw
+        end),
+      instance_id: kept["instance_id"]
+    }
+  end
+
+  # A time to the second, as the column keeps microseconds.
+  defp usec(%DateTime{} = time), do: %{time | microsecond: {0, 6}}
+end

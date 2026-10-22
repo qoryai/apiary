@@ -15,7 +15,13 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       fixture signing key's fingerprint, is refused, as the contract says a server refuses
       the fixture access key: by Apiary's key checks, which hold the published fixture
       keys, so before anything is signed (`:key_unproven`, an unsigned `409`
-      `key_invalid`).
+      `key_invalid`);
+    * the run code's request and answer (`run_enrolment` of
+      `known-answers/through-gateway.json`): the request reads and its proof is the known
+      answer's, the answer is the body `Apiary.Contract.Enrolment.run_answer_body/1`
+      builds, byte for byte, and its signature is the known answer's; the invalid run
+      answers are refused; and the request, redeemed against a run whose code it is, is
+      refused by the key checks, as the fixture request is.
 
   The instance never signs under the fixture signing key, so an answer's signature is
   replayed here, through `Apiary.SigningKey.sign/2`, not through the endpoint;
@@ -24,6 +30,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
   """
   use Apiary.DataCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -339,6 +346,121 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
                now: at(@clock),
                fingerprint: fixture_key!("signing_key").fingerprint
              ) == {:error, :key_unproven}
+    end
+  end
+
+  describe "the run code's known answers, known-answers/through-gateway.json run_enrolment" do
+    setup do
+      %{"run_enrolment" => known, "run_key" => %{"run_key" => run_key}} =
+        known_answers!("through-gateway")
+
+      {:ok, request} =
+        Enrolment.decode(contract_file!("known-answers/enrolment-run-request.json"))
+
+      %{known: known, run_key: run_key, request: request}
+    end
+
+    test "the request reads as a run code's under the fixture signing key, validates, and its proof is the known answer's",
+         %{known: known, request: request} do
+      assert known["request"] == "fixtures/known-answers/enrolment-run-request.json"
+      assert EnrolmentCode.run_code?(request.code_head)
+      assert request.fingerprints == [fixture_key!("signing_key").fingerprint]
+
+      assert ContractSchema.validate(
+               schema(),
+               contract_json!("known-answers/enrolment-run-request.json")
+             ) == :ok
+
+      message =
+        SignedMessage.enrolment(request.code, request.public_key, request.name, request.timestamp)
+
+      assert message == Enum.join(known["proof_lines"], "\n")
+      assert byte_size(message) == known["proof_length"]
+      assert request.proof == known["proof"]
+      assert Enrolment.proof_verifies?(request, fixture_key!("access_key").public_key)
+    end
+
+    test "the answer is the body run_answer_body/1 makes, byte for byte, and validates",
+         %{known: known, run_key: run_key} do
+      assert known["answer"] == "fixtures/known-answers/enrolment-run-answer.json"
+      body = contract_file!("known-answers/enrolment-run-answer.json")
+      assert byte_size(body) == known["body_length"]
+
+      built =
+        Enrolment.run_answer_body(%{
+          run_id: "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+          run_key: run_key,
+          apiary_public_key: server_keys(:one)
+        })
+
+      assert built == body
+      assert ContractSchema.validate(schema(), Jason.decode!(built)) == :ok
+
+      # Its run key is the fixture's, signed under the fixture signing key, for its run.
+      assert {:ok, %{run_id: run_id}, _payload} =
+               Apiary.Runs.RunKey.verify(run_key, [signing_key("signing_key")])
+
+      assert run_id == Jason.decode!(body)["run_id"]
+    end
+
+    test "the answer's signature, under the fixture signing key with the request's proof as line 3, is the known answer's",
+         %{known: known, request: request} do
+      body = contract_file!("known-answers/enrolment-run-answer.json")
+      ["qory-enrol-answer-ed25519-v1", "201", proof, _hash, "", ""] = known["lines"]
+      assert proof == request.proof
+
+      message = SignedMessage.enrolment_answer(201, proof, body)
+      assert message == Enum.join(known["lines"], "\n")
+      assert byte_size(message) == known["length"]
+
+      assert signing_key("signing_key") |> SigningKey.sign(message) |> Ed25519.encode() ==
+               known["signature"]
+    end
+
+    test "the invalid run answers are refused by the schema, and are no body the builder makes",
+         %{run_key: run_key} do
+      built =
+        Enrolment.run_answer_body(%{
+          run_id: "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+          run_key: run_key,
+          apiary_public_key: server_keys(:one)
+        })
+
+      for name <-
+            ~w(enrolment-run-answer-access-key-id.json enrolment-run-answer-no-run-key.json
+               enrolment-run-answer-run-id-upper-case.json) do
+        assert {:error, _} = ContractSchema.validate(schema(), contract_json!("invalid/" <> name))
+        refute contract_file!("invalid/" <> name) == built, name
+      end
+    end
+
+    @tag needs: :factory
+    test "redeemed against a run whose code it is, is refused by the key checks, before anything is signed",
+         %{request: request} do
+      %{scope: scope} = sign_up_fixture()
+      place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope)
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, _queued} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
+      %{dispatch: dispatch} = Apiary.DispatchedRunsFixtures.dispatched!(place.key)
+
+      {:ok, %{run: run}} =
+        Apiary.Dispatches.handover(place.key, dispatch.public_id, %{body: "{}", run_code: true})
+
+      {1, _rows} =
+        Repo.update_all(
+          from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+          set: [
+            run_code_sha256: EnrolmentCode.hash(request.code_head),
+            run_code_expires_at: at(request.timestamp + 60)
+          ]
+        )
+
+      assert Apiary.Runs.RunCode.redeem(request,
+               now: at(request.timestamp),
+               fingerprint: fixture_key!("signing_key").fingerprint
+             ) == {:error, :key_unproven}
+
+      assert Repo.get!(Apiary.Runs.Run, run.id).run_key_payload == nil
     end
   end
 

@@ -30,7 +30,10 @@ defmodule ApiaryWeb.Contract.HandoverController do
   # the workspace's entry in the machines file (`Apiary.Dispatches.MachinesFile`), both
   # absent without one and for a prebuild, and its `inputs` as Qory wrote them
   # (`Apiary.Dispatches.Inputs`). The run key is given
-  # once, in this answer; nothing here logs it, the body or the input.
+  # once, in this answer; nothing here logs it, the body or the input. A handover whose
+  # body has `run_code` `true` is answered `version`, `revision`, `run_id`, `run_code` and
+  # `step` alone: the code the machine redeems at enrolment for the run key
+  # (`Apiary.Runs.RunCode`), given once, and logged nowhere either.
 
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :factory
@@ -48,7 +51,7 @@ defmodule ApiaryWeb.Contract.HandoverController do
     with {:ok, body} <- Wire.decode(conn.assigns.raw_body),
          {:ok, handover} <- Wire.handover(body),
          {:ok, conn} <- AdapterRequest.accept(conn, handover.time) do
-      accepted(conn, dispatch_id)
+      accepted(conn, dispatch_id, handover.run_code)
     else
       :error -> refuse(conn, 400, "invalid_request")
       :unauthorized -> refuse(conn, 401, "unauthorized")
@@ -56,8 +59,8 @@ defmodule ApiaryWeb.Contract.HandoverController do
   end
 
   # The handover of a request accepted: `conn` is the one `accept/2` marked.
-  defp accepted(conn, dispatch_id) do
-    meta = %{body: conn.assigns.raw_body}
+  defp accepted(conn, dispatch_id, run_code) do
+    meta = %{body: conn.assigns.raw_body, run_code: run_code}
 
     case handover(conn.assigns.access_key, dispatch_id, meta) do
       {:ok, handed_over} -> answer(conn, handed_over)
@@ -79,12 +82,13 @@ defmodule ApiaryWeb.Contract.HandoverController do
       {:error, :unavailable}
   end
 
-  defp answer(conn, %{run: run, run_key: run_key, dispatch_run: dispatch_run} = handed_over) do
+  defp answer(conn, %{run: run, dispatch_run: dispatch_run} = handed_over) do
     body =
       DispatchAnswer.handover_body(%{
         revision: conn.assigns.contract_version,
         run_id: run.node_run_id,
-        run_key: run_key,
+        run_key: handed_over[:run_key],
+        run_code: handed_over[:run_code],
         step: dispatch_run.step,
         domain: handed_over.domain,
         target: handed_over.target,

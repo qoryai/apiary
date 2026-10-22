@@ -20,7 +20,8 @@ defmodule Apiary.Dispatches.Wire do
   #   (`dispatched.schema.json`): `version` (1), `time` and, optionally, `external`, which
   #   holds exactly `type` (`$defs/job_system`), `ref`, 1 to 200 characters, and `url`.
   # - `handover/1`, `POST /v1/dispatches/<dispatch_id>/handover`
-  #   (`handover.schema.json`): exactly `version` (1) and `time`. What a registration
+  #   (`handover.schema.json`): `version` (1), `time` and, optionally, `run_code`, a
+  #   boolean: `true` asks for a run code in place of the run key. What a registration
   #   would carry, its labels among them, the control plane sets from the dispatch, so a
   #   body that carries any of it is refused.
   # - `release/1`, `POST /v1/dispatches/<dispatch_id>/release` (`release.schema.json`):
@@ -81,7 +82,7 @@ defmodule Apiary.Dispatches.Wire do
   @type claim :: %{time: DateTime.t(), pool_id: String.t() | nil, wait_seconds: 0..25}
   @type external :: %{type: String.t(), ref: String.t(), url: String.t()}
   @type dispatched :: %{time: DateTime.t(), external: external | nil}
-  @type handover :: %{time: DateTime.t()}
+  @type handover :: %{time: DateTime.t(), run_code: boolean}
   @type release :: %{time: DateTime.t(), reason: String.t(), retry: boolean}
   @type prebuilt :: %{
           time: DateTime.t(),
@@ -143,10 +144,11 @@ defmodule Apiary.Dispatches.Wire do
   @doc false
   @spec handover(term) :: {:ok, handover} | :error
   def handover(%{} = body) do
-    with true <- members?(body, @handover_keys, []),
+    with true <- members?(body, @handover_keys, ["run_code"]),
          true <- body["version"] === 1,
-         {:ok, time} <- time(body["time"]) do
-      {:ok, %{time: time}}
+         {:ok, time} <- time(body["time"]),
+         run_code when is_boolean(run_code) <- Map.get(body, "run_code", false) do
+      {:ok, %{time: time, run_code: run_code}}
     else
       _ -> :error
     end

@@ -80,6 +80,14 @@ defmodule Apiary.Dispatches.Handover do
   #       or anything else fails: `{:error, :unavailable}`, and the transaction rolls
   #       back: no run, no run key, the dispatch as it was.
   #
+  # A handover whose body asks for a run code (`run_code` `true`) is answered with a run
+  # code in place of the run key (`Apiary.Runs.RunCode`): the run key is made at the
+  # code's redemption, issued then, and the run is registered with none. A run key of the
+  # run's grant is made all the same, and given to nobody, so a grant no run key can be
+  # made for refuses the handover as step 11 says. The run's `run_key_issued_at` is the
+  # handover and its `attach_by` the code's expiry, 15 minutes after it, until the
+  # redemption.
+  #
   # Else the run is registered, as a registration through the gateway by the pool:
   # `pending`, its `node_run_id` the run's `run_id`, on the pool, its instance the run's
   # `run_id` too, under the pool's key, its labels the target's
@@ -166,7 +174,7 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunVariables, Target}
+  alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunCode, RunVariables, Target}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
 
@@ -192,22 +200,23 @@ defmodule Apiary.Dispatches.Handover do
   @longest_run_key "qrk_" <> String.duplicate("A", 2044)
 
   @typedoc """
-  A handover answered: the registered run, its run key, the run of the queue, the name of
-  its workspace's domain, the run's target (nil for an explore run without one), its work
-  item (nil for a prebuild), its run settings (nil for none,
-  `Apiary.Dispatches.RunSettings`), its stack and workflow (nil for none,
-  `Apiary.Dispatches.MachinesFile`) and the step's input.
+  A handover answered: the registered run, its run key or, for a handover that asked for
+  one, its run code, the run of the queue, the name of its workspace's domain, the run's
+  target (nil for an explore run without one), its work item (nil for a prebuild), its run
+  settings (nil for none, `Apiary.Dispatches.RunSettings`), its stack and workflow (nil
+  for none, `Apiary.Dispatches.MachinesFile`) and the step's input.
   """
   @type handed_over :: %{
-          run: Run.t(),
-          run_key: String.t(),
-          dispatch_run: DispatchRun.t(),
-          domain: String.t(),
-          target: %{system: String.t(), path: String.t()} | nil,
-          work_item: WorkItem.t() | nil,
-          run_settings: Jason.OrderedObject.t() | nil,
-          stack: MachinesFile.stack() | nil,
-          inputs: Jason.OrderedObject.t()
+          required(:run) => Run.t(),
+          optional(:run_key) => String.t(),
+          optional(:run_code) => String.t(),
+          required(:dispatch_run) => DispatchRun.t(),
+          required(:domain) => String.t(),
+          required(:target) => %{system: String.t(), path: String.t()} | nil,
+          required(:work_item) => WorkItem.t() | nil,
+          required(:run_settings) => Jason.OrderedObject.t() | nil,
+          required(:stack) => MachinesFile.stack() | nil,
+          required(:inputs) => Jason.OrderedObject.t()
         }
 
   @type refusal ::
@@ -246,11 +255,15 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # handover/3 hands the run of the dispatch `dispatch_id` of the pool of `access_key`
-  # over, for the handover's raw `body`: the moduledoc.
+  # over, for the handover's raw `body`, with a run code in place of the run key when
+  # `run_code` is true: the moduledoc.
   @doc false
-  @spec handover(AccessKey.t(), term, %{body: binary}) ::
+  @spec handover(AccessKey.t(), term, %{required(:body) => binary, optional(:run_code) => boolean}) ::
           {:ok, handed_over} | {:error, refusal}
-  def handover(%AccessKey{key_id: key_id}, dispatch_id, %{body: body}) when is_binary(body) do
+  def handover(%AccessKey{key_id: key_id}, dispatch_id, %{body: body} = meta)
+      when is_binary(body) do
+    run_code? = Map.get(meta, :run_code, false) == true
+
     if Dispatch.public_id?(dispatch_id) do
       key_id
       |> transact(dispatch_id, :"dispatch.handover", &RunSettings.hold/1, fn locked ->
@@ -259,7 +272,7 @@ defmodule Apiary.Dispatches.Handover do
              :ok <- lease_held(locked),
              :ok <- was_dispatched(locked),
              {:ok, gateway, keys} <- gateway(locked) do
-          hand_over(locked, gateway, keys, body)
+          hand_over(locked, gateway, keys, body, run_code?)
         end
       end)
       |> answered()
@@ -437,7 +450,7 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  defp hand_over(locked, {gateway, workspace}, keys, body) do
+  defp hand_over(locked, {gateway, workspace}, keys, body, run_code?) do
     case locked |> formed(workspace) |> sealable(gateway, workspace, keys) do
       {:end, cause} ->
         {:ended, end_claimed(locked.run, cause, locked.now)}
@@ -463,11 +476,28 @@ defmodule Apiary.Dispatches.Handover do
           instance_id: locked.run.run_id
         }
 
-        with {:ok, %{run_key: run_key, through: through}} <-
-               Registration.issue_through(gateway, keys, grant, locked.now, @attach_seconds) do
+        with {:ok, %{given: given, through: through}} <-
+               give(gateway, keys, grant, locked.now, run_code?) do
           run = register(locked, formed, through, body)
-          {:done, {:ok, Map.merge(formed.answer, %{run: run, run_key: run_key})}, []}
+          {:done, {:ok, formed.answer |> Map.merge(given) |> Map.put(:run, run)}, []}
         end
+    end
+  end
+
+  # What the handover answers: the run key, or a run code to redeem for it, with the run's
+  # fields of either.
+  defp give(gateway, keys, grant, now, false) do
+    with {:ok, %{run_key: run_key, through: through}} <-
+           Registration.issue_through(gateway, keys, grant, now, @attach_seconds),
+         do: {:ok, %{given: %{run_key: run_key}, through: through}}
+  end
+
+  defp give(gateway, keys, grant, now, true) do
+    grant = Registration.through_grant(gateway, keys, grant)
+
+    with {:ok, _given_to_nobody} <- Registration.issue_grant(grant, now, @attach_seconds) do
+      %{code: code, through: through} = RunCode.issue(grant, now)
+      {:ok, %{given: %{run_code: code}, through: Map.put(through, :gateway_id, gateway.id)}}
     end
   end
 

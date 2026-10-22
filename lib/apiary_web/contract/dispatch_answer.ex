@@ -44,21 +44,38 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # `stack` and `workflow` (nil for none and for a prebuild,
   # `Apiary.Dispatches.MachinesFile.stack/2`) and
   # its `inputs`. The controller sends it, and the handover measures it
-  # (`Apiary.Dispatches.Handover`), so both read one encoding.
+  # (`Apiary.Dispatches.Handover`), so both read one encoding. An answer given a
+  # `run_code` in place of the run key has `version`, `revision`, `run_id`, `run_code` and
+  # `step` alone. The other members of the run-key form are not sent, and the enrolment's
+  # `201` for the code (`Apiary.Runs.RunCode`) has `version`, `run_id`, `run_key` and
+  # `apiary_public_key` alone.
   @doc false
   @spec handover_body(%{
-          revision: pos_integer,
-          run_id: String.t(),
-          run_key: String.t(),
-          step: String.t(),
-          domain: String.t(),
-          target: %{system: String.t(), path: String.t()} | nil,
-          work_item: Apiary.WorkItems.WorkItem.t() | nil,
-          run_settings: Jason.OrderedObject.t() | nil,
-          stack: MachinesFile.stack() | nil,
-          inputs: Jason.OrderedObject.t()
+          required(:revision) => pos_integer,
+          required(:run_id) => String.t(),
+          optional(:run_key) => String.t() | nil,
+          optional(:run_code) => String.t() | nil,
+          required(:step) => String.t(),
+          required(:domain) => String.t(),
+          required(:target) => %{system: String.t(), path: String.t()} | nil,
+          required(:work_item) => Apiary.WorkItems.WorkItem.t() | nil,
+          required(:run_settings) => Jason.OrderedObject.t() | nil,
+          required(:stack) => MachinesFile.stack() | nil,
+          required(:inputs) => Jason.OrderedObject.t()
         }) :: binary
-  def handover_body(%{} = answer) do
+  def handover_body(%{run_code: run_code} = answer) when is_binary(run_code) do
+    Jason.encode!(
+      Jason.OrderedObject.new([
+        {"version", 1},
+        {"revision", answer.revision},
+        {"run_id", answer.run_id},
+        {"run_code", run_code},
+        {"step", answer.step}
+      ])
+    )
+  end
+
+  def handover_body(%{run_key: run_key} = answer) when is_binary(run_key) do
     work_item = if answer.work_item, do: [{"work_item", work_item(answer.work_item)}], else: []
     run_settings = if answer.run_settings, do: [{"run_settings", answer.run_settings}], else: []
 
@@ -68,7 +85,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           {"version", 1},
           {"revision", answer.revision},
           {"run_id", answer.run_id},
-          {"run_key", answer.run_key},
+          {"run_key", run_key},
           {"step", answer.step},
           {"domain", answer.domain}
         ] ++

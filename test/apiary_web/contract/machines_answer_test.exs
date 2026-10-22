@@ -3,7 +3,8 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   # entry of the run's workspace in the machines file (`Apiary.Dispatches.MachinesFile`),
   # as a node pool's starter receives them: absent without a file or an entry, each part
   # of an entry alone, for an explore run, within the handover answer's limit, and for a
-  # prebuild, whose handover answer has neither `stack` nor `workflow`. Not async: the file read at boot and the features are the whole
+  # prebuild and for a run handed a run code, whose handover answers have neither `stack`
+  # nor `workflow`. Not async: the file read at boot and the features are the whole
   # node's.
   use ApiaryWeb.ConnCase, async: false
 
@@ -85,8 +86,8 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   end
 
   # The claim answer, then the handover answer, of the oldest run the pool may take: both
-  # 200, signed.
-  defp claim_and_hand_over(ctx) do
+  # 200, signed. `handover` is the handover's body beside `version`.
+  defp claim_and_hand_over(ctx, handover \\ %{}) do
     claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
     assert claim.status == 200
     assert signed_answer?(claim)
@@ -95,7 +96,9 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     assert signed(ctx, "/v1/dispatches/#{dispatch_id}/dispatched", %{"version" => 1}).status ==
              204
 
-    handover = signed(ctx, "/v1/dispatches/#{dispatch_id}/handover", %{"version" => 1})
+    handover =
+      signed(ctx, "/v1/dispatches/#{dispatch_id}/handover", Map.put(handover, "version", 1))
+
     assert handover.status == 200
     assert signed_answer?(handover)
     {claim.resp_body, handover.resp_body}
@@ -147,6 +150,19 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
 
       stack = Jason.decode!(handover, objects: :ordered_objects)["stack"]
       assert Enum.map(stack.values, &elem(&1, 0)) == ~w(url commit path)
+    end
+
+    test "handed a run code has machine, and an answer of five members without stack or workflow",
+         ctx do
+      machines!(ctx, %{
+        ctx.place => %{"machine" => "large", "stack" => @stack, "workflow" => "hello"}
+      })
+
+      explore!(ctx)
+      {claim, handover} = claim_and_hand_over(ctx, %{"run_code" => true})
+
+      assert members(claim) == @claim ++ ~w(machine)
+      assert members(handover) == ~w(version revision run_id run_code step)
     end
 
     test "of a workspace with a machine alone has machine, and neither stack nor workflow",
