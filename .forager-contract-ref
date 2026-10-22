@@ -33,12 +33,13 @@
 # a run's host work and joins, each a `dev.qory.run.step_started` and a
 # `dev.qory.run.step_exited` numbered from 1, with `step` on each `dev.qory.run.log` of
 # a step; and a run code, `qecr_`, which a machine redeems once at enrolment for its
-# run's run key, answered `$defs/run_answer` of `enrolment.schema.json`.
+# run's run key, answered `$defs/run_answer` of `enrolment.schema.json`; and `machine` and
+# `setup`, optional members of `dev.qory.run.started`.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-bccea341aca8550875b1c4a10a0037deacc98531
+320bf257cb5eaf7ee8c1d09a48f196c496b9f732
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json
