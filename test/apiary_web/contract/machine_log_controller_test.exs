@@ -113,12 +113,17 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
     dispatched!(ctx.key).dispatch
   end
 
-  # A refusal of `status` and `code`, its body valid under the contract's refusal, signed.
-  defp refused?(conn, status, code) do
+  # The body of a refusal of `status`, after a check that it is valid under the contract's
+  # refusal.
+  defp refusal(conn, status) do
     body = json_response(conn, status)
-    {:ok, _} = JSV.validate(body, validator("provisioner/v1/refusal.schema.json"))
-    body == %{"error" => code} and signed_answer?(conn)
+    assert {:ok, _} = JSV.validate(body, validator("provisioner/v1/refusal.schema.json"))
+    body
   end
+
+  # A refusal of `status` and `code`, its body valid under the contract's refusal, signed.
+  defp refused?(conn, status, code),
+    do: refusal(conn, status) == %{"error" => code} and signed_answer?(conn)
 
   defp stored?(conn) do
     conn.status == 204 and conn.resp_body == "" and signed_answer?(conn) and
@@ -267,14 +272,14 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
 
       # 300,000 characters of 4 bytes each: within the characters, over 1 MiB as sent.
       conn = upload(ctx, over, body(%{"log" => String.duplicate("😀", 300_000)}))
-      assert json_response(conn, 413) == %{"error" => "payload_too_large"}
+      assert refusal(conn, 413) == %{"error" => "payload_too_large"}
       assert record(over) == nil
     end
 
     test "under a bad signature is 401, unsigned", ctx do
       dispatch = dispatch!(ctx)
       conn = upload(ctx, dispatch, body(), seed: :crypto.strong_rand_bytes(32))
-      assert json_response(conn, 401) == %{"error" => "unauthorized"}
+      assert refusal(conn, 401) == %{"error" => "unauthorized"}
       assert unsigned_answer?(conn)
       assert record(dispatch) == nil
     end
@@ -288,7 +293,7 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
         |> DateTime.to_iso8601()
 
       conn = upload(ctx, dispatch, body(%{"time" => past}))
-      assert json_response(conn, 401) == %{"error" => "unauthorized"}
+      assert refusal(conn, 401) == %{"error" => "unauthorized"}
       assert unsigned_answer?(conn)
     end
   end
