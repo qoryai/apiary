@@ -833,8 +833,9 @@ is also a code at or past its 15 minutes from the claim, a code of a run that ha
 ended (no longer pending or running, released, given its outcome, its events pruned, or
 its run of the queue ended), a code whose registered run was deleted because its dispatch
 left the claim before its handover, and a code redeemed before by another public key. Its `201`
-carries `version`, `run_id`, `run_key`, `documents`, the run's documents as its claim
-encoded them (A run of the queue), and `apiary_public_key`: the run key is made at the
+carries `version`, `run_id`, `run_key`, `apiary_public_key` and `documents`, in that
+order, `documents` the run's documents as its claim encoded them (A run of the queue):
+the run key is made at the
 first redemption, its `issued` that time and its `attach_by` 600 seconds after, and the
 run keeps it with the public key that redeemed the code and the timestamp of its proof.
 A retry by the same public key, with a proof whose timestamp is newer than the first's,

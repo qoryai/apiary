@@ -390,7 +390,8 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
         Enrolment.run_answer_body(%{
           run_id: "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
           run_key: run_key,
-          apiary_public_key: server_keys(:one)
+          apiary_public_key: server_keys(:one),
+          documents: Jason.encode!(Jason.decode!(body)["documents"])
         })
 
       assert built == body
@@ -415,7 +416,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
           apiary_public_key: server_keys(:one)
         })
 
-      assert built =~ ~s("documents":) <> documents <> ~s(,"apiary_public_key":)
+      assert String.ends_with?(built, ~s(}],"documents":) <> documents <> "}")
       assert ContractSchema.validate(schema(), Jason.decode!(built)) == :ok
     end
 

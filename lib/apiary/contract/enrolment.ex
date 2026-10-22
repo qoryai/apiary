@@ -230,10 +230,10 @@ defmodule Apiary.Contract.Enrolment do
 
   # run_answer_body/1 is the body of the `201` to a run code (`$defs/run_answer`,
   # `fixtures/known-answers/enrolment-run-answer.json`), in this order: `version`,
-  # `run_id`, the run's id in lower case, `run_key`, `documents`, the run's documents as
-  # the claim encoded them (`Apiary.Dispatches.Handover`), written as they are, and left
-  # out when nil, and `apiary_public_key`, the server's keys as
-  # `Apiary.SigningKey.apiary_public_key/1` lists them. The redemption makes no access key
+  # `run_id`, the run's id in lower case, `run_key`, `apiary_public_key`, the server's
+  # keys as `Apiary.SigningKey.apiary_public_key/1` lists them, and `documents`, the run's
+  # documents as the claim encoded them (`Apiary.Dispatches.Handover`), written as they
+  # are, and left out when nil. The redemption makes no access key
   # (`Apiary.Runs.RunCode`).
   @doc false
   @spec run_answer_body(%{
@@ -254,8 +254,12 @@ defmodule Apiary.Contract.Enrolment do
 
     Jason.encode!(
       Jason.OrderedObject.new(
-        [{"version", 1}, {"run_id", run_id}, {"run_key", run_key}] ++
-          documents ++ [{"apiary_public_key", keys(keys)}]
+        [
+          {"version", 1},
+          {"run_id", run_id},
+          {"run_key", run_key},
+          {"apiary_public_key", keys(keys)}
+        ] ++ documents
       )
     )
   end

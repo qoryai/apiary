@@ -176,7 +176,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
 
       # The documents the claim stored, written as they are.
       stored = run!(ctx).run_documents
-      assert conn.resp_body =~ ~s("documents":) <> stored <> ~s(,"apiary_public_key":)
+      assert String.ends_with?(conn.resp_body, ~s(}],"documents":) <> stored <> "}")
       assert %{"step" => "explore", "domain" => "software", "inputs" => %{}} = documents
       assert apiary_public_key == SigningKey.apiary_public_key()
       assert conn.resp_body =~ ~r/\A\{"version":1,"run_id":"[0-9a-f-]{36}","run_key":"qrk_/
