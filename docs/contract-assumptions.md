@@ -349,7 +349,7 @@ any other revision is refused `400` `unsupported_contract_version`, and each cla
 has `revision` 1. A claim answer is a request for a machine: `version`, `revision`,
 `dispatch_id`, `pool_id` (the claiming key's node pool), `lease_until`, `machine`,
 `run_code`, `gateway_url` and
-`max_lifetime_minutes`, 1470 for every claim, sent with
+`max_lifetime_minutes`, 90 for a prebuild and 1470 for any other claim, sent with
 `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its `step`, its
 `access`, its `target` nor its `work_item`. The machines file, a JSON file at the path
 `APIARY_MACHINES_FILE` is set to and read at boot (`Apiary.Dispatches.MachinesFile`), has
@@ -475,13 +475,13 @@ whatever its state, ends it `run_ended`; a `dev.qory.run.refused` once folded en
 `run_refused`, for a run that is not a prebuild; and the lost-run check ends it `lost`
 when its gateway never attached it by its `attach_by`, when it has no exit by its
 backstop, 87,300 seconds (24 hours and 15 minutes) after its attach for the step
-`explore` and 2100 for `prebuild` (Liveness), or when it went 600 seconds without a
-heartbeat after its attach and before an exit: with the gateway down, no exit reaches
-Qory Apiary, and that end frees the slot. A heartbeat stored and not yet folded counts by
-its arrival. Such a silent run is `lost` for good: its registered run is set `lost` and
-its backstop moved back to the end of its silence, and no heartbeat or start folded after
-that end brings it back, whenever it arrived; its exit still changes the record. No
-request records the image a prebuild built: the provisioner contract has no `prebuilt`. A
+`explore` and 4500 (1 hour and 15 minutes) for `prebuild` (Liveness), or when it went
+600 seconds without a heartbeat after its attach and before an exit: with the gateway
+down, no exit reaches Qory Apiary, and that end frees the slot. A heartbeat stored and
+not yet folded counts by its arrival. Such a silent run is `lost` for good: its registered
+run is set `lost` and its backstop moved back to the end of its silence, and no heartbeat
+or start folded after that end brings it back, whenever it arrived; its exit still changes
+the record. A
 prebuild the lost-run check ends `lost` records that end as its last build's failure on
 the environment record of its collection and of the pool that claimed it, `lost` at its
 `attach_by` or after its silence and `timed_out` at its backstop, with no reason. A
@@ -490,11 +490,12 @@ prebuild its exit ends, `run_ended`, records it there too when the exit's state 
 record keeps its last good build, nothing is queued, and the check and the projection's
 end hold that record before the run of the queue, as a release does; a prebuild whose
 `environment_ref` is older than the record's image's records no failure, and ends all the
-same. Its dispatch ends with it, with the same end cause, a stale dispatch of it with
-`run_ended`, and the slot the dispatch took at its claim is freed once
-(`dispatches.slot_freed_at`, set only where it is empty). An end after the first changes
-none of them. A run of the queue takes no outcome: the outcome endpoint answers a pool's
-key for a run the pool claimed `404`, as it answers a key for a run the key is not bound
+same; so does a prebuild whose reported image is the record's. Its dispatch ends with it,
+with the same end cause, a stale dispatch of it with `run_ended`, and the slot the
+dispatch took at its claim is freed once (`dispatches.slot_freed_at`, set only where it is
+empty). An end after the first changes none of them. A run of the queue takes no outcome:
+the outcome endpoint answers a pool's key for a run the pool claimed `404`, as it answers
+a key for a run the key is not bound
 to, and stores nothing (`Apiary.Runs.Outcome`). A node's keys keep the outcome endpoint
 for the runs the node registers itself. Each end locks the run of the queue, then the
 registered run, then writes the dispatches; an end by an exit or by the lost-run check
@@ -502,6 +503,37 @@ first locks the run's work item `FOR KEY SHARE`, or a prebuild's environment rec
 `FOR UPDATE`. So two ends of one run take turns, and an exit that comes as the check
 loses the run is either taken first, its end cause `run_ended`, or after it, the end cause
 staying `lost`.
+
+A prebuild reports the image it built in its record, `dev.qory.run.built`, with `image`,
+pinned by its digest, `size`, `commit` and `environment_ref` (`Apiary.Dispatches.Built`).
+The projection that folds it stores the image on the environment record of the
+prebuild's collection and of the pool that claimed it, after its pass has committed and
+before the run's end, in a transaction that holds that record: the image, its size, its
+commit, the `environment_ref` reported, as it is, when it was recorded, the target the
+run was registered for, and when the prebuild took the `environment_ref` it built. The
+last failure is cleared, and nothing is queued. Only the event of a run registered for a
+run of the queue for the step `prebuild` that was handed over is stored, whether its run
+of the queue has ended or not, so an event that arrives after the exit, or after the
+lost-run check ended the prebuild, is stored as one that arrives before it. The event of
+any other run is kept with the run's other events, and records nothing; so does an event
+whose `image` is not a lower-case name of at most 255 characters with `@sha256:` and 64
+lower-case hexadecimal digits, whose `size` is not an integer from 1 to 2^53 - 1, whose
+`commit` is not 40 or 64 lower-case hexadecimal characters, or whose `environment_ref`
+is not 1 to 200 characters. Of two such events of one run, the lower sequence counts. A
+build whose prebuild took its `environment_ref` before the prebuild that made the
+record's image took its, and the build already on the record, change nothing.
+
+A run of a work item that started in the image its pool's environment record gave it,
+whose `dev.qory.run.exited` is `failed` with the reason `image_missing`, ends
+`run_ended` as any exit ends it, and in the same transaction the image is cleared from
+the records of that pool built for the run's target with that image, so no run is
+given it again. For each such record not retired, whose collection is live, assigned to
+the pool's workspace, with a target and an `environment_ref`, a prebuild of the
+collection is queued for the pool, as a Rebuild queues it, unless one waits unclaimed.
+The work item then gets the next run of its take in, once: while it is exploring in
+that take in and a run of the take in is left, and only when the run of the attempt
+before did not end with `image_missing` too. That end first holds the run's work item
+`FOR UPDATE`, then those records, before the run of the queue.
 
 A run its gateway refused before it started (`dev.qory.run.refused`, with a code such as
 `model_key_missing`) ends `run_refused` at its first refusal and is not queued again. The
@@ -1126,7 +1158,7 @@ when the workspace first heard of it, its registration for a run that registered
 through a gateway that is never attached is lost at its `attach_by`, and not before; until
 then it holds its node's instance. A run a workspace's queue handed over is also lost at
 its backstop, which its attach sets to the attach and its step's limit, 87,300 seconds for
-`explore` and 2100 for `prebuild` (`runs.backstop_at`), should it have no exit by then,
+`explore` and 4500 for `prebuild` (`runs.backstop_at`), should it have no exit by then,
 however recently it beat; no heartbeat or start that arrives after that brings it back,
 and only its exit changes its state: a run of the queue takes no outcome. A run of the
 queue that went 600 seconds without a heartbeat after its attach, before an exit, has its

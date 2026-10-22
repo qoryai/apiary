@@ -34,8 +34,10 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #      `gateway_url` is the address of the gateway the pool's choice resolved to at the
   #      claim, the run key's `gateway_url`, which the run key is made only for when it
   #      passes `Apiary.Contract.GatewayUrl.valid?/1`, else the claim is `503`
-  #      `unavailable`; `max_lifetime_minutes` is 1470 for every claim, the most the contract
-  #      allows, the minutes the starter lets the machine live.
+  #      `unavailable`; `max_lifetime_minutes`, the minutes the starter lets the machine
+  #      live, is 90 for a prebuild, which Qory ends 75 minutes after its attach
+  #      (`Apiary.Dispatches.RunEnd`), and 1470, the most the contract allows, for any other
+  #      claim.
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
   # pool at its instance limit, the request is held, up to its `wait_seconds`: it listens
@@ -60,11 +62,13 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches
-  alias Apiary.Dispatches.Wire
+  alias Apiary.Dispatches.{DispatchRun, Wire}
   alias ApiaryWeb.Contract.{AdapterRequest, DispatchAnswer}
 
-  # The minutes the machine of every claim may live: the contract's most.
+  # The minutes the machine of a claim may live: 90 for a prebuild, else the contract's
+  # most.
   @max_lifetime_minutes 1470
+  @prebuild_lifetime_minutes 90
   @hold 25_000
   @poll 1_000
   @holds_per_key 2
@@ -207,7 +211,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
             [
               {"run_code", claimed.run_code},
               {"gateway_url", claimed.gateway_url},
-              {"max_lifetime_minutes", @max_lifetime_minutes}
+              {"max_lifetime_minutes", lifetime_minutes(claimed.run)}
             ]
         )
       )
@@ -215,6 +219,10 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(200, body)
+  end
+
+  defp lifetime_minutes(%{step: step}) do
+    if step == DispatchRun.prebuild(), do: @prebuild_lifetime_minutes, else: @max_lifetime_minutes
   end
 
   defp refuse(conn, status, code), do: conn |> put_status(status) |> json(%{error: code})

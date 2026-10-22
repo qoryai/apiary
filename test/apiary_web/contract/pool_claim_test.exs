@@ -229,7 +229,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   end
 
   describe "a claim of a prebuild or of a run without a target" do
-    test "takes a prebuild held for its pool, answered 200, signed, as the contract's prebuild",
+    test "takes a prebuild held for its pool, answered 200, signed, its machine living 90 minutes",
          ctx do
       collection = collection_fixture(ctx.scope, target_path: "acme/shop")
       run = prebuild!(collection, ctx.pool)
@@ -258,7 +258,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "lease_until" => lease_until,
                "run_code" => answer["run_code"],
                "gateway_url" => "https://gateway.example",
-               "max_lifetime_minutes" => 1470
+               "max_lifetime_minutes" => 90
              }
 
       assert Repo.get!(DispatchRun, run.id).state == :claimed

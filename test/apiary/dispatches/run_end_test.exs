@@ -84,9 +84,9 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   describe "backstop_seconds/1" do
-    test "is 87,300 for explore, 2100 for prebuild, and Explore's for a step it does not name" do
+    test "is 87,300 for explore, 4500 for prebuild, and Explore's for a step it does not name" do
       assert Dispatches.backstop_seconds("explore") == 87_300
-      assert Dispatches.backstop_seconds("prebuild") == 2100
+      assert Dispatches.backstop_seconds("prebuild") == 4500
       assert Dispatches.backstop_seconds("another_step") == 87_300
       assert Dispatches.backstop_seconds(nil) == 87_300
     end
@@ -576,9 +576,9 @@ defmodule Apiary.Dispatches.RunEndTest do
       }
     end
 
-    test "its attach sets its backstop 2100 s after it", ctx do
+    test "its attach sets its backstop 4500 s, 1 hour and 15 minutes, after it", ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
-      assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 2100 * 1_000_000
+      assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 4500 * 1_000_000
     end
 
     test "lost at its run key's attach_by records the build failed, lost, and queues nothing",

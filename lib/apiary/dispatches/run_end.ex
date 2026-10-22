@@ -47,7 +47,23 @@ defmodule Apiary.Dispatches.RunEnd do
   # failure. The record keeps its last good build, and nothing is queued. A prebuild whose
   # ref is older than the record's image's records no failure
   # (`Apiary.Environments.newer_build?/2`, asked under the record's lock), and ends all
-  # the same.
+  # the same; so does a prebuild whose reported image is the record's
+  # (`Apiary.Environments.built_by?/2`, `Apiary.Dispatches.Built`), as its build is the
+  # last good one, whether its report came before its end or comes after it.
+  #
+  # **An image missing.** A run that is not a prebuild, whose exit is `failed` with the
+  # reason `image_missing` and that started in the image its pool's record gave it
+  # (`runs.configured_image`), ends `run_ended` as any exit ends it, and then, in the same
+  # transaction: the records of the pool that claimed it whose image is that image, built
+  # for the run's target, have their build cleared, and a prebuild of each record's
+  # collection is queued for the pool where one is due
+  # (`Apiary.Environments.forget_image/2`); and the run's work item gets the next run of
+  # the take in (`Apiary.Dispatches.queue_next/2`), once: only while the work item is
+  # `exploring`, not closed, in the run's take in, with a run of the take in left, and
+  # only when the run of the attempt before this one did not end with `image_missing`
+  # too. So a second `image_missing` in a row queues no run, and the build is still
+  # queued. The run that waits again starts in whatever image its pool has for its
+  # target when its gateway attaches it (`Apiary.Environments.image_for/2`).
   #
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
@@ -67,15 +83,20 @@ defmodule Apiary.Dispatches.RunEnd do
   # as a release holds it (`Apiary.Dispatches.Release`): so each of them and a trigger of
   # its collection take turns at the record. For any other run, its work item
   # `FOR KEY SHARE`, which a release and a close hold `FOR UPDATE` before the run of the
-  # queue: so the end and either of them take turns at the work item. An end by an exit
-  # writes the run of the queue a second time when the result it stores differs from the
-  # one the row has (`settled/4`, `Apiary.Dispatches.Settle`, which skips equal values),
-  # and Postgres then checks that write's foreign key with a `FOR KEY SHARE` lock on the
-  # work item. Taken there alone, after the run of the queue, that lock waits on a
-  # release that holds the work item and waits on the run of the queue: a deadlock
-  # (40P01). Then the run of the queue is locked `FOR UPDATE`, then the registered run,
-  # then the dispatches are written. `refused/1` holds nothing first: it writes the run
-  # of the queue once.
+  # queue: so the end and either of them take turns at the work item. A run whose folded
+  # exit says its image was missing has its work item held `FOR UPDATE` instead, as
+  # `Apiary.Dispatches.queue_next/2` holds it, then the records of that image
+  # (`Apiary.Environments.lock_missing/3`), before the run of the queue, as the order of
+  # `Apiary.Dispatches.Slots` has the records before the runs: two ends of that run then
+  # take turns at the work item, and neither holds a lock the other waits to upgrade.
+  # An end by an exit writes the run of the queue a second time when the result it
+  # stores differs from the one the row has (`settled/4`, `Apiary.Dispatches.Settle`,
+  # which skips equal values), and Postgres then checks that write's foreign key with a
+  # `FOR KEY SHARE` lock on the work item. Taken there alone, after the run of the
+  # queue, that lock waits on a release that holds the work item and waits on the run of
+  # the queue: a deadlock (40P01). Then the run of the queue is locked `FOR UPDATE`, then
+  # the registered run, then the dispatches are written. `refused/1` holds nothing
+  # first: it writes the run of the queue once.
   # Every path that locks a run of the queue together with its dispatches or its
   # registered run locks the run of the queue first (`Apiary.Dispatches.Slots`), so two
   # ends of one run take turns there and the second finds it ended. A projection and an
@@ -87,19 +108,24 @@ defmodule Apiary.Dispatches.RunEnd do
 
   require Logger
 
-  alias Apiary.{Environments, Repo}
+  alias Apiary.{Dispatches, Environments, Repo}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle, Slots}
   alias Apiary.Environments.Record
+  alias Apiary.Lingo.Domain
+  alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Event, Run}
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
+  # The reason of a run's exit whose image the registry does not have.
+  @image_missing "image_missing"
 
   # The seconds from its attach by which a run of each step has its exit, or is lost:
   # Explore's 24 hours and 15 minutes, the longest time limit (1440 minutes,
-  # `Apiary.TimeLimits`) and a margin, and a prebuild's 35 minutes, the prebuild
-  # workflow's 30 minutes and a margin. A step not named here has Explore's.
-  @backstops %{"explore" => 87_300, "prebuild" => 2100}
+  # `Apiary.TimeLimits`) and a margin, and a prebuild's 1 hour and 15 minutes, within the
+  # 90 minutes its claim lets its machine live (`ApiaryWeb.Contract.PoolClaimController`).
+  # A step not named here has Explore's.
+  @backstops %{"explore" => 87_300, "prebuild" => 4500}
   @default_backstop 87_300
   # The seconds without a heartbeat after which an attached run with no exit is lost for
   # good, and its dispatch ends.
@@ -139,10 +165,13 @@ defmodule Apiary.Dispatches.RunEnd do
   # returned. For any other run, its work item `FOR KEY SHARE`, and nil returned: an end
   # that writes the run of the queue twice in its transaction makes Postgres check
   # `dispatch_runs_work_item_id_fkey` again at the second write, with that same lock on
-  # the work item, which then comes after the run of the queue unless taken here. A
+  # the work item, which then comes after the run of the queue unless taken here. For
+  # such a run whose folded exit says its image was missing (`missing/1`), its work item
+  # `FOR UPDATE` and then the records of that image
+  # (`Apiary.Environments.lock_missing/3`), returned as `{:image_missing, records}`. A
   # prebuild has no work item (`dispatch_runs_step_shape_check`). nil for no run.
   @doc false
-  @spec hold(Ecto.UUID.t() | nil) :: Record.t() | nil
+  @spec hold(Ecto.UUID.t() | nil) :: Record.t() | {:image_missing, [Record.t()]} | nil
   def hold(nil), do: nil
 
   def hold(dispatch_run_id) when is_binary(dispatch_run_id) do
@@ -159,12 +188,26 @@ defmodule Apiary.Dispatches.RunEnd do
         Environments.lock_record(pool_id, collection_id)
 
       {_step, _pool_id, _collection_id, work_item_id} when is_binary(work_item_id) ->
-        _id =
-          Repo.one(
-            from w in WorkItem, where: w.id == ^work_item_id, select: w.id, lock: "FOR KEY SHARE"
-          )
+        case missing(dispatch_run_id) do
+          %{pool_id: pool_id, target: target, image: image} ->
+            _id =
+              Repo.one(
+                from w in WorkItem, where: w.id == ^work_item_id, select: w.id, lock: "FOR UPDATE"
+              )
 
-        nil
+            {:image_missing, Environments.lock_missing(pool_id, target, image)}
+
+          nil ->
+            _id =
+              Repo.one(
+                from w in WorkItem,
+                  where: w.id == ^work_item_id,
+                  select: w.id,
+                  lock: "FOR KEY SHARE"
+              )
+
+            nil
+        end
 
       _other ->
         nil
@@ -176,12 +219,20 @@ defmodule Apiary.Dispatches.RunEnd do
   # and, for a prebuild that ends `lost` or by a `failed` or `lost` exit, records its last
   # build as failed on `held`, the record `hold/1` held before (the moduledoc). Ended
   # `run_ended`, what the run gave is stored when it is decided already
-  # (`Apiary.Dispatches.Settle`). The ids of
-  # the workspaces whose slots changed, and the work item whose run settled, for the
-  # caller to tell once its transaction commits (`Apiary.Dispatches.broadcast/1`); none
+  # (`Apiary.Dispatches.Settle`); a run whose exit says its image was missing, with
+  # `held` `{:image_missing, records}`, then has that image cleared and its work queued
+  # again (the moduledoc). The ids of
+  # the workspaces whose slots or queue changed, and the work item whose run settled, for
+  # the caller to tell once its transaction commits (`Apiary.Dispatches.broadcast/1`); none
   # otherwise.
   @doc false
-  @spec finish(DispatchRun.t() | nil, Run.t(), atom, DateTime.t(), Record.t() | nil) ::
+  @spec finish(
+          DispatchRun.t() | nil,
+          Run.t(),
+          atom,
+          DateTime.t(),
+          Record.t() | {:image_missing, [Record.t()]} | nil
+        ) ::
           [Ecto.UUID.t() | Settle.told()]
   def finish(
         %DispatchRun{state: :handed_over, id: id} = dispatch_run,
@@ -193,7 +244,8 @@ defmodule Apiary.Dispatches.RunEnd do
     in_transaction!()
     changed = end_locked(dispatch_run, cause, now, detail(cause, run))
     :ok = build_ended(held, dispatch_run, cause, run, now)
-    changed ++ settled(dispatch_run, run, cause, now)
+    settled = settled(dispatch_run, run, cause, now)
+    changed ++ settled ++ image_missing(held, dispatch_run, run, cause, now)
   end
 
   def finish(_dispatch_run, %Run{}, _cause, %DateTime{}, _held), do: []
@@ -205,6 +257,86 @@ defmodule Apiary.Dispatches.RunEnd do
     do: Settle.told(work_item_id)
 
   defp settled(_dispatch_run, _run, _cause, _now), do: []
+
+  # A run that is not a prebuild ended by its exit, `failed` with the reason
+  # `image_missing`, whose records `hold/1` held: that image cleared and a build queued,
+  # and the run's work queued again once (the moduledoc). The workspaces whose queue
+  # changed.
+  defp image_missing(
+         {:image_missing, records},
+         %DispatchRun{} = dispatch_run,
+         %Run{exit_state: "failed", exit_reason: @image_missing},
+         :run_ended,
+         now
+       ) do
+    rebuilt = Environments.forget_image(records, now)
+    Enum.map(rebuilt, & &1.workspace_id) ++ queue_again(dispatch_run)
+  end
+
+  defp image_missing(_held, _dispatch_run, _run, _cause, _now), do: []
+
+  # The next run of the take in of `dispatch_run`'s work item, while the work item
+  # explores in that take in and the attempt before it did not end with its image missing
+  # too.
+  defp queue_again(%DispatchRun{work_item_id: work_item_id, take_in: take_in} = dispatch_run)
+       when is_binary(work_item_id) and is_integer(take_in) do
+    with %WorkItem{state: :exploring, closed_at: nil, take_in: ^take_in} = work_item <-
+           Repo.get(WorkItem, work_item_id),
+         false <- missing_before?(dispatch_run),
+         {:ok, %DispatchRun{workspace_id: workspace_id}} <-
+           Dispatches.queue_next(work_item, take_in) do
+      [workspace_id]
+    else
+      _not_queued -> []
+    end
+  end
+
+  defp queue_again(%DispatchRun{}), do: []
+
+  # Whether the run of the attempt before `dispatch_run`'s, in its take in, ended with its
+  # image missing.
+  defp missing_before?(%DispatchRun{attempt: attempt}) when attempt <= 1, do: false
+
+  defp missing_before?(%DispatchRun{} = dispatch_run) do
+    Repo.exists?(
+      from d in DispatchRun,
+        join: r in Run,
+        on: r.dispatch_run_id == d.id,
+        where:
+          d.work_item_id == ^dispatch_run.work_item_id and d.take_in == ^dispatch_run.take_in,
+        where: d.attempt == ^(dispatch_run.attempt - 1),
+        where: r.exit_reason == ^@image_missing
+    )
+  end
+
+  # For the run of the queue `dispatch_run_id`, read without a lock, when its registered
+  # run's folded exit is `failed` with the reason `image_missing` and it started in the
+  # image its pool's record gave it: the pool that claimed it, from its dispatch handed
+  # over, the run's target, read from its registration labels by its workspace's domain
+  # (`Apiary.Lingo.Domain.target/2`), and that image. nil otherwise.
+  defp missing(dispatch_run_id) do
+    from(r in Run,
+      join: d in Dispatch,
+      on: d.dispatch_run_id == r.dispatch_run_id and not is_nil(d.handed_over_at),
+      where: r.dispatch_run_id == ^dispatch_run_id,
+      where: r.exit_state == "failed" and r.exit_reason == ^@image_missing,
+      where: not is_nil(r.configured_image),
+      order_by: [desc: d.handed_over_at],
+      limit: 1,
+      select: {d.pool_id, r.workspace_id, r.registration_labels, r.configured_image}
+    )
+    |> Repo.one()
+    |> case do
+      {pool_id, workspace_id, labels, image} when is_binary(pool_id) ->
+        case Domain.target(Repo.get(Workspace, workspace_id), labels) do
+          {:ok, target} -> %{pool_id: pool_id, target: target, image: image}
+          :none -> nil
+        end
+
+      _none ->
+        nil
+    end
+  end
 
   # The refusal's code, which the fold kept as the run's reason (`Apiary.Runs.Fold`); nil
   # for any other cause.
@@ -398,7 +530,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # attached, or once silent, else `timed_out` at its backstop. A prebuild its exit
   # ended: its build failed, `failed` or `lost` as its exit, when the exit is one of those
   # two; any other exit records nothing. The last good build kept either way. A prebuild
-  # whose ref is older than the record's image's records nothing.
+  # whose ref is older than the record's image's, or whose reported image is the
+  # record's, records nothing.
   defp build_ended(
          %Record{} = record,
          %DispatchRun{step: @prebuild} = dispatch_run,
@@ -412,9 +545,10 @@ defmodule Apiary.Dispatches.RunEnd do
         :ok
 
       failure ->
-        if Environments.newer_build?(record, dispatch_run),
-          do: :ok,
-          else: Environments.record_end_failure(record, failure, now)
+        if Environments.newer_build?(record, dispatch_run) or
+             Environments.built_by?(record, dispatch_run),
+           do: :ok,
+           else: Environments.record_end_failure(record, failure, now)
     end
   end
 

@@ -113,6 +113,34 @@ defmodule Apiary.Environments do
   # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and
   # every writer writes it as before.
   #
+  # `built_by?(record, dispatch_run)` is whether the image `record` keeps was made by
+  # `dispatch_run`: its `built_queued_at` is the run's `environment_ref_at`. The end of
+  # that prebuild by a `failed` or `lost` exit then records no failure, so its build
+  # stays the last good one in either order of its report and its exit
+  # (`Apiary.Dispatches.RunEnd`), and a second report of it writes nothing
+  # (`Apiary.Dispatches.Built`).
+  #
+  # ## An image missing: `lock_missing/3` and `forget_image/2`
+  #
+  # A run that is not a prebuild, started in the image its pool's record gave it
+  # (`runs.configured_image`), whose exit is `failed` with the reason `image_missing`:
+  # the registry has no such image. The end of its run of the queue
+  # (`Apiary.Dispatches.RunEnd`) first locks its work item, then
+  # `lock_missing(pool_id, target, image)`: the records of the pool that claimed the run
+  # whose image is that image, built for the run's target, `FOR UPDATE`, by collection,
+  # before the run of the queue, as the order of `Apiary.Dispatches.Slots` has the records
+  # before the runs. `forget_image(records, now)` then clears the build of each of them,
+  # `image`, `size`, `commit`, `built_at`, `reported_ref`, the built target and
+  # `built_queued_at`, so `image_for/2` gives that image to no run; the last failure,
+  # what was queued and `retired_at` are left as they are. For each record not retired
+  # whose collection is live, assigned to the pool's workspace, whose domain has
+  # prebuilds, with a target and an `environment_ref`, and whose pool is live, it writes
+  # the record's `queued_ref`, `queued_at` and queued target and queues a prebuild of the
+  # collection held for the pool, as a Rebuild does, unless one waits unclaimed: the next
+  # build makes the image again. The collections are read without a lock: a listing's
+  # part that changes one waits for the record, and its trigger then sees what was
+  # queued.
+  #
   # ## A member's Rebuild: `rebuild/2`
   #
   # `rebuild(scope, target)` is the Rebuild of a target's page
@@ -278,6 +306,95 @@ defmodule Apiary.Environments do
       do: DateTime.compare(ref_at, built_queued_at) == :lt
 
   def newer_build?(_record, %Apiary.Dispatches.DispatchRun{}), do: false
+
+  # built_by?/2 is whether the image of `record`, locked by `lock_record/2`, was made by
+  # the prebuild `dispatch_run`: the record's `built_queued_at` is when `dispatch_run`
+  # took its `environment_ref` (the moduledoc).
+  @doc false
+  @spec built_by?(Record.t() | nil, Apiary.Dispatches.DispatchRun.t()) :: boolean
+  def built_by?(
+        %Record{built_queued_at: %DateTime{} = built_queued_at},
+        %Apiary.Dispatches.DispatchRun{environment_ref_at: %DateTime{} = ref_at}
+      ),
+      do: DateTime.compare(ref_at, built_queued_at) == :eq
+
+  def built_by?(_record, %Apiary.Dispatches.DispatchRun{}), do: false
+
+  ## An image missing
+
+  # lock_missing/3 locks `FOR UPDATE`, inside the caller's transaction, the records of the
+  # node pool `pool_id` whose image is `image`, built for `target`, by collection: the
+  # records (the moduledoc).
+  @doc false
+  @spec lock_missing(Ecto.UUID.t(), %{system: String.t(), path: String.t()}, String.t()) ::
+          [Record.t()]
+  def lock_missing(pool_id, %{system: system, path: path}, image)
+      when is_binary(pool_id) and is_binary(system) and is_binary(path) and is_binary(image) do
+    in_transaction!("lock_missing/3")
+
+    Repo.all(
+      from r in Record,
+        where: r.pool_id == ^pool_id and r.image == ^image,
+        where: r.built_target_system == ^system and r.built_target_path == ^path,
+        order_by: [r.source_collection_id, r.pool_id],
+        lock: "FOR UPDATE"
+    )
+  end
+
+  # forget_image/2 clears the image of `records`, locked by `lock_missing/3`, at `now`, and
+  # queues a prebuild of each record's collection for its pool where one is due, inside
+  # the caller's transaction (the moduledoc): the prebuilds it queued.
+  @doc false
+  @spec forget_image([Record.t()], DateTime.t()) :: [Apiary.Dispatches.DispatchRun.t()]
+  def forget_image([], %DateTime{}), do: []
+
+  def forget_image(records, %DateTime{} = now) when is_list(records) do
+    in_transaction!("forget_image/2")
+    ids = Enum.map(records, & &1.id)
+
+    {_count, _rows} =
+      Repo.update_all(from(r in Record, where: r.id in ^ids),
+        set: [
+          image: nil,
+          size: nil,
+          commit: nil,
+          built_at: nil,
+          reported_ref: nil,
+          built_target_system: nil,
+          built_target_path: nil,
+          built_queued_at: nil,
+          updated_at: now
+        ]
+      )
+
+    pools =
+      Map.new(
+        Repo.all(from n in Node, where: n.id in ^Enum.map(records, & &1.pool_id)),
+        &{&1.id, &1}
+      )
+
+    collections =
+      Map.new(
+        Repo.all(
+          from c in Collection, where: c.id in ^Enum.map(records, & &1.source_collection_id)
+        ),
+        &{&1.id, &1}
+      )
+
+    for %Record{retired_at: nil} = record <- records,
+        %Collection{} = collection <- [collections[record.source_collection_id]],
+        %Node{kind: :pool, deleted_at: nil} = pool <- [pools[record.pool_id]],
+        rebuilt?(collection, pool),
+        run <- requeue(collection, [pool], now),
+        do: run
+  end
+
+  # A collection whose image a prebuild for `pool` builds again: live, assigned to the
+  # pool's workspace, whose domain has prebuilds, with a target and an `environment_ref`.
+  defp rebuilt?(%Collection{} = collection, %Node{workspace_id: workspace_id}) do
+    due?(collection) and collection.workspace_id == workspace_id and
+      not is_nil(collection.environment_ref) and prebuilt?(workspace_id)
+  end
 
   ## A build recorded
 

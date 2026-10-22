@@ -89,6 +89,7 @@ defmodule Apiary.Runs.Projector do
 
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
+        record_built(run, first, last)
         end_handed_over(run)
         end_refused(run)
         settle_dispatched(run, first, last)
@@ -450,6 +451,29 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp touch_heartbeat(_run), do: :ok
+
+  # A run of a workspace's queue whose passes folded a `dev.qory.run.built` has the image
+  # it reports stored, once its passes have committed and before its end, in a separate
+  # transaction that holds the environment record of a prebuild
+  # (`Apiary.Dispatches.Built.record/1`), which stores nothing for a run that is not a
+  # prebuild. A failure is logged by run and the kind of the error, and the image is not
+  # stored.
+  defp record_built(%Run{id: id, dispatch_run_id: dispatch_run_id} = run, first, last)
+       when is_binary(dispatch_run_id) do
+    built? =
+      Repo.exists?(
+        from e in Event,
+          where: e.run_id == ^id and e.sequence >= ^first and e.sequence <= ^last,
+          where: e.type == ^Apiary.Dispatches.Built.type()
+      )
+
+    if built?, do: Apiary.Dispatches.Built.record(run)
+    :ok
+  rescue
+    error -> log_failure(run, {:built, error.__struct__})
+  end
+
+  defp record_built(_run, _first, _last), do: :ok
 
   # A run a workspace's queue handed over whose pass folded its exit ends the queue's run
   # with it, once its passes have committed, in a separate transaction that locks the
