@@ -507,9 +507,10 @@ defmodule Apiary.Runs.Attach do
 
   defp image(_run, _workspace, _dispatched), do: nil
 
-  # A run a workspace's queue handed over is lost should it have neither an outcome nor an
-  # exit by its step's limit after its attach (`Apiary.Dispatches.RunEnd`); any other run
-  # has no such deadline.
+  # A run a workspace's queue handed over is lost should it have no exit by its step's
+  # limit after its attach (`Apiary.Dispatches.RunEnd`): it takes no outcome, and for a
+  # prebuild an outcome stored before that rule does not count either. Any other run has
+  # no such deadline.
   defp backstop_at(nil, _now), do: nil
 
   defp backstop_at(%{step: step}, now),

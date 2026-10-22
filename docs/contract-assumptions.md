@@ -444,30 +444,30 @@ of its work item, its registered run is deleted with the run code, and the code 
 nothing from then on.
 
 Once handed over, such a run ends with its registered run, in one of three ways, the first
-to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded, whatever
-its state, ends it `run_ended`; a `dev.qory.run.refused` once folded ends it `run_refused`,
-for a run that is not a prebuild; and the lost-run check ends it `lost` when its gateway
-never attached it by its `attach_by`, or when it has no exit by its backstop, 1200 seconds
-after its attach for the step `explore` and 2100 for `prebuild` (Liveness). No request
-records the image a prebuild built: the provisioner contract has no `prebuilt`. A prebuild
-the lost-run check ends `lost` records that end as its last build's failure on the
-environment record of its collection and of the pool that claimed it, `lost` at its
-`attach_by` and `timed_out` at its backstop, with no reason. A prebuild its exit ends,
-`run_ended`, records it there too when the exit's state is `failed` or `lost`, as that
-state, with no reason; any other exit records no failure. The record keeps its last good
-build, nothing is queued, and the check and the projection's end hold that record before
-the run of the queue, as a release does; a prebuild whose `environment_ref` is older than
-the record's image's records no failure, and ends all the same. Its dispatch ends with it, with the same end
-cause, a stale dispatch of it with `run_ended`, and the slot the dispatch took at its claim
-is freed once (`dispatches.slot_freed_at`, set only where it is empty). An end after the
-first changes none of them. A run of the queue takes no outcome: the outcome endpoint
-answers a pool's key for a run the pool claimed `404`, as it answers a key for a run the
-key is not bound to, and stores nothing (`Apiary.Runs.Outcome`). A node's keys keep the
-outcome endpoint for the runs the node registers itself.
-Each end locks the run of the queue first, then the registered run, then writes the
-dispatches, so two ends of one run take turns, and an exit that comes as the check loses
-the run is either taken first, its end cause `run_ended`, or after it, the end cause
-staying `lost`.
+to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded,
+whatever its state, ends it `run_ended`; a `dev.qory.run.refused` once folded ends it
+`run_refused`, for a run that is not a prebuild; and the lost-run check ends it `lost`
+when its gateway never attached it by its `attach_by`, or when it has no exit by its
+backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
+(Liveness). No request records the image a prebuild built: the provisioner contract has no
+`prebuilt`. A prebuild the lost-run check ends `lost` records that end as its last build's
+failure on the environment record of its collection and of the pool that claimed it,
+`lost` at its `attach_by` and `timed_out` at its backstop, with no reason. A prebuild its
+exit ends, `run_ended`, records it there too when the exit's state is `failed` or `lost`,
+as that state, with no reason; any other exit records no failure. The record keeps its
+last good build, nothing is queued, and the check and the projection's end hold that
+record before the run of the queue, as a release does; a prebuild whose `environment_ref`
+is older than the record's image's records no failure, and ends all the same. Its dispatch
+ends with it, with the same end cause, a stale dispatch of it with `run_ended`, and the
+slot the dispatch took at its claim is freed once (`dispatches.slot_freed_at`, set only
+where it is empty). An end after the first changes none of them. A run of the queue takes
+no outcome: the outcome endpoint answers a pool's key for a run the pool claimed `404`, as
+it answers a key for a run the key is not bound to, and stores nothing
+(`Apiary.Runs.Outcome`). A node's keys keep the outcome endpoint for the runs the node
+registers itself. Each end locks the run of the queue first, then the registered run, then
+writes the dispatches, so two ends of one run take turns, and an exit that comes as the
+check loses the run is either taken first, its end cause `run_ended`, or after it, the end
+cause staying `lost`.
 
 A run its gateway refused before it started (`dev.qory.run.refused`, with a code such as
 `model_key_missing`) ends `run_refused` at its first refusal and is not queued again. The

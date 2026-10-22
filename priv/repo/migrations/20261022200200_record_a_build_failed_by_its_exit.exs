@@ -10,8 +10,7 @@ defmodule Apiary.Repo.Migrations.RecordABuildFailedByItsExit do
   # Down first reads the records whose failure is `failed`, a scan that blocks no write,
   # and stops while there is one: the check before refuses `failed`. It then re-creates
   # that check NOT VALID. A record given `failed` between the read and the re-creation
-  # keeps it, and the check refuses every later write of that row until its failure cause
-  # is changed.
+  # keeps it, and the check refuses every later update of that row that keeps `failed`.
   @ref_check "BETWEEN 1 AND 200"
 
   def up do
