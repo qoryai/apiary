@@ -281,6 +281,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       for {cause, words} <- [
             lost: "The last build was lost before it finished.",
+            failed: "The last build failed.",
             timed_out: "The last build failed: it ran past 35 minutes."
           ] do
         record

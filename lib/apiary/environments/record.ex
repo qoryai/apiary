@@ -31,7 +31,7 @@ defmodule Apiary.Environments.Record do
   @typedoc "A collection's environment record for one node pool."
   @type t :: %__MODULE__{}
 
-  @failure_causes [:released, :lost, :timed_out]
+  @failure_causes [:released, :lost, :timed_out, :failed]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -62,7 +62,7 @@ defmodule Apiary.Environments.Record do
   end
 
   # failure_causes/0 is every cause a build is recorded as failed for: the starter's
-  # release, the run lost, or the run past its time.
+  # release, the run lost, the run past its time, or the run's exit `failed`.
   @doc false
   @spec failure_causes() :: [atom]
   def failure_causes, do: @failure_causes

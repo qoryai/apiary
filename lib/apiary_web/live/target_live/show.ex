@@ -998,6 +998,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   # The last build's failure, by its cause; the reason a starter gave is never shown.
   defp failure_words(:released), do: gettext("The last build was given back.")
   defp failure_words(:lost), do: gettext("The last build was lost before it finished.")
+  defp failure_words(:failed), do: gettext("The last build failed.")
 
   defp failure_words(:timed_out),
     do: gettext("The last build failed: it ran past 35 minutes.")

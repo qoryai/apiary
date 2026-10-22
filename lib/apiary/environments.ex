@@ -66,9 +66,9 @@ defmodule Apiary.Environments do
   # lost-run check ends a prebuild after its handover (`Apiary.Dispatches.RunEnd`), on the
   # record of its collection and of the pool that claimed it, which the check locks with
   # `lock_record/2` before its run of the queue: `lost` when the prebuild's gateway never
-  # attached it by its run key's `attach_by`, `timed_out` when it had neither an outcome
-  # nor an exit by its backstop, with `now` and no reason; `lost` too when its starter's
-  # outcome or its `failed` or `lost` exit ends it. The last good build is left as it was,
+  # attached it by its run key's `attach_by`, `timed_out` when it had no exit by its
+  # backstop, with `now` and no reason; and when its exit ends it, `failed` for a `failed`
+  # exit and `lost` for a `lost` one. The last good build is left as it was,
   # and nothing is queued. A prebuild whose ref is older than the image's records
   # nothing (`newer_build?/2`).
   #
@@ -214,12 +214,12 @@ defmodule Apiary.Environments do
   end
 
   # record_end_failure/3 records the last build of `record`, locked by `lock_record/2`,
-  # as failed by the end of its prebuild, `cause` (`:lost` or `:timed_out`), at `now`,
-  # inside the caller's transaction (the moduledoc).
+  # as failed by the end of its prebuild, `cause` (`:lost`, `:timed_out` or `:failed`), at
+  # `now`, inside the caller's transaction (the moduledoc).
   @doc false
-  @spec record_end_failure(Record.t(), :lost | :timed_out, DateTime.t()) :: :ok
+  @spec record_end_failure(Record.t(), :lost | :timed_out | :failed, DateTime.t()) :: :ok
   def record_end_failure(%Record{id: id}, cause, %DateTime{} = now)
-      when is_binary(id) and cause in [:lost, :timed_out] do
+      when is_binary(id) and cause in [:lost, :timed_out, :failed] do
     in_transaction!("record_end_failure/3")
 
     {1, _rows} =
@@ -494,7 +494,7 @@ defmodule Apiary.Environments do
           image: String.t() | nil,
           built_at: DateTime.t() | nil,
           commit: String.t() | nil,
-          failure: :released | :lost | :timed_out | nil,
+          failure: :released | :lost | :timed_out | :failed | nil,
           running: boolean,
           waiting: boolean
         }
