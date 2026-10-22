@@ -70,8 +70,13 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # With the `registry` feature, for a run through a gateway, whatever the other features:
   # the run's registry credential, after the model key in `credentials`; the instance's
   # host and the registry's in `egress.allow` and `egress.allow_first`, as the provider's
-  # hosts are; and the registry host's path rules in `egress.paths`, in place of any the
-  # document has for that host (`Apiary.Registry.RunAccess`).
+  # hosts are; the registry host's path rules in `egress.paths`, in place of any the
+  # document has for that host (`Apiary.Registry.RunAccess`); and for the instance's
+  # host, the path rule `/registry/token`, after the rules the document has for that host
+  # where it has some, else alone, unless the document allowed that host before: in
+  # `egress.allow_first`, or in `egress.allow` and not in `egress.deny`
+  # (`Apiary.Policy.Grammar.matches?/2`). Without it, a gateway would open every path of
+  # the instance's host to the run.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`. A document composed with them is
@@ -490,16 +495,44 @@ defmodule Apiary.Policy.ComposedConfiguration do
       |> decode()
       |> Enum.reject(fn {name, _value} -> name in names end)
 
+    open? = is_map(registry) and host_open?(members, registry.instance_host)
+
     with {:ok, members} <- policy_with_hosts(members, hosts),
-         do: {:ok, encode(policy_with_paths(members, registry) ++ added)}
+         do: {:ok, encode(policy_with_paths(members, registry, open?) ++ added)}
+  end
+
+  # Whether the document's `egress` allows `host` before any host is added: in
+  # `allow_first`, or in `allow` and not in `deny`.
+  defp host_open?(members, host) do
+    with {@security_policy, %Jason.OrderedObject{values: policy}} <-
+           List.keyfind(members, @security_policy, 0),
+         {"egress", %Jason.OrderedObject{values: egress}} <- List.keyfind(policy, "egress", 0) do
+      list = fn name ->
+        case List.keyfind(egress, name, 0) do
+          {^name, entries} when is_list(entries) -> Enum.filter(entries, &is_binary/1)
+          _none -> []
+        end
+      end
+
+      Grammar.matches?(list.("allow_first"), host) or
+        (Grammar.matches?(list.("allow"), host) and not Grammar.matches?(list.("deny"), host))
+    else
+      _none -> false
+    end
   end
 
   # The members with the registry's path rules for its host in the `security_policy`'s
   # `egress.paths`, where there is an `egress`: in place of the host's entry where it has
-  # one, else after the entries there (`Apiary.Registry.RunAccess`).
-  defp policy_with_paths(members, nil), do: members
+  # one, else after the entries there (`Apiary.Registry.RunAccess`). Then the instance's
+  # host's: `/registry/token` after the rules of its entry where it has one, else, unless
+  # `open?`, an entry of that one rule after the entries there.
+  defp policy_with_paths(members, nil, _open?), do: members
 
-  defp policy_with_paths(members, %{registry_host: host, paths: paths}) do
+  defp policy_with_paths(
+         members,
+         %{registry_host: host, paths: paths, instance_host: instance},
+         open?
+       ) do
     with {@security_policy, %Jason.OrderedObject{values: policy}} <-
            List.keyfind(members, @security_policy, 0),
          {"egress", %Jason.OrderedObject{values: egress}} <- List.keyfind(policy, "egress", 0) do
@@ -513,6 +546,23 @@ defmodule Apiary.Policy.ComposedConfiguration do
         if List.keymember?(entries, host, 0),
           do: List.keyreplace(entries, host, 0, {host, paths}),
           else: entries ++ [{host, paths}]
+
+      entries =
+        case List.keyfind(entries, instance, 0) do
+          {^instance, rules} when is_list(rules) ->
+            List.keyreplace(
+              entries,
+              instance,
+              0,
+              {instance, Enum.uniq(rules ++ [RunAccess.token_path()])}
+            )
+
+          nil when not open? ->
+            entries ++ [{instance, [RunAccess.token_path()]}]
+
+          _open ->
+            entries
+        end
 
       egress =
         if List.keymember?(egress, "paths", 0),

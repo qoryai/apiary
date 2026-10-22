@@ -18,13 +18,20 @@ defmodule ApiaryWeb.RegistryTokenController do
   #  1. a method other than GET or HEAD: `405`, `UNSUPPORTED`, with `Allow: GET`;
   #  2. no Basic credential that can be read: `401`, `UNAUTHORIZED`;
   #  3. a credential that matches no run: `401`, `UNAUTHORIZED`;
-  #  4. a run that ended: `401`, `UNAUTHORIZED`;
-  #  5. no `service`, or one other than `QORY_REGISTRY`: `400`, `UNSUPPORTED`;
-  #  6. more than 16 scopes: `400`, `UNSUPPORTED`;
-  #  7. nothing granted, no scope included: `401`, `UNAUTHORIZED`;
-  #  8. more than 120 tokens to the run in 60 seconds: `429`, `TOOMANYREQUESTS`, with
-  #     `Retry-After`;
+  #  4. 120 tokens issued to the run in its current window of 60 seconds: `429`,
+  #     `TOOMANYREQUESTS`, with `Retry-After`, the seconds until the window ends;
+  #  5. a run that ended: `401`, `UNAUTHORIZED`;
+  #  6. no `service`, or one other than `QORY_REGISTRY`: `400`, `UNSUPPORTED`;
+  #  7. more than 16 `scope` parameters: `400`, `UNSUPPORTED`;
+  #  8. nothing granted, no scope included, or a run that does not go through a gateway
+  #     (`Apiary.Registry.RunAccess.applies?/1`): `401`, `UNAUTHORIZED`;
   #  9. a failure to read or sign: `503`, `UNAVAILABLE`, with a line in the log.
+  #
+  # The limit (4) is a count per run in a fixed window (`Apiary.Runs.RateLimit.reserve/3`),
+  # checked right after the credential matches a run, before the run's rights are read: a
+  # request reserves one of the 120, and a refusal after it (5 to 9) gives it back, so the
+  # count is of the tokens issued in the window and the requests still being answered. A
+  # request whose credential matches no run has no limit per run here.
   #
   # Every `401` has `WWW-Authenticate: Basic realm="Qory Apiary"`. No answer and no log
   # line has the credential or the token.
@@ -38,9 +45,9 @@ defmodule ApiaryWeb.RegistryTokenController do
   alias Apiary.Registry.{Credential, Grant, RunAccess, Token}
   alias Apiary.Runs.RateLimit
 
-  # 120 tokens a run at once, refilled at 2 a second: 120 in 60 seconds.
-  @burst 120
-  @rate 2
+  # At most 120 tokens to a run in a window of 60 seconds.
+  @limit 120
+  @window :timer.seconds(60)
 
   def show(conn, _params) do
     conn = put_resp_header(conn, "cache-control", "no-store")
@@ -48,7 +55,8 @@ defmodule ApiaryWeb.RegistryTokenController do
   rescue
     exception ->
       Logger.error(
-        "a registry token request could not be answered: #{inspect(exception.__struct__)}"
+        "Qory Apiary could not build the response to a registry token request: " <>
+          inspect(exception.__struct__)
       )
 
       refuse(
@@ -66,25 +74,26 @@ defmodule ApiaryWeb.RegistryTokenController do
     |> refuse(
       405,
       "UNSUPPORTED",
-      "Send the token request as a GET request. A POST request gets no registry token here."
+      "Send the token request as a GET request. Only a GET request gets a registry token here."
     )
   end
 
   defp answer(conn, query) do
     with {:ok, username, secret} <- basic(conn),
          {:ok, run} <- verified(username, secret),
-         :ok <- live(run),
-         :ok <- service(query),
-         {:ok, access} <- granted(run, query),
-         :ok <- limited(run) do
-      now = DateTime.truncate(DateTime.utc_now(), :second)
-      token = Token.issue(ApiaryWeb.Endpoint.url(), run.public_id, access, now)
+         {:ok, window} <- limited(run) do
+      case issued(run, query, window) do
+        {:ok, token, now} ->
+          json(conn, %{
+            token: token,
+            expires_in: Token.lifetime_seconds(),
+            issued_at: DateTime.to_iso8601(now)
+          })
 
-      json(conn, %{
-        token: token,
-        expires_in: Token.lifetime_seconds(),
-        issued_at: DateTime.to_iso8601(now)
-      })
+        {:refuse, status, code, message} ->
+          RateLimit.release(limit_key(run), window)
+          refuse(conn, status, code, message)
+      end
     else
       {:refuse, status, code, message} ->
         refuse(conn, status, code, message)
@@ -94,6 +103,21 @@ defmodule ApiaryWeb.RegistryTokenController do
         |> put_resp_header("retry-after", "#{retry_after}")
         |> refuse(429, "TOOMANYREQUESTS", message)
     end
+  end
+
+  # The token for `run`, once it reserved one of its limit in `window`, which an
+  # exception gives back before it is answered `503`.
+  defp issued(run, query, window) do
+    with :ok <- live(run),
+         :ok <- service(query),
+         {:ok, access} <- granted(run, query) do
+      now = DateTime.truncate(DateTime.utc_now(), :second)
+      {:ok, Token.issue(ApiaryWeb.Endpoint.url(), run.public_id, access, now), now}
+    end
+  rescue
+    exception ->
+      RateLimit.release(limit_key(run), window)
+      reraise exception, __STACKTRACE__
   end
 
   defp basic(conn) do
@@ -161,8 +185,10 @@ defmodule ApiaryWeb.RegistryTokenController do
   end
 
   defp granted(run, %{scopes: scopes}) do
-    case Grant.grant(RunAccess.rights(run), scopes) do
-      {:ok, []} ->
+    rights = if RunAccess.applies?(run), do: RunAccess.rights(run), else: :none
+
+    case rights != :none && Grant.grant(rights, scopes) do
+      result when result in [false, {:ok, []}] ->
         unauthorized(
           "Ask only for images inside the run. The request contains no image that the run " <>
             "#{run.public_id} may pull or push."
@@ -179,16 +205,18 @@ defmodule ApiaryWeb.RegistryTokenController do
   end
 
   defp limited(run) do
-    case RateLimit.check({:registry_token, run.id}, rate: @rate, burst: @burst) do
-      :ok ->
-        :ok
+    case RateLimit.reserve(limit_key(run), @limit, @window) do
+      {:ok, window} ->
+        {:ok, window}
 
       {:error, retry_after} ->
         {:limited, retry_after,
-         "Wait 1 minute, then try again. Qory Apiary issued #{@burst} registry tokens to the " <>
+         "Wait 1 minute, then try again. Qory Apiary issued #{@limit} registry tokens to the " <>
            "run #{run.public_id} in the last 60 seconds, the limit."}
     end
   end
+
+  defp limit_key(run), do: {:registry_token, run.id}
 
   defp unauthorized(message), do: {:refuse, 401, "UNAUTHORIZED", message}
 

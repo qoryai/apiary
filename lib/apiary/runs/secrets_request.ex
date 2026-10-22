@@ -119,8 +119,11 @@ defmodule Apiary.Runs.SecretsRequest do
          :ok <- model_allowed(model, access_key),
          :ok <- sealable(run, model, access_key),
          {:ok, public_key} <- recipient_key(run, access_key),
-         {:ok, body} <- sealed(run, credentials, access_key, public_key, digest, now),
+         {:ok, body, secret} <- sealed(run, credentials, access_key, public_key, digest, now),
          :ok <- record(access_key, run, model) do
+      # The registry credential's secret counts from here: the seal, its size and its
+      # audit entry succeeded, so the answer goes out with it.
+      if secret, do: :ok = Credential.store(run, secret)
       {:ok, body}
     end
   end
@@ -321,7 +324,7 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp sealed(run, credentials, access_key, public_key, digest, now) do
     case values(run, credentials) do
-      {:ok, values} ->
+      {:ok, values, secret} ->
         values = Enum.sort_by(values, & &1["credential"])
 
         plaintext = %{
@@ -339,24 +342,25 @@ defmodule Apiary.Runs.SecretsRequest do
           exp: Sealing.expiry(DateTime.from_unix!(now))
         }
 
-        seal(run, credentials.model, plaintext, recipient)
+        with {:ok, body} <- seal(run, credentials.model, plaintext, recipient),
+             do: {:ok, body, secret}
 
       {:error, :credential_unavailable} = error ->
         error
     end
   end
 
-  # The value of each credential: the model key's, read for sealing, and the registry
-  # credential's, made now (`Apiary.Registry.Credential.issue/1`), only once the model
-  # key's was read.
+  # The value of each credential, and the registry credential's secret, nil for none:
+  # the model key's, read for sealing, and the registry credential's, made now
+  # (`Apiary.Registry.Credential.new_secret/0`) and stored only once the seal succeeded.
   defp values(run, %{model: model, registry: registry}) do
     with {:ok, model_values} <- model_value(run, model) do
-      registry_values =
-        if registry,
-          do: [%{"credential" => Credential.name(), "value" => Credential.issue(run)}],
-          else: []
+      secret = if registry, do: Credential.new_secret()
 
-      {:ok, model_values ++ registry_values}
+      registry_values =
+        if secret, do: [%{"credential" => Credential.name(), "value" => secret}], else: []
+
+      {:ok, model_values ++ registry_values, secret}
     end
   end
 

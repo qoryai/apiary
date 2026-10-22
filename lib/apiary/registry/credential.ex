@@ -6,8 +6,9 @@ defmodule Apiary.Registry.Credential do
   # token route (`ApiaryWeb.RegistryTokenController`). Its user name is the run's public
   # id; its secret is 32 random bytes in unpadded base64url, made when the secrets request
   # seals it for the run's gateway (`Apiary.Runs.SecretsRequest`). The run's row keeps the
-  # secret's SHA-256 alone (`runs.registry_credential_sha256`), and a second seal for the
-  # run replaces it, so only the secret sealed last matches.
+  # secret's SHA-256 alone (`runs.registry_credential_sha256`), stored once the seal
+  # succeeded, and a second seal for the run replaces it, so only the secret sealed last
+  # matches.
   #
   # `verify/2` compares the SHA-256 of the secret given with the stored one in constant
   # time, and compares it with a fixed value of the same length where the run is unknown
@@ -29,18 +30,21 @@ defmodule Apiary.Registry.Credential do
   def name, do: @name
 
   @doc false
-  # issue/1 makes a secret for `run`, stores its SHA-256 on the run's row, and returns
-  # the secret. Raises where the row cannot be written.
-  @spec issue(Run.t()) :: String.t()
-  def issue(%Run{id: id}) do
-    secret = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+  # new_secret/0 is a fresh secret, stored nowhere until `store/2`.
+  @spec new_secret() :: String.t()
+  def new_secret, do: Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
 
+  @doc false
+  # store/2 stores the SHA-256 of `secret` on `run`'s row, in place of any before it.
+  # Raises where the row cannot be written.
+  @spec store(Run.t(), String.t()) :: :ok
+  def store(%Run{id: id}, secret) when is_binary(secret) do
     {1, _} =
       Repo.update_all(from(r in Run, where: r.id == ^id),
         set: [registry_credential_sha256: :crypto.hash(:sha256, secret)]
       )
 
-    secret
+    :ok
   end
 
   @doc false

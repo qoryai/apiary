@@ -7,10 +7,10 @@ defmodule ApiaryWeb.Contract.SecretsController do
   # (`Apiary.Runs.SecretsRequest`), under the gateway's access key. Reached only through
   # `ApiaryWeb.Contract.SignedRequest`, as the run endpoint is, under the run endpoint's
   # bucket of the key's rate limit, which verifies the request and signs the answer. The
-  # body is read raw, up to 32 KiB (`ApiaryWeb.Contract.RawBody`). Without `registry`
-  # and without either of the other two, a request that verifies is given a signed
-  # `404`, as a path the instance does not serve: the route's gate is `factory` or
-  # `registry` (`ApiaryWeb.Features.Routes`), and the rest is checked here.
+  # body is read raw, up to 32 KiB (`ApiaryWeb.Contract.RawBody`). Without `registry`, a
+  # request that verifies is given a signed `404` where `factory` or `secrets` is off, as
+  # a path the instance does not serve: the route's gate is `factory` or `registry`
+  # (`ApiaryWeb.Features.Routes`), and the rest is checked here.
   #
   # The answer is `200`, `application/json`, the sealed envelope
   # (`secrets-answer.schema.json`). The refusals: `400` `invalid_request`; `401`,

@@ -232,8 +232,9 @@ defmodule Apiary.InstanceConfig do
 
   @doc false
   # registry_instance/0 is the instance's registry name: the node's copy, else the row's,
-  # made now where the row has none.
-  @spec registry_instance() :: String.t()
+  # made now where the row has none; nil on a schema whose migration of the name has not
+  # run yet.
+  @spec registry_instance() :: String.t() | nil
   def registry_instance do
     case Application.fetch_env(:apiary, :registry_instance) do
       {:ok, name} when is_binary(name) -> name
@@ -243,8 +244,9 @@ defmodule Apiary.InstanceConfig do
 
   @doc false
   # record_registry_instance/0 makes the instance's registry name where the row has none,
-  # and returns the row's.
-  @spec record_registry_instance() :: String.t()
+  # and returns the row's; nil on a schema whose migration of the name has not run yet,
+  # as `load/0` reads such a schema.
+  @spec record_registry_instance() :: String.t() | nil
   def record_registry_instance do
     name = Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
 
@@ -252,6 +254,12 @@ defmodule Apiary.InstanceConfig do
       Repo.query!(@registry_instance, [name, DateTime.utc_now()])
 
     recorded
+  rescue
+    error in Postgrex.Error ->
+      case error.postgres do
+        %{code: code} when code in [:undefined_column, :undefined_table] -> nil
+        _other -> reraise error, __STACKTRACE__
+      end
   end
 
   defp to_stored(nil), do: Map.new(@keys, &{&1, nil})

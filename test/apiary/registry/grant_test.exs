@@ -43,7 +43,8 @@ defmodule Apiary.Registry.GrantTest do
     rights = Map.merge(@build, %{"shared/base" => ["pull", "push"]})
 
     assert Grant.grant(rights, [
-             "repository:shared/base:pull,push repository:upstream/docker.io/library/alpine:push,pull"
+             "repository:shared/base:pull,push",
+             "repository:upstream/docker.io/library/alpine:push,pull"
            ]) ==
              {:ok,
               [
@@ -57,7 +58,8 @@ defmodule Apiary.Registry.GrantTest do
   test "keeps the order of each name's first scope, one entry a name" do
     assert Grant.grant(@build, [
              "repository:#{@environment}:push",
-             "repository:#{@target}:pull repository:#{@environment}:pull"
+             "repository:#{@target}:pull",
+             "repository:#{@environment}:pull"
            ]) ==
              {:ok, [entry(@environment, ["pull", "push"]), entry(@target, ["pull"])]}
   end
@@ -66,15 +68,28 @@ defmodule Apiary.Registry.GrantTest do
     assert Grant.grant(@build, ["repository:registry.example:5000/#{@target}:pull"]) == {:ok, []}
   end
 
-  test "refuses more than 16 scopes, counted across the parameters" do
+  test "refuses more than 16 scope parameters" do
     sixteen = List.duplicate("repository:#{@target}:pull", 16)
     assert {:ok, [_entry]} = Grant.grant(@build, sixteen)
 
-    assert Grant.grant(@build, sixteen ++ ["repository:#{@target}:pull"]) ==
+    assert Grant.grant(@build, sixteen ++ ["registry:catalog:*"]) ==
              {:error, {:too_many_scopes, 17}}
 
-    assert Grant.grant(@build, [Enum.join(sixteen ++ ["registry:catalog:*"], " ")]) ==
-             {:error, {:too_many_scopes, 17}}
+    # One parameter of 17 scopes separated by spaces is one malformed scope.
+    assert Grant.grant(@build, [Enum.join(sixteen ++ ["repository:#{@target}:pull"], " ")]) ==
+             {:ok, []}
+  end
+
+  test "grants nothing of a scope parameter with whitespace in it" do
+    for scope <- [
+          "repository:#{@target}:pull repository:#{@environment}:pull",
+          "repository:#{@target}:pull ",
+          " repository:#{@target}:pull",
+          "repository:#{@target}:pull,\tpush",
+          "repository:#{@target}:pull\n"
+        ] do
+      assert Grant.grant(@build, [scope]) == {:ok, []}, inspect(scope)
+    end
   end
 
   defp name_gen do

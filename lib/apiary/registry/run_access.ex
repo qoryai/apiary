@@ -16,8 +16,9 @@ defmodule Apiary.Registry.RunAccess do
   #
   # **The rights.** A run that is not a build may pull its target's image name. A build
   # may push and pull its target's image name, and push and pull the environment image's
-  # name while that image does not exist (`environment_exists?/2`). Every run may also
-  # pull what `Apiary.Registry.Grant` grants every run, under `shared/` and `upstream/`.
+  # name while that image does not exist (`environment_exists?/2`), then pull it alone,
+  # the image it builds on. Every run may also pull what `Apiary.Registry.Grant` grants
+  # every run, under `shared/` and `upstream/`.
   #
   # **The environment image exists** when an environment record of the run's
   # organisation (`Apiary.Environments.Record`) has an `image` under the name in the
@@ -35,14 +36,18 @@ defmodule Apiary.Registry.RunAccess do
   #     path alone, without its query and whatever its method, each rule whole or up to a
   #     final `*`: `/v2/`, `/v2/shared/*` and `/v2/upstream/*` for every run; for its
   #     target's image name `T`, `/v2/T/manifests/sha256:*`, `/v2/T/blobs/*` and
-  #     `/v2/T/referrers/*` for a run that is not a build, and `/v2/T/manifests/<run id>`
-  #     and `/v2/T/blobs/*` for a build, the same two for its environment image's name
-  #     while the build may push there. `<run id>` is the run's id as its node gave it,
-  #     the tag a build pushes. The token stays the limit: a path rule cannot tell a push
-  #     from a pull;
+  #     `/v2/T/referrers/*` for a run that is not a build; for a build, those three and
+  #     `/v2/T/manifests/<run id>`, and the same four for its environment image's name
+  #     `E`, whether it may push there or only pull. `<run id>` is the run's id as its
+  #     node gave it, the tag a build pushes; a push of an image index puts its child
+  #     manifests by digest, under `manifests/sha256:`. The token stays the limit: a path
+  #     rule cannot tell a push from a pull, so `E`'s rules stay the same when its image
+  #     comes to exist, and the run configuration with them;
   #   * the instance's host and the registry's host, in `egress.allow` and
-  #     `egress.allow_first`, as a model provider's hosts are
-  #     (`Apiary.Policy.ComposedConfiguration`).
+  #     `egress.allow_first`, as a model provider's hosts are, and the path rule
+  #     `/registry/token` for the instance's host (`instance_host`), so a run reaches no
+  #     other route of the instance through it, unless its document allowed the host
+  #     before (`Apiary.Policy.ComposedConfiguration`).
 
   import Ecto.Query, only: [from: 2]
 
@@ -60,6 +65,7 @@ defmodule Apiary.Registry.RunAccess do
   @type member :: %{
           entry: Jason.OrderedObject.t(),
           hosts: [String.t()],
+          instance_host: String.t(),
           registry_host: String.t(),
           paths: [String.t()]
         }
@@ -84,6 +90,7 @@ defmodule Apiary.Registry.RunAccess do
       %{
         entry: entry(run),
         hosts: [instance_host(), Registry.host()],
+        instance_host: instance_host(),
         registry_host: Registry.host(),
         paths: paths(run, names)
       }
@@ -102,14 +109,25 @@ defmodule Apiary.Registry.RunAccess do
         %{build?: false, target: target} ->
           %{target => ["pull"]}
 
+        %{build?: true, target: target, environment: nil} ->
+          %{target => ["pull", "push"]}
+
         %{build?: true, target: target, environment: environment, push_environment?: push?} ->
-          rights = %{target => ["pull", "push"]}
-          if push?, do: Map.put(rights, environment, ["pull", "push"]), else: rights
+          %{
+            target => ["pull", "push"],
+            environment => if(push?, do: ["pull", "push"], else: ["pull"])
+          }
       end
     else
       %{}
     end
   end
+
+  @doc false
+  # token_path/0 is the path of the token route, the one path of the instance's host a
+  # run reaches with the feature alone.
+  @spec token_path() :: String.t()
+  def token_path, do: "/registry/token"
 
   @doc false
   # instance_host/0 is the host of the instance's public URL, the host the run's
@@ -163,7 +181,8 @@ defmodule Apiary.Registry.RunAccess do
   defp target_name(run, target_id) do
     case Repo.one(from t in Target, where: t.id == ^target_id, select: t.public_id) do
       public_id when is_binary(public_id) ->
-        Names.target_name(InstanceConfig.registry_instance(), run.organisation_id, public_id)
+        with instance when is_binary(instance) <- InstanceConfig.registry_instance(),
+             do: Names.target_name(instance, run.organisation_id, public_id)
 
       nil ->
         nil
@@ -181,7 +200,9 @@ defmodule Apiary.Registry.RunAccess do
          ) do
       {ref, pool} when is_binary(ref) ->
         key = environment_key(run, target_id, ref, machine(run) || pool)
-        Names.environment_name(InstanceConfig.registry_instance(), run.organisation_id, key)
+
+        with instance when is_binary(instance) <- InstanceConfig.registry_instance(),
+             do: Names.environment_name(instance, run.organisation_id, key)
 
       _none ->
         nil
@@ -258,7 +279,7 @@ defmodule Apiary.Registry.RunAccess do
     Jason.OrderedObject.new([
       {"name", Credential.name()},
       {"hosts", [instance_host()]},
-      {"paths", ["/registry/token"]},
+      {"paths", [token_path()]},
       {"auth", Jason.OrderedObject.new([{"scheme", "basic"}, {"username", run.public_id}])}
     ])
   end
@@ -278,16 +299,19 @@ defmodule Apiary.Registry.RunAccess do
             "/v2/#{target}/referrers/*"
           ]
 
-        %{build?: true, target: target} = names ->
-          environment =
-            if names.push_environment?, do: push_paths(names.environment, run), else: []
-
-          push_paths(target, run) ++ environment
+        %{build?: true, target: target, environment: environment} ->
+          build_paths(target, run) ++
+            if(is_binary(environment), do: build_paths(environment, run), else: [])
       end
 
     base ++ named
   end
 
-  defp push_paths(name, run),
-    do: ["/v2/#{name}/manifests/#{run.node_run_id}", "/v2/#{name}/blobs/*"]
+  defp build_paths(name, run),
+    do: [
+      "/v2/#{name}/manifests/#{run.node_run_id}",
+      "/v2/#{name}/manifests/sha256:*",
+      "/v2/#{name}/blobs/*",
+      "/v2/#{name}/referrers/*"
+    ]
 end

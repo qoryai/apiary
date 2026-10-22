@@ -65,6 +65,13 @@ defmodule ApiaryWeb.RegistryTokenTest do
     })
   end
 
+  # A registry credential for `run`, as a seal stores it.
+  defp issue(run) do
+    secret = Credential.new_secret()
+    :ok = Credential.store(run, secret)
+    secret
+  end
+
   defp target_row(scope, system, path),
     do:
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
@@ -168,7 +175,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
   describe "a run of the queue" do
     setup ctx do
       ctx = reader(ctx)
-      Map.put(ctx, :secret, Credential.issue(ctx.run))
+      Map.put(ctx, :secret, issue(ctx.run))
     end
 
     test "gains the registry credential, the hosts and the path rules", ctx do
@@ -225,6 +232,8 @@ defmodule ApiaryWeb.RegistryTokenTest do
       conn = seal(ctx, [ctx.provider.public_id])
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"] == "credentials_differ"
+      # The credential stored before stays the one that matches.
+      assert {:ok, _run} = Credential.verify(ctx.run.public_id, ctx.secret)
     end
 
     test "is sealed nothing for a key of its gateway not allowed stored secrets", ctx do
@@ -334,10 +343,44 @@ defmodule ApiaryWeb.RegistryTokenTest do
     end
   end
 
+  describe "the instance's host" do
+    test "is held to the token route where the document did not allow it", ctx do
+      ctx = reader(ctx)
+      host = RunAccess.instance_host()
+      assert document(ctx)["security_policy"]["egress"]["paths"][host] == ["/registry/token"]
+    end
+
+    test "keeps the document's path rules for it, with the token route after them", ctx do
+      {:ok, _rule} =
+        Policy.allow(ctx.scope, nil, %{host: RunAccess.instance_host(), paths: ["/api/*"]})
+
+      ctx = reader(ctx)
+      host = RunAccess.instance_host()
+
+      assert document(ctx)["security_policy"]["egress"]["paths"][host] ==
+               ["/api/*", "/registry/token"]
+    end
+
+    test "stays open on every path where the document allowed it on every path", ctx do
+      {:ok, _rule} = Policy.allow(ctx.scope, nil, %{host: RunAccess.instance_host()})
+      ctx = reader(ctx)
+      paths = document(ctx)["security_policy"]["egress"]["paths"]
+      refute Map.has_key?(paths, RunAccess.instance_host())
+      assert Map.has_key?(paths, @service)
+    end
+
+    test "is held to the token route where the document denies it", ctx do
+      {:ok, _rule} = Policy.deny(ctx.scope, nil, %{host: RunAccess.instance_host()})
+      ctx = reader(ctx)
+      host = RunAccess.instance_host()
+      assert document(ctx)["security_policy"]["egress"]["paths"][host] == ["/registry/token"]
+    end
+  end
+
   describe "a build" do
     setup ctx do
       ctx = build(ctx)
-      Map.put(ctx, :secret, Credential.issue(ctx.run))
+      Map.put(ctx, :secret, issue(ctx.run))
     end
 
     test "gains the push path rules for its target and environment image", ctx do
@@ -354,9 +397,13 @@ defmodule ApiaryWeb.RegistryTokenTest do
                @base ++
                  [
                    "/v2/#{t}/manifests/#{id}",
+                   "/v2/#{t}/manifests/sha256:*",
                    "/v2/#{t}/blobs/*",
+                   "/v2/#{t}/referrers/*",
                    "/v2/#{e}/manifests/#{id}",
-                   "/v2/#{e}/blobs/*"
+                   "/v2/#{e}/manifests/sha256:*",
+                   "/v2/#{e}/blobs/*",
+                   "/v2/#{e}/referrers/*"
                  ]
     end
 
@@ -371,9 +418,10 @@ defmodule ApiaryWeb.RegistryTokenTest do
       assert {:ok, _run} = Credential.verify(ctx.run.public_id, registry_value(plaintext))
     end
 
-    test "may push its environment image only while that image does not exist", ctx do
+    test "may push its environment image while it does not exist, then pull it alone", ctx do
       e = environment(ctx)
-      query = scopes(["repository:#{ctx.target}:pull,push repository:#{e}:pull,push"])
+      query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
+      paths = registry_paths(ctx)
 
       assert access(token_for(ctx, query)) == [
                %{"type" => "repository", "name" => ctx.target, "actions" => ["pull", "push"]},
@@ -392,8 +440,15 @@ defmodule ApiaryWeb.RegistryTokenTest do
         )
 
       assert access(token_for(ctx, query)) == [
-               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull", "push"]}
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull", "push"]},
+               %{"type" => "repository", "name" => e, "actions" => ["pull"]}
              ]
+
+      # The path rules, and so the run configuration's digest, stay as they were.
+      assert RunAccess.member(Repo.get!(Run, ctx.run.id)).paths == paths
+
+      for rule <- ["manifests/sha256:*", "blobs/*", "referrers/*"],
+          do: assert("/v2/#{e}/#{rule}" in paths)
     end
 
     test "never pushes under shared/ or upstream/", ctx do
@@ -422,7 +477,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
   describe "the refusals" do
     setup ctx do
       ctx = reader(ctx)
-      Map.put(ctx, :secret, Credential.issue(ctx.run))
+      Map.put(ctx, :secret, issue(ctx.run))
     end
 
     test "405 for any method other than GET", ctx do
@@ -431,8 +486,8 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
         assert error(conn) ==
                  {405, "UNSUPPORTED",
-                  "Send the token request as a GET request. A POST request gets no registry " <>
-                    "token here."}
+                  "Send the token request as a GET request. Only a GET request gets a " <>
+                    "registry token here."}
 
         assert get_resp_header(conn, "allow") == ["GET"]
       end
@@ -490,30 +545,59 @@ defmodule ApiaryWeb.RegistryTokenTest do
                {400, "UNSUPPORTED", fix <> " The request's service parameter is other.examplex."}
     end
 
-    test "400 for more than 16 scopes", ctx do
+    test "400 for more than 16 scope parameters, and none for scopes in one parameter", ctx do
       query = scopes(List.duplicate("repository:#{ctx.target}:pull", 17))
 
       assert error(token_for(ctx, query)) ==
                {400, "UNSUPPORTED",
                 "Send at most 16 scope parameters in one token request. The request has 17."}
+
+      joined = Enum.join(List.duplicate("repository:#{ctx.target}:pull", 17), " ")
+      assert {401, "UNAUTHORIZED", _message} = error(token_for(ctx, scopes([joined])))
     end
 
-    test "429 after 120 tokens to the run in a minute", ctx do
+    test "429 after 120 tokens to the run in its window of 60 seconds", ctx do
       query = scopes(["repository:#{ctx.target}:pull"])
+      key = {:registry_token, ctx.run.id}
+
+      # A refusal after the credential matched gives its reservation back.
+      for _ <- 1..130, do: assert(token_for(ctx, scopes([])).status == 401)
       assert token_for(ctx, query).status == 200
 
-      for _ <- 1..119,
-          do: :ok = RateLimit.check({:registry_token, ctx.run.id}, rate: 2, burst: 120)
+      for _ <- 1..119, do: assert({:ok, _started} = RateLimit.reserve(key, 120, 60_000))
+
+      message =
+        "Wait 1 minute, then try again. Qory Apiary issued 120 registry tokens to the " <>
+          "run #{ctx.run.public_id} in the last 60 seconds, the limit."
 
       conn = token_for(ctx, query)
-
-      assert error(conn) ==
-               {429, "TOOMANYREQUESTS",
-                "Wait 1 minute, then try again. Qory Apiary issued 120 registry tokens to the " <>
-                  "run #{ctx.run.public_id} in the last 60 seconds, the limit."}
-
+      assert error(conn) == {429, "TOOMANYREQUESTS", message}
       assert [retry_after] = get_resp_header(conn, "retry-after")
-      assert String.to_integer(retry_after) >= 1
+      assert String.to_integer(retry_after) in 1..60
+
+      # Checked before the run's rights and its state are read.
+      assert error(token_for(ctx, scopes([]))) == {429, "TOOMANYREQUESTS", message}
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+
+      assert error(token_for(ctx, query)) == {429, "TOOMANYREQUESTS", message}
+    end
+
+    test "401 with nothing granted for a run that does not go through a gateway", ctx do
+      # A run its events created, with a registry credential stored as a seal stores one.
+      run =
+        ctx.scope
+        |> Apiary.RunEventsFixtures.run_fixture(%{state: "running"})
+        |> then(&Repo.get!(Run, &1.id))
+
+      refute RunAccess.applies?(run)
+      secret = issue(run)
+
+      assert error(token(run.public_id, secret, scopes(["repository:shared/base:pull"]))) ==
+               {401, "UNAUTHORIZED",
+                "Ask only for images inside the run. The request contains no image that the " <>
+                  "run #{run.public_id} may pull or push."}
     end
 
     test "503 when the token cannot be issued, with a line in the log", ctx do
@@ -535,9 +619,29 @@ defmodule ApiaryWeb.RegistryTokenTest do
                 "Try the pull or push again in 1 minute. Qory Apiary could not issue a " <>
                   "registry token; the cause is in the instance's log."}
 
-      assert log =~ "a registry token request could not be answered: ArgumentError"
+      assert log =~
+               "Qory Apiary could not build the response to a registry token request: ArgumentError"
+
       refute log =~ ctx.secret
     end
+  end
+
+  test "the instance's registry name is nil, and nothing kept, on a schema without it" do
+    assert Application.fetch_env(:apiary, :registry_instance) == :error
+
+    # Each in a transaction rolled back, the column dropped inside it alone.
+    for {read, expected} <- [
+          {&InstanceConfig.record_registry_instance/0, nil},
+          {&Apiary.Registry.InstanceName.start_link/0, :ignore}
+        ] do
+      assert {:error, ^expected} =
+               Repo.transaction(fn ->
+                 Repo.query!("ALTER TABLE instance_settings DROP COLUMN registry_instance")
+                 Repo.rollback(read.())
+               end)
+    end
+
+    assert Application.fetch_env(:apiary, :registry_instance) == :error
   end
 
   test "the instance's registry name is made once and stored" do

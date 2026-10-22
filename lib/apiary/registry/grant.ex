@@ -4,10 +4,11 @@ defmodule Apiary.Registry.Grant do
   # What a registry token grants, with the `registry` feature, which the documentation
   # leaves out: the scopes a token request lists, cut to what the run may use.
   #
-  # A request lists its scopes in `scope` parameters, each of one or more scopes
-  # separated by spaces, each `repository:<name>:<actions>`: the type ends at the first
-  # colon and the actions start after the last one, the actions separated by commas.
-  # More than 16 scopes in one request is `{:error, {:too_many_scopes, count}}`.
+  # A request lists its scopes in `scope` parameters, one scope a parameter,
+  # `repository:<name>:<actions>`: the type ends at the first colon and the actions start
+  # after the last one, the actions separated by commas. A parameter with a space or any
+  # other whitespace is a malformed scope and grants nothing. More than 16 `scope`
+  # parameters in one request is `{:error, {:too_many_scopes, count}}`.
   #
   # The run's rights (`t:rights/0`) are exact names of the instance with their actions.
   # Every run may pull any name under `shared/` and under `upstream/` for one of the 4
@@ -35,22 +36,21 @@ defmodule Apiary.Registry.Grant do
   def max_scopes, do: @max_scopes
 
   @doc false
-  # grant/2 is the entries `rights` grant of the scopes in the `scope` parameters
-  # `params`: `{:ok, entries}`, possibly none, or `{:error, {:too_many_scopes, count}}`.
+  # grant/2 is the entries `rights` grant of the `scope` parameters `params`, one scope
+  # each: `{:ok, entries}`, possibly none, or `{:error, {:too_many_scopes, count}}`.
   @spec grant(rights, [String.t()]) ::
           {:ok, [entry]} | {:error, {:too_many_scopes, pos_integer}}
   def grant(rights, params) when is_map(rights) and is_list(params) do
-    scopes = Enum.flat_map(params, &String.split(&1, [" ", "\t"], trim: true))
-
-    if length(scopes) > @max_scopes do
-      {:error, {:too_many_scopes, length(scopes)}}
+    if length(params) > @max_scopes do
+      {:error, {:too_many_scopes, length(params)}}
     else
-      {:ok, scopes |> Enum.flat_map(&parse/1) |> entries(rights)}
+      {:ok, params |> Enum.flat_map(&parse/1) |> entries(rights)}
     end
   end
 
   defp parse(scope) do
-    with [type, rest] <- String.split(scope, ":", parts: 2),
+    with false <- String.match?(scope, ~r/\s/),
+         [type, rest] <- String.split(scope, ":", parts: 2),
          [name, actions] <- split_last(rest) do
       [{type, name, String.split(actions, ",")}]
     else

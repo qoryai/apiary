@@ -4,7 +4,9 @@ defmodule Apiary.Registry.InstanceName do
   # With the `registry` feature: at boot, after the migrator, the instance's registry
   # name is made where the instance's row has none, and kept for the life of the node
   # (`Apiary.InstanceConfig.registry_instance/0`). It starts once and leaves nothing in
-  # the supervision tree. Off in test, where each test reads the name inside its sandbox.
+  # the supervision tree. On a schema whose migration of the name has not run yet, as
+  # with `MIGRATE_ON_BOOT=false`, it keeps nothing, and the name is read when first
+  # needed. Off in test, where each test reads the name inside its sandbox.
 
   @doc false
   @spec child_spec(term) :: Supervisor.child_spec()
@@ -20,8 +22,11 @@ defmodule Apiary.Registry.InstanceName do
   @doc false
   @spec start_link() :: :ignore
   def start_link do
-    name = Apiary.InstanceConfig.record_registry_instance()
-    Application.put_env(:apiary, :registry_instance, name)
+    case Apiary.InstanceConfig.record_registry_instance() do
+      name when is_binary(name) -> Application.put_env(:apiary, :registry_instance, name)
+      nil -> :ok
+    end
+
     :ignore
   end
 
