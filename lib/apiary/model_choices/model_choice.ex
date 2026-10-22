@@ -10,9 +10,9 @@ defmodule Apiary.ModelChoices.ModelChoice do
   #
   # | Level | Place | Columns |
   # |---|---|---|
-  # | 2 | a target and a run kind | `workspace_id`, `target_id`, `run_kind` |
+  # | 2 | a target and a workflow | `workspace_id`, `target_id`, `workflow` |
   # | 3 | a target | `workspace_id`, `target_id` |
-  # | 4 | the workspace and a run kind | `workspace_id`, `run_kind` |
+  # | 4 | the workspace and a workflow | `workspace_id`, `workflow` |
   # | 5 | the workspace | `workspace_id` |
   # | 6 | the organisation's default | none of them |
   #
@@ -30,13 +30,13 @@ defmodule Apiary.ModelChoices.ModelChoice do
   @typedoc "A model choice at levels 2 to 6."
   @type t :: %__MODULE__{}
 
-  @typedoc "A level of a model choice: 2, a target and a run kind, to 6, the organisation's default."
+  @typedoc "A level of a model choice: 2, a target and a workflow, to 6, the organisation's default."
   @type level :: 2..6
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "model_choices" do
-    field :run_kind, :string
+    field :workflow, :string
     field :chain, :string, default: "organisation"
     field :locked, :boolean, default: false
     field :value_id, :string
@@ -58,8 +58,8 @@ defmodule Apiary.ModelChoices.ModelChoice do
   # level/1 is the level of `choice`, 2 to 6, read from the columns it has set.
   @spec level(t) :: 2..6
   def level(%__MODULE__{workspace_id: nil}), do: 6
-  def level(%__MODULE__{target_id: nil, run_kind: nil}), do: 5
+  def level(%__MODULE__{target_id: nil, workflow: nil}), do: 5
   def level(%__MODULE__{target_id: nil}), do: 4
-  def level(%__MODULE__{run_kind: nil}), do: 3
+  def level(%__MODULE__{workflow: nil}), do: 3
   def level(%__MODULE__{}), do: 2
 end

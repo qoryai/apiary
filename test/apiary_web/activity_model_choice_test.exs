@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ActivityModelChoiceTest do
   # The Activity lines of a model choice: the label of `model_choice.write` in the filter,
   # the sentence by the change in the entry's details, the subject by the place of the
-  # choice and the line for the run kind. The organisation's default is written under
+  # choice and the line for the workflow. The organisation's default is written under
   # `connection.write`, and says the same sentences.
   use Apiary.DataCase, async: true
 
@@ -84,16 +84,16 @@ defmodule ApiaryWeb.ActivityModelChoiceTest do
     assert text == "#{scope.organisation.name}'s default model choice"
   end
 
-  test "the change line is the run kind at levels 2 and 4, and nothing at the others" do
+  test "the change line is the workflow at levels 2 and 4, and nothing at the others" do
     for {level, action} <- [
           {2, :"model_choice.write"},
           {4, :"model_choice.write"},
           {4, :"connection.write"}
         ] do
-      details = %{"change" => "choice_set", "level" => level, "run_kind" => "explore"}
+      details = %{"change" => "choice_set", "level" => level, "workflow" => "hello"}
 
       assert Enum.find_value(Describer.describers(), & &1.change(action, nil, %{}, details)) ==
-               "explore runs"
+               "hello runs"
     end
 
     for level <- [3, 5, 6] do
@@ -117,7 +117,7 @@ defmodule ApiaryWeb.ActivityModelChoiceTest do
       })
 
     attrs = %{provider: provider.public_id}
-    {:ok, _} = ModelChoices.put_choice(scope, {target, "explore"}, attrs)
+    {:ok, _} = ModelChoices.put_choice(scope, {target, "hello"}, attrs)
     {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs)
     {:ok, _} = ModelChoices.put_choice(scope, :organisation, attrs)
     {:ok, _} = ModelChoices.lock_choice(scope, :workspace)
@@ -141,7 +141,7 @@ defmodule ApiaryWeb.ActivityModelChoiceTest do
       end
 
     assert lines == [
-             {"github.example/acme/shop's model choice", "Set a model choice", "explore runs"},
+             {"github.example/acme/shop's model choice", "Set a model choice", "hello runs"},
              {"#{scope.workspace.name}'s model choice", "Set a model choice", nil},
              {"#{scope.organisation.name}'s default model choice", "Set a model choice", nil},
              {"#{scope.workspace.name}'s model choice", "Locked a model choice", nil}

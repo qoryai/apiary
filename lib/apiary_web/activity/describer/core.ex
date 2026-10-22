@@ -849,13 +849,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       when action in [:"secret.write", :"variable.edit"],
       do: nil
 
-  # A model choice at a run kind, levels 2 and 4: the run kind, in a line. The
+  # A model choice for a workflow, levels 2 and 4: the workflow, in a line. The
   # organisation's default is written under `connection.write`, the rest under
   # `model_choice.write`.
-  def change(action, _before, _after, %{"level" => level, "run_kind" => kind})
+  def change(action, _before, _after, %{"level" => level, "workflow" => workflow})
       when action in [:"model_choice.write", :"connection.write"] and level in [2, 4] and
-             is_binary(kind),
-      do: gettext("%{kind} runs", kind: kind)
+             is_binary(workflow),
+      do: gettext("%{kind} runs", kind: workflow)
 
   # A model provider's change: the host, the key's value ID or the model ID before and
   # after, or the key's value ID or the model's ID.

@@ -48,7 +48,7 @@ defmodule Apiary.ModelChoicesRacesTest do
 
   for {name, place} <- [
         {"the workspace's", :workspace},
-        {"a target's and a run kind's", :target_and_kind},
+        {"a target's and a workflow's", :target_and_workflow},
         {"the organisation's default", :organisation}
       ] do
     describe "#{name} choice and the provider's deletion" do
@@ -158,5 +158,5 @@ defmodule Apiary.ModelChoicesRacesTest do
 
   defp place(:workspace, _ctx), do: :workspace
   defp place(:organisation, _ctx), do: :organisation
-  defp place(:target_and_kind, ctx), do: {ctx.target, "explore"}
+  defp place(:target_and_workflow, ctx), do: {ctx.target, "hello"}
 end

@@ -153,7 +153,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, model: "claude-opus-5-5"})
 
-      choose!(ctx.scope, {target, "explore"}, %{
+      choose!(ctx.scope, target, %{
         provider: ctx.provider.public_id,
         key: "spare",
         model: "claude-sonnet-5-5"

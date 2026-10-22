@@ -2,8 +2,9 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   # The `time_limit_minutes` of an explore run's `run_settings`
   # (`Apiary.Dispatches.RunSettings`): the minutes the time limits of the run's target and
   # workspace come to for the workflow of the workspace's entry in the machines file, the
-  # last member, and absent with no limit or no workflow. Not async: the file read at boot
-  # and the features are the whole node's.
+  # last member, and absent with no limit or no workflow; and the model choices of that
+  # workflow, which apply only to its runs. Not async: the file read at boot and the
+  # features are the whole node's.
   use Apiary.DataCase, async: false
 
   import Apiary.DispatchedRunsFixtures
@@ -144,6 +145,48 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
       assert %{"model" => "claude-opus-5-5", "time_limit_minutes" => 45} = settings(handed)
       assert keys(handed) == ~w(runtime model provider_models tiers time_limit_minutes)
+    end
+  end
+
+  describe "the model choices of a workflow" do
+    setup ctx do
+      {:ok, provider} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-ant-workflow-choice-0123456789"}]
+        })
+
+      choose = fn place, model ->
+        {:ok, _choice} =
+          ModelChoices.put_choice(ctx.scope, place, %{provider: provider.public_id, model: model})
+      end
+
+      choose.(:workspace, "claude-opus-5-5")
+      %{choose: choose}
+    end
+
+    test "apply to the runs of the workspace's workflow, the target's over the workspace's",
+         ctx do
+      workflow!(ctx, "hello")
+      place = handover_place_fixture(ctx.scope, allow_secrets: true)
+      target = target!(ctx.scope)
+
+      ctx.choose.({:workspace, "review"}, "claude-haiku-5-5")
+      assert %{"model" => "claude-opus-5-5"} = settings(handover!(ctx, place))
+
+      ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
+      assert %{"model" => "claude-sonnet-5-5"} = settings(handover!(ctx, place))
+
+      ctx.choose.({target, "hello"}, "claude-haiku-5-5")
+      assert %{"model" => "claude-haiku-5-5"} = settings(handover!(ctx, place))
+    end
+
+    test "do not apply without a machines file", ctx do
+      no_file!()
+      place = handover_place_fixture(ctx.scope, allow_secrets: true)
+      ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
+
+      assert %{"model" => "claude-opus-5-5"} = settings(handover!(ctx, place))
     end
   end
 

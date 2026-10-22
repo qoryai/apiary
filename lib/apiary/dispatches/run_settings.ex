@@ -4,6 +4,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # The `run_settings` of a handover answer (`handover-answer.schema.json`) and the values
   # a run keeps of them (`Apiary.Runs.Run`): what the model choices of the run's workspace
   # and target come to (`Apiary.ModelChoices.Resolution`), checked again at the handover.
+  # The choices and the time limits are read for the workflow of the workspace's entry in
+  # the machines file (`Apiary.Dispatches.MachinesFile.stack/2`); for an entry with no
+  # workflow, only the choices without one apply.
   # `Apiary.Dispatches.Handover` calls `hold/1` before it locks anything else, and
   # `build/1` once its run of the queue and its dispatch are locked.
   #
@@ -78,7 +81,8 @@ defmodule Apiary.Dispatches.RunSettings do
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.WorkItems.WorkItem
 
-  @run_kind "explore"
+  # The step of the queue whose runs have `run_settings`.
+  @step "explore"
   # The most bytes the run settings take, encoded: the column's check.
   @max_bytes 65_536
   # The most times `hold/1` locks providers: after each of the first three reads of the
@@ -113,20 +117,21 @@ defmodule Apiary.Dispatches.RunSettings do
   # locks anything: nil for a run that has no `run_settings`, else what `build/1` takes.
   @doc false
   @spec hold(DispatchRun.t()) :: map | :unstable | nil
-  def hold(%DispatchRun{step: @run_kind, workspace_id: workspace_id, work_item_id: id}) do
+  def hold(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id}) do
     if Features.on?(:factory) and Features.on?(:secrets) do
       workspace = Repo.get!(Workspace, workspace_id)
       organisation = Repo.get!(Organisation, workspace.organisation_id)
       target = target(workspace, id)
+      workflow = workflow(organisation, workspace)
 
-      case lock(workspace, target, [], @lock_rounds) do
+      case lock(workspace, target, workflow, [], @lock_rounds) do
         {:ok, input} ->
           %{
             organisation: organisation,
             workspace: workspace,
             target: target,
             input: input,
-            time_limit: time_limit(organisation, workspace, target)
+            time_limit: time_limit(workspace, target, workflow)
           }
 
         :unstable ->
@@ -137,15 +142,21 @@ defmodule Apiary.Dispatches.RunSettings do
 
   def hold(%DispatchRun{}), do: nil
 
-  # The minutes the time limits come to for the workflow of the workspace's entry in the
-  # machines file, nil for no limit or no workflow.
-  defp time_limit(%Organisation{slug: organisation_slug}, %Workspace{} = workspace, target) do
-    with %{workflow: workflow} <- MachinesFile.stack(organisation_slug, workspace.slug),
-         {:ok, %TimeLimits.Resolution{minutes: minutes}} <-
-           TimeLimits.Resolution.resolve(TimeLimits.limits_for(workspace, target, workflow)) do
-      minutes
-    else
+  # The workflow of the workspace's entry in the machines file, nil for none.
+  defp workflow(%Organisation{slug: organisation_slug}, %Workspace{slug: workspace_slug}) do
+    case MachinesFile.stack(organisation_slug, workspace_slug) do
+      %{workflow: workflow} -> workflow
       _none -> nil
+    end
+  end
+
+  # The minutes the time limits come to for `workflow`, nil for no limit or no workflow.
+  defp time_limit(_workspace, _target, nil), do: nil
+
+  defp time_limit(%Workspace{} = workspace, target, workflow) do
+    case TimeLimits.Resolution.resolve(TimeLimits.limits_for(workspace, target, workflow)) do
+      {:ok, %TimeLimits.Resolution{minutes: minutes}} -> minutes
+      :none -> nil
     end
   end
 
@@ -170,8 +181,8 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The choices once every provider they name is held: read, lock what is new, read again.
-  defp lock(workspace, target, locked, tries) do
-    input = ModelChoices.choices_for(workspace, target, @run_kind)
+  defp lock(workspace, target, workflow, locked, tries) do
+    input = ModelChoices.choices_for(workspace, target, workflow)
     ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
 
     case ids -- locked do
@@ -183,7 +194,7 @@ defmodule Apiary.Dispatches.RunSettings do
 
       new ->
         lock_rows(Enum.sort(new))
-        lock(workspace, target, locked ++ new, tries - 1)
+        lock(workspace, target, workflow, locked ++ new, tries - 1)
     end
   end
 

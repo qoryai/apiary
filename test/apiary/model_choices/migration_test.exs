@@ -1,5 +1,5 @@
 defmodule Apiary.ModelChoices.MigrationTest do
-  # The migration of the model choice, run down and up again inside the test's
+  # The migrations of the model choice, run down and up again inside the test's
   # transaction, which rolls it all back, and the checks it adds, each at its bound and
   # one past it. It changes the table under every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -18,7 +18,9 @@ defmodule Apiary.ModelChoices.MigrationTest do
 
   @migrations [
     {20_261_019_070_200, Apiary.Repo.Migrations.KeepTheModelChoiceAtEachLevel,
-     "keep_the_model_choice_at_each_level"}
+     "keep_the_model_choice_at_each_level"},
+    {20_261_022_171_500, Apiary.Repo.Migrations.KeyAModelChoiceByWorkflow,
+     "key_a_model_choice_by_workflow"}
   ]
 
   @options [log: false, migration_lock: false]
@@ -108,61 +110,71 @@ defmodule Apiary.ModelChoices.MigrationTest do
       error in Postgrex.Error -> error.postgres[:constraint] || error.postgres.code
     end
 
-    # A choice of the workspace at the place `attrs` name; `kinded/3` sets a run kind, so
-    # two rows of a test need not share a place.
+    # A choice of the workspace at the place `attrs` name; `for_workflow/3` sets a
+    # workflow, so two rows of a test need not share a place.
     defp choice(ctx, attrs),
       do: write(ModelChoice, Map.merge(base(ctx), Map.new(attrs)))
 
-    defp kinded(ctx, kind, attrs), do: choice(ctx, Map.put(Map.new(attrs), :run_kind, kind))
+    defp for_workflow(ctx, workflow, attrs),
+      do: choice(ctx, Map.put(Map.new(attrs), :workflow, workflow))
 
-    test "a run kind, at its bounds", ctx do
-      assert kinded(ctx, "a" <> String.duplicate("_", 39), %{}) == :ok
-      assert kinded(ctx, "a" <> String.duplicate("_", 40), %{}) == "model_choices_run_kind_format"
-      assert kinded(ctx, "A", %{}) == "model_choices_run_kind_format"
-      assert kinded(ctx, "_a", %{}) == "model_choices_run_kind_format"
-      assert kinded(ctx, "a1", %{}) == "model_choices_run_kind_format"
-      assert kinded(ctx, "", %{}) == "model_choices_run_kind_format"
+    test "a workflow, at its bounds", ctx do
+      assert for_workflow(ctx, "a" <> String.duplicate("-", 63), %{}) == :ok
+      assert for_workflow(ctx, "a1-b", %{}) == :ok
+
+      assert for_workflow(ctx, "a" <> String.duplicate("b", 64), %{}) ==
+               "model_choices_workflow_format"
+
+      assert for_workflow(ctx, "A", %{}) == "model_choices_workflow_format"
+      assert for_workflow(ctx, "-a", %{}) == "model_choices_workflow_format"
+      assert for_workflow(ctx, "1a", %{}) == "model_choices_workflow_format"
+      assert for_workflow(ctx, "a_b", %{}) == "model_choices_workflow_format"
+      assert for_workflow(ctx, "", %{}) == "model_choices_workflow_format"
     end
 
     test "a chain is the organisation's or the operator's", ctx do
       assert choice(ctx, %{chain: "organisation"}) == :ok
       assert choice(ctx, %{chain: "operator"}) == :ok
-      assert choice(ctx, %{chain: "client", run_kind: "x"}) == "model_choices_chain_check"
+      assert choice(ctx, %{chain: "client", workflow: "x"}) == "model_choices_chain_check"
     end
 
     test "a value id, at its bounds", ctx do
-      assert kinded(ctx, "a", %{value_id: "a" <> String.duplicate("b", 63)}) == :ok
+      assert for_workflow(ctx, "a", %{value_id: "a" <> String.duplicate("b", 63)}) == :ok
 
-      assert kinded(ctx, "b", %{value_id: "a" <> String.duplicate("b", 64)}) ==
+      assert for_workflow(ctx, "b", %{value_id: "a" <> String.duplicate("b", 64)}) ==
                "model_choices_value_id_format"
 
-      assert kinded(ctx, "c", %{value_id: "Main"}) == "model_choices_value_id_format"
-      assert kinded(ctx, "d", %{value_id: "-a"}) == "model_choices_value_id_format"
-      assert kinded(ctx, "e", %{value_id: ""}) == "model_choices_value_id_format"
+      assert for_workflow(ctx, "c", %{value_id: "Main"}) == "model_choices_value_id_format"
+      assert for_workflow(ctx, "d", %{value_id: "-a"}) == "model_choices_value_id_format"
+      assert for_workflow(ctx, "e", %{value_id: ""}) == "model_choices_value_id_format"
     end
 
     test "a model id, at its bounds", ctx do
-      assert kinded(ctx, "a", %{model_id: "a" <> String.duplicate("/", 199)}) == :ok
+      assert for_workflow(ctx, "a", %{model_id: "a" <> String.duplicate("/", 199)}) == :ok
 
-      assert kinded(ctx, "b", %{model_id: "a" <> String.duplicate("/", 200)}) ==
+      assert for_workflow(ctx, "b", %{model_id: "a" <> String.duplicate("/", 200)}) ==
                "model_choices_model_id_format"
 
-      assert kinded(ctx, "c", %{model_id: "a b"}) == "model_choices_model_id_format"
-      assert kinded(ctx, "d", %{model_id: "/a"}) == "model_choices_model_id_format"
-      assert kinded(ctx, "e", %{model_id: "aé"}) == "model_choices_model_id_format"
-      assert kinded(ctx, "f", %{model_id: ""}) == "model_choices_model_id_format"
+      assert for_workflow(ctx, "c", %{model_id: "a b"}) == "model_choices_model_id_format"
+      assert for_workflow(ctx, "d", %{model_id: "/a"}) == "model_choices_model_id_format"
+      assert for_workflow(ctx, "e", %{model_id: "aé"}) == "model_choices_model_id_format"
+      assert for_workflow(ctx, "f", %{model_id: ""}) == "model_choices_model_id_format"
     end
 
     test "an effort, at its bounds, and only with a model", ctx do
       effort = "a" <> String.duplicate("-", 31)
-      assert kinded(ctx, "a", %{model_id: "m", effort: effort}) == :ok
+      assert for_workflow(ctx, "a", %{model_id: "m", effort: effort}) == :ok
 
-      assert kinded(ctx, "b", %{model_id: "m", effort: effort <> "-"}) ==
+      assert for_workflow(ctx, "b", %{model_id: "m", effort: effort <> "-"}) ==
                "model_choices_effort_format"
 
-      assert kinded(ctx, "c", %{model_id: "m", effort: "High"}) == "model_choices_effort_format"
-      assert kinded(ctx, "d", %{model_id: "m", effort: "1a"}) == "model_choices_effort_format"
-      assert kinded(ctx, "e", %{effort: "high"}) == "model_choices_shape_check"
+      assert for_workflow(ctx, "c", %{model_id: "m", effort: "High"}) ==
+               "model_choices_effort_format"
+
+      assert for_workflow(ctx, "d", %{model_id: "m", effort: "1a"}) ==
+               "model_choices_effort_format"
+
+      assert for_workflow(ctx, "e", %{effort: "high"}) == "model_choices_shape_check"
     end
 
     test "a tier map, at its bounds", ctx do
@@ -170,7 +182,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
       effort = "a" <> String.duplicate("b", 31)
 
       full = %{"light" => id, "fast" => %{"model" => id, "effort" => effort}, "thinking" => "m"}
-      assert kinded(ctx, "a", %{tiers: full}) == :ok
+      assert for_workflow(ctx, "a", %{tiers: full}) == :ok
 
       for {kind, tiers} <- [
             {"b", %{"light" => id <> "b"}},
@@ -185,7 +197,8 @@ defmodule Apiary.ModelChoices.MigrationTest do
             {"k", %{"light" => "m n"}},
             {"l", %{}}
           ] do
-        assert kinded(ctx, kind, %{tiers: tiers}) == "model_choices_tiers_check", inspect(tiers)
+        assert for_workflow(ctx, kind, %{tiers: tiers}) == "model_choices_tiers_check",
+               inspect(tiers)
       end
 
       # A list or a string is no map: written straight, as the schema's type refuses it.
@@ -206,31 +219,31 @@ defmodule Apiary.ModelChoices.MigrationTest do
       tiers = %{"light" => "m"}
 
       # A key or a model needs a provider; a row needs a provider or a tier map.
-      assert kinded(ctx, "a", Map.merge(no_provider, %{tiers: tiers})) == :ok
+      assert for_workflow(ctx, "a", Map.merge(no_provider, %{tiers: tiers})) == :ok
 
-      assert kinded(ctx, "b", Map.merge(no_provider, %{value_id: "k", tiers: tiers})) ==
+      assert for_workflow(ctx, "b", Map.merge(no_provider, %{value_id: "k", tiers: tiers})) ==
                "model_choices_shape_check"
 
-      assert kinded(ctx, "c", Map.merge(no_provider, %{model_id: "m", tiers: tiers})) ==
+      assert for_workflow(ctx, "c", Map.merge(no_provider, %{model_id: "m", tiers: tiers})) ==
                "model_choices_shape_check"
 
-      assert kinded(ctx, "d", no_provider) == "model_choices_shape_check"
-      assert kinded(ctx, "e", %{}) == :ok
+      assert for_workflow(ctx, "d", no_provider) == "model_choices_shape_check"
+      assert for_workflow(ctx, "e", %{}) == :ok
 
       # The organisation's default has no workspace; a lock is for the workspace's rows.
       org = %{workspace_id: nil}
       assert choice(ctx, Map.merge(org, %{chain: "operator"})) == :ok
 
-      assert choice(ctx, Map.merge(org, %{locked: true, chain: "operator", run_kind: "x"})) ==
+      assert choice(ctx, Map.merge(org, %{locked: true, chain: "operator", workflow: "x"})) ==
                "model_choices_shape_check"
 
-      assert choice(ctx, %{locked: true, run_kind: "f"}) == :ok
+      assert choice(ctx, %{locked: true, workflow: "f"}) == :ok
       assert choice(ctx, %{locked: true}) == :ok
 
-      assert choice(ctx, %{locked: true, target_id: ctx.target.id, run_kind: "g"}) ==
+      assert choice(ctx, %{locked: true, target_id: ctx.target.id, workflow: "g"}) ==
                "model_choices_shape_check"
 
-      assert choice(ctx, %{workspace_id: nil, target_id: ctx.target.id, run_kind: "h"}) in [
+      assert choice(ctx, %{workspace_id: nil, target_id: ctx.target.id, workflow: "h"}) in [
                "model_choices_shape_check",
                "model_choices_target_id_fkey"
              ]
@@ -242,11 +255,11 @@ defmodule Apiary.ModelChoices.MigrationTest do
       assert choice(ctx, %{}) == :ok
       assert choice(ctx, %{}) == "model_choices_place_index"
       assert choice(ctx, %{chain: "operator"}) == :ok
-      assert kinded(ctx, "explore", %{}) == :ok
-      assert kinded(ctx, "explore", %{}) == "model_choices_place_index"
+      assert for_workflow(ctx, "explore", %{}) == :ok
+      assert for_workflow(ctx, "explore", %{}) == "model_choices_place_index"
       assert choice(ctx, target) == :ok
       assert choice(ctx, target) == "model_choices_place_index"
-      assert kinded(ctx, "explore", target) == :ok
+      assert for_workflow(ctx, "explore", target) == :ok
 
       org = %{workspace_id: nil}
       assert choice(ctx, org) == :ok
