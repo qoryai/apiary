@@ -2,7 +2,8 @@ defmodule Apiary.Runs.RunCodeTest do
   # A run's code (`Apiary.Runs.RunCode`): the claim registers the run with no run key, its
   # attach window the code's 15 minutes; the first redemption makes the run key, issued
   # then, its attach window 600 seconds from then, and hands over a dispatch not yet
-  # handed over; a repeat by the same public key is the same run key; another key, an
+  # handed over; a repeat by the same public key with a newer proof is the same run key,
+  # and stores that proof's timestamp, so the same repeat again is refused; another key, an
   # expired code, a code of a claim whose lease lapsed or that its starter released, a
   # code of a run that ended, a node's code and the code's limit are refused. A
   # redemption at minute 14 finds the dispatch and the run in place, and a code never
@@ -210,17 +211,23 @@ defmodule Apiary.Runs.RunCodeTest do
   end
 
   describe "a repeat" do
-    test "by the same public key is the same run key, and changes nothing", ctx do
+    test "by the same public key with a newer proof is the same run key, and stores that proof's timestamp alone",
+         ctx do
       pair = ed25519_key_pair()
       assert {:ok, first} = redeem(ctx, pair, at(ctx, 60))
       run = Repo.get!(Run, ctx.run.id)
 
-      assert redeem(ctx, pair, at(ctx, 61)) == {:ok, first}
-      assert redeem(ctx, pair, at(ctx, 899)) == {:ok, first}
-      assert Repo.get!(Run, ctx.run.id) == run
+      for seconds <- [61, 899] do
+        assert redeem(ctx, pair, at(ctx, seconds)) == {:ok, first}
+        retried = Repo.get!(Run, ctx.run.id)
+        assert retried.run_code_proof_timestamp == DateTime.to_unix(at(ctx, seconds))
+
+        assert %{retried | run_code_proof_timestamp: nil, updated_at: nil} ==
+                 %{run | run_code_proof_timestamp: nil, updated_at: nil}
+      end
     end
 
-    test "by the same public key with the first proof's timestamp, or an older one, is a replay, refused",
+    test "by the same public key with the stored proof's timestamp, or an older one, is a replay, refused",
          ctx do
       pair = ed25519_key_pair()
       assert {:ok, first} = redeem(ctx, pair, at(ctx, 60))
@@ -231,10 +238,18 @@ defmodule Apiary.Runs.RunCodeTest do
       assert redeem(ctx, pair, at(ctx, 59)) == {:error, :unauthorized}
       assert Repo.get!(Run, ctx.run.id) == run
 
-      # A newer proof is still the retry, and the first proof's timestamp stays.
-      assert redeem(ctx, pair, at(ctx, 61)) == {:ok, first}
-      assert redeem(ctx, pair, at(ctx, 60)) == {:error, :unauthorized}
-      assert Repo.get!(Run, ctx.run.id) == run
+      # A newer retry is accepted, and its timestamp stored: the same retry sent again is
+      # refused as a stale proof is, and so is one older than it, though newer than the
+      # first.
+      assert redeem(ctx, pair, at(ctx, 62)) == {:ok, first}
+      retried = Repo.get!(Run, ctx.run.id)
+      assert retried.run_code_proof_timestamp == DateTime.to_unix(at(ctx, 62))
+
+      assert redeem(ctx, pair, at(ctx, 62)) == {:error, :unauthorized}
+      assert redeem(ctx, pair, at(ctx, 61)) == {:error, :unauthorized}
+      assert Repo.get!(Run, ctx.run.id) == retried
+
+      assert redeem(ctx, pair, at(ctx, 63)) == {:ok, first}
     end
 
     test "by another public key is refused", ctx do

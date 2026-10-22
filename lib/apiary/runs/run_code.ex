@@ -43,10 +43,12 @@ defmodule Apiary.Runs.RunCode do
   #      the run key's payload, its signature, `run_key_issued_at`, `attach_by`, the
   #      public key and its proof's timestamp in one write; a claimed dispatch is handed
   #      over in the same transaction (`Apiary.Dispatches.Handover.hand_over/3`). A retry
-  #      by the same public key whose proof's timestamp is newer than the first's is
-  #      answered the run key the run has, byte for byte, and changes nothing; one whose
-  #      timestamp is equal or older is a replayed proof, `{:error, :unauthorized}`, as
-  #      step 2's refusals are.
+  #      by the same public key whose proof's timestamp is newer than the one stored is
+  #      answered the run key the run has, byte for byte, and writes its proof's timestamp
+  #      in place of the one stored, and nothing else; one whose timestamp is equal or
+  #      older is a replayed proof, `{:error, :unauthorized}`, as step 2's refusals are. So
+  #      the stored timestamp is the newest accepted redemption's, and a retry captured
+  #      and sent again is refused as any replayed proof.
   #
   # So a code works from the claim until its expiry, and stops before then when the
   # claim's lease lapses before the handover, or when the dispatch ends, at a release
@@ -176,6 +178,7 @@ defmodule Apiary.Runs.RunCode do
           {:ok, %{run_id: run.node_run_id, run_key: run_key, documents: run.run_documents}}
 
         :redeemed ->
+          :ok = retried(run, request.timestamp, now)
           {:ok, %{run_id: run.node_run_id, run_key: given(run), documents: run.run_documents}}
       end
     end
@@ -234,11 +237,12 @@ defmodule Apiary.Runs.RunCode do
 
   defp live(_waiting_ended_or_none, _now), do: :ended
 
-  # The same public key as the first redemption's, with a proof made after the first's.
-  defp retry?(%Run{run_code_public_key: stored, run_code_proof_timestamp: first}, request),
-    do: same_public_key?(stored, request.public_key) and newer?(request.timestamp, first)
+  # The same public key as the first redemption's, with a proof made after the newest
+  # accepted redemption's.
+  defp retry?(%Run{run_code_public_key: stored, run_code_proof_timestamp: latest}, request),
+    do: same_public_key?(stored, request.public_key) and newer?(request.timestamp, latest)
 
-  defp newer?(timestamp, first) when is_integer(first), do: timestamp > first
+  defp newer?(timestamp, latest) when is_integer(latest), do: timestamp > latest
   defp newer?(_timestamp, nil), do: false
 
   defp same_public_key?(<<_::binary-size(32)>> = stored, encoded) do
@@ -287,6 +291,17 @@ defmodule Apiary.Runs.RunCode do
       )
 
     run_key
+  end
+
+  # A retry accepted: its proof's timestamp stored in place of the one before, so the same
+  # retry sent again is a replayed proof.
+  defp retried(%Run{id: id}, timestamp, now) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^id),
+        set: [run_code_proof_timestamp: timestamp, updated_at: now]
+      )
+
+    :ok
   end
 
   # The run key the first redemption made, byte for byte.

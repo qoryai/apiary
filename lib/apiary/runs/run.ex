@@ -212,8 +212,9 @@ defmodule Apiary.Runs.Run do
     field :run_code_expires_at, :utc_datetime_usec
     field :run_code_grant, :map
     field :run_code_public_key, :binary
-    # For such a run: the timestamp of the proof that first redeemed its code, in Unix
-    # seconds; a retry by the same public key needs a newer one. Nil until then.
+    # For such a run: the timestamp of the proof of the newest accepted redemption of its
+    # code, the first or a retry, in Unix seconds; a retry by the same public key needs a
+    # newer one. Nil until the first redemption.
     field :run_code_proof_timestamp, :integer
     # For such a run: its documents, encoded at the claim, which every redemption of its
     # code answers byte for byte. Nil for every other run. Not folded.

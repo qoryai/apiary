@@ -840,10 +840,12 @@ order, `documents` the run's documents as its claim encoded them (A run of the q
 the run key is made at the
 first redemption, its `issued` that time and its `attach_by` 600 seconds after, and the
 run keeps it with the public key that redeemed the code and the timestamp of its proof.
-A retry by the same public key, with a proof whose timestamp is newer than the first's,
-is given the same `run_id`, `run_key` and `documents` again while the code's 15 minutes
-last, with `apiary_public_key` as the server's keys are at that moment, signed over the
-retry's proof. A proof with the first's timestamp or an older one is a replayed proof,
+A retry by the same public key, with a proof whose timestamp is newer than the one the
+run keeps, is given the same `run_id`, `run_key` and `documents` again while the code's
+15 minutes last, with `apiary_public_key` as the server's keys are at that moment, signed
+over the retry's proof, and the run keeps the retry's timestamp in place of the one
+before: the run keeps the timestamp of the newest accepted redemption. A proof with that
+timestamp or an older one, the same retry sent again among them, is a replayed proof,
 `401`, unsigned, and changes nothing.
 
 A run code is redeemed only through the relay of the gateway the claim bound it to. The

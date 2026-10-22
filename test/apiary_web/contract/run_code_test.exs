@@ -228,6 +228,11 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
 
       refute get_resp_header(newer, "x-qory-signature-ed25519") ==
                get_resp_header(first, "x-qory-signature-ed25519")
+
+      # The retry's timestamp is stored: the same retry again is a replay, refused as the
+      # first proof again is.
+      assert answer(enrol(ctx, later)) == answer(again)
+      assert run!(ctx).run_code_proof_timestamp == Jason.decode!(later)["timestamp"]
     end
 
     test "another public key after the first is 401, unsigned, and changes nothing", ctx do
