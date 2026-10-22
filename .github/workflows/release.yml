@@ -8,15 +8,11 @@ permissions:
   contents: read
 
 # A tag vX.Y.Z publishes the image ghcr.io/qoryai/apiary as X.Y.Z, X.Y and latest, for
-# linux/amd64 and linux/arm64, and the GitHub release with compose.yaml, env.example and
-# apiary.yaml attached: env.example a copy of .env.example naming X.Y.Z in APIARY_VERSION,
-# apiary.yaml the release copy of the AWS template, deploy/aws/apiary.yaml, naming X.Y.Z as
-# the template's version, which scripts/aws-template-release.py --copy release --version
-# writes in, without the template's test parts; the stack finds the version to install when
-# it is created or updated. The test copy is never attached or uploaded. The image's build
-# is ci.yml's: the same labels, build arguments and cache.
-# Nothing else publishes this image, or the template; prerelease.yml, run by hand or by a
-# push to the branch prerelease, publishes pre-release images to another package,
+# linux/amd64 and linux/arm64, and the GitHub release with compose.yaml and env.example
+# attached. env.example is a copy of .env.example with APIARY_VERSION set to X.Y.Z. The
+# image's build is ci.yml's: the same labels, build arguments and cache.
+# Nothing else publishes this image; prerelease.yml, run by hand or by a push to the branch
+# prerelease, publishes pre-release images to another package,
 # ghcr.io/qoryai/apiary-prerelease.
 #
 # env.example has no leading period: GitHub renames asset names with a leading period.
@@ -51,20 +47,6 @@ jobs:
           test -f compose.yaml || { echo "compose.yaml is missing" >&2; exit 1; }
           [ "$(grep -cx 'APIARY_VERSION=' .env.example)" = 1 ] || {
             echo ".env.example has no single empty APIARY_VERSION= line to write env.example from" >&2; exit 1; }
-
-      - name: Check the template the release publishes
-        # The release writes its version into a copy of the template, whose Template mapping
-        # in the repository names none; the script refuses a template it cannot write the
-        # version into exactly once. It writes both copies, the release copy the release
-        # attaches and the test copy, which stays here: the template must make each.
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          test -f deploy/aws/stack-policy.json || { echo "deploy/aws/stack-policy.json is missing" >&2; exit 1; }
-          for copy in release test; do
-            cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-$copy.yaml"
-            python3 scripts/aws-template-release.py "$RUNNER_TEMP/apiary-$copy.yaml" --copy "$copy" --version "$VERSION"
-          done
 
   # Each platform on a runner of its own architecture, pushed by digest alone: no tag
   # names an image until both are built.
@@ -182,20 +164,6 @@ jobs:
           cp compose.yaml dist/compose.yaml
           sed "s/^APIARY_VERSION=\$/APIARY_VERSION=$VERSION/" .env.example > dist/env.example
           grep -qx "APIARY_VERSION=$VERSION" dist/env.example
-          cp deploy/aws/apiary.yaml dist/apiary.yaml
-          python3 scripts/aws-template-release.py dist/apiary.yaml --copy release --version "$VERSION"
-          python3 scripts/aws-template-check.py release dist/apiary.yaml
-          cp deploy/aws/stack-policy.json dist/stack-policy.json
-
-      # The template job publishes these same files to S3.
-      - uses: actions/upload-artifact@v7
-        with:
-          name: aws-template
-          path: |
-            dist/apiary.yaml
-            dist/stack-policy.json
-          if-no-files-found: error
-          retention-days: 1
 
       - name: Publish the release
         uses: softprops/action-gh-release@v3
@@ -204,53 +172,3 @@ jobs:
           files: |
             dist/compose.yaml
             dist/env.example
-            dist/apiary.yaml
-
-  # The release's template, to the public S3 bucket the Launch Stack link reads:
-  # apiary/X.Y.Z/apiary.yaml with the stack policy beside it, then apiary/latest/apiary.yaml.
-  # The bucket and the AWS role this job assumes, through GitHub's OIDC with no stored key,
-  # are the repository variables AWS_TEMPLATE_BUCKET (<bucket>) and AWS_TEMPLATE_ROLE_ARN
-  # (arn:aws:iam::<account>:role/<role>). With either unset, the job publishes nothing and
-  # says so: the template is then the one attached to the release.
-  template:
-    name: Publish the AWS template
-    needs: [check, publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      VERSION: ${{ needs.check.outputs.version }}
-      BUCKET: ${{ vars.AWS_TEMPLATE_BUCKET }}
-      ROLE_ARN: ${{ vars.AWS_TEMPLATE_ROLE_ARN }}
-    steps:
-      - name: Check the bucket and the role are set
-        id: target
-        run: |
-          if [ -n "$BUCKET" ] && [ -n "$ROLE_ARN" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::AWS_TEMPLATE_BUCKET or AWS_TEMPLATE_ROLE_ARN is not set: the template is attached to the release and published to no bucket."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/download-artifact@v8
-        if: steps.target.outputs.publish == 'true'
-        with:
-          name: aws-template
-          path: dist
-
-      # The credentials are asked for in us-east-1; the AWS CLI follows S3 to the bucket's
-      # own region.
-      - uses: aws-actions/configure-aws-credentials@v6
-        if: steps.target.outputs.publish == 'true'
-        with:
-          role-to-assume: ${{ env.ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Upload the template
-        if: steps.target.outputs.publish == 'true'
-        run: |
-          aws s3 cp dist/apiary.yaml "s3://$BUCKET/apiary/$VERSION/apiary.yaml"
-          aws s3 cp dist/stack-policy.json "s3://$BUCKET/apiary/$VERSION/stack-policy.json"
-          aws s3 cp dist/apiary.yaml "s3://$BUCKET/apiary/latest/apiary.yaml"
