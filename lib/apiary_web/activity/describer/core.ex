@@ -61,6 +61,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"variable.edit"), do: gettext("Variable changed")
   def label(:"connection.write"), do: gettext("Integration changed")
   def label(:"model_choice.write"), do: gettext("Model choice changed")
+  def label(:"time_limit.edit"), do: gettext("Time limit changed")
   def label(:"collection.assign"), do: assign_label(nil)
 
   def label(:"collection.set_backlog"), do: backlog_label(nil)
@@ -117,10 +118,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # confirmation of its proposal, a run of Explore again and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the handover of a claimed
   # run, its release, the image a prebuild built, the choosing of what a target's runs also
-  # read, the setting of a model choice of a workspace or a target, a build of a target's
-  # environment asked for, the installing of an adapter and the start of its set-up have
-  # labels yet, so the filter offers those alone, where the reader is shown the feature
-  # (the page asks it); the others' entries show as any change.
+  # read, the setting of a model choice or a time limit of a workspace or a target, a
+  # build of a target's environment asked for, the installing of an adapter and the start
+  # of its set-up have labels yet, so the filter offers those alone, where the reader is
+  # shown the feature (the page asks it); the others' entries show as any change.
   @impl true
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -136,6 +137,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"work_item.comment",
           :"work_item.comment_delete",
           :"model_choice.write",
+          :"time_limit.edit",
           :"collection.assign",
           :"collection.set_backlog",
           :"dispatch.handover",

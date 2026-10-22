@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ActivityTimeLimitTest do
   # The Activity lines of a time limit: the sentence by the change in the entry's details,
   # the subject by the place of the limit, and the lines for the workflow and the minutes,
-  # of entries under `time_limit.edit`.
+  # of entries under `time_limit.edit`, and its label in the filter.
   use Apiary.DataCase, async: true
 
   import Apiary.ConnectionsFixtures, only: [target!: 2]
@@ -15,6 +15,12 @@ defmodule ApiaryWeb.ActivityTimeLimitTest do
   @moduletag needs: :factory
 
   @action :"time_limit.edit"
+
+  test "the label is Time limit changed, and the filter offers the action" do
+    %{scope: scope} = sign_up_fixture()
+    assert Core.label(:"time_limit.edit") == "Time limit changed"
+    assert Core.offered?(scope, :"time_limit.edit")
+  end
 
   defp entry(details),
     do: %Entry{

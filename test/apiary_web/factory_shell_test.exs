@@ -398,6 +398,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"adapter.install", "Adapter installed"} in options
       assert {"adapter.setup", "Adapter set-up started"} in options
       assert {"model_choice.write", "Model choice changed"} in options
+      assert {"time_limit.edit", "Time limit changed"} in options
 
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
@@ -422,7 +423,8 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"target.rebuild_environment",
             :"adapter.install",
             :"adapter.setup",
-            :"model_choice.write"
+            :"model_choice.write",
+            :"time_limit.edit"
           ],
           do: refute(action in offered, "#{action}")
     end

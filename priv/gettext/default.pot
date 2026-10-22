@@ -15759,6 +15759,11 @@ msgctxt "plain"
 msgid "Tickets come into the Backlog from another system, such as an issue tracker, a support desk or a forge, through an integration that %{organisation} installs."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Time limit changed"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Time zone"
