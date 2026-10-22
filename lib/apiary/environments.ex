@@ -120,26 +120,33 @@ defmodule Apiary.Environments do
   # (`Apiary.Dispatches.RunEnd`), and a second report of it writes nothing
   # (`Apiary.Dispatches.Built`).
   #
-  # ## An image missing: `lock_missing/3` and `forget_image/2`
+  # ## An image missing: `hold_missing/3`, `lock_missing/3` and `forget_image/3`
   #
   # A run that is not a prebuild, started in the image its pool's record gave it
   # (`runs.configured_image`), whose exit is `failed` with the reason `image_missing`:
   # the registry has no such image. The end of its run of the queue
-  # (`Apiary.Dispatches.RunEnd`) first locks its work item, then
-  # `lock_missing(pool_id, target, image)`: the records of the pool that claimed the run
-  # whose image is that image, built for the run's target, `FOR UPDATE`, by collection,
-  # before the run of the queue, as the order of `Apiary.Dispatches.Slots` has the records
-  # before the runs. `forget_image(records, now)` then clears the build of each of them,
+  # (`Apiary.Dispatches.RunEnd`) first calls `hold_missing(pool_id, target, image)`: the
+  # collections of the records of the pool that claimed the run whose image is that
+  # image, built for the run's target, read without a lock, held `FOR SHARE`, by id,
+  # after their connections, `FOR SHARE`, by id, as a Rebuild holds them. It then locks
+  # its work item `FOR KEY SHARE`, then calls `lock_missing(pool_id, target, image)`:
+  # those records `FOR UPDATE`, by collection, before the run of the queue, as the order
+  # of `Apiary.Dispatches.Slots` has the collections before the records before the runs.
+  # `forget_image(records, collections, now)` then clears the build of each record,
   # `image`, `size`, `commit`, `built_at`, `reported_ref`, the built target and
   # `built_queued_at`, so `image_for/2` gives that image to no run; the last failure,
-  # what was queued and `retired_at` are left as they are. For each record not retired
-  # whose collection is live, assigned to the pool's workspace, whose domain has
-  # prebuilds, with a target and an `environment_ref`, and whose pool is live, it writes
-  # the record's `queued_ref`, `queued_at` and queued target and queues a prebuild of the
-  # collection held for the pool, as a Rebuild does, unless one waits unclaimed: the next
-  # build makes the image again. The collections are read without a lock: a listing's
-  # part that changes one waits for the record, and its trigger then sees what was
-  # queued.
+  # what was queued and `retired_at` are left as they are. The prebuild that made the
+  # image does not store it again: a projection stores a run's build only in the pass
+  # that folds its report, and a rebuild of the run's projection stores none
+  # (`Apiary.Runs.Projector`). For each record not retired whose
+  # collection is one of `collections`, live, assigned to the pool's workspace, whose
+  # domain has prebuilds, with a target and an `environment_ref`, and whose pool is live,
+  # it writes the record's `queued_ref`, `queued_at` and queued target and queues a
+  # prebuild of the collection held for the pool, as a Rebuild does, unless one waits
+  # unclaimed: the next build makes the image again. A record whose collection is not one
+  # of `collections`, its build landed after `hold_missing/3` read the records, is
+  # cleared and queues nothing: the trigger of its collection's next change queues its
+  # prebuild.
   #
   # ## A member's Rebuild: `rebuild/2`
   #
@@ -322,6 +329,43 @@ defmodule Apiary.Environments do
 
   ## An image missing
 
+  # hold_missing/3 holds `FOR SHARE`, inside the caller's transaction, the collections of
+  # the records of the node pool `pool_id` whose image is `image`, built for `target`,
+  # read without a lock, by id, after their connections `FOR SHARE`, by id (the
+  # moduledoc): the collections held. A collection of a connection the first read did not
+  # find is left out, as its connection is not held.
+  @doc false
+  @spec hold_missing(Ecto.UUID.t(), %{system: String.t(), path: String.t()}, String.t()) ::
+          [Collection.t()]
+  def hold_missing(pool_id, %{system: system, path: path}, image)
+      when is_binary(pool_id) and is_binary(system) and is_binary(path) and is_binary(image) do
+    in_transaction!("hold_missing/3")
+
+    collection_ids =
+      from r in Record,
+        where: r.pool_id == ^pool_id and r.image == ^image,
+        where: r.built_target_system == ^system and r.built_target_path == ^path,
+        select: r.source_collection_id
+
+    collections = from c in Collection, where: c.id in subquery(collection_ids), order_by: c.id
+
+    connection_ids =
+      Repo.all(from c in collections, select: c.connection_id)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    held =
+      Repo.all(
+        from k in Connection,
+          where: k.id in ^connection_ids,
+          order_by: k.id,
+          lock: "FOR SHARE",
+          select: k.id
+      )
+
+    Repo.all(from c in collections, where: c.connection_id in ^held, lock: "FOR SHARE")
+  end
+
   # lock_missing/3 locks `FOR UPDATE`, inside the caller's transaction, the records of the
   # node pool `pool_id` whose image is `image`, built for `target`, by collection: the
   # records (the moduledoc).
@@ -341,15 +385,18 @@ defmodule Apiary.Environments do
     )
   end
 
-  # forget_image/2 clears the image of `records`, locked by `lock_missing/3`, at `now`, and
-  # queues a prebuild of each record's collection for its pool where one is due, inside
-  # the caller's transaction (the moduledoc): the prebuilds it queued.
+  # forget_image/3 clears the image of `records`, locked by `lock_missing/3`, at `now`,
+  # and queues a prebuild of the collection of each record for its pool where one is due
+  # and the collection is one of `collections`, held by `hold_missing/3`, inside the
+  # caller's transaction (the moduledoc): the prebuilds it queued.
   @doc false
-  @spec forget_image([Record.t()], DateTime.t()) :: [Apiary.Dispatches.DispatchRun.t()]
-  def forget_image([], %DateTime{}), do: []
+  @spec forget_image([Record.t()], [Collection.t()], DateTime.t()) ::
+          [Apiary.Dispatches.DispatchRun.t()]
+  def forget_image([], _collections, %DateTime{}), do: []
 
-  def forget_image(records, %DateTime{} = now) when is_list(records) do
-    in_transaction!("forget_image/2")
+  def forget_image(records, collections, %DateTime{} = now)
+      when is_list(records) and is_list(collections) do
+    in_transaction!("forget_image/3")
     ids = Enum.map(records, & &1.id)
 
     {_count, _rows} =
@@ -373,13 +420,7 @@ defmodule Apiary.Environments do
         &{&1.id, &1}
       )
 
-    collections =
-      Map.new(
-        Repo.all(
-          from c in Collection, where: c.id in ^Enum.map(records, & &1.source_collection_id)
-        ),
-        &{&1.id, &1}
-      )
+    collections = Map.new(collections, &{&1.id, &1})
 
     for %Record{retired_at: nil} = record <- records,
         %Collection{} = collection <- [collections[record.source_collection_id]],

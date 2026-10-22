@@ -48,7 +48,8 @@ defmodule Apiary.Dispatches.Slots do
   #      `Apiary.Adapters.Collections`, whose lock order names what each holds before
   #      them, and the targets each makes after them and before the environment records;
   #      a Rebuild holds their connections `FOR SHARE`, by id, then them `FOR SHARE`, by
-  #      id, `Apiary.Environments.rebuild/2`);
+  #      id, `Apiary.Environments.rebuild/2`, and so does the end of a run whose image was
+  #      missing, `Apiary.Environments.hold_missing/3`);
   #   2. a node pool's row: a claim takes it `FOR NO KEY UPDATE` (`Apiary.Dispatches`), so
   #      a registration on the pool, which takes it `FOR UPDATE`
   #      (`Apiary.Nodes.check_instance_limit/3`), and another claim take turns with it,
@@ -105,6 +106,10 @@ defmodule Apiary.Dispatches.Slots do
   # the queue, its registered run and its dispatches, then the free of its run, which
   # finds none lapsed. The end of any other run handed over, by the check or by an exit's
   # projection, holds its work item `FOR KEY SHARE` in place of the record, then the same.
+  # The end of such a run whose exit says its image was missing first holds the
+  # connections and then the collections of the records of that image `FOR SHARE`, by id,
+  # as 1. has a Rebuild hold them, then its work item `FOR KEY SHARE`, then those records
+  # `FOR UPDATE`, as 3. has them, then the same.
   #
   # So a prebuild comes to wait, or the one that waits takes another `environment_ref`,
   # only under the lock of its record, and whoever comes second sees what the first

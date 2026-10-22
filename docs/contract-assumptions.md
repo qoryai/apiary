@@ -500,7 +500,9 @@ to, and stores nothing (`Apiary.Runs.Outcome`). A node's keys keep the outcome e
 for the runs the node registers itself. Each end locks the run of the queue, then the
 registered run, then writes the dispatches; an end by an exit or by the lost-run check
 first locks the run's work item `FOR KEY SHARE`, or a prebuild's environment record
-`FOR UPDATE`. So two ends of one run take turns, and an exit that comes as the check
+`FOR UPDATE`; the end of a run whose exit reason is `image_missing` also holds the
+collections and the environment records of its image first. So two ends of one run take
+turns, and an exit that comes as the check
 loses the run is either taken first, its end cause `run_ended`, or after it, the end cause
 staying `lost`.
 
@@ -530,10 +532,12 @@ the records of that pool built for the run's target with that image, so no run i
 given it again. For each such record not retired, whose collection is live, assigned to
 the pool's workspace, with a target and an `environment_ref`, a prebuild of the
 collection is queued for the pool, as a Rebuild queues it, unless one waits unclaimed.
-The work item then gets the next run of its take in, once: while it is exploring in
-that take in and a run of the take in is left, and only when the run of the attempt
-before did not end with `image_missing` too. That end first holds the run's work item
-`FOR UPDATE`, then those records, before the run of the queue.
+The run of the queue is not queued again: it ends as any failed run does. That end first
+holds the connections and then the collections of those records `FOR SHARE`, by id, as
+a Rebuild holds them, then the run's work item `FOR KEY SHARE`, then those records
+`FOR UPDATE`, before the run of the queue. An end by the lost-run check that read the
+run before its exit was folded, and so holds none of them, ends nothing; the
+projection's end, or the next check, ends it.
 
 A run its gateway refused before it started (`dev.qory.run.refused`, with a code such as
 `model_key_missing`) ends `run_refused` at its first refusal and is not queued again. The
