@@ -12,7 +12,8 @@
 # 0600), generated once and never changed; and, with APIARY_REGISTRY_CERT_DIR set and not
 # blank, a self-signed certificate of that key in $APIARY_REGISTRY_CERT_DIR/
 # registry-token.crt (mode 0644), on a volume the registry mounts read-only, written again
-# whenever its public key is not the key's. The registry reads the certificate only when
+# whenever its public key is not the key's. That directory is refused when it is
+# $APIARY_KEYS_DIR or inside it. The registry reads the certificate only when
 # it starts and holds one, so a rotation is: delete registry-token.key, run this again,
 # restart Qory Apiary, then restart the registry.
 #
@@ -147,10 +148,30 @@ if [ -n "${QORY_REGISTRY:-}" ]; then
   fi
 
   # Its certificate, where APIARY_REGISTRY_CERT_DIR is set, written through a temporary
-  # file and a rename when its public key is not the key's. A failure says which
-  # directory, without the keys volume's sentence.
+  # file and a rename when its public key is not the key's. The directory is never the
+  # keys directory nor inside it, both resolved, since the registry reads it. A failure
+  # says which directory, without the keys volume's sentence.
   cert_dir=${APIARY_REGISTRY_CERT_DIR:-}
   if [ -n "$cert_dir" ]; then
+    # cert_fail REASON: stops, with the reason after the last ": " of REASON.
+    cert_fail() {
+      rm -f "$cert_dir/registry-token.crt.tmp" 2>/dev/null || true
+      reason=${1##*: }
+      printf 'Make %s writable by the user nobody, or set APIARY_REGISTRY_CERT_DIR to a directory that the user nobody can write. Writing failed: %s.\n' \
+        "$cert_dir" "${reason:-the write did not complete}" >&2
+      exit 1
+    }
+
+    keys_real=$(cd "$dir" 2>&1 && pwd -P) || fail "$keys_real"
+    cert_real=$(cd "$cert_dir" 2>&1 && pwd -P) || cert_fail "$cert_real"
+    case "$cert_real/" in
+    "$keys_real/"*)
+      printf 'Set APIARY_REGISTRY_CERT_DIR to a directory other than %s. Zot reads that directory, and %s contains the private keys.\n' \
+        "$dir" "$dir" >&2
+      exit 1
+      ;;
+    esac
+
     cert=$cert_dir/registry-token.crt
     rm -f "$cert.tmp" 2>/dev/null || true
     public=$(openssl pkey -in "$registry_key" -pubout 2>&1) || fail "$public"
@@ -159,19 +180,18 @@ if [ -n "${QORY_REGISTRY:-}" ]; then
       held_public=$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null) || held_public=
     fi
     if [ "$public" != "$held_public" ]; then
+      # The temporary file is created afresh, never through a name that exists, and
+      # checked to be a regular file and no link before its mode changes.
       output=$({
-        openssl req -new -x509 -key "$registry_key" -sha256 -days 3650 \
-          -subj "/CN=Qory Apiary registry tokens" -out "$cert.tmp" &&
+        (set -C && : >"$cert.tmp") &&
+          openssl req -new -x509 -key "$registry_key" -sha256 -days 3650 \
+            -subj "/CN=Qory Apiary registry tokens" -out "$cert.tmp" &&
+          [ -f "$cert.tmp" ] && [ ! -L "$cert.tmp" ] &&
           chmod 644 "$cert.tmp" &&
           sync &&
           mv -f "$cert.tmp" "$cert" &&
           sync
-      } 2>&1) || {
-        rm -f "$cert.tmp" 2>/dev/null || true
-        reason=${output##*: }
-        printf 'Cannot write %s: %s.\n' "$cert_dir" "${reason:-the write did not complete}" >&2
-        exit 1
-      }
+      } 2>&1) || cert_fail "$output"
       printf 'Generated %s in %s.\n' registry-token.crt "$cert_dir"
     fi
   fi
