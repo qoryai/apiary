@@ -344,7 +344,8 @@ defmodule ApiaryWeb.RegistryTokenTest do
   end
 
   describe "the instance's host" do
-    test "is held to the token route where the document did not allow it", ctx do
+    test "gets the token route as its one path rule where the document did not allow it",
+         ctx do
       ctx = reader(ctx)
       host = RunAccess.instance_host()
       assert document(ctx)["security_policy"]["egress"]["paths"][host] == ["/registry/token"]
@@ -369,7 +370,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
       assert Map.has_key?(paths, @service)
     end
 
-    test "is held to the token route where the document denies it", ctx do
+    test "gets the token route as its one path rule where the document denies it", ctx do
       {:ok, _rule} = Policy.deny(ctx.scope, nil, %{host: RunAccess.instance_host()})
       ctx = reader(ctx)
       host = RunAccess.instance_host()

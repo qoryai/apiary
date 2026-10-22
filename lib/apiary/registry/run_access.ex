@@ -127,8 +127,9 @@ defmodule Apiary.Registry.RunAccess do
   end
 
   @doc false
-  # token_path/0 is the path of the token route, the one path of the instance's host a
-  # run reaches with the feature alone.
+  # token_path/0 is the path of the token route. Under enforce, with the feature alone,
+  # it is the one path of the instance's host a run reaches; under observe, a run
+  # reaches every path of that host.
   @spec token_path() :: String.t()
   def token_path, do: "/registry/token"
 

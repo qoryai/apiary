@@ -407,10 +407,11 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
-  # The audit entry of the seal, in the gateway's organisation: no answer is sent
-  # without it. Its subject is the run, or, for a run of another organisation, which an
-  # operator's gateway serves, the gateway, with the run's id in its details: an entry's
-  # subject is of the trail's organisation.
+  # The audit entry of the seal, in the gateway's organisation, for a run with a model
+  # key: the answer to such a run goes out only with the entry. A run with no model key
+  # gets no entry. The entry's subject is the run, or, for a run of another
+  # organisation, which an operator's gateway serves, the gateway, with the run's id in
+  # its details: an entry's subject is of the trail's organisation.
   defp record(_access_key, _run, nil), do: :ok
 
   defp record(access_key, run, credential) do
