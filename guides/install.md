@@ -808,7 +808,8 @@ instance people work in.
 
 The command fills Acme and its workspace Main: 6,000 runs over the last 56 days in about
 150 repositories, 11 people at every level and two invitations pending, and nodes with
-their access keys. Dana (`dana@example.com`) is an owner of Acme, so an instance admin.
+their access keys. Dana (`dana@example.com`) is an owner of Acme, the instance's
+organisation, so an instance admin.
 <!-- feature: security -->
 Main gets a security policy with its history.
 <!-- /feature -->
@@ -817,7 +818,7 @@ gets an invitation email, at their example address. The runs take the longest to
 `Apiary.Release.demo(runs: 1000)` writes 1,000 instead.
 
 Nobody knows the password of an account the demo makes. To sign in as Dana, print a link
-that sets her password:
+that sets the password:
 
 ```sh
 bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
