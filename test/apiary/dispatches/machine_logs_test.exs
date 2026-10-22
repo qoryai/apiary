@@ -310,10 +310,11 @@ defmodule Apiary.Dispatches.MachineLogsTest do
       assert File.ls!(ctx.dir) == [new.public_id]
     end
 
-    test "the job deletes a file whose record is gone, and a temporary file, an hour old",
+    test "the job deletes a file whose record is gone, and a temporary file, an hour old; it keeps a file with a record",
          ctx do
-      dispatch = dispatch!(ctx)
+      [dispatch, kept] = [dispatch!(ctx), dispatch!(ctx)]
       :ok = upload(ctx, dispatch)
+      :ok = upload(ctx, kept)
       # The dispatch's row deleted, as with its run of the queue: the record goes with it.
       Repo.delete_all(from d in Dispatch, where: d.id == ^dispatch.id)
       assert record(dispatch) == nil
@@ -322,11 +323,32 @@ defmodule Apiary.Dispatches.MachineLogsTest do
 
       # Less than an hour old: left alone, as a write whose record is not committed yet.
       assert MachineLogs.prune() == %{machine_logs_deleted: 0, files_deleted: 0}
-      assert length(File.ls!(ctx.dir)) == 2
+      assert length(File.ls!(ctx.dir)) == 3
 
       later = DateTime.add(DateTime.utc_now(), 3_601, :second)
       assert MachineLogs.prune(now: later) == %{machine_logs_deleted: 0, files_deleted: 2}
-      assert File.ls!(ctx.dir) == []
+      assert File.ls!(ctx.dir) == [kept.public_id]
+      assert File.read!(Path.join(ctx.dir, kept.public_id)) == @log
+      assert %MachineLog{} = record(kept)
+    end
+
+    test "a file written again since the job listed it is left as it is", ctx do
+      key = "dp_0000000000000002"
+      :ok = MachineLogStore.put(key, "old")
+      path = Path.join(ctx.dir, key)
+      listed = System.os_time(:second) - 7_200
+      File.touch!(path, listed)
+      assert {:ok, [{:key, ^key, ^listed}]} = MachineLogStore.files()
+
+      # An upload renames its file over the listed one before the delete.
+      :ok = MachineLogStore.put(key, "new")
+      assert MachineLogStore.delete_unchanged(key, listed) == :changed
+      assert File.read!(path) == "new"
+
+      {:ok, [{:key, ^key, now}]} = MachineLogStore.files()
+      assert MachineLogStore.delete_unchanged(key, now) == :ok
+      refute File.exists?(path)
+      assert MachineLogStore.delete_unchanged(key, now) == :ok
     end
 
     test "the job leaves a file of another name alone", ctx do

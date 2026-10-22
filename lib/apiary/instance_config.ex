@@ -24,8 +24,8 @@ defmodule Apiary.InstanceConfig do
   trail's, and its default is 90 days, or the trail's period when that is shorter.
   `source/1` says where a value comes from.
 
-  **Where they are kept.** Four columns of the instance's row of `instance_settings`
-  (`Apiary.InstanceConfig.Row`), NULL for none saved. Each node keeps a copy
+  **Where they are kept.** One column per setting in the instance's row of
+  `instance_settings` (`Apiary.InstanceConfig.Row`), NULL for none saved. Each node keeps a copy
   (`Apiary.InstanceConfig.Cache`), read again over `Apiary.PubSub` after each save;
   without it, as in the tests, `stored/0` reads the row each time. A node whose migration
   of these columns has not run yet, with `MIGRATE_ON_BOOT=false`, reads them as none saved.

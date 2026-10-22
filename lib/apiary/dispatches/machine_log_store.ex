@@ -106,6 +106,22 @@ defmodule Apiary.Dispatches.MachineLogStore do
     end
   end
 
+  # delete_unchanged/2 deletes the file of `key` only where its modification time is still
+  # `modified_at`, Unix seconds, as `files/0` listed it: `:changed` leaves a file written
+  # again since, by an upload's rename among others, as it is. A file not there is `:ok`.
+  @doc false
+  @spec delete_unchanged(String.t(), integer) :: :ok | :changed | {:error, error}
+  def delete_unchanged(key, modified_at) when is_integer(modified_at) do
+    with {:ok, _dir, path} <- path(key) do
+      case File.lstat(path, time: :posix) do
+        {:ok, %File.Stat{mtime: ^modified_at}} -> delete(key)
+        {:ok, %File.Stat{}} -> :changed
+        {:error, :enoent} -> :ok
+        {:error, _reason} = error -> error
+      end
+    end
+  end
+
   # delete_temporary/1 deletes the temporary file `name` that `files/0` listed.
   @doc false
   @spec delete_temporary(String.t()) :: :ok | {:error, error}

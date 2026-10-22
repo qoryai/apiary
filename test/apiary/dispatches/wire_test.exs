@@ -743,6 +743,12 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert machine_log(Map.put(@machine_log, "log", String.duplicate("a", 786_433))) ==
                :error
+
+      # 786,432 characters in 786,433 bytes: the bound is in characters.
+      wide = String.duplicate("a", 786_431) <> "é"
+      assert {String.length(wide), byte_size(wide)} == {786_432, 786_433}
+      assert {:ok, %{log: ^wide}} = machine_log(Map.put(@machine_log, "log", wide))
+      assert machine_log(Map.put(@machine_log, "log", wide <> "a")) == :error
     end
 
     test "refuses each body the contract's invalid fixtures have, and every other wrong value" do

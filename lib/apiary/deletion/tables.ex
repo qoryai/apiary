@@ -37,9 +37,10 @@ defmodule Apiary.Deletion.Tables do
   # Children first: a run's events, log, connections and steps before the run; the deliveries
   # before the access keys they name; the composed run configurations before the run
   # configurations they were composed from; the run configurations and the policy's rules
-  # before the targets, and so are the pins; the runs before the runs of the queue they name, a
-  # dispatch's machine log before the dispatch, the dispatches before the runs of the queue, the node pools and the access keys they name,
-  # and the runs of the queue before their work items; the environment records before the
+  # before the targets, and so are the pins; the runs before the runs of the queue they
+  # name, a dispatch's machine log before the dispatch, the dispatches before the runs of
+  # the queue, the node pools and the access keys they name, and the runs of the queue
+  # before their work items; the environment records before the
   # node pools and the collections they name; a node's instances before the access keys
   # they name; the access keys before the enrolment codes they arrived by, and
   # the keys, the codes, the runs, the instances and the organisation's connections to

@@ -330,9 +330,9 @@ defmodule Apiary.Dispatches.MachineLogs do
   defp prune_files(before, dry_run?) do
     case MachineLogStore.files() do
       {:ok, files} ->
-        old = for {kind, name, mtime} <- files, mtime <= before, do: {kind, name}
-        {keys, temporary} = Enum.split_with(old, &(elem(&1, 0) == :key))
-        keys = Enum.map(keys, &elem(&1, 1))
+        old = for {kind, name, mtime} <- files, mtime <= before, do: {kind, name, mtime}
+        {listed, temporary} = Enum.split_with(old, &(elem(&1, 0) == :key))
+        keys = Enum.map(listed, &elem(&1, 1))
 
         kept =
           keys
@@ -342,12 +342,12 @@ defmodule Apiary.Dispatches.MachineLogs do
           end)
           |> MapSet.new()
 
-        orphans = Enum.reject(keys, &MapSet.member?(kept, &1))
+        orphans = Enum.reject(listed, &MapSet.member?(kept, elem(&1, 1)))
 
         if dry_run? do
           length(orphans) + length(temporary)
         else
-          Enum.count(orphans, &(MachineLogStore.delete(&1) == :ok)) +
+          Enum.count(orphans, &delete_orphan/1) +
             Enum.count(temporary, &(MachineLogStore.delete_temporary(elem(&1, 1)) == :ok))
         end
 
@@ -355,6 +355,13 @@ defmodule Apiary.Dispatches.MachineLogs do
         Logger.error("the machine logs folder could not be read: #{inspect(reason)}")
         0
     end
+  end
+
+  # An upload of the dispatch since the listing renames its file over the old one, or
+  # commits its record: the file is left then, read again just before the delete.
+  defp delete_orphan({:key, key, mtime}) do
+    not Repo.exists?(from l in MachineLog, where: l.storage_key == ^key) and
+      MachineLogStore.delete_unchanged(key, mtime) == :ok
   end
 
   ## The purge
