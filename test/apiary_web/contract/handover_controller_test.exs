@@ -233,6 +233,9 @@ defmodule ApiaryWeb.Contract.HandoverControllerTest do
       assert answer["work_item"]["id"] == work_item.public_id
       assert answer["work_item"]["title"] == work_item.title
 
+      assert answer["work_item"]["url"] ==
+               "#{ApiaryWeb.Endpoint.url()}/work-items/#{work_item.public_id}"
+
       # What the explore contract asks of the two together.
       assert answer["inputs"]["target"] == answer["target"]
       assert answer["inputs"]["domain"] == answer["domain"]

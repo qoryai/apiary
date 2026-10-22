@@ -175,7 +175,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
 
   defp run_settings, do: if(Apiary.Features.on?(:secrets), do: ~w(run_settings), else: [])
 
-  @claim ~w(version revision dispatch_id run_id pool_id lease_until step access target work_item)
+  @claim ~w(version revision dispatch_id pool_id lease_until)
   @handover ~w(version revision run_id run_key step domain access target work_item)
 
   describe "an explore run" do
@@ -315,7 +315,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       {claim, handover} = claim_and_hand_over(ctx)
 
       assert members(claim) ==
-               ~w(version revision dispatch_id run_id pool_id lease_until step access target machine)
+               ~w(version revision dispatch_id pool_id lease_until machine)
 
       assert members(handover) ==
                ~w(version revision run_id run_key step domain access target inputs)

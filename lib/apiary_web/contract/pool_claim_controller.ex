@@ -21,11 +21,11 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #      organisation out of use since, `401`, unsigned; `dispatch.claim` refused, `403`
   #      `forbidden`; the pool's choice of gateway leading to none, `409` `no_gateway`;
   #   5. a run claimed is `200`, signed: the contract's `claim-answer.schema.json`, its
-  #      `revision` the request's, inside the signed body. A prebuild's answer has its
-  #      collection's target and no `work_item`. An explore run whose work item has no
-  #      target has neither `access` nor `target`. `machine` is the machine type of the
-  #      workspace's entry in the machines file (`Apiary.Dispatches.MachinesFile`), and
-  #      absent without one.
+  #      `revision` the request's, inside the signed body. The answer is the machine
+  #      request alone: `dispatch_id`, `pool_id`, `lease_until` and `machine`, and nothing
+  #      of the run, its id, its step, its target or its work item. `machine` is the
+  #      machine type of the workspace's entry in the machines file
+  #      (`Apiary.Dispatches.MachinesFile`), and absent without one.
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
   # pool at its instance limit, the request is held, up to its `wait_seconds`: it listens
@@ -179,7 +179,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   defp now, do: System.monotonic_time(:millisecond)
 
-  defp answer(conn, %{dispatch: dispatch, run: run, pool: pool} = claimed) do
+  defp answer(conn, %{dispatch: dispatch, pool: pool}) do
     body =
       Jason.encode!(
         Jason.OrderedObject.new(
@@ -187,11 +187,9 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
             {"version", 1},
             {"revision", conn.assigns.contract_version},
             {"dispatch_id", dispatch.public_id},
-            {"run_id", run.run_id},
             {"pool_id", pool.public_id},
-            {"lease_until", DispatchAnswer.time(dispatch.lease_until)},
-            {"step", run.step}
-          ] ++ DispatchAnswer.what_for(claimed) ++ DispatchAnswer.machine(conn.assigns.access_key)
+            {"lease_until", DispatchAnswer.time(dispatch.lease_until)}
+          ] ++ DispatchAnswer.machine(conn.assigns.access_key)
         )
       )
 

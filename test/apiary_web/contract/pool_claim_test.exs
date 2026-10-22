@@ -1,8 +1,7 @@
 defmodule ApiaryWeb.Contract.PoolClaimTest do
   # `POST /v1/pools/claim` (`ApiaryWeb.Contract.PoolClaimController`): the claim answer,
-  # signed, held to the vendored `claim-answer.schema.json`, a prebuild's to its pool
-  # alone, an explore run's without a target with neither access nor target; the refusals
-  # in their order;
+  # signed, held to the vendored `claim-answer.schema.json`, with nothing of the run in it,
+  # a prebuild taken by its pool alone; the refusals in their order;
   # another pool's id refused as an unknown one is; `dispatch.claim` refused or not found
   # as one answer; the hold, its wake, its end and its cap per key; and the key read again
   # after the wait. Not async: the features, the hold's settings and the registry of holds
@@ -111,6 +110,20 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
   defp dispatches, do: Repo.aggregate(Dispatch, :count)
 
+  # The run id of the run the claim answered by `conn` took, read from its dispatch: the
+  # answer has no run id.
+  defp claimed_run_id(conn) do
+    %{"dispatch_id" => dispatch_id} = Jason.decode!(conn.resp_body)
+
+    Repo.one!(
+      from d in Dispatch,
+        join: r in DispatchRun,
+        on: r.id == d.dispatch_run_id,
+        where: d.public_id == ^dispatch_id,
+        select: r.run_id
+    )
+  end
+
   defp validator(schema) do
     JSV.build!(%{"$ref" => @base <> "provisioner/v1/#{schema}.schema.json"},
       resolver: {Resolver, @vendored},
@@ -150,56 +163,19 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^run.id)
       lease_until = dispatch.lease_until |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
+      # The machine request alone: nothing of the run, its id, its step, its target or
+      # its work item.
       assert answer == %{
                "version" => 1,
                "revision" => 3,
                "dispatch_id" => dispatch.public_id,
-               "run_id" => run.run_id,
                "pool_id" => ctx.pool.public_id,
-               "lease_until" => lease_until,
-               "step" => "explore",
-               "access" => "read",
-               "target" => %{"system" => "forge.example.com", "path" => "acme/shop"},
-               "work_item" => %{
-                 "id" => work_item.public_id,
-                 "url" => "#{ApiaryWeb.Endpoint.url()}/work-items/#{work_item.public_id}",
-                 "title" => work_item.title
-               }
+               "lease_until" => lease_until
              }
 
       assert %Dispatch{pool_id: pool_id, access_key_id: key_id} = dispatch
       assert {pool_id, key_id} == {ctx.pool.id, ctx.key.id}
       assert Repo.get!(DispatchRun, run.id).state == :claimed
-    end
-
-    test "names the work item by its address of the fixture's shape, which no workspace moves",
-         ctx do
-      work_item = work_item_fixture(ctx.scope)
-      queue!(work_item)
-
-      # The fixture's address, its origin and its id put aside: `/work-items/` and the id.
-      %{"work_item" => %{"id" => id, "url" => url}} =
-        @fixtures |> Path.join("claim-answer/explore.json") |> File.read!() |> Jason.decode!()
-
-      %URI{path: path} = URI.parse(url)
-      assert path == "/work-items/" <> id
-
-      answer = Jason.decode!(claim(ctx, body()).resp_body)
-      expected = ApiaryWeb.Endpoint.url() <> "/work-items/" <> work_item.public_id
-      assert answer["work_item"]["url"] == expected
-      assert %URI{path: "/work-items/" <> public_id} = URI.parse(expected)
-      assert public_id == work_item.public_id
-
-      # Moved to another workspace after the claim, it has the same address.
-      other = workspace_fixture(ctx.scope.organisation)
-
-      Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: other.id]
-      )
-
-      moved = Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
-      assert moved.workspace_id == other.id
-      assert Apiary.WorkItems.stable_url(moved) == expected
     end
 
     test "without pool_id covers the key's pool; with an empty queue and no wait it is 204, signed",
@@ -210,7 +186,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
       run = queued!(ctx.scope)
       conn = claim(ctx, body(%{}, 1))
-      assert Jason.decode!(conn.resp_body)["run_id"] == run.run_id
+      assert claimed_run_id(conn) == run.run_id
     end
   end
 
@@ -237,18 +213,14 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "version" => 1,
                "revision" => 3,
                "dispatch_id" => dispatch.public_id,
-               "run_id" => run.run_id,
                "pool_id" => ctx.pool.public_id,
-               "lease_until" => lease_until,
-               "step" => "prebuild",
-               "access" => "read",
-               "target" => %{"system" => "code.example.com", "path" => "acme/shop"}
+               "lease_until" => lease_until
              }
 
       assert Repo.get!(DispatchRun, run.id).state == :claimed
     end
 
-    test "takes an explore run without a target, in the general domain: neither access nor target",
+    test "takes an explore run without a target, in the general domain, answered as any other",
          ctx do
       scope = with_domain(ctx.scope, "general")
       work_item = work_item_fixture(scope, %{target_system: nil, target_path: nil})
@@ -259,15 +231,8 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       answer = Jason.decode!(conn.resp_body)
       assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
 
-      assert members(conn.resp_body) ==
-               @fixtures
-               |> Path.join("claim-answer/explore-without-target.json")
-               |> File.read!()
-               |> members()
-
-      assert {answer["revision"], answer["run_id"]} == {3, run.run_id}
-      assert answer["work_item"]["id"] == work_item.public_id
-      refute Map.has_key?(answer, "access") or Map.has_key?(answer, "target")
+      assert members(conn.resp_body) == ~w(version revision dispatch_id pool_id lease_until)
+      assert claimed_run_id(conn) == run.run_id
     end
 
     test "another pool never takes a prebuild held for a pool", ctx do
@@ -391,7 +356,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       run = Task.await(writer)
 
       assert conn.status == 200
-      assert Jason.decode!(conn.resp_body)["run_id"] == run.run_id
+      assert claimed_run_id(conn) == run.run_id
       assert took >= 150 and took < 5_000
     end
 
@@ -421,7 +386,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       Task.await(freer)
 
       assert conn.status == 200
-      assert Jason.decode!(conn.resp_body)["run_id"] == second.run_id
+      assert claimed_run_id(conn) == second.run_id
       assert took >= 150 and took < 5_000
     end
 
@@ -532,7 +497,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
       {took, third} = timed(fn -> claim(ctx, body(%{"wait_seconds" => 25}, 2)) end)
       assert took < 1_000
-      assert Jason.decode!(third.resp_body)["run_id"] == run.run_id
+      assert claimed_run_id(third) == run.run_id
       assert slots(ctx) == 2
 
       for conn <- Task.await_many(holders, 5_000), do: assert(conn.status == 204)

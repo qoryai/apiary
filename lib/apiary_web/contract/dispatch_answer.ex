@@ -1,28 +1,17 @@
 defmodule ApiaryWeb.Contract.DispatchAnswer do
   @moduledoc false
 
-  # The parts the answers of the provisioner contract share, the claim's
-  # (`ApiaryWeb.Contract.PoolClaimController`) and the handover's
-  # (`ApiaryWeb.Contract.HandoverController`): a run's target and its work item, as
+  # The parts of the answers of the provisioner contract: the machine type of the claim
+  # answer (`ApiaryWeb.Contract.PoolClaimController`) from the machines file
+  # (`Apiary.Dispatches.MachinesFile`); the handover answer
+  # (`ApiaryWeb.Contract.HandoverController`), with a run's target and its work item, as
   # `definitions.schema.json` has them, what a run of a step may do on its target, present
-  # together with the target or left out with it, the machine type of the claim answer
-  # and the stack of the handover answer from the machines file
-  # (`Apiary.Dispatches.MachinesFile`), and a time in UTC to the whole second.
+  # together with the target or left out with it, and the stack from the machines file;
+  # and a time in UTC to the whole second.
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches.MachinesFile
   alias Apiary.WorkItems
-
-  # what_for/1 is the access, the target and the work item of an explore run, the access
-  # and the target of a prebuild's collection with no work item: `{name, value}` members,
-  # in order. An explore run whose work item has no target has neither access nor target.
-  @doc false
-  @spec what_for(map) :: [{String.t(), String.t() | Jason.OrderedObject.t()}]
-  def what_for(%{work_item: nil, collection: collection, run: run}),
-    do: reach(run.step, target_of(collection))
-
-  def what_for(%{work_item: work_item, run: run}),
-    do: reach(run.step, target_of(work_item)) ++ [{"work_item", work_item(work_item)}]
 
   # machine/1 is the `machine` member of the claim answer of a run of the workspace of the
   # node pool's key `access_key`, which `Apiary.AccessKeys.fetch_for_verification/1`
@@ -115,9 +104,6 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
 
   def reach(step, %{system: system, path: path}),
     do: [{"access", access(step)}, {"target", target(system, path)}]
-
-  defp target_of(%{target_system: nil}), do: nil
-  defp target_of(%{target_system: system, target_path: path}), do: %{system: system, path: path}
 
   # target/2 is a target of `system` and `path`.
   @doc false

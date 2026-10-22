@@ -347,8 +347,10 @@ hands each over (the provisioner contract, `contracts/provisioner/v1` of
 `qoryai/integrations`). Qory Apiary serves revision 3 of that contract alone: a request
 whose `X-Qory-Contract-Version` names any other revision is refused `400`
 `unsupported_contract_version`, and each claim answer and handover answer has `revision`
-3. A claim answer and a
-handover answer have the run's `target` and its `access` together, or neither for an
+3. A claim answer is a request for a machine: `dispatch_id`, `pool_id`, `lease_until` and
+`machine`, and nothing of the run, neither its `run_id`, its `step`, its `access`, its
+`target` nor its `work_item`. A
+handover answer has the run's `target` and its `access` together, or neither for an
 explore run whose work item has no target, which a workspace outside the software domain
 allows; a prebuild always has both. A handover answer also has `domain`, the name of the
 run's workspace's domain, and an explore run's input has the same `domain` and the same
