@@ -308,6 +308,14 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @admins
     ),
+    # How long a run of a workflow may take: the limits of the workspace and its targets
+    # (`Apiary.TimeLimits`).
+    Action.new(
+      :"time_limit.edit",
+      "set, change and remove the time limits of the workspace and its targets",
+      feature: :factory,
+      roles: @admins
+    ),
     # The server contract.
     Action.new(:"run.post_events", "open a run and post its events",
       feature: :observability,

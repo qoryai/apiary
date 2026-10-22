@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ActivityTimeLimitTest do
   # The Activity lines of a time limit: the sentence by the change in the entry's details,
   # the subject by the place of the limit, and the lines for the workflow and the minutes,
-  # under whichever action the entry was written.
+  # of entries under `time_limit.edit`.
   use Apiary.DataCase, async: true
 
   import Apiary.ConnectionsFixtures, only: [target!: 2]
@@ -14,9 +14,7 @@ defmodule ApiaryWeb.ActivityTimeLimitTest do
 
   @moduletag needs: :factory
 
-  # No action of `Apiary.Access` covers time limits yet: the entries here are written
-  # under an action of the trail, as the caller that checks one will.
-  @action :"model_choice.write"
+  @action :"time_limit.edit"
 
   defp entry(details),
     do: %Entry{
@@ -86,10 +84,10 @@ defmodule ApiaryWeb.ActivityTimeLimitTest do
     %{scope: scope} = sign_up_fixture()
     target = target!(scope, "acme/shop")
 
-    {:ok, _} = TimeLimits.put_limit(scope, @action, target, "hello", 600)
-    {:ok, _} = TimeLimits.put_limit(scope, @action, :workspace, "hello", 90)
-    {:ok, _} = TimeLimits.put_limit(scope, @action, :workspace, "hello", 120)
-    {:ok, _} = TimeLimits.delete_limit(scope, @action, target, "hello")
+    {:ok, _} = TimeLimits.put_limit(scope, target, "hello", 600)
+    {:ok, _} = TimeLimits.put_limit(scope, :workspace, "hello", 90)
+    {:ok, _} = TimeLimits.put_limit(scope, :workspace, "hello", 120)
+    {:ok, _} = TimeLimits.delete_limit(scope, target, "hello")
 
     entries =
       Repo.all(

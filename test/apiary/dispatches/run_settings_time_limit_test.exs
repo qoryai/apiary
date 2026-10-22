@@ -18,9 +18,6 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   @moduletag :tmp_dir
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-  # No action of `Apiary.Access` covers time limits yet: the limits here are written under
-  # an action of the trail, as the caller that checks one will.
-  @action :"model_choice.write"
   @stack %{
     "url" => "https://stacks.example.com/acme/stacks",
     "commit" => "0123456789abcdef0123456789abcdef01234567",
@@ -95,7 +92,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     test "sends the workspace's limit after the runtime, and the run keeps it", ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, @action, :workspace, "hello", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
       handed = handover!(ctx, place)
 
@@ -110,8 +107,8 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
       target = target!(ctx.scope)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, @action, :workspace, "hello", 90)
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, @action, target, "hello", 1440)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, target, "hello", 1440)
 
       assert %{"time_limit_minutes" => 1440} = settings(handover!(ctx, place))
     end
@@ -121,7 +118,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       place = handover_place_fixture(ctx.scope)
       assert settings(handover!(ctx, place)) == %{"runtime" => "claude"}
 
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, @action, :workspace, "review", 90)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "review", 90)
       assert settings(handover!(ctx, place)) == %{"runtime" => "claude"}
     end
 
@@ -141,7 +138,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
           tiers: %{"fast" => "claude-haiku-5-5"}
         })
 
-      {:ok, _} = TimeLimits.put_limit(ctx.scope, @action, :workspace, "hello", 45)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 45)
 
       handed = handover!(ctx, handover_place_fixture(ctx.scope, allow_secrets: true))
 
@@ -153,7 +150,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   test "without a machines file, the member is absent whatever the limits", ctx do
     no_file!()
     place = handover_place_fixture(ctx.scope)
-    {:ok, _} = TimeLimits.put_limit(ctx.scope, @action, :workspace, "hello", 90)
+    {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
     assert settings(handover!(ctx, place)) == %{"runtime" => "claude"}
   end
 
@@ -165,13 +162,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       assert TimeLimits.list_limits(scope) == {:error, :not_found}
       assert TimeLimits.resolve(scope, :workspace, "hello") == {:error, :not_found}
 
-      assert TimeLimits.put_limit(scope, @action, :workspace, "hello", 90) ==
+      assert TimeLimits.put_limit(scope, :workspace, "hello", 90) ==
                {:error, :not_found}
 
-      assert TimeLimits.put_limit(scope, @action, :workspace, "hello", 5) ==
+      assert TimeLimits.put_limit(scope, :workspace, "hello", 5) ==
                {:error, :not_found}
 
-      assert TimeLimits.delete_limit(scope, @action, :workspace, "hello") ==
+      assert TimeLimits.delete_limit(scope, :workspace, "hello") ==
                {:error, :not_found}
 
       assert Repo.aggregate(TimeLimits.TimeLimit, :count) == 0

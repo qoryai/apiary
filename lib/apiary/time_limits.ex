@@ -11,12 +11,11 @@ defmodule Apiary.TimeLimits do
   #
   # ## Who
   #
-  # No action of `Apiary.Access` covers time limits yet, so nothing here checks access:
-  # the check comes with the action, and with the caller that asks it. A write takes the
-  # action its caller checked, `action`, and leaves one entry of it in its transaction,
-  # about the limit: `details.change` is `time_limit_set`, `time_limit_changed` or
-  # `time_limit_removed`, with the `workflow`, the target's `target_id`, and `name`, the
-  # place's name; `before` and `after` have the `minutes`.
+  # A write is asked under `time_limit.edit`, of the workspace or the target, and leaves
+  # one entry of it in its transaction, about the limit: `details.change` is
+  # `time_limit_set`, `time_limit_changed` or `time_limit_removed`, with the `workflow`,
+  # the target's `target_id`, and `name`, the place's name; `before` and `after` have the
+  # `minutes`. Reading asks no action.
   #
   # Everything here needs the feature `factory`, shown to the scope: with it off, every
   # function answers `{:error, :not_found}`.
@@ -30,8 +29,8 @@ defmodule Apiary.TimeLimits do
   # ## Locks
   #
   # A write takes the organisation's rows `FOR SHARE` (`Apiary.Access.lock_places/1`), the
-  # workspace's row `FOR NO KEY UPDATE`, then the limit's row `FOR UPDATE`. Two writes in
-  # one workspace take turns at the workspace's row.
+  # workspace's row `FOR NO KEY UPDATE`, the membership `FOR SHARE`, then the limit's row
+  # `FOR UPDATE`. Two writes in one workspace take turns at the workspace's row.
   @moduledoc false
 
   import Ecto.Changeset
@@ -59,8 +58,8 @@ defmodule Apiary.TimeLimits do
 
   @doc false
   # list_limits/1 is the limits of the scope's workspace and its targets, each with its
-  # target: `{:ok, limits}`, or `{:error, :not_found}`. It checks no access: the check
-  # comes with the action that covers time limits.
+  # target: `{:ok, limits}`, or `{:error, :not_found}`. It asks no action (the
+  # moduledoc).
   @spec list_limits(Scope.t()) :: {:ok, [TimeLimit.t()]} | {:error, :not_found}
   def list_limits(%Scope{workspace: %Workspace{id: id}} = scope) do
     with :ok <- shown(scope) do
@@ -80,7 +79,7 @@ defmodule Apiary.TimeLimits do
   # resolve/3 is what the limits come to for the runs of `workflow` at `holder`, the
   # scope's workspace or a target of it, as `Apiary.TimeLimits.Resolution.resolve/1`
   # answers: `{:ok, {:ok, resolution}}` or `{:ok, :none}`; else `{:error, :not_found}`.
-  # It checks no access: the check comes with the action that covers time limits.
+  # It asks no action (the moduledoc).
   @spec resolve(Scope.t(), holder, String.t()) ::
           {:ok, {:ok, Resolution.t()} | :none} | {:error, :not_found}
   def resolve(%Scope{workspace: %Workspace{} = workspace} = scope, holder, workflow)
@@ -125,39 +124,35 @@ defmodule Apiary.TimeLimits do
   ## Writing
 
   @doc false
-  # put_limit/5 sets the limit for the runs of `workflow` at `holder` to `minutes`,
-  # replacing what the place had, and leaves an entry of `action`, an action of
-  # `Apiary.Access`, in the trail (the moduledoc). It checks no access: the check comes
-  # with the action that covers time limits, which the caller asks before it calls here.
-  # `{:ok, limit}`, or `{:error, refusal}`: a changeset with the reason on its field, or
-  # `:not_found`. No caller exists yet: only the tests call it, and they pass
-  # `model_choice.write` as a stand-in for the action.
-  @spec put_limit(Scope.t(), Access.action(), holder, String.t(), term) ::
-          {:ok, TimeLimit.t()} | {:error, :not_found | Ecto.Changeset.t()}
-  def put_limit(%Scope{} = scope, action, holder, workflow, minutes) do
+  # put_limit/4 sets the limit for the runs of `workflow` at `holder` to `minutes`,
+  # replacing what the place had, under `time_limit.edit`, and leaves an entry of it in
+  # the trail (the moduledoc). `{:ok, limit}`, or `{:error, refusal}`: a changeset with
+  # the reason on its field, or a reason of `Apiary.Access`. No page calls it yet.
+  @spec put_limit(Scope.t(), holder, String.t(), term) ::
+          {:ok, TimeLimit.t()} | {:error, Access.reason() | Ecto.Changeset.t()}
+  def put_limit(%Scope{} = scope, holder, workflow, minutes) do
     with :ok <- shown(scope),
          {:ok, values} <- checked(workflow, minutes) do
-      write(scope, holder, fn at ->
-        save(scope, action, at, lock_row(at, values.workflow), values)
+      write(scope, holder, fn scope, at ->
+        save(scope, at, lock_row(at, values.workflow), values)
       end)
     end
   end
 
   @doc false
-  # delete_limit/4 removes the limit for the runs of `workflow` at `holder`, so the next
-  # place in the order applies, and leaves an entry of `action` in the trail. It checks no
-  # access, as `put_limit/5`. `{:ok, limit}`, as it was, or `{:error, :not_found}` for a
-  # place with no limit for the workflow. No caller exists yet: only the tests call it,
-  # and they pass `model_choice.write` as a stand-in for the action.
-  @spec delete_limit(Scope.t(), Access.action(), holder, String.t()) ::
-          {:ok, TimeLimit.t()} | {:error, :not_found}
-  def delete_limit(%Scope{} = scope, action, holder, workflow) when is_binary(workflow) do
-    write(scope, holder, fn at ->
+  # delete_limit/3 removes the limit for the runs of `workflow` at `holder`, so the next
+  # place in the order applies, under `time_limit.edit`, and leaves an entry of it in the
+  # trail. `{:ok, limit}`, as it was, `{:error, :not_found}` for a place with no limit
+  # for the workflow, or another reason of `Apiary.Access`. No page calls it yet.
+  @spec delete_limit(Scope.t(), holder, String.t()) ::
+          {:ok, TimeLimit.t()} | {:error, Access.reason()}
+  def delete_limit(%Scope{} = scope, holder, workflow) when is_binary(workflow) do
+    write(scope, holder, fn scope, at ->
       case lock_row(at, workflow) do
         %TimeLimit{} = current ->
           with {:ok, deleted} <- Repo.delete(current),
                {:ok, _entry} <-
-                 record(scope, action, at, deleted, "time_limit_removed", %{
+                 record(scope, at, deleted, "time_limit_removed", %{
                    before: %{minutes: current.minutes}
                  }),
                do: {:ok, deleted}
@@ -169,13 +164,13 @@ defmodule Apiary.TimeLimits do
   end
 
   # A write at one place, in one transaction under the locks of the moduledoc: `fun` of
-  # the place, `at`, once its workspace's row is held.
+  # the scope, read again, and the place, `at`, once the scope may write there.
   defp write(scope, holder, fun) do
     with :ok <- shown(scope) do
       Repo.transact(fn ->
         :ok = Access.lock_places(scope)
 
-        with {:ok, at} <- hold_place(scope, holder), do: fun.(at)
+        with {:ok, scope, at} <- hold_place(scope, holder), do: fun.(scope, at)
       end)
     end
   end
@@ -187,8 +182,11 @@ defmodule Apiary.TimeLimits do
              lock: "FOR NO KEY UPDATE"
          ) do
       %Workspace{} = workspace ->
+        scope = Access.reload(scope, lock: :share)
+
         with {:ok, target} <- target(scope, holder),
-             do: {:ok, %{workspace: workspace, target: target}}
+             :ok <- Access.check(scope, :"time_limit.edit", target || workspace),
+             do: {:ok, scope, %{workspace: workspace, target: target}}
 
       nil ->
         {:error, :not_found}
@@ -213,10 +211,10 @@ defmodule Apiary.TimeLimits do
     Repo.one(query)
   end
 
-  defp save(_scope, _action, _at, %TimeLimit{minutes: minutes} = current, %{minutes: minutes}),
+  defp save(_scope, _at, %TimeLimit{minutes: minutes} = current, %{minutes: minutes}),
     do: {:ok, current}
 
-  defp save(scope, action, at, current, values) do
+  defp save(scope, at, current, values) do
     user_id = scope.user && scope.user.id
 
     changes =
@@ -237,19 +235,19 @@ defmodule Apiary.TimeLimits do
 
     with {:ok, saved} <- Repo.insert_or_update(change(current || %TimeLimit{}, changes)),
          {:ok, _entry} <-
-           record(scope, action, at, saved, change, %{
+           record(scope, at, saved, change, %{
              before: before,
              after: %{minutes: saved.minutes}
            }),
          do: {:ok, saved}
   end
 
-  defp record(scope, action, at, limit, change, data) do
+  defp record(scope, at, limit, change, data) do
     details =
       %{change: change, workflow: limit.workflow, name: place_name(at)}
       |> then(&if(at.target, do: Map.put(&1, :target_id, at.target.id), else: &1))
 
-    Audit.record(Repo, scope, action, limit, Map.put(data, :details, details))
+    Audit.record(Repo, scope, :"time_limit.edit", limit, Map.put(data, :details, details))
   end
 
   defp place_name(%{target: %Target{system: system, path: path}}), do: "#{system}/#{path}"
