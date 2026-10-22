@@ -1,8 +1,8 @@
 defmodule Apiary.Dispatches.Inputs do
   @moduledoc false
 
-  # The input of a step, `inputs` of the provisioner contract's `handover-answer.schema.json`,
-  # which Qory writes at the handover (`Apiary.Dispatches.Handover`) and the job reads.
+  # The input of a step, `inputs` of the run's documents, which Qory forms at the claim
+  # (`Apiary.Dispatches.Handover`) and the job reads.
   #
   # - `prebuild/1`: exactly `{"version": 1, "environment_ref": ref}`, as the contract closes
   #   it, the ref the run of the queue was queued for (`dispatch_runs.environment_ref`).
@@ -28,12 +28,12 @@ defmodule Apiary.Dispatches.Inputs do
   #   - `answers`: the answers given within the run's take in, oldest first
   #     (`Apiary.WorkItems.take_in_answers/2`), each with who gave it, named as who took
   #     the work item in is named and held to the same rule;
-  #   - `target`: the run's target, the handover answer's `target`, left out where the
+  #   - `target`: the run's target, the documents' `target`, left out where the
   #     work item has none;
-  #   - `domain`: the name of the workspace's domain, the handover answer's `domain`.
+  #   - `domain`: the name of the workspace's domain, the documents' `domain`.
   #
-  #   The handover gives the target and the domain (`Apiary.Dispatches.Handover`), the
-  #   same values it writes into its answer.
+  #   The claim gives the target and the domain (`Apiary.Dispatches.Handover`), the same
+  #   values it writes into the documents.
   #
   #   Every time is in UTC to the whole second, and every length is counted in code
   #   points, as the contract counts it. The answer is `{:ok, inputs}`, a
@@ -87,8 +87,8 @@ defmodule Apiary.Dispatches.Inputs do
 
   # explore/4 is the input of the explore run `dispatch_run` of `work_item`, for the run's
   # `target`, nil for none, and the name of its workspace's `domain` (the moduledoc), within
-  # `budget` bytes encoded, `max_bytes/0` at most: the handover gives the budget the
-  # handover answer's limit leaves (`Apiary.Dispatches.Handover`). An input that cannot be
+  # `budget` bytes encoded, `max_bytes/0` at most: the claim gives the budget the
+  # documents' limit leaves (`Apiary.Dispatches.Handover`). An input that cannot be
   # within a budget below `max_bytes/0`, with every comment left out, is
   # `{:error, :answer_too_large}`, and within `max_bytes/0`, `{:error, :inputs_invalid}`.
   @doc false

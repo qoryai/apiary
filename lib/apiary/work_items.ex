@@ -224,7 +224,7 @@ defmodule Apiary.WorkItems do
   # (`Apiary.Dispatches.Inputs.max_bytes/0`, 768 KiB), which leaves out only comments to
   # fit. Two runs' answers, each question and answer at the most the contract allows,
   # with a ticket's body at the most it holds, can pass that bound with every comment left
-  # out; the handover then ends the run, `inputs_invalid`, and Explore reads it as a run
+  # out; the claim then ends the run, `inputs_invalid`, and Explore reads it as a run
   # without a result.
   @spec take_in_answers(WorkItem.t(), pos_integer) :: [Jason.OrderedObject.t()]
   def take_in_answers(%WorkItem{id: id}, take_in)

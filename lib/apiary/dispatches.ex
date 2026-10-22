@@ -64,13 +64,14 @@ defmodule Apiary.Dispatches do
   # cause `run_ended`; a claimed run's live dispatch, neither stale nor handed over, ends
   # with it, end cause `closed`: a dispatch that ended, which the provisioner contract
   # answers `410 gone`. The slot each ended dispatch held is freed once
-  # (`Apiary.Dispatches.Slots.free/2`). A handed-over run is left as it is: it goes on to
-  # its end, and its result and its outcome are taken as before.
+  # (`Apiary.Dispatches.Slots.free/2`), and a claimed run's registered run is deleted
+  # with its run code (`Apiary.Dispatches.Handover.drop/1`). A handed-over run is left as
+  # it is: it goes on to its end, and its result and its outcome are taken as before.
   #
-  # ## Claiming: `claim/2`
+  # ## Claiming: `claim/3`
   #
-  # `claim(access_key, now)` is one try at a claim by the node pool of `access_key`, in
-  # one transaction:
+  # `claim(access_key, now, body)` is one try at a claim by the node pool of `access_key`,
+  # for the claim's raw `body`, in one transaction:
   #
   #   1. the key read again as a request's verification reads it
   #      (`Apiary.AccessKeys.fetch_for_verification/1`): revoked, of a pool deleted, or of a
@@ -82,8 +83,10 @@ defmodule Apiary.Dispatches do
   #      and a registration on the pool (`Apiary.Nodes.check_instance_limit/3`, which
   #      locks it `FOR UPDATE`), take turns, while a trigger's writes, whose foreign keys
   #      to the pool take `FOR KEY SHARE`, never wait on it (`Apiary.Dispatches.Slots`);
-  #   4. the pool's choice of gateway, as it resolves now (`Apiary.Gateways.resolve/1`):
-  #      one that leads to no gateway is `{:error, :no_gateway}`;
+  #   4. the gateway the pool's choice resolves to now (`Apiary.Gateways.resolve/1`),
+  #      read `FOR SHARE`, with its active keys: a choice that leads to no gateway,
+  #      direct among them, is `{:error, :no_gateway}`
+  #      (`Apiary.Dispatches.Handover.gateway/1`);
   #   5. the slots due freed (`Apiary.Dispatches.Slots.free/2`), then the pool's limit
   #      counted: its held slots and its live runs that were not dispatched; at the limit,
   #      `{:ok, :none}`;
@@ -100,31 +103,33 @@ defmodule Apiary.Dispatches do
   #      so ends with it (`run_ended`), and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
   #      organisation and its workspace from the key alone, `claimed_at` `now` and
-  #      `lease_until` `now` in whole seconds plus `lease_seconds/0`.
+  #      `lease_until` `now` in whole seconds plus `lease_seconds/0`;
+  #   8. the run registered through that gateway, with a run code bound to it
+  #      (`Apiary.Dispatches.Handover.register/2`). A run the claim cannot form ends, with
+  #      its dispatch, and the next is taken, within the same 100; a run that cannot be
+  #      registered for any other reason is `{:error, :unavailable}`, and the whole
+  #      transaction rolls back. An exception rolls it back too, is logged by its module
+  #      alone, and is `{:error, :unavailable}`.
   #
   # `{:ok, claimed}` carries the dispatch, its run, the run's work item (nil for a
-  # prebuild), the prebuild's collection (nil for any other step) and the pool. The
-  # workspaces whose queue the freed slots or the ended runs changed are told once the
-  # transaction commits.
+  # prebuild), the prebuild's collection (nil for any other step), the pool, the
+  # registered run, its run code and the address of the gateway the code is bound to. The
+  # workspaces whose queue the freed slots or the ended runs changed are told, and the
+  # registered run is broadcast as changed, once the transaction commits.
   #
-  # ## The starter on a dispatch: `dispatched/3`, `handover/3`, `release/3` and
-  # `upload_machine_log/3`
+  # ## The starter on a dispatch: `dispatched/3`, `release/3` and `upload_machine_log/3`
   #
   # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
-  # `access_key` started the job for a dispatch its pool claimed, and
-  # `handover(access_key, dispatch_id, meta)` hands the dispatch's run over to that job:
-  # the run registered through the gateway the pool's choice resolves to, its run key made
-  # and the dispatch handed over in one transaction, or the refusal the provisioner
-  # contract gives, in its order (`Apiary.Dispatches.Handover`). A handover that cannot form
-  # what the run is made from ends the run and its dispatch, `collection_ended`,
-  # `variables_invalid`, `ticket_gone` or `inputs_invalid`, answered as a dispatch that
-  # ended.
+  # `access_key` started the machine for a dispatch its pool claimed: the first one,
+  # within the dispatch's lease, hands the dispatch over, and a later one changes nothing
+  # (`Apiary.Dispatches.Handover`). The first redemption of the run's code hands it over
+  # too (`Apiary.Runs.RunCode`).
   #
   # `release(access_key, dispatch_id, meta)` gives the dispatch's run back, with the
   # starter's reason, in one transaction, or refuses in the contract's order
-  # (`Apiary.Dispatches.Release`): before the handover the dispatch ends, `released`, and
-  # its run waits again; after it the run ends with its registered run, `released`, and
-  # nothing is queued.
+  # (`Apiary.Dispatches.Release`): before the handover the dispatch ends, `released`, the
+  # registered run goes with its run code, and the run waits again; after it the run ends
+  # with its registered run, `released`, and nothing is queued.
   #
   # `upload_machine_log(access_key, dispatch_id, meta)` stores the dispatch's machine log,
   # once per dispatch, before or after the dispatch ends, and `machine_log(scope,
@@ -162,7 +167,9 @@ defmodule Apiary.Dispatches do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, AccessKeys, Gateways, Nodes, PublicId, Repo}
+  require Logger
+
+  alias Apiary.{Access, AccessKeys, Nodes, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
@@ -187,14 +194,19 @@ defmodule Apiary.Dispatches do
 
   @typedoc """
   What a claim took: the dispatch, its run, the run's work item, or for a prebuild its
-  collection, and the pool.
+  collection, the pool, the run registered for it, its run code, the address of the
+  gateway the code is bound to, and what the run's documents are made from.
   """
   @type claimed :: %{
           dispatch: Dispatch.t(),
           run: DispatchRun.t(),
           work_item: WorkItem.t() | nil,
           collection: Collection.t() | nil,
-          pool: Node.t()
+          pool: Node.t(),
+          registered: Apiary.Runs.Run.t(),
+          run_code: String.t(),
+          gateway_url: String.t(),
+          documents: map
         }
 
   # step/0 is the step a run is queued for.
@@ -490,6 +502,8 @@ defmodule Apiary.Dispatches do
             set: [ended_at: now, end_cause: :closed, updated_at: now]
           )
 
+        # A claimed run's registered run goes with its run code (`Handover.drop/1`).
+        _dropped = Handover.drop(run_ids)
         freed = Slots.free({:runs, run_ids}, now)
         {:ok, Enum.uniq(workspace_ids ++ lapsed ++ freed)}
     end
@@ -497,34 +511,49 @@ defmodule Apiary.Dispatches do
 
   ## Claiming
 
-  # claim/2 is one try at a claim by the node pool of `access_key` at `now` (the
-  # moduledoc): `{:ok, claimed}`, `{:ok, :none}` when the pool can claim nothing now, or
-  # `{:error, :unauthorized | :forbidden | :no_gateway}`, after which nothing is written.
+  # claim/3 is one try at a claim by the node pool of `access_key` at `now`, for the
+  # claim's raw `body` (the moduledoc): `{:ok, claimed}`, `{:ok, :none}` when the pool can
+  # claim nothing now, or `{:error, :unauthorized | :forbidden | :no_gateway |
+  # :unavailable}`, after which nothing is written.
   @doc false
-  @spec claim(AccessKey.t(), DateTime.t()) ::
-          {:ok, claimed | :none} | {:error, :unauthorized | :forbidden | :no_gateway}
-  def claim(%AccessKey{key_id: key_id}, %DateTime{} = now) when is_binary(key_id) do
+  @spec claim(AccessKey.t(), DateTime.t(), binary) ::
+          {:ok, claimed | :none}
+          | {:error, :unauthorized | :forbidden | :no_gateway | :unavailable}
+  def claim(%AccessKey{key_id: key_id}, %DateTime{} = now, body \\ "")
+      when is_binary(key_id) and is_binary(body) do
     result =
       Repo.transact(fn ->
         with {:ok, key} <- current_key(key_id),
              :ok <- may_claim(key),
              {:ok, pool} <- lock_pool(key),
-             :ok <- gateway(pool) do
+             {:ok, gateway, keys} <- Handover.gateway(pool) do
           freed = Slots.free(pool.id, now)
-          {taken, ended} = take(key, pool, now)
-          {:ok, {taken, freed ++ ended}}
+          through = %{gateway: gateway, keys: keys, body: body}
+
+          case take(key, pool, through, now) do
+            {:error, :unavailable} = error -> error
+            {taken, ended} -> {:ok, {taken, freed ++ ended}}
+          end
         end
       end)
 
     case result do
       {:ok, {taken, freed}} ->
         broadcast(freed)
+        Handover.broadcast_run({:ok, %{run: registered(taken)}})
         {:ok, taken}
 
       {:error, _reason} = error ->
         error
     end
+  rescue
+    exception ->
+      Logger.error("a claim could not be made: #{inspect(exception.__struct__)}")
+      {:error, :unavailable}
   end
+
+  defp registered(%{registered: run}), do: run
+  defp registered(:none), do: nil
 
   # current_key/1 is the key `key_id` as a request's verification reads it now: of the
   # same pool, workspace and organisation as when the request verified, or
@@ -570,29 +599,23 @@ defmodule Apiary.Dispatches do
     if pool, do: {:ok, pool}, else: {:error, :unauthorized}
   end
 
-  defp gateway(pool) do
-    case Gateways.resolve(pool) do
-      :direct -> :ok
-      {:gateway, _gateway} -> :ok
-      {:error, _reason} -> {:error, :no_gateway}
-    end
-  end
-
-  # The oldest waiting run the pool may take, claimed, with the workspaces whose queue
-  # it ended runs of; `:none` at the limit or with none to take.
-  defp take(key, pool, now) do
+  # The oldest waiting run the pool may take, claimed and registered through the gateway
+  # `through` has, with the workspaces whose queue it ended runs of; `:none` at the limit
+  # or with none to take; `{:error, :unavailable}` when a run could not be registered.
+  defp take(key, pool, through, now) do
     case below_limit(pool, now) do
-      :ok -> pick(key, pool, now, @max_ended, [])
+      :ok -> pick(key, pool, through, now, @max_ended, [])
       :at_limit -> {:none, []}
     end
   end
 
   # A waiting run whose work item, or a prebuild whose collection, can no longer be
   # handed out is ended, with any stale dispatch of it (`run_ended`), and the next one
-  # looked at, `max` at most per claim.
-  defp pick(_key, _pool, _now, 0, ended), do: {:none, ended}
+  # looked at; so is a run claimed that the claim cannot form
+  # (`Apiary.Dispatches.Handover.register/2`): `max` at most per claim.
+  defp pick(_key, _pool, _through, _now, 0, ended), do: {:none, ended}
 
-  defp pick(key, pool, now, max, ended) do
+  defp pick(key, pool, through, now, max, ended) do
     case oldest_waiting(key) do
       nil ->
         {:none, ended}
@@ -600,7 +623,23 @@ defmodule Apiary.Dispatches do
       %DispatchRun{} = run ->
         case for_run(run) do
           {:ok, for} ->
-            {claim_run(key, pool, run, for, now), ended}
+            claimed = claim_run(key, pool, run, for, now)
+
+            case Handover.register(Map.merge(claimed, Map.put(through, :key, key)), now) do
+              {:ok, registered} ->
+                {Map.merge(claimed, %{
+                   registered: registered.run,
+                   run_code: registered.run_code,
+                   gateway_url: registered.gateway_url,
+                   documents: registered.documents
+                 }), ended}
+
+              {:ended, changed} ->
+                pick(key, pool, through, now, max - 1, changed ++ ended)
+
+              {:error, :unavailable} = error ->
+                error
+            end
 
           {:end, cause} ->
             {1, _rows} =
@@ -618,7 +657,7 @@ defmodule Apiary.Dispatches do
                 set: [ended_at: now, end_cause: :run_ended, updated_at: now]
               )
 
-            pick(key, pool, now, max - 1, [run.workspace_id | ended])
+            pick(key, pool, through, now, max - 1, [run.workspace_id | ended])
         end
     end
   end
@@ -749,14 +788,6 @@ defmodule Apiary.Dispatches do
           :ok | {:error, Handover.refusal()}
   def dispatched(%AccessKey{} = access_key, dispatch_id, meta),
     do: Handover.dispatched(access_key, dispatch_id, meta)
-
-  # handover/3 hands the run of the dispatch `dispatch_id` over to the job its starter
-  # started, registering it (`Apiary.Dispatches.Handover.handover/3`).
-  @doc false
-  @spec handover(AccessKey.t(), term, %{body: binary}) ::
-          {:ok, Handover.handed_over()} | {:error, Handover.refusal()}
-  def handover(%AccessKey{} = access_key, dispatch_id, meta),
-    do: Handover.handover(access_key, dispatch_id, meta)
 
   # release/3 gives back the run of the dispatch `dispatch_id`, with the starter's reason
   # (`Apiary.Dispatches.Release.release/3`).

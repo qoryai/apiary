@@ -139,7 +139,7 @@ defmodule Apiary.Runs.Run do
     field :registration_variables, :map
 
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
-    # (`Apiary.Dispatches.RunSettings`), as the handover answered them, with no key, and
+    # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
     # the model provider the run uses: its row, its keys' secret's row, the value id of
     # its chosen key, its chain, and the API of the provider the run uses
     # (`provider_api`: `format`, `endpoint`, `auth` and, when the description lists them,
@@ -201,11 +201,11 @@ defmodule Apiary.Runs.Run do
     field :attach_interval_seconds, :integer
     field :attach_answer_digest, :string
     field :gateway_instance_id, :string
-    # A run handed over with a run code (`Apiary.Runs.RunCode`), in place of a run key:
+    # A run registered with a run code (`Apiary.Runs.RunCode`), in place of a run key:
     # the code's SHA-256, never the code; when the code expires, 15 minutes after the
-    # handover; what its run key grants, fixed at the handover; and the public key that
-    # redeemed the code first, nil until then. Until the redemption the run has no run key
-    # payload, its `run_key_issued_at` is the handover and its `attach_by` the code's
+    # claim; what its run key grants, fixed at the claim; and the public key that redeemed
+    # the code first, nil until then. Until the redemption the run has no run key
+    # payload, its `run_key_issued_at` is the claim and its `attach_by` the code's
     # expiry; the redemption sets the run key's four fields and the public key together.
     # All nil for every other run. Not folded: a rebuild keeps them.
     field :run_code_sha256, :binary, redact: true
@@ -213,8 +213,8 @@ defmodule Apiary.Runs.Run do
     field :run_code_grant, :map
     field :run_code_public_key, :binary
 
-    # The run of a workspace's queue this run is, set when its dispatch is handed over and
-    # the run registered for it, unique; nil for every other run.
+    # The run of a workspace's queue this run is, set when its claim registers it, unique;
+    # nil for every other run.
     belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
     # For such a run: when its starter released it after the handover, which the run reads
     # as cancelled with the reason `released` until its starter's outcome decides
@@ -312,7 +312,7 @@ defmodule Apiary.Runs.Run do
   Whether the run goes through a gateway: its registration was given a run key, whatever
   has become of the gateway since.
   """
-  # A run handed over with a run code (`Apiary.Runs.RunCode`) goes through a gateway
+  # A run registered with a run code (`Apiary.Runs.RunCode`) goes through a gateway
   # before its code is redeemed too, with no run key payload until then.
   @spec through_gateway?(t() | map()) :: boolean()
   def through_gateway?(%{run_key_payload: payload}) when is_binary(payload), do: true

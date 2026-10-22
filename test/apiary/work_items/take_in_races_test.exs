@@ -17,6 +17,7 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures, only: [workspace_fixture: 1]
   import Apiary.Races
@@ -44,6 +45,13 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
     %{scope: scope} = sign_up()
     connection = ticket_connection_fixture(scope)
     ticket = backlog_ticket_fixture(scope, connection: connection)
+    # The workspace's default gateway, which the pools' claims resolve to, and its key's
+    # public half, which outlives the organisation.
+    gateway = workspace_gateway!(scope)
+
+    gateway_key =
+      Repo.one!(from k in AccessKey, where: k.node_id == ^gateway.id, select: k.public_key)
+
     pool = pool_fixture(scope)
     %{access_key: key, pair: pair} = enrolled_key_fixture(scope, pool)
 
@@ -55,7 +63,7 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
       Repo.delete_all(from c in Connection, where: c.adapter_id == ^connection.adapter_id)
       Repo.delete_all(from k in AccessKey, where: k.node_id == ^connection.adapter_id)
       Repo.delete_all(from n in Node, where: n.id == ^connection.adapter_id)
-      Repo.delete_all(from p in PublicKey, where: p.public_key == ^pair.public_key)
+      Repo.delete_all(from p in PublicKey, where: p.public_key in ^[pair.public_key, gateway_key])
       Sandbox.checkin(Repo)
     end)
 

@@ -475,7 +475,6 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.disconnect",
         :"dispatch.claim",
         :"dispatch.dispatched",
-        :"dispatch.handover",
         :"dispatch.release",
         :"dispatch.machine_log"
       ],

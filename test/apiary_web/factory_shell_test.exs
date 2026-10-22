@@ -83,8 +83,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.Contract.SourceItemsController,
     ApiaryWeb.Contract.SourceItemCommentsController,
     ApiaryWeb.Contract.PoolClaimController,
-    ApiaryWeb.Contract.DispatchController,
-    ApiaryWeb.Contract.HandoverController
+    ApiaryWeb.Contract.DispatchController
   ]
 
   defp factory_routes(scope, adapter) do
@@ -388,7 +387,6 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"collection.set_backlog", "Taking tickets into the Backlog turned on or off"} in options
 
-      assert {"dispatch.handover", "Runs handed over"} in options
       assert {"dispatch.release", "Runs given back"} in options
 
       assert {"target.set_further_repositories", "Also read"} in options
@@ -414,7 +412,6 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.comment_delete",
             :"collection.assign",
             :"collection.set_backlog",
-            :"dispatch.handover",
             :"dispatch.release",
             :"target.set_further_repositories",
             :"target.rebuild_environment",

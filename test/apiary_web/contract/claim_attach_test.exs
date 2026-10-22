@@ -1,17 +1,17 @@
-defmodule ApiaryWeb.Contract.HandoverAttachTest do
-  # A run of the queue from its handover to its end, through the endpoints alone: the
-  # starter says it started the job and asks for the handover; the gateway the run key
-  # names attaches the run and is given the run configuration in force with the run
-  # variables, the labels and what the run is about, as the handover stored them, under
-  # the digest of the configuration with the variables; a reload returns the same; a batch
-  # is answered the same digest; and the run's outcome,
+defmodule ApiaryWeb.Contract.ClaimAttachTest do
+  # A run of the queue from its claim to its end, through the endpoints alone: the starter
+  # claims it and says it started the machine; the machine redeems the run code for the
+  # run key; the gateway the run key names attaches the run and is given the run
+  # configuration in force with the run variables, the labels and what the run is about,
+  # as the claim stored them, under the digest of the configuration with the variables; a
+  # reload returns the same; a batch is answered the same digest; and the run's outcome,
   # under the pool's key, ends the run of the queue and frees its slot. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
-  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1]
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, redeemed_run_key!: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -35,6 +35,23 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
 
   defp now_time,
     do: SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+  # The claim through the endpoint: its answer, decoded.
+  defp claim(ctx) do
+    conn =
+      signed_post(
+        build_conn(),
+        ctx.key.key_id,
+        ctx.seed,
+        %{"version" => 1, "time" => now_time(), "wait_seconds" => 0},
+        target: "/v1/pools/claim",
+        content_type: "application/json",
+        delivery: nil,
+        contract_version: "3"
+      )
+
+    json_response(conn, 200)
+  end
 
   defp pool_post(ctx, dispatch, action) do
     signed_post(build_conn(), ctx.key.key_id, ctx.seed, %{"version" => 1, "time" => now_time()},
@@ -70,23 +87,22 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
     )
   end
 
-  test "a run handed over is attached, reloaded, sent and ended as the handover stored it",
-       ctx do
+  test "a run claimed is attached, reloaded, sent and ended as the claim stored it", ctx do
     work_item = work_item_fixture(ctx.scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+    %{"dispatch_id" => dispatch_id, "run_code" => code} = claim(ctx)
+    dispatch = Repo.get_by!(Dispatch, public_id: dispatch_id)
 
     assert pool_post(ctx, dispatch, "dispatched").status == 204
-    handover = pool_post(ctx, dispatch, "handover")
-    assert %{"run_id" => run_id, "run_key" => run_key} = json_response(handover, 200)
-    assert run_id == queued.run_id
+    run_key = redeemed_run_key!(code)
+    run_id = queued.run_id
 
     stored = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
     assert stored.node_run_id == run_id
     assert stored.attached_at == nil
 
     # The attach: the configuration in force, then the variables, the labels and what the
-    # run is about, as the handover stored them, under the digest of the configuration with
+    # run is about, as the claim stored them, under the digest of the configuration with
     # the variables, the document a reload returns.
     attached = gateway_attach(ctx, run_id, run_key)
     assert attached.status == 200
@@ -157,12 +173,10 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
     {:ok, _target} = Apiary.Targets.set_further_repositories(ctx.scope, target, "acme/docs")
 
     work_item = work_item_fixture(ctx.scope)
-    {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-
-    assert pool_post(ctx, dispatch, "dispatched").status == 204
-    handover = pool_post(ctx, dispatch, "handover")
-    assert %{"run_id" => run_id, "run_key" => run_key} = json_response(handover, 200)
+    {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    %{"run_code" => code} = claim(ctx)
+    run_key = redeemed_run_key!(code)
+    run_id = queued.run_id
 
     attached = gateway_attach(ctx, run_id, run_key)
     assert attached.status == 200

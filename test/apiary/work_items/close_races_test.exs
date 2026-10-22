@@ -16,6 +16,7 @@ defmodule Apiary.WorkItems.CloseRacesTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.Races
   import Apiary.WorkItemsFixtures
@@ -50,6 +51,13 @@ defmodule Apiary.WorkItems.CloseRacesTest do
       connectable_adapter_fixture(%{name: name("adapter")})
 
     {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+    # The workspace's default gateway, which the pools' claims resolve to, and its key's
+    # public half, which outlives the organisation.
+    gateway = workspace_gateway!(scope)
+
+    gateway_key =
+      Repo.one!(from k in AccessKey, where: k.node_id == ^gateway.id, select: k.public_key)
+
     pool = pool_fixture(scope)
     %{access_key: key, pair: pool_pair} = enrolled_key_fixture(scope, pool)
 
@@ -63,7 +71,7 @@ defmodule Apiary.WorkItems.CloseRacesTest do
 
       Repo.delete_all(
         from p in PublicKey,
-          where: p.public_key in ^[adapter_pair.public_key, pool_pair.public_key]
+          where: p.public_key in ^[adapter_pair.public_key, pool_pair.public_key, gateway_key]
       )
 
       Repo.delete_all(

@@ -28,26 +28,24 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #     assigns the collections (`Apiary.Adapters.Collections.assign_collections/4`) and
   #     turns one repository's Backlog off (`set_collection_backlog/4`);
   #   * members take tickets in, close and undo (`Apiary.WorkItems`), each under their
-  #     scope; the pool spot-runners claims and gives back the first run of one of them
-  #     (`Apiary.Dispatches.claim/2`, `release/3`), so that run waits in the queue again.
+  #     scope.
   #
   # The key pair each adapter enrols is made here and kept in memory only: its secret
   # signs the enrolment's proof and the connect return, and is then dropped.
   #
-  # Left out: a run handed over (`Apiary.Dispatches.handover/3`) needs a gateway with a
-  # key, which the demo has none of, so no run ends or gives a result, and no work item
+  # Left out: a claim of a run (`Apiary.Dispatches.claim/3`) needs a gateway with a key,
+  # which the demo has none of, so no run is claimed, ends or gives a result, and no work item
   # waits for an answer, waits at Confirm, is confirmed, is declined or is sent to Explore
   # again: each of those needs a run that ended.
 
   import Ecto.Query
 
-  alias Apiary.{AccessKeys, Adapters, Dispatches, Nodes, Organisations, Repo, Sources}
+  alias Apiary.{AccessKeys, Adapters, Organisations, Repo, Sources}
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connections}
   alias Apiary.Adapters.Wire, as: AdapterWire
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
-  alias Apiary.Dispatches.Wire, as: DispatchWire
   alias Apiary.Sources.Backlog
   alias Apiary.Sources.Item
   alias Apiary.Sources.Wire, as: SourceWire
@@ -241,13 +239,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   # its repository and number, what then happens to it, and its first instruction.
   #
   #   * `:queued`, taken in, its first run waiting;
-  #   * `:given_back`, its first run claimed and given back, so it waits in the queue again;
   #   * `:closed`, taken in and closed;
   #   * `:undone`, taken in and undone, back in the Backlog.
-  #
-  # The one whose first run is claimed comes first: a claim takes the oldest waiting run.
   @work_items [
-    {"priya", "acme/api", 201, :given_back, "Measure the endpoint with 1,000 lines first."},
+    {"priya", "acme/api", 201, :queued, "Measure the endpoint with 1,000 lines first."},
     {"jonas", "acme/web", 403, :queued, ""},
     {"mirek", "acme/shop", 106, :queued, ""},
     {"amara", "acme/api", 205, :queued, "Link the page from the webhook settings."},
@@ -694,8 +689,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   ## The work items
 
   defp work_items!(main) do
-    pool_key = pool_key!(main)
-
     made =
       for {person, path, number, what, instruction} <- @work_items, into: %{} do
         scope = person_scope!(main, person)
@@ -708,7 +701,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
         {:ok, work_item} =
           WorkItems.take_in(scope, ticket_id, %{"first_instruction" => instruction})
 
-        if what == :given_back, do: give_back!(pool_key, work_item)
         {{path, number}, {scope, work_item, what}}
       end
 
@@ -720,7 +712,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     end
   end
 
-  defp move!(_scope, _work_item, what) when what in [:queued, :given_back], do: :ok
+  defp move!(_scope, _work_item, :queued), do: :ok
 
   defp move!(scope, work_item, :closed),
     do: {:ok, _work_item} = WorkItems.close(scope, current(scope, work_item))
@@ -729,34 +721,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     do: {:ok, _work_item} = WorkItems.undo(scope, current(scope, work_item))
 
   defp current(scope, %WorkItem{public_id: id}), do: WorkItems.get_by_public_id(scope, id)
-
-  # The pool spot-runners claims the work item's first run, the only one waiting, and
-  # gives it back, as a starter that could not start a job would: the run waits again.
-  defp give_back!(pool_key, %WorkItem{id: id}) do
-    :ok = AccessKeys.touch_delivery(pool_key, %{})
-
-    {:ok, %{dispatch: dispatch, work_item: %WorkItem{id: ^id}}} =
-      Dispatches.claim(pool_key, Dispatches.now())
-
-    body = %{
-      "version" => 1,
-      "time" => time(DateTime.utc_now()),
-      "reason" => "no machine of the pool could start"
-    }
-
-    {:ok, release} = DispatchWire.release(body)
-    :ok = AccessKeys.touch_delivery(pool_key, %{})
-    :ok = Dispatches.release(pool_key, dispatch.public_id, release)
-  end
-
-  defp pool_key!(main) do
-    pool = Enum.find(Nodes.list_nodes(main), &(&1.name == "spot-runners"))
-
-    main
-    |> AccessKeys.list_for_node(pool)
-    |> Enum.find(&is_nil(&1.revoked_at)) ||
-      Mix.raise("the pool spot-runners has no key in use")
-  end
 
   defp title_of(path, number) do
     Enum.find_value(@tickets, fn

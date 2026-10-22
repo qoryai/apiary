@@ -59,11 +59,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       turned off; acme/warehouse to Shop ops, or to Main where the edition allows one
       workspace; acme/sandbox to none. Their 42 tickets, open and closed, filed by
       people and by bots, with labels and comments. Ten work items of those tickets,
-      taken in by members of Main: seven wait for their first run, one of them in the
-      queue again, as the pool spot-runners gave its run back; two are closed and one
-      undone. A work item's Explore run ends once a gateway takes it over, and the demo
-      has no gateway, so no work item waits for an answer, is confirmed, is declined or
-      is sent to Explore again. Beside it, a source that is no forge: the adapter **Helpdesk**,
+      taken in by members of Main: seven wait for their first run; two are closed and one
+      undone. A node pool claims a run through a gateway, and the demo has no gateway, so
+      no run is claimed, and no work item waits for an answer, is confirmed, is declined
+      or is sent to Explore again. Beside it, a source that is no forge: the adapter **Helpdesk**,
       whose words are incident and queue, connected for Acme too. Its two queues,
       acme/customer-support and acme/billing-support, have no target; their 12
       incidents are open and closed, and some have comments. None is taken in, as a take

@@ -17,8 +17,6 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
   @moduletag needs: :factory
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-
   setup do
     %{scope: scope} = sign_up_fixture()
     Map.put(handover_place_fixture(scope), :scope, scope)
@@ -28,9 +26,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
   defp handed_over!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(ctx.key)
-
-    assert {:ok, %{run: run}} = Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
+    %{dispatch: dispatch, registered: run} = dispatched!(ctx.key)
     %{work_item: work_item, queued: queued, dispatch: dispatch, run: run}
   end
 
@@ -159,7 +155,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
   end
 
   describe "a refusal after the end" do
-    test "of a release changes nothing, and the run queued next stays waiting", ctx do
+    test "of a release changes nothing, and queues nothing", ctx do
       handed = handed_over!(ctx)
 
       assert :ok =
@@ -167,9 +163,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
                  reason: "The job could not start."
                })
 
-      assert [_first, %DispatchRun{state: :waiting, attempt: 2} = next] =
-               runs_of(handed.work_item)
-
+      assert [%DispatchRun{state: :ended, end_cause: :released}] = runs_of(handed.work_item)
       before = dispatch!(handed.dispatch)
 
       refuse!(handed.run, "model_key_missing")
@@ -177,8 +171,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
       assert_ended(handed, :released)
       assert dispatch!(handed.dispatch) == before
-      assert queue_run!(next).state == :waiting
-      assert length(runs_of(handed.work_item)) == 2
+      assert length(runs_of(handed.work_item)) == 1
     end
 
     test "of an outcome changes nothing: the run stays ended run_ended", ctx do

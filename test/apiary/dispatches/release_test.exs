@@ -27,7 +27,6 @@ defmodule Apiary.Dispatches.ReleaseTest do
 
   @moduletag needs: :factory
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @reason "The job could not start."
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
 
@@ -68,17 +67,16 @@ defmodule Apiary.Dispatches.ReleaseTest do
     {collection, record, run}
   end
 
+  # A run claimed, which registers it: its dispatch, not yet handed over.
   defp started!(ctx) do
-    %{dispatch: dispatch} = dispatched!(ctx.key)
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
     dispatch
   end
 
+  # A run claimed and its machine started, which hands it over: its dispatch and its
+  # registered run.
   defp handed_over!(ctx) do
-    dispatch = started!(ctx)
-
-    assert {:ok, %{run: run}} =
-             Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
-
+    %{dispatch: dispatch, registered: run} = dispatched!(ctx.key)
     {dispatch, run}
   end
 

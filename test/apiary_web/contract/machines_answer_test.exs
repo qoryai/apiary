@@ -1,13 +1,10 @@
 defmodule ApiaryWeb.Contract.MachinesAnswerTest do
-  # The claim answer's `machine` and the handover answer's `stack` and `workflow`, from the
-  # entry of the run's workspace in the machines file (`Apiary.Dispatches.MachinesFile`),
-  # as a node pool's starter receives them: absent without a file or an entry, each part
-  # of an entry alone, for an explore run, within the handover answer's limit, and for a
-  # prebuild and for a run handed a run code, whose handover answers have neither `stack`
-  # nor `workflow`; each answer valid under the vendored `claim-answer.schema.json` or
-  # `handover-answer.schema.json`, whose `run_settings` refers to Forager's schemas, so the
-  # module is tagged `:contract`. Not async: the file read at boot and the features are the
-  # whole node's.
+  # The claim answer's `machine`, from the entry of the run's workspace in the machines
+  # file (`Apiary.Dispatches.MachinesFile`), as a node pool's starter receives it: absent
+  # without a file or an entry or with an entry of a stack alone, present for an explore
+  # run and a prebuild alike; each answer valid under the vendored
+  # `claim-answer.schema.json`, so the module is tagged `:contract`. Not async: the file
+  # read at boot and the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
@@ -17,8 +14,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo}
-  alias Apiary.Dispatches.{Handover, MachinesFile}
-  alias Apiary.Sources.Comment
+  alias Apiary.Dispatches.MachinesFile
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
@@ -64,12 +60,10 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   setup %{tmp_dir: dir} do
     setting = Application.fetch_env(:apiary, :machines_file_setting)
     file = Application.fetch_env(:apiary, :machines_file)
-    limit = Application.fetch_env(:apiary, Handover)
 
     on_exit(fn ->
       restore(:machines_file_setting, setting)
       restore(:machines_file, file)
-      restore(Handover, limit)
     end)
 
     Process.put(:now_time, {SignedRequest.now(), 0})
@@ -130,33 +124,19 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     )
   end
 
-  # The claim answer, then the handover answer, of the oldest run the pool may take: both
-  # 200, signed, each valid under its vendored schema. `handover` is the handover's body
-  # beside `version`.
-  defp claim_and_hand_over(ctx, handover \\ %{}) do
+  # The claim answer of the oldest run the pool may take: 200, signed, valid under the
+  # vendored schema.
+  defp claim(ctx) do
     claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
     assert claim.status == 200
     assert signed_answer?(claim)
-    dispatch_id = Jason.decode!(claim.resp_body)["dispatch_id"]
 
-    assert signed(ctx, "/v1/dispatches/#{dispatch_id}/dispatched", %{"version" => 1}).status ==
-             204
+    assert {:ok, _} =
+             claim.resp_body
+             |> Jason.decode!()
+             |> JSV.validate(validator("provisioner/v1/claim-answer.schema.json"))
 
-    handover =
-      signed(ctx, "/v1/dispatches/#{dispatch_id}/handover", Map.put(handover, "version", 1))
-
-    assert handover.status == 200
-    assert signed_answer?(handover)
-
-    for {body, schema} <- [{claim, "claim-answer"}, {handover, "handover-answer"}] do
-      assert {:ok, _} =
-               body.resp_body
-               |> Jason.decode!()
-               |> JSV.validate(validator("provisioner/v1/#{schema}.schema.json")),
-             schema
-    end
-
-    {claim.resp_body, handover.resp_body}
+    claim.resp_body
   end
 
   defp explore!(ctx) do
@@ -173,75 +153,42 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       |> Map.get(:values)
       |> Enum.map(&elem(&1, 0))
 
-  defp run_settings, do: if(Apiary.Features.on?(:secrets), do: ~w(run_settings), else: [])
-
-  @claim ~w(version revision dispatch_id pool_id lease_until)
-  @handover ~w(version revision run_id run_key step domain access target work_item)
+  @claim ~w(version revision dispatch_id lease_until)
+  @code ~w(run_code gateway_url)
 
   describe "an explore run" do
-    test "without a file has neither machine nor stack nor workflow", ctx do
+    test "without a file has no machine", ctx do
       no_file!()
       explore!(ctx)
-      {claim, handover} = claim_and_hand_over(ctx)
-
-      assert members(claim) == @claim
-      assert members(handover) == @handover ++ run_settings() ++ ~w(inputs)
+      assert members(claim(ctx)) == @claim ++ @code
     end
 
-    test "of a workspace with a machine and a stack has machine, stack and workflow", ctx do
+    test "of a workspace with a machine and a stack has the machine", ctx do
       machines!(ctx, %{
         ctx.place => %{"machine" => "large", "stack" => @stack, "workflow" => "hello"}
       })
 
       explore!(ctx)
-      {claim, handover} = claim_and_hand_over(ctx)
-
-      assert members(claim) == @claim ++ ~w(machine)
+      claim = claim(ctx)
+      assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "large"
-
-      assert members(handover) == @handover ++ run_settings() ++ ~w(stack workflow inputs)
-      answer = Jason.decode!(handover)
-      assert {answer["stack"], answer["workflow"]} == {@stack, "hello"}
-
-      stack = Jason.decode!(handover, objects: :ordered_objects)["stack"]
-      assert Enum.map(stack.values, &elem(&1, 0)) == ~w(url commit path)
     end
 
-    test "handed a run code has machine, and an answer of five members without stack or workflow",
-         ctx do
-      machines!(ctx, %{
-        ctx.place => %{"machine" => "large", "stack" => @stack, "workflow" => "hello"}
-      })
-
-      explore!(ctx)
-      {claim, handover} = claim_and_hand_over(ctx, %{"run_code" => true})
-
-      assert members(claim) == @claim ++ ~w(machine)
-      assert members(handover) == ~w(version revision run_id run_code step)
-    end
-
-    test "of a workspace with a machine alone has machine, and neither stack nor workflow",
-         ctx do
+    test "of a workspace with a machine alone has the machine", ctx do
       machines!(ctx, %{ctx.place => %{"machine" => "small"}})
       explore!(ctx)
-      {claim, handover} = claim_and_hand_over(ctx)
-
-      assert members(claim) == @claim ++ ~w(machine)
+      claim = claim(ctx)
+      assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "small"
-      assert members(handover) == @handover ++ run_settings() ++ ~w(inputs)
     end
 
-    test "of a workspace with a stack alone has stack and workflow, and no machine", ctx do
+    test "of a workspace with a stack alone has no machine", ctx do
       machines!(ctx, %{ctx.place => %{"stack" => @stack, "workflow" => "hello"}})
       explore!(ctx)
-      {claim, handover} = claim_and_hand_over(ctx)
-
-      assert members(claim) == @claim
-      assert members(handover) == @handover ++ run_settings() ++ ~w(stack workflow inputs)
-      assert Jason.decode!(handover)["stack"] == @stack
+      assert members(claim(ctx)) == @claim ++ @code
     end
 
-    test "of a workspace not in the file has neither machine nor stack nor workflow", ctx do
+    test "of a workspace not in the file has no machine", ctx do
       other = "#{ctx.scope.organisation.slug}/other-#{System.unique_integer([:positive])}"
 
       machines!(ctx, %{
@@ -249,60 +196,12 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       })
 
       explore!(ctx)
-      {claim, handover} = claim_and_hand_over(ctx)
-
-      assert members(claim) == @claim
-      assert members(handover) == @handover ++ run_settings() ++ ~w(inputs)
-    end
-
-    # The comments are smaller than the stack, so an answer measured without the stack
-    # passes the limit: 450 comments of 500 bytes, of which the input keeps the newest.
-    test "keeps the handover answer within its limit with the stack at its caps", ctx do
-      url = "https://forge.example.com/" <> String.duplicate("u", 2048 - 26)
-      folder = String.duplicate("d/", 127) <> "e"
-      stack = %{"url" => url, "commit" => @commit, "path" => folder}
-      machines!(ctx, %{ctx.place => %{"stack" => stack, "workflow" => "hello"}})
-      Application.put_env(:apiary, Handover, answer_limit: 200_000)
-
-      work_item = explore!(ctx)
-      at = DateTime.utc_now(:second)
-
-      for n <- 1..450 do
-        Repo.insert!(%Comment{
-          organisation_id: work_item.organisation_id,
-          item_id: work_item.item_id,
-          external_ref: "c#{n}",
-          url: "https://forge.example.com/acme/shop/issues/12#c#{n}",
-          author_name: "Avery Example",
-          author_kind: :person,
-          body: String.pad_trailing("#{n} ", 500, "x"),
-          body_format: "markdown",
-          source_created_at: DateTime.add(at, n, :second),
-          source_updated_at: DateTime.add(at, n, :second)
-        })
-      end
-
-      {_claim, handover} = claim_and_hand_over(ctx)
-
-      assert byte_size(handover) <= 200_000
-      answer = Jason.decode!(handover)
-      assert answer["stack"] == stack
-      comments = answer["inputs"]["comments"]
-      assert answer["inputs"]["comments_omitted"] > 0
-      assert List.last(comments)["body"] =~ ~r/\A450 /
-
-      # The input is cut no further than it must be: the room the budget keeps for the
-      # longest run key, plus one comment and its comma, would pass the limit. The comment
-      # left out next is older, so no longer, than the longest comment kept.
-      key_room = 2048 - byte_size(answer["run_key"])
-      comment = comments |> Enum.map(&byte_size(Jason.encode!(&1))) |> Enum.max()
-      assert byte_size(handover) + key_room + comment + 1 > 200_000
+      assert members(claim(ctx)) == @claim ++ @code
     end
   end
 
   describe "a prebuild" do
-    test "of a workspace with a machine and a stack has machine, and neither stack nor workflow",
-         ctx do
+    test "of a workspace with a machine and a stack has the machine", ctx do
       machines!(ctx, %{
         ctx.place => %{"machine" => "small", "stack" => @stack, "workflow" => "hello"}
       })
@@ -312,19 +211,9 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       {:ok, _run} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-      {claim, handover} = claim_and_hand_over(ctx)
-
-      assert members(claim) ==
-               ~w(version revision dispatch_id pool_id lease_until machine)
-
-      assert members(handover) ==
-               ~w(version revision run_id run_key step domain access target inputs)
-
+      claim = claim(ctx)
+      assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "small"
-      answer = Jason.decode!(handover)
-      assert answer["step"] == "prebuild"
-
-      assert answer["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end
   end
 end

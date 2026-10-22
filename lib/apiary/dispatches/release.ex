@@ -35,8 +35,9 @@ defmodule Apiary.Dispatches.Release do
   #
   # ## Before the handover
   #
-  # The dispatch ends, `released`, and the slot it took is freed once. Then the run waits
-  # again, as when its lease lapses:
+  # The dispatch ends, `released`, the slot it took is freed once, and the run registered
+  # at its claim is deleted with its run code (`Apiary.Dispatches.Handover.drop/1`), so
+  # the code redeems no more. Then the run waits again, as when its lease lapses:
   #
   #   - an explore run waits in its workspace's queue again with the same `run_id` and the
   #     same `queued_at`, so it takes back its place in the queue. The work item is left as
@@ -178,13 +179,15 @@ defmodule Apiary.Dispatches.Release do
     {:done, {:ok, %{run: nil}}, changed}
   end
 
-  # The dispatch ended, `released`, and its slot freed once: the workspace whose slots
-  # changed.
-  defp end_dispatch(%{dispatch: %Dispatch{id: id} = dispatch, now: now}) do
+  # The dispatch ended, `released`, its slot freed once, and the run registered at its
+  # claim deleted with its run code: the workspace whose slots changed.
+  defp end_dispatch(%{dispatch: %Dispatch{id: id} = dispatch, run: run, now: now}) do
     {1, _rows} =
       Repo.update_all(from(d in Dispatch, where: d.id == ^id),
         set: [ended_at: now, end_cause: :released, updated_at: now]
       )
+
+    _dropped = Handover.drop([run.id])
 
     _freed = Slots.free_slot(dispatch, now)
     [dispatch.workspace_id]

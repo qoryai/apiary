@@ -9,6 +9,7 @@ defmodule Apiary.Environments.RebuildTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -27,6 +28,7 @@ defmodule Apiary.Environments.RebuildTest do
   # and the `environment_ref` `env-1`, made after the pools, so nothing is queued yet.
   setup do
     %{scope: scope} = sign_up_fixture()
+    _gateway = workspace_gateway!(scope)
     mac = pool_fixture(scope, name: "mac-pool")
     linux = pool_fixture(scope, name: "linux-pool")
     shop = shop_collection(scope)

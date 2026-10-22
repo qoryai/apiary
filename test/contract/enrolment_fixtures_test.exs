@@ -441,10 +441,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope)
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
       {:ok, _queued} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
-      %{dispatch: dispatch} = Apiary.DispatchedRunsFixtures.dispatched!(place.key)
-
-      {:ok, %{run: run}} =
-        Apiary.Dispatches.handover(place.key, dispatch.public_id, %{body: "{}", run_code: true})
+      %{registered: run} = Apiary.DispatchedRunsFixtures.dispatched!(place.key)
 
       {1, _rows} =
         Repo.update_all(

@@ -10,6 +10,7 @@ defmodule Apiary.WorkItems.CloseTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -69,6 +70,7 @@ defmodule Apiary.WorkItems.CloseTest do
 
   # The pool of the scope's workspace and a key enrolled on it.
   defp pool!(scope) do
+    _gateway = workspace_gateway!(scope)
     pool = pool_fixture(scope)
     %{access_key: key} = enrolled_key_fixture(scope, pool)
     %{pool: pool, key: key}

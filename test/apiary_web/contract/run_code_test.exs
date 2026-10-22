@@ -1,13 +1,14 @@
 defmodule ApiaryWeb.Contract.RunCodeTest do
-  # A run handed over with a run code, through the endpoints alone: the handover's `200`
-  # has `version`, `revision`, `run_id`, `run_code` and `step` alone; the enrolment's `201`
-  # to the code has the run's id, its run key and the instance's keys, signed over the
-  # request's proof; a retry by the same public key is the same members, byte for byte for
-  # the same request; another public key, an expired code, a code of a run that ended and a
-  # proof that does not verify are refused as an enrolment code is; and a code redeemed at
-  # minute 14 is answered a run key the gateway attaches with. Minutes pass by moving the run's
-  # and the dispatch's times back. Not async, as the other contract tests of a pool: the
-  # features are the whole node's.
+  # A run claimed with a run code, through the endpoints alone: the claim's `200` has the
+  # code; the enrolment's `201` to the code has the run's id, its run key and the
+  # instance's keys, signed over the request's proof, and hands the dispatch over; a retry
+  # by the same public key is the same members, byte for byte for the same request;
+  # another public key, an expired code, a code of a claim whose lease lapsed or that was
+  # released, a code of a run that ended and a proof that does not verify are refused as
+  # an enrolment code is; and a code redeemed at minute 14 is answered a run key the
+  # gateway attaches with; a code never redeemed ends its run lost at its expiry. Minutes
+  # pass by moving the run's and the dispatch's times back.
+  # Not async, as the other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -20,8 +21,8 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
   alias Apiary.{Dispatches, Policy, Repo, SigningKey}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.{Ed25519, SignedMessage}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun}
-  alias Apiary.Runs.{Run, RunKey}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
+  alias Apiary.Runs.{Liveness, Run, RunKey}
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
@@ -35,18 +36,25 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
 
     work_item = work_item_fixture(scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-    assert pool_post(ctx, dispatch, "dispatched", %{}).status == 204
 
-    handover = pool_post(ctx, dispatch, "handover", %{"run_code" => true})
-    assert handover.status == 200
-    assert signed_answer?(handover)
+    claim =
+      signed_post(
+        build_conn(),
+        ctx.key.key_id,
+        ctx.seed,
+        %{"version" => 1, "time" => now_time(), "wait_seconds" => 0},
+        target: "/v1/pools/claim",
+        content_type: "application/json",
+        delivery: nil,
+        contract_version: "3"
+      )
+
+    assert %{"dispatch_id" => dispatch_id, "run_code" => code} = json_response(claim, 200)
 
     Map.merge(ctx, %{
       queued: queued,
-      dispatch: dispatch,
-      handover: handover,
-      code: Jason.decode!(handover.resp_body)["run_code"]
+      dispatch: Repo.get_by!(Dispatch, public_id: dispatch_id),
+      code: code
     })
   end
 
@@ -107,8 +115,8 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
 
   defp run!(ctx), do: Repo.one!(from r in Run, where: r.dispatch_run_id == ^ctx.queued.id)
 
-  # The handover `seconds` earlier: the run's and the dispatch's times moved back, as the
-  # clock would have them that long after the handover.
+  # The claim `seconds` earlier: the run's and the dispatch's times moved back, as the
+  # clock would have them that long after the claim.
   defp back!(ctx, seconds) do
     back = &(&1 && DateTime.add(&1, -seconds, :second))
     run = run!(ctx)
@@ -140,45 +148,6 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
   defp attach(ctx, run_id, run_key) do
     {key, seed} = ctx.gateway_key
     signed_attach(build_conn(), key.key_id, seed, run_id, Jason.encode!(attach_body(run_key)))
-  end
-
-  test "the handover answers version, revision, run_id, run_code and step alone", ctx do
-    run_id = ctx.queued.run_id
-
-    assert ctx.handover.resp_body ==
-             Jason.encode!(
-               Jason.OrderedObject.new([
-                 {"version", 1},
-                 {"revision", 3},
-                 {"run_id", run_id},
-                 {"run_code", ctx.code},
-                 {"step", "explore"}
-               ])
-             )
-
-    assert ctx.code =~ ~r/\Aqecr_[0-9A-HJKMNP-TV-Z]{26}\.[A-Za-z0-9_-]{22}\z/
-    assert run!(ctx).run_key_payload == nil
-  end
-
-  test "a handover with run_code false answers the run key, as one without it", ctx do
-    work_item = work_item_fixture(ctx.scope)
-    {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-    assert pool_post(ctx, dispatch, "dispatched", %{}).status == 204
-
-    answer = json_response(pool_post(ctx, dispatch, "handover", %{"run_code" => false}), 200)
-    assert %{"run_key" => "qrk_" <> _rest, "domain" => "software", "inputs" => %{}} = answer
-    refute Map.has_key?(answer, "run_code")
-  end
-
-  test "a handover with a run_code that is not a boolean is refused", ctx do
-    work_item = work_item_fixture(ctx.scope)
-    {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-    assert pool_post(ctx, dispatch, "dispatched", %{}).status == 204
-
-    conn = pool_post(ctx, dispatch, "handover", %{"run_code" => "true"})
-    assert json_response(conn, 400) == %{"error" => "invalid_request"}
   end
 
   describe "the redemption" do
@@ -258,6 +227,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
     end
 
     test "at minute 14 is answered a run key the gateway attaches with", ctx do
+      assert pool_post(ctx, ctx.dispatch, "dispatched", %{}).status == 204
       back!(ctx, 14 * 60)
       Dispatches.sweep(Dispatches.now())
       assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, ctx.queued.id)
@@ -281,7 +251,29 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       assert run!(ctx).run_key_payload == nil
     end
 
-    test "of a run that ended is 401, unsigned", ctx do
+    test "before dispatched hands the dispatch over; a dispatched after it is 204", ctx do
+      assert enrol(body(ctx.code, ed25519_key_pair())).status == 201
+
+      assert %Dispatch{handed_over_at: %DateTime{}, dispatched_at: nil} =
+               Repo.get!(Dispatch, ctx.dispatch.id)
+
+      assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, ctx.queued.id)
+      assert pool_post(ctx, ctx.dispatch, "dispatched", %{}).status == 204
+      assert %Dispatch{dispatched_at: %DateTime{}} = Repo.get!(Dispatch, ctx.dispatch.id)
+    end
+
+    test "after the claim's lease lapsed before dispatched is 401, unsigned; the run waits again with no registered run",
+         ctx do
+      back!(ctx, 600)
+      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+
+      Dispatches.sweep(Dispatches.now())
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, ctx.queued.id)
+      assert Repo.one(from r in Run, where: r.dispatch_run_id == ^ctx.queued.id) == nil
+      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+    end
+
+    test "of a claim released before dispatched is 401, unsigned", ctx do
       body = %{"version" => 1, "time" => now_time(), "reason" => "stopped"}
 
       released =
@@ -292,7 +284,18 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
           contract_version: "3"
         )
 
-      assert released.status in 200..299
+      assert released.status == 204
+      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+    end
+
+    test "of a run that ended is 401, unsigned", ctx do
+      assert pool_post(ctx, ctx.dispatch, "dispatched", %{}).status == 204
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^ctx.queued.id),
+          set: [state: :ended, end_cause: :lost]
+        )
+
       assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
 
@@ -300,6 +303,28 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       other = String.replace_prefix(ctx.code, "qecr_", "qecn_")
       assert_refused(enrol(body(other, ed25519_key_pair())), 401, "unauthorized")
       assert run!(ctx).run_key_payload == nil
+    end
+  end
+
+  describe "a code never redeemed" do
+    test "ends its run lost at the code's expiry, 15 minutes after the claim, its slot freed",
+         ctx do
+      assert pool_post(ctx, ctx.dispatch, "dispatched", %{}).status == 204
+
+      # A second before the expiry, the run waits for its code.
+      back!(ctx, 15 * 60 - 1)
+      assert Liveness.check(Dispatches.now()) == []
+      assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, ctx.queued.id)
+
+      back!(ctx, 2)
+      assert [%Run{state: "lost"}] = Liveness.check(Dispatches.now())
+      assert %DispatchRun{state: :ended, end_cause: :lost} = Repo.get!(DispatchRun, ctx.queued.id)
+
+      assert %Dispatch{end_cause: :lost, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
+               Repo.get!(Dispatch, ctx.dispatch.id)
+
+      assert Slots.held(ctx.pool.id) == 0
+      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
   end
 end

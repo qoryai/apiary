@@ -24,8 +24,9 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
   end
 
   # The workspace's first gateway is its default, and the pool made after it uses it. The
-  # pool claims the run, which is registered through the gateway under the pool's key and
-  # attached, and is then the queue's run, handed over: as its handover leaves it.
+  # pool claims the run, which registers it through the gateway under the pool's key; the
+  # machine redeems its run code, the gateway attaches it, and the starter's `dispatched`
+  # leaves it handed over.
   setup do
     %{scope: scope} = sign_up_fixture()
     %{adapter: adapter} = connectable_adapter_fixture()
@@ -36,20 +37,10 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
     pool = key(scope, pool_fixture(scope))
 
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(pool.key, Dispatches.now())
-
-    run_id = Ecto.UUID.generate()
-
-    assert %{"run_key" => run_key} =
-             json_response(
-               signed_register(
-                 build_conn(),
-                 pool.key.key_id,
-                 pool.secret,
-                 Jason.encode!(gateway_registration(run_id))
-               ),
-               200
-             )
+    {:ok, claimed} = Dispatches.claim(pool.key, Dispatches.now())
+    dispatch = claimed.dispatch
+    run_id = queued.run_id
+    run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)
 
     assert signed_attach(
              build_conn(),
@@ -59,19 +50,7 @@ defmodule ApiaryWeb.Contract.ClosedWorkItemRunTest do
              Jason.encode!(attach_body(run_key))
            ).status == 200
 
-    at = DateTime.add(dispatch.claimed_at, 1, :second)
-
-    Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
-      set: [dispatched_at: at, handed_over_at: at]
-    )
-
-    Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
-      set: [run_id: run_id, state: :handed_over]
-    )
-
-    Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
-      set: [dispatch_run_id: queued.id]
-    )
+    :ok = Dispatches.dispatched(pool.key, dispatch.public_id, %{external: nil})
 
     %{
       scope: scope,

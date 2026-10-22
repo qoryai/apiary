@@ -286,14 +286,14 @@ so a pool registers its runs, posts their events and their outcome and is served
 configuration as a node is; `access_key` alone holds `secret.seal`, a gateway's secrets
 request for a run's model key, of an opt-in feature the module's tables leave out; reading the configuration document asks no role, only the
 signed request (`ApiaryWeb.Contract.SignedRequest`). Beside them it holds the dispatch
-actions, `dispatch.claim`, `dispatch.dispatched`, `dispatch.handover`,
+actions, `dispatch.claim`, `dispatch.dispatched`
 and `dispatch.release`, of an opt-in feature the module's tables leave out (`docs: false`). A
 pool's key acts on its workspace and, there, on its pool: another node and the
 organisation are not found to it. A dispatch action is asked of the workspace, the one
 queue every pool of it claims a waiting run from, or of a dispatch of that workspace its
 pool claimed; another workspace's queue, or a dispatch another pool claimed or that names
-no pool, is not found to it. A handover and a release leave an audit entry; a claim and
-the start of its machine do not.
+no pool, is not found to it. A release leaves an audit entry; a claim and the start of
+its machine do not.
 
 A gateway of an organisation, which has no workspace, is asked at the organisation: its
 making and listing (`node.create`, `node.read` of the organisation), its changes and
@@ -511,14 +511,14 @@ for each other and never on each other at once:
    it: the change reads the choices that use the provider, or the model, without a lock,
    and refuses while one does. No change to a provider takes a lock on an adapter's
    connection.
-   The handover of an explore run (`Apiary.Dispatches.RunSettings`) reads the choices
-   without a lock, then takes the rows of the providers they name `FOR SHARE`, by id,
-   then the rows of those providers' keys' secrets `FOR SHARE`, by id, before the
-   environment records, the run of the queue, the dispatch and the gateway's row
-   (`Apiary.Dispatches.Slots`). A change to a provider or to its keys that came first is
-   seen by the handover; one that comes after waits for the handover to commit. A
-   deletion of the provider then reads the run the handover registered, and refuses while
-   that run is pending or running.
+   The claim of an explore run (`Apiary.Dispatches.RunSettings`) holds the pool's row,
+   the gateway's row, the environment records, the run of the queue and its dispatch
+   (`Apiary.Dispatches.Slots`), then reads the choices without a lock, then takes the
+   rows of the providers they name `FOR SHARE`, by id, then the rows of those providers'
+   keys' secrets `FOR SHARE`, by id. A change to a provider or to its keys locks nothing
+   of the queue. A change that came first is seen by the claim; one that comes after
+   waits for the claim to commit. A deletion of the provider then reads the run the claim
+   registered, and refuses while that run is pending or running.
    A gateway's secrets request for a run's model key takes no lock: it reads the run,
    the provider's row and the row of its keys' secret without one, checks the
    provider's integrity code, decrypts the key, whose row is bound to its secret, and

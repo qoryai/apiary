@@ -10,6 +10,7 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
   @moduletag :capture_log
 
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -73,10 +74,11 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
     ])
   end
 
-  # A run of the queue, claimed under a key, with its dispatch.
+  # A run of the queue, claimed under a key through a gateway, with its dispatch.
   setup do
     %{scope: scope} = sign_up_fixture()
     pool = pool_fixture(scope)
+    _gateway = gateway_for!(scope, pool)
     %{access_key: key} = access_key_fixture(scope, node: pool)
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(scope), 1) end)
     {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())

@@ -10,7 +10,7 @@ defmodule Apiary.AuditChanges do
   import Apiary.AccountsFixtures, only: [unique_user_email: 0, valid_user_attributes: 1]
   import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
 
-  import Apiary.DispatchedRunsFixtures, only: [dispatched!: 1, handover_place_fixture: 1]
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1]
 
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -122,7 +122,6 @@ defmodule Apiary.AuditChanges do
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
-      :"dispatch.handover",
       :"dispatch.release",
       :"target.set_further_repositories",
       :"target.rebuild_environment",
@@ -563,28 +562,6 @@ defmodule Apiary.AuditChanges do
     }
   end
 
-  # A node pool's starter has the run of a dispatch its pool claimed handed over, in the
-  # trail of the workspace's organisation, about the run registered for it; the entry's
-  # actor is the pool's key.
-  def make(:"dispatch.handover", %{scope: scope}) do
-    %{key: key} = handover_place_fixture(scope)
-    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(key)
-    before = entries()
-
-    {:ok, %{run: run}} =
-      Apiary.Dispatches.handover(key, dispatch.public_id, %{body: "{}"})
-
-    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
-
-    %{
-      scope: Scope.for_access_key(key),
-      subject: {"run", run.id},
-      before: before,
-      actor: {:access_key, key.id}
-    }
-  end
-
   # A gateway's secrets request seals a run's model key to its access key, in the trail of
   # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
   # the entry keeps nothing of the key's value.
@@ -611,7 +588,7 @@ defmodule Apiary.AuditChanges do
   def make(:"dispatch.release", %{scope: scope}) do
     %{key: key} = handover_place_fixture(scope)
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(key)
+    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(key, Apiary.Dispatches.now())
     before = entries()
 
     :ok =
@@ -909,22 +886,12 @@ defmodule Apiary.AuditChanges do
      Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)}
   end
 
-  # A dispatch another pool of the workspace claimed is not the key's to hand over.
-  def refuse(:"dispatch.handover", %{scope: scope}) do
-    %{key: claimer} = handover_place_fixture(scope)
-    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
-    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(claimer)
-    before = entries()
-    {before, Apiary.Dispatches.handover(other, dispatch.public_id, %{body: "{}"})}
-  end
-
   # A dispatch another pool of the workspace claimed is not the key's to give back.
   def refuse(:"dispatch.release", %{scope: scope}) do
     %{key: claimer} = handover_place_fixture(scope)
     %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(claimer)
+    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(claimer, Apiary.Dispatches.now())
     before = entries()
 
     {before,

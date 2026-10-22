@@ -16,6 +16,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
@@ -192,6 +193,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       {:ok, {:ok, _run}} =
         Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
 
+      _gateway = gateway_for!(scope, pool)
       %{access_key: key} = enrolled_key_fixture(scope, pool)
       {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
       view = open(conn, path)
@@ -503,6 +505,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
           Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
       end
 
+      _gateway = gateway_for!(scope, arm)
       %{access_key: key} = enrolled_key_fixture(scope, arm)
       {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})

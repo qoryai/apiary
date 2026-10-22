@@ -27,7 +27,7 @@ defmodule Apiary.Runs.SecretsRequest do
   #     from a reload;
   #  6. `{:error, :credential_unavailable}`, a run with no model provider, or whose
   #     provider cannot be read: the run configuration has no credential, or none can be
-  #     composed. The provider's columns of a run are NULL when the handover set no
+  #     composed. The provider's columns of a run are NULL when its claim set no
   #     provider, or when the provider was deleted; a provider's deletion is refused while
   #     a pending or running run uses it, so only a run that ended, refused at step 4,
   #     has them NULL after a deletion;

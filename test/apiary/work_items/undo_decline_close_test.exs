@@ -8,6 +8,7 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -92,6 +93,7 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
     end
 
     test "while a claim holds its run, refused", ctx do
+      _gateway = workspace_gateway!(ctx.scope)
       pool = pool_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       {:ok, %{dispatch: _dispatch}} = Dispatches.claim(key, Dispatches.now())
@@ -102,6 +104,7 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
     end
 
     test "once a run of its take in was handed over, refused, after that run ended too", ctx do
+      _gateway = workspace_gateway!(ctx.scope)
       pool = pool_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
@@ -214,6 +217,7 @@ defmodule Apiary.WorkItems.UndoDeclineCloseTest do
     test "while a run of its take in waits, or is claimed, refused", ctx do
       assert WorkItems.decline(ctx.scope, ctx.work_item) == {:error, :running}
 
+      _gateway = workspace_gateway!(ctx.scope)
       pool = pool_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       {:ok, %{dispatch: _dispatch}} = Dispatches.claim(key, Dispatches.now())

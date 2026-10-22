@@ -20,12 +20,13 @@ defmodule Apiary.DispatchesRacesTest do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.Races
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Environments, Repo}
-  alias Apiary.AccessKeys.PublicKey
+  alias Apiary.AccessKeys.{AccessKey, PublicKey}
   alias Apiary.Adapters.Collection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Environments.Record
@@ -40,7 +41,14 @@ defmodule Apiary.DispatchesRacesTest do
 
   setup do
     %{scope: scope} = sign_up()
-    {:ok, made} = Agent.start(fn -> %{public_keys: [], adapters: []} end)
+    # The workspace's default gateway, which the pools' claims resolve to, and its key's
+    # public half, which outlives the organisation.
+    gateway = workspace_gateway!(scope)
+
+    gateway_key =
+      Repo.one!(from k in AccessKey, where: k.node_id == ^gateway.id, select: k.public_key)
+
+    {:ok, made} = Agent.start(fn -> %{public_keys: [gateway_key], adapters: []} end)
 
     # Before the clean up of `setup_races`: the organisation, then what outlives it.
     on_exit(fn ->

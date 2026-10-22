@@ -32,8 +32,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `confirmed_by_id` and `confirmed_at`, the current take in's confirmation, nil for
   #     none, and `changes`, the fields it changed, each `%{value: value, by_id: id}`.
   #
-  # A run map: `id` (its registered run's public id, nil before its handover or for a run
-  # never handed over), `workspace_id`, the workspace it was queued in, where it stays
+  # A run map: `id` (its registered run's public id, nil for a run with none: one waiting,
+  # or one that ended before its handover), `workspace_id`, the workspace it was queued in, where it stays
   # when its work item moves, `attempt`, `of`, `state`
   # (`Apiary.WorkItems.Explore.run_state/1`), `place` (`Apiary.WorkItems.Explore.step/4`),
   # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`,

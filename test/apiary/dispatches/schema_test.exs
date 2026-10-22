@@ -669,14 +669,14 @@ defmodule Apiary.Dispatches.SchemaTest do
       end
     end
 
-    test "is handed over once dispatched, before its lease, and never once stale",
+    test "is handed over before its lease, dispatched or not, and never once stale",
          %{scope: scope} do
       dispatch = claimed!(scope, queued!(scope), pool!(scope))
 
-      refused("dispatches_handed_over_check", fn ->
-        update!("dispatches", dispatch.id, "handed_over_at = claimed_at")
-      end)
-
+      # The first redemption of the run's code hands a dispatch over before its
+      # `dispatched`.
+      assert %{num_rows: 1} = update!("dispatches", dispatch.id, "handed_over_at = claimed_at")
+      assert %{num_rows: 1} = update!("dispatches", dispatch.id, "handed_over_at = NULL")
       assert %{num_rows: 1} = update!("dispatches", dispatch.id, "dispatched_at = claimed_at")
 
       refused("dispatches_handed_over_check", fn ->

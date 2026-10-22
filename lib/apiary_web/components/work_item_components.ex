@@ -90,8 +90,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   @ended [:declined, :closed, :undone]
   @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
   @no_result [:no_result, :lost, :cancelled]
-  # The end causes of a run that ended at its handover, before it started, because the
-  # handover could not form what the run is made from (`Apiary.Dispatches.Handover`).
+  # The end causes of a run that ended at its claim, before it started, because the claim
+  # could not form what the run is made from (`Apiary.Dispatches.Handover`).
   @unstarted [:variables_invalid, :ticket_gone, :inputs_invalid]
   @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
   @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
@@ -1754,7 +1754,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       repository keeps its tickets out of the Backlog (`backlog_off`); or what happened to
       the last run;
     * no result, lost or cancelled: what happened, and the run's page; for a run that
-      ended at its handover, before it started (`:end_cause` `:variables_invalid`,
+      ended at its claim, before it started (`:end_cause` `:variables_invalid`,
       `:ticket_gone` or `:inputs_invalid`), what a member fixes and why;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
@@ -2662,7 +2662,7 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
        )}
 
-  # What a member does about a run that ended at its handover, and why it ended.
+  # What a member does about a run that ended at its claim, and why it ended.
   defp unstarted_words(:variables_invalid),
     do:
       gettext(

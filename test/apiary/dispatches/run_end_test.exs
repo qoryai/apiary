@@ -23,7 +23,6 @@ defmodule Apiary.Dispatches.RunEndTest do
 
   @moduletag needs: :factory
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
 
   setup do
@@ -346,10 +345,9 @@ defmodule Apiary.Dispatches.RunEndTest do
       {:ok, queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, place.pool, "env-1") end)
 
-      %{dispatch: dispatch} = dispatched!(place.key)
-
-      {:ok, %{run: run, run_key: run_key}} =
-        Dispatches.handover(place.key, dispatch.public_id, %{body: @body})
+      %{dispatch: dispatch, registered: run, run_code: code} = dispatched!(place.key)
+      run_key = redeemed_run_key!(code)
+      run = Repo.get!(Run, run.id)
 
       {gateway_key, _seed} = place.gateway_key
       {:ok, body} = Attach.parse(attach_body(run_key))
@@ -595,6 +593,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
       assert release(queued) == {:error, :not_handed_over}
 
+      _gateway = gateway_for!(ctx.scope, ctx.pool)
       {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
       assert release(queued) == {:error, :not_handed_over}
       assert %Dispatch{ended_at: nil, slot_freed_at: nil} = dispatch!(dispatch)
@@ -647,6 +646,7 @@ defmodule Apiary.Dispatches.RunEndTest do
     test "a stale dispatch of the run ends with it, run_ended; the live one released", ctx do
       work_item = work_item_fixture(ctx.scope)
       {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      _gateway = gateway_for!(ctx.scope, ctx.pool)
       {:ok, %{dispatch: first}} = Dispatches.claim(ctx.key, Dispatches.now())
 
       # Its lease lapses: stale, its slot freed, and the run waits again.

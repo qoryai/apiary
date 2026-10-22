@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.Contract.PoolRequestTest do
-  # A node pool's starter's signed requests to the provisioner contract's four routes,
+  # A node pool's starter's signed requests to the provisioner contract's routes,
   # through `ApiaryWeb.Contract.AdapterRequest` with `kind: :pool`: the signature under the
   # pool's access key, the refusals in their order, the time's window, the replay rule,
   # every other kind of key refused as an unknown key is, the answers signed but a 401, and
   # the routes where the feature is off. A claim accepted, with an empty queue and no
-  # wait, is answered `204`, signed; a `dispatched`, a handover or a release accepted, of a
-  # dispatch no pool has, `403` `forbidden`, signed. Every request names
+  # wait, is answered `204`, signed; a `dispatched` or a release accepted, of a dispatch no
+  # pool has, `403` `forbidden`, signed; a handover, a route no longer served, `404`. Every request names
   # revision 3 of the provisioner contract, the one served, unless a test says otherwise.
   # Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -13,6 +13,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   import ExUnit.CaptureLog
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -28,7 +29,6 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   @targets [
     @claim,
     @dispatch <> "/dispatched",
-    @dispatch <> "/handover",
     @dispatch <> "/release"
   ]
   @unauthorized %{"error" => "unauthorized"}
@@ -42,6 +42,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   setup do
     %{scope: scope} = sign_up_fixture()
     pool = pool_fixture(scope)
+    gateway_for!(scope, pool)
     %{access_key: key, pair: pair} = enrolled_key_fixture(scope, pool)
     %{scope: scope, pool: pool, key: key, seed: pair.secret}
   end
@@ -138,6 +139,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
     test "takes a pool's key enrolled in a browser as one enrolled with a code", ctx do
       pool = pool_fixture(ctx.scope)
+      gateway_for!(ctx.scope, pool)
       %{access_key: key, pair: pair} = browser_key_fixture(ctx.scope, pool)
       conn = claim(ctx, body(@claim), key_id: key.key_id, seed: pair.secret)
       assert accepted?(conn, @claim)
@@ -200,6 +202,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     test "a replay is keyed on the key: the same body under another pool's key is not one",
          ctx do
       pool = pool_fixture(ctx.scope)
+      gateway_for!(ctx.scope, pool)
       %{access_key: other, pair: pair} = enrolled_key_fixture(ctx.scope, pool)
       raw = Jason.encode!(body(@claim))
 
@@ -410,11 +413,10 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       assert seen_count() == 0
     end
 
-    test "a handover carrying labels is 400 invalid_request", ctx do
+    test "a handover, a route no longer served, is 404 not_found", ctx do
       target = @dispatch <> "/handover"
-      conn = signed(ctx, target, Map.put(body(target), "labels", ["linux"]))
-      assert json_response(conn, 400) == @invalid
-      assert signed_answer?(conn)
+      conn = signed(ctx, target, body(target))
+      assert conn.status == 404
     end
 
     test "a U+0000 in a dispatched's external or a release's reason is 400 invalid_request, signed, and records nothing; the same text without it is accepted",

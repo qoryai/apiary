@@ -234,15 +234,13 @@ defmodule ApiaryWeb.Routes do
       end
 
       # A node pool's starter's requests, with the `factory` feature: its claim of a run
-      # waiting for the pool, and, for the dispatch that claim made, that the job started,
-      # the job's handover, the run given back and the log of the machine the starter
-      # created.
+      # waiting for the pool, and, for the dispatch that claim made, that the machine
+      # started, the run given back and the log of the machine the starter created.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_pool
 
         post "/pools/claim", PoolClaimController, :create
         post "/dispatches/:dispatch_id/dispatched", DispatchController, :dispatched
-        post "/dispatches/:dispatch_id/handover", HandoverController, :create
         post "/dispatches/:dispatch_id/release", DispatchController, :release
         post "/dispatches/:dispatch_id/machine-log", DispatchController, :machine_log
       end

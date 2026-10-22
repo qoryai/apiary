@@ -13,8 +13,8 @@ defmodule Apiary.WorkItems.Explore do
   #   * waiting or claimed: `:queued`; handed over: `:running`;
   #   * ended lost: `:lost`; ended released: `:cancelled`; ended with its work item closed
   #     or undone, before its handover: `:cancelled`;
-  #   * ended before its handover because the handover could not form what the run is
-  #     made from (`variables_invalid`, `ticket_gone`, `inputs_invalid`): `:no_result`
+  #   * ended at its claim because the claim could not form what the run is made from
+  #     (`variables_invalid`, `ticket_gone`, `inputs_invalid`): `:no_result`
   #     with the outcome `:error`, and no registered run;
   #   * ended by its outcome or its exit (`run_ended`): what the run gave decides. Once
   #     Qory reads it as decided it is kept on the run of the queue
@@ -106,8 +106,9 @@ defmodule Apiary.WorkItems.Explore do
   @type outcome :: Result.outcome() | nil
 
   @typedoc """
-  One run of a take in: the run of the queue, the run registered for it (nil before its
-  handover, or when it was never handed over), its place, what it gave and its result.
+  One run of a take in: the run of the queue, the run its claim registered (nil while it
+  has none: waiting, or ended before its handover), its place, what it gave and its
+  result.
   """
   @type step :: %{
           dispatch_run: DispatchRun.t(),
@@ -423,7 +424,7 @@ defmodule Apiary.WorkItems.Explore do
   end
 
   # run_state/1 is the state of a step's run as the run pages name it: the registered
-  # run's, nil for a run waiting for its handover, and for a run that ended before it,
+  # run's, nil for a run waiting for its claim, and for a run that ended before its handover,
   # `:cancelled` when it was released, closed or undone and `:failed` otherwise.
   @doc false
   @spec run_state(step) :: atom | nil

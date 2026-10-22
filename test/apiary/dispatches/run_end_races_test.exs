@@ -40,7 +40,6 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
   @moduletag needs: :factory
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
   @reason "The job could not start."
 
@@ -272,11 +271,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       {:ok, queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.place.pool, "env-1") end)
 
-      %{dispatch: dispatch} = dispatched!(ctx.place.key)
+      %{dispatch: dispatch, registered: run} = dispatched!(ctx.place.key)
       assert dispatch.dispatch_run_id == queued.id
-
-      {:ok, %{run: run}} =
-        Dispatches.handover(ctx.place.key, dispatch.public_id, %{body: @body})
 
       %{
         collection: collection,

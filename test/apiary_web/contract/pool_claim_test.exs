@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.Contract.PoolClaimTest do
   # `POST /v1/pools/claim` (`ApiaryWeb.Contract.PoolClaimController`): the claim answer,
-  # signed, held to the vendored `claim-answer.schema.json`, with nothing of the run in it,
-  # a prebuild taken by its pool alone; the refusals in their order;
+  # signed, held to the vendored `claim-answer.schema.json`, with nothing of the run in it
+  # but its run code and the gateway the code is bound to, the run registered at the
+  # claim, a prebuild taken by its pool alone; the refusals in their order;
   # another pool's id refused as an unknown one is; `dispatch.claim` refused or not found
   # as one answer; the hold, its wake, its end and its cap per key; and the key read again
   # after the wait. Not async: the features, the hold's settings and the registry of holds
@@ -11,6 +12,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -18,6 +20,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   alias Apiary.{AccessKeys, Dispatches, Repo}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Nodes.Node
+  alias Apiary.Runs.Run
   alias ApiaryWeb.Contract.{PoolClaimController, SignedRequest}
 
   @moduletag needs: :factory
@@ -63,8 +66,9 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
     %{scope: scope} = sign_up_fixture()
     pool = pool_fixture(scope)
+    gateway = gateway_for!(scope, pool)
     %{access_key: key, pair: pair} = enrolled_key_fixture(scope, pool)
-    %{scope: scope, pool: pool, key: key, seed: pair.secret}
+    %{scope: scope, pool: pool, gateway: gateway, key: key, seed: pair.secret}
   end
 
   defp settings(hold, poll),
@@ -163,19 +167,51 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^run.id)
       lease_until = dispatch.lease_until |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
-      # The machine request alone: nothing of the run, its id, its step, its target or
-      # its work item.
+      # The machine request: nothing of the run, its id, its step, its target or its work
+      # item; the run code and the gateway it is bound to.
+      assert %{"run_code" => run_code} = answer
+
       assert answer == %{
                "version" => 1,
                "revision" => 3,
                "dispatch_id" => dispatch.public_id,
-               "pool_id" => ctx.pool.public_id,
-               "lease_until" => lease_until
+               "lease_until" => lease_until,
+               "run_code" => run_code,
+               "gateway_url" => "https://gateway.example"
              }
+
+      assert [head, fingerprint] = String.split(run_code, ".")
+      assert head =~ ~r/\Aqecr_[0-9A-HJKMNP-TV-Z]{26}\z/
+      assert fingerprint == Apiary.SigningKey.fingerprint()
+      assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
 
       assert %Dispatch{pool_id: pool_id, access_key_id: key_id} = dispatch
       assert {pool_id, key_id} == {ctx.pool.id, ctx.key.id}
       assert Repo.get!(DispatchRun, run.id).state == :claimed
+      assert is_nil(dispatch.handed_over_at)
+
+      # The run is registered at the claim, pending, through the gateway, with the code's
+      # SHA-256 alone.
+      registered = Repo.get_by!(Run, dispatch_run_id: run.id)
+      assert {registered.state, registered.node_run_id} == {"pending", run.run_id}
+      assert registered.gateway_id == ctx.gateway.id
+      assert registered.run_code_sha256 == Apiary.AccessKeys.EnrolmentCode.hash(head)
+      assert is_nil(registered.run_key_payload)
+    end
+
+    test "with a pool that goes direct is 409 no_gateway, signed, and takes nothing", ctx do
+      run = queued!(ctx.scope)
+
+      Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
+        set: [gateway_choice: :direct, gateway_id: nil]
+      )
+
+      conn = claim(ctx, body())
+      assert json_response(conn, 409) == %{"error" => "no_gateway"}
+      assert signed_answer?(conn)
+      assert Repo.get!(DispatchRun, run.id).state == :waiting
+      assert dispatches() == 0
+      assert Repo.aggregate(Run, :count) == 0
     end
 
     test "without pool_id covers the key's pool; with an empty queue and no wait it is 204, signed",
@@ -213,8 +249,9 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "version" => 1,
                "revision" => 3,
                "dispatch_id" => dispatch.public_id,
-               "pool_id" => ctx.pool.public_id,
-               "lease_until" => lease_until
+               "lease_until" => lease_until,
+               "run_code" => answer["run_code"],
+               "gateway_url" => "https://gateway.example"
              }
 
       assert Repo.get!(DispatchRun, run.id).state == :claimed
@@ -231,13 +268,16 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       answer = Jason.decode!(conn.resp_body)
       assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
 
-      assert members(conn.resp_body) == ~w(version revision dispatch_id pool_id lease_until)
+      assert members(conn.resp_body) ==
+               ~w(version revision dispatch_id lease_until run_code gateway_url)
+
       assert claimed_run_id(conn) == run.run_id
     end
 
     test "another pool never takes a prebuild held for a pool", ctx do
       # The pool made before the collection, whose fixture applies no trigger.
       other = pool_fixture(ctx.scope)
+      gateway_for!(ctx.scope, other)
       %{access_key: other_key, pair: other_pair} = enrolled_key_fixture(ctx.scope, other)
       run = prebuild!(collection_fixture(ctx.scope), ctx.pool)
 
@@ -289,7 +329,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       run = queued!(ctx.scope)
 
       Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
-        set: [gateway_choice: :default]
+        set: [gateway_choice: :named, gateway_id: nil]
       )
 
       conn = claim(ctx, body(%{"wait_seconds" => 5}))
@@ -304,7 +344,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       other = pool_fixture(ctx.scope)
 
       Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
-        set: [gateway_choice: :default]
+        set: [gateway_choice: :named, gateway_id: nil]
       )
 
       # A body the contract refuses, stale and of another pool: 400.
@@ -363,6 +403,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
     test "at the pool's limit it holds, and a slot freed meanwhile wakes it", ctx do
       settings(10_000, 10_000)
       pool = pool_fixture(ctx.scope, instance_limit: 1)
+      gateway_for!(ctx.scope, pool)
       %{access_key: key, pair: pair} = enrolled_key_fixture(ctx.scope, pool)
       ctx = %{ctx | key: key, seed: pair.secret}
 

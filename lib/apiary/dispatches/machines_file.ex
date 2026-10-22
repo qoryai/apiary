@@ -34,7 +34,7 @@ defmodule Apiary.Dispatches.MachinesFile do
   #
   # A workspace in the file that does not exist is no error: the entry applies when a
   # workspace of those slugs runs. The claim answer has `machine` from the entry of the
-  # run's workspace (`machine/2`) for every step, the handover answer `stack` and
+  # run's workspace (`machine/2`) for every step, the run's documents `stack` and
   # `workflow` (`stack/2`) for every step but prebuild
   # (`ApiaryWeb.Contract.DispatchAnswer`). With `APIARY_MACHINES_FILE` unset or blank, or
   # a workspace without an entry, neither answer changes.

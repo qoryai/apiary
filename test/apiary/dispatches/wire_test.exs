@@ -2,8 +2,8 @@ defmodule Apiary.Dispatches.WireTest do
   # The bodies a node pool's starter posts, read as the provisioner contract has them:
   # every request fixture vendored from the commit in
   # `test/fixtures/contract/provisioner/v1/.contract-ref`, valid and invalid, and each
-  # field refused in turn, with members twice, integers written with a fraction, members
-  # the schema does not define, and labels on a handover.
+  # field refused in turn, with members twice, integers written with a fraction, and
+  # members the schema does not define.
   use ExUnit.Case, async: true
 
   alias Apiary.Dispatches.Wire
@@ -74,7 +74,6 @@ defmodule Apiary.Dispatches.WireTest do
   @readers %{
     "claim" => &Wire.claim/1,
     "dispatched" => &Wire.dispatched/1,
-    "handover" => &Wire.handover/1,
     "release" => &Wire.release/1,
     "machine-log" => &Wire.machine_log/1
   }
@@ -89,7 +88,6 @@ defmodule Apiary.Dispatches.WireTest do
 
   defp claim(body), do: read(&Wire.claim/1, body)
   defp dispatched(body), do: read(&Wire.dispatched/1, body)
-  defp handover(body), do: read(&Wire.handover/1, body)
   defp release(body), do: read(&Wire.release/1, body)
   defp machine_log(body), do: read(&Wire.machine_log/1, body)
 
@@ -100,7 +98,6 @@ defmodule Apiary.Dispatches.WireTest do
     "url" => "https://ci.example.com/acme/shop/runs/8812"
   }
   @dispatched %{"version" => 1, "time" => "2026-10-15T12:00:20Z", "external" => @external}
-  @handover %{"version" => 1, "time" => "2026-10-15T12:01:00Z"}
   @release %{
     "version" => 1,
     "time" => "2026-10-15T12:02:00Z",
@@ -170,6 +167,9 @@ defmodule Apiary.Dispatches.WireTest do
           Map.has_key?(@readers, kind),
           do: path
 
+    # The bodies of the handover, a route Qory Apiary does not serve.
+    handovers = for "handover/" <> _ = path <- all, do: path
+
     invalid_requests =
       for "invalid/" <> name = path <- all, not String.contains?(name, "-answer-"), do: path
 
@@ -181,8 +181,11 @@ defmodule Apiary.Dispatches.WireTest do
 
     refusals = for "refusal/" <> _ = path <- all, do: path
 
-    assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
-    assert length(requests) == 10
+    assert Enum.sort(requests ++ handovers ++ invalid_requests ++ answers ++ refusals) ==
+             Enum.sort(all)
+
+    assert length(requests) == 8
+    assert length(handovers) == 2
     assert length(invalid_requests) == 19
     assert length(answers) == 64
     assert length(refusals) == 7
@@ -223,8 +226,6 @@ defmodule Apiary.Dispatches.WireTest do
                "claim/without-pool-id.json",
                "dispatched/with-external.json",
                "dispatched/without-external.json",
-               "handover/handover.json",
-               "handover/run-code.json",
                "machine-log/truncated.json",
                "machine-log/whole.json",
                "release/retry.json"
@@ -240,7 +241,7 @@ defmodule Apiary.Dispatches.WireTest do
                {:ok, %{time: ~U[2026-10-15 12:00:00Z], pool_id: nil, wait_seconds: 25}}
     end
 
-    test "the dispatched, the handover and the release are read to their values" do
+    test "the dispatched and the release are read to their values" do
       assert dispatched(fixture("dispatched/with-external.json")) ==
                {:ok,
                 %{
@@ -254,12 +255,6 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert dispatched(fixture("dispatched/without-external.json")) ==
                {:ok, %{time: ~U[2026-10-15 12:00:20Z], external: nil}}
-
-      assert handover(fixture("handover/handover.json")) ==
-               {:ok, %{time: ~U[2026-10-15 12:01:00Z], run_code: false}}
-
-      assert handover(fixture("handover/run-code.json")) ==
-               {:ok, %{time: ~U[2026-10-15 12:01:00Z], run_code: true}}
 
       assert release(fixture("release/retry.json")) ==
                {:ok,
@@ -330,7 +325,6 @@ defmodule Apiary.Dispatches.WireTest do
 
       for {body, reader} <- [
             {@dispatched, &Wire.dispatched/1},
-            {@handover, &Wire.handover/1},
             {@release, &Wire.release/1}
           ] do
         raw = String.replace(Jason.encode!(body), ~s("version":1), ~s("version":1.0))
@@ -342,7 +336,6 @@ defmodule Apiary.Dispatches.WireTest do
       assert claim(Map.put(@claim, "workspace", "ws_f1xt0re000000000")) == :error
       assert dispatched(Map.put(@dispatched, "run_id", "x")) == :error
       assert dispatched(put_in(@dispatched, ["external", "name"], "CI")) == :error
-      assert handover(Map.put(@handover, "run_id", "x")) == :error
       assert release(Map.put(@release, "run_id", "x")) == :error
       assert release(Map.put(@release, "retry", true)) == :error
     end
@@ -351,7 +344,6 @@ defmodule Apiary.Dispatches.WireTest do
       for {body, reader} <- [
             {@claim, &Wire.claim/1},
             {@dispatched, &Wire.dispatched/1},
-            {@handover, &Wire.handover/1},
             {@release, &Wire.release/1}
           ],
           change <- [
@@ -424,7 +416,6 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert quick(fn -> claim(Map.merge(@claim, many)) end) == :error
       assert quick(fn -> dispatched(put_in(@dispatched, ["external"], many)) end) == :error
-      assert quick(fn -> handover(Map.merge(@handover, many)) end) == :error
       assert quick(fn -> release(Map.merge(@release, many)) end) == :error
     end
 
@@ -452,30 +443,6 @@ defmodule Apiary.Dispatches.WireTest do
 
       assert dispatched(put_in(@dispatched, ["external", "type"], String.duplicate("a", 41))) ==
                :error
-    end
-  end
-
-  describe "a handover" do
-    test "carrying labels, or anything else a registration would carry, is refused" do
-      assert handover(Map.put(@handover, "labels", ["linux"])) == :error
-      assert handover(Map.put(@handover, "labels", [])) == :error
-      assert handover(Map.put(@handover, "labels", %{})) == :error
-
-      assert handover(Map.put(@handover, "run_id", "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d")) ==
-               :error
-
-      assert handover(Map.put(@handover, "about", "x")) == :error
-      assert {:ok, _} = handover(@handover)
-    end
-
-    test "takes run_code, a boolean, false when left out" do
-      assert {:ok, %{run_code: true}} = handover(Map.put(@handover, "run_code", true))
-      assert {:ok, %{run_code: false}} = handover(Map.put(@handover, "run_code", false))
-      assert {:ok, %{run_code: false}} = handover(@handover)
-
-      for value <- ["true", 1, nil, %{}] do
-        assert handover(Map.put(@handover, "run_code", value)) == :error, inspect(value)
-      end
     end
   end
 

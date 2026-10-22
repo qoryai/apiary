@@ -1,9 +1,9 @@
 defmodule Apiary.Dispatches.RunSettingsBudgetTest do
-  # The handover answer's limit of 1 MiB with run settings (`Apiary.Dispatches.Handover`):
-  # the input gets what the rest of the answer leaves and leaves out its oldest comments
-  # first, and a handover whose answer cannot fit is refused with nothing written. Then an
-  # explore run's answer with the feature `secrets` off. Not async: the tests set the
-  # answer's limit and the features in the application environment.
+  # The run documents' limit of 1 MiB with run settings (`Apiary.Dispatches.Handover`):
+  # the input gets what the rest of the documents leave and leaves out its oldest comments
+  # first, and a claim whose documents cannot fit is refused with nothing written. Then an
+  # explore run's documents with the feature `secrets` off. Not async: the tests set the
+  # documents' limit and the features in the application environment.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -77,9 +77,9 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     provider
   end
 
-  # A work item with 20 comments of 60,000 characters each, its run queued, claimed and
-  # said started: the inputs alone pass 768 KiB.
-  defp claimed!(ctx) do
+  # A work item with 20 comments of 60,000 characters each, its run queued: the inputs
+  # alone pass 768 KiB.
+  defp queued!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     at = DateTime.utc_now(:second)
     text = String.duplicate("x", 60_000)
@@ -100,31 +100,26 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     end
 
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(ctx.key)
-    {queued, dispatch}
+    queued
   end
 
-  # The answer as the controller encodes it (`ApiaryWeb.Contract.HandoverController`).
-  defp answer(handed) do
-    DispatchAnswer.handover_body(%{
-      revision: 3,
-      run_id: handed.run.node_run_id,
-      run_key: handed.run_key,
-      step: handed.dispatch_run.step,
-      domain: handed.domain,
-      target: handed.target,
-      work_item: handed.work_item,
-      run_settings: handed.run_settings,
-      stack: handed.stack,
-      inputs: handed.inputs
-    })
+  # What the run's documents are made from, at a claim that registered the run, with the
+  # registered run as `run`.
+  defp claimed!(ctx) do
+    {:ok, %{registered: run, documents: documents}} =
+      Dispatches.claim(ctx.key, Dispatches.now(), @body)
+
+    Map.put(documents, :run, run)
   end
+
+  # The run's documents, encoded.
+  defp answer(handed), do: handed |> DispatchAnswer.documents() |> Jason.encode!()
 
   defp omitted(handed), do: Jason.decode!(Jason.encode!(handed.inputs))["comments_omitted"]
 
   defp put_limit(bytes) do
     previous = Application.get_env(:apiary, Handover)
-    Application.put_env(:apiary, Handover, answer_limit: bytes)
+    Application.put_env(:apiary, Handover, documents_limit: bytes)
 
     on_exit(fn ->
       if previous,
@@ -133,12 +128,11 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     end)
   end
 
-  describe "the answer's limit" do
+  describe "the documents' limit" do
     test "holds the run settings at their caps and the input at its limit within 1 MiB", ctx do
       provider_at_its_caps!(ctx.scope)
-      {_queued, dispatch} = claimed!(ctx)
-
-      assert {:ok, handed} = Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
+      queued!(ctx)
+      handed = claimed!(ctx)
 
       settings = Jason.encode!(handed.run_settings)
       assert byte_size(settings) > 50_000
@@ -147,13 +141,12 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
       assert byte_size(answer(handed)) <= @limit
     end
 
-    test "leaves out more of the oldest comments when the rest of the answer takes more",
+    test "leaves out more of the oldest comments when the rest of the documents takes more",
          ctx do
       provider_at_its_caps!(ctx.scope)
-      {_queued, dispatch} = claimed!(ctx)
+      queued!(ctx)
       put_limit(500_000)
-
-      assert {:ok, handed} = Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
+      handed = claimed!(ctx)
 
       body = answer(handed)
       assert byte_size(body) <= 500_000
@@ -167,23 +160,23 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     end
 
     @tag :capture_log
-    test "refuses the handover, with nothing written, when the rest of the answer passes the limit",
+    test "refuses the claim, with nothing written, when the rest of the documents passes the limit",
          ctx do
       provider_at_its_caps!(ctx.scope)
-      {queued, dispatch} = claimed!(ctx)
+      queued = queued!(ctx)
       put_limit(40_000)
 
-      assert Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body}) ==
-               {:error, :unavailable}
+      assert Dispatches.claim(ctx.key, Dispatches.now(), @body) == {:error, :unavailable}
 
-      assert %DispatchRun{state: :claimed, end_cause: nil} = Repo.get!(DispatchRun, queued.id)
+      assert %DispatchRun{state: :waiting, end_cause: nil} = Repo.get!(DispatchRun, queued.id)
       assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0
+      assert Repo.aggregate(Apiary.Dispatches.Dispatch, :count) == 0
     end
   end
 
   describe "with the feature secrets off" do
     @tag with_features: [:observability, :security, :factory]
-    test "the answer has no run settings, and the run keeps none, whatever the gateway's keys",
+    test "the documents have no run settings, and the run keeps none, whatever the gateway's keys",
          ctx do
       off = Application.get_env(:apiary, :features)
 
@@ -208,9 +201,8 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
       work_item = work_item_fixture(ctx.scope)
       {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-      %{dispatch: dispatch} = dispatched!(ctx.key)
 
-      assert {:ok, handed} = Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
+      handed = claimed!(ctx)
       assert handed.run_settings == nil
       refute answer(handed) =~ "run_settings"
 

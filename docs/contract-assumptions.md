@@ -158,7 +158,7 @@ first refusal that applies is the answer:
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is absent or not `run`, or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
-| `409` | the subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, and the key reaches no run under it: before the handover no key does; after it, a key reaches the run when it is a key of the run's workspace, or a gateway's that may serve the run's workspace (`Apiary.Gateways.may_serve?/2`), and keeps the answer it had. Such a run is opened only by its handover (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
+| `409` | the subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, and the key reaches no run under it: before the claim no key does; after it, a key reaches the run when it is a key of the run's workspace, or a gateway's that may serve the run's workspace (`Apiary.Gateways.may_serve?/2`), and keeps the answer it had. Such a run is opened only by its claim (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and the run's workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
@@ -342,29 +342,21 @@ the body, the `time`), the first of these that applies is the answer:
 | `503` | a managed workspace whose run configuration cannot be read, a run key that cannot be made for the gateway, or a run that cannot be stored: never a run without its policy | `{"error":"unavailable"}` |
 | `200` | the run is stored | the run configuration, or for a run through a gateway its run key |
 
-**A run of the queue.** A node pool's starter claims the runs a workspace queues and
-hands each over (the provisioner contract, `contracts/provisioner/v1` of
-`qoryai/integrations`). Qory Apiary serves revision 3 of that contract alone: a request
-whose `X-Qory-Contract-Version` names any other revision is refused `400`
-`unsupported_contract_version`, and each claim answer and handover answer has `revision`
-3. A claim answer is a request for a machine: `dispatch_id`, `pool_id`, `lease_until` and
-`machine`, and nothing of the run, neither its `run_id`, its `step`, its `access`, its
-`target` nor its `work_item`. A
-handover answer has the run's `target` and its `access` together, or neither for an
-explore run whose work item has no target, which a workspace outside the software domain
-allows; a prebuild always has both. A handover answer also has `domain`, the name of the
-run's workspace's domain, and an explore run's input has the same `domain` and the same
-`target`, or no `target`, written from the same values as the answer. The machines file,
-a JSON file at the path `APIARY_MACHINES_FILE` is set to and read at boot
-(`Apiary.Dispatches.MachinesFile`), has an entry per workspace, by
-`<organisation slug>/<workspace slug>`: a claim answer has `machine`, the machine type of
-the entry of the run's workspace, for every step, and a handover answer has `stack` and
-`workflow`, the entry's stack and workflow, for every step but `prebuild`: a prebuild's
-handover answer has neither. With the variable unset, or for a workspace
-without an entry or without that part of one, the answer leaves those members out. Its
-`handover.schema.json` has the handover register the run, and
-has the run endpoint refuse, under any key, a registration whose `run_id` is that of such a
-run, waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
+**A run of the queue.** A node pool's starter claims the runs a workspace queues (the
+provisioner contract, `contracts/provisioner/v1` of `qoryai/integrations`). Qory Apiary
+serves revision 3 of that contract alone: a request whose `X-Qory-Contract-Version` names
+any other revision is refused `400` `unsupported_contract_version`, and each claim answer
+has `revision` 3. A claim answer is a request for a machine: `version`, `revision`,
+`dispatch_id`, `lease_until`, `machine`, `run_code` and `gateway_url`, sent with
+`Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its `step`, its
+`access`, its `target` nor its `work_item`. The machines file, a JSON file at the path
+`APIARY_MACHINES_FILE` is set to and read at boot (`Apiary.Dispatches.MachinesFile`), has
+an entry per workspace, by `<organisation slug>/<workspace slug>`: a claim answer has
+`machine`, the machine type of the entry of the run's workspace, for every step. With the
+variable unset, or for a workspace without an entry or without a machine type in it, the
+answer leaves `machine` out. The claim registers the run, and the run endpoint refuses,
+under any key, a registration whose `run_id` is that of such a run, waiting, claimed,
+handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager
 contract giving the other causes and their order. Qory Apiary reads "first" as the first of
 the run endpoint's checks, so the lookup (`dispatch_runs.run_id`, unique on the instance,
@@ -384,53 +376,56 @@ between the queue and the lookup.
 
 The events endpoint holds such a run the same way. A batch whose subject is its `run_id`,
 from a key that does not reach a run under that id, is `409` `run_id_used`, before or
-after the handover, decided inside the batch's transaction after the `404` of a key that
+after the claim, decided inside the batch's transaction after the `404` of a key that
 may not post and before anything of the batch is stored. A key reaches the run when it is
 a key of the run's workspace, or a gateway's that may serve the run's workspace
 (`Apiary.Gateways.may_serve?/2`), at the workspace's level or the organisation's. Before
-the handover (the run waiting, claimed, or ended before it) there is no run, so no key
-reaches one, and every key is refused. After it the run is registered, and a key that
+the claim (the run waiting, or ended before a claim) there is no run, so no key reaches
+one, and every key is refused. After it the run is registered, and a key that
 reaches it keeps the answer it had: the gateway that attached it is taken, another key of
 its workspace, the pool's included, and another gateway that may serve its workspace are
 `409` `wrong_gateway`, and a run whose events were pruned is `410`. A key of another
 workspace, and a gateway that may not serve the run's workspace, are refused
 `run_id_used`, and open no run under that id.
 
-The handover registers the run. The starter first says it started the job for the
-dispatch (`dispatched.schema.json`), then asks for the handover, and Qory Apiary registers
-the run in the handover's transaction, with the run of the queue and its dispatch held,
-through the gateway the pool's choice resolves to: the run's `run_id` is the one the run of
-the queue was given, and so is its instance id; its labels and its run variables come from
-the target, the work item's or the prebuild's collection's, and what it is about from the
-step and the work item, never from the request, whose body is `version`, `time` and,
-optionally, `run_code`;
-a prebuild's input is the `environment_ref` its run of the queue was queued for;
-its run key names the gateway and the pool, with an attach window of 600 seconds, and is
-given once, in the signed `200`, with `Cache-Control: no-store`. A handover whose body has
-`run_code` `true` is answered `version`, `revision`, `run_id`, `run_code` and `step` alone,
-`run_code` in place of `run_key`: a run code, `qecr_` and 26 characters, then `.` and the
-fingerprint of the instance's key, which the machine redeems
-once at enrolment for the run key, within 15 minutes of the handover (Enrolment). The run
-key is made at the first redemption, issued then, with its attach window of 600 seconds
-from then; until the redemption the run's attach window is the code's 15 minutes, so a run
-whose code is never redeemed is lost at the code's expiry. The refusals come in the contract's order: `403` `forbidden` for
-an unknown dispatch, another pool's, or a key the action is refused to, one answer; `410`
-`gone` for a dispatch that ended;
-`409` `handed_over`, `lease_expired`, `not_dispatched` and `no_gateway`; and `503`
-`unavailable` last, after which nothing was written. A lease that lapsed unswept is freed
-first, and that is committed: the run waits in its queue again, or a prebuild ends
-`superseded` while another prebuild of its collection and pool waits, and is answered `410`
-`gone`. When what the run is made from can no longer be formed, Qory Apiary ends the run of
-the queue and its dispatch in the handover's transaction and answers `410` `gone`, so the
-starter stops the job it started: a
-prebuild's collection ended, moved to another workspace, unassigned or left without a target
-(`collection_ended`), run variables that break their rules for the target
-(`variables_invalid`), a work item whose ticket is no longer kept (`ticket_gone`), or an
-input that breaks the explore contract's rules for it, or a work item with no target in a
-domain that requires one (`inputs_invalid`). The contract names
-`410` for a dispatch that ended and no cause for these; Qory Apiary reads them as ends of the
-dispatch, never as `503`, which would have the starter ask again for a run that can never be
-handed over.
+The claim registers the run, in the claim's transaction, with the run of the queue and
+its dispatch held, through the gateway the pool's choice resolves to: the run's `run_id`
+is the one the run of the queue was given, and so is its instance id; its labels and its
+run variables come from the target, the work item's or the prebuild's collection's, and
+what it is about from the step and the work item, never from the request; a prebuild's
+input is the `environment_ref` its run of the queue was queued for. The registered run
+has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
+`.` and the fingerprint of the instance's key, which the machine redeems once at
+enrolment for the run key, within 15 minutes of the claim (Enrolment). The run key names
+the gateway and the pool. It is made at the first redemption, issued then, with its
+attach window of 600 seconds from then; until the redemption the run's attach window is
+the code's 15 minutes, so a run whose code is never redeemed is lost at the code's
+expiry. A claim is `409` `no_gateway` when the pool's choice of gateway resolves to none,
+and claims nothing. A claim Qory Apiary cannot make, a run key that cannot be made for
+the gateway's address among the causes, is `503` `unavailable`, after which nothing was
+written. When what the run is made from can no longer be formed, Qory Apiary ends the
+run of the queue and its dispatch in the claim's transaction and claims the next run
+that waits: a prebuild's collection ended, moved to another workspace, unassigned or
+left without a target (`collection_ended`), run variables that break their rules for the
+target (`variables_invalid`), a work item whose ticket is no longer kept
+(`ticket_gone`), or an input that breaks the explore contract's rules for it, or a work
+item with no target in a domain that requires one (`inputs_invalid`).
+
+The starter says it started the machine for the dispatch (`dispatched.schema.json`)
+before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
+redemption of the run code before `lease_until`. A dispatch handed over keeps no lease:
+it never goes stale, and its slot stays held until its run ends. The refusals of
+`dispatched` come in the contract's order: `403` `forbidden` for an unknown dispatch,
+another pool's, or a key the action is refused to, one answer; `410` `gone` for a
+dispatch that ended; `409` `lease_expired` for a dispatch not handed over that is stale
+or past its `lease_until`; and `503` `unavailable` last, after which nothing was written.
+A lease that lapsed unswept is freed first, and that is committed: the run waits in its
+queue again, or a prebuild ends `superseded` while another prebuild of its collection
+and pool waits, and is answered `410` `gone`. A dispatch handed over accepts `dispatched`
+whatever its `lease_until`, and records the time of the first one alone. When a run
+leaves the claim other than by its handover, its lease lapsing, a release or the close
+of its work item, its registered run is deleted with the run code, and the code redeems
+nothing from then on.
 
 Once handed over, such a run ends with its registered run, in one of four ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
@@ -482,7 +477,7 @@ or an exit decides over it, changes nothing: the run keeps the end cause that ca
 refusal folded whose end the projection did not write is ended by the lost-run check at its
 next tick. A prebuild's refusal ends nothing of the queue. A work item's Explore reads a
 run ended `run_refused` as a run with no result and the outcome `error`, as it reads the
-end causes of a handover that cannot form a run (`Apiary.WorkItems.Explore`).
+end causes of a claim that cannot form a run (`Apiary.WorkItems.Explore`).
 
 The release gives a run back (`release.schema.json`), with the starter's `reason`, in one
 transaction (`Apiary.Dispatches.Release`). Whether the run waits again is Qory Apiary's to
@@ -508,8 +503,8 @@ The contract has the reason recorded as a prebuild's failure and says nothing of
 run's: Qory Apiary keeps every release's reason in its audit entry too, and shows it
 nowhere. A
 release holds its run's work item, or a prebuild's environment record, before anything of
-the queue, then locks as the handover does; a work item is never locked after a run of the
-queue, so a release, a close, the handover and the sweep take turns, and of two releases
+the queue, then locks as `dispatched` does; a work item is never locked after a run of the
+queue, so a release, a close, `dispatched` and the sweep take turns, and of two releases
 at once one acts and the other is `410` `gone`.
 
 The machine log is what the machine a starter created for a dispatch wrote, uploaded once
@@ -823,12 +818,13 @@ A signed answer is signed under `qory-enrol-answer-ed25519-v1`; its line 3 is th
 `access_key_id`, `node_id`, `node_kind`, `stored_secrets` and `apiary_public_key`. An
 unsigned answer lists no key. A refusal changes nothing: the code stays outstanding.
 
-A run code (`qecr_`, `Apiary.Runs.RunCode`), which a run's handover answers in place of its
+A run code (`qecr_`, `Apiary.Runs.RunCode`), which a claim answers in place of its run's
 run key, is answered in the same order, and the two `409`s of the ledger and the limit
 never apply to it: no access key is made, and its public key enters no ledger. Its `401`
-is also a code at or past its 15 minutes from the handover, a code of a run that has
+is also a code at or past its 15 minutes from the claim, a code of a run that has
 ended (no longer pending or running, released, given its outcome, its events pruned, or
-its run of the queue ended), and a code redeemed before by another public key. Its `201`
+its run of the queue ended), a code whose registered run was deleted because its dispatch
+left the claim before its handover, and a code redeemed before by another public key. Its `201`
 carries `version`, `run_id`, `run_key` and `apiary_public_key`: the run key is made at the
 first redemption, its `issued` that time and its `attach_by` 600 seconds after, and the
 run keeps it with the public key that redeemed the code. The same public key is given the
