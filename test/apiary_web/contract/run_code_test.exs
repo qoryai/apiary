@@ -191,19 +191,18 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       assert Repo.aggregate(AccessKey, :count) == keys
     end
 
-    test "a retry by the same public key is the same answer, byte for byte for the same request, signed over a new one's proof",
+    test "a retry by the same public key with a newer proof is the same answer, signed over its proof; the same proof again is 401",
          ctx do
       pair = ed25519_key_pair()
       body = body(ctx.code, pair)
       first = enrol(body)
       assert first.status == 201
 
+      # The same request again replays the first proof: refused, unsigned.
       again = enrol(body)
-      assert again.status == 201
-      assert again.resp_body == first.resp_body
-
-      assert get_resp_header(again, "x-qory-signature-ed25519") ==
-               get_resp_header(first, "x-qory-signature-ed25519")
+      assert again.status == 401
+      assert json_response(again, 401) == %{"error" => "unauthorized"}
+      assert get_resp_header(again, "x-qory-signature-ed25519") == []
 
       later = body(ctx.code, pair, timestamp: System.os_time(:second) + 5)
       newer = enrol(later)

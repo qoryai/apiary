@@ -38,11 +38,13 @@ defmodule Apiary.Runs.RunCode do
   #   4. past the code's limit, `{:error, {:rate_limited, seconds}}`;
   #   5. the first redemption makes the run key from the grant kept at the claim, issued
   #      at the redemption in whole seconds, its `attach_by` 600 seconds after, and writes
-  #      the run key's payload, its signature, `run_key_issued_at`, `attach_by` and the
-  #      public key in one write; a claimed dispatch is handed over in the same
-  #      transaction (`Apiary.Dispatches.Handover.hand_over/3`). A repeat by the same
-  #      public key is answered the run key the run has, byte for byte, and changes
-  #      nothing.
+  #      the run key's payload, its signature, `run_key_issued_at`, `attach_by`, the
+  #      public key and its proof's timestamp in one write; a claimed dispatch is handed
+  #      over in the same transaction (`Apiary.Dispatches.Handover.hand_over/3`). A retry
+  #      by the same public key whose proof's timestamp is newer than the first's is
+  #      answered the run key the run has, byte for byte, and changes nothing; one whose
+  #      timestamp is equal or older is a replayed proof, `{:error, :unauthorized}`, as
+  #      step 2's refusals are.
   #
   # So a code works from the claim until its expiry, and stops before then when the
   # claim's lease lapses before the handover, or when the dispatch ends, at a release
@@ -155,7 +157,7 @@ defmodule Apiary.Runs.RunCode do
          :ok <- within_code_limit(run, code_limit) do
       case state do
         :outstanding ->
-          run_key = redeemed(run, public_key, now)
+          run_key = redeemed(run, public_key, request.timestamp, now)
           if dispatch, do: :ok = Handover.hand_over(dispatch_run, dispatch, now)
           {:ok, %{run_id: run.node_run_id, run_key: run_key, documents: run.run_documents}}
 
@@ -174,7 +176,7 @@ defmodule Apiary.Runs.RunCode do
          {:ok, dispatch} <- live(dispatch_run, now) do
       cond do
         is_nil(run.run_code_public_key) -> {:ok, :outstanding, dispatch}
-        same_public_key?(run.run_code_public_key, request.public_key) -> {:ok, :redeemed, nil}
+        retry?(run, request) -> {:ok, :redeemed, nil}
         true -> {:error, :unauthorized}
       end
     else
@@ -209,6 +211,13 @@ defmodule Apiary.Runs.RunCode do
 
   defp live(_waiting_ended_or_none, _now), do: :ended
 
+  # The same public key as the first redemption's, with a proof made after the first's.
+  defp retry?(%Run{run_code_public_key: stored, run_code_proof_timestamp: first}, request),
+    do: same_public_key?(stored, request.public_key) and newer?(request.timestamp, first)
+
+  defp newer?(timestamp, first) when is_integer(first), do: timestamp > first
+  defp newer?(_timestamp, nil), do: false
+
   defp same_public_key?(<<_::binary-size(32)>> = stored, encoded) do
     case Ed25519.decode(encoded, 32) do
       {:ok, sent} -> Plug.Crypto.secure_compare(stored, sent)
@@ -239,13 +248,19 @@ defmodule Apiary.Runs.RunCode do
   # The first redemption: the run key made from the grant, issued at `now`, and the run's
   # run key fields and the public key written in one write. The grant passed a run key's
   # rules when the claim made the code, so the run key is made.
-  defp redeemed(%Run{id: id, run_code_grant: grant}, public_key, now) do
+  defp redeemed(%Run{id: id, run_code_grant: grant}, public_key, timestamp, now) do
     {:ok, %{run_key: run_key, through: through}} =
       Registration.issue_grant(load(grant), now, @attach_seconds)
 
     {1, _rows} =
       Repo.update_all(from(r in Run, where: r.id == ^id),
-        set: Map.to_list(through) ++ [run_code_public_key: public_key, updated_at: now]
+        set:
+          Map.to_list(through) ++
+            [
+              run_code_public_key: public_key,
+              run_code_proof_timestamp: timestamp,
+              updated_at: now
+            ]
       )
 
     run_key

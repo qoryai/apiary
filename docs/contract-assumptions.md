@@ -828,11 +828,12 @@ left the claim before its handover, and a code redeemed before by another public
 carries `version`, `run_id`, `run_key`, `documents`, the run's documents as its claim
 encoded them (A run of the queue), and `apiary_public_key`: the run key is made at the
 first redemption, its `issued` that time and its `attach_by` 600 seconds after, and the
-run keeps it with the public key that redeemed the code. The same public key is given the
-same `run_id`, `run_key` and `documents` again while the code's 15 minutes last, with
-`apiary_public_key` as the server's keys are at that moment, signed over the request's
-proof: while the server's keys are unchanged, the same request gets the same answer byte
-for byte.
+run keeps it with the public key that redeemed the code and the timestamp of its proof.
+A retry by the same public key, with a proof whose timestamp is newer than the first's,
+is given the same `run_id`, `run_key` and `documents` again while the code's 15 minutes
+last, with `apiary_public_key` as the server's keys are at that moment, signed over the
+retry's proof. A proof with the first's timestamp or an older one is a replayed proof,
+`401`, unsigned, and changes nothing.
 
 ## The log and the terminal
 
