@@ -9680,11 +9680,6 @@ msgstr ""
 msgid "No entries yet"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "No exit came within %{duration} of its gateway picking it up, so it was marked lost. It may still be going; only its exit changes the record now."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."
@@ -11725,7 +11720,12 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. It may still be going; only its exit changes the record now."
+msgid "Qory Apiary received no exit within %{duration} after the gateway took the run, so it marked the run lost. The run may still be running; only its exit changes this record now."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex

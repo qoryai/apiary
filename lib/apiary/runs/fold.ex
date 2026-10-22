@@ -100,10 +100,10 @@ defmodule Apiary.Runs.Fold do
   when it arrived by then, as does a start. Neither revives a run the lost-run check ended
   for its silence (`silenced_at`), whenever it arrived: that end freed the run's slot, and
   only its exit changes the run then, as a run of the queue takes no outcome. A lower
-  offset alone revives nothing and undoes no revive. So the one order that can show is a revive by a
-  heartbeat that a lower offset, folded after it, would have kept from reviving: from
-  an earlier heartbeat delivered after it across a clock set back between the two. The
-  next lost-run check settles it.
+  offset alone revives nothing and undoes no revive. So the one order that can show is a
+  revive by a heartbeat that a lower offset, folded after it, would have kept from
+  reviving: from an earlier heartbeat delivered after it across a clock set back between
+  the two. The next lost-run check settles it.
 
   A run through a gateway counts the starts and heartbeats of the instance that attached
   it alone (`liveness_instance/1`), by the instance id each event was delivered with

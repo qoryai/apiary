@@ -1078,12 +1078,12 @@ defmodule ApiaryWeb.OverviewComponents do
     cond do
       silenced?(run) ->
         gettext(
-          "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. It may still be going; only its exit changes the record now."
+          "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
         )
 
       lost_past_backstop?(run) ->
         gettext(
-          "No exit came within %{duration} of its gateway picking it up, so it was marked lost. It may still be going; only its exit changes the record now.",
+          "Qory Apiary received no exit within %{duration} after the gateway took the run, so it marked the run lost. The run may still be running; only its exit changes this record now.",
           duration: backstop_words(run)
         )
 

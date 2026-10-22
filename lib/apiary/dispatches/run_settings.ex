@@ -7,8 +7,10 @@ defmodule Apiary.Dispatches.RunSettings do
   # time limits are read for the workflow of the workspace's entry in the machines file
   # (`Apiary.Dispatches.MachinesFile.stack/2`); for an entry with no workflow, only the
   # choices without one apply.
-  # `Apiary.Dispatches.Handover` calls `hold/1` before it locks anything else, and
-  # `build/1` once its run of the queue and its dispatch are locked.
+  # The claim (`Apiary.Dispatches.claim/3`) locks the pool's row, the gateway's row, the
+  # records a lapse needs (`Apiary.Dispatches.Slots`), the run of the queue it took and the
+  # dispatch it inserted, in that order; then `Apiary.Dispatches.Handover.register/2` calls
+  # `hold/1`, and `build/1` with what `hold/1` returned.
   #
   # Only an explore run has `run_settings`, and only with both features `factory` and
   # `secrets` on; without either, the documents have none. With them on and no choice at any
