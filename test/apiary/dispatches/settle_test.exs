@@ -201,18 +201,7 @@ defmodule Apiary.Dispatches.SettleTest do
       assert stored(handed) == {nil, nil}
     end
 
-    test "a run released, closed or undone, and one lost by the check", ctx do
-      released = handed_over!(ctx)
-
-      {:ok, _released} =
-        Repo.transact(fn ->
-          Dispatches.end_run_released(released.dispatch_run.id, Dispatches.now())
-        end)
-
-      result!(released, 8, understood_result())
-      exited!(released, 9)
-      project!(released)
-
+    test "a run closed or undone, and one lost by the check", ctx do
       lost = handed_over!(ctx)
       Liveness.check(DateTime.add(lost.run.backstop_at, 1, :second))
       assert %DispatchRun{end_cause: :lost} = queue_run!(lost)
@@ -233,7 +222,6 @@ defmodule Apiary.Dispatches.SettleTest do
       assert Settle.sweep(later) == []
 
       for {handed, cause} <- [
-            {released, :released},
             {lost, :lost},
             {%{dispatch_run: closed_run}, :closed},
             {%{dispatch_run: undone_run}, :undone}

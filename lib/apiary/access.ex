@@ -486,7 +486,7 @@ defmodule Apiary.Access do
         {:not,
          "the start of a claimed run's machine is kept on its dispatch, not in the audit trail"}
     ),
-    Action.new(:"dispatch.release", "give a claimed run back, to wait again or to end",
+    Action.new(:"dispatch.release", "give a claimed run back before its machine exists",
       feature: :factory,
       roles: [:pool_key]
     ),

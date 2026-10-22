@@ -128,8 +128,8 @@ defmodule Apiary.Dispatches do
   # `release(access_key, dispatch_id, meta)` gives the dispatch's run back, with the
   # starter's reason, in one transaction, or refuses in the contract's order
   # (`Apiary.Dispatches.Release`): before the handover the dispatch ends, `released`, the
-  # registered run goes with its run code, and the run waits again; after it the run ends
-  # with its registered run, `released`, and nothing is queued.
+  # registered run goes with its run code, and the run waits again; after it the release
+  # is refused, `machine_exists`, and nothing is written.
   #
   # `upload_machine_log(access_key, dispatch_id, meta)` stores the dispatch's machine log,
   # once per dispatch, before or after the dispatch ends, and `machine_log(scope,
@@ -149,11 +149,10 @@ defmodule Apiary.Dispatches do
   # its transaction, and tells the workspaces it changed. `Apiary.Dispatches.Sweep` runs it
   # every minute.
   #
-  # ## The end of a run handed over: `end_run_released/2` and `backstop_seconds/1`
+  # ## The end of a run handed over: `backstop_seconds/1`
   #
   # A run handed over ends with its registered run: by its starter's outcome or its exit,
-  # by its starter's release after the handover (`release/3`, which ends it as
-  # `end_run_released/2` does, `Apiary.Dispatches.Release`), or by the lost-run check, at
+  # by its gateway's refusal, or by the lost-run check, at
   # its gateway's `attach_by` should it never attach, or at `backstop_seconds/1` of its
   # step after its attach should it have neither an outcome nor an exit by then
   # (`Apiary.Dispatches.RunEnd`). Its dispatch ends with it and the slot
@@ -812,21 +811,6 @@ defmodule Apiary.Dispatches do
   def machine_log(scope, dispatch_id), do: MachineLogs.machine_log(scope, dispatch_id)
 
   ## The end of a run handed over
-
-  # end_run_released/2 ends the run of the queue `dispatch_run_id`, which its starter
-  # released after its handover, at `now`, inside the caller's transaction
-  # (`Apiary.Dispatches.RunEnd.released/2`): the registered run reads as cancelled with the
-  # reason `released`, no outcome is recorded and no `end` is sent; the dispatch ends,
-  # `released`, and its slot is freed once. `{:ok, %{run: run, changed: workspace_ids}}`
-  # for the caller to broadcast and tell once its transaction commits, or
-  # `{:error, :ended | :not_handed_over | :not_found}`, after which nothing is written. The
-  # caller locks nothing of the run before, or locks the run of the queue first.
-  @doc false
-  @spec end_run_released(Ecto.UUID.t(), DateTime.t()) ::
-          {:ok, %{run: Apiary.Runs.Run.t() | nil, changed: [Ecto.UUID.t()]}}
-          | {:error, :ended | :not_handed_over | :not_found}
-  def end_run_released(dispatch_run_id, %DateTime{} = now),
-    do: RunEnd.released(dispatch_run_id, now)
 
   # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
   # outcome or its exit, or is lost: 1200 for `explore` and 2100 for `prebuild`.

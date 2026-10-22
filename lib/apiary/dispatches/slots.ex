@@ -88,10 +88,8 @@ defmodule Apiary.Dispatches.Slots do
   # (`Apiary.WorkItems.close_locked/3`) and `Apiary.Dispatches.queue_next/2` hold a work
   # item before its runs; for a prebuild, its environment record `FOR UPDATE`, as 3.
   # has it. Then the free of its run, which locks that record again where its lease
-  # lapsed, its run of the queue, its dispatch, and after its handover the run
-  # registered for it (`Apiary.Dispatches.RunEnd.released/2`). A prebuild given back
-  # before its handover locks the one that waits of its collection and pool after
-  # its dispatch (`wait_again/3`): under the record it holds, which every path that locks
+  # lapsed, its run of the queue, and its dispatch. A prebuild given back locks the one
+  # that waits of its collection and pool after its dispatch (`wait_again/3`): under the record it holds, which every path that locks
   # the one that waits holds first, but a claim, whose `FOR UPDATE SKIP LOCKED` waits on
   # none. A path that locks a work item locks it before any run of the queue, never after.
   #

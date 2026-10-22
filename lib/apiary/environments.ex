@@ -51,17 +51,14 @@ defmodule Apiary.Environments do
   # (`Apiary.Dispatches.queue_prebuild/3`). A caller calls `trigger/2` once per
   # transaction: two calls would lock in two orders.
   #
-  # ## A build given back: `lock_record/2` and `record_release_failure/3`
+  # ## A build given back: `lock_record/2`
   #
   # `lock_record(pool_id, collection_id)` locks the record of a prebuild's pool and
   # collection `FOR UPDATE`, inside the caller's transaction: a starter's release of the
   # prebuild holds it before the free of its run and before its run of the queue, as a
   # free of lapsed leases holds it (`Apiary.Dispatches.Release`, `Apiary.Dispatches.Slots`).
-  # `record_release_failure(record, reason, now)` then records the last build as failed,
-  # `released`, with the starter's `reason` and `now`: the last good build, `image`,
-  # `size`, `commit`, `built_at` and `reported_ref`, is left as it was, and nothing is
-  # queued. A release of a prebuild whose ref is older than the image's records nothing
-  # (`newer_build?/2`).
+  # A release records no failure: a starter releases a prebuild only before its handover.
+  # A record whose `failure_cause` is `released` was written before that rule.
   #
   # ## A build lost: `record_end_failure/3`
   #
@@ -213,23 +210,6 @@ defmodule Apiary.Environments do
         where: r.pool_id == ^pool_id and r.source_collection_id == ^collection_id,
         lock: "FOR UPDATE"
     )
-  end
-
-  # record_release_failure/3 records the last build of `record`, locked by
-  # `lock_record/2`, as failed by the starter's release, with its `reason`, at `now`,
-  # inside the caller's transaction (the moduledoc).
-  @doc false
-  @spec record_release_failure(Record.t(), String.t(), DateTime.t()) :: :ok
-  def record_release_failure(%Record{id: id}, reason, %DateTime{} = now)
-      when is_binary(id) and is_binary(reason) do
-    in_transaction!("record_release_failure/3")
-
-    {1, _rows} =
-      Repo.update_all(from(r in Record, where: r.id == ^id),
-        set: [failure_cause: :released, failure_reason: reason, failed_at: now, updated_at: now]
-      )
-
-    :ok
   end
 
   # record_end_failure/3 records the last build of `record`, locked by `lock_record/2`,

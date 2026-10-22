@@ -3,8 +3,8 @@ defmodule Apiary.Dispatches.Release do
 
   # A node pool's starter gives back the run of a dispatch its pool claimed (the
   # provisioner contract's `release.schema.json`): `release/3`, with the starter's
-  # `reason`. Whether the run waits again is Qory's to decide, not the starter's: before
-  # the handover it always waits again, and after it the run ends.
+  # `reason`. A release is accepted only before the handover: before `dispatched` and
+  # while the run code is unredeemed. The run then waits again.
   # `Apiary.Dispatches` delegates it here.
   #
   # ## What it asks first
@@ -28,12 +28,12 @@ defmodule Apiary.Dispatches.Release do
   #   5. the run of the queue locked `FOR UPDATE` (`Apiary.Dispatches.RunEnd.lock/1`), then
   #      the dispatch, and the clock read once both are held;
   #   6. a dispatch that ended, or of a run that ended, is `{:error, :gone}`;
-  #   7. a dispatch that was not handed over, and is stale or whose `lease_until` the clock
-  #      is at or past, is `{:error, :lease_expired}`. A dispatch handed over is never
-  #      refused so, whatever its `lease_until`: after the handover the release is answered
-  #      as a success.
+  #   7. a dispatch handed over, by its `dispatched` or by the redemption of its run code,
+  #      is `{:error, :machine_exists}`: a machine exists for it;
+  #   8. a dispatch that is stale or whose `lease_until` the clock is at or past is
+  #      `{:error, :lease_expired}`.
   #
-  # ## Before the handover
+  # ## The release
   #
   # The dispatch ends, `released`, the slot it took is freed once, and the run registered
   # at its claim is deleted with its run code (`Apiary.Dispatches.Handover.drop/1`), so
@@ -47,39 +47,25 @@ defmodule Apiary.Dispatches.Release do
   #     `queued_ref`, or ends `superseded` while another prebuild of its collection and
   #     pool waits. No failure is recorded.
   #
-  # ## After the handover
-  #
-  # The run ends with its registered run, `released` (`Apiary.Dispatches.RunEnd.released/2`):
-  # the registered run reads as cancelled with the reason `released`, no outcome is
-  # recorded, the dispatch ends with it and its slot is freed once. A registered run whose
-  # outcome or exit came first is too late for it, `{:error, :gone}`, and nothing is
-  # written; for a prebuild, whose exit ends nothing of the queue, its outcome alone is.
-  # Nothing is queued: an explore run's work item reads its run as cancelled, and a member
-  # may run Explore again; a prebuild's record keeps the last build as failed,
-  # `released`, with the reason, and its last good build as it was.
-  #
-  # A prebuild whose ref is older than the record's image's records no failure, before the
-  # handover or after it (`Apiary.Environments.newer_build?/2`, asked under the
-  # record's lock): the record is left as it is, and the run ends as above.
+  # A prebuild given back records no failure: its environment record keeps its last
+  # build as it was.
   #
   # ## The answer
   #
   # `:ok` once the release is written, with one entry in the audit trail, in the
-  # transaction: `dispatch.release`, by the pool's key, about the run registered for it
-  # after the handover, and about the pool before it, its `details` the dispatch's public
-  # id, the step, `handed_over`, then what came of the run, one of `waits` (true: it waits
-  # again), `superseded` (true: it ended so) or `ended` (true: it ended), and the
+  # transaction: `dispatch.release`, by the pool's key, about the pool, its `details` the
+  # dispatch's public id, the step, `handed_over` (false), then what came of the run, one
+  # of `waits` (true: it waits again) or `superseded` (true: it ended so), and the
   # `reason`. The reason is kept there and shown nowhere. A refusal writes no entry: it
   # commits what the lapse of step
   # 4 wrote, and nothing else. An exception rolls the transaction back, is logged by its
   # module alone, never the key or the reason, and is `{:error, :unavailable}`. Once it
-  # commits, the registered run is broadcast as changed and the workspaces whose queue or
-  # slots changed are told; a failure of either never changes the answer.
+  # commits, the workspaces whose queue or slots changed are told; a failure never changes
+  # the answer.
   #
   # Locks, in the order `Apiary.Dispatches.Slots` gives: the work item or the record,
-  # the records a lapse needs, the run of the queue, the dispatch, then after the handover
-  # the registered run, or before it, for a prebuild, the one that waits of its
-  # collection and pool, under the record. A work item is never locked after the run of
+  # the records a lapse needs, the run of the queue, the dispatch, then, for a prebuild,
+  # the one that waits of its collection and pool, under the record. A work item is never locked after the run of
   # the queue.
 
   import Ecto.Query, only: [from: 2]
@@ -87,13 +73,14 @@ defmodule Apiary.Dispatches.Release do
   alias Apiary.{Audit, Environments, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, RunEnd, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Slots}
   alias Apiary.Environments.Record
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
 
-  @type refusal :: :unauthorized | :forbidden | :gone | :lease_expired | :unavailable
+  @type refusal ::
+          :unauthorized | :forbidden | :gone | :machine_exists | :lease_expired | :unavailable
 
   @type release :: %{reason: String.t()}
 
@@ -107,12 +94,12 @@ defmodule Apiary.Dispatches.Release do
       key_id
       |> Handover.transact(dispatch_id, :"dispatch.release", &hold/1, fn locked ->
         with :ok <- Handover.not_ended(locked),
-             :ok <- lease_held(locked) do
+             :ok <- no_machine(locked),
+             :ok <- Handover.lease_held(locked) do
           give_back(locked, release)
         end
       end)
       |> Handover.answered()
-      |> Handover.broadcast_run()
       |> case do
         {:ok, _released} -> :ok
         {:error, _reason} = refused -> refused
@@ -132,25 +119,14 @@ defmodule Apiary.Dispatches.Release do
 
   defp hold(%DispatchRun{}), do: nil
 
-  # A dispatch handed over is never lease_expired: its release is a success.
-  defp lease_held(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}}), do: :ok
-  defp lease_held(locked), do: Handover.lease_held(locked)
+  # A dispatch handed over has a machine: its `dispatched` came, or its run code was
+  # redeemed.
+  defp no_machine(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}}),
+    do: {:refused, :machine_exists}
 
-  ## After the handover
+  defp no_machine(_locked), do: :ok
 
-  defp give_back(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}} = locked, release) do
-    case RunEnd.released(locked.run.id, locked.now) do
-      {:ok, %{run: run, changed: changed}} ->
-        :ok = build_failed(locked, release)
-        record(locked, release, %{"ended" => true}, run || locked.key.node)
-        {:done, {:ok, %{run: run}}, changed}
-
-      {:error, :ended} ->
-        {:refused, :gone}
-    end
-  end
-
-  ## Before the handover: the run waits again
+  ## The run waits again
 
   defp give_back(%{run: %DispatchRun{step: @prebuild}} = locked, release) do
     changed = end_dispatch(locked)
@@ -197,19 +173,6 @@ defmodule Apiary.Dispatches.Release do
     do: %{{run.source_collection_id, run.pool_id} => queued_ref}
 
   defp queued_refs(nil, %DispatchRun{}), do: %{}
-
-  # A prebuild's last build failed, `released`, with the reason; the last good build kept.
-  # A prebuild whose ref is older than the record's image's records nothing.
-  defp build_failed(
-         %{run: %DispatchRun{step: @prebuild} = run, held: %Record{} = record} = locked,
-         %{reason: reason}
-       ) do
-    if Environments.newer_build?(record, run),
-      do: :ok,
-      else: Environments.record_release_failure(record, reason, locked.now)
-  end
-
-  defp build_failed(_locked, _release), do: :ok
 
   # The one audit entry, in the transaction, about `subject`.
   defp record(%{key: key, dispatch: dispatch, run: run}, release, came, subject) do

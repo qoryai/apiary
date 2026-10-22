@@ -28,11 +28,11 @@ defmodule ApiaryWeb.Contract.DispatchController do
   # the body's `reason`, with the refusals in the contract's order: the key
   # read again and refused, `401`, unsigned; an unknown dispatch, another pool's, or the
   # action refused, `403` `forbidden`, one answer, after which nothing is written; a
-  # dispatch that ended, of a run that ended, or of a run whose outcome or exit came after
-  # its handover, `410` `gone`; one not handed over whose lease lapsed, `409`
-  # `lease_expired`, never one handed over; anything Qory could not do, `503`
-  # `unavailable`, after which nothing was written. Else `204`, signed, with no body:
-  # before the handover the run waits again, and after it the run ends.
+  # dispatch that ended, or of a run that ended, `410` `gone`; one handed over, by its
+  # `dispatched` or by the redemption of its run code, `409` `machine_exists`; one whose
+  # lease lapsed, `409` `lease_expired`; anything Qory could not do, `503` `unavailable`,
+  # after which nothing was written. Else `204`, signed, with no body, and the run waits
+  # again.
   #
   # A machine log accepted is stored (`Apiary.Dispatches.upload_machine_log/3`), with the
   # body's `log` and `truncated`, with the refusals in the contract's order: the key read
@@ -85,6 +85,7 @@ defmodule ApiaryWeb.Contract.DispatchController do
         {:error, :unauthorized} -> refuse(conn, 401, "unauthorized")
         {:error, :forbidden} -> refuse(conn, 403, "forbidden")
         {:error, :gone} -> refuse(conn, 410, "gone")
+        {:error, :machine_exists} -> refuse(conn, 409, "machine_exists")
         {:error, :lease_expired} -> refuse(conn, 409, "lease_expired")
         {:error, :unavailable} -> refuse(conn, 503, "unavailable")
       end

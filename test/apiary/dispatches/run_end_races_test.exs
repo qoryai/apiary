@@ -7,13 +7,14 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   # they made.
   #
   # The rules under test: every end locks the run of the queue first, then the registered
-  # run, then writes the dispatches. So the backstop and an outcome that come at once, a
-  # release and an outcome, or any of the ends together, take turns: the first decides the
-  # end cause, the outcome is taken whichever is first and never refused as given, the slot
-  # is freed once, by the first end, and none of them deadlocks. For a prebuild handed
-  # over, the lost-run check holds its environment record before the run of the queue, as
-  # a release and a trigger of its collection hold it: so the check takes turns with them
-  # at the record, the record keeps the end that decided, and none deadlocks. What a run
+  # run, then writes the dispatches. So the backstop and an outcome that come at once, or
+  # any of the ends together, take turns: the first decides the end cause, the outcome is
+  # taken whichever is first and never refused as given, the slot is freed once, by the
+  # first end, and none of them deadlocks. A release after the handover is refused
+  # `machine_exists`, or `gone` once the run ended, and ends nothing. For a prebuild
+  # handed over, the lost-run check holds its environment record before the run of the
+  # queue, as a release and a trigger of its collection hold it: so the check takes turns
+  # with them at the record, the record keeps the end that decided, and none deadlocks. What a run
   # gave is stored by its end or by a settle (`Apiary.Dispatches.Settle`), which locks the
   # run of the queue alone: it takes turns with an outcome, a projection and the lost-run
   # check there, and what is stored is the same whichever comes first.
@@ -83,8 +84,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   # The moment after its backstop.
   defp past_backstop(%{run: run}), do: DateTime.add(run.backstop_at, 1, :second)
 
-  defp release(%{dispatch_run: %DispatchRun{id: id}}),
-    do: Repo.transact(fn -> Dispatches.end_run_released(id, Dispatches.now()) end)
+  defp release(ctx, %{dispatch: dispatch}),
+    do: Dispatches.release(ctx.key, dispatch.public_id, %{reason: @reason})
 
   # The run of the queue, its dispatch and its registered run as the ends left them, held
   # to one end: the cause on both, the dispatch's slot freed by that end, at its end.
@@ -147,61 +148,6 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
       assert Task.await(second.task) == []
       assert {:run_ended, %Run{state: "completed", lost_at: nil}} = ended!(ctx, handed)
-    end
-  end
-
-  describe "a release after the handover and an outcome" do
-    test "at once: the outcome is taken, never as given, and one end decides", ctx do
-      for _round <- 1..4 do
-        handed = handed_over!(ctx)
-
-        [released, outcome] =
-          together([
-            fn -> release(handed) end,
-            fn -> give_outcome(ctx.key, handed.run, "failed") end
-          ])
-
-        assert {:ok, %{repeated: false}} = outcome
-        {cause, run} = ended!(ctx, handed)
-
-        case cause do
-          :released -> assert {:ok, %{run: %Run{}}} = released
-          :run_ended -> assert released == {:error, :ended}
-        end
-
-        assert %Run{state: "failed", outcome_state: "failed"} = run
-      end
-    end
-
-    test "the release first: the outcome waits, is taken after it, and the end stays released",
-         ctx do
-      handed = handed_over!(ctx)
-
-      {first, first_pid} = hold(fn -> release(handed) end)
-      assert {:ok, %{run: %Run{state: "cancelled", reason: "released"}}} = first.result
-
-      second = start(fn -> give_outcome(ctx.key, handed.run, "failed", "crashed") end)
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:ok, %{repeated: false}} = Task.await(second.task)
-
-      assert {:released, %Run{state: "failed", reason: "crashed", released_at: %DateTime{}}} =
-               ended!(ctx, handed)
-    end
-
-    test "the outcome first: the release waits, and is :ended", ctx do
-      handed = handed_over!(ctx)
-
-      {first, first_pid} = hold(fn -> give_outcome(ctx.key, handed.run, "succeeded") end)
-      assert {:ok, %{repeated: false}} = first.result
-
-      second = start(fn -> release(handed) end)
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert Task.await(second.task) == {:error, :ended}
-      assert {:run_ended, %Run{state: "completed", released_at: nil}} = ended!(ctx, handed)
     end
   end
 
@@ -333,7 +279,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     defp for_pool(runs, handed),
       do: Enum.filter(runs, &(&1.pool_id == handed.dispatch_run.pool_id))
 
-    test "and a release at once: one decides, the record keeps its end, none deadlocks",
+    test "and a release at once: the check decides, the release ends nothing, none deadlocks",
          ctx do
       for _round <- 1..4 do
         handed = prebuild_handed_over!(ctx)
@@ -341,21 +287,10 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         [lost, released] =
           together([lose_prebuild(handed), release_prebuild(ctx, handed)])
 
-        case end_cause(handed) do
-          :lost ->
-            assert lost != []
-            assert released == {:error, :gone}
-
-            assert %Record{failure_cause: :lost, failure_reason: nil} = record_kept!(handed)
-
-          :released ->
-            assert lost == []
-            assert released == :ok
-
-            assert %Record{failure_cause: :released, failure_reason: @reason} =
-                     record_kept!(handed)
-        end
-
+        assert lost != []
+        assert released in [{:error, :machine_exists}, {:error, :gone}]
+        assert end_cause(handed) == :lost
+        assert %Record{failure_cause: :lost, failure_reason: nil} = record_kept!(handed)
         assert [%DispatchRun{state: :ended}] = runs_of(handed)
         assert Slots.held(ctx.place.pool.id) == 0
       end
@@ -377,19 +312,19 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       assert [%DispatchRun{state: :ended}] = runs_of(handed)
     end
 
-    test "the release first: the check waits on the record, then finds the run ended", ctx do
+    test "the release first: the check waits on the record, then loses the run", ctx do
       handed = prebuild_handed_over!(ctx)
 
       {first, first_pid} = hold(release_prebuild(ctx, handed))
-      assert first.result == :ok
+      assert first.result == {:error, :machine_exists}
 
       second = start(lose_prebuild(handed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert Task.await(second.task) == []
-      assert end_cause(handed) == :released
-      assert %Record{failure_cause: :released, failure_reason: @reason} = record_kept!(handed)
+      assert Task.await(second.task) != []
+      assert end_cause(handed) == :lost
+      assert %Record{failure_cause: :lost, failure_reason: nil} = record_kept!(handed)
     end
 
     test "the check holds the record before the run of the queue", ctx do
@@ -478,9 +413,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
             )
           )
 
-        assert end_cause(handed) in [:lost, :released]
-        assert %Record{failure_cause: cause, queued_ref: "env-2"} = record_kept!(handed)
-        assert cause == end_cause(handed)
+        assert end_cause(handed) == :lost
+        assert %Record{failure_cause: :lost, queued_ref: "env-2"} = record_kept!(handed)
 
         assert [%DispatchRun{state: :ended}, %DispatchRun{state: :waiting}] = runs_of(handed)
 
@@ -601,20 +535,19 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       ends = [
         fn -> {:check, Liveness.check(at)} end,
         fn -> {:lose, RunEnd.lose(at)} end,
-        fn -> {:release, release(handed)} end,
-        fn -> {:release, release(handed)} end,
+        fn -> {:release, release(ctx, handed)} end,
+        fn -> {:release, release(ctx, handed)} end,
         fn -> {:outcome, give_outcome(ctx.key, handed.run, "failed")} end
       ]
 
       answers = together(Enum.take(ends, sides(length(ends))))
 
       releases = for {:release, answer} <- answers, do: answer
-      assert Enum.count(releases, &match?({:ok, _released}, &1)) <= 1
-      assert Enum.all?(releases, &(match?({:ok, _released}, &1) or &1 == {:error, :ended}))
+      assert Enum.all?(releases, &(&1 in [{:error, :machine_exists}, {:error, :gone}]))
       assert Enum.all?(for({:outcome, answer} <- answers, do: answer), &match?({:ok, _}, &1))
 
       {cause, _run} = ended!(ctx, handed)
-      assert cause in [:lost, :released, :run_ended]
+      assert cause in [:lost, :run_ended]
 
       # A second round of every end changes nothing.
       before = Repo.get!(Dispatch, handed.dispatch.id)
