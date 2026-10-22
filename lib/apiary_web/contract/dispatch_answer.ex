@@ -5,12 +5,12 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # answer (`ApiaryWeb.Contract.PoolClaimController`) from the machines file
   # (`Apiary.Dispatches.MachinesFile`); a run's documents, with its target and its work
   # item, as `definitions.schema.json` has them, what a run of a step may do on its
-  # target, present together with the target or left out with it, and the stack from the
-  # machines file; and a time in UTC to the whole second.
+  # target, present together with the target or left out with it, and the run's stack
+  # (`Apiary.Stacks.for_run/3`); and a time in UTC to the whole second.
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches.MachinesFile
-  alias Apiary.WorkItems
+  alias Apiary.{Stacks, WorkItems}
 
   # machine/1 is the `machine` member of the claim answer of a run of the workspace of the
   # node pool's key `access_key`, which `Apiary.AccessKeys.fetch_for_verification/1`
@@ -29,9 +29,9 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # this order: the run's `step`, the
   # workspace's `domain`, the run's `access` and `target` (none for a run without a
   # target), its `work_item` (none for a prebuild), its `run_settings` (none for none, a
-  # `Jason.OrderedObject`), its `stack` and `workflow` (none for none and for a
-  # prebuild, `Apiary.Dispatches.MachinesFile.stack/2`) and its `inputs`. The claim
-  # measures them (`Apiary.Dispatches.Handover`).
+  # `Jason.OrderedObject`), its `stack`, `workflow` and `harness_hidden` (none for none
+  # and for a prebuild, `Apiary.Stacks.for_run/3`) and its `inputs`. The claim measures
+  # them (`Apiary.Dispatches.Handover`).
   @doc false
   @spec documents(%{
           required(:step) => String.t(),
@@ -39,7 +39,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:target) => %{system: String.t(), path: String.t()} | nil,
           required(:work_item) => Apiary.WorkItems.WorkItem.t() | nil,
           required(:run_settings) => Jason.OrderedObject.t() | nil,
-          required(:stack) => MachinesFile.stack() | nil,
+          required(:stack) => Stacks.run_stack() | nil,
           required(:inputs) => Jason.OrderedObject.t(),
           optional(atom) => term
         }) :: Jason.OrderedObject.t()
@@ -54,10 +54,12 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
     )
   end
 
-  # The `stack` and the `workflow` of a run's documents, both or neither.
+  # The `stack`, the `workflow` and `harness_hidden` of a run's documents, all three or
+  # none.
   defp stack(nil), do: []
 
-  defp stack(%{name: name, workflow: workflow}), do: [{"stack", name}, {"workflow", workflow}]
+  defp stack(%{stack: stack, workflow: workflow, harness_hidden: hidden}),
+    do: [{"stack", stack}, {"workflow", workflow}, {"harness_hidden", hidden}]
 
   # reach/2 is the `access` of a run of `step` and its `target`, both present for a run
   # with a target and both left out for one without, as the contract requires them

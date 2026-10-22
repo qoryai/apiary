@@ -354,11 +354,9 @@ has `revision` 1. A claim answer is a request for a machine: `version`, `revisio
 `access`, its `target` nor its `work_item`. The machines file, a JSON file at the path
 `APIARY_MACHINES_FILE` is set to and read at boot (`Apiary.Dispatches.MachinesFile`), has
 an entry per workspace, by `<organisation slug>/<workspace slug>`: a claim answer has
-`machine`, the machine type of the entry of the run's workspace, for every step, and the
-run's documents have `stack` and `workflow`, the name of the entry's stack and its
-workflow, for every step but `prebuild`. With the variable unset, or for a workspace
-without an entry or without that part of one, the answer and the documents leave those
-members out. The claim registers the run, and the run endpoint refuses,
+`machine`, the machine type of the entry of the run's workspace, for every step. With
+the variable unset, or for a workspace without an entry or without a machine in it, the
+answer leaves `machine` out. The claim registers the run, and the run endpoint refuses,
 under any key, a registration whose `run_id` is that of such a run, waiting, claimed,
 handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager
@@ -399,9 +397,9 @@ run variables come from the target, the work item's or the prebuild's collection
 what it is about from the step and the work item, never from the request; a prebuild's
 input is the `environment_ref` its run of the queue was queued for. The claim encodes
 the run's documents once (the run contract's `documents.schema.json`: `step`, `domain`,
-`access` and `target` together or neither, `work_item`, `run_settings`, `stack` and
-`workflow`, and `inputs`) and keeps the bytes on the registered run
-(`runs.run_documents`); every redemption of the run code answers them as they are. The
+`access` and `target` together or neither, `work_item`, `run_settings`, `stack`,
+`workflow` and `harness_hidden` together or none, and `inputs`) and keeps the bytes on
+the registered run (`runs.run_documents`); every redemption of the run code answers them as they are. The
 201 of that redemption takes at most 1 MiB, what the gateway's relay passes back: the
 claim measures the rest of the 201 with a run key of the run's grant and the server's
 keys, keeps 1,024 bytes free for a second server key, and gives the documents the rest;
@@ -424,6 +422,27 @@ left without a target (`collection_ended`), run variables that break their rules
 target (`variables_invalid`), a work item whose ticket is no longer kept
 (`ticket_gone`), or an input that breaks the explore contract's rules for it, or a work
 item with no target in a domain that requires one (`inputs_invalid`).
+
+**The run's stack.** An explore run's documents have `stack`, `workflow` and
+`harness_hidden` together, or none of them; a prebuild's have none. `workflow` is the
+workflow of the entry of the run's workspace in the machines file. A workspace with no
+entry, or an entry without a stack and a workflow, gives its runs no workflow, so their
+documents have none of the three. `stack` is a stack name, such as `software-standard`,
+or a stack reference, `<url>#<ref>:<path>`, the location of a stack, each as the run
+contract's `stack_name` and `stack_reference` define them (`Apiary.Contract.Stack`). An
+organisation's stack can be stored at five levels, the most specific first: the target
+and the workflow, the target, the workspace and the workflow, the workspace, and the
+organisation's default. The first level with a stack applies, and a level without one
+passes to the next; after them comes the stack name of the workspace's entry in the
+machines file (`Apiary.Stacks.Resolution`). Each stored stack has the organisation of
+the person who saved it. The owner of a name is the instance; the owner of a reference
+is the organisation of the person who saved it, or none once that organisation is
+deleted. `harness_hidden` is `true` when the run's organisation is a client of an
+operator (`Apiary.Edition.operated?/1`, which the core edition, `Apiary.Edition.Core`,
+answers `false`), or when the stack's owner is not the run's organisation. The instance
+counts as the run's organisation only when the instance has one organisation, as in the
+core edition, so there a run with a stack name has `harness_hidden` `false`. Only tests
+write a stored stack: no page or endpoint sets one.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
