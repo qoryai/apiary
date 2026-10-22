@@ -5,9 +5,9 @@ defmodule Apiary.Repo.Migrations.HoldAGatewaySAddressToTheContracts do
   # `https://`, a host of DNS labels or an IPv6 address in brackets, an optional port, 1
   # to 65535, and nothing after them, at most 300 characters. The check before allowed a
   # trailing dot and 2048 characters, and refused a last label of digits alone.
-  # `nodes_url_check` is re-created to say so, NOT VALID: it holds every gateway written
-  # from now on, and scans no row under a lock that blocks writes to `nodes`. A gateway
-  # written before keeps its address until it is next saved.
+  # `nodes_url_check` is re-created to say so, NOT VALID, so the change scans no row under
+  # a lock that blocks writes to `nodes`; the next migration validates it, and stops
+  # while a gateway's address is outside it.
   @label "[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
   @name "#{@label}(?:\\.#{@label})*"
   @dec_octet "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"

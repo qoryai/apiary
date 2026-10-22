@@ -666,10 +666,10 @@ active keys, at most two, oldest first, each `{"alg":"ed25519","public_key":…}
 address in brackets, and an optional port from 1 to 65535, with no user information,
 percent-encoding, underscore, trailing dot, path or query, at most 300 characters. A
 gateway's form checks it (`Apiary.Nodes.Node.validate_url/1`), the database holds every
-gateway written since the check to it (`nodes_url_check`), and a run key is made only
-for such an address. A run key that cannot be made, for a gateway written before with an
-address outside that rule, say, is `503`, logged as "no run key could be made for a run
-through a gateway: invalid".
+gateway to it (`nodes_url_check`, validated: the migrations stop while a gateway's
+address is outside it), and a run key is made only for such an address. A run key that
+cannot be made is `503`, logged as "no run key could be made for a run through a
+gateway: invalid".
 
 The run is stored as a direct one is, on the registering key's node and instance, but
 with no interval, no answer digest and no Forager version unless `User-Agent` names one,
