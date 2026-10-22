@@ -9663,8 +9663,8 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "No exit or outcome came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
-msgid_plural "No exit or outcome came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
+msgid "No exit came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit changes the record now."
+msgid_plural "No exit came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit changes the record now."
 msgstr[0] ""
 msgstr[1] ""
 

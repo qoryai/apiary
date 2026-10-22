@@ -1078,8 +1078,8 @@ defmodule ApiaryWeb.OverviewComponents do
         minutes = backstop_minutes(run)
 
         ngettext(
-          "No exit or outcome came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now.",
-          "No exit or outcome came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now.",
+          "No exit came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit changes the record now.",
+          "No exit came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit changes the record now.",
           minutes,
           number: Format.number(minutes)
         )
