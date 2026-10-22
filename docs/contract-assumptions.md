@@ -445,12 +445,14 @@ never attached it by its `attach_by`, when it has neither an outcome nor an exit
 backstop, 87,300 seconds (24 hours and 15 minutes) after its attach for the step `explore`
 and 2100 for `prebuild` (Liveness), or when it went 600 seconds without a heartbeat after
 its attach and before an exit: with the gateway down, no exit reaches Qory Apiary, and that
-end frees the slot. A heartbeat stored and not yet folded counts by its arrival. Such a silent run is `lost` for good: its registered run is set `lost`
-and its backstop moved back to the end of its silence, so no later heartbeat or start
-brings it back. A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
-registered run ends: the registered run is left as it is, to its starter's outcome, which
-decides its state as any outcome does; the lost-run check passes it by from then on, and the
-liveness rules alone find it lost should neither an outcome nor an exit come. A prebuild's
+end frees the slot. A heartbeat stored and not yet folded counts by its arrival. Such a
+silent run is `lost` for good: its registered run is set `lost` and its backstop moved back
+to the end of its silence, and no heartbeat or start folded after that end brings it back,
+whenever it arrived; its exit and its starter's outcome still change the record. A
+prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its registered run ends:
+the registered run is left as it is, to its starter's outcome, which decides its state as
+any outcome does; the lost-run check passes it by from then on, and the liveness rules
+alone find it lost should neither an outcome nor an exit come. A prebuild's
 `dev.qory.run.exited` folds onto its registered run as any exit does and ends nothing of the
 queue: its one session may be the fetch, whose exit comes before the build runs. So its
 `prebuilt`, a release, its starter's outcome, or the lost-run check ends it, the check at its

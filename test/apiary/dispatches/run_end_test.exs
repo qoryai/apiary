@@ -386,6 +386,31 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_live(handed)
     end
 
+    test "a heartbeat that arrived before its end and is folded after it leaves the run lost",
+         ctx do
+      handed = handed_over!(ctx)
+      silence_end = DateTime.add(handed.run.last_heartbeat_at, 600, :second)
+      Liveness.check(DateTime.add(silence_end, 1, :second))
+      assert_ended(handed, :lost)
+      assert %Run{state: "lost", silenced_at: %DateTime{}} = run!(handed.run)
+
+      # Stored once the end was written, as a store that committed late is.
+      arrived = DateTime.add(silence_end, -5, :second)
+
+      event_fixture(handed.run, 2, "run.heartbeat", %{"elapsed_seconds" => 600},
+        time: arrived,
+        received_at: arrived
+      )
+
+      event_fixture(handed.run, 3, "run.started", started_data(),
+        time: arrived,
+        received_at: arrived
+      )
+
+      assert {:ok, %Run{state: "lost"}} = Projector.project(handed.run)
+      assert_ended(handed, :lost)
+    end
+
     test "an exit that arrives after its end still changes the record", ctx do
       handed = handed_over!(ctx)
       after_it = DateTime.add(handed.run.last_heartbeat_at, 601, :second)
