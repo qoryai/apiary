@@ -219,6 +219,10 @@ defmodule Apiary.Runs.Run do
     # For such a run: its documents, encoded at the claim, which every redemption of its
     # code answers byte for byte. Nil for every other run. Not folded.
     field :run_documents, :binary
+    # With the `registry` feature: the SHA-256 of the registry credential the secrets
+    # request sealed for the run's gateway last (`Apiary.Registry.Credential`), never the
+    # credential; nil until then. Not folded: a rebuild keeps it.
+    field :registry_credential_sha256, :binary, redact: true
 
     # The run of a workspace's queue this run is, set when its claim registers it, unique;
     # nil for every other run.

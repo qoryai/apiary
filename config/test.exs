@@ -141,3 +141,11 @@ config :apiary, ApiaryWeb.Contract.ChangesController, hold: 0
 # The random bytes of a public id come from a queue a test can fill, to make an id collide
 # (`Apiary.PublicIdSource`, in test/support).
 config :apiary, Apiary.PublicId, random: Apiary.PublicIdSource
+
+# With the `registry` feature, which the suite turns on with every feature: the
+# registry's address, and a signing key made in memory once per node
+# (`Apiary.Registry`). The boot's step that makes the instance's registry name would
+# write it outside any test's sandbox; each test reads it inside its sandbox.
+config :apiary, :registry_setting, "registry.test.example"
+config :apiary, Apiary.Registry, generate_key: true
+config :apiary, Apiary.Registry.InstanceName, enabled: false

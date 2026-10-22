@@ -216,6 +216,44 @@ defmodule Apiary.InstanceConfig do
       end
   end
 
+  # The instance's registry name, with the `registry` feature: 16 random lower-case hex
+  # digits, the first segment of the instance's image names (`Apiary.Registry.Names`).
+  # Made once, by the first call on an instance whose row has none, in one statement that
+  # keeps a name the row holds, so two nodes at once record one name. Never derived from
+  # `PUBLIC_URL`, so a change of address keeps the names. A boot with the feature on makes
+  # it and keeps it for the life of the node (`Apiary.Registry.InstanceName`).
+  @registry_instance """
+  INSERT INTO instance_settings (id, registry_instance, updated_at)
+  VALUES (true, $1, $2)
+  ON CONFLICT (id) DO UPDATE SET
+    registry_instance = COALESCE(instance_settings.registry_instance, EXCLUDED.registry_instance)
+  RETURNING registry_instance
+  """
+
+  @doc false
+  # registry_instance/0 is the instance's registry name: the node's copy, else the row's,
+  # made now where the row has none.
+  @spec registry_instance() :: String.t()
+  def registry_instance do
+    case Application.fetch_env(:apiary, :registry_instance) do
+      {:ok, name} when is_binary(name) -> name
+      _none -> record_registry_instance()
+    end
+  end
+
+  @doc false
+  # record_registry_instance/0 makes the instance's registry name where the row has none,
+  # and returns the row's.
+  @spec record_registry_instance() :: String.t()
+  def record_registry_instance do
+    name = Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+
+    %{rows: [[recorded]]} =
+      Repo.query!(@registry_instance, [name, DateTime.utc_now()])
+
+    recorded
+  end
+
   defp to_stored(nil), do: Map.new(@keys, &{&1, nil})
   defp to_stored(%Row{} = row), do: Map.take(row, @keys)
 
