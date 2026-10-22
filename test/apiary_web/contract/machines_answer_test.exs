@@ -160,7 +160,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       |> Enum.map(&elem(&1, 0))
 
   @claim ~w(version revision dispatch_id lease_until)
-  @code ~w(run_code gateway_url)
+  @code ~w(run_code gateway_url max_lifetime_minutes)
 
   describe "an explore run" do
     test "without a file has no machine", ctx do

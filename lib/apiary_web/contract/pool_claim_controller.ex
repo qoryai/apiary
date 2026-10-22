@@ -25,13 +25,14 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #   5. a run claimed is `200`, signed, with `Cache-Control: no-store, no-transform`:
   #      the contract's `claim-answer.schema.json`, its `revision` the request's, inside
   #      the signed body. The answer is the machine request: `dispatch_id`, `lease_until`,
-  #      `machine`, `run_code` and `gateway_url`, and nothing of the run, its id, its
+  #      `machine`, `run_code`, `gateway_url` and `max_lifetime_minutes`, and nothing of the run, its id, its
   #      step, its target or its work item. `machine` is the machine type of the
   #      workspace's entry in the machines file (`Apiary.Dispatches.MachinesFile`), and
   #      absent without one. `run_code` is the code the machine redeems for the run's key
   #      (`Apiary.Runs.RunCode`), given once, in this answer, and logged nowhere;
   #      `gateway_url` is the address of the gateway the pool's choice resolved to at the
-  #      claim.
+  #      claim; `max_lifetime_minutes` is 1470 for every claim, the most the contract
+  #      allows, the minutes the starter lets the machine live.
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
   # pool at its instance limit, the request is held, up to its `wait_seconds`: it listens
@@ -59,6 +60,8 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   alias Apiary.Dispatches.Wire
   alias ApiaryWeb.Contract.{AdapterRequest, DispatchAnswer}
 
+  # The minutes the machine of every claim may live: the contract's most.
+  @max_lifetime_minutes 1470
   @hold 25_000
   @poll 1_000
   @holds_per_key 2
@@ -197,7 +200,11 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
             {"lease_until", DispatchAnswer.time(dispatch.lease_until)}
           ] ++
             DispatchAnswer.machine(conn.assigns.access_key) ++
-            [{"run_code", claimed.run_code}, {"gateway_url", claimed.gateway_url}]
+            [
+              {"run_code", claimed.run_code},
+              {"gateway_url", claimed.gateway_url},
+              {"max_lifetime_minutes", @max_lifetime_minutes}
+            ]
         )
       )
 

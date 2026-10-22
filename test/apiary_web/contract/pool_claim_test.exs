@@ -269,8 +269,9 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
 
       assert members(conn.resp_body) ==
-               ~w(version revision dispatch_id lease_until run_code gateway_url)
+               ~w(version revision dispatch_id lease_until run_code gateway_url max_lifetime_minutes)
 
+      assert answer["max_lifetime_minutes"] == 1470
       assert claimed_run_id(conn) == run.run_id
     end
 

@@ -347,7 +347,8 @@ provisioner contract, `contracts/provisioner/v1` of `qoryai/integrations`). Qory
 serves revision 3 of that contract alone: a request whose `X-Qory-Contract-Version` names
 any other revision is refused `400` `unsupported_contract_version`, and each claim answer
 has `revision` 3. A claim answer is a request for a machine: `version`, `revision`,
-`dispatch_id`, `lease_until`, `machine`, `run_code` and `gateway_url`, sent with
+`dispatch_id`, `lease_until`, `machine`, `run_code`, `gateway_url` and
+`max_lifetime_minutes`, 1470 for every claim, sent with
 `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its `step`, its
 `access`, its `target` nor its `work_item`. The machines file, a JSON file at the path
 `APIARY_MACHINES_FILE` is set to and read at boot (`Apiary.Dispatches.MachinesFile`), has
