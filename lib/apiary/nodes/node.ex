@@ -494,9 +494,12 @@ defmodule Apiary.Nodes.Node do
   and an optional port, 1 to 65535, and nothing else: no user, path, query or fragment.
   The host is a DNS name (labels of letters, digits and `-`, 1 to 63 characters each,
   neither starting nor ending with `-`, the last not all digits, 253 characters at most,
-  with an optional trailing dot), an IPv4 address, or an IPv6 address in brackets. A run
-  key names the gateway by it, and only over TLS (`Apiary.Runs.RunKey`). The database
-  holds it to the same (`nodes_url_check`).
+  with no trailing dot), an IPv4 address, or an IPv6 address in brackets. So the longest
+  address is 267 characters, `https://`, a name of 253 and `:65535`, and every address
+  fits the provisioner contract's `gateway_url`, at most 300 characters, which a claim
+  answers it as. A run key names the gateway by it, and only over TLS
+  (`Apiary.Runs.RunKey`). The database holds it to the same
+  (`nodes_url_check`).
   """
   @spec validate_url(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate_url(changeset) do
@@ -543,9 +546,8 @@ defmodule Apiary.Nodes.Node do
   @label ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\z/
 
   # Labels joined by dots, the last not all digits (a bad IPv4 address is no name), 253
-  # characters at most without the optional trailing dot.
-  defp name?(host) do
-    name = String.replace_suffix(host, ".", "")
+  # characters at most, with no trailing dot.
+  defp name?(name) do
     labels = String.split(name, ".")
 
     byte_size(name) <= 253 and Enum.all?(labels, &(&1 =~ @label)) and

@@ -119,6 +119,16 @@ defmodule Apiary.GatewaysTest do
 
       assert "should be at most 2048 character(s)" in errors_on(changeset).url
 
+      # The longest address a name allows is 267 characters, within the 300 of the
+      # provisioner contract's gateway_url.
+      label = String.duplicate("a", 63)
+      host = Enum.join([label, label, label, String.duplicate("b", 61)], ".")
+      longest = "https://#{host}:65535"
+      assert String.length(longest) == 267
+
+      assert {:ok, %Node{url: ^longest}} =
+               Nodes.create_node(scope, %{kind: "gateway", name: unique_node_name(), url: longest})
+
       assert {:error, changeset} = Nodes.create_node(scope, %{kind: "gateway", name: "x"})
       assert %{url: ["can't be blank"]} = errors_on(changeset)
     end
@@ -134,7 +144,7 @@ defmodule Apiary.GatewaysTest do
       for url <-
             ~w(https://edge.example.com https://edge-01.example.com:8443 https://10.0.0.5
                https://[2001:db8::1]:443 https://[::ffff:10.0.0.5] https://Edge.Example.com
-               https://edge.example.com. https://1.2.3.4.example https://localhost:65535) ++
+               https://1.2.3.4.example https://localhost:65535) ++
               ["https://#{label}.example", "https://#{longest}"] do
         assert {:ok, %Node{url: ^url}} =
                  Nodes.create_node(scope, %{kind: "gateway", name: unique_node_name(), url: url}),
@@ -151,7 +161,8 @@ defmodule Apiary.GatewaysTest do
                https://10.0.0.256 https://10.0.0 https://010.0.0.5 https://10.0.0.5.
                https://2001:db8::1 https://[2001:db8::1 https://[2001:db8:::1]
                https://[fe80::1%25eth0] https://[10.0.0.5] https://edge.example.com:
-               https://edge.example.com:08443| ++
+               https://edge.example.com:08443 https://edge.example.com.
+               https://edge.example.com.:8443| ++
               ["https://#{label}a.example", "https://#{longest}b", "https://edge example.com"] do
         assert {:error, changeset} =
                  Nodes.create_node(scope, %{kind: "gateway", name: "x", url: url})
