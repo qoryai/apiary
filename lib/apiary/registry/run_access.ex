@@ -45,9 +45,12 @@ defmodule Apiary.Registry.RunAccess do
   #     comes to exist, and the run configuration with them;
   #   * the instance's host and the registry's host, in `egress.allow` and
   #     `egress.allow_first`, as a model provider's hosts are, and the path rule
-  #     `/registry/token` for the instance's host (`instance_host`), so a run reaches no
-  #     other route of the instance through it, unless its document allowed the host
-  #     before (`Apiary.Policy.ComposedConfiguration`).
+  #     `/registry/token` for the instance's host (`instance_host`), unless its document
+  #     allowed the host before (`Apiary.Policy.ComposedConfiguration`). Under enforce, a
+  #     gateway already denies each path of that host that matches neither the
+  #     credential's path nor the document's rules for the host; under observe, a run
+  #     reaches every path of that host, and the gateway sends the registry credential
+  #     only with requests to `/registry/token`.
 
   import Ecto.Query, only: [from: 2]
 

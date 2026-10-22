@@ -75,8 +75,12 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # host, the path rule `/registry/token`, after the rules the document has for that host
   # where it has some, else alone, unless the document allowed that host before: in
   # `egress.allow_first`, or in `egress.allow` and not in `egress.deny`
-  # (`Apiary.Policy.Grammar.matches?/2`). Without it, a gateway would open every path of
-  # the instance's host to the run.
+  # (`Apiary.Policy.Grammar.matches?/2`). Under enforce, a gateway already denies each
+  # path of that host that matches neither the credential's path nor the document's
+  # rules for the host. As for a provider's hosts, an entry of `egress.deny` that
+  # matches the instance's host or the registry's host does not block either host.
+  # Under observe, a run reaches every path of the instance's host; the gateway sends
+  # the registry credential only with requests to `/registry/token`.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`. A document composed with them is

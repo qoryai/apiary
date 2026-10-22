@@ -361,7 +361,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
                ["/api/*", "/registry/token"]
     end
 
-    test "stays open on every path where the document allowed it on every path", ctx do
+    test "gets no path rule where the document allowed it on every path", ctx do
       {:ok, _rule} = Policy.allow(ctx.scope, nil, %{host: RunAccess.instance_host()})
       ctx = reader(ctx)
       paths = document(ctx)["security_policy"]["egress"]["paths"]
