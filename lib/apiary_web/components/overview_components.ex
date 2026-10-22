@@ -1069,13 +1069,14 @@ defmodule ApiaryWeb.OverviewComponents do
   defp lost_words(_run), do: gettext("Lost, end not recorded")
 
   # A run lost with no exit, by the rule the lost-run check applied (`Apiary.Runs.Liveness`),
-  # told from the stored run alone: past the end of a silence of 600 s, which moved its
-  # `backstop_at` there (`silenced_at`, `Apiary.Dispatches.RunEnd`); past the deadline its
-  # attach set for its end (`backstop_at`), however recently it beat; never attached by
-  # its `attach_by`; or silent for three heartbeat intervals.
+  # told from the stored run alone: ended for a silence of 600 s, which frees its slot
+  # (`silenced_at`, `Apiary.Dispatches.RunEnd`), whether three heartbeat intervals marked
+  # it lost before; past the deadline its attach set for its end (`backstop_at`), however
+  # recently it beat; never attached by its `attach_by`; or silent for three heartbeat
+  # intervals.
   defp lost_tip(%{exited_at: nil} = run) do
     cond do
-      lost_past_backstop?(run) and silenced?(run) ->
+      silenced?(run) ->
         gettext(
           "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. It may still be going; only its exit or its outcome changes the record now."
         )

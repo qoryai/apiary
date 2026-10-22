@@ -1808,18 +1808,19 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
             # Lost to silence before its backstop.
             {attached_with.(1200, DateTime.add(attached, 600, :second)), silent},
             {attached_with.(1200, DateTime.add(attached, 1200, :second)), silent},
-            # Ended for 600 s of silence, which moved its backstop: lost at that end, or
-            # lost by three intervals before it, which keeps the words of that rule.
+            # Ended for 600 s of silence, which moved its backstop: lost at that end, as a
+            # run of a long interval is, or lost by three intervals of 30 s before it, as
+            # a run of the default interval is.
             {Map.put(
                attached_with.(4200, DateTime.add(attached, 4201, :second)),
                :silenced_at,
                DateTime.add(attached, 4201, :second)
              ), ended_silent},
-            {Map.put(
-               attached_with.(4200, DateTime.add(attached, 3690, :second)),
-               :silenced_at,
-               DateTime.add(attached, 4201, :second)
-             ), silent}
+            {Map.merge(attached_with.(4200, DateTime.add(attached, 3695, :second)), %{
+               heartbeat_interval_seconds: 30,
+               last_heartbeat_at: DateTime.add(attached, 3600, :second),
+               silenced_at: DateTime.add(attached, 4201, :second)
+             }), ended_silent}
           ] do
         run = lost_run(scope, attrs)
         view = open(conn, scope)
