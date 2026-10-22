@@ -1236,6 +1236,11 @@ msgstr ""
 msgid "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s rules may only narrow them. A deny holds in either mode."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s time limit"
+msgstr ""
+
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "%{name}, %{kind} runs"
@@ -1647,6 +1652,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} min"
 msgid_plural "%{number} min"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} minute"
+msgid_plural "%{number} minutes"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4695,6 +4707,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed a stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a time limit"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -12229,6 +12246,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Removed a time limit"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Removed a variable"
 msgstr ""
 
@@ -13241,6 +13263,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Set a model choice"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Set a time limit"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

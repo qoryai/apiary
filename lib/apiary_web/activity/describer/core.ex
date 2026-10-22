@@ -2,9 +2,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
   the organisation, its members and invitations, its workspaces, their access keys, nodes,
-  runs, retention, security policy, stored secrets and variables, model choices, the trail's pruning
-  and the instance's commands. The page asks it after the edition's describer, and it says
-  nil for an action it does not know, as it does for the edition's.
+  runs, retention, security policy, stored secrets and variables, model choices, time
+  limits, the trail's pruning and the instance's commands. The page asks it after the
+  edition's describer, and it says nil for an action it does not know, as it does for the
+  edition's.
   """
 
   @behaviour ApiaryWeb.Activity.Describer
@@ -275,6 +276,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
     gettext("Took in one of the Backlog's %{items} as a work item", items: items)
   end
+
+  # A time limit (`Apiary.TimeLimits`), by the change in the entry's details, under
+  # whichever action its writer checked.
+  def sentence(_action, %{subject_kind: "time_limit", details: %{"change" => change}}, _names),
+    do: said_time_limit(change)
 
   def sentence(action, entry, _names) do
     details = entry.details || %{}
@@ -552,6 +558,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_choice("choice_unlocked"), do: gettext("Unlocked a model choice")
   defp said_choice(_change), do: gettext("Changed a model choice")
 
+  defp said_time_limit("time_limit_set"), do: gettext("Set a time limit")
+  defp said_time_limit("time_limit_removed"), do: gettext("Removed a time limit")
+  defp said_time_limit(_change), do: gettext("Changed a time limit")
+
   # What was acted on, as it is called now.
   @impl true
   def subject(entry, action, names, scope, workspace) do
@@ -665,6 +675,19 @@ defmodule ApiaryWeb.Activity.Describer.Core do
             )
         end
 
+      # A time limit, by the place it was set at: the target or the workspace as it is
+      # called now, else as the entry named it.
+      "time_limit" ->
+        details = entry.details || %{}
+
+        name =
+          case details["target_id"] do
+            id when is_binary(id) -> names.targets[id]
+            _workspace -> names.workspaces[entry.workspace_id]
+          end
+
+        text(gettext("%{name}'s time limit", name: name || details["name"] || gettext("n/a")))
+
       # An integration, a release and a service definition are named in the entry itself.
       kind when kind in ["connection", "integration_release", "service_definition"] ->
         case (entry.details || %{})["name"] do
@@ -684,6 +707,20 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   # The change in a few words: what was, and what is.
   @impl true
+  # A time limit, under whichever action its writer checked: the workflow, in a line, then
+  # the minutes it set, or the minutes before and after.
+  def change(_action, before, after_, %{"change" => "time_limit_" <> _, "workflow" => workflow})
+      when is_binary(workflow) do
+    minutes =
+      case {minutes(before["minutes"]), minutes(after_["minutes"])} do
+        {nil, to} -> to
+        {_from, nil} -> nil
+        {from, to} -> from_to(from, to)
+      end
+
+    Enum.reject([gettext("%{kind} runs", kind: workflow), minutes], &is_nil/1)
+  end
+
   def change(action, before, after_, _details)
       when action in [:"organisation.rename", :"workspace.rename"],
       do: from_to(before["name"], after_["name"])
@@ -851,6 +888,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(_policy, _before, _after, %{"change" => _change} = details), do: version(details)
 
   def change(_action, _before, _after, _details), do: nil
+
+  defp minutes(n) when is_integer(n),
+    do: ngettext("%{number} minute", "%{number} minutes", n, number: Format.number(n))
+
+  defp minutes(_other), do: nil
 
   defp value_id(id) when is_binary(id), do: [{:m, id}]
   defp value_id(_id), do: nil
