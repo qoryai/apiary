@@ -68,12 +68,14 @@ defmodule Apiary.Dispatches.RunEnd do
   # its collection take turns at the record. For any other run, its work item
   # `FOR KEY SHARE`, which a release and a close hold `FOR UPDATE` before the run of the
   # queue: so the end and either of them take turns at the work item. An end by an exit
-  # writes the run of the queue a second time (`settled/4`), and Postgres then checks its
-  # foreign key with a `FOR KEY SHARE` lock on the work item. Taken there alone, after the
-  # run of the queue, that lock waits on a release that holds the work item and waits on
-  # the run of the queue: a deadlock (40P01). Then the run of the queue is locked
-  # `FOR UPDATE`, then the registered run, then the dispatches are written. `refused/1`
-  # holds nothing first: it writes the run of the queue once.
+  # writes the run of the queue a second time when the result it stores differs from the
+  # one the row has (`settled/4`, `Apiary.Dispatches.Settle`, which skips equal values),
+  # and Postgres then checks that write's foreign key with a `FOR KEY SHARE` lock on the
+  # work item. Taken there alone, after the run of the queue, that lock waits on a
+  # release that holds the work item and waits on the run of the queue: a deadlock
+  # (40P01). Then the run of the queue is locked `FOR UPDATE`, then the registered run,
+  # then the dispatches are written. `refused/1` holds nothing first: it writes the run
+  # of the queue once.
   # Every path that locks a run of the queue together with its dispatches or its
   # registered run locks the run of the queue first (`Apiary.Dispatches.Slots`), so two
   # ends of one run take turns there and the second finds it ended. A projection and an

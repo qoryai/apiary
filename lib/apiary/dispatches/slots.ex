@@ -89,9 +89,16 @@ defmodule Apiary.Dispatches.Slots do
   # item before its runs; for a prebuild, its environment record `FOR UPDATE`, as 3.
   # has it. Then the free of its run, which locks that record again where its lease
   # lapsed, its run of the queue, and its dispatch. A prebuild given back locks the one
-  # that waits of its collection and pool after its dispatch (`wait_again/3`): under the record it holds, which every path that locks
-  # the one that waits holds first, but a claim, whose `FOR UPDATE SKIP LOCKED` waits on
-  # none. A path that locks a work item locks it before any run of the queue, never after.
+  # that waits of its collection and pool after its dispatch (`wait_again/3`): under the
+  # record it holds, which every path that locks the one that waits holds first, but a
+  # claim, whose `FOR UPDATE SKIP LOCKED` waits on none. A path that locks a work item
+  # locks it before any run of the queue, with one exception, the claim: its free sets a
+  # lapsed run back to waiting, the claim then takes that run and writes it again, and
+  # Postgres checks the second write's foreign key with a `FOR KEY SHARE` lock on the
+  # work item, taken after the claim holds the run of the queue. A release that holds
+  # that work item and waits on that run can then deadlock with the claim: Postgres
+  # aborts one side (40P01), the aborted side returns `{:error, :unavailable}`, and the
+  # starter retries its call. The order of the queue does not change.
   #
   # The lost-run check's end of a prebuild handed over (`Apiary.Dispatches.RunEnd`) keeps
   # it too: the prebuild's environment record `FOR UPDATE`, as 3. has it, then its run of

@@ -496,17 +496,19 @@ same. Its dispatch ends with it, with the same end cause, a stale dispatch of it
 none of them. A run of the queue takes no outcome: the outcome endpoint answers a pool's
 key for a run the pool claimed `404`, as it answers a key for a run the key is not bound
 to, and stores nothing (`Apiary.Runs.Outcome`). A node's keys keep the outcome endpoint
-for the runs the node registers itself. Each end locks the run of the queue first, then
-the registered run, then writes the dispatches, so two ends of one run take turns, and an
-exit that comes as the check loses the run is either taken first, its end cause
-`run_ended`, or after it, the end cause staying `lost`.
+for the runs the node registers itself. Each end locks the run of the queue, then the
+registered run, then writes the dispatches; an end by an exit or by the lost-run check
+first locks the run's work item `FOR KEY SHARE`, or a prebuild's environment record
+`FOR UPDATE`. So two ends of one run take turns, and an exit that comes as the check
+loses the run is either taken first, its end cause `run_ended`, or after it, the end cause
+staying `lost`.
 
 A run its gateway refused before it started (`dev.qory.run.refused`, with a code such as
 `model_key_missing`) ends `run_refused` at its first refusal and is not queued again. The
 projection that folded the refusal ends the run of the queue after its pass has committed,
-in a transaction that locks the run of the queue first, then the registered run, as an
-exit's end does. The run of the queue keeps the refusal's code as `end_detail` (nil when
-the event's code is not a code), and its dispatch ends with the same end cause; the slot is
+in a transaction that locks the run of the queue, then the registered run, and nothing
+before them: it writes the run of the queue once. The run of the queue keeps the refusal's
+code as `end_detail` (nil when the event's code is not a code), and its dispatch ends with the same end cause; the slot is
 freed once. The registered run stays failed with the code as its reason and `refused_at`. The starter's
 release of the dispatch after this end is `410` `gone` and queues nothing, and the claim
 never offers the run again. A refusal that comes after any other end, or while an exit
