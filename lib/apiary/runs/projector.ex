@@ -82,14 +82,17 @@ defmodule Apiary.Runs.Projector do
   whether or not there was anything to project.
   """
   @spec project(struct()) :: {:ok, struct()} | {:error, :not_found}
-  def project(%Run{id: id}) do
+  def project(%Run{} = run), do: project(run, :store_built)
+
+  # A rebuild projects with `:keep_built`: it stores no build (`record_built/3`).
+  defp project(%Run{id: id}, built) do
     case passes(id, nil) do
       {:ok, run, nil} ->
         {:ok, run}
 
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
-        record_built(run, first, last)
+        if built == :store_built, do: record_built(run, first, last)
         end_handed_over(run)
         end_refused(run)
         settle_dispatched(run, first, last)
@@ -142,7 +145,8 @@ defmodule Apiary.Runs.Projector do
   is returned as it is: its projection is all that is left of it, and nothing here deletes
   it. A run that lost only its log events is rebuilt from the rest; its log chunks were
   deleted with them, and `projected_sequence` does not fall back to the first of the gaps
-  they left.
+  they left. A rebuild stores no image a prebuild reported (`dev.qory.run.built`): only
+  the projection that first folded the report stores it.
   """
   @spec rebuild(struct()) :: {:ok, struct()} | {:error, :not_found}
   def rebuild(%Run{id: id} = run) do
@@ -164,10 +168,10 @@ defmodule Apiary.Runs.Projector do
         {:ok, current}
 
       {:ok, %Run{log_pruned_at: %DateTime{}} = before} ->
-        run |> project() |> past_the_gaps(before)
+        run |> project(:keep_built) |> past_the_gaps(before)
 
       {:ok, _run} ->
-        project(run)
+        project(run, :keep_built)
 
       {:error, reason} ->
         {:error, reason}
@@ -452,22 +456,27 @@ defmodule Apiary.Runs.Projector do
 
   defp touch_heartbeat(_run), do: :ok
 
-  # A run of a workspace's queue whose passes folded a `dev.qory.run.built` has the image
-  # it reports stored, once its passes have committed and before its end, in a separate
-  # transaction that holds the environment record of a prebuild
-  # (`Apiary.Dispatches.Built.record/1`), which stores nothing for a run that is not a
-  # prebuild. A failure is logged by run and the kind of the error, and the image is not
-  # stored.
+  # A run of a workspace's queue whose passes folded the `dev.qory.run.built` that counts,
+  # its lowest sequence, has the image it reports stored, once its passes have committed
+  # and before its end, in a separate transaction that holds the environment record of a
+  # prebuild (`Apiary.Dispatches.Built.record/1`), which stores nothing for a run that is
+  # not a prebuild. Only that pass stores it: a later pass, with a second report or
+  # without one, and a rebuild of the projection (`rebuild/1`) store nothing, so an image
+  # cleared since because the registry lost it (`Apiary.Environments.forget_image/3`) is
+  # not stored again. A failure is logged by run and the kind of the error, and the image
+  # is not stored.
   defp record_built(%Run{id: id, dispatch_run_id: dispatch_run_id} = run, first, last)
        when is_binary(dispatch_run_id) do
-    built? =
-      Repo.exists?(
+    counted =
+      Repo.one(
         from e in Event,
-          where: e.run_id == ^id and e.sequence >= ^first and e.sequence <= ^last,
-          where: e.type == ^Apiary.Dispatches.Built.type()
+          where: e.run_id == ^id and e.type == ^Apiary.Dispatches.Built.type(),
+          select: min(e.sequence)
       )
 
-    if built?, do: Apiary.Dispatches.Built.record(run)
+    if is_integer(counted) and counted >= first and counted <= last,
+      do: Apiary.Dispatches.Built.record(run)
+
     :ok
   rescue
     error -> log_failure(run, {:built, error.__struct__})

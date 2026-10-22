@@ -165,6 +165,25 @@ defmodule Apiary.Dispatches.BuiltTest do
     assert record!(ctx) == stored
   end
 
+  test "an image cleared as missing is not stored again by a later projection or a rebuild",
+       ctx do
+    report!(ctx)
+
+    {:ok, []} =
+      Repo.transact(fn ->
+        {:ok, Apiary.Environments.forget_image([record!(ctx)], [], DateTime.utc_now())}
+      end)
+
+    assert %Record{image: nil, built_queued_at: nil} = cleared = record!(ctx)
+
+    # A second report, with a higher sequence, folded by a later pass.
+    report!(ctx, built(), 7)
+    assert record!(ctx) == cleared
+
+    assert {:ok, _run} = Projector.rebuild(Repo.get!(Run, ctx.run.id))
+    assert record!(ctx) == cleared
+  end
+
   test "a report of a ref older than the record's image's leaves the record", ctx do
     newer = DateTime.add(ctx.dispatch_run.environment_ref_at, 60, :second)
 

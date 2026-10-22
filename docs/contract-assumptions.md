@@ -521,9 +521,11 @@ any other run is kept with the run's other events, and records nothing; so does 
 whose `image` is not a lower-case name of at most 255 characters with `@sha256:` and 64
 lower-case hexadecimal digits, whose `size` is not an integer from 1 to 2^53 - 1, whose
 `commit` is not 40 or 64 lower-case hexadecimal characters, or whose `environment_ref`
-is not 1 to 200 characters. Of two such events of one run, the lower sequence counts. A
-build whose prebuild took its `environment_ref` before the prebuild that made the
-record's image took its, and the build already on the record, change nothing.
+is not 1 to 200 characters or contains U+0000. Of two such events of one run, the lower
+sequence counts, and only the projection that folds it stores it: a later projection of
+the run, and a rebuild of its projection, store nothing. A build whose prebuild took its
+`environment_ref` before the prebuild that made the record's image took its, and the
+build already on the record, change nothing.
 
 A run of a work item that started in the image its pool's environment record gave it,
 whose `dev.qory.run.exited` is `failed` with the reason `image_missing`, ends

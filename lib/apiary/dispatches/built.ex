@@ -38,8 +38,11 @@ defmodule Apiary.Dispatches.Built do
   # A build whose prebuild took its `environment_ref` before the prebuild that made the
   # record's image took its (`Apiary.Environments.newer_build?/2`) leaves the record as it
   # is, and so does the build already on the record: the same image, made by the same
-  # prebuild (`Apiary.Environments.built_by?/2`). So a second projection of the run, a
-  # rebuild of its record among them, writes nothing again.
+  # prebuild (`Apiary.Environments.built_by?/2`). So a second call writes nothing again.
+  # A projection calls it only in the pass that folds the report that counts, and a
+  # rebuild of the run's projection never does (`Apiary.Runs.Projector`): an image
+  # cleared because the registry lost it (`Apiary.Environments.forget_image/3`) is not
+  # stored again.
   #
   # **Locks.** The environment record of the prebuild's pool and collection, `FOR UPDATE`
   # (`Apiary.Environments.lock_record/2`), from the run of the queue read without a lock,
