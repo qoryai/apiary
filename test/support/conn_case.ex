@@ -19,6 +19,8 @@ defmodule ApiaryWeb.ConnCase do
 
   using do
     quote do
+      @before_compile Apiary.TestSetup
+
       # The default endpoint for testing
       @endpoint ApiaryWeb.Endpoint
 
