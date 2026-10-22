@@ -19,11 +19,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   @moduletag :tmp_dir
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-  @stack %{
-    "url" => "https://stacks.example.com/acme/stacks",
-    "commit" => "0123456789abcdef0123456789abcdef01234567",
-    "path" => "examples/hello"
-  }
+  @stack "core"
 
   setup %{tmp_dir: dir} do
     setting = Application.fetch_env(:apiary, :machines_file_setting)
@@ -61,14 +57,16 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     nil = MachinesFile.boot!()
   end
 
-  # A fresh work item's explore run, queued, claimed under `place`'s pool key, said
-  # started and handed over: the handover's answer.
-  defp handover!(%{scope: scope}, place) do
+  # A fresh work item's explore run, queued and claimed under `place`'s pool key: what
+  # the run's documents are made from, with the registered run as `run`.
+  defp claim!(%{scope: scope}, place) do
     work_item = work_item_fixture(scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(place.key)
-    {:ok, handed} = Dispatches.handover(place.key, dispatch.public_id, %{body: @body})
-    handed
+
+    {:ok, %{registered: run, documents: documents}} =
+      Dispatches.claim(place.key, Dispatches.now(), @body)
+
+    Map.put(documents, :run, run)
   end
 
   defp settings(%{run_settings: settings}), do: settings |> Jason.encode!() |> Jason.decode!()
@@ -78,7 +76,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     Enum.map(ordered.values, &elem(&1, 0))
   end
 
-  # The work item's target, as the handover finds it by system and path.
+  # The work item's target, as the claim finds it by system and path.
   defp target!(scope) do
     Repo.insert!(%Target{
       organisation_id: scope.organisation.id,
@@ -95,13 +93,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       place = handover_place_fixture(ctx.scope)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
-      handed = handover!(ctx, place)
+      claimed = claim!(ctx, place)
 
-      assert settings(handed) == %{"runtime" => "claude", "time_limit_minutes" => 90}
-      assert keys(handed) == ~w(runtime time_limit_minutes)
+      assert settings(claimed) == %{"runtime" => "claude", "time_limit_minutes" => 90}
+      assert keys(claimed) == ~w(runtime time_limit_minutes)
 
       assert %Run{run_settings: %{"runtime" => "claude", "time_limit_minutes" => 90}} =
-               Repo.get!(Run, handed.run.id)
+               Repo.get!(Run, claimed.run.id)
     end
 
     test "sends the target's limit over the workspace's", ctx do
@@ -111,16 +109,16 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, target, "hello", 1440)
 
-      assert %{"time_limit_minutes" => 1440} = settings(handover!(ctx, place))
+      assert %{"time_limit_minutes" => 1440} = settings(claim!(ctx, place))
     end
 
     test "leaves the member out with no limit, or a limit of another workflow", ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
-      assert settings(handover!(ctx, place)) == %{"runtime" => "claude"}
+      assert settings(claim!(ctx, place)) == %{"runtime" => "claude"}
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "review", 90)
-      assert settings(handover!(ctx, place)) == %{"runtime" => "claude"}
+      assert settings(claim!(ctx, place)) == %{"runtime" => "claude"}
     end
 
     test "sends the limit after the model choice's members", ctx do
@@ -141,10 +139,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 45)
 
-      handed = handover!(ctx, handover_place_fixture(ctx.scope, allow_secrets: true))
+      claimed = claim!(ctx, handover_place_fixture(ctx.scope, allow_secrets: true))
 
-      assert %{"model" => "claude-opus-5-5", "time_limit_minutes" => 45} = settings(handed)
-      assert keys(handed) == ~w(runtime model provider_models tiers time_limit_minutes)
+      assert %{"model" => "claude-opus-5-5", "time_limit_minutes" => 45} = settings(claimed)
+      assert keys(claimed) == ~w(runtime model provider_models tiers time_limit_minutes)
     end
   end
 
@@ -172,13 +170,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       target = target!(ctx.scope)
 
       ctx.choose.({:workspace, "review"}, "claude-haiku-5-5")
-      assert %{"model" => "claude-opus-5-5"} = settings(handover!(ctx, place))
+      assert %{"model" => "claude-opus-5-5"} = settings(claim!(ctx, place))
 
       ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
-      assert %{"model" => "claude-sonnet-5-5"} = settings(handover!(ctx, place))
+      assert %{"model" => "claude-sonnet-5-5"} = settings(claim!(ctx, place))
 
       ctx.choose.({target, "hello"}, "claude-haiku-5-5")
-      assert %{"model" => "claude-haiku-5-5"} = settings(handover!(ctx, place))
+      assert %{"model" => "claude-haiku-5-5"} = settings(claim!(ctx, place))
     end
 
     test "do not apply without a machines file", ctx do
@@ -186,7 +184,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       place = handover_place_fixture(ctx.scope, allow_secrets: true)
       ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
 
-      assert %{"model" => "claude-opus-5-5"} = settings(handover!(ctx, place))
+      assert %{"model" => "claude-opus-5-5"} = settings(claim!(ctx, place))
     end
   end
 
@@ -194,7 +192,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     no_file!()
     place = handover_place_fixture(ctx.scope)
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
-    assert settings(handover!(ctx, place)) == %{"runtime" => "claude"}
+    assert settings(claim!(ctx, place)) == %{"runtime" => "claude"}
   end
 
   describe "with the feature factory off" do
