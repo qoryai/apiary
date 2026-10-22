@@ -53,6 +53,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   alias Apiary.Sources.Wire, as: SourceWire
   alias Apiary.WorkItems
   alias Apiary.WorkItems.WorkItem
+  alias Mix.Tasks.Apiary.Demo.Shell
 
   @host "https://tracker.example.com"
   @helpdesk_host "https://helpdesk.example.com"
@@ -528,7 +529,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
         workspace
 
       {:error, :limit} ->
-        Mix.shell().info(
+        Shell.info(
           "The edition allows acme no more workspaces: support is not made; its queues go to main"
         )
 
@@ -764,7 +765,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     main
     |> AccessKeys.list_for_node(pool)
     |> Enum.find(&is_nil(&1.revoked_at)) ||
-      Mix.raise("the pool spot-runners has no key in use")
+      Shell.raise!("the pool spot-runners has no key in use")
   end
 
   defp title_of(path, number) do
@@ -780,7 +781,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
     case Organisations.resolve_scope(Scope.for_user(user), "acme", workspace.slug) do
       {:ok, scope} -> Scope.put_origin(scope, %{worker: "demo"})
-      :error -> Mix.raise("#{name}@example.com does not reach acme/#{workspace.slug}")
+      :error -> Shell.raise!("#{name}@example.com does not reach acme/#{workspace.slug}")
     end
   end
 
@@ -820,7 +821,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     %{other: collections_word} = Adapters.collection_noun(adapter)
     %{other: items_word} = Adapters.item_noun(adapter)
 
-    Mix.shell().info("""
+    Shell.info("""
     Factory: #{adapter.name}, #{total(collections)} #{collections_word}, \
     #{total(tickets)} #{items_word}, #{total(work_items)} work items
       #{collections_word}: #{format(collections)}

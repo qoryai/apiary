@@ -14,9 +14,14 @@ defmodule Apiary.Release do
   scripted install, which claims a fresh instance, and for recovery when none is left.
   `password_link/1` prints a one-time link that sets an account's password.
   `accept_signing_key/0` records a new signing key's fingerprint, for the boot's key
-  check (`Apiary.KeyCheck`). An edition's commands run the way these do (`run/1`).
+  check (`Apiary.KeyCheck`). `demo/0` fills a test instance with the demo. An edition's
+  commands run the way these do (`run/1`).
   """
   @app :apiary
+
+  # The demo's connections to the database: its history is written by 6 processes at once
+  # (`demo/0`), and a release command's repository has 2 unless told.
+  @demo_pool 8
 
   @doc """
   Runs every pending migration, `bin/migrate`'s and `Apiary.Release.Migrator`'s at boot:
@@ -425,6 +430,146 @@ defmodule Apiary.Release do
 
       {:ok, fingerprint}
     end)
+  end
+
+  @doc """
+  Fills a test instance with the demo of `mix apiary.demo.console`:
+  `bin/apiary eval 'Apiary.Release.demo()'`. `opts` are the task's switches `runs:`,
+  `days:`, `seed:` and `concurrency:`, with the same defaults, as in
+  `Apiary.Release.demo(runs: 3000)`.
+
+  The instance is set up first with the organisation name Acme (slug `acme`). The demo
+  fills Acme and its workspace Main: 6,000 runs over 56 days in about 150 repositories;
+  people at every level, Dana (`dana@example.com`) an owner and so an instance admin, and
+  two invitations pending; nodes and their keys; the security policy; and, with the
+  `secrets` feature, secrets, variables and integrations. With mail set, the people it
+  adds get their log-in and invitation emails. Refused, with nothing made, on an instance
+  that is not set up, whose organisation is not Acme, or whose Main is missing or has
+  runs or nodes.
+
+  Nobody knows the password of an account the demo makes: each has a random one. The
+  output says how to print a link that sets Dana's (`password_link/1`).
+
+  A release command runs no endpoint and no job queue. The demo's links take the
+  configured address (`Apiary.Setup.public_url/0`). The processes of the application
+  that the demo's steps call are started for the command, Oban among them with no queue
+  and no plugin: the job the demo queues for each integration release it requests is
+  inserted and not run here, and the demo fetches the release itself
+  (`Apiary.Integrations.fetch_release/2`), as under Mix. The instance's queue runs the
+  job later and finds the release fetched. Prints one line on stderr as it starts, then
+  what it made; returns `{:ok, summary}` or `{:error, reason}`.
+  """
+  @spec demo(keyword) :: {:ok, map} | {:error, atom}
+  def demo(opts \\ []) do
+    load_app()
+    {:ok, _apps} = Application.ensure_all_started(:oban)
+
+    fill = fn _repo -> with_demo_processes(fn -> demo_now(opts) end) end
+
+    for repo <- repos() do
+      {:ok, result, _} = Ecto.Migrator.with_repo(repo, fill, pool_size: @demo_pool)
+      result
+    end
+    |> List.first()
+  end
+
+  defp demo_now(opts) do
+    alias Mix.Tasks.Apiary.Demo.Console
+
+    case Console.set_up() do
+      {:ok, set_up} ->
+        runs = Keyword.get(opts, :runs, 6_000)
+        IO.puts(:stderr, "Filling acme/main with the demo, its #{runs} runs first.")
+
+        summary = quietly(fn -> Console.fill_set_up(set_up, opts) end)
+        url = "#{Apiary.Setup.public_url()}/acme/main"
+
+        IO.puts(
+          "acme/main has #{summary.runs} runs in #{summary.repositories} repositories; " <>
+            "acme has #{summary.people} people and #{summary.invitations} invitations pending."
+        )
+
+        IO.puts(
+          "To sign in as dana@example.com, an instance admin, print a link that sets " <>
+            ~s{her password: bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'}
+        )
+
+        if Apiary.Features.on?(:factory),
+          do: IO.puts("Open the Backlog and take a ticket in: #{url}/backlog"),
+          else: IO.puts("Open the runs: #{url}/runs")
+
+        {:ok, summary}
+
+      {:error, reason} ->
+        IO.puts(demo_refusal(reason))
+        {:error, reason}
+    end
+  end
+
+  defp demo_refusal(:not_set_up),
+    do:
+      "Set up the instance with the organisation name Acme, then run this command again. " <>
+        "Nobody has set it up yet."
+
+  defp demo_refusal(:not_acme),
+    do:
+      "Run this command on an instance set up with the organisation name Acme. " <>
+        "The demo fills only the organisation acme, and this instance's has another slug."
+
+  defp demo_refusal(:no_main),
+    do:
+      "Run this command on an instance set up with the organisation name Acme. " <>
+        "The demo fills the workspace acme/main, and acme has no workspace main."
+
+  defp demo_refusal(:filled),
+    do:
+      "Run this command on an instance set up with the organisation name Acme and nothing " <>
+        "more. The demo fills only an empty acme/main, and this one has runs or nodes."
+
+  # Only errors are logged while the demo fills: the fill logs a warning for the
+  # integration release whose fetch fails on purpose.
+  defp quietly(fun) do
+    level = Logger.level()
+    Logger.configure(level: :error)
+
+    try do
+      fun.()
+    after
+      Logger.configure(level: level)
+    end
+  end
+
+  # The processes of the application that the demo's steps call, each started for the
+  # command where it does not run: the name changes announce on (`Apiary.PubSub`), the
+  # supervisor of the runs' projections, the rate limit of enrolments, the throttle of
+  # node sightings, and Oban, with no queue and no plugin, so a job is inserted and none
+  # runs.
+  defp with_demo_processes(fun) do
+    children =
+      for {name, child} <- [
+            {Apiary.PubSub, {Phoenix.PubSub, name: Apiary.PubSub}},
+            {Apiary.Runs.TaskSupervisor, {Task.Supervisor, name: Apiary.Runs.TaskSupervisor}},
+            {Apiary.Runs.RateLimit, Apiary.Runs.RateLimit},
+            {Apiary.Nodes.Throttle, Apiary.Nodes.Throttle}
+          ],
+          Process.whereis(name) == nil,
+          do: child
+
+    children = if Oban.whereis(Oban), do: children, else: children ++ [{Oban, insert_only()}]
+    {:ok, supervisor} = Supervisor.start_link(children, strategy: :one_for_one)
+
+    try do
+      fun.()
+    after
+      Supervisor.stop(supervisor)
+    end
+  end
+
+  defp insert_only do
+    @app
+    |> Application.fetch_env!(Oban)
+    |> Keyword.drop([:pruner, :lifeline, :crontab])
+    |> Keyword.merge(queues: false, plugins: false, peer: false, stager: false)
   end
 
   @doc """

@@ -800,12 +800,13 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # stable_url/1 is the address of `work_item` that Qory gives another system: the
-  # instance's public URL, then `/work-items/` and the work item's public id. It names no
-  # organisation and no workspace, so it stays the same when the work item moves to
-  # another workspace. No route of the instance serves it yet.
+  # instance's public URL (`Apiary.Setup.public_url/0`, the configured one where no
+  # endpoint runs, as under `bin/apiary eval`), then `/work-items/` and the work item's
+  # public id. It names no organisation and no workspace, so it stays the same when the
+  # work item moves to another workspace. No route of the instance serves it yet.
   @spec stable_url(WorkItem.t()) :: String.t()
   def stable_url(%WorkItem{public_id: public_id}) when is_binary(public_id),
-    do: ApiaryWeb.Endpoint.url() <> "/work-items/" <> public_id
+    do: Apiary.Setup.public_url() <> "/work-items/" <> public_id
 
   ## Closing
 
