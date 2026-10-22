@@ -45,7 +45,7 @@ defmodule Apiary.Dispatches.WireTest do
 
   # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
   # schema its name starts with, the longest that matches.
-  @schemas ~w(claim-answer handover-answer claim dispatched handover release prebuilt refusal)
+  @schemas ~w(claim-answer handover-answer claim dispatched handover release prebuilt machine-log refusal)
 
   defp schema_of("invalid/" <> name),
     do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
@@ -120,11 +120,13 @@ defmodule Apiary.Dispatches.WireTest do
     "commit" => "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
   }
 
-  test "the vendored contracts are the commit their refs name" do
-    for dir <- ["provisioner/v1", "integration/v1", "explore/v1"] do
-      assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) ==
-               "29a8d70f778570dbf13e3a6d3735b04b697415c9\n",
-             dir
+  test "the vendored contracts are the commits their refs name" do
+    for {dir, ref} <- [
+          {"provisioner/v1", "022bfb7ced59a916bd97f1e9e1a20ff403b63d3e"},
+          {"integration/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"},
+          {"explore/v1", "29a8d70f778570dbf13e3a6d3735b04b697415c9"}
+        ] do
+      assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end
   end
 
@@ -194,10 +196,10 @@ defmodule Apiary.Dispatches.WireTest do
     refusals = for "refusal/" <> _ = path <- all, do: path
 
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
-    assert length(requests) == 7
-    assert length(invalid_requests) == 15
-    assert length(answers) == 45
-    assert length(refusals) == 6
+    assert length(requests) == 10
+    assert length(invalid_requests) == 19
+    assert length(answers) == 64
+    assert length(refusals) == 7
   end
 
   test "each refusal fixture is a code, written as the control plane writes a refusal" do
@@ -212,6 +214,7 @@ defmodule Apiary.Dispatches.WireTest do
 
     assert Enum.sort(codes) == [
              "handed_over",
+             "machine_log_exists",
              "no_gateway",
              "not_handed_over",
              "not_prebuild",
@@ -235,6 +238,9 @@ defmodule Apiary.Dispatches.WireTest do
                "dispatched/with-external.json",
                "dispatched/without-external.json",
                "handover/handover.json",
+               "handover/run-code.json",
+               "machine-log/truncated.json",
+               "machine-log/whole.json",
                "prebuilt/prebuilt.json",
                "release/retry.json"
              ]
@@ -267,6 +273,9 @@ defmodule Apiary.Dispatches.WireTest do
       assert handover(fixture("handover/handover.json")) ==
                {:ok, %{time: ~U[2026-10-15 12:01:00Z], run_code: false}}
 
+      assert handover(fixture("handover/run-code.json")) ==
+               {:ok, %{time: ~U[2026-10-15 12:01:00Z], run_code: true}}
+
       assert release(fixture("release/retry.json")) ==
                {:ok,
                 %{
@@ -294,7 +303,7 @@ defmodule Apiary.Dispatches.WireTest do
             name = Path.basename(path),
             # An answer's fixture is the starter's to refuse.
             not String.contains?(name, "-answer-") do
-          [kind | _] = String.split(name, "-", parts: 2)
+          kind = Enum.find(Map.keys(@readers), &String.starts_with?(name, &1 <> "-"))
           assert read(Map.fetch!(@readers, kind), File.read!(path)) == :error, name
           name
         end
@@ -305,6 +314,10 @@ defmodule Apiary.Dispatches.WireTest do
                "claim-wait-seconds-26.json",
                "dispatched-external-ref-nul.json",
                "dispatched-external-type-upper-case.json",
+               "machine-log-log-nul.json",
+               "machine-log-undefined-member.json",
+               "machine-log-version-2.json",
+               "machine-log-without-log.json",
                "prebuilt-image-digest-63.json",
                "prebuilt-image-tag.json",
                "prebuilt-image-upper-case.json",
@@ -728,12 +741,8 @@ defmodule Apiary.Dispatches.WireTest do
     end
   end
 
-  # The contract's `machine-log/whole.json`; its other fixtures are put over it in turn.
-  @machine_log %{
-    "version" => 1,
-    "time" => "2026-10-15T12:10:00Z",
-    "log" => "2026-10-15T12:01:05Z machine created: small\n2026-10-15T12:09:15Z machine stopped\n"
-  }
+  # The contract's `machine-log/whole.json`; the changes each test makes are put over it.
+  @machine_log @fixtures |> Path.join("machine-log/whole.json") |> File.read!() |> Jason.decode!()
 
   describe "a machine log" do
     test "is read to its values, truncated false when absent" do
@@ -741,6 +750,15 @@ defmodule Apiary.Dispatches.WireTest do
                machine_log(@machine_log)
 
       assert log == @machine_log["log"]
+
+      assert machine_log(fixture("machine-log/truncated.json")) ==
+               {:ok,
+                %{
+                  time: ~U[2026-10-15 12:10:00Z],
+                  log:
+                    "2026-10-15T12:09:12Z job ended: exit 0\n2026-10-15T12:09:15Z machine stopped\n",
+                  truncated: true
+                }}
 
       assert {:ok, %{truncated: true}} = machine_log(Map.put(@machine_log, "truncated", true))
       assert {:ok, %{truncated: false}} = machine_log(Map.put(@machine_log, "truncated", false))

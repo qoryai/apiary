@@ -4,8 +4,10 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   # as a node pool's starter receives them: absent without a file or an entry, each part
   # of an entry alone, for an explore run, within the handover answer's limit, and for a
   # prebuild and for a run handed a run code, whose handover answers have neither `stack`
-  # nor `workflow`. Not async: the file read at boot and the features are the whole
-  # node's.
+  # nor `workflow`; each answer valid under the vendored `claim-answer.schema.json` or
+  # `handover-answer.schema.json`, whose `run_settings` refers to Forager's schemas, so the
+  # module is tagged `:contract`. Not async: the file read at boot and the features are the
+  # whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
@@ -21,6 +23,36 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
 
   @moduletag needs: :factory
   @moduletag :tmp_dir
+  @moduletag :contract
+
+  @vendored Path.expand("../../fixtures/contract", __DIR__)
+  @base "https://qory.dev/contracts/"
+
+  # The vendored schemas by their URL under the contracts' base, and Forager's from its
+  # contract directory (`Apiary.ContractFixtures.contract_dir/0`). Nothing is fetched.
+  defmodule Resolver do
+    @moduledoc false
+    @behaviour JSV.Resolver
+
+    @base "https://qory.dev/contracts/"
+
+    @impl JSV.Resolver
+    def resolve(@base <> path, roots) do
+      Enum.find_value(roots, {:error, {:not_vendored, path}}, fn root ->
+        file = Path.expand(path, root)
+
+        with true <- String.starts_with?(file, root <> "/"),
+             {:ok, body} <- File.read(file),
+             {:ok, schema} <- Jason.decode(body) do
+          {:ok, schema}
+        else
+          _ -> nil
+        end
+      end)
+    end
+
+    def resolve(url, _roots), do: {:error, {:not_vendored, url}}
+  end
 
   @commit "0123456789abcdef0123456789abcdef01234567"
   @stack %{
@@ -85,8 +117,22 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     )
   end
 
+  defp validator(path) do
+    forager =
+      case Apiary.ContractFixtures.contract_dir() do
+        nil -> []
+        dir -> [Path.expand("../..", dir)]
+      end
+
+    JSV.build!(%{"$ref" => @base <> path},
+      resolver: {Resolver, [@vendored | forager]},
+      formats: true
+    )
+  end
+
   # The claim answer, then the handover answer, of the oldest run the pool may take: both
-  # 200, signed. `handover` is the handover's body beside `version`.
+  # 200, signed, each valid under its vendored schema. `handover` is the handover's body
+  # beside `version`.
   defp claim_and_hand_over(ctx, handover \\ %{}) do
     claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
     assert claim.status == 200
@@ -101,6 +147,15 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
 
     assert handover.status == 200
     assert signed_answer?(handover)
+
+    for {body, schema} <- [{claim, "claim-answer"}, {handover, "handover-answer"}] do
+      assert {:ok, _} =
+               body.resp_body
+               |> Jason.decode!()
+               |> JSV.validate(validator("provisioner/v1/#{schema}.schema.json")),
+             schema
+    end
+
     {claim.resp_body, handover.resp_body}
   end
 
