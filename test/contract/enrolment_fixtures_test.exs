@@ -21,7 +21,12 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       answer's, the answer is the body `Apiary.Contract.Enrolment.run_answer_body/1`
       builds, byte for byte, and its signature is the known answer's; the invalid run
       answers are refused; and the request, redeemed against a run whose code it is, is
-      refused by the key checks, as the fixture request is.
+      refused by the key checks, as the fixture request is;
+    * the relay's signature of that request (`run_enrolment.relay`): the request string of
+      a POST under the fixture gateway key, the body byte for byte as its last line, and
+      the signature under that key. Forager's contract at the pinned commit has no
+      `relay` vector yet; until it does, the request string and the signature are checked
+      against the format alone.
 
   The instance never signs under the fixture signing key, so an answer's signature is
   replayed here, through `Apiary.SigningKey.sign/2`, not through the endpoint;
@@ -434,6 +439,41 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
                known["signature"]
     end
 
+    test "the relay's signature: a POST under the gateway's access key, the body byte for byte as the last line, and the known answer's when the contract has one",
+         %{known: known} do
+      body = contract_file!("known-answers/enrolment-run-request.json")
+      gateway = fixture_key!("gateway_key")
+      instance_id = fixture_key!("access_key").instance_id
+      path = "/.well-known/qory-enrolment"
+
+      message = SignedMessage.request(gateway.access_key_id, instance_id, "POST", path, body)
+
+      lines = [
+        "qory-request-ed25519-v1",
+        gateway.access_key_id,
+        instance_id,
+        "POST",
+        path,
+        body
+      ]
+
+      assert message == Enum.join(lines, "\n")
+      assert String.ends_with?(message, "\n" <> body)
+
+      signature =
+        sign_request(gateway.seed, gateway.access_key_id, instance_id, "POST", path, body)
+
+      {:ok, raw} = Ed25519.decode(signature, 64)
+      assert Ed25519.verify(message, raw, gateway.public_key)
+
+      # Forager's contract at 03a359d has no relay vector: the next pin brings one.
+      if relay = known["relay"] do
+        assert relay["lines"] == lines
+        assert relay["length"] == byte_size(message)
+        assert relay["signature"] == signature
+      end
+    end
+
     test "the invalid run answers are refused by the schema, and are no body the builder makes",
          %{run_key: run_key} do
       built =
@@ -470,6 +510,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
         )
 
       assert Apiary.Runs.RunCode.redeem(request,
+               relayed_by: run.gateway_id,
                now: at(request.timestamp),
                fingerprint: fixture_key!("signing_key").fingerprint
              ) == {:error, :key_unproven}

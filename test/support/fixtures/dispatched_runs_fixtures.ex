@@ -255,16 +255,29 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
-  Redeems the run code `code` now, under a fresh key pair, as a machine does: the run key
-  (`Apiary.Runs.RunCode.redeem/2`).
+  Redeems the run code `code` now, under a fresh key pair, as a machine does through the
+  gateway the claim bound the code to: the run key (`Apiary.Runs.RunCode.redeem/2`).
   """
   def redeemed_run_key!(code) do
     pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
 
     {:ok, %{run_key: run_key}} =
-      Apiary.Runs.RunCode.redeem(run_code_request(code, pair, DateTime.utc_now()))
+      Apiary.Runs.RunCode.redeem(run_code_request(code, pair, DateTime.utc_now()),
+        relayed_by: bound_gateway(code)
+      )
 
     run_key
+  end
+
+  @doc """
+  The id of the gateway the claim bound the run code `code` to (`runs.gateway_id`), the
+  node whose relay `Apiary.Runs.RunCode.redeem/2` takes it from (`relayed_by`); nil for a
+  code no run has.
+  """
+  def bound_gateway(code) do
+    [head | _fingerprints] = String.split(code, ".")
+    hash = Apiary.AccessKeys.EnrolmentCode.hash(head)
+    Repo.one(from r in Run, where: r.run_code_sha256 == ^hash, select: r.gateway_id)
   end
 
   @doc """

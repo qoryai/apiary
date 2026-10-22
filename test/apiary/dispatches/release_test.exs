@@ -275,6 +275,7 @@ defmodule Apiary.Dispatches.ReleaseTest do
     test "waits again, the same run_id and queued_at; the dispatch ends released", ctx do
       {work_item, queued} = queued!(ctx)
       %{dispatch: dispatch, run_code: code} = claimed!(ctx)
+      assert bound_gateway(code) == ctx.gateway.id
 
       assert release(ctx.key, dispatch) == :ok
 
@@ -294,7 +295,9 @@ defmodule Apiary.Dispatches.ReleaseTest do
       # The code redeems nothing.
       pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
       request = run_code_request(code, pair, DateTime.utc_now())
-      assert Apiary.Runs.RunCode.redeem(request) == {:error, :unauthorized}
+
+      assert Apiary.Runs.RunCode.redeem(request, relayed_by: ctx.gateway.id) ==
+               {:error, :unauthorized}
 
       # The next claim takes the same run again, with a new dispatch.
       %{dispatch: again} = dispatched!(ctx.key)

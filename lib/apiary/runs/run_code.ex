@@ -23,13 +23,15 @@ defmodule Apiary.Runs.RunCode do
   # **At the redemption** (`redeem/2`), in the order of every enrolment code:
   #
   #   1. a timestamp more than 300 seconds from the clock, a code that carries another
-  #      fingerprint than the server key's or two, or a code no run has, of a workspace and
-  #      an organisation in use, is `{:error, :unauthorized}`;
+  #      fingerprint than the server key's or two, a request no gateway's relay signed
+  #      (`relayed_by` nil), or a code no run has, of a workspace and an organisation in
+  #      use, is `{:error, :unauthorized}`;
   #   2. then, in one transaction, under the lock of the run's run of the queue
   #      (`Apiary.Dispatches.RunEnd.lock/1`), its projection lock and its row
-  #      `FOR UPDATE`: a run deleted meanwhile, a code at or past its expiry, or of a run
-  #      that has ended (no longer `pending` or `running`, released, given its outcome or
-  #      its events pruned), is `{:error, :unauthorized}`; so is a code whose run of the
+  #      `FOR UPDATE`: a run deleted meanwhile, a code relayed by another node than the
+  #      gateway the claim bound it to (`runs.gateway_id`), checked before the code's
+  #      state, a code at or past its expiry, or of a run that has ended (no longer
+  #      `pending` or `running`, released, given its outcome or its events pruned), is `{:error, :unauthorized}`; so is a code whose run of the
   #      queue is neither handed over nor claimed, or claimed by a dispatch that ended,
   #      went stale, or whose `lease_until` the clock is at or past, and a code redeemed
   #      before by another public key;
@@ -105,7 +107,10 @@ defmodule Apiary.Runs.RunCode do
   # redeem/2 redeems the run code of `request` for its run's run key: the moduledoc.
   #
   # `opts`: `now`, the time it is (the current time); `fingerprint`, the signing key's
-  # fingerprint (`Apiary.SigningKey.fingerprint/0`); `code_limit`, the code's limit.
+  # fingerprint (`Apiary.SigningKey.fingerprint/0`); `code_limit`, the code's limit;
+  # `relayed_by`, the id of the node whose access key signed the request as a gateway's
+  # relay (`ApiaryWeb.Contract.SignedRequest.relayed/1`). Without it, every code is
+  # `{:error, :unauthorized}`.
   @doc false
   @spec redeem(Enrolment.t(), keyword) ::
           {:ok, %{run_id: String.t(), run_key: String.t(), documents: binary | nil}}
@@ -114,12 +119,14 @@ defmodule Apiary.Runs.RunCode do
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
     fingerprint = Keyword.get_lazy(opts, :fingerprint, &SigningKey.fingerprint/0)
     code_limit = Keyword.merge(@code_limit, Keyword.get(opts, :code_limit, []))
+    relayed_by = Keyword.get(opts, :relayed_by)
 
     with true <- EnrolmentCode.run_code?(request.code_head) || {:error, :unauthorized},
          true <- Enrolment.fresh?(request, now) || {:error, :unauthorized},
          true <- Enrolment.issued_under?(request, fingerprint) || {:error, :unauthorized},
+         true <- is_binary(relayed_by) || {:error, :unauthorized},
          %{id: _id} = found <- find_run(request.code_head) || {:error, :unauthorized} do
-      Repo.transact(fn -> redeem_locked(found, request, now, code_limit) end)
+      Repo.transact(fn -> redeem_locked(found, request, relayed_by, now, code_limit) end)
     end
   end
 
@@ -144,14 +151,21 @@ defmodule Apiary.Runs.RunCode do
   # Under the lock of the run of the queue, as every path that ends one takes it first
   # (`Apiary.Dispatches.RunEnd`), then the run's projection lock, then its row
   # `FOR UPDATE`, as an attach takes them. A run deleted meanwhile, with its code, is no
-  # code.
-  defp redeem_locked(%{id: id, dispatch_run_id: dispatch_run_id}, request, now, code_limit) do
+  # code; nor is a code relayed by another node than the run's gateway.
+  defp redeem_locked(
+         %{id: id, dispatch_run_id: dispatch_run_id},
+         request,
+         relayed_by,
+         now,
+         code_limit
+       ) do
     dispatch_run = RunEnd.lock(dispatch_run_id)
     Projector.lock(id)
 
     with %Run{} = run <-
            Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE") ||
              {:error, :unauthorized},
+         true <- bound?(run, relayed_by) || {:error, :unauthorized},
          {:ok, state, dispatch} <- code_state(run, dispatch_run, request, now),
          {:ok, public_key} <- proven(request),
          :ok <- within_code_limit(run, code_limit) do
@@ -183,6 +197,15 @@ defmodule Apiary.Runs.RunCode do
       _ended_or_lapsed -> {:error, :unauthorized}
     end
   end
+
+  # The node that relayed the code is the gateway the claim bound it to
+  # (`Apiary.Dispatches.Handover`), under any key of that node live now, so a key that
+  # replaced the claim's passes too. A run whose gateway's row was purged (nil) is bound
+  # to no node.
+  defp bound?(%Run{gateway_id: gateway_id}, relayed_by) when is_binary(gateway_id),
+    do: gateway_id == relayed_by
+
+  defp bound?(%Run{}, _relayed_by), do: false
 
   defp ended?(%Run{} = run) do
     run.state not in Run.alive_states() or not is_nil(run.released_at) or

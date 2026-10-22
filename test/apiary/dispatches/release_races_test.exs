@@ -135,7 +135,8 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     request =
       run_code_request(code, Apiary.AccessKeysFixtures.ed25519_key_pair(), DateTime.utc_now())
 
-    fn -> RunCode.redeem(request) end
+    gateway = bound_gateway(code)
+    fn -> RunCode.redeem(request, relayed_by: gateway) end
   end
 
   defp sweep(at), do: fn -> Dispatches.sweep(at) end

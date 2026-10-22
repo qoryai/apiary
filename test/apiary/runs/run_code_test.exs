@@ -67,8 +67,11 @@ defmodule Apiary.Runs.RunCodeTest do
     request
   end
 
-  defp redeem(ctx, pair, at, opts \\ []),
-    do: RunCode.redeem(request(ctx.handed.run_code, pair, at), Keyword.put(opts, :now, at))
+  # Redeemed through the gateway the claim bound the code to: the relay's node.
+  defp redeem(ctx, pair, at, opts \\ []) do
+    opts = Keyword.merge([now: at, relayed_by: ctx.gateway.id], opts)
+    RunCode.redeem(request(ctx.handed.run_code, pair, at), opts)
+  end
 
   defp at(ctx, seconds), do: DateTime.add(ctx.claimed_at, seconds, :second)
 
@@ -150,6 +153,7 @@ defmodule Apiary.Runs.RunCodeTest do
 
       assert {:ok, %{run_key: _run_key}} =
                RunCode.redeem(request(claimed.handed.run_code, ed25519_key_pair(), now),
+                 relayed_by: ctx.gateway.id,
                  now: now
                )
 
@@ -260,7 +264,10 @@ defmodule Apiary.Runs.RunCodeTest do
       :ok = Dispatches.release(ctx.key, claimed.dispatch.public_id, %{reason: "stopped"})
       now = DateTime.utc_now()
 
-      assert RunCode.redeem(request(claimed.handed.run_code, ed25519_key_pair(), now), now: now) ==
+      assert RunCode.redeem(request(claimed.handed.run_code, ed25519_key_pair(), now),
+               relayed_by: ctx.gateway.id,
+               now: now
+             ) ==
                {:error, :unauthorized}
 
       refute Repo.get(Run, claimed.run.id)
@@ -273,7 +280,9 @@ defmodule Apiary.Runs.RunCodeTest do
       request = request(claimed.handed.run_code, ed25519_key_pair(), past_lease)
 
       # Not yet swept: the lease is read at the redemption.
-      assert RunCode.redeem(request, now: past_lease) == {:error, :unauthorized}
+      assert RunCode.redeem(request, relayed_by: ctx.gateway.id, now: past_lease) ==
+               {:error, :unauthorized}
+
       assert %Run{run_key_payload: nil} = Repo.get!(Run, claimed.run.id)
       assert %Dispatch{handed_over_at: nil} = Repo.get!(Dispatch, claimed.dispatch.id)
 
@@ -281,7 +290,9 @@ defmodule Apiary.Runs.RunCodeTest do
       Dispatches.sweep(past_lease)
       refute Repo.get(Run, claimed.run.id)
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, claimed.queued.id)
-      assert RunCode.redeem(request, now: past_lease) == {:error, :unauthorized}
+
+      assert RunCode.redeem(request, relayed_by: ctx.gateway.id, now: past_lease) ==
+               {:error, :unauthorized}
     end
 
     test "of a code that carries another prefix, or another fingerprint", ctx do
@@ -290,13 +301,17 @@ defmodule Apiary.Runs.RunCodeTest do
       now = at(ctx, 60)
 
       node_code = String.replace_prefix(head, "qecr_", "qecn_") <> "." <> fingerprint
-      assert RunCode.redeem(request(node_code, pair, now), now: now) == {:error, :unauthorized}
+
+      assert RunCode.redeem(request(node_code, pair, now), relayed_by: ctx.gateway.id, now: now) ==
+               {:error, :unauthorized}
 
       assert Apiary.AccessKeys.enrol(request(node_code, pair, now), now: now) ==
                {:error, :unauthorized}
 
       other = head <> "." <> String.duplicate("A", 21) <> "A"
-      assert RunCode.redeem(request(other, pair, now), now: now) == {:error, :unauthorized}
+
+      assert RunCode.redeem(request(other, pair, now), relayed_by: ctx.gateway.id, now: now) ==
+               {:error, :unauthorized}
 
       assert Repo.get!(Run, ctx.run.id).run_key_payload == nil
     end
@@ -304,17 +319,41 @@ defmodule Apiary.Runs.RunCodeTest do
     test "of a timestamp more than 300 seconds from the clock", ctx do
       pair = ed25519_key_pair()
       request = request(ctx.handed.run_code, pair, at(ctx, 60))
-      assert RunCode.redeem(request, now: at(ctx, 361)) == {:error, :unauthorized}
+
+      assert RunCode.redeem(request, relayed_by: ctx.gateway.id, now: at(ctx, 361)) ==
+               {:error, :unauthorized}
     end
 
     test "of a key the key checks refuse, or a proof that does not verify", ctx do
       pair = ed25519_key_pair()
       request = request(ctx.handed.run_code, pair, at(ctx, 60))
 
-      assert RunCode.redeem(%{request | name: "run-02"}, now: at(ctx, 60)) ==
+      assert RunCode.redeem(%{request | name: "run-02"},
+               relayed_by: ctx.gateway.id,
+               now: at(ctx, 60)
+             ) ==
                {:error, :key_unproven}
 
       assert Repo.get!(Run, ctx.run.id).run_key_payload == nil
+    end
+
+    test "relayed by no gateway, or by another node than the gateway the claim bound it to, before the key's checks",
+         ctx do
+      other = Apiary.NodesFixtures.gateway_fixture(ctx.scope)
+      pair = ed25519_key_pair()
+      request = request(ctx.handed.run_code, pair, at(ctx, 60))
+      unproven = %{request | name: "run-02"}
+
+      for relayed_by <- [nil, other.id, ctx.pool.id], request <- [request, unproven] do
+        assert RunCode.redeem(request, relayed_by: relayed_by, now: at(ctx, 60)) ==
+                 {:error, :unauthorized}
+      end
+
+      assert RunCode.redeem(request, now: at(ctx, 60)) == {:error, :unauthorized}
+      assert %Run{run_key_payload: nil, run_code_public_key: nil} = Repo.get!(Run, ctx.run.id)
+
+      # The bound gateway redeems it after the refused tries.
+      assert {:ok, %{run_key: _run_key}} = redeem(ctx, pair, at(ctx, 60))
     end
 
     test "past the code's limit", ctx do

@@ -121,7 +121,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   defp redeemed_201(handed) do
     pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
     request = run_code_request(handed.run_code, pair, DateTime.utc_now())
-    {:ok, redeemed} = RunCode.redeem(request)
+    {:ok, redeemed} = RunCode.redeem(request, relayed_by: bound_gateway(handed.run_code))
 
     Apiary.Contract.Enrolment.run_answer_body(%{
       run_id: redeemed.run_id,

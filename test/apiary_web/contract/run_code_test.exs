@@ -89,11 +89,27 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
     })
   end
 
-  defp enrol(body) do
-    build_conn()
-    |> put_req_header("content-type", "application/json")
-    |> put_req_header("x-qory-contract-version", "1")
-    |> post(@path, body)
+  # The enrolment as a gateway's relay sends it: the machine's body byte for byte, signed
+  # as a POST under the access key `relay`, the bound gateway's by default. `relay: nil`
+  # sends it with no relay headers, as a machine does; `signature:` sends that signature.
+  defp enrol(ctx, body, opts \\ []) do
+    case Keyword.get(opts, :relay, ctx.gateway_key) do
+      nil ->
+        build_conn()
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-qory-contract-version", "1")
+        |> post(@path, body)
+
+      {key, seed} ->
+        signed_post(
+          build_conn(),
+          key.key_id,
+          seed,
+          body,
+          [target: @path, content_type: "application/json", delivery: nil] ++
+            Keyword.take(opts, [:signature, :instance_id])
+        )
+    end
   end
 
   # The answer's signature verifies under the instance's key, as an enrolment answer, its
@@ -158,7 +174,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       pair = ed25519_key_pair()
       body = body(ctx.code, pair)
 
-      conn = enrol(body)
+      conn = enrol(ctx, body)
       assert conn.status == 201
       answer = assert_signed(conn, body)
 
@@ -195,17 +211,17 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
          ctx do
       pair = ed25519_key_pair()
       body = body(ctx.code, pair)
-      first = enrol(body)
+      first = enrol(ctx, body)
       assert first.status == 201
 
       # The same request again replays the first proof: refused, unsigned.
-      again = enrol(body)
+      again = enrol(ctx, body)
       assert again.status == 401
       assert json_response(again, 401) == %{"error" => "unauthorized"}
       assert get_resp_header(again, "x-qory-signature-ed25519") == []
 
       later = body(ctx.code, pair, timestamp: System.os_time(:second) + 5)
-      newer = enrol(later)
+      newer = enrol(ctx, later)
       assert newer.status == 201
       assert newer.resp_body == first.resp_body
       assert_signed(newer, later)
@@ -215,10 +231,10 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
     end
 
     test "another public key after the first is 401, unsigned, and changes nothing", ctx do
-      assert enrol(body(ctx.code, ed25519_key_pair())).status == 201
+      assert enrol(ctx, body(ctx.code, ed25519_key_pair())).status == 201
       run = run!(ctx)
 
-      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
       assert run!(ctx) == run
     end
 
@@ -227,9 +243,9 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       pair = ed25519_key_pair()
       forged = ctx.code |> body(pair) |> Jason.decode!() |> Map.put("name", "run-02")
 
-      assert_refused(enrol(Jason.encode!(forged)), 409, "key_invalid")
+      assert_refused(enrol(ctx, Jason.encode!(forged)), 409, "key_invalid")
       assert run!(ctx).run_code_public_key == nil
-      assert enrol(body(ctx.code, pair)).status == 201
+      assert enrol(ctx, body(ctx.code, pair)).status == 201
     end
 
     test "at minute 14 is answered a run key the gateway attaches with", ctx do
@@ -238,7 +254,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       Dispatches.sweep(Dispatches.now())
       assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, ctx.queued.id)
 
-      conn = enrol(body(ctx.code, ed25519_key_pair()))
+      conn = enrol(ctx, body(ctx.code, ed25519_key_pair()))
       assert conn.status == 201
       %{"run_id" => run_id, "run_key" => run_key} = Jason.decode!(conn.resp_body)
 
@@ -253,12 +269,12 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
 
     test "after the code's 15 minutes is 401, unsigned, and the run has no run key", ctx do
       back!(ctx, 15 * 60)
-      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
       assert run!(ctx).run_key_payload == nil
     end
 
     test "before dispatched hands the dispatch over; a dispatched after it is 204", ctx do
-      assert enrol(body(ctx.code, ed25519_key_pair())).status == 201
+      assert enrol(ctx, body(ctx.code, ed25519_key_pair())).status == 201
 
       assert %Dispatch{handed_over_at: %DateTime{}, dispatched_at: nil} =
                Repo.get!(Dispatch, ctx.dispatch.id)
@@ -271,12 +287,12 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
     test "after the claim's lease lapsed before dispatched is 401, unsigned; the run waits again with no registered run",
          ctx do
       back!(ctx, 600)
-      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
 
       Dispatches.sweep(Dispatches.now())
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, ctx.queued.id)
       assert Repo.one(from r in Run, where: r.dispatch_run_id == ^ctx.queued.id) == nil
-      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
 
     test "of a claim released before dispatched is 401, unsigned", ctx do
@@ -291,7 +307,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
         )
 
       assert released.status == 204
-      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
 
     test "of a run that ended is 401, unsigned", ctx do
@@ -302,13 +318,104 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
           set: [state: :ended, end_cause: :lost]
         )
 
-      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
 
     test "with a node's prefix on the code's characters is 401, unsigned", ctx do
       other = String.replace_prefix(ctx.code, "qecr_", "qecn_")
-      assert_refused(enrol(body(other, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(other, ed25519_key_pair())), 401, "unauthorized")
       assert run!(ctx).run_key_payload == nil
+    end
+  end
+
+  describe "the gateway's relay" do
+    # What a code no run has is answered through the bound gateway's relay: the 401 every
+    # refused relay must be, its status, its body and its headers, with the request's id
+    # left out and the nonce of the content security policy, which every answer draws
+    # anew, blanked.
+    defp unknown_code(ctx) do
+      [_head, fingerprint] = String.split(ctx.code, ".")
+      code = "qecr_" <> String.duplicate("A", 26) <> "." <> fingerprint
+      answer(enrol(ctx, body(code, ed25519_key_pair())))
+    end
+
+    defp answer(conn) do
+      headers =
+        conn.resp_headers
+        |> List.keydelete("x-request-id", 0)
+        |> Enum.map(fn {name, value} ->
+          {name, String.replace(value, ~r/'nonce-[^']*'/, "'nonce-'")}
+        end)
+        |> Enum.sort()
+
+      {conn.status, conn.resp_body, headers}
+    end
+
+    # The run's code outstanding: no public key, no run key.
+    defp outstanding?(ctx) do
+      run = run!(ctx)
+      run.run_code_public_key == nil and run.run_key_payload == nil
+    end
+
+    test "under the bound gateway's key that replaces the one in use, redeems; a retry under the key in use is the same answer",
+         ctx do
+      %{access_key: next, secret: next_seed} =
+        contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      pair = ed25519_key_pair()
+      first = enrol(ctx, body(ctx.code, pair), relay: {next, next_seed})
+      assert first.status == 201
+
+      later = body(ctx.code, pair, timestamp: System.os_time(:second) + 5)
+      retry = enrol(ctx, later)
+      assert retry.status == 201
+      assert retry.resp_body == first.resp_body
+      assert_signed(retry, later)
+
+      # A retry needs the relay too.
+      newest = body(ctx.code, pair, timestamp: System.os_time(:second) + 10)
+      assert answer(enrol(ctx, newest, relay: nil)) == unknown_code(ctx)
+    end
+
+    test "under another gateway's key, or a node pool's, of the same organisation, is the unknown code's 401 and changes nothing",
+         ctx do
+      other = Apiary.NodesFixtures.gateway_fixture(ctx.scope)
+      %{access_key: other_key, secret: other_seed} = contract_key_fixture(ctx.scope, node: other)
+      assert other.organisation_id == ctx.gateway.organisation_id
+      expected = unknown_code(ctx)
+      pair = ed25519_key_pair()
+
+      assert answer(enrol(ctx, body(ctx.code, pair), relay: {other_key, other_seed})) ==
+               expected
+
+      assert answer(enrol(ctx, body(ctx.code, pair), relay: {ctx.key, ctx.seed})) == expected
+      assert outstanding?(ctx)
+
+      # The bound gateway redeems it after the refused tries, for the same public key.
+      assert enrol(ctx, body(ctx.code, pair)).status == 201
+    end
+
+    test "with no relay headers, no instance id, or a signature that does not verify, is the unknown code's 401 and changes nothing",
+         ctx do
+      expected = unknown_code(ctx)
+      pair = ed25519_key_pair()
+      body = body(ctx.code, pair)
+      {key, seed} = ctx.gateway_key
+      # A signature over a body one byte longer than the one sent.
+      bad_signature = sign_request(seed, key.key_id, instance_id(), "POST", @path, body <> " ")
+
+      assert answer(enrol(ctx, body, relay: nil)) == expected
+      assert answer(enrol(ctx, body, instance_id: nil)) == expected
+      assert answer(enrol(ctx, body, signature: bad_signature)) == expected
+      assert answer(enrol(ctx, body, signature: "")) == expected
+
+      # Before the proof's check: a proof that does not verify is 401, not 409.
+      forged = ctx.code |> body(pair) |> Jason.decode!() |> Map.put("name", "run-02")
+      assert answer(enrol(ctx, Jason.encode!(forged), relay: nil)) == expected
+      assert outstanding?(ctx)
+
+      # The bound gateway redeems it after the refused tries.
+      assert enrol(ctx, body(ctx.code, pair)).status == 201
     end
   end
 
@@ -356,7 +463,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
     end
 
     test "a first one after lease_until is 204 when the code was redeemed before it", ctx do
-      assert enrol(body(ctx.code, ed25519_key_pair())).status == 201
+      assert enrol(ctx, body(ctx.code, ed25519_key_pair())).status == 201
       back!(ctx, 600 + 1)
 
       assert keep_alive(ctx, 0).status == 204
@@ -400,7 +507,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
                Repo.get!(Dispatch, ctx.dispatch.id)
 
       assert Slots.held(ctx.pool.id) == 0
-      assert_refused(enrol(body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
+      assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
   end
 end

@@ -410,7 +410,9 @@ cannot fit is `503` `unavailable`. A prebuild's documents have no `image_destina
 Qory Apiary keeps no registry destination for an image. The registered run
 has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
 `.` and the fingerprint of the instance's key, which the machine redeems once at
-enrolment for the run key, within 15 minutes of the claim (Enrolment). The run key names
+enrolment for the run key, within 15 minutes of the claim (Enrolment). The registered
+run keeps the gateway the pool's choice resolved to (`runs.gateway_id`): the code is bound
+to that gateway, and is redeemed only through its relay. The run key names
 the gateway and the pool. It is made at the first redemption, issued then, with its
 attach window of 600 seconds from then; until the redemption the run's attach window is
 the code's 15 minutes, so a run whose code is never redeemed is lost at the code's
@@ -843,6 +845,23 @@ is given the same `run_id`, `run_key` and `documents` again while the code's 15 
 last, with `apiary_public_key` as the server's keys are at that moment, signed over the
 retry's proof. A proof with the first's timestamp or an older one is a replayed proof,
 `401`, unsigned, and changes nothing.
+
+A run code is redeemed only through the relay of the gateway the claim bound it to. The
+relay signs the enrolment as a POST under the gateway's access key: `X-Qory-Access-Key-Id`,
+`X-Qory-Instance-Id` and `X-Qory-Signature-Ed25519`, over the request string of
+`qory-request-ed25519-v1`, the key id, the instance id, `POST`,
+`/.well-known/qory-enrolment` as sent, and the raw body byte for byte, the lines joined
+by a line feed and none after the body. The three headers are required, each once, the
+instance id of the signed requests' form, and the signature verifies as a signed
+request's (`ApiaryWeb.Contract.SignedRequest.relayed/1`) under a live key of the
+gateway's node: any of its keys, so the key in use and the one that replaces it both
+pass. A header missing or sent twice, a signature that does not verify, or a key of
+another node, another gateway of the organisation among them, is the unknown code's
+`401`, the same status, body and headers, checked before the proof and before the
+code's state, and nothing is written: the code stays outstanding for the bound gateway.
+The body's timestamp window, the single use and the retry stay as they are, and the
+relay's signature adds no timestamp: a POST signs none. For any other code the three
+headers are not read.
 
 ## The log and the terminal
 
@@ -1385,11 +1404,13 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   contract does not mention `Retry-After`, which the `429` carries all the same; and per
   code, 1 a second and 5 at once (`code_rate`, `code_burst`), counted only once the code
   is accepted and the key proven, so a refused code or an unproven key spends none of it. The contract fixes the order, not the numbers.
-- Enrolment through a gateway: the gateway relays the request unchanged (the Forager
-  contract's relay) and strips `X-Forwarded-For`, `Forwarded` and `X-Real-Ip`, so it
-  arrives from the gateway's address, which `ApiaryWeb.Origin` gives as any peer's. It is
-  accepted as a direct one, with no check of which gateway relayed it: the code decides
-  the node, and the signed answer is bound to the machine's `proof`, which the gateway
-  passes back unchanged. Every machine behind one gateway shares that address's limit, 1
+- Enrolment through a gateway: the gateway relays the body unchanged (the Forager
+  contract's relay), strips `X-Forwarded-For`, `Forwarded` and `X-Real-Ip`, and signs the
+  request under its access key, so it arrives from the gateway's address, which
+  `ApiaryWeb.Origin` gives as any peer's. A node's code is accepted as a direct one, with
+  no check of which gateway relayed it: the code decides the node, and the relay's
+  headers are not read. A run code is redeemed only through the gateway the claim bound
+  it to (Enrolment). The signed answer is bound to the machine's `proof`, which the
+  gateway passes back unchanged. Every machine behind one gateway shares that address's limit, 1
   a second and 10 at once, which is not raised for a gateway's address, and the audit
   entry of the key's arrival records the gateway's address as `remote_ip`.
