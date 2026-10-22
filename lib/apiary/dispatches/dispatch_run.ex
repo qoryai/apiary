@@ -49,8 +49,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # The causes a run of the queue, or a dispatch of one, ends for, and where each is named:
   # `released`, the starter's release (release.schema.json); `closed` and `undone`, its
   # work item closed or undone before its handover (refusal.schema.json, 410 gone);
-  # `run_ended`, the run ended by its exit after its handover, or by an outcome stored on
-  # it before a run of the queue was refused one, and a stale
+  # `run_ended`, the run ended by its exit after its handover, or, for a run that is not
+  # a prebuild, by an outcome stored on it before a run of the queue was refused one, and
+  # a stale
   # dispatch with its run; `lost`, a handed-over run the liveness
   # check ended; `collection_ended`, the collection of a prebuild ended, was assigned to
   # none or to another workspace, has no target or no `environment_ref`, or its

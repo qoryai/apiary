@@ -66,7 +66,7 @@ defmodule Apiary.Dispatches do
   # answers `410 gone`. The slot each ended dispatch held is freed once
   # (`Apiary.Dispatches.Slots.free/2`), and a claimed run's registered run is deleted
   # with its run code (`Apiary.Dispatches.Handover.drop/1`). A handed-over run is left as
-  # it is: it goes on to its end, and its result and its outcome are taken as before.
+  # it is: it goes on to its end, and its exit and its result are taken as before.
   #
   # ## Claiming: `claim/3`
   #
