@@ -359,7 +359,12 @@ a JSON file at the path `APIARY_MACHINES_FILE` is set to and read at boot
 the entry of the run's workspace, for every step, and a handover answer has `stack` and
 `workflow`, the entry's stack and workflow, for every step but `prebuild`: a prebuild's
 handover answer has neither. With the variable unset, or for a workspace
-without an entry or without that part of one, the answer leaves those members out. Its
+without an entry or without that part of one, the answer leaves those members out. An
+explore run's `run_settings` has `time_limit_minutes`, an integer from 15 to 1440, after its
+other members, when a time limit resolves for the entry's workflow: the limit set for that
+workflow at the run's target, else the one set at its workspace (`Apiary.TimeLimits`). With
+no limit at either place, or no workflow in the entry, the member is absent, and the run
+takes the default of the workflow's stack, which the machine applies. Its
 `handover.schema.json` has the handover register the run, and
 has the run endpoint refuse, under any key, a registration whose `run_id` is that of such a
 run, waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
