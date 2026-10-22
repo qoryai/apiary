@@ -3,22 +3,41 @@ defmodule Apiary.Repo.Migrations.RecordABuildFailedByItsExit do
 
   # A prebuild whose run exits `failed` records its last build's failure as `failed`
   # (`Apiary.Dispatches.RunEnd`), apart from `lost`. `environments_failure_check` is
-  # re-created to take it, with no reason, as `lost` and `timed_out` are: NOT VALID, so the
-  # change scans no row under a lock that blocks writes to `environments`, then validated,
-  # a scan that takes no such lock. Every row the check before took passes it. Down
-  # stops while a record holds `failed`, which the check before refuses.
+  # re-created to take it, with no reason, as `lost` and `timed_out` are. It is added NOT
+  # VALID, so the change scans no row under the lock that blocks writes to `environments`;
+  # the next migration validates it. Every row the check before took passes it.
+  #
+  # Down first reads the records whose failure is `failed`, a scan that blocks no write,
+  # and stops while there is one: the check before refuses `failed`. It then re-creates
+  # that check NOT VALID. A record given `failed` between the read and the re-creation
+  # keeps it, and the check refuses every later write of that row until its failure cause
+  # is changed.
   @ref_check "BETWEEN 1 AND 200"
 
   def up do
     drop constraint(:environments, :environments_failure_check)
     execute check("('lost', 'timed_out', 'failed')")
-    execute "ALTER TABLE environments VALIDATE CONSTRAINT environments_failure_check"
   end
 
   def down do
+    execute """
+    DO $$
+    DECLARE
+      records text;
+    BEGIN
+      SELECT string_agg(id::text, ', ' ORDER BY id) INTO records
+      FROM environments WHERE failure_cause = 'failed';
+
+      IF records IS NOT NULL THEN
+        RAISE EXCEPTION 'Set failure_cause to lost on the environment records %, then roll back again: the check before this migration refuses failed', records
+          USING ERRCODE = 'check_violation';
+      END IF;
+    END
+    $$
+    """
+
     drop constraint(:environments, :environments_failure_check)
     execute check("('lost', 'timed_out')")
-    execute "ALTER TABLE environments VALIDATE CONSTRAINT environments_failure_check"
   end
 
   defp check(causes) do
