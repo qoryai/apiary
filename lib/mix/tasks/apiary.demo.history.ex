@@ -292,7 +292,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   # fill/1 writes the history the task's switches `opts` describe, as `run/1` does, on a
   # started application. `passwords: :random` gives each account it makes a random
   # password nobody is told, as the release command does (`Apiary.Release.demo/1`);
-  # without it the account has no password, as under the task.
+  # without it the account has no password, as under the task. `as:`, an owner of the
+  # organisation, writes it in that owner's name in place of the first owner's.
   @spec fill(keyword) :: :ok
   def fill(opts) do
     runs = Keyword.get(opts, :runs, 15_000)
@@ -303,7 +304,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     :rand.seed(:exsss, {seed, 1_234, 5_678})
     now = until!(opts[:until])
-    scope = owner_scope!(opts[:workspace])
+    scope = as(owner_scope!(opts[:workspace]), opts[:as])
     %Scope{organisation: organisation, workspace: workspace} = scope
 
     Shell.info("Filling #{organisation.slug}/#{workspace.slug}")
@@ -381,6 +382,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       Shell.raise!("the first owner of #{organisation.slug} does not reach #{workspace.slug}")
   end
 
+  defp as(scope, nil), do: scope
+
+  defp as(%Scope{organisation: organisation, workspace: workspace}, %User{} = user) do
+    scope_of(user, organisation, workspace) ||
+      Shell.raise!("#{user.email} does not reach #{organisation.slug}/#{workspace.slug}")
+  end
+
   defp scope_of(%User{} = user, %Organisation{} = organisation, %Workspace{} = workspace) do
     case Organisations.resolve_scope(Scope.for_user(user), organisation.slug, workspace.slug) do
       {:ok, scope} -> Scope.put_origin(scope, %{worker: "demo"})
@@ -454,7 +462,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     made =
       for {name, level} <- @people do
         email = "#{name}@example.com"
-        user = Accounts.get_user_by_email(email) || register!(email, passwords)
+        user = account!(email, passwords)
 
         if member?(scope.organisation, user) do
           :kept
@@ -477,6 +485,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     joined = Enum.count(made, &(&1 != :kept))
     Shell.info("#{joined} people joined, #{length(pending)} invitations pending")
   end
+
+  @doc false
+  # account!/2 is the account of `email`, made as `people/2` makes one when there is
+  # none: `passwords` is the option of `fill/1`.
+  @spec account!(String.t(), :random | nil) :: User.t()
+  def account!(email, passwords),
+    do: Accounts.get_user_by_email(email) || register!(email, passwords)
 
   defp register!(email, passwords) do
     {:ok, user} = Accounts.register_user(%{email: email})

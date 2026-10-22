@@ -77,6 +77,9 @@ defmodule Apiary.ReleaseDemoTest do
   test "fills Acme set up by its operator: Main's runs, Dana an owner, the fill finished" do
     %{organisation: acme, workspace: main} = set_up_acme()
 
+    # An operator who set the instance up from a shell has not confirmed the address yet.
+    Repo.update_all(from(u in User, where: u.email == ^@operator), set: [confirmed_at: nil])
+
     {result, stdout, stderr} = demo()
 
     assert {:ok, summary} = result

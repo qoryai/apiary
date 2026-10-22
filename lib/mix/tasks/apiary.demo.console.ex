@@ -285,16 +285,20 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   @doc false
   # fill_set_up/2 is the release command's fill of `{acme, main}`, which `set_up/0`
   # returned: the fill the task makes after its sign-up, with the task's switches as
-  # `opts`, and printing nothing. Each account it makes gets a random password nobody is
-  # told. Main's history is written in the name of Acme's first owner, who set the
-  # instance up; the rest in Dana's, an owner once the history has made her one. Returns
-  # how many runs and repositories Main has after it, and how many people and pending
-  # invitations Acme has.
+  # `opts`, and printing nothing. It is made in Dana's name: the fill makes her account
+  # first, unless it exists, and makes her an owner of Acme, an instance admin, as
+  # `Apiary.Release.grant_instance_admin/2` does. Each account it makes gets a random
+  # password nobody is told. Returns how many runs and repositories Main has after it,
+  # and how many people and pending invitations Acme has.
   @spec fill_set_up({%Organisation{}, %Workspace{}}, keyword) :: %{atom => non_neg_integer}
   def fill_set_up({%Organisation{} = organisation, %Workspace{} = workspace}, opts \\ []) do
     Shell.quietly(fn ->
-      history(opts, passwords: :random)
-      owner = Accounts.get_user_by_email(@owner)
+      owner = History.account!(@owner, :random)
+
+      {:ok, _granted} =
+        Organisations.grant_instance_admin(owner, %{worker: "Apiary.Release.demo/1"})
+
+      history(opts, passwords: :random, as: owner)
       fill_main(owner, opts)
       live(owner)
     end)
