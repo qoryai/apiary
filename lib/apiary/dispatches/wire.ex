@@ -32,10 +32,14 @@ defmodule Apiary.Dispatches.Wire do
   #   name of at most 255 characters, `@sha256:` and 64 lower-case hexadecimal digits, at
   #   most 327 characters in all), `size`, an integer from 1 to 2^53 - 1, and
   #   `environment_ref` and `commit`, each 1 to 200 characters.
+  # - `machine_log/1`, `POST /v1/dispatches/<dispatch_id>/machine-log`
+  #   (`machine-log.schema.json`): `version` (1), `time`, `log`, text of at most 786,432
+  #   characters, and, optionally, `truncated`, a boolean, false when absent.
   #
   # A length in characters is the schema's: Unicode code points. The text a body carries,
-  # `ref`, `reason`, `environment_ref` and `commit`, is read as an adapter's text is (`Apiary.Adapters.Wire.text?/3`):
-  # valid UTF-8 and no U+0000, which the database cannot keep. Every other string is held
+  # `ref`, `reason`, `environment_ref`, `commit` and `log`, is read as an adapter's text
+  # is (`Apiary.Adapters.Wire.text?/3`): valid UTF-8 and no U+0000, which the database
+  # cannot keep and the contract refuses in a machine log too. Every other string is held
   # to a pattern or a URL's characters, none of which is U+0000.
   #
   # **Bounded first.** Every bound is checked before the work it bounds, and the first
@@ -56,6 +60,7 @@ defmodule Apiary.Dispatches.Wire do
   @max_reason 200
   @max_commit 200
   @max_size 9_007_199_254_740_991
+  @max_log 786_432
   @run_id ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
   # The provisioner contract's `$defs/image`, whose name is at most 255 characters: with
   # the digest's 72 after it, at most 327 in all, held before the pattern is matched.
@@ -77,6 +82,8 @@ defmodule Apiary.Dispatches.Wire do
   @handover_keys ~w(time version)
   @release_keys ~w(reason retry time version)
   @prebuilt_keys ~w(commit environment_ref image run_id size time version)
+  @machine_log_required ~w(log time version)
+  @machine_log_optional ~w(truncated)
 
   @type claim :: %{time: DateTime.t(), pool_id: String.t() | nil, wait_seconds: 0..25}
   @type external :: %{type: String.t(), ref: String.t(), url: String.t()}
@@ -91,6 +98,7 @@ defmodule Apiary.Dispatches.Wire do
           environment_ref: String.t(),
           commit: String.t()
         }
+  @type machine_log :: %{time: DateTime.t(), log: String.t(), truncated: boolean}
 
   # The raw body as a map of maps, or `:error`, as `Apiary.Adapters.Wire.decode/1` reads
   # it, and `:error`, undecoded, for a body over 1 MiB.
@@ -201,6 +209,24 @@ defmodule Apiary.Dispatches.Wire do
   end
 
   def prebuilt(_body), do: :error
+
+  # The body of a machine log, decoded (`decode/1`): `{:ok, machine_log}` or `:error`.
+  @doc false
+  @spec machine_log(term) :: {:ok, machine_log} | :error
+  def machine_log(%{} = body) do
+    with true <- members?(body, @machine_log_required, @machine_log_optional),
+         true <- body["version"] === 1,
+         {:ok, time} <- time(body["time"]),
+         log when is_binary(log) <- body["log"],
+         true <- AdapterWire.text?(log, 0, @max_log),
+         truncated when is_boolean(truncated) <- Map.get(body, "truncated", false) do
+      {:ok, %{time: time, log: log, truncated: truncated}}
+    else
+      _ -> :error
+    end
+  end
+
+  def machine_log(_body), do: :error
 
   # Every member `required` holds is there, and nothing but those and `optional`'s:
   # counted first, so an object of many members is refused before its keys are compared.

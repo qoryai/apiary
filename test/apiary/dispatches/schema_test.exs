@@ -37,12 +37,17 @@ defmodule Apiary.Dispatches.SchemaTest do
   # The later migration that queues prebuilds: down first, up last.
   @prebuilds_version 20_261_017_160_000
   @prebuilds Apiary.Repo.Migrations.QueuePrebuilds
+  # The later migration that keeps a dispatch's machine log, whose table has a key to the
+  # dispatches: down first, up last.
+  @machine_log_version 20_261_022_160_000
+  @machine_log Apiary.Repo.Migrations.KeepADispatchSMachineLog
 
   setup_all do
     for {version, migration, name} <- [
           {@version, @migration, "keep_dispatches"},
           {@again_version, @again, "take_work_items_in_again"},
-          {@prebuilds_version, @prebuilds, "queue_prebuilds"}
+          {@prebuilds_version, @prebuilds, "queue_prebuilds"},
+          {@machine_log_version, @machine_log, "keep_a_dispatch_s_machine_log"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -961,6 +966,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @machine_log_version, @machine_log, @options)
     assert :ok = Ecto.Migrator.down(Repo, @prebuilds_version, @prebuilds, @options)
     assert :ok = Ecto.Migrator.down(Repo, @again_version, @again, @options)
     assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
@@ -970,6 +976,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
     assert :ok = Ecto.Migrator.up(Repo, @again_version, @again, @options)
     assert :ok = Ecto.Migrator.up(Repo, @prebuilds_version, @prebuilds, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @machine_log_version, @machine_log, @options)
   end
 
   defp exists?(sql) do

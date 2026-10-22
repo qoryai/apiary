@@ -505,6 +505,13 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: [:pool_key]
     ),
+    Action.new(:"dispatch.machine_log", "upload the log of a claimed run's machine",
+      feature: :factory,
+      roles: [:pool_key],
+      audited:
+        {:not,
+         "a machine log is kept as a file with its record, which has its size and when it was uploaded, not in the audit trail"}
+    ),
     # A member asks for a build of a target's environment, for each node pool of its
     # workspace (`Apiary.Environments.rebuild/2`).
     Action.new(:"target.rebuild_environment", "rebuild the environment of a target",
@@ -519,7 +526,8 @@ defmodule Apiary.Access do
     :"dispatch.dispatched",
     :"dispatch.handover",
     :"dispatch.release",
-    :"dispatch.prebuilt"
+    :"dispatch.prebuilt",
+    :"dispatch.machine_log"
   ]
 
   # The features whose actions the tables of this documentation leave out: those the

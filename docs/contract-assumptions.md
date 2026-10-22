@@ -544,6 +544,29 @@ the queue, then locks as the release does, so a prebuilt, a release, the sweep a
 of the collection take turns, and of two prebuilts at once one acts and the other is `410`
 `gone`.
 
+The machine log is what the machine a starter created for a dispatch wrote, uploaded once
+per dispatch, before or after the dispatch ends, whether or not a run opened
+(`machine-log.schema.json`, `Apiary.Dispatches.MachineLogs`). The body is `version` 1,
+`time`, `log`, text of at most 786,432 characters with no U+0000, and an optional
+`truncated`; anything else is `400` `invalid_request`, and a body over 1 MiB is `413`. The
+refusals come in the contract's order: `403` `forbidden` for an unknown dispatch, another
+pool's, or a key the action is refused to, one answer; `409` `machine_log_exists` for a
+dispatch with a machine log already; and `503` `unavailable` last, for a file that could
+not be written, after which nothing was kept. It is never `410` `gone` or `409`
+`lease_expired`. Else the signed `204`, with no body. The text is kept as sent, as a file
+named by the dispatch id alone, mode 0600, in the folder `APIARY_MACHINE_LOGS_DIR` names
+(`Apiary.Dispatches.MachineLogStore`), and a row of `dispatch_machine_logs` keeps its size
+in bytes, `truncated` and when it was uploaded, linked to the dispatch and through it to
+the run. With no folder set, every upload is `503` `unavailable` and one log line says the
+variable is not set: nothing is kept and nothing is dropped unseen, so the starter's next
+upload succeeds once the folder is set. The starter replaces each line that contains
+`qak_`, `qrk_` or `qecr_` before the upload; Qory Apiary keeps the text as sent. Only an instance admin reads a
+machine log (`Apiary.Dispatches.machine_log/2`). The retention job deletes a machine log
+`MACHINE_LOG_RETENTION_DAYS` days after its upload, 30 unless set, from 1 to 365, or the
+value an instance admin saved, file then row, and an hour-old file whose row is gone; the
+purge of an organisation or a workspace deletes the files of its machine logs before its
+rows. No audit entry is written for an upload.
+
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
 row lock, so a request both refuse is refused by the limit. A node runs one instance at a

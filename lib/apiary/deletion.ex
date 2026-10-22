@@ -373,6 +373,8 @@ defmodule Apiary.Deletion do
       _retired = AccessKeys.retire_public_keys(organisation_id, workspace_id)
       # The collections linked to it stay with their organisation, linked to none.
       _unlinked = Apiary.Adapters.Collections.unlink_workspace(organisation_id, workspace_id)
+      # The files of its machine logs, before their records go with the rows.
+      _files = Apiary.Dispatches.MachineLogs.delete_files(organisation_id, workspace_id)
       deleted = delete_rows(Tables.workspace_tables(), organisation_id, workspace_id)
 
       Repo.transact(fn ->
@@ -435,6 +437,8 @@ defmodule Apiary.Deletion do
       # Its connections to the instance's adapters end once its deletion can no longer be
       # cancelled; while it is marked they are only out of use.
       _ended = Apiary.Adapters.Connections.end_for_organisation(id)
+      # The files of its machine logs, before their records go with the rows.
+      _files = Apiary.Dispatches.MachineLogs.delete_files(id, nil)
       deleted = delete_rows(Tables.tables(), id, nil)
 
       Repo.transact(fn ->

@@ -108,7 +108,8 @@ defmodule Apiary.Dispatches do
   # workspaces whose queue the freed slots or the ended runs changed are told once the
   # transaction commits.
   #
-  # ## The starter on a dispatch: `dispatched/3`, `handover/3`, `release/3` and `prebuilt/3`
+  # ## The starter on a dispatch: `dispatched/3`, `handover/3`, `release/3`, `prebuilt/3`
+  # and `upload_machine_log/3`
   #
   # `dispatched(access_key, dispatch_id, meta)` records that the starter of the pool of
   # `access_key` started the job for a dispatch its pool claimed, and
@@ -132,6 +133,10 @@ defmodule Apiary.Dispatches do
   # ends its run of the queue and its dispatch, `prebuilt`, the registered run left to its
   # outcome, in one transaction, or refuses in the contract's order
   # (`Apiary.Dispatches.Prebuilt`).
+  #
+  # `upload_machine_log(access_key, dispatch_id, meta)` stores the dispatch's machine log,
+  # once per dispatch, before or after the dispatch ends, and `machine_log(scope,
+  # dispatch_id)` reads it, for an instance admin alone (`Apiary.Dispatches.MachineLogs`).
   #
   # ## The wake: `subscribe/1` and `broadcast/1`
   #
@@ -169,7 +174,8 @@ defmodule Apiary.Dispatches do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Prebuilt, Release, RunEnd, Settle}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, MachineLogs, Prebuilt, Release}
+  alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
@@ -774,6 +780,21 @@ defmodule Apiary.Dispatches do
           :ok | {:error, Prebuilt.refusal()}
   def prebuilt(%AccessKey{} = access_key, dispatch_id, meta),
     do: Prebuilt.prebuilt(access_key, dispatch_id, meta)
+
+  # upload_machine_log/3 stores the machine log of the dispatch `dispatch_id`, once
+  # (`Apiary.Dispatches.MachineLogs.upload/3`).
+  @doc false
+  @spec upload_machine_log(AccessKey.t(), term, MachineLogs.upload()) ::
+          :ok | {:error, MachineLogs.refusal()}
+  def upload_machine_log(%AccessKey{} = access_key, dispatch_id, meta),
+    do: MachineLogs.upload(access_key, dispatch_id, meta)
+
+  # machine_log/2 is the machine log of the dispatch `dispatch_id`, for an instance admin
+  # alone (`Apiary.Dispatches.MachineLogs.machine_log/2`).
+  @doc false
+  @spec machine_log(Scope.t() | nil, term) ::
+          {:ok, MachineLogs.machine_log()} | {:error, :forbidden | :not_found | :unreadable}
+  def machine_log(scope, dispatch_id), do: MachineLogs.machine_log(scope, dispatch_id)
 
   ## The end of a run handed over
 
