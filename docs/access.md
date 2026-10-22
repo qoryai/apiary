@@ -319,8 +319,9 @@ stay known to such a gateway, and are accepted:
   after its attach, or its events were pruned). At the attach, the run key's holder is
   answered before the serving check: an ended run is `410`; a run never attached whose
   attach window has closed, or that was already lost, is `409` `run_key_expired`; any
-  other is `409` `workspace_not_served`. A starter's outcome ends the run there too, and
-  which outcome is never told. The gateway a run key names knows the run's id from its
+  other is `409` `workspace_not_served`. A run of a workspace's queue takes no outcome; an
+  outcome stored on it before that rule ends it there too, and which outcome is never
+  told. The gateway a run key names knows the run's id from its
   run key, before any attach; only the gateway that attached the run is answered at the
   events endpoint and the reload, any other `409` `wrong_gateway` and `404`.
 - **Whether the run's place is in use.** The place's check comes before the serving

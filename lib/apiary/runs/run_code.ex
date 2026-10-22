@@ -31,8 +31,9 @@ defmodule Apiary.Runs.RunCode do
   #      `FOR UPDATE`: a run deleted meanwhile, a code relayed by another node than the
   #      gateway the claim bound it to (`runs.gateway_id`), checked before the code's
   #      state, a code at or past its expiry, or of a run that has ended (no longer
-  #      `pending` or `running`, released, given its outcome or its events pruned), is `{:error, :unauthorized}`; so is a code whose run of the
-  #      queue is neither handed over nor claimed, or claimed by a dispatch that ended,
+  #      `pending` or `running`, released, given its outcome or its events pruned), is
+  #      `{:error, :unauthorized}`; so is a code whose run of the queue is neither handed
+  #      over nor claimed, or claimed by a dispatch that ended,
   #      went stale, or whose `lease_until` the clock is at or past, and a code redeemed
   #      before by another public key;
   #   3. a key the key checks refuse, or a proof that does not verify under it, is
@@ -45,10 +46,11 @@ defmodule Apiary.Runs.RunCode do
   #      over in the same transaction (`Apiary.Dispatches.Handover.hand_over/3`). A retry
   #      by the same public key whose proof's timestamp is newer than the one stored is
   #      answered the run key the run has, byte for byte, and writes its proof's timestamp
-  #      in place of the one stored, and nothing else; one whose timestamp is equal or
-  #      older is a replayed proof, `{:error, :unauthorized}`, as step 2's refusals are. So
-  #      the stored timestamp is the newest accepted redemption's, and a retry captured
-  #      and sent again is refused as any replayed proof.
+  #      in place of the one stored, with `updated_at`, and nothing else; one whose
+  #      timestamp is equal or older is a replayed proof, `{:error, :unauthorized}`, as
+  #      step 2's refusals are. So the stored timestamp is the newest accepted
+  #      redemption's, and a retry captured and sent again is refused as any replayed
+  #      proof.
   #
   # So a code works from the claim until its expiry, and stops before then when the
   # claim's lease lapses before the handover, or when the dispatch ends, at a release

@@ -1,8 +1,9 @@
 defmodule Apiary.Dispatches.SettleTest do
   # What a run of the queue gave, kept on its row (`Apiary.Dispatches.Settle`), through
   # the writers that store it: the end of the run by its exit, or by an outcome given
-  # before a run of the queue was refused one (`Apiary.Dispatches.RunEnd`), a projection that folded an exit or a result event
-  # (`Apiary.Runs.Projector`), and the sweep of the lost-run check (`Apiary.Runs.Liveness`);
+  # before a run of the queue was refused one (`Apiary.Dispatches.RunEnd`), a projection
+  # that folded an exit or a result event (`Apiary.Runs.Projector`), and the sweep of the
+  # lost-run check (`Apiary.Runs.Liveness`);
   # and the handover's error (`Apiary.Dispatches.Handover`). Only a run that is not a
   # prebuild and ended `run_ended` is settled; `updated_at` never changes; a result that
   # comes later replaces what was stored; and the result kept is what the pages read once

@@ -224,12 +224,11 @@ defmodule Apiary.Runs.Run do
     # nil for every other run.
     belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
     # For such a run: `released_at`, when its starter released it after the handover,
-    # which the run reads as cancelled with the reason `released` until its starter's
-    # outcome decides (`Apiary.Runs.Fold`). Nothing writes it since a release after the
-    # handover is refused (`machine_exists`); a run released before that keeps it.
-    # `backstop_at`, set at its attach: when the run is lost should it have neither an
-    # outcome nor an exit by then (`Apiary.Runs.Liveness`). Nil for every other run. Not
-    # folded: a rebuild keeps them.
+    # which the run reads as cancelled with the reason `released` (`Apiary.Runs.Fold`).
+    # Nothing writes it since a release after the handover is refused (`machine_exists`);
+    # a run released before that keeps it. `backstop_at`, set at its attach: when the run
+    # is lost should it have no exit by then (`Apiary.Runs.Liveness`); a run of the queue
+    # takes no outcome. Nil for every other run. Not folded: a rebuild keeps them.
     field :released_at, :utc_datetime_usec
     field :backstop_at, :utc_datetime_usec
     # For such a run, not a prebuild: the image its attach gave it, its pool's recorded

@@ -1092,9 +1092,9 @@ when the workspace first heard of it, its registration for a run that registered
 through a gateway that is never attached is lost at its `attach_by`, and not before; until
 then it holds its node's instance. A run a workspace's queue handed over is also lost at
 its backstop, which its attach sets to the attach and its step's limit, 1200 seconds for
-`explore` and 2100 for `prebuild` (`runs.backstop_at`), should it have neither an outcome nor an exit by then,
+`explore` and 2100 for `prebuild` (`runs.backstop_at`), should it have no exit by then,
 however recently it beat; no heartbeat or start that arrives after that brings it back,
-and only its exit or its starter's outcome changes its state. A heartbeat
+and only its exit changes its state: a run of the queue takes no outcome. A heartbeat
 counts by the `time` it carries, corrected by the run's clock offset (the smallest arrival less
 `time` over the run's heartbeats), plus 300 seconds, and never after its arrival, as the
 contract's liveness for the server says; a run's first heartbeat with no offset before it
