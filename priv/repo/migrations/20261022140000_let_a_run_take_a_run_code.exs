@@ -105,7 +105,9 @@ defmodule Apiary.Repo.Migrations.LetARunTakeARunCode do
     create constraint(:runs, :runs_run_key_check,
              check:
                "(run_key_payload IS NULL AND run_key_issued_at IS NULL AND attach_by IS NULL " <>
-                 "AND gateway_id IS NULL" <> without_code <> ") OR " <>
+                 "AND gateway_id IS NULL" <>
+                 without_code <>
+                 ") OR " <>
                  "(octet_length(run_key_payload) BETWEEN 1 AND 2048 AND " <>
                  "run_key_issued_at IS NOT NULL AND attach_by > run_key_issued_at AND " <>
                  "registered_at IS NOT NULL)" <> run_code,
