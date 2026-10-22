@@ -57,6 +57,10 @@ defmodule Apiary.Edition.Core do
   @impl true
   def model_choice_chain(_organisation_id), do: "organisation"
 
+  # The core has no operator: no organisation is a client of one.
+  @impl true
+  def operated?(_organisation), do: false
+
   @impl true
   def client_reads(_scope, _kind, _run, subject), do: subject
 

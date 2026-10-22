@@ -4,9 +4,9 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   # without a file or an entry or with an entry of a stack alone, present for an explore
   # run and a prebuild alike; each answer valid under the vendored
   # `claim-answer.schema.json`, so the module is tagged `:contract`. The run's documents
-  # have the entry's stack name and workflow for an explore run, and neither for a
-  # prebuild. Not async: the file
-  # read at boot and the features are the whole node's.
+  # have the entry's workflow, the stack that resolves (`Apiary.Stacks`) and
+  # `harness_hidden` for an explore run, and none of the three for a prebuild. Not async:
+  # the file read at boot and the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
@@ -15,8 +15,9 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Repo}
+  alias Apiary.{Dispatches, Repo, Stacks}
   alias Apiary.Dispatches.MachinesFile
+  alias Apiary.Runs.Target
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
@@ -53,6 +54,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   end
 
   @stack "core"
+  @reference "https://code.example.com/team/stacks#main:core"
 
   setup %{tmp_dir: dir} do
     setting = Application.fetch_env(:apiary, :machines_file_setting)
@@ -145,8 +147,19 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     Jason.decode!(run.run_documents)
   end
 
+  # The target row of the work items `explore!/1` queues: tickets.example.com, acme/shop.
+  defp target!(ctx) do
+    Repo.insert!(%Target{
+      organisation_id: ctx.scope.organisation.id,
+      workspace_id: ctx.scope.workspace.id,
+      system: "tickets.example.com",
+      path: "acme/shop",
+      first_seen_at: DateTime.utc_now()
+    })
+  end
+
   defp explore!(ctx) do
-    work_item = work_item_fixture(ctx.scope)
+    work_item = work_item_fixture(ctx.scope, %{target_system: "tickets.example.com"})
     {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     work_item
   end
@@ -179,7 +192,35 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "large"
       documents = documents(claim)
-      assert %{"stack" => "core", "workflow" => "hello"} = documents
+      assert %{"stack" => "core", "workflow" => "hello", "harness_hidden" => false} = documents
+      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
+    end
+
+    test "has the reference its target's level sets, shown to the organisation that saved it",
+         ctx do
+      machines!(ctx, %{ctx.place => %{"stack" => @stack, "workflow" => "hello"}})
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "hello"}, @reference)
+
+      explore!(ctx)
+      documents = documents(claim(ctx))
+
+      assert %{"stack" => @reference, "workflow" => "hello", "harness_hidden" => false} =
+               documents
+
+      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
+    end
+
+    test "hides the harness of a reference another organisation saved", ctx do
+      machines!(ctx, %{ctx.place => %{"stack" => @stack, "workflow" => "hello"}})
+      %{scope: other} = sign_up_fixture()
+      {:ok, _stack} = Stacks.put_stack(other, {:workspace, ctx.scope.workspace}, @reference)
+
+      explore!(ctx)
+      documents = documents(claim(ctx))
+
+      assert %{"stack" => @reference, "workflow" => "hello", "harness_hidden" => true} =
+               documents
+
       assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
     end
 
@@ -189,7 +230,19 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       claim = claim(ctx)
       assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "small"
-      refute Map.has_key?(documents(claim), "stack")
+      documents = documents(claim)
+      refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
+      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
+    end
+
+    test "of a workspace with no workflow in the file has no stack, whatever its levels set",
+         ctx do
+      machines!(ctx, %{ctx.place => %{"machine" => "small"}})
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+
+      explore!(ctx)
+      documents = documents(claim(ctx))
+      refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
     end
 
     test "of a workspace with a stack alone has no machine", ctx do
@@ -211,11 +264,12 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   end
 
   describe "a prebuild" do
-    test "of a workspace with a machine and a stack has the machine", ctx do
+    test "of a workspace with a machine and a stack has the machine and no stack", ctx do
       machines!(ctx, %{
         ctx.place => %{"machine" => "small", "stack" => @stack, "workflow" => "hello"}
       })
 
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
       collection = collection_fixture(ctx.scope)
 
       {:ok, _run} =
@@ -225,7 +279,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       assert members(claim) == @claim ++ ~w(machine) ++ @code
       assert Jason.decode!(claim)["machine"] == "small"
       documents = documents(claim)
-      refute Map.has_key?(documents, "stack") or Map.has_key?(documents, "workflow")
+      refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end
   end

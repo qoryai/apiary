@@ -21,18 +21,19 @@ defmodule Apiary.Dispatches.MachinesFile do
   # lower-case letters, digits and hyphens, each listed once. `workspaces` has one member
   # per workspace, `<organisation slug>/<workspace slug>`, each with an optional `machine`
   # from `machines`, and an optional `stack` with `workflow`: both or neither. `stack` is
-  # the name of the stack the run uses, as the run documents' `stack` has it, and
-  # `workflow` the workflow of that stack the run starts, each a name of the same form as
-  # a machine type's. Both members of the top
+  # the name of the stack the run uses when no level of the organisation sets one, the
+  # instance default (`Apiary.Stacks`), and `workflow` the workflow of the stack the run
+  # starts, each a name of the same form as a machine type's. Both members of the top
   # level are optional, and a key given twice in one object, or a member not listed here,
   # is refused.
   #
   # A workspace in the file that does not exist is no error: the entry applies when a
   # workspace of those slugs runs. The claim answer has `machine` from the entry of the
-  # run's workspace (`machine/2`) for every step, the run's documents `stack` and
-  # `workflow` (`stack/2`) for every step but prebuild
-  # (`ApiaryWeb.Contract.DispatchAnswer`). With `APIARY_MACHINES_FILE` unset or blank, or
-  # a workspace without an entry, neither answer changes.
+  # run's workspace (`machine/2`) for every step. The run's documents have the entry's
+  # `workflow` (`stack/2`) for every step but prebuild, with the stack that
+  # `Apiary.Stacks.for_run/3` resolves (`ApiaryWeb.Contract.DispatchAnswer`). With
+  # `APIARY_MACHINES_FILE` unset or blank, or a workspace without an entry, the claim
+  # answer has no `machine` and the run's documents have no stack.
   #
   # A file that is missing, cannot be read or breaks a rule above stops the boot with one
   # line that starts with the fix and contains the entry at fault.

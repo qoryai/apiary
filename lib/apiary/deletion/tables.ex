@@ -78,6 +78,7 @@ defmodule Apiary.Deletion.Tables do
     {"work_item_comments", :workspace},
     {"model_choices", :workspace},
     {"time_limits", :workspace},
+    {"stacks", :workspace},
     {"work_items", :workspace},
     {"work_item_counters", :workspace},
     {"retention_runs", :workspace},

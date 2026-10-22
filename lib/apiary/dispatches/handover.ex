@@ -145,6 +145,7 @@ defmodule Apiary.Dispatches.Handover do
     PublicId,
     Repo,
     Runs,
+    Stacks,
     Targets
   }
 
@@ -156,7 +157,6 @@ defmodule Apiary.Dispatches.Handover do
     Dispatch,
     DispatchRun,
     Inputs,
-    MachinesFile,
     RunEnd,
     RunSettings,
     Slots
@@ -592,7 +592,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
-    stack = stack(locked.key, workspace)
+    stack = stack(locked.key, workspace, target)
 
     with false <- is_nil(target) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
@@ -638,10 +638,11 @@ defmodule Apiary.Dispatches.Handover do
     |> Keyword.get(:answer_limit, @answer_bytes)
   end
 
-  # The stack and the workflow of the workspace's entry in the machines file, by the
-  # slugs of the key's organisation and of `workspace`, the key's workspace; nil for none.
-  defp stack(%AccessKey{organisation: organisation}, %Workspace{slug: slug}),
-    do: MachinesFile.stack(organisation.slug, slug)
+  # The stack, the workflow and `harness_hidden` of an explore run of `workspace`, the
+  # key's workspace, in the key's organisation, at `target` (`Apiary.Stacks.for_run/3`);
+  # nil for none.
+  defp stack(%AccessKey{organisation: organisation}, %Workspace{} = workspace, target),
+    do: Stacks.for_run(organisation, workspace, target)
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
