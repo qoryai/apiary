@@ -849,8 +849,10 @@ its run of the queue ended), and a code redeemed before by another public key. I
 carries `version`, `run_id`, `run_key` and `apiary_public_key`: the run key is made at the
 first redemption, its `issued` that time and its `attach_by` 600 seconds after, and the
 run keeps it with the public key that redeemed the code. The same public key is given the
-same `run_id`, `run_key` and `apiary_public_key` again while the code's 15 minutes last,
-signed over the request's proof: the same request gets the same answer byte for byte.
+same `run_id` and `run_key` again while the code's 15 minutes last, with
+`apiary_public_key` as the server's keys are at that moment, signed over the request's
+proof: while the server's keys are unchanged, the same request gets the same answer byte
+for byte.
 
 ## The log and the terminal
 

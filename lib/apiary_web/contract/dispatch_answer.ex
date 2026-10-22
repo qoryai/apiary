@@ -46,8 +46,9 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # its `inputs`. The controller sends it, and the handover measures it
   # (`Apiary.Dispatches.Handover`), so both read one encoding. An answer given a
   # `run_code` in place of the run key has `version`, `revision`, `run_id`, `run_code` and
-  # `step` alone: the machine is given the rest with the run key, when it redeems the code
-  # (`Apiary.Runs.RunCode`).
+  # `step` alone. The other members of the run-key form are not sent, and the enrolment's
+  # `201` for the code (`Apiary.Runs.RunCode`) has `version`, `run_id`, `run_key` and
+  # `apiary_public_key` alone.
   @doc false
   @spec handover_body(%{
           required(:revision) => pos_integer,

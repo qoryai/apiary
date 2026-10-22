@@ -170,7 +170,8 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
   # that has ended, and a code redeemed before by another public key; its `201` has the
   # run's id, its run key and the instance's keys (`Apiary.Contract.Enrolment`,
   # `run_answer_body/1`), and makes no access key. The same public key is answered the
-  # same `201` again while the code's 15 minutes last.
+  # same run id and run key again while the code's 15 minutes last, with the server's keys
+  # as they are at that moment.
   defp redeem(%Enrolment{code_head: head} = request, origin) do
     if EnrolmentCode.run_code?(head),
       do: RunCode.redeem(request, code_limit: code_limit()),
