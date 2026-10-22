@@ -271,11 +271,12 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   # set_up/0 is the release command's check (`Apiary.Release.demo/1`) of the instance it
   # fills: `{:ok, {acme, main}}` when the instance is set up with the organisation Acme,
   # whose workspace Main has no run and no node. Otherwise `{:error, reason}`: the instance
-  # is not set up (`:not_set_up`), its organisation is not Acme (`:not_acme`), Acme has no
-  # workspace Main (`:no_main`), or Main has runs or nodes (`:filled`).
+  # is not set up (`:not_set_up`), its organisation is not Acme (`{:not_acme, slug}`, with
+  # the organisation's slug), Acme has no workspace Main (`:no_main`), or Main has runs or
+  # nodes (`:filled`).
   @spec set_up() ::
           {:ok, {%Organisation{}, %Workspace{}}}
-          | {:error, :not_set_up | :not_acme | :no_main | :filled}
+          | {:error, :not_set_up | {:not_acme, String.t()} | :no_main | :filled}
   def set_up do
     with {:ok, organisation} <- set_up_acme(),
          {:ok, workspace} <- empty_main(organisation),
@@ -314,7 +315,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       id ->
         case Repo.get(Organisation, id) do
           %Organisation{slug: "acme", deletion_marked_at: nil} = acme -> {:ok, acme}
-          _other -> {:error, :not_acme}
+          %Organisation{slug: slug} -> {:error, {:not_acme, slug}}
+          nil -> {:error, :not_set_up}
         end
     end
   end

@@ -482,20 +482,19 @@ defmodule Apiary.Release do
 
     case Console.set_up() do
       {:ok, set_up} ->
-        runs = Keyword.get(opts, :runs, 6_000)
-        IO.puts(:stderr, "Filling acme/main with the demo, its #{runs} runs first.")
+        IO.puts(:stderr, "Loading the demo into acme/main.")
 
         summary = quietly(fn -> Console.fill_set_up(set_up, opts) end)
         url = "#{Apiary.Setup.public_url()}/acme/main"
 
         IO.puts(
           "acme/main has #{summary.runs} runs in #{summary.repositories} repositories; " <>
-            "acme has #{summary.people} people and #{summary.invitations} invitations pending."
+            "acme has #{summary.people} people and #{summary.invitations} pending invitations."
         )
 
         IO.puts(
-          "To sign in as dana@example.com, an instance admin, print a link that sets " <>
-            ~s{her password: bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'}
+          "To sign in as dana@example.com (instance admin), print a link that sets the " <>
+            ~s{password: bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'}
         )
 
         if Apiary.Features.on?(:factory),
@@ -503,6 +502,14 @@ defmodule Apiary.Release do
           else: IO.puts("Open the runs: #{url}/runs")
 
         {:ok, summary}
+
+      {:error, {:not_acme, slug}} ->
+        IO.puts(
+          "Run this command on an instance set up with the organisation name Acme. " <>
+            "This instance's organisation has the slug #{slug}."
+        )
+
+        {:error, :not_acme}
 
       {:error, reason} ->
         IO.puts(demo_refusal(reason))
@@ -513,22 +520,17 @@ defmodule Apiary.Release do
   defp demo_refusal(:not_set_up),
     do:
       "Set up the instance with the organisation name Acme, then run this command again. " <>
-        "Nobody has set it up yet."
-
-  defp demo_refusal(:not_acme),
-    do:
-      "Run this command on an instance set up with the organisation name Acme. " <>
-        "The demo fills only the organisation acme, and this instance's has another slug."
+        "The instance is not set up yet."
 
   defp demo_refusal(:no_main),
     do:
       "Run this command on an instance set up with the organisation name Acme. " <>
-        "The demo fills the workspace acme/main, and acme has no workspace main."
+        "The organisation acme has no workspace main."
 
   defp demo_refusal(:filled),
     do:
-      "Run this command on an instance set up with the organisation name Acme and nothing " <>
-        "more. The demo fills only an empty acme/main, and this one has runs or nodes."
+      "Run this command on a new instance set up with the organisation name Acme. " <>
+        "acme/main already has runs or nodes."
 
   # Only errors are logged while the demo fills: the fill logs a warning for the
   # integration release whose fetch fails on purpose.

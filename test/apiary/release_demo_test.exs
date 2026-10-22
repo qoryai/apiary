@@ -83,7 +83,7 @@ defmodule Apiary.ReleaseDemoTest do
     {result, stdout, stderr} = demo()
 
     assert {:ok, summary} = result
-    assert lines(stderr) == ["Filling acme/main with the demo, its 140 runs first."]
+    assert lines(stderr) == ["Loading the demo into acme/main."]
 
     url = configured_url()
 
@@ -94,9 +94,9 @@ defmodule Apiary.ReleaseDemoTest do
 
     assert lines(stdout) == [
              "acme/main has #{summary.runs} runs in #{summary.repositories} repositories; " <>
-               "acme has #{summary.people} people and #{summary.invitations} invitations " <>
-               "pending.",
-             "To sign in as dana@example.com, an instance admin, print a link that sets her " <>
+               "acme has #{summary.people} people and #{summary.invitations} pending " <>
+               "invitations.",
+             "To sign in as dana@example.com (instance admin), print a link that sets the " <>
                "password: bin/apiary eval 'Apiary.Release.password_link(\"dana@example.com\")'",
              last
            ]
@@ -150,9 +150,8 @@ defmodule Apiary.ReleaseDemoTest do
     assert {{:error, :filled}, stdout, ""} = demo()
 
     assert stdout ==
-             "Run this command on an instance set up with the organisation name Acme and " <>
-               "nothing more. The demo fills only an empty acme/main, and this one has runs " <>
-               "or nodes.\n"
+             "Run this command on a new instance set up with the organisation name Acme. " <>
+               "acme/main already has runs or nodes.\n"
 
     assert count(Run) == runs
   end
@@ -162,21 +161,23 @@ defmodule Apiary.ReleaseDemoTest do
 
     assert stdout ==
              "Set up the instance with the organisation name Acme, then run this command " <>
-               "again. Nobody has set it up yet.\n"
+               "again. The instance is not set up yet.\n"
 
     refute Repo.exists?(from o in Organisation, where: is_nil(o.deletion_marked_at))
     refute Repo.exists?(Run)
   end
 
   test "refuses an instance whose organisation is not Acme, and makes nothing" do
-    sign_up_fixture(%{email: @operator, organisation_name: "Example Org"})
+    %{organisation: other} =
+      sign_up_fixture(%{email: @operator, organisation_name: "Example Org"})
+
     sign_up_fixture(%{email: "other@example.com", organisation_name: "Acme"})
 
     assert {{:error, :not_acme}, stdout, ""} = demo()
 
     assert stdout ==
-             "Run this command on an instance set up with the organisation name Acme. The " <>
-               "demo fills only the organisation acme, and this instance's has another slug.\n"
+             "Run this command on an instance set up with the organisation name Acme. This " <>
+               "instance's organisation has the slug #{other.slug}.\n"
 
     refute Repo.exists?(Run)
     refute Accounts.get_user_by_email("dana@example.com")
@@ -208,6 +209,6 @@ defmodule Apiary.ReleaseDemoTest do
 
     assert stdout ==
              "Run this command on an instance set up with the organisation name Acme. The " <>
-               "demo fills the workspace acme/main, and acme has no workspace main.\n"
+               "organisation acme has no workspace main.\n"
   end
 end
