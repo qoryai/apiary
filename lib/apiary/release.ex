@@ -462,7 +462,11 @@ defmodule Apiary.Release do
   @spec demo(keyword) :: {:ok, map} | {:error, atom}
   def demo(opts \\ []) do
     load_app()
-    {:ok, _apps} = Application.ensure_all_started(:oban)
+    # `bin/apiary eval` starts none of the release's applications, and the demo calls
+    # processes that start with theirs: the PubSub's process group, Oban's registry, the
+    # mailer's and the HTTP client's.
+    for app <- [:phoenix_pubsub, :oban, :swoosh, :gen_smtp, :req],
+        do: {:ok, _apps} = Application.ensure_all_started(app)
 
     fill = fn _repo -> with_demo_processes(fn -> demo_now(opts) end) end
 
