@@ -321,8 +321,9 @@ defmodule Apiary.WorkItemsFixtures do
   end
 
   # A run its handover could not form ended with an error, as the handover writes it.
-  defp unformed_outcome(cause) when cause in [:variables_invalid, :ticket_gone, :inputs_invalid],
-    do: :error
+  defp unformed_outcome(cause)
+       when cause in [:variables_invalid, :ticket_gone, :inputs_invalid, :build_failed],
+       do: :error
 
   defp unformed_outcome(_cause), do: nil
 

@@ -4841,6 +4841,11 @@ msgstr ""
 msgid "Check the fields below."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Check why the build failed on the target's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check your email"
@@ -6336,6 +6341,11 @@ msgid "Ended badly, %{number} day"
 msgid_plural "Ended badly, %{number} days"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Ended before it started: its environment image was missing from the registry. A new build has started, and the work is queued again."
+msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
