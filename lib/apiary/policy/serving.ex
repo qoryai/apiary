@@ -148,7 +148,14 @@ defmodule Apiary.Policy.Serving do
             :dispatch_run_id,
             :registration_variables,
             :provider_connection_id,
-            :provider_api
+            :provider_api,
+            :id,
+            :public_id,
+            :organisation_id,
+            :workspace_id,
+            :node_run_id,
+            :run_key_payload,
+            :run_code_sha256
           ])
     )
   end

@@ -27,7 +27,10 @@ defmodule ApiaryWeb.Contract.Configuration do
   # With the `factory` and `secrets` features both on, which the documentation leaves
   # out: the document of an access key allowed stored secrets (`allow_secrets`) has
   # `secrets`, `{url}`, the secrets endpoint (`ApiaryWeb.Contract.SecretsController`),
-  # after `run`; a key not allowed them, or either feature off, gets none.
+  # after `run`; a key not allowed them, or either feature off, gets none. With the
+  # `registry` feature on, which the documentation leaves out too, every key's document
+  # has it: a gateway fetches a run's registry credential there, and does not start a run
+  # whose run configuration lists credentials without it.
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Features
@@ -81,12 +84,12 @@ defmodule ApiaryWeb.Contract.Configuration do
     {body, digest(body)}
   end
 
-  # Whether the key's document lists the secrets endpoint: both features on, and the key
-  # allowed stored secrets.
-  defp secrets?(%AccessKey{allow_secrets: true}),
-    do: Features.on?(:factory) and Features.on?(:secrets)
-
-  defp secrets?(_key), do: false
+  # Whether the key's document lists the secrets endpoint: the `registry` feature on; or
+  # `factory` and `secrets` on, and the key allowed stored secrets.
+  defp secrets?(%AccessKey{allow_secrets: allowed}) do
+    Features.on?(:registry) or
+      (allowed == true and Features.on?(:factory) and Features.on?(:secrets))
+  end
 
   @doc """
   encode/1 is the document's bytes for `node_id`, the `workspaces` it lists, in their

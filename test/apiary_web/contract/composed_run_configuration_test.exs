@@ -24,6 +24,9 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
+  # Without the `registry` feature, whose members `ApiaryWeb.RegistryTokenTest`
+  # covers: the features are the whole node's, so the module is not async.
+  setup {Apiary.DataCase, :without_registry}
 
   @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
   @naming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example"]},"image":"with-docker"}})

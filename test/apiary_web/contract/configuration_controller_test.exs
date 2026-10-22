@@ -40,18 +40,22 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     conn = signed_get(conn, key.key_id, secret, contract_version: 1)
     base = ApiaryWeb.Endpoint.url()
 
-    assert json_response(conn, 200) == %{
-             "version" => 1,
-             "node_id" => key.node.public_id,
-             "workspaces" => [key.workspace.public_id],
-             "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
-             "run" => %{"url" => base <> "/v1/runs"},
-             "apiary_public_key" => SigningKey.apiary_public_key()
-           }
+    assert json_response(conn, 200) ==
+             Map.merge(
+               %{
+                 "version" => 1,
+                 "node_id" => key.node.public_id,
+                 "workspaces" => [key.workspace.public_id],
+                 "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
+                 "run" => %{"url" => base <> "/v1/runs"},
+                 "apiary_public_key" => SigningKey.apiary_public_key()
+               },
+               secrets(base)
+             )
 
     # The contract's order of members.
     assert conn.resp_body =~
-             ~r/\A\{"version":1,"node_id":"nd_[^"]+","workspaces":\["ws_[^"]+"\],"events":\{[^}]+\},"run":\{"url":"[^"]+"\},"apiary_public_key":/
+             ~r/\A\{"version":1,"node_id":"nd_[^"]+","workspaces":\["ws_[^"]+"\],"events":\{[^}]+\},"run":\{"url":"[^"]+"\},("secrets":\{"url":"[^"]+"\},)?"apiary_public_key":/
 
     [digest] = get_resp_header(conn, "x-qory-configuration")
     assert digest == ApiaryWeb.Contract.ConfigurationController.digest(conn.resp_body)
@@ -131,13 +135,17 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     document = json_response(conn, 200)
     base = ApiaryWeb.Endpoint.url()
 
-    assert document == %{
-             "version" => 1,
-             "node_id" => gateway.public_id,
-             "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
-             "run" => %{"url" => base <> "/v1/runs"},
-             "apiary_public_key" => SigningKey.apiary_public_key()
-           }
+    assert document ==
+             Map.merge(
+               %{
+                 "version" => 1,
+                 "node_id" => gateway.public_id,
+                 "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
+                 "run" => %{"url" => base <> "/v1/runs"},
+                 "apiary_public_key" => SigningKey.apiary_public_key()
+               },
+               secrets(base)
+             )
 
     # The members in the contract's order, and the digest the answer names.
     assert conn.resp_body =~ ~r/\A\{"version":1,"node_id":"ng_[^"]+","events":/
@@ -425,5 +433,12 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
       assert json_response(conn, 401) == @unauthorized
       assert unsigned_answer?(conn)
     end
+  end
+
+  # The secrets endpoint every key's document lists with the `registry` feature on.
+  defp secrets(base) do
+    if Apiary.Features.on?(:registry),
+      do: %{"secrets" => %{"url" => base <> "/v1/secrets"}},
+      else: %{}
   end
 end

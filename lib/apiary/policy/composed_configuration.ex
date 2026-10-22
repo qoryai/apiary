@@ -67,6 +67,12 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   takes, compose no document: the run is given no run configuration (`serve/7`), as
   #   when its provider cannot be read.
   #
+  # With the `registry` feature, for a run through a gateway, whatever the other features:
+  # the run's registry credential, after the model key in `credentials`; the instance's
+  # host and the registry's in `egress.allow` and `egress.allow_first`, as the provider's
+  # hosts are; and the registry host's path rules in `egress.paths`, in place of any the
+  # document has for that host (`Apiary.Registry.RunAccess`).
+  #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`. A document composed with them is
   # composed for the run and kept as any other (`serve/7`), so its digest is the SHA-256
@@ -80,6 +86,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
   alias Apiary.Repo
+  alias Apiary.Registry.RunAccess
   alias Apiary.Runs.{ProviderCredential, Run, RunVariables}
 
   @type t :: %__MODULE__{}
@@ -438,31 +445,43 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   def members(run) do
     with {:ok, credential} <- ProviderCredential.for_run(run) do
-      members = %{variables: Map.get(run, :registration_variables), credential: credential}
+      members = %{
+        variables: Map.get(run, :registration_variables),
+        credential: credential,
+        registry: RunAccess.member(run)
+      }
+
       {:ok, if(members?(members), do: members)}
     end
   end
 
-  defp members?(%{variables: variables, credential: credential}),
-    do: (is_map(variables) and map_size(variables) > 0) or not is_nil(credential)
+  defp members?(%{variables: variables, credential: credential} = members),
+    do:
+      (is_map(variables) and map_size(variables) > 0) or not is_nil(credential) or
+        not is_nil(Map.get(members, :registry))
 
   defp members?(nil), do: false
 
   # `document`, or the document of no policy for nil, with the run's members after its
   # last member and the provider's hosts in its `egress`: `{:ok, bytes}`, canonical, or
   # `{:error, {:allow_first_too_long, count}}`.
-  defp with_members(document, %{variables: variables, credential: credential}) do
-    hosts = if credential, do: credential.hosts, else: []
+  defp with_members(document, %{variables: variables, credential: credential} = run_members) do
+    registry = Map.get(run_members, :registry)
+
+    hosts =
+      if(credential, do: credential.hosts, else: []) ++ if(registry, do: registry.hosts, else: [])
+
+    entries =
+      if(credential, do: [credential.entry], else: []) ++
+        if registry, do: [registry.entry], else: []
 
     added =
       if(is_map(variables) and map_size(variables) > 0,
         do: [{"variables", RunVariables.document(variables)}],
         else: []
       ) ++
-        if(credential,
-          do: [{"credentials", [credential.entry]}, {"model_credential", credential.name}],
-          else: []
-        )
+        if(entries != [], do: [{"credentials", entries}], else: []) ++
+        if credential, do: [{"model_credential", credential.name}], else: []
 
     names = Enum.map(added, &elem(&1, 0))
 
@@ -472,7 +491,45 @@ defmodule Apiary.Policy.ComposedConfiguration do
       |> Enum.reject(fn {name, _value} -> name in names end)
 
     with {:ok, members} <- policy_with_hosts(members, hosts),
-         do: {:ok, encode(members ++ added)}
+         do: {:ok, encode(policy_with_paths(members, registry) ++ added)}
+  end
+
+  # The members with the registry's path rules for its host in the `security_policy`'s
+  # `egress.paths`, where there is an `egress`: in place of the host's entry where it has
+  # one, else after the entries there (`Apiary.Registry.RunAccess`).
+  defp policy_with_paths(members, nil), do: members
+
+  defp policy_with_paths(members, %{registry_host: host, paths: paths}) do
+    with {@security_policy, %Jason.OrderedObject{values: policy}} <-
+           List.keyfind(members, @security_policy, 0),
+         {"egress", %Jason.OrderedObject{values: egress}} <- List.keyfind(policy, "egress", 0) do
+      entries =
+        case List.keyfind(egress, "paths", 0) do
+          {"paths", %Jason.OrderedObject{values: entries}} -> entries
+          _none -> []
+        end
+
+      entries =
+        if List.keymember?(entries, host, 0),
+          do: List.keyreplace(entries, host, 0, {host, paths}),
+          else: entries ++ [{host, paths}]
+
+      egress =
+        if List.keymember?(egress, "paths", 0),
+          do: List.keyreplace(egress, "paths", 0, {"paths", Jason.OrderedObject.new(entries)}),
+          else: egress ++ [{"paths", Jason.OrderedObject.new(entries)}]
+
+      policy = List.keyreplace(policy, "egress", 0, {"egress", Jason.OrderedObject.new(egress)})
+
+      List.keyreplace(
+        members,
+        @security_policy,
+        0,
+        {@security_policy, Jason.OrderedObject.new(policy)}
+      )
+    else
+      _none -> members
+    end
   end
 
   # The members with the provider's `hosts` in the `security_policy`'s `egress`, where
