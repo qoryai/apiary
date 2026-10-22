@@ -16,10 +16,12 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   # them deadlocks: the tests of a release and an exit's end also assert that no
   # statement on any connection fails with `deadlock_detected` (40P01). A release after
   # the handover is refused `machine_exists`, or `gone` once the run ended, and ends
-  # nothing. For a prebuild handed over, the lost-run check holds its environment record
-  # before the run of the queue, as a release and a trigger of its collection hold it: so
-  # the check takes turns with them at the record, the record keeps the end that decided,
-  # and none of them deadlocks. What a run gave is stored by its end or by a settle
+  # nothing. For a prebuild handed over, the lost-run check holds its target's collections
+  # `FOR SHARE`, then the work items whose runs wait for its build `FOR KEY SHARE`, then
+  # its environment record, before the run of the queue, as a release holds the record:
+  # so the check takes turns with a release at the record, and with a claim, which never
+  # takes a run held for the build; the record keeps the end that decided, and none of
+  # them deadlocks. What a run gave is stored by its end or by a settle
   # (`Apiary.Dispatches.Settle`), which locks the run of the queue alone: it takes turns
   # with a projection and the lost-run check there, and what is stored is the same
   # whichever comes first.
@@ -291,13 +293,12 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
           workspace_id: ctx.scope.workspace.id,
           pool_id: ctx.place.pool.id,
           source_collection_id: collection.id,
-          queued_ref: "env-1",
-          queued_at: DateTime.utc_now(),
           image: @image,
           size: 734_003_200,
           commit: "9c1e4a7b",
           built_at: DateTime.utc_now(),
-          reported_ref: "env-1"
+          reported_ref: "env-1",
+          built_ref: "env-1"
         })
 
       {:ok, queued} =
@@ -327,18 +328,31 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       end
     end
 
-    # A new `environment_ref` of the prebuild's collection, triggered as a listing does.
-    defp trigger(%{collection: %Collection{id: id}}, ref) do
-      fn ->
-        Repo.transact(fn ->
-          {1, _rows} =
-            Repo.update_all(from(c in Collection, where: c.id == ^id),
-              set: [environment_ref: ref]
-            )
+    # A waiting run of a fresh work item in Explore whose target is the prebuild's
+    # collection's: held for the pool's build of it.
+    defp held!(ctx, handed) do
+      work_item =
+        Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope, %{
+          target_system: handed.collection.target_system,
+          target_path: handed.collection.target_path
+        })
 
-          {:ok, Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())}
-        end)
-      end
+      Agent.update(ctx.made, &%{&1 | adapters: [work_item.adapter_id | &1.adapters]})
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      run
+    end
+
+    # The prebuilds of the collection that wait end, so the next round's claim takes the
+    # prebuild that round queues.
+    defp end_waiting!(handed) do
+      {_count, _rows} =
+        Repo.update_all(
+          from(r in DispatchRun,
+            where: r.source_collection_id == ^handed.collection.id,
+            where: fragment("? = 'waiting'", r.state)
+          ),
+          set: [state: :ended, end_cause: :collection_ended]
+        )
     end
 
     defp end_cause(handed), do: Repo.get!(DispatchRun, handed.dispatch_run.id).end_cause
@@ -352,7 +366,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     end
 
     # The runs of the queue of the prebuild's collection for its pool, oldest first: the
-    # end queues none. A trigger queues one for each pool of the workspace.
+    # end of a first loss of the collection's ref queues one more.
     defp runs_of(handed) do
       Repo.all(
         from r in DispatchRun,
@@ -361,9 +375,6 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
           order_by: [r.inserted_at, r.id]
       )
     end
-
-    defp for_pool(runs, handed),
-      do: Enum.filter(runs, &(&1.pool_id == handed.dispatch_run.pool_id))
 
     test "and a release at once: the check decides, the release ends nothing, none deadlocks",
          ctx do
@@ -376,9 +387,18 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         assert lost != []
         assert released in [{:error, :machine_exists}, {:error, :gone}]
         assert end_cause(handed) == :lost
-        assert %Record{failure_cause: :lost, failure_reason: nil} = record_kept!(handed)
-        assert [%DispatchRun{state: :ended}] = runs_of(handed)
+
+        assert %Record{failure_cause: :lost, failure_reason: nil, lost_ref: "env-1"} =
+                 record_kept!(handed)
+
+        assert [
+                 %DispatchRun{state: :ended},
+                 %DispatchRun{state: :waiting, environment_ref: "env-1"}
+               ] =
+                 runs_of(handed)
+
         assert Slots.held(ctx.place.pool.id) == 0
+        end_waiting!(handed)
       end
     end
 
@@ -395,7 +415,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       assert Task.await(second.task) == {:error, :gone}
       assert end_cause(handed) == :lost
       assert %Record{failure_cause: :lost, failure_reason: nil} = record_kept!(handed)
-      assert [%DispatchRun{state: :ended}] = runs_of(handed)
+      assert [%DispatchRun{state: :ended}, %DispatchRun{state: :waiting}] = runs_of(handed)
     end
 
     test "the release first: the check waits on the record, then loses the run", ctx do
@@ -439,77 +459,73 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       assert %Record{failure_cause: :lost} = record_kept!(handed)
     end
 
-    test "the trigger first: the check waits on the record, records the failure, and the trigger's prebuild waits",
+    test "a second loss and a claim at once: the held runs end build_failed once, and the claim takes none",
          ctx do
-      handed = prebuild_handed_over!(ctx)
-
-      {first, first_pid} = hold(trigger(handed, "env-2"))
-      assert {:ok, queued} = first.result
-      assert [%DispatchRun{environment_ref: "env-2"}] = for_pool(queued, handed)
-
-      second = start(lose_prebuild(handed))
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert Task.await(second.task) != []
-      assert end_cause(handed) == :lost
-
-      assert %Record{failure_cause: :lost, failure_reason: nil, queued_ref: "env-2"} =
-               record_kept!(handed)
-
-      assert [
-               %DispatchRun{state: :ended},
-               %DispatchRun{state: :waiting, environment_ref: "env-2"}
-             ] =
-               runs_of(handed)
-    end
-
-    test "the check first: the trigger waits on the record, then queues its prebuild", ctx do
-      handed = prebuild_handed_over!(ctx)
-
-      {first, first_pid} = hold(lose_prebuild(handed))
-      assert first.result != []
-
-      second = start(trigger(handed, "env-2"))
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:ok, queued} = Task.await(second.task)
-      assert [%DispatchRun{environment_ref: "env-2"}] = for_pool(queued, handed)
-
-      assert %Record{failure_cause: :lost, failure_reason: nil, queued_ref: "env-2"} =
-               record_kept!(handed)
-
-      assert [
-               %DispatchRun{state: :ended},
-               %DispatchRun{state: :waiting, environment_ref: "env-2"}
-             ] =
-               runs_of(handed)
-    end
-
-    test "and a trigger at once, with a release: none deadlocks, one prebuild waits", ctx do
       for _round <- 1..4 do
         handed = prebuild_handed_over!(ctx)
 
-        [_lost, _triggered, _released] =
-          together(
-            Enum.take(
-              [lose_prebuild(handed), trigger(handed, "env-2"), release_prebuild(ctx, handed)],
-              sides(3)
-            )
+        {1, _rows} =
+          Repo.update_all(from(r in Record, where: r.id == ^handed.record.id),
+            set: [lost_ref: "env-1"]
           )
 
+        held = for _ <- 1..2, do: held!(ctx, handed)
+
+        sides = [
+          fn -> {:lost, lose_prebuild(handed).()} end,
+          fn -> {:claim, Dispatches.claim(ctx.place.key, Dispatches.now())} end
+        ]
+
+        answers = together(Enum.take(sides, sides(length(sides))))
+        assert {:lost, [_ | _]} = List.keyfind(answers, :lost, 0)
+        assert {:claim, {:ok, :none}} = List.keyfind(answers, :claim, 0)
+
         assert end_cause(handed) == :lost
-        assert %Record{failure_cause: :lost, queued_ref: "env-2"} = record_kept!(handed)
+        assert %Record{failure_cause: :lost, lost_ref: nil} = record_kept!(handed)
+        assert [%DispatchRun{state: :ended}] = runs_of(handed)
 
-        assert [%DispatchRun{state: :ended}, %DispatchRun{state: :waiting}] = runs_of(handed)
+        for run <- held do
+          assert %DispatchRun{state: :ended, end_cause: :build_failed, result_outcome: :error} =
+                   Repo.get!(DispatchRun, run.id)
 
-        # The prebuild the trigger queued ends, so the next round claims the prebuild it queues.
-        {:ok, _changed} =
-          Repo.transact(fn ->
-            {:ok, Dispatches.end_waiting_prebuilds([handed.collection.id], Dispatches.now())}
-          end)
+          assert Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^run.id) == []
+        end
+
+        refute_received {:deadlock, _query}
       end
+    end
+
+    test "the check of a second loss holds the work items of the held runs before the record",
+         ctx do
+      handed = prebuild_handed_over!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Record, where: r.id == ^handed.record.id),
+          set: [lost_ref: "env-1"]
+        )
+
+      run = held!(ctx, handed)
+
+      # A close holds the work item `FOR UPDATE`: the check waits there, before the record.
+      {first, first_pid} =
+        hold(fn ->
+          Repo.one!(from w in WorkItem, where: w.id == ^run.work_item_id, lock: "FOR UPDATE")
+        end)
+
+      second = start(lose_prebuild(handed))
+      await_blocked(second.backend, first_pid)
+
+      assert %Record{} =
+               continue(first, fn ->
+                 Repo.one(
+                   from r in Record, where: r.id == ^handed.record.id, lock: "FOR UPDATE NOWAIT"
+                 )
+               end)
+
+      commit(first)
+
+      assert Task.await(second.task) != []
+      assert %DispatchRun{end_cause: :build_failed} = Repo.get!(DispatchRun, run.id)
     end
   end
 
@@ -577,14 +593,15 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
   describe "the end of a run whose image was missing" do
     # The end holds the connections and the collections of the records of the image
-    # `FOR SHARE`, then the work item `FOR KEY SHARE`, then the records `FOR UPDATE`,
-    # before the run of the queue; it clears the image and queues a prebuild of each
-    # collection, unless one waits. A listing's part, which holds its connection and its
-    # collections `FOR UPDATE` before their records, a Rebuild, which holds the same rows
-    # as the end in the same order, a release and a close, which hold the work item
-    # `FOR UPDATE`, and a second end of the run take turns with it: none deadlocks, the
-    # run of the queue ends once, `run_ended`, the image is cleared, and one prebuild
-    # waits for the pool.
+    # `FOR SHARE`, then the work item `FOR UPDATE`, then the records `FOR UPDATE`, before
+    # the run of the queue; it clears the image, queues a prebuild of each collection,
+    # unless one of its ref waits, and queues the next run of the take in with one more
+    # attempt. A listing's part, which holds its connection and its collections
+    # `FOR UPDATE`, a Rebuild, which holds the same rows as the end in the same order, a
+    # release and a close, which hold the work item `FOR UPDATE`, and a second end of the
+    # run take turns with it: none deadlocks, the run of the queue ends once, `run_ended`,
+    # the image is cleared, one prebuild waits for the pool, and one run of the work item
+    # waits, unless the work item was closed.
     setup :attach_deadlocks
 
     setup ctx do
@@ -644,15 +661,12 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
           workspace_id: ctx.scope.workspace.id,
           pool_id: ctx.pool.id,
           source_collection_id: collection.id,
-          queued_ref: "env-1",
-          queued_at: now,
-          queued_target_system: @missing_target.system,
-          queued_target_path: @missing_target.path,
           image: @image,
           size: 734_003_200,
           commit: "9c1e4a7b",
           built_at: now,
           reported_ref: "env-1",
+          built_ref: "env-1",
           built_target_system: @missing_target.system,
           built_target_path: @missing_target.path,
           built_queued_at: now
@@ -693,7 +707,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     end
 
     # A listing's part that changes the collection's `environment_ref`: its connection and
-    # its collection `FOR UPDATE`, then the trigger, which locks the records.
+    # its collection `FOR UPDATE`, then the change.
     defp part(%{collection: %Collection{id: id, connection_id: connection_id}}, ref) do
       fn ->
         Repo.transact(fn ->
@@ -705,7 +719,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
               set: [environment_ref: ref]
             )
 
-          {:ok, Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())}
+          {:ok, :changed}
         end)
       end
     end
@@ -721,24 +735,44 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     end
 
     # The run of the queue ended once, `run_ended`, the image cleared, one prebuild
-    # waiting for `ref`, and no deadlock on any connection. The collection then has no
-    # `environment_ref`, and its prebuild that waits ends, so the next round's claim takes
-    # its explore run and its Rebuild queues nothing for this collection.
-    defp missing_ended!(ctx, handed, ref) do
+    # waiting for one of `refs`, the next run of the work item waiting, attempt 2 of 4,
+    # unless `requeued` is false, and no deadlock on any connection. The collection then
+    # has no `environment_ref`, and what waits of it and of the work item ends, so the
+    # next round's claim takes its explore run and its Rebuild queues nothing for this
+    # collection.
+    defp missing_ended!(ctx, handed, refs, requeued \\ true) do
       assert {:run_ended, %Run{}} = ended!(ctx, handed)
       assert %Record{image: nil, built_queued_at: nil} = Repo.get!(Record, handed.record.id)
-      assert waiting_prebuilds(ctx, handed) == [ref]
+      assert [ref] = waiting_prebuilds(ctx, handed)
+      assert ref in List.wrap(refs)
       refute_received {:deadlock, _query}
 
-      {:ok, _changed} =
-        Repo.transact(fn ->
-          {1, _rows} =
-            Repo.update_all(from(c in Collection, where: c.id == ^handed.collection.id),
-              set: [environment_ref: nil]
-            )
+      waiting =
+        Repo.all(
+          from r in DispatchRun,
+            where: r.work_item_id == ^handed.dispatch_run.work_item_id,
+            where: fragment("? = 'waiting'", r.state)
+        )
 
-          {:ok, Dispatches.end_waiting_prebuilds([handed.collection.id], Dispatches.now())}
-        end)
+      if requeued,
+        do: assert([%DispatchRun{attempt: 2, of: 4, image_requeue: true}] = waiting),
+        else: assert(waiting == [])
+
+      {1, _rows} =
+        Repo.update_all(from(c in Collection, where: c.id == ^handed.collection.id),
+          set: [environment_ref: nil]
+        )
+
+      {_count, _rows} =
+        Repo.update_all(
+          from(r in DispatchRun,
+            where:
+              r.source_collection_id == ^handed.collection.id or
+                r.work_item_id == ^handed.dispatch_run.work_item_id,
+            where: fragment("? = 'waiting'", r.state)
+          ),
+          set: [state: :ended, end_cause: :collection_ended]
+        )
     end
 
     test "a part holds the collection: the end waits there, before the work item and the records",
@@ -757,7 +791,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       await_blocked(second.backend, first_pid)
 
       # Waiting on the connection, the end holds neither the work item nor the record:
-      # the part locks both without waiting, then triggers.
+      # the part locks both without waiting, then changes the collection's ref.
       continue(first, fn ->
         Repo.one!(
           from w in WorkItem,
@@ -765,12 +799,12 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
             lock: "FOR UPDATE NOWAIT"
         )
 
+        Repo.one!(from r in Record, where: r.id == ^handed.record.id, lock: "FOR UPDATE NOWAIT")
+
         {1, _rows} =
           Repo.update_all(from(c in Collection, where: c.id == ^id),
             set: [environment_ref: "env-2"]
           )
-
-        Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())
       end)
 
       commit(first)
@@ -784,11 +818,11 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         handed = missing_handed_over!(ctx)
         missing_exit!(handed)
 
-        [projected, {:ok, _queued}] =
+        [projected, {:ok, :changed}] =
           together([fn -> Projector.project(handed.run) end, part(handed, "env-2")])
 
         assert {:ok, %Run{}} = projected
-        missing_ended!(ctx, handed, "env-2")
+        missing_ended!(ctx, handed, ~w(env-1 env-2))
       end
     end
 
@@ -846,7 +880,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
         assert {:ok, %Run{}} = projected
         assert {:ok, %WorkItem{state: :closed}} = closed
-        missing_ended!(ctx, handed, "env-1")
+        missing_ended!(ctx, handed, "env-1", false)
       end
     end
 

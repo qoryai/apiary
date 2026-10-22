@@ -3,53 +3,48 @@ defmodule Apiary.Environments do
 
   # The environment records of the collections (`Apiary.Environments.Record`), one per
   # node pool and collection: what the last prebuild of a collection's target built for a
-  # pool, and what was asked of it.
+  # pool, for which `environment_ref`, and how its last build failed.
   #
   # The reads here serve the paths that queue, record and use a build: they ask nothing
   # of `Apiary.Access`, and whoever answers a person with them asks it first. A person's
   # Rebuild (`rebuild/2`) and what a target's page says (`section/2`) ask it themselves.
   #
-  # ## The trigger: `trigger/2` and `trigger_for_pool/2`
+  # ## A run held for its build: `holds?/1`, `held/2`, `hold_builds/2`, `queue_builds/2`
   #
-  # A prebuild is queued for a collection and a node pool (`Apiary.Dispatches.queue_prebuild/3`,
-  # held for that pool) when the collection is live, assigned to the pool's workspace, whose
-  # domain has prebuilds (`Apiary.Lingo.Domain.prebuilds?/1`), has a target and an
-  # `environment_ref`, and the pool's record of it is missing, was queued
-  # for another `environment_ref` or another target, or was retired after it was last
-  # queued: the trigger is keyed on the target and the `environment_ref`. Queuing
-  # sets the record's `queued_ref`, `queued_at` and queued target (`queued_target_system`,
-  # `queued_target_path`), making the record when there was none. So the same
-  # `environment_ref` named again for the same target queues nothing, and a target that
-  # changes with the same `environment_ref` queues a prebuild. A change while a prebuild of
-  # the collection waits for the pool sets the change's `environment_ref` on that waiting
-  # one, in the same transaction as the record's `queued_ref`, so at most one waits per
-  # collection and pool; a change while one is claimed or runs queues the one that waits
-  # next.
+  # A pool builds a collection's `environment_ref` when a run needs it, and never ahead
+  # of one: a listing, an assign and a new node pool queue no build. In a workspace whose
+  # domain has prebuilds (`holds?/1`, `Apiary.Lingo.Domain.prebuilds?/1`), a waiting run
+  # that is not a prebuild, of a work item whose target a live collection of the
+  # workspace with an `environment_ref` has, is held for a node pool while no record of
+  # such a collection for that pool keeps an image whose `built_ref` is its collection's
+  # `environment_ref`, built for the target (`held/2`, a subquery on the run as
+  # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/3`); a run
+  # whose target no collection names, or of a workspace whose domain has no prebuilds, is
+  # never held and starts in the pool's default image.
   #
-  # `trigger(collections, now)` applies it, inside the caller's transaction, to
-  # collections as they now stand, for every live pool of each one's workspace: a
-  # listing's part calls it for the collections it made or updated, and an assign for
-  # those it assigned or moved to a workspace (`Apiary.Adapters.Collections`). A collection
-  # without an `environment_ref` queues nothing, its records not retired since they were
-  # last queued are retired at `now`, and its prebuilds that wait end, `collection_ended`
-  # (`Apiary.Dispatches.end_waiting_prebuilds/2`): the image goes from new runs, nothing
-  # is left to build, and the record keeps the rest. A collection assigned to no
-  # workspace, to one whose domain has no prebuilds, or without a target, queues nothing.
+  # Whenever a run is held and no prebuild of its collection's `environment_ref` for the
+  # pool waits, is claimed or is handed over, the pool's next claim queues one: before it
+  # locks the pool's row, `hold_builds(workspace_id, pool_id)` reads those collections
+  # without a lock and holds them `FOR SHARE`, by id; after the pool's row and the free of
+  # its lapsed leases, `queue_builds(collections, pool)` checks again and queues a
+  # prebuild of each for the collection's `environment_ref`
+  # (`Apiary.Dispatches.queue_prebuild/3`, which makes the record when there is none).
+  # So a key change while runs wait is built by the next claim of each pool, and the
+  # claim ends a waiting prebuild of the old ref `superseded` when it takes it. The
+  # collections held `FOR SHARE` make a listing's part, which holds them `FOR UPDATE` to
+  # change their `environment_ref`, wait for the claim, or the claim wait for the part.
+  # The claim takes no record lock for the build it queues: its check of the live
+  # prebuilds and the pool's row, which a free of lapsed leases of the pool also holds,
+  # keep it from queuing beside one that waits again; every other path that queues a
+  # prebuild holds the record `FOR UPDATE` first, and the index of the waiting prebuilds,
+  # one per collection, pool and `environment_ref`, takes what is left.
   #
-  # `trigger_for_pool(pool, now)` applies it, inside the caller's transaction, to a new
-  # node pool, for every collection assigned to its workspace (`Apiary.Nodes.create_node/2`).
-  #
-  # `trigger/2` first locks every record of its collections, of every pool, `FOR UPDATE`,
-  # in one statement, by collection and then pool, whatever order its caller names them
-  # in; a free of lapsed leases locks the records of every claimed prebuild that lapsed
-  # in its scope in the same order, in one statement, before its first batch decides
-  # which prebuild waits (`Apiary.Dispatches.Slots`, which names the order of every
-  # lock). The record is then written by one statement that decides whether it is
-  # due (`INSERT … ON CONFLICT … DO UPDATE … WHERE`), so two triggers at once for the same
-  # pool and collection take turns, and the second sees the first's `queued_ref`; and the
-  # prebuild that waits is one per pool and collection in the database too
-  # (`Apiary.Dispatches.queue_prebuild/3`). A caller calls `trigger/2` once per
-  # transaction: two calls would lock in two orders.
+  # `claim_image(pool, work_item)` is what a claim gives an explore run it takes:
+  # `{:ok, image}` for the image `image_for/2` reads, `{:ok, nil}` for the pool's default
+  # where nothing holds the run, and `:held` where a build that landed or a key that
+  # changed after the claim's read holds it again: the claim then leaves it waiting.
+  # `Apiary.Dispatches.Handover` writes the image on the registered run
+  # (`configured_image`), which its attach gives the run (`Apiary.Runs.Attach`).
   #
   # ## A build given back: `lock_record/2`
   #
@@ -57,61 +52,66 @@ defmodule Apiary.Environments do
   # collection `FOR UPDATE`, inside the caller's transaction: a starter's release of the
   # prebuild holds it before the free of its run and before its run of the queue, as a
   # free of lapsed leases holds it (`Apiary.Dispatches.Release`, `Apiary.Dispatches.Slots`).
-  # A release records no failure: a starter releases a prebuild only before its handover.
-  # A record whose `failure_cause` is `released` was written before that rule.
+  # A release records no failure: a starter releases a prebuild only before its handover,
+  # and the prebuild waits again. A record whose `failure_cause` is `released` was written
+  # before that rule.
   #
-  # ## A build lost: `record_end_failure/3`
+  # ## A build ended: `hold_build/2`, `record_end_failure/3` and `build_failed/6`
   #
-  # `record_end_failure(record, cause, now)` records the last build as failed when the
-  # lost-run check ends a prebuild after its handover (`Apiary.Dispatches.RunEnd`), on the
-  # record of its collection and of the pool that claimed it, which the check locks with
-  # `lock_record/2` before its run of the queue: `lost` when the prebuild's gateway never
-  # attached it by its run key's `attach_by`, `timed_out` when it had no exit by its
-  # backstop, with `now` and no reason; and when its exit ends it, `failed` for a `failed`
-  # exit and `lost` for a `lost` one. The last good build is left as it was,
-  # and nothing is queued. A prebuild whose ref is older than the image's records
-  # nothing (`newer_build?/2`).
+  # The end of a prebuild after its handover (`Apiary.Dispatches.RunEnd`) first calls
+  # `hold_build(pool_id, collection_id)`: the connections of the live collections of the
+  # prebuild's target that name an `environment_ref` `FOR SHARE`, by id, then those
+  # collections `FOR SHARE`, by id, as a Rebuild holds them; then the work items in Explore of the workspace with that target
+  # and a waiting run, read without a lock, `FOR KEY SHARE`, by id; then the record
+  # `FOR UPDATE` (`lock_record/2`), before the run of the queue.
+  #
+  # `record_end_failure(record, cause, now)` records the last build as failed, with `now`
+  # and no reason: `lost` when the prebuild's gateway never attached it by its run key's
+  # `attach_by`, `timed_out` when it had no exit by its backstop, and, when its exit ends
+  # it, `failed` for a `failed` exit and `lost` for a `lost` one. The last good build is
+  # left as it was. A prebuild whose ref is older than the image's, or that made the
+  # image, records nothing (`newer_build?/2`, `built_by?/2`).
+  #
+  # `build_failed(record, dispatch_run, cause, collections, work_item_ids, now)` then
+  # acts on the runs held for the build, only while the prebuild's `environment_ref` is
+  # still its collection's. The first loss of that ref, `lost` or `timed_out` with a
+  # `lost_ref` that is not the ref, on a live pool, sets `lost_ref` and queues one more
+  # prebuild of the ref for the pool. A failure, a second loss, or a loss on a deleted
+  # pool clears `lost_ref`; then, while no live pool keeps an image of the target from its
+  # collection's `environment_ref` and no prebuild of the held collections waits, is
+  # claimed or is handed over, the waiting runs of those work items, held for the target,
+  # end `build_failed` with the outcome `error` (`Apiary.Dispatches.end_held/4`).
   #
   # ## A run's image: `image_for/2`
   #
   # `image_for(pool, target)` is the image a run of `pool` for `target` starts in: of the
-  # live collections assigned to the pool's workspace with that target, only those with an
-  # `environment_ref` count, and of their records for the pool built for that target
-  # (`built_target_system`, `built_target_path`), the one built last (`built_at`)
-  # that is not retired gives its `image`; nil when there is none, and the run starts in
-  # the pool's default. A record whose image was built for another target gives none,
-  # until a prebuild for its target lands.
+  # live collections assigned to the pool's workspace with that target and an
+  # `environment_ref`, and of their records for the pool built for that target
+  # (`built_target_system`, `built_target_path`) whose `built_ref` is the collection's
+  # `environment_ref`, the one built last (`built_at`) gives its `image`; nil when there
+  # is none.
   #
   # ## A build recorded: `record_build/4`
   #
   # `record_build(dispatch_run, build, built_target, now)` records the build of a prebuild
-  # on the record of its pool and collection, which the caller locked first (`lock_record/2`): `image`, `size`, `commit`,
-  # `reported_ref`, the `environment_ref` the job reported, kept as it is even when it
-  # differs from `queued_ref`, `built_at`, `now`, and the built target
-  # (`built_target_system`, `built_target_path`), the registered run's target. The last
-  # failure is cleared, and the queued ref and the queued target are left as they are;
-  # nothing is queued. `retired_at` is cleared only when the build's run took its ref
-  # (`environment_ref_at`) after the record was retired: the ref came back and this build
-  # is of it, so the record is served again. A build whose run took its ref before the
-  # retirement, one claimed before the collection's `environment_ref` went absent and
-  # landing late, is stored and the record stays retired, even when a new ref has come
-  # since. A record that is missing is made with the
-  # build, queued for the run's `environment_ref` when the run was queued, and for the
-  # built target. `built_queued_at` is written with the image: when the run took the
-  # `environment_ref` it built (`environment_ref_at`), which a wait again or a change while
-  # it waits sets anew, where its `queued_at` stays.
+  # on the record of its pool and collection, which the caller locked first
+  # (`lock_record/2`): `image`, `size`, `commit`, `reported_ref`, the `environment_ref`
+  # the job reported, kept as it is, `built_ref`, the `environment_ref` the prebuild was
+  # queued for, `built_at`, `now`, the built target (`built_target_system`,
+  # `built_target_path`), the registered run's target, and `built_queued_at`, when the
+  # run took the `environment_ref` it built (`environment_ref_at`). The last failure and
+  # `lost_ref` are cleared; nothing is queued. A record that is missing is made with the
+  # build. The image serves a run only through `built_ref`: the reported ref is stored as
+  # the job reports it, with no check.
   #
   # ## A build whose ref is older than the image's: `newer_build?/2`
   #
   # `newer_build?(record, dispatch_run)` is whether the image `record` keeps was made by a
   # prebuild that took its `environment_ref` after `dispatch_run` took its
   # (`built_queued_at` later than the run's `environment_ref_at`), asked under the record's
-  # lock: the run's ref is older than the image's, and an older build never replaces a
-  # newer one. Then neither a build nor a
-  # failure of `dispatch_run` is written on the record: the image and the last build's
-  # failure stay as they are, and the run ends as it would otherwise. A record that is
-  # missing, or keeps no `built_queued_at`, as a record with no image, is never newer, and
-  # every writer writes it as before.
+  # lock: an older build never replaces a newer one. Then neither a build nor a failure
+  # of `dispatch_run` is written on the record, and the run ends as it would otherwise. A
+  # record that is missing, or keeps no `built_queued_at`, is never newer.
   #
   # `built_by?(record, dispatch_run)` is whether the image `record` keeps was made by
   # `dispatch_run`: its `built_queued_at` is the run's `environment_ref_at`. The end of
@@ -129,52 +129,47 @@ defmodule Apiary.Environments do
   # collections of the records of the pool that claimed the run whose image is that
   # image, built for the run's target, read without a lock, held `FOR SHARE`, by id,
   # after their connections, `FOR SHARE`, by id, as a Rebuild holds them. It then locks
-  # its work item `FOR KEY SHARE`, then calls `lock_missing(pool_id, target, image)`:
-  # those records `FOR UPDATE`, by collection, before the run of the queue, as the order
-  # of `Apiary.Dispatches.Slots` has the collections before the records before the runs.
+  # its work item `FOR UPDATE`, then calls `lock_missing(pool_id, target, image)`: those
+  # records `FOR UPDATE`, by collection, before the run of the queue.
   # `forget_image(records, collections, now)` then clears the build of each record,
-  # `image`, `size`, `commit`, `built_at`, `reported_ref`, the built target and
-  # `built_queued_at`, so `image_for/2` gives that image to no run; the last failure,
-  # what was queued and `retired_at` are left as they are. The prebuild that made the
-  # image does not store it again: a projection stores a run's build only in the pass
-  # that folds its report of the lowest sequence, and a rebuild of the run's projection
-  # stores none (`Apiary.Runs.Projector`). For each record not retired whose
-  # collection is one of `collections`, live, assigned to the pool's workspace, whose
-  # domain has prebuilds, with a target and an `environment_ref`, and whose pool is live,
-  # it writes the record's `queued_ref`, `queued_at` and queued target and queues a
-  # prebuild of the collection held for the pool, as a Rebuild does, unless one waits
-  # unclaimed: the next build makes the image again. A record whose collection is not one
-  # of `collections`, its build landed after `hold_missing/3` read the records, is
-  # cleared and queues nothing: a Rebuild of its target, or a new `environment_ref` of
-  # its collection, queues its next prebuild.
+  # `image`, `size`, `commit`, `built_at`, `reported_ref`, `built_ref`, the built target
+  # and `built_queued_at`, so `image_for/2` gives that image to no run; the last failure
+  # is left as it is. The prebuild that made the image does not store it again: a
+  # projection stores a run's build only in the pass that folds its report of the lowest
+  # sequence, and a rebuild of the run's projection stores none
+  # (`Apiary.Runs.Projector`). For each record whose collection is one of `collections`,
+  # live, assigned to the pool's workspace, whose domain has prebuilds, with a target and
+  # an `environment_ref`, and whose pool is live, it queues a prebuild of the
+  # collection's `environment_ref` for the pool, unless one of that ref waits: the next
+  # build makes the image again. A record whose collection is not one of
+  # `collections`, its build landed after `hold_missing/3` read the records, is cleared
+  # and queues nothing: the next claim of the pool queues its build for a run held for
+  # it. The end then queues the next run of the take in with the attempt total raised by
+  # one (`Apiary.Dispatches.requeue_for_image/1`), held for that build, unless the run
+  # that ended came from such a requeue.
   #
   # ## A member's Rebuild: `rebuild/2`
   #
   # `rebuild(scope, target)` is the Rebuild of a target's page
   # (`target.rebuild_environment`, asked of the target's workspace): for each live
   # collection assigned to the target's workspace with the target's system and path and an
-  # `environment_ref`, and each live node pool of that workspace, it queues a prebuild held
-  # for the pool, changed or not, and writes the record's `queued_ref`, `queued_at` and
-  # queued target as the trigger does, making the record when there was none. A pool whose
-  # prebuild of the collection waits unclaimed is left as it is: that prebuild builds the
-  # collection's `environment_ref` already. Before the records, it locks the connections
-  # of the collections `FOR SHARE`, by id, then the collections `FOR SHARE`, by id, in the
-  # order a Backlog switch holds them (`Apiary.Adapters.Collections`); then their records
-  # `FOR UPDATE`, by collection and then pool, as `trigger/2` does, in one statement; then
-  # it writes the records and queues the prebuilds: the order of
-  # `Apiary.Dispatches.Slots`, connections before collections before records before runs.
-  # So a listing's part, which holds its connection `FOR UPDATE` and then its collections
-  # by ref before its trigger locks the records, an assign, which holds its connection
-  # and then its collections by id, and a Rebuild take turns. A part or an assign that
-  # changes a collection's `environment_ref` either commits first, and the Rebuild reads
-  # the collection as it left it, or waits for the Rebuild to commit, and its trigger then
-  # queues the change. A collection that a change not committed when the Rebuild reads
-  # names, assigns or gives the target, or one of a connection the Rebuild did not hold,
-  # is not read: the trigger of that change queues its prebuilds. One audit entry about
-  # the target, with how many prebuilds it queued, and none when it queued none. It
-  # answers `{:ok, count}`, `Apiary.Access`'s refusal, or `{:error, :not_found}` for a
-  # target that names no environment in its workspace, whose workspace has no node pool,
-  # or whose workspace's domain has no prebuilds.
+  # `environment_ref`, and each live node pool of that workspace, it queues a prebuild of
+  # the collection's `environment_ref` held for the pool, changed or not, making the
+  # record when there is none. A pool whose prebuild of that ref waits unclaimed is left
+  # as it is. Before the records, it locks the connections of the collections
+  # `FOR SHARE`, by id, then the collections `FOR SHARE`, by id, in the order a Backlog
+  # switch holds them (`Apiary.Adapters.Collections`); then their records `FOR UPDATE`,
+  # by collection and then pool, in one statement; then it queues the prebuilds: the
+  # order of `Apiary.Dispatches.Slots`, connections before collections before records
+  # before runs. So a listing's part, which holds its connection `FOR UPDATE` and then
+  # its collections, and a Rebuild take turns: a part that changes a collection's
+  # `environment_ref` either commits first, and the Rebuild reads the collection as it
+  # left it, or waits for the Rebuild to commit, and the next claim of each pool then
+  # queues the new ref's build for a run held for it. One audit entry about the target,
+  # with how many prebuilds it queued, and none when it queued none. It answers
+  # `{:ok, count}`, `Apiary.Access`'s refusal, or `{:error, :not_found}` for a target that
+  # names no environment in its workspace, whose workspace has no node pool, or whose
+  # workspace's domain has no prebuilds.
   #
   # ## What a target's page says: `section/2`
   #
@@ -183,23 +178,22 @@ defmodule Apiary.Environments do
   # `factory`'s), in a workspace whose domain has prebuilds, nil for anyone else and in
   # any other workspace: `state`, `:no_pool` where the workspace has no live
   # node pool, `:no_environment` where no live collection assigned to the workspace with the
-  # target names an `environment_ref` and no pool's record of one is retired, else
-  # `:pools`; `named`, whether one of those collections names an `environment_ref`; and
+  # target names an `environment_ref`, no pool's record of one keeps an image, and no
+  # prebuild of one waits, is claimed or is handed over, else `:pools`; `named`, whether one of those collections names an `environment_ref`; and
   # `pools`, one line for each live pool of the workspace, by id. Where the run
   # configuration in force for the target names an image in its `security_policy`
   # (`Apiary.Policy.ComposedConfiguration.names_image?/1`), on an instance with the
-  # feature `security`, a run starts in that image, and every pool's `serves` is
-  # `:policy`, with no image. Else, where the target names an environment, a pool's line
-  # gives the record `image_for/2` reads for the pool, by the same query (`served/3`):
+  # feature `security`, every pool's `serves` is `:policy`, with no image. Else, where
+  # the target names an environment, a pool's line gives the newest record of those
+  # collections for the pool built for the target (`served/3`), whatever its `built_ref`:
   # its image, `built_at` and `commit`, and `serves` `:image`; where there is none,
   # `serves` is `:other_target` where a record of those collections for the pool keeps an
-  # image that is not retired, built for another target or for none, and `:default`
-  # otherwise. Where the target names none, `serves` is `:retired` where a record of the
-  # pool is retired, else `:default`. `failure` is the cause of the last failure those
-  # records keep, where it failed after the newest build any of them keeps, nil for none:
-  # a build of one collection made after another collection's build failed leaves no
-  # failure to say; `running` and `waiting` are whether a prebuild of those collections,
-  # held for the pool, is claimed or handed over, and waits unclaimed.
+  # image built for another target or for none, and `:default` otherwise. Where the
+  # target names none, `serves` is `:retired` where a record of the pool keeps an image,
+  # else `:default`. `failure` is the cause of the last failure those records keep, where
+  # it failed after the newest build any of them keeps, nil for none; `running` and
+  # `waiting` are whether a prebuild of those collections, held for the pool, is claimed
+  # or handed over, and waits unclaimed.
 
   import Ecto.Query, only: [from: 2]
 
@@ -213,6 +207,7 @@ defmodule Apiary.Environments do
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
   alias Apiary.Runs.Target
+  alias Apiary.WorkItems.WorkItem
 
   # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
   @doc false
@@ -248,6 +243,147 @@ defmodule Apiary.Environments do
     )
   end
 
+  # hold_build/2 holds, inside the caller's transaction, what the end of a prebuild of the
+  # node pool `pool_id` and the collection `collection_id` holds before its run of the
+  # queue (the moduledoc): the connections of the target's collections `FOR SHARE`, then
+  # those collections `FOR SHARE`, by id (`hold_named/1`); then the work items in Explore
+  # with the collection's target and a waiting run, in its workspace, read without a lock,
+  # `FOR KEY SHARE`, by id; then the record `FOR UPDATE` (`lock_record/2`):
+  # `{:build, record, collections, work_item_ids}`. A collection with no workspace or no
+  # target holds its record alone.
+  @doc false
+  @spec hold_build(Ecto.UUID.t(), Ecto.UUID.t()) ::
+          {:build, Record.t() | nil, [Collection.t()], [Ecto.UUID.t()]}
+  def hold_build(pool_id, collection_id) when is_binary(pool_id) and is_binary(collection_id) do
+    in_transaction!("hold_build/2")
+
+    case Repo.get(Collection, collection_id) do
+      %Collection{workspace_id: workspace_id, target_system: system, target_path: path} =
+          collection
+      when is_binary(workspace_id) and is_binary(system) and is_binary(path) ->
+        collections =
+          hold_named(%Target{
+            organisation_id: collection.organisation_id,
+            workspace_id: workspace_id,
+            system: system,
+            path: path
+          })
+
+        waiting =
+          from r in DispatchRun,
+            where: r.work_item_id == parent_as(:work_item).id,
+            where: r.step != ^DispatchRun.prebuild() and fragment("? = 'waiting'", r.state),
+            select: 1
+
+        work_item_ids =
+          Repo.all(
+            from w in WorkItem,
+              as: :work_item,
+              where: w.workspace_id == ^workspace_id and w.state == :exploring,
+              where: w.target_system == ^system and w.target_path == ^path,
+              where: exists(waiting),
+              select: w.id
+          )
+
+        locked =
+          Repo.all(
+            from w in WorkItem,
+              where: w.id in ^work_item_ids,
+              order_by: w.id,
+              lock: "FOR KEY SHARE",
+              select: w.id
+          )
+
+        {:build, lock_record(pool_id, collection_id), collections, locked}
+
+      _no_workspace_or_target ->
+        {:build, lock_record(pool_id, collection_id), [], []}
+    end
+  end
+
+  # build_failed/5 applies the end of the prebuild `dispatch_run`, whose last build
+  # `record_end_failure/3` recorded as failed by `failure`, to the runs held for its
+  # build, inside the caller's transaction, under what `hold_build/2` held: `collections`
+  # and the work items `work_item_ids` (the moduledoc). The first loss of an
+  # `environment_ref` that is still its collection's queues one more prebuild of it for
+  # the pool; a failure, a second loss, or a loss on a deleted pool ends the waiting runs
+  # held for the target `build_failed`, while no live pool has an image for the target
+  # and no prebuild of its collections waits, is claimed or is handed over. What
+  # changed, for `Apiary.Dispatches.broadcast/1`.
+  @doc false
+  @spec build_failed(
+          Record.t(),
+          DispatchRun.t(),
+          :lost | :timed_out | :failed,
+          [Collection.t()],
+          [Ecto.UUID.t()],
+          DateTime.t()
+        ) :: [Ecto.UUID.t() | tuple]
+  def build_failed(
+        %Record{} = record,
+        %DispatchRun{environment_ref: ref} = dispatch_run,
+        failure,
+        collections,
+        work_item_ids,
+        %DateTime{} = now
+      ) do
+    in_transaction!("build_failed/6")
+    pool = Repo.get(Node, record.pool_id)
+
+    case Enum.find(collections, &(&1.id == dispatch_run.source_collection_id)) do
+      %Collection{environment_ref: ^ref} = collection ->
+        if failure in [:lost, :timed_out] and record.lost_ref != ref and
+             match?(%Node{kind: :pool, deleted_at: nil}, pool) do
+          {1, _rows} =
+            Repo.update_all(from(r in Record, where: r.id == ^record.id),
+              set: [lost_ref: ref, updated_at: now]
+            )
+
+          {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
+          [run.workspace_id]
+        else
+          {_count, _rows} =
+            Repo.update_all(
+              from(r in Record, where: r.id == ^record.id and not is_nil(r.lost_ref)),
+              set: [lost_ref: nil, updated_at: now]
+            )
+
+          end_held(collection, collections, work_item_ids, now)
+        end
+
+      _no_longer_its_ref ->
+        []
+    end
+  end
+
+  # The waiting runs held for the target of `collection` end `build_failed`, when no live
+  # pool of its workspace has an image for the target from its collection's
+  # `environment_ref` and no prebuild of `collections` waits, is claimed or is handed
+  # over.
+  defp end_held(%Collection{} = collection, collections, work_item_ids, now) do
+    target = %{system: collection.target_system, path: collection.target_path}
+    ids = Enum.map(collections, & &1.id)
+
+    served? =
+      Repo.exists?(
+        from [r, c] in served(collection.workspace_id, target.system, target.path),
+          join: n in Node,
+          on: n.id == r.pool_id and n.kind == :pool and is_nil(n.deleted_at),
+          where: r.built_ref == c.environment_ref
+      )
+
+    building? =
+      Repo.exists?(
+        from b in DispatchRun,
+          where: b.source_collection_id in ^ids and b.step == ^DispatchRun.prebuild(),
+          where: b.state in [:waiting, :claimed, :handed_over]
+      )
+
+    if served? or building?,
+      do: [],
+      else: Dispatches.end_held(work_item_ids, collection.workspace_id, target, now)
+  end
+
   # record_end_failure/3 records the last build of `record`, locked by `lock_record/2`,
   # as failed by the end of its prebuild, `cause` (`:lost`, `:timed_out` or `:failed`), at
   # `now`, inside the caller's transaction (the moduledoc).
@@ -277,26 +413,62 @@ defmodule Apiary.Environments do
       })
       when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
     Repo.one(
-      from r in served(workspace_id, system, path),
-        where: r.pool_id == ^pool_id,
+      from [r, c] in served(workspace_id, system, path),
+        where: r.pool_id == ^pool_id and r.built_ref == c.environment_ref,
         order_by: [desc: r.built_at, desc: r.id],
         limit: 1,
         select: r.image
     )
   end
 
-  # The records whose image a run of a pool of the workspace `workspace_id` for the target
-  # `system` and `path` may start in (the moduledoc): `image_for/2` gives the newest of a
-  # pool's, and `section/2` shows it.
+  # The records of the workspace `workspace_id` that keep an image built for the target
+  # `system` and `path`, of a live collection with that target and an `environment_ref`,
+  # each joined to its collection (the moduledoc): `image_for/2` gives the newest of a
+  # pool's whose `built_ref` is its collection's `environment_ref`, and `section/2`
+  # shows the newest of a pool's.
   defp served(workspace_id, system, path) do
     from r in Record,
       join: c in Collection,
       on: c.id == r.source_collection_id,
-      where: not is_nil(r.image) and is_nil(r.retired_at),
+      where: not is_nil(r.image),
       where: r.built_target_system == ^system and r.built_target_path == ^path,
       where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
       where: not is_nil(c.environment_ref),
       where: c.target_system == ^system and c.target_path == ^path
+  end
+
+  # claim_image/2 is the image a claim of `pool` gives an explore run of `work_item`
+  # (the moduledoc): `{:ok, image}` for the image `image_for/2` reads for its target,
+  # `{:ok, nil}` for a run that starts in the pool's default, and `:held` for a run held
+  # for the pool's build of its target (`held/2`).
+  @doc false
+  @spec claim_image(Node.t(), WorkItem.t()) :: {:ok, String.t() | nil} | :held
+  def claim_image(
+        %Node{kind: :pool, workspace_id: workspace_id} = pool,
+        %WorkItem{target_system: system, target_path: path}
+      )
+      when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
+    target = %{system: system, path: path}
+
+    cond do
+      not prebuilt?(workspace_id) -> {:ok, nil}
+      image = image_for(pool, target) -> {:ok, image}
+      named?(workspace_id, target) -> :held
+      true -> {:ok, nil}
+    end
+  end
+
+  def claim_image(%Node{}, %WorkItem{}), do: {:ok, nil}
+
+  # Whether a live collection assigned to the workspace `workspace_id` with the target
+  # has an `environment_ref`.
+  defp named?(workspace_id, %{system: system, path: path}) do
+    Repo.exists?(
+      from c in Collection,
+        where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
+        where: c.target_system == ^system and c.target_path == ^path,
+        where: not is_nil(c.environment_ref)
+    )
   end
 
   ## A build whose ref is older than the image's
@@ -407,6 +579,7 @@ defmodule Apiary.Environments do
           commit: nil,
           built_at: nil,
           reported_ref: nil,
+          built_ref: nil,
           built_target_system: nil,
           built_target_path: nil,
           built_queued_at: nil,
@@ -422,7 +595,7 @@ defmodule Apiary.Environments do
 
     collections = Map.new(collections, &{&1.id, &1})
 
-    for %Record{retired_at: nil} = record <- records,
+    for %Record{} = record <- records,
         %Collection{} = collection <- [collections[record.source_collection_id]],
         %Node{kind: :pool, deleted_at: nil} = pool <- [pools[record.pool_id]],
         rebuilt?(collection, pool),
@@ -473,12 +646,14 @@ defmodule Apiary.Environments do
       commit: commit,
       built_at: now,
       reported_ref: reported_ref,
+      built_ref: run.environment_ref,
       built_target_system: system,
       built_target_path: path,
       built_queued_at: run.environment_ref_at,
       failure_cause: nil,
       failure_reason: nil,
       failed_at: nil,
+      lost_ref: nil,
       updated_at: now
     ]
 
@@ -490,35 +665,12 @@ defmodule Apiary.Environments do
         workspace_id: run.workspace_id,
         pool_id: pool_id,
         source_collection_id: collection_id,
-        queued_ref: run.environment_ref,
-        queued_at: run.queued_at,
-        queued_target_system: system,
-        queued_target_path: path,
         inserted_at: now
       })
 
-    # A retired record is served again only by a build whose run took its ref after the
-    # retirement: an older build, claimed before the ref went absent, leaves it retired.
-    ref_at = run.environment_ref_at
-
-    on_conflict =
-      from r in Record,
-        update: [
-          set: ^built,
-          set: [
-            retired_at:
-              fragment(
-                "CASE WHEN ? < ? THEN NULL ELSE ? END",
-                r.retired_at,
-                type(^ref_at, :utc_datetime_usec),
-                r.retired_at
-              )
-          ]
-        ]
-
     {1, _rows} =
       Repo.insert_all(Record, [row],
-        on_conflict: on_conflict,
+        on_conflict: [set: built],
         conflict_target: [:pool_id, :source_collection_id]
       )
 
@@ -591,41 +743,21 @@ defmodule Apiary.Environments do
     )
   end
 
-  # Writes the record of `collection`, held, for each of `pools` whose prebuild of it does
-  # not wait, whatever it was queued for, and queues a prebuild held for each of them.
-  defp requeue(%Collection{environment_ref: ref} = collection, pools, now) do
+  # Queues a prebuild of `collection`, held, for its `environment_ref`, for each of
+  # `pools` whose prebuild of that ref does not wait: the prebuilds queued.
+  defp requeue(%Collection{environment_ref: ref} = collection, pools, _now) do
     waiting =
       Repo.all(
         from r in DispatchRun,
           where: r.source_collection_id == ^collection.id and r.step == ^DispatchRun.prebuild(),
-          where: fragment("? = 'waiting'", r.state),
+          where: r.environment_ref == ^ref and fragment("? = 'waiting'", r.state),
           select: r.pool_id
       )
       |> MapSet.new()
 
-    case Enum.reject(pools, &MapSet.member?(waiting, &1.id)) do
-      [] ->
-        []
-
-      due ->
-        {_count, _rows} =
-          Repo.insert_all(Record, Enum.map(due, &queued_row(collection, &1, now)),
-            on_conflict:
-              {:replace,
-               [
-                 :queued_ref,
-                 :queued_at,
-                 :queued_target_system,
-                 :queued_target_path,
-                 :updated_at
-               ]},
-            conflict_target: [:pool_id, :source_collection_id]
-          )
-
-        for pool <- due do
-          {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
-          run
-        end
+    for pool <- pools, not MapSet.member?(waiting, pool.id) do
+      {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
+      run
     end
   end
 
@@ -787,18 +919,16 @@ defmodule Apiary.Environments do
   defp serves(:policy, _named, _records), do: :policy
 
   defp serves(_served, [], records) do
-    if Enum.any?(records, &(&1.retired_at != nil)), do: :retired, else: :default
+    if Enum.any?(records, &(&1.image != nil)), do: :retired, else: :default
   end
 
   defp serves(%Record{}, _named, _records), do: :image
 
   defp serves(nil, _named, records) do
-    if Enum.any?(records, &(&1.image != nil and is_nil(&1.retired_at))),
-      do: :other_target,
-      else: :default
+    if Enum.any?(records, &(&1.image != nil)), do: :other_target, else: :default
   end
 
-  # The newest `built_at` of `records`, retired or not, nil where none keeps a build.
+  # The newest `built_at` of `records`, nil where none keeps a build.
   defp newest_built_at(records) do
     records
     |> Enum.map(& &1.built_at)
@@ -820,53 +950,128 @@ defmodule Apiary.Environments do
     end
   end
 
-  ## The trigger
+  ## A run held for its build
 
-  # trigger/2 applies the trigger to `collections` as they now stand, at `now`, inside
-  # the caller's transaction (the moduledoc): the prebuilds it queued.
+  # holds?/1 is whether the runs of the workspace `workspace_id` wait for their target's
+  # build: its domain has prebuilds (the moduledoc).
   @doc false
-  @spec trigger([Collection.t()], DateTime.t()) :: [Apiary.Dispatches.DispatchRun.t()]
-  def trigger(collections, %DateTime{} = now) when is_list(collections) do
-    in_transaction!("trigger/2")
+  @spec holds?(Ecto.UUID.t()) :: boolean
+  def holds?(workspace_id) when is_binary(workspace_id), do: prebuilt?(workspace_id)
 
-    :ok = lock_records(collections)
-    {absent, present} = Enum.split_with(collections, &is_nil(&1.environment_ref))
-    :ok = retire(absent, now)
-    due = Enum.filter(present, &due?/1)
-    built = prebuilt_workspaces(due |> Enum.map(& &1.workspace_id) |> Enum.uniq())
-    due = Enum.filter(due, &MapSet.member?(built, &1.workspace_id))
-    pools = pools(due |> Enum.map(& &1.workspace_id) |> Enum.uniq())
-
-    for collection <- Enum.sort_by(due, & &1.id),
-        run <- queue(collection, Map.get(pools, collection.workspace_id, []), now),
-        do: run
+  # held/2 is the query of the work item of a run of the queue bound `:run`, for
+  # `exists/1`, when the run is held for the node pool `pool_id` of the workspace
+  # `workspace_id`: its work item's target has a live collection assigned to the
+  # workspace with an `environment_ref`, and no such collection has a record for the pool
+  # whose image was built for the target from that `environment_ref` (the moduledoc).
+  @doc false
+  @spec held(Ecto.UUID.t(), Ecto.UUID.t()) :: Ecto.Query.t()
+  def held(workspace_id, pool_id) when is_binary(workspace_id) and is_binary(pool_id) do
+    from w in WorkItem,
+      join: c in Collection,
+      on:
+        c.workspace_id == ^workspace_id and is_nil(c.ended_at) and
+          not is_nil(c.environment_ref) and c.target_system == w.target_system and
+          c.target_path == w.target_path,
+      left_join: e in Record,
+      on:
+        e.source_collection_id == c.id and e.pool_id == ^pool_id and not is_nil(e.image) and
+          e.built_ref == c.environment_ref and e.built_target_system == w.target_system and
+          e.built_target_path == w.target_path,
+      where: w.id == parent_as(:run).work_item_id,
+      group_by: w.id,
+      having: count(e.id) == 0,
+      select: w.id
   end
 
-  # trigger_for_pool/2 applies the trigger to the new node pool `pool`, at `now`, for
-  # every collection assigned to its workspace, inside the caller's transaction (the
-  # moduledoc): the prebuilds it queued.
+  # hold_builds/2 holds `FOR SHARE`, by id, inside the caller's transaction, the
+  # collections a build for the node pool `pool_id` of the workspace `workspace_id` is
+  # due for, read without a lock first: each collection of the target of a waiting run
+  # held for the pool, of a work item in Explore, with no prebuild of its
+  # `environment_ref` for the pool waiting, claimed or handed over. A claim calls it
+  # before it locks the pool's row (the moduledoc).
   @doc false
-  @spec trigger_for_pool(Node.t(), DateTime.t()) :: [Apiary.Dispatches.DispatchRun.t()]
-  def trigger_for_pool(
-        %Node{kind: :pool, deleted_at: nil, workspace_id: workspace_id} = pool,
-        now
+  @spec hold_builds(Ecto.UUID.t(), Ecto.UUID.t()) :: [Collection.t()]
+  def hold_builds(workspace_id, pool_id) when is_binary(workspace_id) and is_binary(pool_id) do
+    in_transaction!("hold_builds/2")
+
+    if prebuilt?(workspace_id) do
+      live_build =
+        from b in DispatchRun,
+          where: b.source_collection_id == parent_as(:collection).id,
+          where: b.pool_id == ^pool_id and b.step == ^DispatchRun.prebuild(),
+          where: b.environment_ref == parent_as(:collection).environment_ref,
+          where: b.state in [:waiting, :claimed, :handed_over],
+          select: 1
+
+      ids =
+        Repo.all(
+          from r in DispatchRun,
+            as: :run,
+            join: w in WorkItem,
+            on: w.id == r.work_item_id,
+            join: c in Collection,
+            as: :collection,
+            on:
+              c.workspace_id == ^workspace_id and is_nil(c.ended_at) and
+                not is_nil(c.environment_ref) and c.target_system == w.target_system and
+                c.target_path == w.target_path,
+            where: r.workspace_id == ^workspace_id and r.step != ^DispatchRun.prebuild(),
+            where: fragment("? = 'waiting'", r.state) and w.state == :exploring,
+            where: exists(held(workspace_id, pool_id)),
+            where: not exists(live_build),
+            distinct: true,
+            select: c.id
+        )
+
+      Repo.all(
+        from c in Collection,
+          where: c.id in ^ids,
+          order_by: c.id,
+          lock: "FOR SHARE"
       )
-      when is_binary(workspace_id) do
-    in_transaction!("trigger_for_pool/2")
-
-    collections =
-      if prebuilt?(workspace_id),
-        do:
-          Repo.all(
-            from c in Collection,
-              where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
-              where: not is_nil(c.environment_ref) and not is_nil(c.target_system),
-              order_by: c.id
-          ),
-        else: []
-
-    for collection <- collections, run <- queue(collection, [pool], now), do: run
+    else
+      []
+    end
   end
+
+  # queue_builds/2 queues, inside the caller's transaction, a prebuild of each of
+  # `collections`, held by `hold_builds/2`, for the node pool `pool`, whose row the
+  # caller locked after them, for the collection's `environment_ref`, where the
+  # collection is still live, assigned to the pool's workspace, with that target and an
+  # `environment_ref`, and no prebuild of that ref for the pool waits, is claimed or
+  # handed over (the moduledoc): the prebuilds queued.
+  @doc false
+  @spec queue_builds([Collection.t()], Node.t()) :: [DispatchRun.t()]
+  def queue_builds([], %Node{}), do: []
+
+  def queue_builds(collections, %Node{kind: :pool, deleted_at: nil} = pool) do
+    in_transaction!("queue_builds/2")
+    ids = Enum.map(collections, & &1.id)
+
+    live =
+      Repo.all(
+        from b in DispatchRun,
+          join: c in Collection,
+          on: c.id == b.source_collection_id,
+          where: b.source_collection_id in ^ids and b.pool_id == ^pool.id,
+          where: b.step == ^DispatchRun.prebuild() and b.environment_ref == c.environment_ref,
+          where: b.state in [:waiting, :claimed, :handed_over],
+          select: b.source_collection_id
+      )
+      |> MapSet.new()
+
+    for collection <- collections,
+        due?(collection) and collection.workspace_id == pool.workspace_id,
+        is_binary(collection.environment_ref),
+        not MapSet.member?(live, collection.id) do
+      {:ok, run} = Dispatches.queue_prebuild(collection, pool, collection.environment_ref)
+      run
+    end
+  end
+
+  def queue_builds(_collections, %Node{}), do: []
+
+  ## Helpers
 
   # A live collection assigned to a workspace, with a target and an `environment_ref`.
   defp due?(%Collection{ended_at: nil, workspace_id: workspace_id, target_system: system}),
@@ -876,8 +1081,6 @@ defmodule Apiary.Environments do
 
   # Those of `workspace_ids` whose domain has prebuilds (`Apiary.Lingo.Domain.prebuilds?/1`),
   # read without a lock: a workspace's domain never changes.
-  defp prebuilt_workspaces([]), do: MapSet.new()
-
   defp prebuilt_workspaces(workspace_ids) do
     Repo.all(from w in Workspace, where: w.id in ^workspace_ids)
     |> Enum.filter(&Domain.prebuilds?/1)
@@ -888,8 +1091,6 @@ defmodule Apiary.Environments do
     do: MapSet.member?(prebuilt_workspaces([workspace_id]), workspace_id)
 
   # The live node pools of `workspace_ids`, by workspace, each list by id.
-  defp pools([]), do: %{}
-
   defp pools(workspace_ids) do
     Repo.all(
       from n in Node,
@@ -901,8 +1102,6 @@ defmodule Apiary.Environments do
 
   # Locks the records of `collections`, of every pool, `FOR UPDATE`, by collection and
   # then pool, in one statement, before any of them is written (the moduledoc).
-  defp lock_records([]), do: :ok
-
   defp lock_records(collections) do
     ids = Enum.map(collections, & &1.id)
 
@@ -916,84 +1115,6 @@ defmodule Apiary.Environments do
       )
 
     :ok
-  end
-
-  # Retires, at `now`, the records of `collections` not retired since they were last
-  # queued, and ends their prebuilds that wait, `collection_ended`.
-  defp retire([], _now), do: :ok
-
-  defp retire(collections, now) do
-    ids = Enum.map(collections, & &1.id)
-
-    {_count, _rows} =
-      Repo.update_all(
-        from(r in Record,
-          where: r.source_collection_id in ^ids,
-          where: is_nil(r.retired_at) or r.retired_at < r.queued_at
-        ),
-        set: [retired_at: now, updated_at: now]
-      )
-
-    Dispatches.end_waiting_prebuilds(ids, now)
-  end
-
-  # Writes the record of `collection` for each of `pools` that is due, in one statement,
-  # and queues a prebuild held for each of those pools: due when the record is new, was
-  # queued for another `environment_ref` or another target, or was retired after it was
-  # last queued.
-  defp queue(_collection, [], _now), do: []
-
-  defp queue(%Collection{environment_ref: ref} = collection, pools, now) do
-    rows = Enum.map(pools, &queued_row(collection, &1, now))
-
-    due =
-      from r in Record,
-        where:
-          r.queued_ref != fragment("EXCLUDED.queued_ref") or
-            fragment("? IS DISTINCT FROM EXCLUDED.queued_target_system", r.queued_target_system) or
-            fragment("? IS DISTINCT FROM EXCLUDED.queued_target_path", r.queued_target_path) or
-            (not is_nil(r.retired_at) and r.queued_at < r.retired_at),
-        update: [
-          set: [
-            queued_ref: fragment("EXCLUDED.queued_ref"),
-            queued_at: fragment("EXCLUDED.queued_at"),
-            queued_target_system: fragment("EXCLUDED.queued_target_system"),
-            queued_target_path: fragment("EXCLUDED.queued_target_path"),
-            updated_at: fragment("EXCLUDED.updated_at")
-          ]
-        ]
-
-    {_count, written} =
-      Repo.insert_all(Record, rows,
-        on_conflict: due,
-        conflict_target: [:pool_id, :source_collection_id],
-        returning: [:pool_id]
-      )
-
-    queued = MapSet.new(written, & &1.pool_id)
-
-    for pool <- pools, MapSet.member?(queued, pool.id) do
-      {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
-      run
-    end
-  end
-
-  # The record of `collection` for `pool`, queued at `now` for the collection's
-  # `environment_ref` and target.
-  defp queued_row(%Collection{environment_ref: ref} = collection, %Node{} = pool, now) do
-    %{
-      id: Ecto.UUID.generate(),
-      organisation_id: collection.organisation_id,
-      workspace_id: pool.workspace_id,
-      pool_id: pool.id,
-      source_collection_id: collection.id,
-      queued_ref: ref,
-      queued_at: now,
-      queued_target_system: collection.target_system,
-      queued_target_path: collection.target_path,
-      inserted_at: now,
-      updated_at: now
-    }
   end
 
   defp in_transaction!(what) do

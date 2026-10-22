@@ -318,9 +318,9 @@ defmodule Apiary.Dispatches.HandoverTest do
       {collection, queued} = prebuild!(ctx)
       claimed = claimed!(ctx)
 
-      # Another prebuild of the collection and pool waits while the first is claimed.
+      # Another prebuild of the collection, pool and ref waits while the first is claimed.
       {:ok, _waiting} =
-        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
       lapse!(claimed)
       assert dispatched(ctx.key, claimed) == {:error, :gone}

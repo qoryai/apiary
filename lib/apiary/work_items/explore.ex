@@ -14,7 +14,8 @@ defmodule Apiary.WorkItems.Explore do
   #   * ended lost: `:lost`; ended released: `:cancelled`; ended with its work item closed
   #     or undone, before its handover: `:cancelled`;
   #   * ended at its claim because the claim could not form what the run is made from
-  #     (`variables_invalid`, `ticket_gone`, `inputs_invalid`): `:no_result`
+  #     (`variables_invalid`, `ticket_gone`, `inputs_invalid`), or while it waited for
+  #     its environment image's build, which failed (`build_failed`): `:no_result`
   #     with the outcome `:error`, and no registered run;
   #   * ended by its exit, or by an outcome stored on it before a run of the queue was
   #     refused one (`run_ended`): what the run gave decides. Once

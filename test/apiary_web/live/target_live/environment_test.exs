@@ -74,11 +74,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
             organisation_id: scope.organisation.id,
             workspace_id: scope.workspace.id,
             pool_id: pool.id,
-            source_collection_id: collection.id,
-            queued_ref: "env-1",
-            queued_at: DateTime.utc_now(),
-            queued_target_system: @system,
-            queued_target_path: @path
+            source_collection_id: collection.id
           },
           Map.new(attrs)
         )
@@ -94,6 +90,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
         commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c",
         built_at: at,
         reported_ref: "env-1",
+        built_ref: "env-1",
         built_target_system: @system,
         built_target_path: @path
       },
@@ -361,7 +358,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
         scope,
         pool,
         shop,
-        Map.put(built(DateTime.utc_now()), :retired_at, DateTime.utc_now())
+        built(DateTime.utc_now())
       )
 
       view = open(conn, path)
@@ -435,28 +432,21 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
              )
     end
 
-    test "a retired record's image is never shown, even when it is the newest build for the target",
-         %{conn: conn, scope: scope, shop: shop, path: path} do
+    test "a build of an environment_ref its collection no longer has serves no run, even when it is the newest build for the target",
+         %{scope: scope, shop: shop} do
       pool = pool_fixture(scope)
       first = collection(scope)
       second = collection(scope, external_ref: "SHOP2", environment_ref: "env-2")
       now = DateTime.utc_now()
       earlier = DateTime.add(now, -600, :second)
 
-      retired =
-        record!(scope, pool, first, Map.put(built(now, image: @other_image), :retired_at, now))
-
-      record!(scope, pool, second, built(earlier))
+      stale = record!(scope, pool, first, built(now, image: @other_image, built_ref: "env-0"))
+      record!(scope, pool, second, built(earlier, built_ref: "env-2"))
 
       assert Environments.image_for(pool, shop) == @image
-      view = open(conn, path)
-      assert has_element?(view, "#{pool_id(pool)}-image[title='#{@image}']")
 
-      Repo.delete_all(from r in Record, where: r.id != ^retired.id and r.pool_id == ^pool.id)
+      Repo.delete_all(from r in Record, where: r.id != ^stale.id and r.pool_id == ^pool.id)
       assert Environments.image_for(pool, shop) == nil
-      view = open(conn, path)
-      refute has_element?(view, "#{pool_id(pool)}-image")
-      assert has_element?(view, "#{pool_id(pool)}-default", "The pool's default image.")
     end
 
     test "the workspace's policy sets an image: each pool says runs use it, in place of the prebuilt image",

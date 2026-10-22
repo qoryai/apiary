@@ -32,8 +32,11 @@ defmodule Apiary.Dispatches.Built do
   # provisioner contract (`Apiary.Environments.record_build/4`): the image, its size, its
   # commit, the `environment_ref` reported, as it is, `built_at`, the target it was built
   # for, the registered run's target, read from its registration labels by its
-  # workspace's domain (`Apiary.Lingo.Domain.target/2`), and when the prebuild took the
-  # `environment_ref` it built. The last failure is cleared, and nothing is queued.
+  # workspace's domain (`Apiary.Lingo.Domain.target/2`), the `environment_ref` the
+  # prebuild was queued for (`built_ref`), and when it was queued for it. The last failure
+  # and `lost_ref` are cleared, and nothing is queued. Once the transaction commits, the
+  # workspace's queue is told (`Apiary.Dispatches.broadcast/1`): a claim that listens
+  # there takes a run that waited for that image (`Apiary.Environments.held/2`).
   #
   # A build whose prebuild took its `environment_ref` before the prebuild that made the
   # record's image took its (`Apiary.Environments.newer_build?/2`) leaves the record as it
@@ -46,7 +49,7 @@ defmodule Apiary.Dispatches.Built do
   #
   # **Locks.** The environment record of the prebuild's pool and collection, `FOR UPDATE`
   # (`Apiary.Environments.lock_record/2`), from the run of the queue read without a lock,
-  # for its columns that never change, as the end of a prebuild holds it
+  # for its columns that never change, as the end of a prebuild holds it last
   # (`Apiary.Dispatches.RunEnd`): so the store and the end of the same prebuild take
   # turns at the record. Nothing of the queue is locked.
 
@@ -88,14 +91,24 @@ defmodule Apiary.Dispatches.Built do
              %DispatchRun{} = dispatch_run <- prebuild(dispatch_run_id),
              {:ok, build} <- build(data) do
           held = Environments.lock_record(dispatch_run.pool_id, dispatch_run.source_collection_id)
-          {:ok, store(held, dispatch_run, Repo.get!(Run, run_id), build)}
+          {:ok, {store(held, dispatch_run, Repo.get!(Run, run_id), build), dispatch_run}}
         else
           :none -> {:ok, :none}
           _refused -> {:ok, :refused}
         end
       end)
 
-    recorded
+    case recorded do
+      {:recorded, %DispatchRun{workspace_id: workspace_id}} ->
+        Apiary.Dispatches.broadcast([workspace_id])
+        :recorded
+
+      {kept, %DispatchRun{}} ->
+        kept
+
+      other ->
+        other
+    end
   end
 
   def record(%Run{id: run_id}) do

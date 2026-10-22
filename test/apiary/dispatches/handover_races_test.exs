@@ -293,10 +293,10 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
     test "a lapsed prebuild superseded by the sweep: dispatched waits, then is gone", ctx do
       claimed = prebuild_started!(ctx)
 
-      # Another prebuild of the collection and pool waits while the first is claimed.
+      # Another prebuild of the collection, pool and ref waits while the first is claimed.
       {:ok, _waiting} =
         Repo.transact(fn ->
-          Dispatches.queue_prebuild(claimed.collection, ctx.pool, "env-2")
+          Dispatches.queue_prebuild(claimed.collection, ctx.pool, "env-1")
         end)
 
       lapse!(claimed)
@@ -318,7 +318,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
 
         {:ok, _waiting} =
           Repo.transact(fn ->
-            Dispatches.queue_prebuild(claimed.collection, ctx.pool, "env-2")
+            Dispatches.queue_prebuild(claimed.collection, ctx.pool, "env-1")
           end)
 
         lapse!(claimed)
@@ -329,10 +329,14 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
         ended!(ctx, claimed, :superseded, :run_ended)
 
         # The prebuild that waits ends, so the next round's claim takes the next round's.
-        {:ok, :ok} =
-          Repo.transact(fn ->
-            {:ok, Dispatches.end_waiting_prebuilds([claimed.collection.id], Dispatches.now())}
-          end)
+        {_count, _rows} =
+          Repo.update_all(
+            from(r in DispatchRun,
+              where: r.source_collection_id == ^claimed.collection.id,
+              where: fragment("? = 'waiting'", r.state)
+            ),
+            set: [state: :ended, end_cause: :collection_ended]
+          )
       end
     end
   end

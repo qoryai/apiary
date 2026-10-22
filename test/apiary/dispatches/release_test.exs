@@ -50,13 +50,12 @@ defmodule Apiary.Dispatches.ReleaseTest do
         workspace_id: ctx.scope.workspace.id,
         pool_id: ctx.pool.id,
         source_collection_id: collection.id,
-        queued_ref: "env-1",
-        queued_at: DateTime.utc_now(),
         image: @image,
         size: 734_003_200,
         commit: "9c1e4a7b",
         built_at: DateTime.utc_now(),
-        reported_ref: "env-1"
+        reported_ref: "env-1",
+        built_ref: "env-1"
       })
 
     {:ok, run} =
@@ -314,19 +313,14 @@ defmodule Apiary.Dispatches.ReleaseTest do
   end
 
   describe "a prebuild" do
-    test "waits again with the record's queued_ref, and no failure is recorded", ctx do
+    test "waits again with its ref, and no failure is recorded", ctx do
       {_collection, record, queued} = prebuild!(ctx)
       dispatch = started!(ctx)
-
-      {1, _rows} =
-        Repo.update_all(from(r in Record, where: r.id == ^record.id),
-          set: [queued_ref: "env-2"]
-        )
 
       assert release(ctx.key, dispatch) == :ok
 
       run = queue_run!(queued)
-      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = run
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} = run
       assert {run.run_id, run.queued_at} == {queued.run_id, queued.queued_at}
       released!(ctx, dispatch, queued)
 
@@ -340,22 +334,31 @@ defmodule Apiary.Dispatches.ReleaseTest do
       })
     end
 
-    test "ends superseded while another prebuild of its collection and pool waits", ctx do
-      {collection, record, queued} = prebuild!(ctx)
+    test "waits again beside a prebuild of another ref of its collection and pool", ctx do
+      {collection, _record, queued} = prebuild!(ctx)
       dispatch = started!(ctx)
 
       {:ok, waiting} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
 
-      {1, _rows} =
-        Repo.update_all(from(r in Record, where: r.id == ^record.id),
-          set: [queued_ref: "env-3"]
-        )
+      assert release(ctx.key, dispatch) == :ok
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} = queue_run!(queued)
+      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = queue_run!(waiting)
+      released!(ctx, dispatch, queued)
+    end
+
+    test "ends superseded while another prebuild of its collection, pool and ref waits", ctx do
+      {collection, record, queued} = prebuild!(ctx)
+      dispatch = started!(ctx)
+
+      {:ok, waiting} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
       assert release(ctx.key, dispatch) == :ok
 
       assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(queued)
-      assert %DispatchRun{state: :waiting, environment_ref: "env-3"} = queue_run!(waiting)
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} = queue_run!(waiting)
       released!(ctx, dispatch, queued)
       assert %Record{failure_cause: nil} = record!(record)
 

@@ -50,13 +50,12 @@ defmodule Apiary.Dispatches.BuiltTest do
         workspace_id: scope.workspace.id,
         pool_id: place.pool.id,
         source_collection_id: collection.id,
-        queued_ref: "env-1",
-        queued_at: DateTime.utc_now(),
         image: @old_image,
         size: 1000,
         commit: "9c1e4a7b",
         built_at: DateTime.utc_now(),
         reported_ref: "env-1",
+        built_ref: "env-1",
         failure_cause: :lost,
         failed_at: DateTime.utc_now()
       })
@@ -98,14 +97,14 @@ defmodule Apiary.Dispatches.BuiltTest do
              size: 734_003_200,
              commit: @commit,
              reported_ref: "env-1",
+             built_ref: "env-1",
              built_at: %DateTime{},
              built_target_system: "code.example.com",
              built_target_path: path,
              built_queued_at: built_queued_at,
              failure_cause: nil,
              failure_reason: nil,
-             failed_at: nil,
-             queued_ref: "env-1"
+             failed_at: nil
            } = record!(ctx)
 
     assert path == collection.target_path

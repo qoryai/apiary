@@ -799,8 +799,9 @@ defmodule Apiary.Dispatches.Handover do
 
   defp gave(%DispatchRun{}, _cause), do: []
 
-  # The registered run, pending, with its run code.
-  defp insert_run(%{key: key, run: dispatch_run, now: now, body: body}, formed, through) do
+  # The registered run, pending, with its run code, and, for an explore run, the image the
+  # claim read for it (`Apiary.Environments.claim_image/2`), nil for the pool's default.
+  defp insert_run(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do
     %Run{
       public_id: Run.new_public_id(),
       organisation_id: key.organisation_id,
@@ -816,6 +817,7 @@ defmodule Apiary.Dispatches.Handover do
       run_settings: formed.settings && formed.settings.stored,
       projected_sequence: Run.projected_from(%{registered_at: now}),
       dispatch_run_id: dispatch_run.id,
+      configured_image: Map.get(locked, :image),
       inserted_at: now,
       updated_at: now
     }

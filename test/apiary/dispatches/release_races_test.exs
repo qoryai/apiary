@@ -1,8 +1,8 @@
 defmodule Apiary.Dispatches.ReleaseRacesTest do
   # The release of a claimed run of the queue (`Apiary.Dispatches.Release`) racing
   # another release, `dispatched`, the redemption of the run code, the run's exit,
-  # the lapse of the lease and the sweep, a close of its work item and a trigger of its
-  # collection, each on a separate
+  # the lapse of the lease and the sweep, a close of its work item and a build queued for
+  # its collection's ref, each on a separate
   # connection, outside the SQL sandbox, so each commits and each waits on the other's
   # locks as it would in production. Not async: what these tests commit is visible to
   # every other test while they run, and they delete it again before they end; the
@@ -110,9 +110,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
         organisation_id: ctx.scope.organisation.id,
         workspace_id: ctx.scope.workspace.id,
         pool_id: ctx.pool.id,
-        source_collection_id: collection.id,
-        queued_ref: "env-1",
-        queued_at: DateTime.utc_now()
+        source_collection_id: collection.id
       })
 
     {:ok, queued} =
@@ -154,16 +152,13 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     end
   end
 
-  # A new `environment_ref` of the prebuild's collection, triggered as a listing does.
-  defp trigger(%{collection: %Collection{id: id}}, ref) do
+  # A prebuild of the prebuild's collection and pool queued for its ref under the record's
+  # lock, as a Rebuild queues one.
+  defp queue_build(ctx, %{collection: %Collection{id: id}}) do
     fn ->
       Repo.transact(fn ->
-        {1, _rows} =
-          Repo.update_all(from(c in Collection, where: c.id == ^id),
-            set: [environment_ref: ref]
-          )
-
-        {:ok, Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())}
+        _record = Environments.lock_record(ctx.pool.id, id)
+        Dispatches.queue_prebuild(Repo.get!(Collection, id), ctx.pool, "env-1")
       end)
     end
   end
@@ -419,13 +414,13 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     end
   end
 
-  describe "a release of a prebuild and a trigger of its collection" do
-    test "the trigger first: the release waits on the record, then is superseded by the run the trigger queued",
+  describe "a release of a prebuild and a build queued for its ref" do
+    test "the build first: the release waits on the record, then is superseded by the run that waits",
          ctx do
       claimed = prebuild_started!(ctx)
 
-      {first, first_pid} = hold(trigger(claimed, "env-2"))
-      assert {:ok, [%DispatchRun{} = queued]} = first.result
+      {first, first_pid} = hold(queue_build(ctx, claimed))
+      assert {:ok, %DispatchRun{} = queued} = first.result
 
       second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
@@ -434,57 +429,59 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       assert Task.await(second.task) == :ok
       assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(claimed)
 
-      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} =
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} =
                Repo.get!(DispatchRun, queued.id)
 
       released!(ctx, claimed)
     end
 
-    test "the release first: the trigger waits on the record, then sets its ref on the run that waits again",
+    test "the release first: the build waits on the record, then finds the run waiting again",
          ctx do
       claimed = prebuild_started!(ctx)
 
       {first, first_pid} = hold(release(ctx, claimed))
       assert first.result == :ok
 
-      second = start(trigger(claimed, "env-2"))
+      second = start(queue_build(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, [%DispatchRun{id: id}]} = Task.await(second.task)
+      assert {:ok, %DispatchRun{id: id}} = Task.await(second.task)
       assert id == claimed.dispatch_run.id
 
-      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = queue_run!(claimed)
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} = queue_run!(claimed)
       released!(ctx, claimed)
     end
 
     test "at once, with the sweep, none deadlocks", ctx do
-      for round <- 1..3 do
+      for _round <- 1..3 do
         claimed = prebuild_started!(ctx)
 
-        [released, _triggered, _swept] =
+        [released, _queued, _swept] =
           together([
             release(ctx, claimed),
-            trigger(claimed, "env-#{round + 1}"),
+            queue_build(ctx, claimed),
             sweep(DateTime.utc_now())
           ])
 
         assert released == :ok
         released!(ctx, claimed)
 
-        assert [%DispatchRun{environment_ref: ref}] =
+        assert [%DispatchRun{environment_ref: "env-1"}] =
                  Repo.all(
                    from r in DispatchRun,
                      where: r.source_collection_id == ^claimed.collection.id,
                      where: fragment("? = 'waiting'", r.state)
                  )
 
-        assert ref == "env-#{round + 1}"
-
-        {:ok, :ok} =
-          Repo.transact(fn ->
-            {:ok, Dispatches.end_waiting_prebuilds([claimed.collection.id], Dispatches.now())}
-          end)
+        {_count, _rows} =
+          Repo.update_all(
+            from(r in DispatchRun,
+              where: r.source_collection_id == ^claimed.collection.id,
+              where: fragment("? = 'waiting'", r.state)
+            ),
+            set: [state: :ended, end_cause: :collection_ended]
+          )
       end
     end
   end

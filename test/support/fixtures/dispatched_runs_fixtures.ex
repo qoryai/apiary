@@ -176,21 +176,42 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
+  Queues a prebuild of `collection` for its `environment_ref` for every live node pool
+  of its workspace (`Apiary.Dispatches.queue_prebuild/3`), with its environment record:
+  the prebuilds queued.
+  """
+  def queue_builds!(%Apiary.Adapters.Collection{workspace_id: workspace_id} = collection) do
+    {:ok, queued} =
+      Repo.transact(fn ->
+        pools =
+          Repo.all(
+            from n in Apiary.Nodes.Node,
+              where: n.workspace_id == ^workspace_id and n.kind == :pool,
+              where: is_nil(n.deleted_at),
+              order_by: n.id
+          )
+
+        {:ok,
+         for pool <- pools do
+           {:ok, run} = Dispatches.queue_prebuild(collection, pool, collection.environment_ref)
+           run
+         end}
+      end)
+
+    queued
+  end
+
+  @doc """
   A prebuild of a fresh collection of the scope's workspace, with a target and the
-  `environment_ref` `env-1` unless `collection_attrs` say otherwise, queued by the trigger
-  (`Apiary.Environments.trigger/2`) for every pool of the workspace, with its environment
-  record, then claimed under `key`, which registers its run, and its machine started,
+  `environment_ref` `env-1` unless `collection_attrs` say otherwise, queued for every
+  pool of the workspace (`queue_builds!/1`), with its environment record, then claimed under `key`, which registers its run, and its machine started,
   which hands it over (`dispatched!/1`). The workspace has no other waiting run the pool
   may take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
   run_of_queue, run: registered_run}`, each as stored then.
   """
   def prebuild_handed_over!(%Scope{} = scope, %AccessKey{} = key, collection_attrs \\ %{}) do
     collection = Apiary.NodesFixtures.collection_fixture(scope, collection_attrs)
-
-    {:ok, _queued} =
-      Repo.transact(fn ->
-        {:ok, Apiary.Environments.trigger([collection], Dispatches.now())}
-      end)
+    _queued = queue_builds!(collection)
 
     %{dispatch: dispatch, run: dispatch_run, registered: run} = dispatched!(key)
 
@@ -200,20 +221,16 @@ defmodule Apiary.DispatchedRunsFixtures do
   @doc """
   A second prebuild of the collection of `older`, a prebuild `prebuild_handed_over!/3`
   made and that has not ended: the collection's `environment_ref` set to `env-2` and
-  triggered, so it is queued after `older`'s, then claimed under `key` and its machine
+  queued (`queue_builds!/1`), so it is queued after `older`'s, then claimed under `key` and its machine
   started. Returns as `prebuild_handed_over!/3` does.
   """
   def newer_prebuild_handed_over!(%AccessKey{} = key, %{collection: %{id: id}}) do
-    {:ok, [queued]} =
-      Repo.transact(fn ->
-        {1, _rows} =
-          Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^id),
-            set: [environment_ref: "env-2"]
-          )
+    {1, _rows} =
+      Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^id),
+        set: [environment_ref: "env-2"]
+      )
 
-        collection = Repo.get!(Apiary.Adapters.Collection, id)
-        {:ok, Apiary.Environments.trigger([collection], Dispatches.now())}
-      end)
+    [queued] = queue_builds!(Repo.get!(Apiary.Adapters.Collection, id))
 
     %{dispatch: dispatch, run: dispatch_run, registered: run} = dispatched!(key)
     true = dispatch.dispatch_run_id == queued.id

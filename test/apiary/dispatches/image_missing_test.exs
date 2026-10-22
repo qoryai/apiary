@@ -2,8 +2,9 @@ defmodule Apiary.Dispatches.ImageMissingTest do
   # A run of a work item whose exit says the registry has no copy of the image its pool's
   # record gave it (`failed`, `image_missing`): the end of its run of the queue clears that
   # image from the pool's records for the run's target and queues a build of it; the run
-  # of the queue ends as any failed run does (`Apiary.Dispatches.RunEnd`,
-  # `Apiary.Environments.forget_image/3`).
+  # of the queue ends as any failed run does, and the next run of its take in is queued
+  # with the attempt total raised by one, once (`Apiary.Dispatches.RunEnd`,
+  # `Apiary.Environments.forget_image/3`, `Apiary.Dispatches.requeue_for_image/1`).
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -13,6 +14,7 @@ defmodule Apiary.Dispatches.ImageMissingTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
+  alias Apiary.Dispatches
   alias Apiary.Dispatches.{DispatchRun, RunEnd}
   alias Apiary.Environments
   alias Apiary.Environments.Record
@@ -52,15 +54,12 @@ defmodule Apiary.Dispatches.ImageMissingTest do
       workspace_id: scope.workspace.id,
       pool_id: pool.id,
       source_collection_id: collection.id,
-      queued_ref: "env-1",
-      queued_at: now,
-      queued_target_system: @target.system,
-      queued_target_path: @target.path,
       image: @image,
       size: 734_003_200,
       commit: "9c1e4a7b",
       built_at: now,
       reported_ref: "env-1",
+      built_ref: "env-1",
       built_target_system: @target.system,
       built_target_path: @target.path,
       built_queued_at: now
@@ -76,7 +75,7 @@ defmodule Apiary.Dispatches.ImageMissingTest do
         set:
           Map.take(
             built_record(ctx.scope, ctx.pool, ctx.collection),
-            ~w(image size commit built_at reported_ref built_target_system built_target_path built_queued_at)a
+            ~w(image size commit built_at reported_ref built_ref built_target_system built_target_path built_queued_at)a
           )
           |> Map.to_list()
       )
@@ -97,6 +96,13 @@ defmodule Apiary.Dispatches.ImageMissingTest do
     )
   end
 
+  # The run of the queue of `work_item_id` with `attempt`.
+  defp run_of(work_item_id, attempt),
+    do:
+      Repo.one!(
+        from d in DispatchRun, where: d.work_item_id == ^work_item_id and d.attempt == ^attempt
+      )
+
   defp prebuilds(ctx) do
     Repo.all(
       from d in DispatchRun,
@@ -114,15 +120,14 @@ defmodule Apiary.Dispatches.ImageMissingTest do
              reported_ref: nil,
              built_target_system: nil,
              built_target_path: nil,
-             built_queued_at: nil,
-             queued_ref: "env-1",
-             retired_at: nil
+             built_queued_at: nil
            } = record!(ctx)
 
     assert Environments.image_for(ctx.pool, @target) == nil
   end
 
-  test "clears the image, queues a build of it, and queues no run of the work item", ctx do
+  test "clears the image, queues a build of it, and queues the next attempt with one more",
+       ctx do
     %{dispatch_run: dispatch_run, run: run} =
       handed_over_fixture(ctx.scope, ctx.key, @given)
 
@@ -132,18 +137,63 @@ defmodule Apiary.Dispatches.ImageMissingTest do
     assert %Run{state: "failed", exit_reason: "image_missing"} = Repo.get!(Run, run.id)
     assert_cleared(ctx)
     assert prebuilds(ctx) == [{:waiting, "env-1"}]
-    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+
+    assert runs_of(dispatch_run.work_item_id) == [
+             {1, :ended, :run_ended},
+             {2, :waiting, nil}
+           ]
+
+    of = dispatch_run.of + 1
+
+    assert %DispatchRun{take_in: take_in, of: ^of, image_requeue: true} =
+             run_of(dispatch_run.work_item_id, 2)
+
+    assert take_in == dispatch_run.take_in
+    assert Dispatches.requeued_for_image?(Repo.get!(Run, run.id))
   end
 
-  test "an image recorded again and missing again is cleared and queued again", ctx do
-    %{run: run} = handed_over_fixture(ctx.scope, ctx.key, @given)
+  test "an image_missing of the run that requeue queued ends it without a requeue", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, @given)
     exit!(run, @missing)
+    requeued = run_of(dispatch_run.work_item_id, 2)
 
-    # The build that was queued ran and recorded the image again, which is missing again.
+    # The build that was queued ran and recorded the image again, and the requeued run
+    # was claimed and started in it.
     {1, _rows} =
       Repo.update_all(
         from(d in DispatchRun,
           where: d.source_collection_id == ^ctx.collection.id and d.state == :waiting
+        ),
+        set: [state: :ended, end_cause: :superseded]
+      )
+
+    rebuilt!(ctx)
+    %{run: again} = handed_over(ctx.scope, ctx.key, requeued, @given)
+    exit!(again, @missing)
+
+    assert_cleared(ctx)
+
+    assert runs_of(dispatch_run.work_item_id) == [
+             {1, :ended, :run_ended},
+             {2, :ended, :run_ended}
+           ]
+
+    refute Dispatches.requeued_for_image?(Repo.get!(Run, again.id))
+  end
+
+  test "an image recorded again and missing again is cleared and queued again", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, @given)
+    exit!(run, @missing)
+
+    # The build that was queued ran and recorded the image again, which is missing again
+    # for a run of another work item; the requeued run of the first ended.
+    {2, _rows} =
+      Repo.update_all(
+        from(d in DispatchRun,
+          where:
+            d.source_collection_id == ^ctx.collection.id or
+              d.work_item_id == ^dispatch_run.work_item_id,
+          where: d.state == :waiting
         ),
         set: [state: :ended, end_cause: :superseded]
       )
@@ -187,7 +237,11 @@ defmodule Apiary.Dispatches.ImageMissingTest do
     Liveness.check(DateTime.utc_now())
 
     assert_cleared(ctx)
-    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+
+    assert runs_of(dispatch_run.work_item_id) == [
+             {1, :ended, :run_ended},
+             {2, :waiting, nil}
+           ]
   end
 
   test "a record whose collection the end does not hold is cleared and queues no build",
@@ -220,12 +274,16 @@ defmodule Apiary.Dispatches.ImageMissingTest do
 
     assert_cleared(ctx)
     assert prebuilds(ctx) == [{:waiting, "env-1"}]
-    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+
+    assert runs_of(dispatch_run.work_item_id) == [
+             {1, :ended, :run_ended},
+             {2, :waiting, nil}
+           ]
   end
 
   test "a run that started in no recorded image clears nothing and queues nothing", ctx do
     %{dispatch_run: dispatch_run, run: run} =
-      handed_over_fixture(ctx.scope, ctx.key, Map.delete(@given, :configured_image))
+      handed_over_fixture(ctx.scope, ctx.key, Map.put(@given, :configured_image, nil))
 
     exit!(run, @missing)
 
@@ -246,8 +304,7 @@ defmodule Apiary.Dispatches.ImageMissingTest do
   end
 
   test "the image of another pool is left", ctx do
-    # A new pool's trigger made its record of the collection: replaced by one with the
-    # same build.
+    # A record of the collection for a second pool, with the same build.
     other_pool = pool_fixture(ctx.scope)
     Repo.delete_all(from r in Record, where: r.pool_id == ^other_pool.id)
     other = Repo.insert!(built_record(ctx.scope, other_pool, ctx.collection))
