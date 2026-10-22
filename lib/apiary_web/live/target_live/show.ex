@@ -1001,8 +1001,16 @@ defmodule ApiaryWeb.TargetLive.Show do
   defp failure_words(:lost), do: gettext("The last build was lost before it finished.")
   defp failure_words(:failed), do: gettext("The last build failed.")
 
+  # The time a build has before it is lost, as it is now: the record keeps no time with
+  # its failure.
   defp failure_words(:timed_out),
-    do: gettext("The last build failed: it ran past 35 minutes.")
+    do:
+      gettext("The last build failed: it ran past %{duration}.",
+        duration:
+          ApiaryWeb.OverviewComponents.duration_words(
+            Apiary.Dispatches.backstop_seconds(Apiary.Dispatches.DispatchRun.prebuild())
+          )
+      )
 
   defp own_mode_words("observe"), do: gettext("overrides the mode: observe")
   defp own_mode_words("enforce"), do: gettext("overrides the mode: enforce")

@@ -14655,7 +14655,7 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "The last build failed: it ran past 35 minutes."
+msgid "The last build failed: it ran past %{duration}."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex

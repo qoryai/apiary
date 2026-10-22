@@ -282,7 +282,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       for {cause, words} <- [
             lost: "The last build was lost before it finished.",
             failed: "The last build failed.",
-            timed_out: "The last build failed: it ran past 35 minutes."
+            timed_out: "The last build failed: it ran past 1 hour and 15 minutes."
           ] do
         record
         |> Ecto.Changeset.change(failure_cause: cause, failure_reason: nil)
@@ -311,7 +311,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#{pool_id(pool)}-failure",
-               "The last build failed: it ran past 35 minutes."
+               "The last build failed: it ran past 1 hour and 15 minutes."
              )
     end
 
@@ -339,7 +339,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#{pool_id(pool)}-failure",
-               "The last build failed: it ran past 35 minutes."
+               "The last build failed: it ran past 1 hour and 15 minutes."
              )
     end
 
@@ -524,7 +524,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#{pool_id(mac)}-failure",
-               "The last build failed: it ran past 35 minutes."
+               "The last build failed: it ran past 1 hour and 15 minutes."
              )
 
       assert has_element?(view, "#{pool_id(linux)}-waiting", "A build is waiting.")
