@@ -494,13 +494,20 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
          ctx do
       assert pool_post(ctx, ctx.dispatch, "dispatched", %{}).status == 204
 
-      # A second before the expiry, the run waits for its code.
-      back!(ctx, 15 * 60 - 1)
-      assert Liveness.check(Dispatches.now()) == []
+      # The times are read back from the run's row, not from the clock: the claim kept its
+      # second, and the code's expiry is 15 minutes after it.
+      run = run!(ctx)
+      expiry = run.run_code_expires_at
+      assert run.attach_by == expiry
+      assert DateTime.diff(expiry, run.run_key_issued_at) == 15 * 60
+
+      # A second before the expiry, and at it, the run waits for its code.
+      assert Liveness.check(DateTime.add(expiry, -1, :second)) == []
+      assert Liveness.check(expiry) == []
       assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, ctx.queued.id)
 
-      back!(ctx, 2)
-      assert [%Run{state: "lost"}] = Liveness.check(Dispatches.now())
+      # A second after it, the run is lost.
+      assert [%Run{state: "lost"}] = Liveness.check(DateTime.add(expiry, 1, :second))
       assert %DispatchRun{state: :ended, end_cause: :lost} = Repo.get!(DispatchRun, ctx.queued.id)
 
       assert %Dispatch{end_cause: :lost, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
