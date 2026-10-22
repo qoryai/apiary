@@ -9,10 +9,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # - its starter's outcome, or its exit once folded: `run_ended`. The outcome's write ends
   #   it in its transaction (`hold/1`, `lock/1`, then `finish/5`, from
   #   `Apiary.Runs.Outcome`), and a projection that folded the exit right after it
-  #   (`run_ended/1`, from `Apiary.Runs.Projector`). A prebuild's exit ends nothing of the
-  #   queue: its one session may be the fetch, whose exit comes before the build
-  #   runs, so the exit folds onto the registered run as any exit does, and its outcome
-  #   alone ends it so. A run that is not a prebuild, ended so, has what it gave stored
+  #   (`run_ended/1`, from `Apiary.Runs.Projector`). A prebuild's exit ends it only when
+  #   the exit is `failed` or `lost` (`Apiary.Runs.Fold.exit_state/2`): its build failed.
+  #   Any other exit of a prebuild folds onto the registered run as any exit does, and
+  #   ends nothing of the queue. A run that is not a prebuild, ended so, has what it gave stored
   #   on the run of the queue in the same transaction when it is decided already
   #   (`Apiary.Dispatches.Settle`), and later otherwise;
   # - its gateway's refusal, once folded (`refused/1`, from `Apiary.Runs.Projector`):
@@ -25,11 +25,11 @@ defmodule Apiary.Dispatches.RunEnd do
   # - the lost-run check (`lose/1`, from `Apiary.Runs.Liveness`): `lost`, for a run its
   #   gateway never attached by its `attach_by`, or with neither an outcome nor an exit by
   #   its `backstop_at`, which its attach sets to the attach and `backstop_seconds/1` of its
-  #   step; for a prebuild, with no outcome by then, whatever its exit. The check marks the registered run lost by its rules first; this
+  #   step; for a prebuild, with no outcome and no `failed` or `lost` exit by then. The check marks the registered run lost by its rules first; this
   #   ends the run of the queue. It also ends, `run_ended`, one whose outcome or exit came
   #   and whose end was not written, should a projection have stopped between its pass and
   #   its end, and one whose exit its projection skipped unfolded
-  #   (`Apiary.Runs.Projector`); for a prebuild, one whose outcome came alone. A run that
+  #   (`Apiary.Runs.Projector`); for a prebuild, one whose outcome or `failed` or `lost` exit came. A run that
   #   is not a prebuild whose refusal was folded and whose end was not written ends
   #   `run_refused` the same way.
   #
@@ -38,7 +38,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`Apiary.Environments.record_end_failure/3`): `lost` when its gateway never attached
   # it by its run key's `attach_by`, `timed_out` when nothing ended it by its backstop.
   # Its run of the queue and its dispatch end `lost` either way. A prebuild its starter's
-  # outcome ends, `run_ended`, records its last build's failure there too, `lost`. The record keeps its last good
+  # outcome ends, or its `failed` or `lost` exit, `run_ended`, records its last build's
+  # failure there too, `lost`. The record keeps its last good
   # build, and nothing is queued. A prebuild whose ref is older than the record's image's
   # records no failure (`Apiary.Environments.newer_build?/2`, asked under the record's
   # lock), and ends all the same.
@@ -88,6 +89,9 @@ defmodule Apiary.Dispatches.RunEnd do
   @backstops %{"explore" => 1200, "prebuild" => 2100}
   @default_backstop 1200
   @exited "dev.qory.run.exited"
+  # The exit states of a prebuild's run that end it as a failed build
+  # (`Apiary.Runs.Fold.exit_state/2`).
+  @build_failed ["failed", "lost"]
   # The runs of the queue one check looks at at most; the rest wait for the next.
   @batch 100
 
@@ -245,6 +249,7 @@ defmodule Apiary.Dispatches.RunEnd do
         not is_nil(r.outcome_state) or
           (d.step != ^@prebuild and
              (not is_nil(r.exited_at) or not is_nil(r.exit_state) or not is_nil(r.refused_at))) or
+          (d.step == ^@prebuild and r.exit_state in ^@build_failed) or
           not is_nil(r.released_at) or (is_nil(r.attached_at) and r.attach_by < ^now) or
           r.backstop_at < ^now,
       order_by: d.id,
@@ -282,8 +287,8 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # A prebuild lost: its build failed, `lost` at its run key's `attach_by`, never
-  # attached, else `timed_out` at its backstop. A prebuild its starter's outcome ended:
-  # its build failed, `lost`. The last good build kept either way. A prebuild whose ref is older than the record's
+  # attached, else `timed_out` at its backstop. A prebuild its starter's outcome or its
+  # `failed` or `lost` exit ended: its build failed, `lost`. The last good build kept either way. A prebuild whose ref is older than the record's
   # image's records nothing.
   defp build_ended(
          %Record{} = record,
@@ -305,12 +310,12 @@ defmodule Apiary.Dispatches.RunEnd do
   defp failure(:run_ended, _run, _now), do: :lost
   defp failure(:lost, run, now), do: if(unattached_past?(run, now), do: :lost, else: :timed_out)
 
-  # A prebuild's exit ends nothing of the queue: its outcome, a release recorded on its
+  # A prebuild ends by its outcome, its `failed` or `lost` exit, a release recorded on its
   # registered run (`released_at`, set only on runs released before a release after the
-  # handover was refused), or its attach_by or backstop does.
+  # handover was refused), or its attach_by or backstop.
   defp cause(%DispatchRun{step: @prebuild}, run, now) do
     cond do
-      not is_nil(run.outcome_state) -> :run_ended
+      not is_nil(run.outcome_state) or build_failed?(run) -> :run_ended
       not is_nil(run.released_at) -> :released
       unattached_past?(run, now) or past?(run.backstop_at, now) -> :lost
       true -> nil
@@ -327,8 +332,10 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # What ends the run of the queue as its registered run's end once a projection folded an
-  # exit: its outcome or its exit; for a prebuild, its outcome alone.
-  defp ends?(%DispatchRun{step: @prebuild}, %Run{} = run), do: not is_nil(run.outcome_state)
+  # exit: its outcome or its exit; for a prebuild, its outcome or a `failed` or `lost` exit.
+  defp ends?(%DispatchRun{step: @prebuild}, %Run{} = run),
+    do: not is_nil(run.outcome_state) or build_failed?(run)
+
   defp ends?(%DispatchRun{}, %Run{} = run), do: outcome_or_exit?(run)
 
   # A refusal folded, and no outcome or exit, stored or folded, when the run of the queue
@@ -346,6 +353,9 @@ defmodule Apiary.Dispatches.RunEnd do
 
   defp by_exit(nil, run, now),
     do: if(unattached_past?(run, now) or past?(run.backstop_at, now), do: :lost)
+
+  # A prebuild's exit that means its build failed.
+  defp build_failed?(%Run{exit_state: exit_state}), do: exit_state in @build_failed
 
   defp outcome_or_exit?(%Run{} = run),
     do: not is_nil(run.outcome_state) or not is_nil(run.exited_at) or not is_nil(run.exit_state)

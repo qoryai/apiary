@@ -1,6 +1,7 @@
 defmodule Apiary.Dispatches.RunEndTest do
   # The end of a run a workspace's queue handed over (`Apiary.Dispatches.RunEnd`): by its
-  # starter's outcome or its exit, or by the lost-run check, at its gateway's `attach_by` or at its backstop. Each ends the run of
+  # starter's outcome or its exit (for a prebuild, a `failed` or `lost` exit alone), or by
+  # the lost-run check, at its gateway's `attach_by` or at its backstop. Each ends the run of
   # the queue and its dispatch once and frees the slot once; the first end decides the
   # cause, and the registered run still takes its starter's later outcome. Runs that were
   # not handed over keep the lost-run check as it was.
@@ -436,6 +437,80 @@ defmodule Apiary.Dispatches.RunEndTest do
                Projector.project(ctx.handed.run)
     end
 
+    # Its exit with `data`, stored and folded onto the registered run.
+    defp exited!(ctx, data) do
+      event_fixture(ctx.handed.run, 9, "run.exited", data)
+      assert {:ok, %Run{exited_at: %DateTime{}} = run} = Projector.project(ctx.handed.run)
+      run
+    end
+
+    for {state, data} <- [
+          {"failed", %{"state" => "failed", "exit_code" => 1}},
+          {"lost", %{"state" => "failed", "reason" => "session_lost"}}
+        ] do
+      test "its #{state} exit, once folded, ends it run_ended and records the build failed, lost, as its starter's outcome does",
+           ctx do
+        assert {:ok, %{run: _run}} = ctx.attach.()
+        assert %Run{exit_state: unquote(state)} = exited!(ctx, unquote(Macro.escape(data)))
+        assert_ended(ctx.handed, :run_ended)
+
+        assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: %DateTime{}} =
+                 failed = record!(ctx.record)
+
+        assert_build_kept(ctx)
+        assert_nothing_queued(ctx)
+        assert Slots.held(ctx.place.pool.id) == 0
+
+        # The lost-run check and a later outcome change nothing of the queue or the record.
+        assert Liveness.check(DateTime.add(ctx.handed.run.attach_by, 3600, :second)) == []
+        assert {:ok, %{repeated: false}} = give_outcome(ctx.place.key, ctx.handed.run, "failed")
+        assert_ended(ctx.handed, :run_ended)
+        assert record!(ctx.record) == failed
+      end
+    end
+
+    test "its cancelled exit ends nothing of the queue", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      assert %Run{exit_state: "cancelled"} = exited!(ctx, %{"state" => "cancelled"})
+      assert_live(ctx.handed)
+      assert record!(ctx.record) == ctx.record
+    end
+
+    test "its failed exit whose end was not written: the lost-run check ends it run_ended, lost",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+
+      # The exit folded, and the projection stopped before the end of the run of the queue.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.handed.run.id),
+          set: [state: "failed", exit_state: "failed", exited_at: DateTime.utc_now()]
+        )
+
+      assert_live(ctx.handed)
+      Liveness.check(DateTime.add(ctx.handed.run.attach_by, 60, :second))
+      assert_ended(ctx.handed, :run_ended)
+      assert %Record{failure_cause: :lost, failure_reason: nil} = record!(ctx.record)
+      assert_build_kept(ctx)
+      assert_nothing_queued(ctx)
+    end
+
+    test "its failed exit records nothing when the record's image is of a newer ref", ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+
+      # The image on the record was built by a prebuild that took its ref after this one.
+      newer = DateTime.add(ctx.handed.dispatch_run.environment_ref_at, 60, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Record, where: r.id == ^ctx.record.id),
+          set: [built_queued_at: newer]
+        )
+
+      kept = record!(ctx.record)
+      exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+      assert_ended(ctx.handed, :run_ended)
+      assert record!(ctx.record) == kept
+    end
+
     test "ended by its starter's outcome alone records the build failed, lost, and queues nothing",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
@@ -452,7 +527,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == failed
     end
 
-    test "its exit folds onto the registered run and ends nothing of the queue",
+    test "its succeeded exit folds onto the registered run and ends nothing of the queue",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
