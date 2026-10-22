@@ -125,6 +125,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # good, and its dispatch ends.
   @silence 600
   @exited "dev.qory.run.exited"
+  @heartbeat "dev.qory.run.heartbeat"
   # The runs of the queue one check looks at at most; the rest wait for the next.
   @batch 100
 
@@ -458,19 +459,43 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   # An attached run with no exit whose last heartbeat, or its attach when it has none, is
-  # more than `@silence` seconds before `now`.
+  # more than `@silence` seconds before `now`, counting the heartbeats stored and not yet
+  # folded (`heard/1`): a heartbeat that arrived in time keeps the run, though its
+  # projection has not run yet.
   defp silent?(
          %Run{attached_at: %DateTime{} = attached_at, exited_at: nil, exit_state: nil} = run,
          now
        ),
-       do: past?(DateTime.add(last_heard(run, attached_at), @silence, :second), now)
+       do:
+         past?(DateTime.add(last_heard(run, attached_at), @silence, :second), now) and
+           past?(DateTime.add(heard(run), @silence, :second), now)
 
   defp silent?(%Run{}, _now), do: false
 
   defp last_heard(%Run{last_heartbeat_at: %DateTime{} = beat}, attached_at),
-    do: if(DateTime.compare(beat, attached_at) == :gt, do: beat, else: attached_at)
+    do: later(beat, attached_at)
 
   defp last_heard(%Run{}, attached_at), do: attached_at
+
+  # When the run was last heard, its heartbeats not yet folded counted by their arrival:
+  # the latest of its folded last heartbeat, its attach and the arrival of a heartbeat
+  # stored and not yet projected. Such a heartbeat counts whichever instance sent it; its
+  # projection, within seconds, folds it or leaves it out (`Apiary.Runs.Fold`), and the
+  # next check reads the folded heartbeat.
+  defp heard(%Run{id: id, attached_at: attached_at} = run) do
+    folded = last_heard(run, attached_at)
+
+    case Repo.one(
+           from e in Event,
+             where: e.run_id == ^id and is_nil(e.projected_at) and e.type == @heartbeat,
+             select: max(e.received_at)
+         ) do
+      %DateTime{} = arrived -> later(arrived, folded)
+      nil -> folded
+    end
+  end
+
+  defp later(a, b), do: if(DateTime.compare(a, b) == :gt, do: a, else: b)
 
   # The silent run lost for good: `lost`, with the `lost_at` it has or `now`, and its
   # `backstop_at` moved back to the end of its silence, which no later heartbeat or start
@@ -478,7 +503,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # when the silence ended before that deadline, which then moves: a run past the
   # deadline its attach set ended there.
   defp silenced(%Run{} = run, now) do
-    silence_end = DateTime.add(last_heard(run, run.attached_at), @silence, :second)
+    silence_end = DateTime.add(heard(run), @silence, :second)
 
     moved =
       if past?(run.backstop_at, silence_end),

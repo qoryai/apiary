@@ -445,7 +445,7 @@ never attached it by its `attach_by`, when it has neither an outcome nor an exit
 backstop, 87,300 seconds (24 hours and 15 minutes) after its attach for the step `explore`
 and 2100 for `prebuild` (Liveness), or when it went 600 seconds without a heartbeat after
 its attach and before an exit: with the gateway down, no exit reaches Qory Apiary, and that
-end frees the slot. Such a silent run is `lost` for good: its registered run is set `lost`
+end frees the slot. A heartbeat stored and not yet folded counts by its arrival. Such a silent run is `lost` for good: its registered run is set `lost`
 and its backstop moved back to the end of its silence, so no later heartbeat or start
 brings it back. A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
 registered run ends: the registered run is left as it is, to its starter's outcome, which

@@ -154,7 +154,8 @@ defmodule Apiary.Dispatches.RunEndTest do
     test "a run silent and lost before it keeps that loss; its dispatch ends at 600 s of silence",
          ctx do
       beat = DateTime.add(DateTime.utc_now(), -300)
-      handed = handed_over!(ctx, %{last_heartbeat_at: beat})
+      # Attached before its last heartbeat, so the silence counts from the heartbeat.
+      handed = handed_over!(ctx, %{last_heartbeat_at: beat, attached_at: DateTime.add(beat, -60)})
       now = DateTime.utc_now()
 
       assert [%Run{state: "lost"}] = Liveness.check(now)
@@ -348,13 +349,68 @@ defmodule Apiary.Dispatches.RunEndTest do
     end
 
     test "a heartbeat within 600 s keeps the dispatch", ctx do
-      handed = handed_over!(ctx)
+      # Beats every 300 s: three intervals are 900 s, so the liveness rules keep it running.
+      handed =
+        handed_over!(ctx, %{registration_interval_seconds: 300, attach_interval_seconds: 300})
+
       at = DateTime.add(handed.run.attached_at, 3600, :second)
       beat!(handed.run, DateTime.add(at, -599, :second))
 
       assert Liveness.check(at) == []
       assert_live(handed)
       assert run!(handed.run).state == "running"
+    end
+
+    test "a heartbeat that arrived in time and is not yet folded keeps the dispatch", ctx do
+      # Beats every 300 s, so the liveness rules keep it running through the check.
+      handed =
+        handed_over!(ctx, %{registration_interval_seconds: 300, attach_interval_seconds: 300})
+
+      beat = handed.run.last_heartbeat_at
+      silence_end = DateTime.add(beat, 600, :second)
+      arrived = DateTime.add(silence_end, -5, :second)
+
+      event_fixture(handed.run, 2, "run.heartbeat", %{"elapsed_seconds" => 600},
+        time: arrived,
+        received_at: arrived
+      )
+
+      # The sweep projects events older than ten seconds only: this one waits.
+      assert Liveness.check(DateTime.add(silence_end, 1, :second)) == []
+      assert_live(handed)
+      assert %Run{silenced_at: nil, backstop_at: backstop_at} = run!(handed.run)
+      assert backstop_at == handed.run.backstop_at
+
+      assert {:ok, %Run{state: "running"}} = Projector.project(handed.run)
+      assert Liveness.check(DateTime.add(arrived, 599, :second)) == []
+      assert_live(handed)
+    end
+
+    test "an exit that arrives after its end still changes the record", ctx do
+      handed = handed_over!(ctx)
+      after_it = DateTime.add(handed.run.last_heartbeat_at, 601, :second)
+      Liveness.check(after_it)
+      assert_ended(handed, :lost)
+
+      event_fixture(handed.run, 9, "run.exited", %{"state" => "failed", "exit_code" => 1},
+        time: after_it,
+        received_at: DateTime.add(after_it, 1, :second)
+      )
+
+      assert {:ok, %Run{state: "failed", exit_code: 1}} = Projector.project(handed.run)
+      assert_ended(handed, :lost)
+    end
+
+    test "a starter's outcome that arrives after its end still changes the record", ctx do
+      handed = handed_over!(ctx)
+      Liveness.check(DateTime.add(handed.run.last_heartbeat_at, 601, :second))
+      assert_ended(handed, :lost)
+
+      assert {:ok, %{run: %Run{state: "failed"}, repeated: false}} =
+               give_outcome(ctx.key, handed.run, "failed", "no_longer_needed")
+
+      assert %Run{outcome_state: "failed", reason: "no_longer_needed"} = run!(handed.run)
+      assert_ended(handed, :lost)
     end
 
     test "a run whose exit came ends as its exit, however long it was silent", ctx do
