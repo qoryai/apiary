@@ -441,20 +441,25 @@ to come deciding (`Apiary.Dispatches.RunEnd`): its starter's outcome, or its
 `dev.qory.run.exited` once folded, end it `run_ended`; its starter's release after the
 handover ends it `released`; a `dev.qory.run.refused` once folded ends it `run_refused`,
 for a run that is not a prebuild; and the lost-run check ends it `lost` when its gateway
-never attached it by its `attach_by`, or when it has neither an outcome nor an exit by its
-backstop, 1200 seconds after its attach for the step `explore` and 2100 for `prebuild`
-(Liveness). A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
+never attached it by its `attach_by`, when it has neither an outcome nor an exit by its
+backstop, 87,300 seconds (24 hours and 15 minutes) after its attach for the step `explore`
+and 2100 for `prebuild` (Liveness), or when it went 600 seconds without a heartbeat after
+its attach and before an exit: with the gateway down, no exit reaches Qory Apiary, and that
+end frees the slot. Such a silent run is `lost` for good: its registered run is set `lost`
+and its backstop moved back to the end of its silence, so no later heartbeat or start
+brings it back. A prebuild also ends by its starter's `prebuilt`, `prebuilt`, before its
 registered run ends: the registered run is left as it is, to its starter's outcome, which
 decides its state as any outcome does; the lost-run check passes it by from then on, and the
 liveness rules alone find it lost should neither an outcome nor an exit come. A prebuild's
 `dev.qory.run.exited` folds onto its registered run as any exit does and ends nothing of the
 queue: its one session may be the fetch, whose exit comes before the build runs. So its
 `prebuilt`, a release, its starter's outcome, or the lost-run check ends it, the check at its
-`attach_by` or at its backstop with none of the three by then, whatever its exit; a release
+`attach_by` or at its backstop with none of the three by then, whatever its exit, or after
+600 seconds without a heartbeat before its exit; a release
 or a `prebuilt` after its exit acts as before it. A prebuild the lost-run check ends `lost`
 records that end as its last build's failure on the environment record of its collection
-and of the pool that claimed it, `lost` at its `attach_by` and `timed_out` at its backstop,
-with no reason; a prebuild its starter's outcome ends, `run_ended`, with neither its
+and of the pool that claimed it, `lost` at its `attach_by` or after its silence and
+`timed_out` at its backstop, with no reason; a prebuild its starter's outcome ends, `run_ended`, with neither its
 `prebuilt` nor a release first, records it there too, `lost`, with no reason. The record
 keeps its last good build, nothing is queued, and the check and the outcome hold that record
 before the run of the queue, as a release does; a prebuild whose `environment_ref` is older
@@ -1113,10 +1118,13 @@ all. A `running` run is measured from its last heartbeat, else from the arrival 
 when the workspace first heard of it, its registration for a run that registered. A run
 through a gateway that is never attached is lost at its `attach_by`, and not before; until
 then it holds its node's instance. A run a workspace's queue handed over is also lost at
-its backstop, which its attach sets to the attach and its step's limit, 1200 seconds for
+its backstop, which its attach sets to the attach and its step's limit, 87,300 seconds for
 `explore` and 2100 for `prebuild` (`runs.backstop_at`), should it have neither an outcome nor an exit by then,
 however recently it beat; no heartbeat or start that arrives after that brings it back,
-and only its exit or its starter's outcome changes its state. A heartbeat
+and only its exit or its starter's outcome changes its state. A run of the queue that went
+600 seconds without a heartbeat after its attach, before an exit, has its backstop moved
+back to the end of that silence when the lost-run check ends its dispatch, so it is lost
+from then on in the same way. A heartbeat
 counts by the `time` it carries, corrected by the run's clock offset (the smallest arrival less
 `time` over the run's heartbeats), plus 300 seconds, and never after its arrival, as the
 contract's liveness for the server says; a run's first heartbeat with no offset before it

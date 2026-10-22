@@ -1,7 +1,8 @@
 defmodule Apiary.Dispatches.RunEndTest do
   # The end of a run a workspace's queue handed over (`Apiary.Dispatches.RunEnd`): by its
   # starter's outcome or its exit, by its starter's release after the handover, or by the
-  # lost-run check, at its gateway's `attach_by` or at its backstop. Each ends the run of
+  # lost-run check, at its gateway's `attach_by`, at its backstop, or after 600 s without a
+  # heartbeat. Each ends the run of
   # the queue and its dispatch once and frees the slot once; the first end decides the
   # cause, and the registered run still takes its starter's later outcome. Runs that were
   # not handed over keep the lost-run check as it was. A prebuild lost after a newer
@@ -71,21 +72,33 @@ defmodule Apiary.Dispatches.RunEndTest do
     assert %Dispatch{ended_at: nil, end_cause: nil, slot_freed_at: nil} = dispatch!(dispatch)
   end
 
+  # The registered run heard at `at`, as its last heartbeat.
+  defp beat!(%Run{id: id}, at) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^id), set: [last_heartbeat_at: at])
+
+    :ok
+  end
+
   describe "backstop_seconds/1" do
-    test "is 1200 for explore, 2100 for prebuild, and Explore's for a step it does not name" do
-      assert Dispatches.backstop_seconds("explore") == 1200
+    test "is 87,300 for explore, 2100 for prebuild, and Explore's for a step it does not name" do
+      assert Dispatches.backstop_seconds("explore") == 87_300
       assert Dispatches.backstop_seconds("prebuild") == 2100
-      assert Dispatches.backstop_seconds("another_step") == 1200
-      assert Dispatches.backstop_seconds(nil) == 1200
+      assert Dispatches.backstop_seconds("another_step") == 87_300
+      assert Dispatches.backstop_seconds(nil) == 87_300
+    end
+
+    test "the silence is 600 s" do
+      assert RunEnd.silence_seconds() == 600
     end
   end
 
   describe "the backstop" do
-    test "a run beating still is lost 1200 s after its attach, and its dispatch ends lost",
+    test "a run beating still is lost 87,300 s after its attach, and its dispatch ends lost",
          ctx do
       handed = handed_over!(ctx)
       backstop_at = handed.run.backstop_at
-      assert DateTime.diff(backstop_at, handed.run.attached_at) == 1200
+      assert DateTime.diff(backstop_at, handed.run.attached_at) == 87_300
 
       # Heard a second ago, at the backstop: nothing yet.
       Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
@@ -138,15 +151,16 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :lost)
     end
 
-    test "a run silent and lost before it keeps that loss; its dispatch ends at the backstop",
+    test "a run silent and lost before it keeps that loss; its dispatch ends at 600 s of silence",
          ctx do
-      handed = handed_over!(ctx, %{last_heartbeat_at: DateTime.add(DateTime.utc_now(), -600)})
+      beat = DateTime.add(DateTime.utc_now(), -300)
+      handed = handed_over!(ctx, %{last_heartbeat_at: beat})
       now = DateTime.utc_now()
 
       assert [%Run{state: "lost"}] = Liveness.check(now)
       assert_live(handed)
 
-      later = DateTime.add(handed.run.backstop_at, 1, :second)
+      later = DateTime.add(beat, 601, :second)
       assert Liveness.check(later) == []
       assert run!(handed.run).lost_at == now
       assert_ended(handed, :lost)
@@ -195,6 +209,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       )
 
       assert %Run{exited_at: nil, exit_state: nil} = run!(handed.run)
+      beat!(handed.run, DateTime.add(handed.run.backstop_at, -1, :second))
 
       Liveness.check(handed.run.backstop_at)
       assert_live(handed)
@@ -255,6 +270,97 @@ defmodule Apiary.Dispatches.RunEndTest do
     end
   end
 
+  describe "the silence" do
+    test "an attached run 600 s without a heartbeat is lost for good, and its dispatch ends lost",
+         ctx do
+      handed = handed_over!(ctx)
+      beat = handed.run.last_heartbeat_at
+      silence_end = DateTime.add(beat, 600, :second)
+
+      # 600 s after its last heartbeat: lost by the liveness rules, its dispatch still live.
+      Liveness.check(silence_end)
+      assert run!(handed.run).state == "lost"
+      lost_at = run!(handed.run).lost_at
+      assert_live(handed)
+
+      after_it = DateTime.add(silence_end, 1, :microsecond)
+      :ok = Dispatches.subscribe(ctx.scope.workspace.id)
+      :ok = Apiary.Runs.subscribe(ctx.scope)
+
+      assert Liveness.check(after_it) == []
+      assert_ended(handed, :lost)
+      assert dispatch!(handed.dispatch).slot_freed_at == after_it
+      assert Slots.held(ctx.pool.id) == 0
+      assert_received {Dispatches, :changed}
+      assert_received {:run_changed, %Run{state: "lost"}}
+
+      # The loss is kept, and the deadline for its end is the end of its silence.
+      assert %Run{state: "lost", lost_at: ^lost_at, backstop_at: ^silence_end} = run!(handed.run)
+
+      # A heartbeat that arrives after it brings the run back no more.
+      event_fixture(handed.run, 2, "run.heartbeat", %{"elapsed_seconds" => 700},
+        time: after_it,
+        received_at: DateTime.add(after_it, 1, :second)
+      )
+
+      assert {:ok, %Run{state: "lost", lost_at: ^lost_at}} = Projector.project(handed.run)
+      assert_ended(handed, :lost)
+    end
+
+    test "a running run its interval keeps alive is set lost at the end of its silence", ctx do
+      # Beats every 300 s: three intervals are 900 s, so the liveness rules have not lost it.
+      handed =
+        handed_over!(ctx, %{
+          registration_interval_seconds: 300,
+          attach_interval_seconds: 300
+        })
+
+      after_it = DateTime.add(handed.run.last_heartbeat_at, 601, :second)
+
+      assert Liveness.check(after_it) == []
+      assert_ended(handed, :lost)
+
+      assert %Run{state: "lost", lost_at: ^after_it, backstop_at: backstop_at} =
+               run!(handed.run)
+
+      assert backstop_at == DateTime.add(handed.run.last_heartbeat_at, 600, :second)
+    end
+
+    test "a run without a heartbeat is measured from its attach", ctx do
+      handed = handed_over!(ctx, %{last_heartbeat_at: nil})
+      silence_end = DateTime.add(handed.run.attached_at, 600, :second)
+
+      Liveness.check(silence_end)
+      assert_live(handed)
+
+      Liveness.check(DateTime.add(silence_end, 1, :microsecond))
+      assert_ended(handed, :lost)
+      assert run!(handed.run).backstop_at == silence_end
+    end
+
+    test "a heartbeat within 600 s keeps the dispatch", ctx do
+      handed = handed_over!(ctx)
+      at = DateTime.add(handed.run.attached_at, 3600, :second)
+      beat!(handed.run, DateTime.add(at, -599, :second))
+
+      assert Liveness.check(at) == []
+      assert_live(handed)
+      assert run!(handed.run).state == "running"
+    end
+
+    test "a run whose exit came ends as its exit, however long it was silent", ctx do
+      handed = handed_over!(ctx)
+
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+      )
+
+      Liveness.check(DateTime.add(handed.run.last_heartbeat_at, 3600, :second))
+      assert_ended(handed, :run_ended)
+      assert run!(handed.run).backstop_at == handed.run.backstop_at
+    end
+  end
+
   describe "the attach" do
     # A run registered through a gateway and linked to a run of the queue handed over, as
     # its handover leaves it, before its gateway attaches it.
@@ -292,7 +398,7 @@ defmodule Apiary.Dispatches.RunEndTest do
     test "sets the backstop from the attach and the step; a run not handed over has none",
          ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
-      assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 1200 * 1_000_000
+      assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 87_300 * 1_000_000
 
       %{access_key: node_key} = contract_key_fixture(ctx.scope)
       other = Ecto.UUID.generate()
@@ -403,9 +509,10 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert {:ok, %{run: run}} = ctx.attach.()
       failed = record!(ctx.record)
+      beat!(run, DateTime.add(run.backstop_at, -100, :second))
 
-      # Silent since its attach, the registered run is lost by the liveness rules at its
-      # backstop; the run of the queue waits for the backstop to pass.
+      # Heard 100 s before its backstop, the registered run is lost by the liveness rules
+      # at its backstop; the run of the queue waits for the backstop to pass.
       Liveness.check(run.backstop_at)
       assert_live(ctx.handed)
       assert record!(ctx.record) == failed
@@ -424,6 +531,22 @@ defmodule Apiary.Dispatches.RunEndTest do
       ended = record!(ctx.record)
       assert Liveness.check(DateTime.add(after_it, 60, :second)) == []
       assert record!(ctx.record) == ended
+    end
+
+    test "silent 600 s after its attach records the build failed, lost, and queues nothing",
+         ctx do
+      assert {:ok, %{run: run}} = ctx.attach.()
+      after_it = DateTime.add(run.attached_at, 601, :second)
+
+      Liveness.check(after_it)
+      assert_ended(ctx.handed, :lost)
+
+      assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: ^after_it} =
+               record!(ctx.record)
+
+      assert %Run{state: "lost"} = run!(ctx.handed.run)
+      assert_build_kept(ctx)
+      assert_nothing_queued(ctx)
     end
 
     # Its fetch's exit, stored and folded onto the registered run.
@@ -613,8 +736,11 @@ defmodule Apiary.Dispatches.RunEndTest do
          ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
       newer = newer!(ctx)
-      assert {:ok, %{run: _newer_run}} = newer.attach.()
+      assert {:ok, %{run: newer_run}} = newer.attach.()
       after_it = DateTime.add(run.backstop_at, 1, :microsecond)
+      # Both heard a second before: neither is silent.
+      beat!(run, DateTime.add(run.backstop_at, -1, :second))
+      beat!(newer_run, DateTime.add(run.backstop_at, -1, :second))
 
       Liveness.check(after_it)
       assert_ended(ctx.handed, :lost)

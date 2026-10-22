@@ -119,7 +119,7 @@ defmodule ApiaryWeb.Contract.HandoverAttachTest do
     run = Repo.get!(Run, stored.id)
     assert run.attach_answer_digest == digest
     assert %DateTime{} = run.attached_at
-    assert DateTime.diff(run.backstop_at, run.attached_at) == 1200
+    assert DateTime.diff(run.backstop_at, run.attached_at) == 87_300
 
     # A reload returns the same answer, the same digest: the SHA-256 of its bytes.
     reload = gateway_reload(ctx, run_id)

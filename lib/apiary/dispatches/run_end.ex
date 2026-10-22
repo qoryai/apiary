@@ -48,8 +48,14 @@ defmodule Apiary.Dispatches.RunEnd do
   #   its `backstop_at`, which its attach sets to the attach and `backstop_seconds/1` of its
   #   step; for a prebuild, with neither its prebuilt, a release nor an outcome by then,
   #   whatever its exit. The check marks the registered run lost by its rules first; this
-  #   ends the run of the queue. It also ends, `run_ended`, one whose outcome or exit came
-  #   and whose end was not written, should a projection have stopped between its pass and
+  #   ends the run of the queue. It also ends `lost` an attached run with no exit whose
+  #   last heartbeat, or its attach when it has none, is more than `silence_seconds/0`
+  #   (600) before `now` (**silent**): with the gateway down, no exit reaches Qory Apiary,
+  #   and the end frees the slot. A silent run is lost for good: its state is set `lost`
+  #   (`lost_at` kept where it has one) and its `backstop_at` moved back to the end of its
+  #   silence, so no later heartbeat or start revives it (`Apiary.Runs.Liveness`). It also
+  #   ends, `run_ended`, one whose outcome or exit came and whose end was not written,
+  #   should a projection have stopped between its pass and
   #   its end, and one whose exit its projection skipped unfolded
   #   (`Apiary.Runs.Projector`); for a prebuild, one whose outcome came alone. A run that
   #   is not a prebuild whose refusal was folded and whose end was not written ends
@@ -58,7 +64,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # A prebuild the check ends `lost` records that end as its last build's failure, on the
   # environment record of its collection and of its pool, the one that claimed it
   # (`Apiary.Environments.record_end_failure/3`): `lost` when its gateway never attached
-  # it by its run key's `attach_by`, `timed_out` when nothing ended it by its backstop.
+  # it by its run key's `attach_by` or it went silent, `timed_out` when nothing ended it
+  # by its backstop.
   # Its run of the queue and its dispatch end `lost` either way. A prebuild its starter's
   # outcome ends, `run_ended`, neither its prebuilt nor a release having come first,
   # records its last build's failure there too, `lost`. The record keeps its last good
@@ -108,10 +115,14 @@ defmodule Apiary.Dispatches.RunEnd do
   @prebuild DispatchRun.prebuild()
 
   # The seconds from its attach by which a run of each step has its outcome or its exit,
-  # or is lost: Explore's 20 minutes, and a prebuild's 35, the prebuild workflow's 30
-  # minutes and a margin. A step not named here has Explore's.
-  @backstops %{"explore" => 1200, "prebuild" => 2100}
-  @default_backstop 1200
+  # or is lost: Explore's 24 hours and 15 minutes, the longest time limit (1440 minutes,
+  # `Apiary.TimeLimits`) and a margin, and a prebuild's 35 minutes, the prebuild
+  # workflow's 30 minutes and a margin. A step not named here has Explore's.
+  @backstops %{"explore" => 87_300, "prebuild" => 2100}
+  @default_backstop 87_300
+  # The seconds without a heartbeat after which an attached run with no exit is lost for
+  # good, and its dispatch ends.
+  @silence 600
   @exited "dev.qory.run.exited"
   # The runs of the queue one check looks at at most; the rest wait for the next.
   @batch 100
@@ -121,6 +132,12 @@ defmodule Apiary.Dispatches.RunEnd do
   @doc false
   @spec backstop_seconds(String.t() | nil) :: pos_integer
   def backstop_seconds(step), do: Map.get(@backstops, step, @default_backstop)
+
+  # silence_seconds/0 is the seconds without a heartbeat after which an attached run with
+  # no exit is lost for good (the moduledoc).
+  @doc false
+  @spec silence_seconds() :: pos_integer
+  def silence_seconds, do: @silence
 
   # lock/1 locks the run of the queue `id` `FOR UPDATE`, inside the caller's transaction:
   # the row, or nil for none.
@@ -374,9 +391,9 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # lose/1 ends, at `now`, the runs of the queue handed over whose registered run its
   # gateway never attached by its `attach_by`, or that has neither an outcome nor an exit
-  # by its `backstop_at` (`lost`), or whose outcome or exit came and whose end was not
-  # written (`run_ended`), or whose refusal was folded and whose end was not written
-  # (`run_refused`): at most `@batch`, each in a separate transaction. One that
+  # by its `backstop_at`, or that is silent (`lost`), or whose outcome or exit came and
+  # whose end was not written (`run_ended`), or whose refusal was folded and whose end was
+  # not written (`run_refused`): at most `@batch`, each in a separate transaction. One that
   # raises is logged by its id and the exception's module, and the rest are still ended.
   # The ids of the workspaces whose slots changed, and the work items whose run settled,
   # for the caller to tell (`Apiary.Dispatches.broadcast/1`).
@@ -392,7 +409,15 @@ defmodule Apiary.Dispatches.RunEnd do
           (d.step != ^@prebuild and
              (not is_nil(r.exited_at) or not is_nil(r.exit_state) or not is_nil(r.refused_at))) or
           not is_nil(r.released_at) or (is_nil(r.attached_at) and r.attach_by < ^now) or
-          r.backstop_at < ^now,
+          r.backstop_at < ^now or
+          (not is_nil(r.attached_at) and is_nil(r.exited_at) and is_nil(r.exit_state) and
+             fragment(
+               "GREATEST(?, ?) + make_interval(secs => ?) < ?",
+               r.last_heartbeat_at,
+               r.attached_at,
+               @silence,
+               ^now
+             )),
       order_by: d.id,
       limit: @batch,
       select: d.id
@@ -402,8 +427,10 @@ defmodule Apiary.Dispatches.RunEnd do
     |> Enum.uniq()
   end
 
+  # A silent run lost for good is broadcast as changed once its end commits.
   defp lose_guarded(id, now) do
-    {:ok, changed} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
+    {:ok, {changed, silenced}} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
+    if silenced, do: Apiary.Runs.broadcast_changed(silenced)
     changed
   rescue
     error ->
@@ -414,6 +441,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # The rules again, under the locks: an outcome or an exit that came meanwhile ends it as
   # its run's end, and an attach that came meanwhile leaves it to its backstop. A
   # prebuild's record is held first, and a prebuild lost records its build as failed.
+  # A silent run is lost for good first (`silenced/2`), and returned beside the ids.
   defp lose_one(id, now) do
     held = hold(id)
 
@@ -421,14 +449,49 @@ defmodule Apiary.Dispatches.RunEnd do
          %Run{} = run <-
            Repo.one(from r in Run, where: r.dispatch_run_id == ^id, lock: "FOR UPDATE"),
          cause when not is_nil(cause) <- cause(dispatch_run, run, now) do
-      finish(dispatch_run, run, cause, now, held)
+      silenced = if cause == :lost and silent?(run, now), do: silenced(run, now)
+      {finish(dispatch_run, run, cause, now, held), silenced}
     else
-      _nothing -> []
+      _nothing -> {[], nil}
     end
   end
 
+  # An attached run with no exit whose last heartbeat, or its attach when it has none, is
+  # more than `@silence` seconds before `now`.
+  defp silent?(
+         %Run{attached_at: %DateTime{} = attached_at, exited_at: nil, exit_state: nil} = run,
+         now
+       ),
+       do: past?(DateTime.add(last_heard(run, attached_at), @silence, :second), now)
+
+  defp silent?(%Run{}, _now), do: false
+
+  defp last_heard(%Run{last_heartbeat_at: %DateTime{} = beat}, attached_at),
+    do: if(DateTime.compare(beat, attached_at) == :gt, do: beat, else: attached_at)
+
+  defp last_heard(%Run{}, attached_at), do: attached_at
+
+  # The silent run lost for good: `lost`, with the `lost_at` it has or `now`, and its
+  # `backstop_at` moved back to the end of its silence, which no later heartbeat or start
+  # passes (`Apiary.Runs.Liveness.past_backstop?/2`).
+  defp silenced(%Run{} = run, now) do
+    silence_end = DateTime.add(last_heard(run, run.attached_at), @silence, :second)
+
+    backstop_at =
+      if past?(run.backstop_at, silence_end), do: run.backstop_at, else: silence_end
+
+    changes =
+      if run.state in ["pending", "running"],
+        do: [state: "lost", lost_at: now],
+        else: []
+
+    run
+    |> Ecto.Changeset.change([backstop_at: backstop_at, updated_at: now] ++ changes)
+    |> Repo.update!()
+  end
+
   # A prebuild lost: its build failed, `lost` at its run key's `attach_by`, never
-  # attached, else `timed_out` at its backstop. A prebuild its starter's outcome ended,
+  # attached, or once silent, else `timed_out` at its backstop. A prebuild its starter's outcome ended,
   # neither its prebuilt nor a release having come first: its build failed, `lost`. The
   # last good build kept either way. A prebuild whose ref is older than the record's
   # image's records nothing.
@@ -450,15 +513,17 @@ defmodule Apiary.Dispatches.RunEnd do
   defp build_ended(_held, _dispatch_run, _cause, %Run{}, _now), do: :ok
 
   defp failure(:run_ended, _run, _now), do: :lost
-  defp failure(:lost, run, now), do: if(unattached_past?(run, now), do: :lost, else: :timed_out)
 
-  # A prebuild's exit ends nothing of the queue: its outcome, a release, or its attach_by
-  # or backstop does.
+  defp failure(:lost, run, now),
+    do: if(unattached_past?(run, now) or silent?(run, now), do: :lost, else: :timed_out)
+
+  # A prebuild's exit ends nothing of the queue: its outcome, a release, its attach_by, its
+  # backstop, or its silence before an exit does.
   defp cause(%DispatchRun{step: @prebuild}, run, now) do
     cond do
       not is_nil(run.outcome_state) -> :run_ended
       not is_nil(run.released_at) -> :released
-      unattached_past?(run, now) or past?(run.backstop_at, now) -> :lost
+      unattached_past?(run, now) or past?(run.backstop_at, now) or silent?(run, now) -> :lost
       true -> nil
     end
   end
@@ -491,7 +556,10 @@ defmodule Apiary.Dispatches.RunEnd do
   defp by_exit(:projected, _run, _now), do: :run_ended
 
   defp by_exit(nil, run, now),
-    do: if(unattached_past?(run, now) or past?(run.backstop_at, now), do: :lost)
+    do:
+      if(unattached_past?(run, now) or past?(run.backstop_at, now) or silent?(run, now),
+        do: :lost
+      )
 
   defp outcome_or_exit?(%Run{} = run),
     do: not is_nil(run.outcome_state) or not is_nil(run.exited_at) or not is_nil(run.exit_state)

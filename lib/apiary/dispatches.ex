@@ -157,8 +157,9 @@ defmodule Apiary.Dispatches do
   # A run handed over ends with its registered run: by its starter's outcome or its exit,
   # by its starter's release after the handover (`release/3`, which ends it as
   # `end_run_released/2` does, `Apiary.Dispatches.Release`), or by the lost-run check, at
-  # its gateway's `attach_by` should it never attach, or at `backstop_seconds/1` of its
-  # step after its attach should it have neither an outcome nor an exit by then
+  # its gateway's `attach_by` should it never attach, at `backstop_seconds/1` of its
+  # step after its attach should it have neither an outcome nor an exit by then, or once
+  # it went 600 seconds without a heartbeat after its attach and before an exit
   # (`Apiary.Dispatches.RunEnd`). Its dispatch ends with it and the slot
   # it held is freed, once.
   #
@@ -814,7 +815,7 @@ defmodule Apiary.Dispatches do
     do: RunEnd.released(dispatch_run_id, now)
 
   # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
-  # outcome or its exit, or is lost: 1200 for `explore` and 2100 for `prebuild`.
+  # outcome or its exit, or is lost: 87,300 for `explore` and 2100 for `prebuild`.
   @doc false
   @spec backstop_seconds(String.t() | nil) :: pos_integer
   def backstop_seconds(step), do: RunEnd.backstop_seconds(step)
