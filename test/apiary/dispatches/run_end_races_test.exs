@@ -33,7 +33,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   import Apiary.RunEventsFixtures, only: [event_fixture: 4]
   import Apiary.WorkItemsFixtures, only: [result_event!: 3, understood_result: 0]
 
-  alias Apiary.{Dispatches, Edition, Environments, Repo}
+  alias Apiary.{Dispatches, Edition, Environments, Repo, Targets}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Audit.Entry
@@ -41,13 +41,16 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.{Liveness, Projector, Run}
+  alias Apiary.Runs.{Liveness, Projector, Run, Target}
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
 
   @image "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
   @reason "The job could not start."
+  @missing_exit %{"state" => "failed", "reason" => "image_missing", "exit_code" => -1}
+  # The target of a work item of `work_item_fixture/2`.
+  @missing_target %{system: "forge.example.com", path: "acme/shop"}
 
   setup_all :clean_up_leftovers
   setup :setup_races
@@ -127,29 +130,31 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     end
   end
 
+  # Each statement that fails with a deadlock (40P01), on any connection, sent to the
+  # test as `{:deadlock, query}`.
+  defp attach_deadlocks(_context) do
+    handler = "run-end-races-deadlocks-#{System.unique_integer([:positive])}"
+    test = self()
+
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn
+        _event, _measurements, %{result: {:error, %Postgrex.Error{postgres: pg}}} = meta, _
+        when pg.code == :deadlock_detected ->
+          send(test, {:deadlock, meta.query})
+
+        _event, _measurements, _meta, _config ->
+          :ok
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+  end
+
   describe "a release and an exit's end" do
-    # Each statement that fails with a deadlock (40P01), on any connection, said to the
-    # test as `{:deadlock, query}`.
-    setup do
-      handler = "run-end-races-deadlocks-#{System.unique_integer([:positive])}"
-      test = self()
-
-      :telemetry.attach(
-        handler,
-        [:apiary, :repo, :query],
-        fn
-          _event, _measurements, %{result: {:error, %Postgrex.Error{postgres: pg}}} = meta, _
-          when pg.code == :deadlock_detected ->
-            send(test, {:deadlock, meta.query})
-
-          _event, _measurements, _meta, _config ->
-            :ok
-        end,
-        nil
-      )
-
-      on_exit(fn -> :telemetry.detach(handler) end)
-    end
+    setup :attach_deadlocks
 
     defp exited!(handed),
       do: event_fixture(handed.run, 9, "run.exited", %{"state" => "failed", "exit_code" => 1})
@@ -566,6 +571,311 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
         assert {:run_ended, _run} = ended!(ctx, handed)
         assert stored(handed) == {:none, nil}
+      end
+    end
+  end
+
+  describe "the end of a run whose image was missing" do
+    # The end holds the connections and the collections of the records of the image
+    # `FOR SHARE`, then the work item `FOR KEY SHARE`, then the records `FOR UPDATE`,
+    # before the run of the queue; it clears the image and queues a prebuild of each
+    # collection, unless one waits. A listing's part, which holds its connection and its
+    # collections `FOR UPDATE` before their records, a Rebuild, which holds the same rows
+    # as the end in the same order, a release and a close, which hold the work item
+    # `FOR UPDATE`, and a second end of the run take turns with it: none deadlocks, the
+    # run of the queue ends once, `run_ended`, the image is cleared, and one prebuild
+    # waits for the pool.
+    setup :attach_deadlocks
+
+    setup ctx do
+      started = DateTime.utc_now()
+      {:ok, made} = Agent.start(fn -> [] end)
+
+      on_exit(fn ->
+        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+        adapters = Agent.get(made, & &1)
+        Agent.stop(made)
+        Repo.delete_all(from o in Organisation, where: o.id == ^ctx.scope.organisation.id)
+
+        adapter_keys =
+          Repo.all(from k in AccessKey, where: k.node_id in ^adapters, select: k.key_id)
+
+        Repo.delete_all(from p in PublicKey, where: p.key_id in ^adapter_keys)
+        Repo.delete_all(from c in Connection, where: c.adapter_id in ^adapters)
+        Repo.delete_all(from k in AccessKey, where: k.node_id in ^adapters)
+        Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^adapters)
+        Repo.delete_all(from n in Node, where: n.id in ^adapters)
+
+        Repo.delete_all(
+          from e in Entry,
+            where: e.organisation_id == ^Edition.instance_organisation_id(),
+            where: e.inserted_at >= ^started
+        )
+
+        Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+      end)
+
+      :ok =
+        Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [@missing_target])
+
+      %{
+        collections_made: made,
+        target: Targets.get(ctx.scope, @missing_target.system, @missing_target.path)
+      }
+    end
+
+    # A collection of the work items' target with `env-1`, the pool's record of it with a
+    # build of `@image` for that target, and a run of a work item handed over that started
+    # in `@image`: committed.
+    defp missing_handed_over!(ctx) do
+      collection =
+        collection_fixture(ctx.scope,
+          target_system: @missing_target.system,
+          target_path: @missing_target.path,
+          environment_ref: "env-1"
+        )
+
+      Agent.update(ctx.collections_made, &[collection.adapter_id | &1])
+      now = DateTime.utc_now()
+
+      record =
+        Repo.insert!(%Record{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id,
+          pool_id: ctx.pool.id,
+          source_collection_id: collection.id,
+          queued_ref: "env-1",
+          queued_at: now,
+          queued_target_system: @missing_target.system,
+          queued_target_path: @missing_target.path,
+          image: @image,
+          size: 734_003_200,
+          commit: "9c1e4a7b",
+          built_at: now,
+          reported_ref: "env-1",
+          built_target_system: @missing_target.system,
+          built_target_path: @missing_target.path,
+          built_queued_at: now
+        })
+
+      handed =
+        handed_over_fixture(ctx.scope, ctx.key, %{
+          configured_image: @image,
+          registration_labels: %{"forge" => "forge.example.com", "repository" => "acme/shop"}
+        })
+
+      adapter_id =
+        Repo.one!(
+          from w in WorkItem,
+            where: w.id == ^handed.dispatch_run.work_item_id,
+            select: w.adapter_id
+        )
+
+      Agent.update(ctx.made, &%{&1 | adapters: [adapter_id | &1.adapters]})
+      Map.merge(handed, %{collection: collection, record: record})
+    end
+
+    defp missing_exit!(handed),
+      do: event_fixture(handed.run, 9, "run.exited", @missing_exit)
+
+    # The exit folded, as a projection that stopped before the end of the run of the
+    # queue leaves it.
+    defp missing_folded!(handed) do
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+          set: [
+            state: "failed",
+            exit_state: "failed",
+            exit_reason: "image_missing",
+            exited_at: DateTime.utc_now()
+          ]
+        )
+    end
+
+    # A listing's part that changes the collection's `environment_ref`: its connection and
+    # its collection `FOR UPDATE`, then the trigger, which locks the records.
+    defp part(%{collection: %Collection{id: id, connection_id: connection_id}}, ref) do
+      fn ->
+        Repo.transact(fn ->
+          Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
+          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE")
+
+          {1, _rows} =
+            Repo.update_all(from(c in Collection, where: c.id == ^id),
+              set: [environment_ref: ref]
+            )
+
+          {:ok, Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())}
+        end)
+      end
+    end
+
+    # The `environment_ref` of each prebuild of the collection that waits for the pool.
+    defp waiting_prebuilds(ctx, handed) do
+      Repo.all(
+        from r in DispatchRun,
+          where: r.source_collection_id == ^handed.collection.id,
+          where: r.pool_id == ^ctx.pool.id and r.state == :waiting,
+          select: r.environment_ref
+      )
+    end
+
+    # The run of the queue ended once, `run_ended`, the image cleared, one prebuild
+    # waiting for `ref`, and no deadlock on any connection. The collection then has no
+    # `environment_ref`, and its prebuild that waits ends, so the next round's claim takes
+    # its explore run and its Rebuild queues nothing for this collection.
+    defp missing_ended!(ctx, handed, ref) do
+      assert {:run_ended, %Run{}} = ended!(ctx, handed)
+      assert %Record{image: nil, built_queued_at: nil} = Repo.get!(Record, handed.record.id)
+      assert waiting_prebuilds(ctx, handed) == [ref]
+      refute_received {:deadlock, _query}
+
+      {:ok, _changed} =
+        Repo.transact(fn ->
+          {1, _rows} =
+            Repo.update_all(from(c in Collection, where: c.id == ^handed.collection.id),
+              set: [environment_ref: nil]
+            )
+
+          {:ok, Dispatches.end_waiting_prebuilds([handed.collection.id], Dispatches.now())}
+        end)
+    end
+
+    test "a part holds the collection: the end waits there, before the work item and the records",
+         ctx do
+      handed = missing_handed_over!(ctx)
+      missing_exit!(handed)
+      %{id: id, connection_id: connection_id} = handed.collection
+
+      {first, first_pid} =
+        hold(fn ->
+          Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
+          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE")
+        end)
+
+      second = start(fn -> Projector.project(handed.run) end)
+      await_blocked(second.backend, first_pid)
+
+      # Waiting on the connection, the end holds neither the work item nor the record:
+      # the part locks both without waiting, then triggers.
+      continue(first, fn ->
+        Repo.one!(
+          from w in WorkItem,
+            where: w.id == ^handed.dispatch_run.work_item_id,
+            lock: "FOR UPDATE NOWAIT"
+        )
+
+        {1, _rows} =
+          Repo.update_all(from(c in Collection, where: c.id == ^id),
+            set: [environment_ref: "env-2"]
+          )
+
+        Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())
+      end)
+
+      commit(first)
+
+      assert {:ok, %Run{}} = Task.await(second.task)
+      missing_ended!(ctx, handed, "env-2")
+    end
+
+    test "and a part at once: none deadlocks, one prebuild waits", ctx do
+      for _round <- 1..4 do
+        handed = missing_handed_over!(ctx)
+        missing_exit!(handed)
+
+        [projected, {:ok, _queued}] =
+          together([fn -> Projector.project(handed.run) end, part(handed, "env-2")])
+
+        assert {:ok, %Run{}} = projected
+        missing_ended!(ctx, handed, "env-2")
+      end
+    end
+
+    test "and a Rebuild at once: none deadlocks, one prebuild waits", ctx do
+      for _round <- 1..4 do
+        handed = missing_handed_over!(ctx)
+        missing_exit!(handed)
+
+        [projected, rebuilt] =
+          together([
+            fn -> Projector.project(handed.run) end,
+            fn -> Environments.rebuild(ctx.scope, ctx.target) end
+          ])
+
+        assert {:ok, %Run{}} = projected
+        assert rebuilt in [{:ok, 0}, {:ok, 1}]
+        missing_ended!(ctx, handed, "env-1")
+      end
+    end
+
+    test "and two releases at once: the end decides, none deadlocks", ctx do
+      for _round <- 1..4 do
+        handed = missing_handed_over!(ctx)
+        missing_exit!(handed)
+
+        sides = [
+          fn -> {:projection, Projector.project(handed.run)} end,
+          fn -> {:release, release(ctx, handed)} end,
+          fn -> {:release, release(ctx, handed)} end
+        ]
+
+        answers = together(Enum.take(sides, sides(length(sides))))
+        assert {:projection, {:ok, %Run{}}} = List.keyfind(answers, :projection, 0)
+
+        assert Enum.all?(
+                 for({:release, answer} <- answers, do: answer),
+                 &(&1 in [{:error, :machine_exists}, {:error, :gone}])
+               )
+
+        missing_ended!(ctx, handed, "env-1")
+      end
+    end
+
+    test "and a close at once: the end decides, none deadlocks", ctx do
+      for _round <- 1..4 do
+        handed = missing_handed_over!(ctx)
+        missing_exit!(handed)
+        work_item = Repo.get!(WorkItem, handed.dispatch_run.work_item_id)
+
+        [projected, closed] =
+          together([
+            fn -> Projector.project(handed.run) end,
+            fn -> Apiary.WorkItems.close(ctx.scope, work_item) end
+          ])
+
+        assert {:ok, %Run{}} = projected
+        assert {:ok, %WorkItem{state: :closed}} = closed
+        missing_ended!(ctx, handed, "env-1")
+      end
+    end
+
+    test "the projection's end and the checks at once: one end", ctx do
+      for _round <- 1..4 do
+        handed = missing_handed_over!(ctx)
+        missing_exit!(handed)
+        now = Dispatches.now()
+
+        sides = [
+          fn -> {:projection, Projector.project(handed.run)} end,
+          fn -> {:check, Liveness.check(now)} end,
+          fn -> {:lose, RunEnd.lose(now)} end
+        ]
+
+        answers = together(Enum.take(sides, sides(length(sides))))
+        assert {:projection, {:ok, %Run{}}} = List.keyfind(answers, :projection, 0)
+        missing_ended!(ctx, handed, "env-1")
+      end
+    end
+
+    test "two lost-run checks of a folded exit at once: one end", ctx do
+      for _round <- 1..4 do
+        handed = missing_handed_over!(ctx)
+        missing_folded!(handed)
+        now = Dispatches.now()
+
+        together([fn -> RunEnd.lose(now) end, fn -> RunEnd.lose(now) end])
+        missing_ended!(ctx, handed, "env-1")
       end
     end
   end
