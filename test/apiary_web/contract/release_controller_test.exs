@@ -82,7 +82,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       target: "/v1/dispatches/#{id(dispatch)}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 

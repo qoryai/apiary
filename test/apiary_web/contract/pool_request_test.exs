@@ -6,7 +6,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   # the routes where the feature is off. A claim accepted, with an empty queue and no
   # wait, is answered `204`, signed; a `dispatched` or a release accepted, of a dispatch no
   # pool has, `403` `forbidden`, signed; a handover, a route no longer served, `404`. Every request names
-  # revision 3 of the provisioner contract, the one served, unless a test says otherwise.
+  # revision 1 of the provisioner contract, the one served, unless a test says otherwise.
   # Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
@@ -76,7 +76,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       target: target,
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     ]
 
     signed_post(
@@ -145,15 +145,15 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       assert accepted?(conn, @claim)
     end
 
-    test "is served the provisioner contract's revision 3 alone, and refused 1 and 2", ctx do
-      assert AdapterRequest.revisions(:pool) == [3]
+    test "is served the provisioner contract's revision 1 alone, and refused 2 and 3", ctx do
+      assert AdapterRequest.revisions(:pool) == [1]
 
       for target <- @targets do
         conn = signed(ctx, target, body(target))
         assert accepted?(conn, target), target
         assert signed_answer?(conn), target
 
-        for version <- ["1", "2"] do
+        for version <- ["2", "3"] do
           conn = signed(ctx, target, body(target, 1), contract_version: version)
           assert json_response(conn, 400) == @unsupported, "#{target} #{version}"
           assert signed_answer?(conn), target
@@ -377,14 +377,14 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     test "400 bad_request for an instance id absent or malformed, signed, before the revision",
          ctx do
       for instance_id <- [nil, "-starts-with-a-dash", String.duplicate("a", 65)] do
-        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "4")
+        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "2")
         assert json_response(conn, 400) == @bad_request, inspect(instance_id)
         assert signed_answer?(conn)
       end
     end
 
     test "400 unsupported_contract_version, signed, before the body", ctx do
-      for version <- [nil, "1", "2", "4", "03", "3.0", "three"] do
+      for version <- [nil, "2", "3", "01", "1.0", "one"] do
         conn = claim(ctx, %{"version" => 2}, contract_version: version)
         assert json_response(conn, 400) == @unsupported, inspect(version)
         assert signed_answer?(conn)
@@ -583,7 +583,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
   # A request that reached the plug, signed under `seed` with its raw body kept, naming
   # the contract's `revision`.
-  defp request(target, key_id, seed, raw, revision \\ "3") do
+  defp request(target, key_id, seed, raw, revision \\ "1") do
     instance_id = Apiary.ContractFixtures.instance_id()
 
     build_conn(:post, target, raw)

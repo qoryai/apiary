@@ -87,7 +87,7 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
       target: "/v1/dispatches/#{id(dispatch)}/machine-log",
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 

@@ -105,7 +105,7 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   @json_type {"content-type", "application/json; charset=utf-8"}
   # The revisions served, by the kind of key: the integration contract's for an
   # adapter, the provisioner contract's for a node pool.
-  @revisions %{adapter: [1], pool: [3]}
+  @revisions %{adapter: [1], pool: [1]}
   @kinds Map.keys(@revisions)
   @key_id_format ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
   @instance_id_format ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/

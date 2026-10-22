@@ -47,7 +47,7 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
         target: "/v1/pools/claim",
         content_type: "application/json",
         delivery: nil,
-        contract_version: "3"
+        contract_version: "1"
       )
 
     json_response(conn, 200)
@@ -58,7 +58,7 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
       target: "/v1/dispatches/#{dispatch.public_id}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 

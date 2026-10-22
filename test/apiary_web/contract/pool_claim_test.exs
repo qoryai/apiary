@@ -92,7 +92,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       target: @claim,
       content_type: "application/json",
       delivery: nil,
-      contract_version: Keyword.get(opts, :contract_version, "3")
+      contract_version: Keyword.get(opts, :contract_version, "1")
     )
   end
 
@@ -173,7 +173,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
       assert answer == %{
                "version" => 1,
-               "revision" => 3,
+               "revision" => 1,
                "dispatch_id" => dispatch.public_id,
                "lease_until" => lease_until,
                "run_code" => run_code,
@@ -247,7 +247,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
       assert answer == %{
                "version" => 1,
-               "revision" => 3,
+               "revision" => 1,
                "dispatch_id" => dispatch.public_id,
                "lease_until" => lease_until,
                "run_code" => answer["run_code"],

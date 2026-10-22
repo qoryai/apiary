@@ -344,9 +344,9 @@ the body, the `time`), the first of these that applies is the answer:
 
 **A run of the queue.** A node pool's starter claims the runs a workspace queues (the
 provisioner contract, `contracts/provisioner/v1` of `qoryai/integrations`). Qory Apiary
-serves revision 3 of that contract alone: a request whose `X-Qory-Contract-Version` names
+serves revision 1 of that contract alone: a request whose `X-Qory-Contract-Version` names
 any other revision is refused `400` `unsupported_contract_version`, and each claim answer
-has `revision` 3. A claim answer is a request for a machine: `version`, `revision`,
+has `revision` 1. A claim answer is a request for a machine: `version`, `revision`,
 `dispatch_id`, `lease_until`, `machine`, `run_code`, `gateway_url` and
 `max_lifetime_minutes`, 1470 for every claim, sent with
 `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its `step`, its

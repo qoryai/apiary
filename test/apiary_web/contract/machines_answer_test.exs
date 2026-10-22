@@ -104,7 +104,7 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       target: target,
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 

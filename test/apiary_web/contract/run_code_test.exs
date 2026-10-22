@@ -47,7 +47,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
         target: "/v1/pools/claim",
         content_type: "application/json",
         delivery: nil,
-        contract_version: "3"
+        contract_version: "1"
       )
 
     assert %{"dispatch_id" => dispatch_id, "run_code" => code} = json_response(claim, 200)
@@ -69,7 +69,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       target: "/v1/dispatches/#{dispatch.public_id}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 
@@ -287,7 +287,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
           target: "/v1/dispatches/#{ctx.dispatch.public_id}/release",
           content_type: "application/json",
           delivery: nil,
-          contract_version: "3"
+          contract_version: "1"
         )
 
       assert released.status == 204
