@@ -21,8 +21,11 @@ defmodule Apiary.Registry do
   # until then.
   #
   # `boot!/0` checks both when the feature is on, and stops the boot with the fix first:
-  # a missing or malformed `QORY_REGISTRY`, and a key file that is missing or holds no
-  # P-256 key. The key's value is never logged and never in an exception.
+  # a missing or malformed `QORY_REGISTRY`, one whose host is the host of `PUBLIC_URL`
+  # (compared without case and without ports), and a key file that is missing or holds
+  # no P-256 key. The host must differ because a run's path rules are per host: the
+  # registry's rules and the instance's `/registry/token` would otherwise apply to one
+  # host. The key's value is never logged and never in an exception.
   #
   # In test, `config :apiary, Apiary.Registry, generate_key: true` makes a key once per
   # node, in memory: the application boots there before the suite turns the opt-in
@@ -156,8 +159,31 @@ defmodule Apiary.Registry do
           """
       end
 
+    if same_host?(address.host, public_host()) do
+      raise ArgumentError, """
+      Set QORY_REGISTRY to a host other than #{address.host}.
+      PUBLIC_URL uses the same host, and a run's egress rules work only when the registry and Qory Apiary are on separate hosts.
+      """
+    end
+
     Map.merge(address, with_public(key!()))
   end
+
+  # The host of the instance's public URL as configured, `PUBLIC_URL`'s, nil for none.
+  defp public_host do
+    with config when is_list(config) <- Application.get_env(:apiary, ApiaryWeb.Endpoint),
+         url when is_list(url) <- Keyword.get(config, :url),
+         host when is_binary(host) <- Keyword.get(url, :host) do
+      host
+    else
+      _none -> nil
+    end
+  end
+
+  defp same_host?(_registry, nil), do: false
+
+  defp same_host?(registry, public),
+    do: String.downcase(registry) == public |> String.downcase() |> String.trim_trailing(".")
 
   defp key! do
     if Keyword.get(Application.get_env(:apiary, __MODULE__, []), :generate_key, false) do

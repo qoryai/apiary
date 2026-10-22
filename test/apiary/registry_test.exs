@@ -120,6 +120,28 @@ defmodule Apiary.RegistryTest do
                  "QORY_REGISTRY is set to https://registry.qory.example.\n"
     end
 
+    test "stops where QORY_REGISTRY's host is the host of PUBLIC_URL" do
+      endpoint = Application.get_env(:apiary, ApiaryWeb.Endpoint)
+      on_exit(fn -> Application.put_env(:apiary, ApiaryWeb.Endpoint, endpoint) end)
+
+      Application.put_env(
+        :apiary,
+        ApiaryWeb.Endpoint,
+        Keyword.put(endpoint, :url, host: "Registry.Qory.Example", port: 443, scheme: "https")
+      )
+
+      for setting <- ["registry.qory.example", "registry.qory.example:5000"] do
+        error = assert_raise ArgumentError, fn -> boot(setting, generate_key: true) end
+
+        assert error.message ==
+                 "Set QORY_REGISTRY to a host other than registry.qory.example.\n" <>
+                   "PUBLIC_URL uses the same host, and a run's egress rules work only when " <>
+                   "the registry and Qory Apiary are on separate hosts.\n"
+      end
+
+      assert boot("other.qory.example", generate_key: true) == :ok
+    end
+
     test "stops with B3 where the key file does not exist", %{tmp_dir: dir} do
       path = Path.join(dir, "registry-token.key")
 
