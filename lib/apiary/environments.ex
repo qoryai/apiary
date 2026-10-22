@@ -137,16 +137,16 @@ defmodule Apiary.Environments do
   # `built_queued_at`, so `image_for/2` gives that image to no run; the last failure,
   # what was queued and `retired_at` are left as they are. The prebuild that made the
   # image does not store it again: a projection stores a run's build only in the pass
-  # that folds its report, and a rebuild of the run's projection stores none
-  # (`Apiary.Runs.Projector`). For each record not retired whose
+  # that folds its report of the lowest sequence, and a rebuild of the run's projection
+  # stores none (`Apiary.Runs.Projector`). For each record not retired whose
   # collection is one of `collections`, live, assigned to the pool's workspace, whose
   # domain has prebuilds, with a target and an `environment_ref`, and whose pool is live,
   # it writes the record's `queued_ref`, `queued_at` and queued target and queues a
   # prebuild of the collection held for the pool, as a Rebuild does, unless one waits
   # unclaimed: the next build makes the image again. A record whose collection is not one
   # of `collections`, its build landed after `hold_missing/3` read the records, is
-  # cleared and queues nothing: the trigger of its collection's next change queues its
-  # prebuild.
+  # cleared and queues nothing: a Rebuild of its target, or a new `environment_ref` of
+  # its collection, queues its next prebuild.
   #
   # ## A member's Rebuild: `rebuild/2`
   #
