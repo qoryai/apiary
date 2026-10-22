@@ -313,10 +313,19 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
   end
 
   describe "dispatched as a keep-alive" do
-    # A `dispatched` whose `time` is `seconds` before the clock, so each request is a new
-    # signed body.
+    # A `dispatched` whose `time` is `seconds` before the clock as the test's first
+    # keep-alive read it, so each request is a new signed body: a time read from the clock
+    # again for each request could repeat one, as the clock moves on a second between
+    # them, and the replay guard refuses a repeated body with a 401.
     defp keep_alive(ctx, seconds) do
-      time = (SignedRequest.now() - seconds) |> DateTime.from_unix!() |> DateTime.to_iso8601()
+      unless Process.get(:keep_alive_base),
+        do: Process.put(:keep_alive_base, SignedRequest.now())
+
+      time =
+        (Process.get(:keep_alive_base) - seconds)
+        |> DateTime.from_unix!()
+        |> DateTime.to_iso8601()
+
       pool_post(ctx, ctx.dispatch, "dispatched", %{"time" => time})
     end
 
