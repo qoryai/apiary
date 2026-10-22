@@ -53,8 +53,9 @@ defmodule Apiary.Contract.GatewayUrl do
   def pattern, do: @pattern
 
   @doc """
-  shape?/1 is whether `url` has the pattern's shape, whatever its length: a form checks
-  the length apart, with its own message.
+  shape?/1 is whether `url` has the pattern's shape, whatever its length: a gateway's
+  form checks the length apart (`Apiary.Nodes.Node`), so that its error says the address
+  is too long.
   """
   @spec shape?(term) :: boolean
   def shape?(url), do: is_binary(url) and Regex.match?(@regex, url)
