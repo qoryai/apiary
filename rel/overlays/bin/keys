@@ -149,8 +149,8 @@ if [ -n "${QORY_REGISTRY:-}" ]; then
 
   # Its certificate, where APIARY_REGISTRY_CERT_DIR is set, written through a temporary
   # file and a rename when its public key is not the key's. The directory is never the
-  # keys directory nor inside it, both resolved, since the registry reads it. A failure
-  # says which directory, without the keys volume's sentence.
+  # keys directory, inside it or a parent of it, both resolved, since the registry reads
+  # it. A failure says which directory, without the keys volume's sentence.
   cert_dir=${APIARY_REGISTRY_CERT_DIR:-}
   if [ -n "$cert_dir" ]; then
     # cert_fail REASON: stops, with the reason after the last ": " of REASON.
@@ -164,13 +164,15 @@ if [ -n "${QORY_REGISTRY:-}" ]; then
 
     keys_real=$(cd "$dir" 2>&1 && pwd -P) || fail "$keys_real"
     cert_real=$(cd "$cert_dir" 2>&1 && pwd -P) || cert_fail "$cert_real"
-    case "$cert_real/" in
-    "$keys_real/"*)
+    keys_prefix=${keys_real%/}/
+    cert_prefix=${cert_real%/}/
+    case "$cert_prefix" in "$keys_prefix"*) cert_inside=1 ;; *) cert_inside= ;; esac
+    case "$keys_prefix" in "$cert_prefix"*) cert_parent=1 ;; *) cert_parent= ;; esac
+    if [ -n "$cert_inside" ] || [ -n "$cert_parent" ]; then
       printf 'Set APIARY_REGISTRY_CERT_DIR to a directory other than %s. Zot reads that directory, and %s contains the private keys.\n' \
         "$dir" "$dir" >&2
       exit 1
-      ;;
-    esac
+    fi
 
     cert=$cert_dir/registry-token.crt
     rm -f "$cert.tmp" 2>/dev/null || true
@@ -180,18 +182,12 @@ if [ -n "${QORY_REGISTRY:-}" ]; then
       held_public=$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null) || held_public=
     fi
     if [ "$public" != "$held_public" ]; then
-      # The temporary file is created afresh, never through a name that exists, and
-      # checked to be a regular file and no link before its mode changes.
-      output=$({
-        (set -C && : >"$cert.tmp") &&
-          openssl req -new -x509 -key "$registry_key" -sha256 -days 3650 \
-            -subj "/CN=Qory Apiary registry tokens" -out "$cert.tmp" &&
-          [ -f "$cert.tmp" ] && [ ! -L "$cert.tmp" ] &&
-          chmod 644 "$cert.tmp" &&
-          sync &&
-          mv -f "$cert.tmp" "$cert" &&
-          sync
-      } 2>&1) || cert_fail "$output"
+      # openssl writes the certificate to stdout. The shell creates the temporary file
+      # with mode 0644 from the umask; set -C makes that create fail where a file, or a
+      # link to a file or to no file, has the name. The rm -f after the directory check
+      # removes the temporary file a crash left.
+      pem=$(openssl req -new -x509 -key "$registry_key" -sha256 -days 3650 -subj "/CN=Qory Apiary registry tokens" 2>&1) || cert_fail "$pem"
+      output=$({ (umask 022 && set -C && printf '%s\n' "$pem" >"$cert.tmp") && sync && mv -f "$cert.tmp" "$cert" && sync; } 2>&1) || cert_fail "$output"
       printf 'Generated %s in %s.\n' registry-token.crt "$cert_dir"
     fi
   fi
