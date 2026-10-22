@@ -71,14 +71,7 @@ defmodule Apiary.Release do
     for repo <- repos() do
       {:ok, result, _} =
         Ecto.Migrator.with_repo(repo, fn _repo ->
-          # A projection announces itself; outside the running application nobody listens,
-          # but the name has to exist.
-          {:ok, pubsub} =
-            Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
-
-          result = Apiary.Runs.Rebuild.run(opts)
-          Supervisor.stop(pubsub)
-          result
+          with_pubsub(fn -> Apiary.Runs.Rebuild.run(opts) end)
         end)
 
       result
@@ -96,16 +89,7 @@ defmodule Apiary.Release do
 
     for repo <- repos() do
       {:ok, result, _} =
-        Ecto.Migrator.with_repo(repo, fn _repo ->
-          # A new version is announced; outside the running application nobody listens,
-          # but the name has to exist.
-          {:ok, pubsub} =
-            Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
-
-          result = Apiary.Policy.rerender_all()
-          Supervisor.stop(pubsub)
-          result
-        end)
+        Ecto.Migrator.with_repo(repo, fn _repo -> with_pubsub(&Apiary.Policy.rerender_all/0) end)
 
       result
     end
@@ -455,11 +439,14 @@ defmodule Apiary.Release do
   def refusal(_reason), do: "the database refused the change"
 
   # Outside the running application nobody listens to what a change announces, but the
-  # name has to exist; inside it, it does.
+  # name has to exist; inside it, it does. `bin/apiary eval` starts kernel and stdlib
+  # only, and `Phoenix.PubSub` fails to start until the `phoenix_pubsub` application runs.
   defp with_pubsub(fun) do
     if Process.whereis(Apiary.PubSub) do
       fun.()
     else
+      {:ok, _} = Application.ensure_all_started(:phoenix_pubsub)
+
       {:ok, pubsub} =
         Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
 
