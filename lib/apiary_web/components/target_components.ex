@@ -216,7 +216,14 @@ defmodule ApiaryWeb.TargetComponents do
         <.external_text text={shown_sent(run.runtime_version)} />
       </:col>
       <:col :let={run} label={gettext("Host")} kind="faint" from="md" class="whitespace-nowrap">
-        <span class="q-mono"><.external_text text={shown_sent(run.host)} /></span>
+        <%= case place_of(run) do %>
+          <% {:pool, name} -> %>
+            <span>{name}</span>
+          <% {:host, host} -> %>
+            <span class="q-mono"><.external_text text={shown_sent(host)} /></span>
+          <% nil -> %>
+            <span class="q-mono"></span>
+        <% end %>
       </:col>
       <:col :let={run} label={gettext("Started")} class="whitespace-nowrap">
         <.relative_time at={run.started_at || run.inserted_at} />
