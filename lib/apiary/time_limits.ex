@@ -130,7 +130,8 @@ defmodule Apiary.TimeLimits do
   # `Apiary.Access`, in the trail (the moduledoc). It checks no access: the check comes
   # with the action that covers time limits, which the caller asks before it calls here.
   # `{:ok, limit}`, or `{:error, refusal}`: a changeset with the reason on its field, or
-  # `:not_found`.
+  # `:not_found`. No caller exists yet: only the tests call it, and they pass
+  # `model_choice.write` as a stand-in for the action.
   @spec put_limit(Scope.t(), Access.action(), holder, String.t(), term) ::
           {:ok, TimeLimit.t()} | {:error, :not_found | Ecto.Changeset.t()}
   def put_limit(%Scope{} = scope, action, holder, workflow, minutes) do
@@ -146,7 +147,8 @@ defmodule Apiary.TimeLimits do
   # delete_limit/4 removes the limit for the runs of `workflow` at `holder`, so the next
   # place in the order applies, and leaves an entry of `action` in the trail. It checks no
   # access, as `put_limit/5`. `{:ok, limit}`, as it was, or `{:error, :not_found}` for a
-  # place with no limit for the workflow.
+  # place with no limit for the workflow. No caller exists yet: only the tests call it,
+  # and they pass `model_choice.write` as a stand-in for the action.
   @spec delete_limit(Scope.t(), Access.action(), holder, String.t()) ::
           {:ok, TimeLimit.t()} | {:error, :not_found}
   def delete_limit(%Scope{} = scope, action, holder, workflow) when is_binary(workflow) do
