@@ -139,9 +139,9 @@ config :apiary, :trusted_proxies_setting, System.get_env("TRUSTED_PROXIES")
 #
 # INTEGRATION_URL_SOURCES says whether an integration may be added from an https address
 # of its description.json, which may be on any host: true (1, yes), the default, or false
-# (0, no). An instance open to people the operator does not know, such as a cloud one,
-# turns it off, so that integrations are added from forges' releases alone; the server
-# still follows a release's download links, which its author chooses on GitLab and
+# (0, no). An instance open to people the instance admin does not know, such as a cloud
+# one, turns it off, so that integrations are added from forges' releases alone; the
+# server still follows a release's download links, which its author chooses on GitLab and
 # Codeberg, to any public https host. Off, a release already asked for from an address is
 # not fetched.
 #
