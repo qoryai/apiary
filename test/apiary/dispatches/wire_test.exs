@@ -105,8 +105,8 @@ defmodule Apiary.Dispatches.WireTest do
   }
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "c110d3c98e003cada889b77ce5ecb7b0ba6a69a4"},
-          {"run/v1", "c110d3c98e003cada889b77ce5ecb7b0ba6a69a4"},
+          {"provisioner/v1", "f5bc79a410348ce50d42979166f456adcf93b798"},
+          {"run/v1", "f5bc79a410348ce50d42979166f456adcf93b798"},
           {"integration/v1", "f5bc79a410348ce50d42979166f456adcf93b798"},
           {"explore/v1", "f5bc79a410348ce50d42979166f456adcf93b798"}
         ] do
@@ -249,7 +249,7 @@ defmodule Apiary.Dispatches.WireTest do
                {:ok,
                 %{
                   time: ~U[2026-10-15 12:02:00Z],
-                  reason: "The machine could not be created: the provider had no capacity."
+                  reason: "The machine could not be created: the vendor had no capacity."
                 }}
     end
 
