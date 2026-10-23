@@ -9,7 +9,12 @@ defmodule Apiary.Dispatches.Inputs do
   # - `explore/3`: the explore contract's `inputs.schema.json`, version 1, every member in
   #   the schema's order, from the rows Qory keeps and nothing the starter sent:
   #   - `work_item`: its public id, its number and its address (`Apiary.WorkItems.stable_url/1`);
-  #   - `run`: the run's `attempt` and `of`;
+  #   - `run`: the run's `attempt` and `of`, counted over the runs of its take in that
+  #     started: a run that ended before it started because its image was missing from
+  #     the registry, and was queued again (`Apiary.Dispatches.requeue_for_image/1`),
+  #     counts in neither. Such a requeue raises the take in's attempt and `of` by one
+  #     each in Qory Apiary, so the input gives both less the take in's requeues up to
+  #     the run: `attempt` 1 to 3, and `of` the take in's 3, as the schema requires;
   #   - `ticket`: the ticket as the work item kept it when it was taken in, its ref, its
   #     address, its title and its collection's title, and as the ticket's row holds it now,
   #     its text, who filed it and when (`Apiary.Sources.Item`);
@@ -118,7 +123,8 @@ defmodule Apiary.Dispatches.Inputs do
          :ok <- valid(work_item),
          {:ok, answers} <- answers(work_item, dispatch_run) do
       comments = Enum.map(comments(item), &comment/1)
-      document = &document(work_item, dispatch_run, item, by, answers, run, &1, &2)
+      counted = started(dispatch_run)
+      document = &document(work_item, counted, item, by, answers, run, &1, &2)
       inputs = bounded(document, comments, budget)
 
       # Every comment left out, the rest is within `max_bytes/0` by the columns' bounds; held
@@ -206,7 +212,7 @@ defmodule Apiary.Dispatches.Inputs do
   defp person(name, kind),
     do: Jason.OrderedObject.new([{"name", name}, {"kind", Atom.to_string(kind)}])
 
-  defp document(work_item, dispatch_run, item, by, answers, run, comments, omitted) do
+  defp document(work_item, {attempt, of}, item, by, answers, run, comments, omitted) do
     Jason.OrderedObject.new(
       [
         {"version", @version},
@@ -216,8 +222,7 @@ defmodule Apiary.Dispatches.Inputs do
            {"number", work_item.number},
            {"url", WorkItems.stable_url(work_item)}
          ])},
-        {"run",
-         Jason.OrderedObject.new([{"attempt", dispatch_run.attempt}, {"of", dispatch_run.of}])},
+        {"run", Jason.OrderedObject.new([{"attempt", attempt}, {"of", of}])},
         {"ticket",
          Jason.OrderedObject.new([
            {"external_ref", work_item.external_ref},
@@ -239,6 +244,22 @@ defmodule Apiary.Dispatches.Inputs do
         {"answers", answers}
       ] ++ target(run.target) ++ [{"domain", run.domain}]
     )
+  end
+
+  # The `attempt` and `of` of `dispatch_run` counted over the runs of its take in that
+  # started (the moduledoc): each less the runs of the take in up to it that an image
+  # requeue queued.
+  defp started(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt, of: of}) do
+    requeues =
+      Repo.aggregate(
+        from(r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in,
+          where: r.image_requeue and r.attempt <= ^attempt
+        ),
+        :count
+      )
+
+    {attempt - requeues, of - requeues}
   end
 
   defp target(nil), do: []

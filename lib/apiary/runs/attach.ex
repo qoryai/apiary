@@ -103,10 +103,12 @@ defmodule Apiary.Runs.Attach do
   #
   # - Among the runs that have ended (5. above) is a prebuild whose run of the queue its
   #   starter's `prebuilt` ended, to any attach but a repeat.
-  # - A run a workspace's queue handed over that is not a prebuild is given the image the
-  #   node pool that claimed it recorded for the run's target, the one its registration's
-  #   labels name, on its environment record, fixed at the attach
-  #   (`runs.configured_image`); that is the run given an image at the attach. A prebuild
+  # - A run a workspace's queue handed over that is not a prebuild is given the image its
+  #   claim read for it, the one the node pool that claimed it recorded for the run's
+  #   target on its environment record (`Apiary.Environments.claim_image/2`), kept from
+  #   the claim (`runs.configured_image`); for such a run its claim gave none, the image
+  #   the pool recorded for the target its registration's labels name, read at the attach.
+  #   Either is fixed at the attach; that is the run given an image at the attach. A prebuild
   #   whose workspace's policy names an image is given the policy without it. A run with
   #   no recorded image is given the configuration as stored.
 
@@ -124,6 +126,7 @@ defmodule Apiary.Runs.Attach do
   alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Runs.{Answer, Batch, Registration, Run, RunKey, Sender}
 
+  @prebuild DispatchRun.prebuild()
   @version "version"
   @run_key "run_key"
   @interval_seconds "interval_seconds"
@@ -491,9 +494,15 @@ defmodule Apiary.Runs.Attach do
   defp prebuild?(nil), do: false
 
   # The image a run starts in: for a run a workspace's queue handed over, not a prebuild,
-  # the image the pool that claimed it recorded for the run's target, the one its
-  # registration's labels name (`Apiary.Environments.image_for/2`); nil for any other run,
-  # which starts in the pool's default.
+  # the image its claim read for it (`runs.configured_image`,
+  # `Apiary.Environments.claim_image/2`); for such a run its claim gave none, the image
+  # the pool that claimed it recorded for the run's target, the one its registration's
+  # labels name (`Apiary.Environments.image_for/2`); nil for any other run, which starts
+  # in the pool's default.
+  defp image(%Run{configured_image: image}, _workspace, %{step: step, pool_id: pool_id})
+       when is_binary(image) and is_binary(pool_id) and step != @prebuild,
+       do: image
+
   defp image(%Run{} = run, workspace, %{step: step, pool_id: pool_id})
        when is_binary(pool_id) do
     with false <- step == DispatchRun.prebuild(),

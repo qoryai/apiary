@@ -1108,11 +1108,19 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp silenced?(run), do: match?(%DateTime{}, Map.get(run, :silenced_at))
 
-  # The time its attach gave the run for its end, in whole minutes: what the step's
-  # backstop was then, whatever it is now. In hours and minutes from 60 minutes on:
-  # 87,300 s reads "24 hours and 15 minutes", 2,100 s "35 minutes".
-  defp backstop_words(%{backstop_at: backstop_at, attached_at: attached_at}) do
-    minutes = div(DateTime.diff(backstop_at, attached_at, :second), 60)
+  # The time its attach gave the run for its end: what the step's backstop was then,
+  # whatever it is now.
+  defp backstop_words(%{backstop_at: backstop_at, attached_at: attached_at}),
+    do: duration_words(DateTime.diff(backstop_at, attached_at, :second))
+
+  @doc """
+  A duration of `seconds`, in whole minutes, in hours and minutes from 60 minutes on:
+  87,300 s reads "24 hours and 15 minutes", 4,500 s "1 hour and 15 minutes", 2,100 s
+  "35 minutes".
+  """
+  @spec duration_words(integer) :: String.t()
+  def duration_words(seconds) when is_integer(seconds) do
+    minutes = div(seconds, 60)
     hours = div(minutes, 60)
     rest = rem(minutes, 60)
 

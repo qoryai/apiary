@@ -9,14 +9,14 @@ defmodule Apiary.Environments.RebuildRacesTest do
   # The rule under test: a Rebuild holds the collections' connections, then the
   # collections, before their environment records, in the order a part and an assign keep
   # (`Apiary.Dispatches.Slots`), so a part that holds its connection and its collections
-  # `FOR UPDATE` and then triggers, and a Rebuild, take turns, and neither deadlocks.
+  # `FOR UPDATE` and then changes them, and a Rebuild, take turns, and neither deadlocks.
   use ExUnit.Case, async: false
 
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.Races
 
-  alias Apiary.{Dispatches, Edition, Environments, Repo, Targets}
+  alias Apiary.{Edition, Environments, Repo, Targets}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Audit.Entry
@@ -80,11 +80,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       pool_id: pool.id,
-      source_collection_id: collection.id,
-      queued_ref: "env-1",
-      queued_at: DateTime.utc_now(),
-      queued_target_system: @system,
-      queued_target_path: @path
+      source_collection_id: collection.id
     })
 
     :ok =
@@ -111,7 +107,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
     )
   end
 
-  test "a part holds the collection, a Rebuild waits for it, then the part triggers: neither deadlocks",
+  test "a part holds the collection, a Rebuild waits for it, then the part commits: neither deadlocks",
        ctx do
     %{id: id} = ctx.collection
 
@@ -130,23 +126,13 @@ defmodule Apiary.Environments.RebuildRacesTest do
 
     rebuild = start(fn -> Environments.rebuild(ctx.scope, ctx.target) end)
 
-    # The Rebuild waits on the part. Had it locked the records first, the part's trigger
-    # would now wait on the Rebuild, and the Rebuild, which has waited longer, would be
-    # refused (`deadlock_detected`).
+    # The Rebuild waits on the part.
     await_waited(rebuild.backend, part_backend)
-
-    queued =
-      continue(part, fn ->
-        Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())
-      end)
-
     commit(part)
 
-    assert [%DispatchRun{environment_ref: "env-2"}] = queued
-
-    # The Rebuild read the collection as the part left it, and found its prebuild of
-    # `env-2` waiting for the pool: it queued nothing more.
-    assert Task.await(rebuild.task, 10_000) == {:ok, 0}
+    # The Rebuild read the collection as the part left it, and queued its prebuild of
+    # `env-2` for the pool.
+    assert Task.await(rebuild.task, 10_000) == {:ok, 1}
     assert waiting(ctx.collection) == [{ctx.pool.id, "env-2"}]
   end
 
@@ -170,11 +156,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       pool_id: pool.id,
-      source_collection_id: second.id,
-      queued_ref: "env-1",
-      queued_at: DateTime.utc_now(),
-      queued_target_system: @system,
-      queued_target_path: @path
+      source_collection_id: second.id
     })
 
     [low, high] = Enum.sort([first.id, second.id])
@@ -215,29 +197,20 @@ defmodule Apiary.Environments.RebuildRacesTest do
     # be refused (`deadlock_detected`).
     await_waited(rebuild.backend, part_backend)
 
-    queued =
+    {2, _rows} =
       continue(part, fn ->
         [^low] = hold_refs.(["Z"])
 
-        {2, _rows} =
-          Repo.update_all(from(c in Collection, where: c.id in ^[low, high]),
-            set: [environment_ref: "env-2"]
-          )
-
-        Environments.trigger(
-          Repo.all(from c in Collection, where: c.id in ^[low, high]),
-          Dispatches.now()
+        Repo.update_all(from(c in Collection, where: c.id in ^[low, high]),
+          set: [environment_ref: "env-2"]
         )
       end)
 
     commit(part)
 
-    assert [%DispatchRun{environment_ref: "env-2"}, %DispatchRun{environment_ref: "env-2"}] =
-             queued
-
-    # The Rebuild read both collections as the part left them, and found their prebuilds of
-    # `env-2` waiting for the pool: it queued nothing more.
-    assert Task.await(rebuild.task, 10_000) == {:ok, 0}
+    # The Rebuild read both collections as the part left them, and queued their prebuilds
+    # of `env-2` for the pool.
+    assert Task.await(rebuild.task, 10_000) == {:ok, 2}
 
     for collection <- [first, second],
         do: assert(waiting(collection) == [{pool.id, "env-2"}])

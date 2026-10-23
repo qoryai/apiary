@@ -39,11 +39,10 @@ defmodule Apiary.Dispatches.RunEndTest do
   defp run!(%Run{id: id}), do: Repo.get!(Run, id)
   defp record!(%Record{id: id}), do: Repo.get!(Record, id)
 
-  # The last good build and what was queued, as the setup kept them.
+  # The last good build, as the setup kept it.
   defp assert_build_kept(%{record: record}) do
-    kept = [:image, :size, :commit, :built_at, :reported_ref, :queued_ref, :queued_at]
+    kept = [:image, :size, :commit, :built_at, :reported_ref, :built_ref]
     assert Map.take(record!(record), kept) == Map.take(record, kept)
-    assert record!(record).retired_at == nil
   end
 
   # No run of the queue for the collection but the prebuild that was handed over.
@@ -51,6 +50,21 @@ defmodule Apiary.Dispatches.RunEndTest do
     assert Repo.all(
              from r in DispatchRun, where: r.source_collection_id == ^collection.id, select: r.id
            ) == [handed.dispatch_run.id]
+  end
+
+  # A first loss of the collection's `environment_ref`: the record has it as `lost_ref`,
+  # and one more prebuild of it waits for the pool (`Apiary.Environments.build_failed/6`).
+  defp assert_queued_again(%{collection: collection, handed: handed, record: record}) do
+    assert %Record{lost_ref: "env-1"} = Repo.get!(Record, record.id)
+
+    assert [%DispatchRun{state: :waiting, environment_ref: "env-1", pool_id: pool_id}] =
+             Repo.all(
+               from r in DispatchRun,
+                 where: r.source_collection_id == ^collection.id,
+                 where: r.id != ^handed.dispatch_run.id
+             )
+
+    assert pool_id == handed.dispatch_run.pool_id
   end
 
   # The registered run of `dispatch_run` cancelled, `released`, as a release after the
@@ -84,9 +98,9 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   describe "backstop_seconds/1" do
-    test "is 87,300 for explore, 2100 for prebuild, and Explore's for a step it does not name" do
+    test "is 87,300 for explore, 4500 for prebuild, and Explore's for a step it does not name" do
       assert Dispatches.backstop_seconds("explore") == 87_300
-      assert Dispatches.backstop_seconds("prebuild") == 2100
+      assert Dispatches.backstop_seconds("prebuild") == 4500
       assert Dispatches.backstop_seconds("another_step") == 87_300
       assert Dispatches.backstop_seconds(nil) == 87_300
     end
@@ -546,13 +560,12 @@ defmodule Apiary.Dispatches.RunEndTest do
           workspace_id: ctx.scope.workspace.id,
           pool_id: place.pool.id,
           source_collection_id: collection.id,
-          queued_ref: "env-1",
-          queued_at: DateTime.utc_now(),
           image: @image,
           size: 734_003_200,
           commit: "9c1e4a7b",
           built_at: DateTime.utc_now(),
-          reported_ref: "env-1"
+          reported_ref: "env-1",
+          built_ref: "env-1"
         })
 
       {:ok, queued} =
@@ -576,12 +589,12 @@ defmodule Apiary.Dispatches.RunEndTest do
       }
     end
 
-    test "its attach sets its backstop 2100 s after it", ctx do
+    test "its attach sets its backstop 4500 s, 1 hour and 15 minutes, after it", ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
-      assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 2100 * 1_000_000
+      assert DateTime.diff(run.backstop_at, run.attached_at, :microsecond) == 4500 * 1_000_000
     end
 
-    test "lost at its run key's attach_by records the build failed, lost, and queues nothing",
+    test "lost at its run key's attach_by records the build failed, lost, and queues it again",
          ctx do
       attach_by = ctx.handed.run.attach_by
 
@@ -597,10 +610,13 @@ defmodule Apiary.Dispatches.RunEndTest do
                record!(ctx.record)
 
       assert_build_kept(ctx)
-      assert_nothing_queued(ctx)
+      assert_queued_again(ctx)
     end
 
-    test "ended by its backstop records the build failed, timed_out, and queues nothing", ctx do
+    test "ended by its backstop records the build failed, timed_out, queues nothing and ends the held runs",
+         ctx do
+      held = [held!(ctx)]
+
       # A release failed the build before: its reason goes with the new failure.
       {1, _rows} =
         Repo.update_all(from(r in Record, where: r.id == ^ctx.record.id),
@@ -625,11 +641,18 @@ defmodule Apiary.Dispatches.RunEndTest do
       Liveness.check(after_it)
       assert_ended(ctx.handed, :lost)
 
-      assert %Record{failure_cause: :timed_out, failure_reason: nil, failed_at: ^after_it} =
-               record!(ctx.record)
+      assert %Record{
+               failure_cause: :timed_out,
+               failure_reason: nil,
+               failed_at: ^after_it,
+               lost_ref: nil
+             } = record!(ctx.record)
 
+      # A build past its backstop failed: it is not queued again, and the runs held for
+      # it end.
       assert_build_kept(ctx)
       assert_nothing_queued(ctx)
+      assert_held_ended(held)
 
       # A second check changes nothing.
       ended = record!(ctx.record)
@@ -637,7 +660,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ended
     end
 
-    test "silent 600 s after its attach records the build failed, lost, and queues nothing",
+    test "silent 600 s after its attach records the build failed, lost, and queues it again",
          ctx do
       assert {:ok, %{run: run}} = ctx.attach.()
       after_it = DateTime.add(run.attached_at, 601, :second)
@@ -650,7 +673,7 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert %Run{state: "lost"} = run!(ctx.handed.run)
       assert_build_kept(ctx)
-      assert_nothing_queued(ctx)
+      assert_queued_again(ctx)
     end
 
     # Its fetch's exit, stored and folded onto the registered run.
@@ -683,7 +706,9 @@ defmodule Apiary.Dispatches.RunEndTest do
                  failed = record!(ctx.record)
 
         assert_build_kept(ctx)
-        assert_nothing_queued(ctx)
+
+        # A lost build is queued once more; a failed one is not.
+        if cause == :lost, do: assert_queued_again(ctx), else: assert_nothing_queued(ctx)
         assert Slots.held(ctx.place.pool.id) == 0
 
         # The lost-run check changes nothing of the queue or the record, and the pool's
@@ -693,6 +718,199 @@ defmodule Apiary.Dispatches.RunEndTest do
         assert_ended(ctx.handed, :run_ended)
         assert record!(ctx.record) == failed
       end
+    end
+
+    # A waiting run of a fresh work item in Explore with the collection's target, held
+    # for the pool's build of it.
+    defp held!(ctx) do
+      work_item =
+        work_item_fixture(ctx.scope, %{
+          target_system: ctx.collection.target_system,
+          target_path: ctx.collection.target_path
+        })
+
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      run
+    end
+
+    # The runs held for the build, ended `build_failed` with the outcome `error`, never
+    # dispatched.
+    defp assert_held_ended(runs) do
+      for run <- runs do
+        assert %DispatchRun{state: :ended, end_cause: :build_failed, result_outcome: :error} =
+                 queue_run!(run)
+
+        assert Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^run.id) == []
+      end
+    end
+
+    defp assert_held_waiting(runs),
+      do: for(run <- runs, do: assert(%DispatchRun{state: :waiting} = queue_run!(run)))
+
+    test "its failed exit ends the runs held for its build build_failed, with the outcome error",
+         ctx do
+      held = [held!(ctx), held!(ctx)]
+
+      other =
+        work_item_fixture(ctx.scope, %{
+          target_system: "code.example.com",
+          target_path: "acme/other"
+        })
+
+      {:ok, unheld} = Repo.transact(fn -> Dispatches.queue(other, 1) end)
+
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+
+      assert %Record{failure_cause: :failed, lost_ref: nil} = record!(ctx.record)
+      assert_held_ended(held)
+      assert_nothing_queued(ctx)
+      assert %DispatchRun{state: :waiting} = queue_run!(unheld)
+    end
+
+    @tag needs: [:factory, :security]
+    test "its failed exit ends no run whose target's run configuration names an image",
+         ctx do
+      held = [held!(ctx)]
+      document = ~s({"version":1,"security_policy":{"version":1,"image":"with-docker"}})
+
+      Repo.insert!(%Apiary.Policy.RunConfiguration{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        version: 1,
+        document: document,
+        digest: Apiary.Policy.Render.digest(document),
+        rendered_at: DateTime.utc_now()
+      })
+
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+
+      assert %Record{failure_cause: :failed} = record!(ctx.record)
+      assert_held_waiting(held)
+    end
+
+    test "a first loss queues the build once more and the held runs wait; a second loss ends them",
+         ctx do
+      held = [held!(ctx)]
+      attach_by = ctx.handed.run.attach_by
+      assert [%Run{state: "lost"}] = Liveness.check(DateTime.add(attach_by, 1, :microsecond))
+
+      assert_queued_again(ctx)
+      assert_held_waiting(held)
+
+      # The build queued again is claimed past the held run, and lost too.
+      %{dispatch: dispatch, registered: run} = dispatched!(ctx.place.key)
+
+      assert Liveness.check(DateTime.add(run.attach_by, 1, :microsecond)) != []
+      assert %Dispatch{end_cause: :lost} = dispatch!(dispatch)
+      assert %Record{failure_cause: :lost, lost_ref: nil} = record!(ctx.record)
+      assert_held_ended(held)
+    end
+
+    test "a failed build ends no held run while another pool has the image for the target",
+         ctx do
+      held = [held!(ctx)]
+      other = pool_fixture(ctx.scope)
+
+      %Record{} = record = ctx.record
+
+      Repo.insert!(%{
+        record
+        | id: nil,
+          pool_id: other.id,
+          built_target_system: ctx.collection.target_system,
+          built_target_path: ctx.collection.target_path
+      })
+
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+
+      assert %Record{failure_cause: :failed} = record!(ctx.record)
+      assert_held_waiting(held)
+    end
+
+    for deleted? <- [false, true] do
+      test "a failed build ends the held runs while another pool's build waits (that pool deleted: #{deleted?})",
+           ctx do
+        held = [held!(ctx)]
+        other = pool_fixture(ctx.scope)
+
+        {:ok, waiting} =
+          Repo.transact(fn -> Dispatches.queue_prebuild(ctx.collection, other, "env-1") end)
+
+        if unquote(deleted?) do
+          {1, _rows} =
+            Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^other.id),
+              set: [deleted_at: DateTime.utc_now()]
+            )
+        end
+
+        assert {:ok, %{run: _run}} = ctx.attach.()
+        exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+        assert_held_ended(held)
+        assert %DispatchRun{state: :waiting} = queue_run!(waiting)
+      end
+    end
+
+    test "two pools whose builds fail one after the other: the first failure ends the held runs, once",
+         ctx do
+      held = [held!(ctx)]
+      second = handover_place_fixture(ctx.scope)
+
+      {:ok, _queued} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(ctx.collection, second.pool, "env-1") end)
+
+      %{run: other_build, registered: registered, run_code: code} = dispatched!(second.key)
+      assert other_build.pool_id == second.pool.id
+
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+      assert_held_ended(held)
+      ended = Enum.map(held, &queue_run!/1)
+
+      # The second pool's build attaches through the gateway its claim resolved to, and
+      # fails: the held runs keep the end they have.
+      {gateway_key, _seed} =
+        Enum.find_value([ctx.place, second], fn place ->
+          if place.gateway.id == registered.gateway_id, do: place.gateway_key
+        end)
+
+      {:ok, body} = Attach.parse(attach_body(redeemed_run_key!(code)))
+
+      assert {:ok, %{run: _run}} =
+               Attach.attach(gateway_key, other_build.run_id, body, %{instance_id: instance_id()})
+
+      event_fixture(registered, 9, "run.exited", %{"state" => "failed", "exit_code" => 1})
+      assert {:ok, %Run{state: "failed"}} = Projector.project(registered)
+
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(other_build)
+
+      assert %Record{failure_cause: :failed} =
+               Repo.get_by!(Record,
+                 source_collection_id: ctx.collection.id,
+                 pool_id: second.pool.id
+               )
+
+      assert Enum.map(held, &queue_run!/1) == ended
+    end
+
+    test "a failed or lost build of a ref its collection no longer has ends nothing and queues nothing",
+         ctx do
+      held = [held!(ctx)]
+
+      {1, _rows} =
+        Repo.update_all(
+          from(c in Apiary.Adapters.Collection, where: c.id == ^ctx.collection.id),
+          set: [environment_ref: "env-2"]
+        )
+
+      assert [%Run{state: "lost"}] =
+               Liveness.check(DateTime.add(ctx.handed.run.attach_by, 1, :microsecond))
+
+      assert %Record{failure_cause: :lost, lost_ref: nil} = record!(ctx.record)
+      assert_nothing_queued(ctx)
+      assert_held_waiting(held)
     end
 
     test "its cancelled exit ends it run_ended and records no failure", ctx do
@@ -824,13 +1042,12 @@ defmodule Apiary.Dispatches.RunEndTest do
         workspace_id: ctx.scope.workspace.id,
         pool_id: ctx.pool.id,
         source_collection_id: collection_fixture(ctx.scope).id,
-        queued_ref: "env-1",
-        queued_at: DateTime.utc_now(),
         image: @image,
         size: 734_003_200,
         commit: "9c1e4a7b",
         built_at: DateTime.utc_now(),
-        reported_ref: "env-1"
+        reported_ref: "env-1",
+        built_ref: "env-1"
       })
 
     unattached = handed_over!(ctx, unattached())

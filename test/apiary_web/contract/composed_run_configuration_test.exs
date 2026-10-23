@@ -79,15 +79,12 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       workspace_id: ctx.scope.workspace.id,
       pool_id: ctx.pool.id,
       source_collection_id: collection.id,
-      queued_ref: "env-1",
-      queued_at: now,
-      queued_target_system: system,
-      queued_target_path: path,
       image: @image,
       size: 734_003_200,
       commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c",
       built_at: now,
       reported_ref: "env-1",
+      built_ref: "env-1",
       built_target_system: built_system,
       built_target_path: built_path,
       built_queued_at: now
@@ -113,7 +110,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     collection = collection_fixture(ctx.scope, target_path: "acme/shop")
 
     {:ok, _queued} =
-      Repo.transact(fn -> {:ok, Apiary.Environments.trigger([collection], Dispatches.now())} end)
+      {:ok, Apiary.DispatchedRunsFixtures.queue_builds!(collection)}
 
     {:ok, claimed} = Dispatches.claim(ctx.key, Dispatches.now())
     {claimed.registered.node_run_id, redeemed_run_key!(claimed.run_code)}

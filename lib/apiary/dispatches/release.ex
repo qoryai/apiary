@@ -43,9 +43,9 @@ defmodule Apiary.Dispatches.Release do
   #     same `queued_at`, so it takes back its place in the queue. The work item is left as
   #     it is;
   #   - a prebuild goes back to the queue as a lapsed one does, under its record's lock
-  #     (`Apiary.Dispatches.Slots.wait_again/3`): it waits again with the record's
-  #     `queued_ref`, or ends `superseded` while another prebuild of its collection and
-  #     pool waits. No failure is recorded.
+  #     (`Apiary.Dispatches.Slots.wait_again/2`): it waits again with its
+  #     `environment_ref`, or ends `superseded` while another prebuild of its collection,
+  #     pool and `environment_ref` waits. No failure is recorded.
   #
   # A prebuild given back records no failure: its environment record keeps its last
   # build as it was.
@@ -74,7 +74,6 @@ defmodule Apiary.Dispatches.Release do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Slots}
-  alias Apiary.Environments.Record
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
@@ -131,10 +130,9 @@ defmodule Apiary.Dispatches.Release do
   defp give_back(%{run: %DispatchRun{step: @prebuild}} = locked, release) do
     changed = end_dispatch(locked)
     run = locked.run
-    queued_refs = queued_refs(locked.held, run)
 
     came =
-      if run.id in Slots.wait_again([run], queued_refs, locked.now),
+      if run.id in Slots.wait_again([run], locked.now),
         do: %{"superseded" => true},
         else: %{"waits" => true}
 
@@ -168,11 +166,6 @@ defmodule Apiary.Dispatches.Release do
     _freed = Slots.free_slot(dispatch, now)
     [dispatch.workspace_id]
   end
-
-  defp queued_refs(%Record{queued_ref: queued_ref}, %DispatchRun{} = run),
-    do: %{{run.source_collection_id, run.pool_id} => queued_ref}
-
-  defp queued_refs(nil, %DispatchRun{}), do: %{}
 
   # The one audit entry, in the transaction, about `subject`.
   defp record(%{key: key, dispatch: dispatch, run: run}, release, came, subject) do

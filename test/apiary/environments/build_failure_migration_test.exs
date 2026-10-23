@@ -51,8 +51,6 @@ defmodule Apiary.Environments.BuildFailureMigrationTest do
       workspace_id: ctx.scope.workspace.id,
       pool_id: ctx.pool.id,
       source_collection_id: collection_fixture(ctx.scope, environment_ref: nil).id,
-      queued_ref: "env-1",
-      queued_at: DateTime.utc_now(),
       failure_cause: cause,
       failed_at: DateTime.utc_now()
     })

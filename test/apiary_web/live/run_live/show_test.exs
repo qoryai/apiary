@@ -1,11 +1,15 @@
 defmodule ApiaryWeb.RunLive.ShowTest do
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
+  alias Apiary.Dispatches
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.Projector
   alias Mix.Tasks.Apiary.Demo
@@ -2499,6 +2503,48 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       jump = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=2"
       assert has_element?(lv, ~s(#run-why-jump[href="#{jump}"]), "Jump to it")
+    end
+
+    test "a run whose image was missing and whose work was queued again says so, and leads to its exit",
+         %{conn: conn, scope: scope} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      run =
+        projected(
+          scope,
+          [
+            {1, "run.started", started_data()},
+            {2, "run.exited",
+             %{"state" => "failed", "reason" => "image_missing", "exit_code" => -1}}
+          ],
+          %{dispatch_run_id: queued.id}
+        )
+
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+      {:ok, lv, _html} = live(conn, path)
+      refute has_element?(lv, "#run-why", "environment image")
+
+      ended = Repo.get!(DispatchRun, queued.id)
+
+      {:ok, %{attempt: 2}} =
+        Repo.transact(fn -> Dispatches.requeue_for_image(ended) end)
+
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(
+               lv,
+               "#run-why",
+               "Ended before it started: its environment image was missing from the registry. The work is queued again and waits for a new build of the image."
+             )
+
+      assert has_element?(lv, ~s(#run-why-jump[href="#{path}?seq=2"]), "Jump to it")
     end
 
     test "a run that ended well says nothing more", %{conn: conn, scope: scope} do

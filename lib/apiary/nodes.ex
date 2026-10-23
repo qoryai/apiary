@@ -63,7 +63,7 @@ defmodule Apiary.Nodes do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Audit, Environments, Gateways, PublicId, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Audit, Gateways, PublicId, Repo, Runs}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches.Slots
@@ -285,20 +285,12 @@ defmodule Apiary.Nodes do
            {:ok, changeset} <- limit_set(asking, changeset, workspace),
            {:ok, node} <- PublicId.Insert.insert(changeset),
            {:ok, node} <- default_if_none(node, workspace),
-           _queued = queue_prebuilds(node),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"node.create", node, %{after: created(node)}) do
         {:ok, node}
       end
     end)
   end
-
-  # A new node pool applies the prebuilds' trigger for the collections assigned to its
-  # workspace (`Apiary.Environments.trigger_for_pool/2`).
-  defp queue_prebuilds(%Node{kind: :pool} = pool),
-    do: Environments.trigger_for_pool(pool, DateTime.utc_now())
-
-  defp queue_prebuilds(%Node{}), do: []
 
   # A node, a node pool or a gateway is made here; an adapter, which is the instance's, is
   # made through `Apiary.Adapters` alone.

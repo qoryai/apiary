@@ -125,9 +125,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       organisation_id: ctx.scope.organisation.id,
       workspace_id: ctx.scope.workspace.id,
       pool_id: ctx.pool.id,
-      source_collection_id: collection.id,
-      queued_ref: "env-1",
-      queued_at: DateTime.utc_now()
+      source_collection_id: collection.id
     })
 
     {:ok, run} =

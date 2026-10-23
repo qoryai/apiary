@@ -4841,6 +4841,11 @@ msgstr ""
 msgid "Check the fields below."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Check why the build failed on the target's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check your email"
@@ -6336,6 +6341,11 @@ msgid "Ended badly, %{number} day"
 msgid_plural "Ended badly, %{number} days"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Ended before it started: its environment image was missing from the registry. The work is queued again and waits for a new build of the image."
+msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -12903,12 +12913,12 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the pool's default image until this target is built."
+msgid "Runs use the pool's default image: this target no longer has an environment set."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the pool's default image: this target no longer has an environment set."
+msgid "Runs wait until this target's environment image is built."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -14655,7 +14665,7 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "The last build failed: it ran past 35 minutes."
+msgid "The last build failed: it ran past %{duration}."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
