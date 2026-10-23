@@ -30,9 +30,9 @@ defmodule Apiary.Repo.Migrations.HoldRunsForTheirEnvironmentBuild do
   # go, one waiting prebuild per collection and node pool comes back, and the queued
   # columns come back, each record queued for its collection's
   # `environment_ref`, or for its `reported_ref` where the collection has none, at the
-  # record's `updated_at`, for the collection's target. The roll back refuses while a run
-  # of the queue or a dispatch has the cause `build_failed`, while two prebuilds of one
-  # collection and node pool wait, or while a record has neither ref.
+  # record's `updated_at`, for the collection's target. The roll back raises an error
+  # while a run of the queue or a dispatch has the cause `build_failed`, while two
+  # prebuilds of one collection and node pool wait, or while a record has neither ref.
   @ref_check "BETWEEN 1 AND 200"
   @before ~w(released closed undone run_ended lost collection_ended superseded
              variables_invalid ticket_gone inputs_invalid prebuilt

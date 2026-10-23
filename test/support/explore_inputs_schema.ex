@@ -9,7 +9,7 @@ defmodule Apiary.ExploreInputsSchema do
 
   @base "https://qory.dev/contracts/"
 
-  @doc "`:ok`, or `{:error, error}` with what the schema refuses in `inputs`, decoded."
+  @doc "`:ok`, or `{:error, error}` with the errors the schema check finds in `inputs`, decoded."
   def validate(inputs) do
     roots = [
       Path.expand("../fixtures/contract", __DIR__),

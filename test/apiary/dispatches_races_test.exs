@@ -760,7 +760,7 @@ defmodule Apiary.DispatchesRacesTest do
 
           # The change waits on the claim, or the claim on the change, past half the
           # deadlock timeout, before the change goes on: should they wait on each other,
-          # Postgres refuses the claim.
+          # Postgres aborts the claim.
           {held, held_backend} = hold(fn -> hold_lower(ctx, unquote(change), pair) end)
           claim = start(claim_answer(key))
           await_waited(claim.backend, held_backend)

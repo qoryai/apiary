@@ -157,11 +157,12 @@ defmodule Apiary.Dispatches.Slots do
   # (`lapsed_collections/2`) and those it queues a build of. A path that holds
   # collections `FOR UPDATE` then waits for the claim at the first of them the claim
   # holds, or the claim waits there for that path before it holds any collection or the
-  # pool, and the claim's later `FOR KEY SHARE` meets only its own `FOR SHARE`. A part,
-  # which holds its connection `FOR UPDATE` first, can also wait at a connection the
-  # claim holds `FOR SHARE`, before it holds any collection of it. So neither waits on
-  # the other in turn. A dispatch claimed after the claim read the lapsed ones has a
-  # lease past the claim's `now`, so its free finds no lapsed dispatch it did not read.
+  # pool, and the claim's later `FOR KEY SHARE` meets only the claim's `FOR SHARE` lock
+  # on the same row. A part, which holds its connection `FOR UPDATE` first, can also
+  # wait at a connection the claim holds `FOR SHARE`, before it holds any collection of
+  # it. So neither waits on the other in turn. A dispatch claimed after the claim read
+  # the lapsed ones has a lease past the claim's `now`, so the claim's free finds no
+  # lapsed dispatch the claim did not read.
   # `free/2` writes the dispatches with each write asking its conditions again, so a
   # dispatch handed over, ended or freed meanwhile is left as it is.
   #
