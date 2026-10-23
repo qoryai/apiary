@@ -2,9 +2,9 @@ defmodule Apiary.Runs.Place do
   @moduledoc """
   Where a run ran, in a query, as the pages show it (`ApiaryWeb.RunComponents.place_of/1`):
   for a run a node pool's dispatch handed over (`dispatch_run_id` set), the name of the
-  pool, the run's node; for every other run, the host its `run.started` reported. The
-  host of a pool's run is a machine of the pool's operator, which the runs list's Filter,
-  a target's Machines and a key's hosts leave out.
+  pool, the run's node; for every other run, the host its `run.started` reported. The host
+  of a pool's run is one of the pool's machines, which the runs list's Filter, a target's
+  Machines and a key's hosts leave out.
   """
 
   @doc """
