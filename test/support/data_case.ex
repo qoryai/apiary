@@ -170,6 +170,25 @@ defmodule Apiary.DataCase do
   def setup_features(_tags), do: :ok
 
   @doc """
+  Turns the `registry` feature off for one test, whatever the suite runs under, and puts
+  back the features afterwards: `setup {Apiary.DataCase, :without_registry}`. For a test
+  of a run configuration or a secrets request as it is without the registry's run
+  credential, under every leg of the suite. The features are the whole node's, so the
+  test must not be async.
+  """
+  def without_registry(tags) do
+    if tags[:async] do
+      raise ArgumentError,
+            "without_registry changes the whole node, so the test must not be async"
+    end
+
+    previous = Application.get_env(:apiary, :features)
+    Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:registry])
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    :ok
+  end
+
+  @doc """
   A helper that transforms changeset errors into a map of messages.
 
       assert {:error, changeset} = Accounts.create_user(%{password: "short"})

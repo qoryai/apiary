@@ -253,22 +253,39 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   """
   def who(people, id), do: People.account(people, id)
 
-  @doc "may_write?/1 says whether the scope may change the organisation's integrations."
+  @doc """
+  may_write?/1 says whether the scope may add, change and remove the organisation's
+  integrations and services (`connection.write`), fetch a release and write a service
+  definition.
+  """
   def may_write?(scope),
     do: Apiary.Access.can?(scope, :"connection.write", scope.organisation)
 
   @doc """
-  only_admins/1 is the line a person who may not change the section reads: a reader
-  through the edition's reach is told what they may do (`ApiaryWeb.Access.reads_only/1`),
-  a member who and what (`ApiaryWeb.Access.who_may/3`).
+  may_write?/2 says whether the scope may change `connection`, asked under the action for
+  its kind (`Apiary.Connections.write_action/1`): `runtime.write` for a runtime,
+  `connection.write` for an integration and a service.
   """
-  def only_admins(scope) do
+  def may_write?(scope, %Connection{} = connection),
+    do: Apiary.Access.can?(scope, Connections.write_action(connection), scope.organisation)
+
+  @doc "may_write_runtimes?/1 says whether the scope may set up a runtime (`runtime.write`)."
+  def may_write_runtimes?(scope),
+    do: Apiary.Access.can?(scope, :"runtime.write", scope.organisation)
+
+  @doc """
+  only_admins/2 is the line a person who may not change the section reads: a reader
+  through the edition's reach is told what they may do (`ApiaryWeb.Access.reads_only/1`),
+  a member who and what (`ApiaryWeb.Access.who_may/3`), of the `action` they were refused,
+  `connection.write` by default.
+  """
+  def only_admins(scope, action \\ :"connection.write") do
     if Apiary.Access.reader(scope),
       do: ApiaryWeb.Access.reads_only(scope),
       else:
         ApiaryWeb.Access.who_may(
           scope,
-          :"connection.write",
+          action,
           gettext("Only owners and admins change the integrations of the organisation.")
         )
   end
@@ -374,14 +391,15 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   ## Refusals
 
   @doc """
-  refusal/3 is the sentence for a refusal of `Apiary.Connections` or
+  refusal/4 is the sentence for a refusal of `Apiary.Connections` or
   `Apiary.Integrations` to `scope`, the organisation's `connections` naming those an overlap
-  is with.
+  is with. A refusal for want of the right says who may take `action`, `connection.write`
+  by default.
   """
-  def refusal(scope, reason, connections \\ [])
+  def refusal(scope, reason, connections \\ [], action \\ :"connection.write")
 
-  def refusal(scope, :forbidden, _connections), do: only_admins(scope)
-  def refusal(_scope, reason, connections), do: sentence(reason, connections)
+  def refusal(scope, :forbidden, _connections, action), do: only_admins(scope, action)
+  def refusal(_scope, reason, connections, _action), do: sentence(reason, connections)
 
   defp sentence({:overlap, ids}, connections) do
     names =

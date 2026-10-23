@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.Contract.SecretsDiscoveryTest do
-  # Discovery lists the secrets endpoint for a key allowed stored secrets, only with the
-  # `factory` and `secrets` features both on; with either off, a secrets request that
-  # verifies is given a signed 404. Not async: the features are the whole node's.
+  # Discovery lists the secrets endpoint for a key allowed stored secrets, with the
+  # `factory` and `secrets` features both on, and for every key with the `registry`
+  # feature on; with neither, a secrets request that verifies is given a signed 404. Not
+  # async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures
@@ -41,6 +42,7 @@ defmodule ApiaryWeb.Contract.SecretsDiscoveryTest do
   end
 
   @tag needs: :factory
+  @tag with_features: [:observability, :security, :secrets, :factory]
   test "lists the secrets URL for a key allowed stored secrets", ctx do
     document = Jason.decode!(response(discovery(ctx.allowed), 200))
     assert document["secrets"] == %{"url" => ApiaryWeb.Endpoint.url() <> "/v1/secrets"}
@@ -88,6 +90,30 @@ defmodule ApiaryWeb.Contract.SecretsDiscoveryTest do
       unknown = post.("/v1/no-such-path")
       assert secrets.status == 404
       assert {secrets.status, secrets.resp_body} == {unknown.status, unknown.resp_body}
+    end
+  end
+
+  describe "with registry on, factory and secrets off" do
+    @describetag with_features: [:observability, :security, :registry]
+
+    test "every key's document lists the secrets URL, and a request reaches the endpoint",
+         ctx do
+      url = ApiaryWeb.Endpoint.url() <> "/v1/secrets"
+
+      for key <- [ctx.allowed, ctx.plain] do
+        assert Jason.decode!(response(discovery(key), 200))["secrets"] == %{"url" => url}
+      end
+
+      # A body the schema refuses is told so: the endpoint read it.
+      conn =
+        signed_post(build_conn(), elem(ctx.plain, 0).key_id, elem(ctx.plain, 1), "{}",
+          target: "/v1/secrets",
+          content_type: "application/json",
+          delivery: nil
+        )
+
+      assert conn.status == 400
+      assert signed_answer?(conn)
     end
   end
 

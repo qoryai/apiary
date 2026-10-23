@@ -140,8 +140,14 @@ defmodule Apiary.ReleaseDemoTest do
     end
 
     # The job each release request queues is inserted; the command fetched the release.
+    # The count reads Acme's jobs only: other test files commit jobs outside the sandbox.
     if Apiary.Features.on?(:secrets) do
-      assert count(from j in Oban.Job, where: j.worker == "Apiary.Integrations.FetchJob") == 3
+      assert count(
+               from j in Oban.Job,
+                 where: j.worker == "Apiary.Integrations.FetchJob",
+                 where: fragment("?->>'organisation_id'", j.args) == ^acme.id
+             ) == 3
+
       refute Repo.exists?(from r in IntegrationRelease, where: r.state == "pending")
     end
 

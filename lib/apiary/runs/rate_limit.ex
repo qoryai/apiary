@@ -18,6 +18,11 @@ defmodule Apiary.Runs.RateLimit do
   bucket that refills more slowly, such as 3 at once and 1 every 5 minutes, is kept
   until it is full. Each row is `{key, tokens, spent_at, drop_after}`, both times on
   the monotonic clock in milliseconds.
+
+  `reserve/3` and `release/2` keep a count in a fixed window instead, at most `limit`
+  in the `window` milliseconds from the window's first reservation, in a row
+  `{key, count, started_at, ends_at}`, dropped once the window ended. A key is either a
+  bucket's or a count's, never both.
   """
   use GenServer
 
@@ -57,6 +62,54 @@ defmodule Apiary.Runs.RateLimit do
           swap(old, row(key, tokens - @unit, now, rate, capacity)) -> :ok
           true -> spend(key, rate, capacity, now)
         end
+    end
+  end
+
+  @doc """
+  Reserves one of `limit` in `key`'s window of `window` milliseconds: `{:ok, started_at}`,
+  the window's start, which `release/2` takes; or `{:error, retry_after_seconds}`, the
+  seconds until the window ends, when `limit` are reserved in it.
+  """
+  @spec reserve(term, pos_integer, pos_integer) ::
+          {:ok, integer} | {:error, pos_integer}
+  def reserve(key, limit, window) do
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@table, key) do
+      [] ->
+        if :ets.insert_new(@table, {key, 1, now, now + window}),
+          do: {:ok, now},
+          else: reserve(key, limit, window)
+
+      [{^key, _count, _started, ends} = old] when ends <= now ->
+        if swap(old, {key, 1, now, now + window}),
+          do: {:ok, now},
+          else: reserve(key, limit, window)
+
+      [{^key, count, _started, ends}] when count >= limit ->
+        {:error, max(1, ceil((ends - now) / 1000))}
+
+      [{^key, count, started, ends} = old] ->
+        if swap(old, {key, count + 1, started, ends}),
+          do: {:ok, started},
+          else: reserve(key, limit, window)
+    end
+  end
+
+  @doc """
+  Gives back one reservation of `key`'s window that started at `started_at`
+  (`reserve/3`); nothing once that window ended.
+  """
+  @spec release(term, integer) :: :ok
+  def release(key, started_at) do
+    case :ets.lookup(@table, key) do
+      [{^key, count, ^started_at, ends} = old] when count > 0 ->
+        if swap(old, {key, count - 1, started_at, ends}),
+          do: :ok,
+          else: release(key, started_at)
+
+      _other ->
+        :ok
     end
   end
 

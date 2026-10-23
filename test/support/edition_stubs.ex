@@ -695,6 +695,27 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule NoConnectionWrite do
+    @moduledoc """
+    Nobody changes integrations and services (`connection.write`), whoever asks; the
+    changes of runtimes and model providers are asked as before.
+    """
+    def check(_scope, :"connection.write", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoRuntimeWrite do
+    @moduledoc "Nobody changes runtimes (`runtime.write`), whoever asks."
+    def check(_scope, :"runtime.write", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoProviderWrite do
+    @moduledoc "Nobody changes model providers (`provider.write`), whoever asks."
+    def check(_scope, :"provider.write", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoLimitWorded do
     @moduledoc """
     Nobody sets a pool's instance limit, as `NoLimit` has it, and the pages say who may in

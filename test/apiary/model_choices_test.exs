@@ -57,7 +57,7 @@ defmodule Apiary.ModelChoicesTest do
       %{scope: scope, provider: provider, target: target} = ctx
 
       places = [
-        {:organisation, 6, :"connection.write"},
+        {:organisation, 6, :"provider.write"},
         {:workspace, 5, :"model_choice.write"},
         {{:workspace, "hello"}, 4, :"model_choice.write"},
         {target, 3, :"model_choice.write"},

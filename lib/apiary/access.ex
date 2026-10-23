@@ -284,7 +284,7 @@ defmodule Apiary.Access do
       feature: :secrets,
       roles: @admins
     ),
-    # What a run is connected to: runtimes, integrations and services.
+    # What a run is connected to: runtimes, integrations, services and model providers.
     Action.new(
       :"connection.read",
       "read the runtimes, integrations and services of the organisation, where each applies, the releases fetched and the organisation's service definitions",
@@ -295,7 +295,21 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"connection.write",
-      "add, change and remove a runtime, an integration, a model provider or a service, and where and how it applies; edit a model provider's models; set the organisation's default model choice; fetch an integration's release; write the organisation's service definitions",
+      "add, change and remove an integration or a service, and where and how it applies; fetch an integration's release; write the organisation's service definitions",
+      feature: :secrets,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"provider.write",
+      "add, change and remove a model provider, its keys and its models, and where and how it applies; set the organisation's default model choice",
+      feature: :secrets,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"runtime.write",
+      "add, change and remove a runtime, and where and how it applies",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation

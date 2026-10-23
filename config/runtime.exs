@@ -176,6 +176,26 @@ if config_env() != :test do
   config :apiary, :machines_file_setting, System.get_env("APIARY_MACHINES_FILE")
 end
 
+# QORY_REGISTRY is the private image registry's address, with the opt-in feature
+# registry: a host and an optional port, with no scheme or path, for example
+# registry.qory.example. Its signing key is registry-token.key in APIARY_KEYS_DIR
+# (/var/lib/apiary/keys unset), which bin/keys writes when QORY_REGISTRY is set.
+# `Apiary.Registry.boot!/0` checks both at boot where the feature is on, and stops a boot
+# without them. Not read under test: config/test.exs sets them.
+if config_env() != :test do
+  config :apiary, :registry_setting, System.get_env("QORY_REGISTRY")
+
+  config :apiary, Apiary.Registry,
+    key_file:
+      Path.join(
+        case System.get_env("APIARY_KEYS_DIR") do
+          blank when blank in [nil, ""] -> "/var/lib/apiary/keys"
+          dir -> dir
+        end,
+        "registry-token.key"
+      )
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :apiary, ApiaryWeb.Endpoint,

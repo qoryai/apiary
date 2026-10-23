@@ -21,7 +21,7 @@ defmodule Apiary.ModelChoices do
   # ## Who
   #
   # Levels 2 to 5 are written under `model_choice.write`, asked of the workspace or the
-  # target; level 6 under `connection.write`, asked of the organisation. Reading is
+  # target; level 6 under `provider.write`, asked of the organisation. Reading is
   # `connection.read`.
   # Every write leaves one entry in its transaction, about the choice, of the action it was
   # asked under: `details.change` is `choice_set`, `choice_changed`, `choice_locked`,
@@ -248,7 +248,7 @@ defmodule Apiary.ModelChoices do
   ## Writing
 
   @doc false
-  # put_choice/3 sets the choice at `place` (`model_choice.write`; `connection.write` for
+  # put_choice/3 sets the choice at `place` (`model_choice.write`; `provider.write` for
   # the organisation's default), replacing what the place had: `attrs` has `provider`, the
   # public id of a model provider of the organisation, `key`, the value id of one of its
   # keys, `model`, a model id of its list, `effort`, one of that model's effort values,
@@ -308,7 +308,7 @@ defmodule Apiary.ModelChoices do
   end
 
   @doc false
-  # delete_choice/2 removes the choice at `place` (`model_choice.write`; `connection.write`
+  # delete_choice/2 removes the choice at `place` (`model_choice.write`; `provider.write`
   # for the organisation's default): `{:ok, choice}`, as it was, or `{:error, reason}`,
   # `:not_found` for a place with no choice.
   @spec delete_choice(Scope.t(), place) :: {:ok, ModelChoice.t()} | {:error, Access.reason()}
@@ -358,7 +358,7 @@ defmodule Apiary.ModelChoices do
        ) do
     scope = Access.reload(scope, lock: :share)
 
-    with :ok <- Access.check(scope, :"connection.write", organisation) do
+    with :ok <- Access.check(scope, :"provider.write", organisation) do
       :ok = Connections.lock(organisation.id)
 
       {:ok, scope,
@@ -368,7 +368,7 @@ defmodule Apiary.ModelChoices do
          workspace: nil,
          target: nil,
          workflow: nil,
-         action: :"connection.write"
+         action: :"provider.write"
        }}
     end
   end

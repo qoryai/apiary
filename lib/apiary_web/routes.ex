@@ -185,6 +185,15 @@ defmodule ApiaryWeb.Routes do
         get "/health", HealthController, :show
       end
 
+      # The private image registry's token route, with the opt-in feature `registry`: a
+      # run's gateway sets the run's credential on the request, and no pipeline reads more
+      # than the controller does (`ApiaryWeb.RegistryTokenController`). Every method but
+      # GET is told 405.
+      scope "/", ApiaryWeb do
+        get "/registry/token", RegistryTokenController, :show
+        match :*, "/registry/token", RegistryTokenController, :method_not_allowed
+      end
+
       # The server contract: signed requests, discovery, events, a run's registration,
       # reload, attach and outcome.
       scope "/.well-known", ApiaryWeb.Contract do
