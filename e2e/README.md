@@ -79,14 +79,14 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
    where the run's `forge` and `repository` come from, and its harness composed) and starts
    the session (`node/session.sh`: `qory run --headless`).
 3. Waits for a connection row of the workspace for `files.e2e.test` with a denial, and
-   checks that the run has one policy applied event, in `enforce`, under the digest in
-   force.
+   checks that the run has two policy applied events, under the digest in force: one
+   written as the run opens and one as the session joins, the session's in `enforce`.
 4. Allows the host with the two calls the row's popover makes
    (`ApiaryWeb.RunLive.Show`, `ApiaryWeb.ConnectionLive.Index`):
    `Apiary.Runs.fetch_connection/2`, then `Apiary.Policy.rule_from_connection/4` with
    `:allow` and the level, `:target` unless `E2E_LEVEL=workspace`. The clock starts before
    the first of them.
-5. Polls the run's stored events, every 50 ms, for a second `dev.qory.run.policy_applied`
+5. Polls the run's stored events, every 50 ms, for a third `dev.qory.run.policy_applied`
    whose `run_configuration` is the new digest, then for an `dev.qory.run.egress` to the
    host after it in sequence with `decision: allowed` and `outcome: connected`.
 6. Makes a member of the workspace the way a person joins without mail
@@ -96,12 +96,12 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
    for observe (`Apiary.Policy.set_mode/2`), which is an owner's or an admin's: a member
    changes the rules, not the mode. Then it notes the run's last sequence and waits for
    the second allowed, connected egress event to the host after it, and for twice this
-   run's own allow to second policy applied time from the refusal, whichever is later. The
+   run's own allow to third policy applied time from the refusal, whichever is later. The
    first allowed connection after the refusal may have been on its way before it, and the
    second can come sooner than a change takes to come back as a policy applied event: the
    session tries every three seconds by default, and one propagation took about six.
 7. Puts the workspace in observe as the owner, denies the host from the same row, and
-   polls for a third policy applied event with the deny's digest and a denied egress
+   polls for a fourth policy applied event with the deny's digest and a denied egress
    event to the host after it.
 8. Waits for the session to leave and for the exit to be projected.
 
@@ -127,7 +127,7 @@ The mailed instance, `E2E_MAIL=sink`, then:
   invitation is a link to copy; with the sink, the log-in link and the invitation arrive
   there, the log-in link confirms the owner and removes the password, and the member joins
   with the mailed link;
-- a second policy applied event in the run's record, naming the new digest and allowing
+- a third policy applied event in the run's record, naming the new digest and allowing
   the host;
 - an allowed, connected egress event to the host, later in sequence;
 - the time from the allow to that event being stored here, under `E2E_BUDGET_SECONDS` (35);
@@ -153,7 +153,7 @@ node's clock are printed beside it for comparison; the two machines' clocks may 
 The gateway learns of a change from the answer to any batch it posts, and while a session
 is being refused the gateway posts a batch with every refusal. So with the default retry of
 three seconds the reload is carried by the next refusal's own batch, not by a heartbeat:
-about six seconds to the second policy applied event, and the allowed connection with it,
+about six seconds to the third policy applied event, and the allowed connection with it,
 since the gateway numbers a reload's connections after its policy applied event.
 
 A quiet session learns of it at its next heartbeat, thirty seconds at most, and reaches

@@ -14,11 +14,12 @@
 # server lines the key's page shows, and the key's secret in access-key-secret beside it,
 # starts the session on the node, waits for the denied connection to arrive, allows its
 # host the way the connection's row does, and then watches the run's record for the
-# second policy applied event and the allowed connection. A member of the workspace,
+# third policy applied event and the allowed connection: the first two are written as the
+# run opens and as the session joins. A member of the workspace,
 # invited with a link the owner copies, then asks for observe, which is an owner's or an
 # admin's, and is refused, and it checks that the session is still let through to the host
 # and that the run's record shows no policy applied event after the refusal. Then it puts
-# the workspace in observe, denies the host from the same row, and watches for the third
+# the workspace in observe, denies the host from the same row, and watches for the fourth
 # policy applied event and the denied connection, refused by name under observe. It prints
 # the timings and leaves with status 0 only when every assertion held. It never prints the
 # secret: access-key-secret is the one place it goes.
@@ -153,14 +154,19 @@ defmodule E2E do
       end)
 
     run = Repo.get!(Run, connection.run_id)
-    [first] = applied(run)
+    # Forager writes a policy applied event as the run opens and one as each session joins,
+    # both under the run configuration in force. This run has one session.
+    [opened, first] = applied(run)
+
+    unless opened.data["run_configuration"] == first.data["run_configuration"],
+      do: fail("the run's open and its session's join applied different run configurations")
 
     say(
       "run #{run.node_run_id}, wall #{inspect(run.wall)}, target #{run.target_system}/#{run.target_path}"
     )
 
     say(
-      "first policy applied: sequence #{first.sequence}, run configuration #{short(first.data["run_configuration"])}"
+      "policy applied as the run opened: sequence #{opened.sequence}; as the session joined: sequence #{first.sequence}; run configuration #{short(first.data["run_configuration"])}"
     )
 
     say(
