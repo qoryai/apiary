@@ -548,7 +548,9 @@ workspace, with a target and an `environment_ref`, a prebuild of the collection'
 `environment_ref` is queued for the pool, as a Rebuild queues it, unless one of that ref
 waits unclaimed. The next run of the work item's take in is then queued with the attempt
 total raised by one, so the work item loses no attempt: attempt 2 of 3 ends, attempt 3
-of 4 waits, held for that build (`dispatch_runs.image_requeue`). A second
+of 4 waits, held for that build (`dispatch_runs.image_requeue`). The run's explore
+input counts only the runs of the take in that started, so that run's `run` is
+`{"attempt": 2, "of": 3}`, within the explore contract's 1 to 3 of 3. A second
 `image_missing` on a run queued so ends it with no requeue. No run is queued while the
 work item is not in Explore, is in another workspace or at another take in. That end
 first holds the connections and then the collections of those records `FOR SHARE`, by
