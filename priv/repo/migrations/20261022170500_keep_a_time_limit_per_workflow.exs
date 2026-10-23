@@ -4,10 +4,9 @@ defmodule Apiary.Repo.Migrations.KeepATimeLimitPerWorkflow do
   # A time limit for the runs of one workflow (`Apiary.TimeLimits.TimeLimit`): the whole
   # minutes, 15 to 1440, a run of that workflow may take. A row is at one of two places,
   # by the columns it has set: the workspace (`workspace_id`), or a target of it
-  # (`workspace_id` and `target_id`). `workflow` is the workflow's name in the machines
-  # file (`Apiary.Dispatches.MachinesFile`). One row per place and workflow: the unique
-  # index reads a missing target as the nil UUID. A target or a workspace takes its rows
-  # with it.
+  # (`workspace_id` and `target_id`). `workflow` is the workflow's name. One row per
+  # place and workflow: the unique index reads a missing target as the nil UUID. A target
+  # or a workspace takes its rows with it.
   @nobody "'00000000-0000-0000-0000-000000000000'::uuid"
 
   def change do

@@ -1,15 +1,14 @@
 defmodule Apiary.Stacks do
   # The stacks of an organisation (`Apiary.Stacks.Stack`): the stack a run uses, a stack
   # name or a stack reference (`Apiary.Contract.Stack`), set at five levels and resolved
-  # for each run by `Apiary.Stacks.Resolution`, after them the instance default from the
-  # machines file (`Apiary.Dispatches.MachinesFile`).
+  # for each run by `Apiary.Stacks.Resolution`.
   #
   # ## The run's stack
   #
   # `for_run/3` is the `stack`, `workflow` and `harness_hidden` of an explore run's
-  # documents. The run's workflow is the workflow of the workspace's entry in the
-  # machines file: a workspace with no entry, or an entry without a stack, has no
-  # workflow, so its runs have no stack, whatever the levels have.
+  # documents. The run's workflow is the workflow of the one row with a workflow at the
+  # run's places, its workspace and its target (`workflow/2`). With no such row, or two
+  # or more, the run has no workflow, so it has no stack, whatever the levels have.
   #
   # ## Writes
   #
@@ -25,8 +24,8 @@ defmodule Apiary.Stacks do
   # ## Refused on save
   #
   # `stack`: a stack name or a stack reference (`Apiary.Contract.Stack.valid?/1`).
-  # `workflow`: a lower-case letter, then up to 63 lower-case letters, digits and hyphens,
-  # as the machines file has a workflow. Each refusal is a changeset error on its field.
+  # `workflow`: a lower-case letter, then up to 63 lower-case letters, digits and hyphens.
+  # Each refusal is a changeset error on its field.
   #
   # ## Locks
   #
@@ -40,7 +39,6 @@ defmodule Apiary.Stacks do
 
   alias Apiary.{Contract, Edition, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.MachinesFile
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias Apiary.Runs.Target
   alias Apiary.Stacks.{Resolution, Stack}
@@ -66,17 +64,18 @@ defmodule Apiary.Stacks do
   @doc false
   # for_run/3 is the stack of an explore run of `workspace` in `organisation`, at
   # `target`, the work item's `%{system, path}`, nil for none: the resolution's `stack`,
-  # the workflow of the machines file and `harness_hidden`, or nil for a workspace without
-  # a workflow there or a run with no stack at any level. A target no row of the
-  # workspace has counts as none.
+  # the run's workflow (`workflow/2`) and `harness_hidden`, or nil for a run without a
+  # workflow or with no stack at any level. A target no row of the workspace has counts
+  # as none.
   @spec for_run(Organisation.t(), Workspace.t(), %{system: String.t(), path: String.t()} | nil) ::
           run_stack | nil
   def for_run(%Organisation{} = organisation, %Workspace{} = workspace, target) do
-    with %{workflow: workflow, name: default} <-
-           MachinesFile.stack(organisation.slug, workspace.slug),
+    target = target_row(workspace, target)
+
+    with workflow when is_binary(workflow) <- workflow(workspace, target),
          {:ok, %Resolution{} = resolution} <-
            organisation
-           |> input_for(workspace, target_row(workspace, target), workflow, default)
+           |> input_for(workspace, target, workflow)
            |> Resolution.resolve() do
       %{
         stack: resolution.stack,
@@ -89,25 +88,41 @@ defmodule Apiary.Stacks do
   end
 
   @doc false
-  # input_for/5 is what a resolution reads for the runs of `workflow` of `workspace` in
-  # `organisation`, at `target`, nil for none, with `default`, the instance default (nil
-  # for none): the organisation's stacks at the run's places, read without a lock,
-  # whether the organisation is operated (`c:Apiary.Edition.operated?/1`), and whether
-  # the instance has one organisation (`c:Apiary.Edition.limits/0`).
-  @spec input_for(
-          Organisation.t(),
-          Workspace.t(),
-          Target.t() | nil,
-          String.t(),
-          String.t() | nil
-        ) :: Resolution.input()
-  def input_for(
-        %Organisation{} = organisation,
-        %Workspace{} = workspace,
-        target,
-        workflow,
-        default
-      )
+  # workflow/2 is the workflow of the runs of `workspace` at `target`, a target row of
+  # the workspace or nil for none: the workflow of the one row with a workflow at the
+  # workspace level and, for a run with a target, the target level. Nil for no such row,
+  # and for two or more, whatever their workflows. Read without a lock.
+  @spec workflow(Workspace.t(), Target.t() | nil) :: String.t() | nil
+  def workflow(%Workspace{} = workspace, target) do
+    in_place =
+      case target do
+        %Target{id: id} -> dynamic([s], is_nil(s.target_id) or s.target_id == ^id)
+        nil -> dynamic([s], is_nil(s.target_id))
+      end
+
+    Repo.all(
+      from s in Stack,
+        where: s.organisation_id == ^workspace.organisation_id,
+        where: s.workspace_id == ^workspace.id and not is_nil(s.workflow),
+        where: ^in_place,
+        select: s.workflow,
+        limit: 2
+    )
+    |> case do
+      [workflow] -> workflow
+      _none_or_several -> nil
+    end
+  end
+
+  @doc false
+  # input_for/4 is what a resolution reads for the runs of `workflow` of `workspace` in
+  # `organisation`, at `target`, nil for none: the organisation's stacks at the run's
+  # places, read without a lock, whether the organisation is operated
+  # (`c:Apiary.Edition.operated?/1`), and whether the instance has one organisation
+  # (`c:Apiary.Edition.limits/0`).
+  @spec input_for(Organisation.t(), Workspace.t(), Target.t() | nil, String.t()) ::
+          Resolution.input()
+  def input_for(%Organisation{} = organisation, %Workspace{} = workspace, target, workflow)
       when is_binary(workflow) do
     target_id = target && target.id
 
@@ -136,7 +151,6 @@ defmodule Apiary.Stacks do
       workspace_id: workspace.id,
       target_id: target_id,
       workflow: workflow,
-      default: default,
       operated: Edition.operated?(organisation),
       single_organisation: Edition.limits().organisations == 1
     }

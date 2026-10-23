@@ -14,8 +14,9 @@ defmodule Apiary.Stacks.Stack do
   # | `:workspace` | the workspace | `workspace_id` |
   # | `:organisation` | the organisation's default | none of them |
   #
-  # `workflow` is a workflow name as the machines file has it
-  # (`Apiary.Dispatches.MachinesFile`).
+  # `workflow` is a workflow name: a lower-case letter, then up to 63 lower-case letters,
+  # digits and hyphens. A run's workflow is read from these rows
+  # (`Apiary.Stacks.workflow/2`).
   #
   # Changed only through `Apiary.Stacks`.
   @moduledoc false
