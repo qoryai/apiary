@@ -80,11 +80,12 @@ defmodule Apiary.Environments do
   # still its collection's. The first loss of that ref, `lost` with a `lost_ref` that is
   # not the ref, on a live pool, sets `lost_ref` and queues one more prebuild of the ref
   # for the pool. A failure (`failed`, or `timed_out`: a build past its backstop), a
-  # second loss, or a loss on a deleted pool clears `lost_ref`; then, while no live pool
-  # keeps an image of the target from its collection's `environment_ref` and no prebuild
-  # of the held collections waits, is claimed or is handed over, the waiting runs of those
-  # work items, held for the target, end `build_failed` with the outcome `error`
-  # (`Apiary.Dispatches.end_held/4`).
+  # second loss, or a loss on a deleted pool clears `lost_ref`; then, unless a live pool
+  # keeps an image of the target from its collection's `environment_ref`, the waiting runs
+  # of those work items, held for the target, end `build_failed` with the outcome `error`
+  # (`Apiary.Dispatches.end_held/4`). A prebuild of another pool, in any state, keeps no
+  # run held: its starter can be offline, or its pool deleted. A run that comes to wait
+  # later is held again, and the next claim of each pool queues its build.
   #
   # ## A run's image: `image_for/2`
   #
@@ -312,10 +313,10 @@ defmodule Apiary.Environments do
   # and the work items `work_item_ids` (the moduledoc). The first loss (`:lost`) of an
   # `environment_ref` that is still its collection's queues one more prebuild of it for
   # the pool; a failure (`:failed` or `:timed_out`), a second loss, or a loss on a
-  # deleted pool ends the waiting runs
-  # held for the target `build_failed`, while no live pool has an image for the target
-  # and no prebuild of its collections waits, is claimed or is handed over. What
-  # changed, for `Apiary.Dispatches.broadcast/1`.
+  # deleted pool ends the waiting runs held for the target `build_failed`, unless a live
+  # pool has an image for the target from its collection's `environment_ref`. A prebuild
+  # of another pool, in any state, keeps no run held. What changed, for
+  # `Apiary.Dispatches.broadcast/1`.
   @doc false
   @spec build_failed(
           Record.t(),
@@ -354,7 +355,7 @@ defmodule Apiary.Environments do
               set: [lost_ref: nil, updated_at: now]
             )
 
-          end_held(collection, collections, work_item_ids, now)
+          end_held(collection, work_item_ids, now)
         end
 
       _no_longer_its_ref ->
@@ -362,13 +363,11 @@ defmodule Apiary.Environments do
     end
   end
 
-  # The waiting runs held for the target of `collection` end `build_failed`, when no live
-  # pool of its workspace has an image for the target from its collection's
-  # `environment_ref` and no prebuild of `collections` waits, is claimed or is handed
-  # over.
-  defp end_held(%Collection{} = collection, collections, work_item_ids, now) do
+  # The waiting runs held for the target of `collection` end `build_failed`, unless a
+  # live pool of its workspace has an image for the target from its collection's
+  # `environment_ref`, which a claim of that pool gives them.
+  defp end_held(%Collection{} = collection, work_item_ids, now) do
     target = %{system: collection.target_system, path: collection.target_path}
-    ids = Enum.map(collections, & &1.id)
 
     served? =
       Repo.exists?(
@@ -378,14 +377,7 @@ defmodule Apiary.Environments do
           where: r.built_ref == c.environment_ref
       )
 
-    building? =
-      Repo.exists?(
-        from b in DispatchRun,
-          where: b.source_collection_id in ^ids and b.step == ^DispatchRun.prebuild(),
-          where: b.state in [:waiting, :claimed, :handed_over]
-      )
-
-    if served? or building?,
+    if served?,
       do: [],
       else: Dispatches.end_held(work_item_ids, collection.workspace_id, target, now)
   end

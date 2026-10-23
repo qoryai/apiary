@@ -48,8 +48,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # as `Apiary.Environments.build_failed/6` says: the first loss of the collection's
   # `environment_ref` (`lost`) queues one more prebuild of it for the pool; a failure
   # (`failed` or `timed_out`) or a second loss ends the runs held for it `build_failed`,
-  # with the outcome `error`, while no other pool keeps the image and no other build of
-  # the target is live. A prebuild whose
+  # with the outcome `error`, unless another live pool keeps the image; a prebuild of
+  # another pool keeps no run held. A prebuild whose
   # ref is older than the record's image's records no failure
   # (`Apiary.Environments.newer_build?/2`, asked under the record's lock), and ends all
   # the same; so does a prebuild whose reported image is the record's

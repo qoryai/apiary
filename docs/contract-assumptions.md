@@ -491,9 +491,10 @@ prebuild its exit ends, `run_ended`, records it there too when the exit's state 
 record keeps its last good build. While the prebuild's `environment_ref` is still its
 collection's, the first loss of that ref (`lost`) queues one more prebuild of it for
 the pool; a `failed` exit, a `timed_out` end or a second loss ends the runs held for
-that build `build_failed`, with the outcome `error`, while no other live pool keeps an
-image of the target from its collection's `environment_ref` and no other prebuild of
-the target's collections waits, is claimed or is handed over (see the hold below). The
+that build `build_failed`, with the outcome `error`, unless another live pool keeps an
+image of the target from its collection's `environment_ref`; a prebuild of another pool,
+in any state, keeps no run held, and a run that comes to wait later is held again (see
+the hold below). The
 check and the projection's end hold the target's collections `FOR SHARE`, the work
 items whose runs wait for the build `FOR KEY SHARE`, then that record `FOR UPDATE`,
 before the run of the queue, as a release holds the record; a prebuild whose

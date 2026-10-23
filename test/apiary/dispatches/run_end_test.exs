@@ -830,17 +830,50 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_held_waiting(held)
     end
 
-    test "a failed build ends no held run while another build of the collection is live",
+    for deleted? <- [false, true] do
+      test "a failed build ends the held runs while another pool's build waits (that pool deleted: #{deleted?})",
+           ctx do
+        held = [held!(ctx)]
+        other = pool_fixture(ctx.scope)
+
+        {:ok, waiting} =
+          Repo.transact(fn -> Dispatches.queue_prebuild(ctx.collection, other, "env-1") end)
+
+        if unquote(deleted?) do
+          {1, _rows} =
+            Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^other.id),
+              set: [deleted_at: DateTime.utc_now()]
+            )
+        end
+
+        assert {:ok, %{run: _run}} = ctx.attach.()
+        exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+        assert_held_ended(held)
+        assert %DispatchRun{state: :waiting} = queue_run!(waiting)
+      end
+    end
+
+    test "two pools whose builds fail one after the other: the first failure ends the held runs, once",
          ctx do
       held = [held!(ctx)]
-      other = pool_fixture(ctx.scope)
+      second = handover_place_fixture(ctx.scope)
 
-      {:ok, _waiting} =
-        Repo.transact(fn -> Dispatches.queue_prebuild(ctx.collection, other, "env-1") end)
+      {:ok, _queued} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(ctx.collection, second.pool, "env-1") end)
+
+      %{run: other_build, registered: registered} = dispatched!(second.key)
+      assert other_build.pool_id == second.pool.id
 
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx, %{"state" => "failed", "exit_code" => 1})
-      assert_held_waiting(held)
+      assert_held_ended(held)
+      ended = Enum.map(held, &queue_run!/1)
+
+      # The second pool's build is lost: the held runs keep the end they have.
+      after_it = DateTime.add(registered.attach_by, 1, :second)
+      assert Liveness.check(after_it) != []
+      assert %DispatchRun{state: :ended} = queue_run!(other_build)
+      assert Enum.map(held, &queue_run!/1) == ended
     end
 
     test "a failed or lost build of a ref its collection no longer has ends nothing and queues nothing",
