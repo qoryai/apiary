@@ -294,8 +294,10 @@ defmodule Apiary.FeaturesTest do
             {[:secrets], [:secrets]},
             {[:path_rules], [:path_rules]},
             {[:factory], [:factory]},
-            {[:security], [:security, :secrets, :path_rules, :factory]},
-            {[:observability], [:observability, :security, :secrets, :path_rules, :factory]}
+            {[:registry], [:registry]},
+            {[:security], [:security, :secrets, :path_rules, :factory, :registry]},
+            {[:observability],
+             [:observability, :security, :secrets, :path_rules, :factory, :registry]}
           ] do
         scope = %{ctx.person | hidden: Features.hidden_of(named)}
 
@@ -319,7 +321,7 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:secrets, :security, :secrets]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:security, :secrets, :path_rules, :factory])
+                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry])
                )
     end
 
@@ -341,13 +343,13 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:security]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:security, :secrets, :path_rules, :factory])
+                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry])
                )
 
       assert Features.hidden_of([:observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
                )
     end
 
@@ -364,14 +366,14 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([part, :observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
                ) ++
                  [part]
 
       assert Features.hidden_of([:observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
                )
     end
 
@@ -384,7 +386,7 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:nodes, :observability]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory])
+                 &(&1 in [:observability, :security, :secrets, :path_rules, :factory, :registry])
                ) ++
                  [:nodes]
     end
@@ -452,8 +454,8 @@ defmodule Apiary.FeaturesTest do
       end
     end
 
-    test "documented/0 is every feature but path_rules and factory, which the documentation does not differ by" do
-      assert Features.documented() == Features.all() -- [:path_rules, :factory]
+    test "documented/0 is every feature but path_rules, factory and registry, which the documentation does not differ by" do
+      assert Features.documented() == Features.all() -- [:path_rules, :factory, :registry]
     end
 
     test "registry/1 takes docs: false for a feature the documentation does not differ by" do
