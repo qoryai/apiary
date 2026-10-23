@@ -14,11 +14,12 @@ defmodule Apiary.Dispatches.ImageMissingTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
-  alias Apiary.Dispatches
-  alias Apiary.Dispatches.{DispatchRun, RunEnd}
+  alias Apiary.{Dispatches, ExploreInputsSchema}
+  alias Apiary.Dispatches.{DispatchRun, Inputs, RunEnd}
   alias Apiary.Environments
   alias Apiary.Environments.Record
   alias Apiary.Runs.{Liveness, Projector, Run}
+  alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
 
@@ -179,6 +180,55 @@ defmodule Apiary.Dispatches.ImageMissingTest do
            ]
 
     refute Dispatches.requeued_for_image?(Repo.get!(Run, again.id))
+  end
+
+  # The explore input of the run of the queue `queued`, decoded, after it is checked
+  # against the explore contract's `inputs.schema.json`.
+  defp input!(queued) do
+    work_item = Repo.get!(WorkItem, queued.work_item_id)
+    {:ok, inputs} = Inputs.explore(work_item, queued, %{domain: "software", target: @target})
+    inputs = inputs |> Jason.encode!() |> Jason.decode!()
+    assert ExploreInputsSchema.validate(inputs) == :ok
+    inputs
+  end
+
+  test "the input of the requeued run counts only the runs that started: attempt 1 of 3",
+       ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, @given)
+    assert input!(dispatch_run)["run"] == %{"attempt" => 1, "of" => 3}
+    exit!(run, @missing)
+
+    requeued = run_of(dispatch_run.work_item_id, 2)
+    assert %DispatchRun{attempt: 2, of: 4, image_requeue: true} = requeued
+    assert input!(requeued)["run"] == %{"attempt" => 1, "of" => 3}
+  end
+
+  test "the input of the run after a requeued run that started: attempt 2 of 3", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, @given)
+    exit!(run, @missing)
+    requeued = run_of(dispatch_run.work_item_id, 2)
+
+    # The build that was queued ran and recorded the image again, and the requeued run
+    # was claimed, started in it, and failed.
+    {1, _rows} =
+      Repo.update_all(
+        from(d in DispatchRun,
+          where: d.source_collection_id == ^ctx.collection.id and d.state == :waiting
+        ),
+        set: [state: :ended, end_cause: :superseded]
+      )
+
+    rebuilt!(ctx)
+    %{run: again} = handed_over(ctx.scope, ctx.key, requeued, @given)
+    exit!(again, %{"state" => "failed", "exit_code" => 1})
+
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+
+    {:ok, next} =
+      Repo.transact(fn -> Dispatches.queue_next(work_item, dispatch_run.take_in) end)
+
+    assert %DispatchRun{attempt: 3, of: 4, image_requeue: false} = next
+    assert input!(next)["run"] == %{"attempt" => 2, "of" => 3}
   end
 
   test "an image recorded again and missing again is cleared and queued again", ctx do
