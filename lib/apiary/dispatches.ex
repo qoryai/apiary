@@ -89,10 +89,12 @@ defmodule Apiary.Dispatches do
   #      `{:error, :unauthorized}`;
   #   2. `dispatch.claim` asked of the key's workspace (`Apiary.Access`): any refusal is
   #      `{:error, :forbidden}`, one answer whatever its reason;
-  #   3. the collections a build for the pool is due for held `FOR SHARE`, by id
-  #      (`Apiary.Environments.hold_builds/2`): those of the targets of the runs held for
-  #      the pool's build (`Apiary.Environments.held/2`) with no prebuild of their
-  #      `environment_ref` for the pool waiting, claimed or handed over; then the pool's
+  #   3. the connections and then the collections a build for the pool is due for, held
+  #      `FOR SHARE`, by id, and the environment record of each for the pool made where
+  #      there is none (`Apiary.Environments.hold_builds/2`): the collections of the
+  #      targets of the runs held for the pool's build (`Apiary.Environments.held/2`) with
+  #      no prebuild of their `environment_ref` for the pool waiting, claimed or handed
+  #      over; then the pool's
   #      row locked `FOR NO KEY UPDATE`, so two claims of one pool, and a claim and a
   #      registration on the pool (`Apiary.Nodes.check_instance_limit/3`, which locks it
   #      `FOR UPDATE`), take turns, while a prebuild's writes, whose foreign keys to the

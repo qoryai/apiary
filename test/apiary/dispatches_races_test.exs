@@ -104,13 +104,24 @@ defmodule Apiary.DispatchesRacesTest do
     })
   end
 
-  # A listing's part that gives `collections` the `environment_ref` `ref`: each held
-  # `FOR UPDATE` by id, as a part holds them, then changed, in one transaction: what it
-  # answered, or what it raised.
+  # A listing's part that gives `collections` the `environment_ref` `ref`: their
+  # connections held `FOR UPDATE` by id, then each collection `FOR UPDATE` by id, as a
+  # part holds them, then changed, in one transaction: what it answered, or what it
+  # raised.
   defp part(collections, ref) do
     rescued(fn ->
       Repo.transact(fn ->
         ids = collections |> Enum.map(& &1.id) |> Enum.sort()
+        connection_ids = collections |> Enum.map(& &1.connection_id) |> Enum.uniq()
+
+        _connections =
+          Repo.all(
+            from k in Apiary.Adapters.Connection,
+              where: k.id in ^connection_ids,
+              order_by: k.id,
+              lock: "FOR UPDATE",
+              select: k.id
+          )
 
         _held =
           Repo.all(from c in Collection, where: c.id in ^ids, order_by: c.id, lock: "FOR UPDATE")
@@ -528,6 +539,107 @@ defmodule Apiary.DispatchesRacesTest do
             end
 
             raised ++ for({name, {:raised, message}} <- answers, do: {round, name, message})
+        end
+
+      assert raised == []
+    end
+  end
+
+  describe "a claim that queues a build" do
+    # A claim of `key`, each answer one of: a run taken, nothing, or `:unavailable`; what
+    # it raised otherwise.
+    defp claim_answer(key) do
+      rescued(fn ->
+        case Dispatches.claim(key, Dispatches.now()) do
+          {:ok, _claimed} = answer -> answer
+          {:error, :unavailable} = answer -> answer
+        end
+      end)
+    end
+
+    # The environment records of `collection` for `pool`.
+    defp records(collection, pool) do
+      Repo.aggregate(
+        from(e in Record,
+          where: e.source_collection_id == ^collection.id and e.pool_id == ^pool.id
+        ),
+        :count
+      )
+    end
+
+    test "and a Rebuild at once, with lapsed prebuilds to free: no deadlock, one record, one build per ref",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      raised =
+        for round <- 1..6, reduce: [] do
+          raised ->
+            # A run held for a fresh target with no record for the pool, and a lapsed
+            # claimed prebuild of another collection of that target, whose record the
+            # claim's free locks before its runs.
+            path = "acme/rebuild-#{round}"
+            collection = collection!(ctx, "R#{round}", path)
+            lapsed = collection!(ctx, "L#{round}", path)
+            {:ok, _queued} = rebuild([lapsed], [pool]).()
+            :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
+            _held = held!(ctx, path)
+
+            answers =
+              [
+                claim: claim_answer(key),
+                rebuild: rebuild(Enum.shuffle([collection, lapsed]), [pool])
+              ]
+              |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+              |> together()
+
+            assert records(collection, pool) == 1
+
+            for c <- [collection, lapsed] do
+              waiting = waiting(c, pool)
+              assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
+            end
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
+        end
+
+      assert raised == []
+    end
+
+    test "and a listing's part at once: no deadlock, the key changes, one build per ref", ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      raised =
+        for round <- 1..6, reduce: [] do
+          raised ->
+            path = "acme/part-#{round}"
+            collection = collection!(ctx, "P#{round}", path)
+            _held = held!(ctx, path)
+
+            answers =
+              [
+                claim: claim_answer(key),
+                part: part([collection], "env-#{round}")
+              ]
+              |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+              |> together()
+
+            assert {:part, {:ok, :changed}} in answers
+            assert %Collection{environment_ref: ref} = Repo.get!(Collection, collection.id)
+            assert ref == "env-#{round}"
+            waiting = waiting(collection, pool)
+            assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
         end
 
       assert raised == []

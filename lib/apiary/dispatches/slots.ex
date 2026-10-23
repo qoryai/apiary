@@ -49,8 +49,11 @@ defmodule Apiary.Dispatches.Slots do
   #      `FOR SHARE`, by id, then them `FOR SHARE`, by id, `Apiary.Environments.rebuild/2`,
   #      and so do the end of a run whose image was missing,
   #      `Apiary.Environments.hold_missing/3`, and the end of a prebuild handed over,
-  #      `Apiary.Environments.hold_build/2`; a claim holds the collections it queues a
-  #      build of `FOR SHARE`, by id, `Apiary.Environments.hold_builds/2`). A path that
+  #      `Apiary.Environments.hold_build/2`; a claim holds the connections and then the
+  #      collections it queues a build of `FOR SHARE`, by id,
+  #      `Apiary.Environments.hold_builds/2`, and then inserts the missing environment
+  #      records of those collections for its pool, as 3. has a Rebuild insert one). A
+  #      path that
   #      holds a work item after them holds it next: the end of a prebuild handed over,
   #      the work items whose runs wait for its build, `FOR KEY SHARE`, by id; the end of
   #      a run whose image was missing, its work item `FOR UPDATE`;
@@ -82,10 +85,11 @@ defmodule Apiary.Dispatches.Slots do
   #      `FOR UPDATE SKIP LOCKED`, which waits on none;
   #   6. the dispatches.
   #
-  # A claim (`Apiary.Dispatches`) keeps the order: the collections it queues a build of,
-  # as 1., then the pool's row, as 2., then the gateway's row `FOR SHARE`, then the free
-  # of its pool, then the prebuilds it queues, as 5., then the waiting run it takes, as
-  # 5., and its dispatch, inserted; then, for an explore run, the rows of the model
+  # A claim (`Apiary.Dispatches`) keeps the order: the connections and the collections it
+  # queues a build of, and their missing records, as 1. and 3., then the pool's row, as
+  # 2., then the gateway's row `FOR SHARE`, then the free of its pool, then the prebuilds
+  # it queues, as 5., whose records exist by then, then the waiting run it takes, as 5.,
+  # and its dispatch, inserted; then, for an explore run, the rows of the model
   # providers its choices name and of their keys' secrets, each `FOR SHARE`
   # (`Apiary.Dispatches.RunSettings`), which no path that locks anything above locks
   # after, and the run it registers (`Apiary.Dispatches.Handover.register/2`), as a run
@@ -137,8 +141,11 @@ defmodule Apiary.Dispatches.Slots do
   # that run's lock. A claim whose free set a lapsed prebuild back to waiting and that
   # then takes or ends it writes it a second time: Postgres checks that write's foreign
   # key with a `FOR KEY SHARE` lock on the collection, which waits for a part that holds
-  # the collection `FOR UPDATE`; a part locks no record, pool or run after its
-  # collections, so the part never waits on the claim. `free/2`
+  # the collection `FOR UPDATE`. A part holds its connection `FOR UPDATE` before its
+  # collections and locks no record, pool or run after them. It can wait on the claim
+  # only at a connection the claim holds `FOR SHARE`, before the part holds any
+  # collection of it; a part that holds its connection first makes the claim wait there,
+  # before the claim locks the pool. So neither waits on the other in turn. `free/2`
   # writes the dispatches with each write asking its conditions again, so a dispatch
   # handed over, ended or freed meanwhile is left as it is.
   #
