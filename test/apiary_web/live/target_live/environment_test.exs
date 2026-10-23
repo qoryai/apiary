@@ -4,7 +4,8 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   of the workspace's work items: for each node pool, the image a run of the target starts
   in (`Apiary.Environments.image_for/2`), in mono, its digest shortened and the whole
   reference its title, when it was built and its commit, or that runs use the pool's
-  default image and why, or that they use the image set in the workspace's policy;
+  default image and why, or that runs wait until the target's environment image is
+  built, or that they use the image set in the workspace's policy;
   whether a build runs or waits; the last build's failure by its cause, never a starter's
   reason; one line where no pool serves the workspace or the target names no environment.
   Rebuild, for whoever may ask for a build, where the target names an environment and a
@@ -16,6 +17,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
@@ -73,11 +75,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
             organisation_id: scope.organisation.id,
             workspace_id: scope.workspace.id,
             pool_id: pool.id,
-            source_collection_id: collection.id,
-            queued_ref: "env-1",
-            queued_at: DateTime.utc_now(),
-            queued_target_system: @system,
-            queued_target_path: @path
+            source_collection_id: collection.id
           },
           Map.new(attrs)
         )
@@ -93,6 +91,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
         commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c",
         built_at: at,
         reported_ref: "env-1",
+        built_ref: "env-1",
         built_target_system: @system,
         built_target_path: @path
       },
@@ -167,20 +166,31 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#target-environment-rebuild")
     end
 
-    test "no image yet: the pool's default image, and a build waiting",
+    test "no image yet: runs wait for the build, and a build waiting",
          %{conn: conn, scope: scope, path: path} do
       pool = pool_fixture(scope, name: "linux-pool")
       shop = collection(scope)
       view = open(conn, path)
 
-      assert has_element?(view, "#{pool_id(pool)}-default", "The pool's default image.")
+      assert has_element?(
+               view,
+               "#{pool_id(pool)}-held",
+               "Runs wait until this repository's environment image is built."
+             )
+
       refute has_element?(view, "#{pool_id(pool)}-waiting")
 
       {:ok, {:ok, _run}} =
         Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
 
       view = open(conn, path)
-      assert has_element?(view, "#{pool_id(pool)}-default", "The pool's default image.")
+
+      assert has_element?(
+               view,
+               "#{pool_id(pool)}-held",
+               "Runs wait until this repository's environment image is built."
+             )
+
       assert has_element?(view, "#{pool_id(pool)}-waiting", "A build is waiting.")
       refute has_element?(view, "#{pool_id(pool)}-running")
     end
@@ -192,6 +202,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       {:ok, {:ok, _run}} =
         Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
 
+      _gateway = gateway_for!(scope, pool)
       %{access_key: key} = enrolled_key_fixture(scope, pool)
       {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
       view = open(conn, path)
@@ -279,7 +290,8 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       for {cause, words} <- [
             lost: "The last build was lost before it finished.",
-            timed_out: "The last build failed: it ran past 35 minutes."
+            failed: "The last build failed.",
+            timed_out: "The last build failed: it ran past 1 hour and 15 minutes."
           ] do
         record
         |> Ecto.Changeset.change(failure_cause: cause, failure_reason: nil)
@@ -308,7 +320,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#{pool_id(pool)}-failure",
-               "The last build failed: it ran past 35 minutes."
+               "The last build failed: it ran past 1 hour and 15 minutes."
              )
     end
 
@@ -323,7 +335,9 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       failed =
         record!(scope, pool, first, %{failure_cause: :timed_out, failed_at: earlier})
 
-      image = record!(scope, pool, second, built(later))
+      image =
+        record!(scope, pool, second, built(later, reported_ref: "env-2", built_ref: "env-2"))
+
       view = open(conn, path)
       assert has_element?(view, "#{pool_id(pool)}-image")
       refute has_element?(view, "#{pool_id(pool)}-failure")
@@ -336,8 +350,24 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#{pool_id(pool)}-failure",
-               "The last build failed: it ran past 35 minutes."
+               "The last build failed: it ran past 1 hour and 15 minutes."
              )
+    end
+
+    test "an image of a ref the collection no longer has: runs wait for the new build, and the page shows no image",
+         %{conn: conn, scope: scope, path: path} do
+      pool = pool_fixture(scope)
+      shop = collection(scope, environment_ref: "env-2")
+      record!(scope, pool, shop, built(DateTime.utc_now()))
+      view = open(conn, path)
+
+      assert text(view, "#{pool_id(pool)}-held") =~
+               "Runs wait until this repository's environment image is built."
+
+      refute has_element?(view, "#{pool_id(pool)}-image")
+      refute has_element?(view, "#{pool_id(pool)}-built")
+      refute has_element?(view, "#{pool_id(pool)}-commit")
+      refute has_element?(view, "#{pool_id(pool)}-default")
     end
 
     test "a pool's name is written as text", %{conn: conn, scope: scope, path: path} do
@@ -358,7 +388,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
         scope,
         pool,
         shop,
-        Map.put(built(DateTime.utc_now()), :retired_at, DateTime.utc_now())
+        built(DateTime.utc_now())
       )
 
       view = open(conn, path)
@@ -374,7 +404,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#target-environment-rebuild")
     end
 
-    test "built for another target: the pool's default image until the target is built",
+    test "built for another target: runs wait until the target is built",
          %{conn: conn, scope: scope, path: path} do
       pool = pool_fixture(scope)
       shop = collection(scope)
@@ -390,8 +420,8 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       assert has_element?(
                view,
-               "#{pool_id(pool)}-other-target",
-               "Runs use the pool's default image until this repository is built."
+               "#{pool_id(pool)}-held",
+               "Runs wait until this repository's environment image is built."
              )
 
       refute has_element?(view, "#{pool_id(pool)}-image")
@@ -418,7 +448,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert Environments.image_for(pool, shop) == @image
       view = open(conn, path)
       assert has_element?(view, "#{pool_id(pool)}-image[title='#{@image}']")
-      refute has_element?(view, "#{pool_id(pool)}-other-target")
+      refute has_element?(view, "#{pool_id(pool)}-held")
 
       for_shop |> Ecto.Changeset.change(built_target_path: "acme/old") |> Repo.update!()
       assert Environments.image_for(pool, shop) == nil
@@ -427,33 +457,26 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       assert has_element?(
                view,
-               "#{pool_id(pool)}-other-target",
-               "Runs use the pool's default image until this repository is built."
+               "#{pool_id(pool)}-held",
+               "Runs wait until this repository's environment image is built."
              )
     end
 
-    test "a retired record's image is never shown, even when it is the newest build for the target",
-         %{conn: conn, scope: scope, shop: shop, path: path} do
+    test "a build of an environment_ref its collection no longer has serves no run, even when it is the newest build for the target",
+         %{scope: scope, shop: shop} do
       pool = pool_fixture(scope)
       first = collection(scope)
       second = collection(scope, external_ref: "SHOP2", environment_ref: "env-2")
       now = DateTime.utc_now()
       earlier = DateTime.add(now, -600, :second)
 
-      retired =
-        record!(scope, pool, first, Map.put(built(now, image: @other_image), :retired_at, now))
-
-      record!(scope, pool, second, built(earlier))
+      stale = record!(scope, pool, first, built(now, image: @other_image, built_ref: "env-0"))
+      record!(scope, pool, second, built(earlier, built_ref: "env-2"))
 
       assert Environments.image_for(pool, shop) == @image
-      view = open(conn, path)
-      assert has_element?(view, "#{pool_id(pool)}-image[title='#{@image}']")
 
-      Repo.delete_all(from r in Record, where: r.id != ^retired.id and r.pool_id == ^pool.id)
+      Repo.delete_all(from r in Record, where: r.id != ^stale.id and r.pool_id == ^pool.id)
       assert Environments.image_for(pool, shop) == nil
-      view = open(conn, path)
-      refute has_element?(view, "#{pool_id(pool)}-image")
-      assert has_element?(view, "#{pool_id(pool)}-default", "The pool's default image.")
     end
 
     test "the workspace's policy sets an image: each pool says runs use it, in place of the prebuilt image",
@@ -503,6 +526,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
           Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
       end
 
+      _gateway = gateway_for!(scope, arm)
       %{access_key: key} = enrolled_key_fixture(scope, arm)
       {:ok, _claimed} = Dispatches.claim(key, Dispatches.now())
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
@@ -520,7 +544,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       assert has_element?(
                view,
                "#{pool_id(mac)}-failure",
-               "The last build failed: it ran past 35 minutes."
+               "The last build failed: it ran past 1 hour and 15 minutes."
              )
 
       assert has_element?(view, "#{pool_id(linux)}-waiting", "A build is waiting.")

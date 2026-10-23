@@ -4,7 +4,8 @@ defmodule Apiary.Environments.TargetMigrationTest do
   # which rolls it all back: up fills the queued target from the collection's current
   # target, where it has one, and keeps no built target. It changes `environments` under
   # every other test, so this is not async. The rows are read and written in raw SQL, as
-  # the record's schema names the columns the migration takes away.
+  # the record's schema names the columns the migration takes away. The migration that
+  # took the queued target away again runs down first and up last.
   use Apiary.DataCase, async: false
 
   import Apiary.NodesFixtures
@@ -15,10 +16,11 @@ defmodule Apiary.Environments.TargetMigrationTest do
   @target {20_261_019_000_100, Apiary.Repo.Migrations.KeepTheTargetAnEnvironmentWasBuiltFor,
            "keep_the_target_an_environment_was_built_for"}
 
-  setup_all do
-    {version, migration, name} = @target
+  @hold {20_261_023_090_000, Apiary.Repo.Migrations.HoldRunsForTheirEnvironmentBuild,
+         "hold_runs_for_their_environment_build"}
 
-    if not Code.ensure_loaded?(migration) do
+  setup_all do
+    for {version, migration, name} <- [@target, @hold], not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
       |> Code.require_file()
@@ -82,6 +84,7 @@ defmodule Apiary.Environments.TargetMigrationTest do
     shop = collection_fixture(scope, target_path: "acme/shop", environment_ref: nil)
     bare = collection_fixture(scope, target_system: nil, target_path: nil, environment_ref: nil)
 
+    down!(@hold)
     down!(@target)
     assert columns() == []
 
@@ -100,5 +103,6 @@ defmodule Apiary.Environments.TargetMigrationTest do
     assert columns() == []
     up!(@target)
     assert targets(with_target) == ["code.example.com", "acme/shop", nil, nil]
+    up!(@hold)
   end
 end

@@ -1,7 +1,7 @@
 defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   # The migration of what a run keeps of its model choice, run down and up again inside
   # the test's transaction, which rolls it all back, and the checks it adds on a run a
-  # handover registered, each at its bound and one past it. It changes the tables under
+  # claim registered, each at its bound and one past it. It changes the tables under
   # every other test, so this is not async.
   use Apiary.DataCase, async: false
 
@@ -46,12 +46,7 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
     %{key: key} = handover_place_fixture(scope)
     work_item = work_item_fixture(scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(key)
-
-    {:ok, %{run: run}} =
-      Dispatches.handover(key, dispatch.public_id, %{
-        body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-      })
+    %{registered: run} = dispatched!(key)
 
     %{run_id: run.id, queued: queued}
   end

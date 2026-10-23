@@ -475,9 +475,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.disconnect",
         :"dispatch.claim",
         :"dispatch.dispatched",
-        :"dispatch.handover",
         :"dispatch.release",
-        :"dispatch.prebuilt"
+        :"dispatch.machine_log"
       ],
       token: [:"invitation.accept"],
       link: [:"instance.mail_on"],
@@ -488,7 +487,10 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.use",
         :"connection.read",
         :"connection.write",
+        :"provider.write",
+        :"runtime.write",
         :"model_choice.write",
+        :"time_limit.edit",
         :"adapter.create",
         :"adapter.edit",
         :"adapter.set_interval",

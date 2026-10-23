@@ -1196,7 +1196,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "The run's result did not pass Qory's check.",
              "Qory reads a result only in the format Explore uses, and at most 128 KiB. This one was not, so Qory does not show it."},
             {:lost, %{state: :lost, outcome: nil}, "Lost", "The run was lost.",
-             "It stopped reporting before it ended. There is nothing for Qory to show or for a member to confirm."},
+             "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
              "The run was cancelled.",
              "It was cancelled before it ended. There is nothing for Qory to show or for a member to confirm."}
@@ -1228,7 +1228,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {:ticket_gone,
              "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."},
             {:inputs_invalid,
-             "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."}
+             "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."},
+            # A software workspace's word for the target.
+            {:build_failed,
+             "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."}
           ] do
         r =
           run(%{

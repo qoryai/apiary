@@ -910,7 +910,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       costed = run_fixture(scope)
       event_fixture(costed, 2, "run.started", started_data(), time: DateTime.utc_now())
-      event_fixture(costed, 3, "session.result", %{"outcome" => "success", "cost_usd" => 0.8412})
+      event_fixture(costed, 3, "runtime.result", %{"outcome" => "success", "cost_usd" => 0.8412})
       {:ok, _} = Projector.project(costed)
       render_async(view, 5_000)
 
@@ -1738,13 +1738,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#close-run")
     end
 
-    test "a lost run's tip says how it was lost: silent, never picked up, or past its backstop",
+    test "a lost run's tip says how it was lost: silent, never picked up, past its backstop, or ended silent",
          %{conn: conn, scope: scope} do
       now = DateTime.utc_now()
       ago = &DateTime.add(now, -&1, :second)
-      issued = ago.(9000)
+      # Far enough back for a backstop of 87,300 s to have passed.
+      issued = ago.(100_000)
       attach_by = DateTime.add(issued, 600, :second)
-      attached = ago.(8000)
+      attached = ago.(99_000)
 
       silent =
         "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
@@ -1753,8 +1754,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         "It never started: its gateway did not pick it up in the time it was given, and now it can't."
 
       backstop = fn word ->
-        "No exit or outcome came within #{word} of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
+        "Qory Apiary received no exit within #{word} after the gateway took the run, so it marked the run lost. The run may still be running; only its exit changes this record now."
       end
+
+      ended_silent =
+        "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
 
       gateway =
         now
@@ -1794,13 +1798,33 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
             {attached_with.(2700, DateTime.add(attached, 2701, :second)),
              backstop.("45 minutes")},
             {attached_with.(60, DateTime.add(attached, 61, :second)), backstop.("1 minute")},
+            # In hours and minutes from 60 minutes on.
+            {attached_with.(87_300, DateTime.add(attached, 87_301, :second)),
+             backstop.("24 hours and 15 minutes")},
+            {attached_with.(3600, DateTime.add(attached, 3601, :second)), backstop.("1 hour")},
+            {attached_with.(7200, DateTime.add(attached, 7201, :second)), backstop.("2 hours")},
+            {attached_with.(3660, DateTime.add(attached, 3661, :second)),
+             backstop.("1 hour and 1 minute")},
             # Lost to silence before its backstop.
             {attached_with.(1200, DateTime.add(attached, 600, :second)), silent},
-            {attached_with.(1200, DateTime.add(attached, 1200, :second)), silent}
+            {attached_with.(1200, DateTime.add(attached, 1200, :second)), silent},
+            # Ended for 600 s of silence, which moved its backstop: lost at that end, as a
+            # run of a long interval is, or lost by three intervals of 30 s before it, as
+            # a run of the default interval is.
+            {Map.put(
+               attached_with.(4200, DateTime.add(attached, 4201, :second)),
+               :silenced_at,
+               DateTime.add(attached, 4201, :second)
+             ), ended_silent},
+            {Map.merge(attached_with.(4200, DateTime.add(attached, 3695, :second)), %{
+               heartbeat_interval_seconds: 30,
+               last_heartbeat_at: DateTime.add(attached, 3600, :second),
+               silenced_at: DateTime.add(attached, 4201, :second)
+             }), ended_silent}
           ] do
         run = lost_run(scope, attrs)
         view = open(conn, scope)
-        case_ = inspect(Map.take(attrs, [:attached_at, :backstop_at, :lost_at]))
+        case_ = inspect(Map.take(attrs, [:attached_at, :backstop_at, :lost_at, :silenced_at]))
 
         assert text(view, "#att-run-#{run.public_id}") =~ "Lost, never posted its exit", case_
 

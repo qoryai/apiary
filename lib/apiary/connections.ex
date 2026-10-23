@@ -80,14 +80,18 @@ defmodule Apiary.Connections do
 
   ## Who, and the trail
 
-  Reading is `connection.read`, every member; every change is `connection.write`, owners
-  and admins, both asked of the organisation, with one `connection.write` entry in the
-  organisation's audit trail, in its transaction, `details.change` saying what. A write
-  locks the scope's organisation `FOR SHARE` and reads the membership again under its
-  locks (`Apiary.Access.lock_places/1`, `Apiary.Access.reload/2`, docs/access.md), then
-  takes the organisation's integrations lock, a transaction-level advisory lock on
-  `apiary:integrations:` and the organisation's id: two writes to one organisation take
-  turns, so the overlap check sees every write before it.
+  Reading is `connection.read`, every member. A change is asked under the action for what
+  it writes (`write_action/1`), owners and admins in each case, all asked of the
+  organisation: `provider.write` for a model provider, its keys and its models,
+  `runtime.write` for a runtime, and `connection.write` for an integration, a service, a
+  release of an integration and a service definition. A change leaves one entry in the
+  organisation's audit trail, in its transaction, of the action it was asked under,
+  `details.change` saying what. A write locks the scope's organisation `FOR SHARE` and
+  reads the membership again under its locks (`Apiary.Access.lock_places/1`,
+  `Apiary.Access.reload/2`, docs/access.md), then takes the organisation's integrations
+  lock, a transaction-level advisory lock on `apiary:integrations:` and the organisation's
+  id: two writes to one organisation take turns, so the overlap check sees every write
+  before it.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -356,7 +360,7 @@ defmodule Apiary.Connections do
   (`Apiary.Policy.Grammar.exact_host?/1`). `Apiary.Policy` renders them into the
   workspace's policy (`Apiary.Policy.Resolution`).
 
-  Model providers are left out: a run whose handover set a model provider gets the
+  Model providers are left out: a run whose claim set a model provider gets the
   provider's hosts in the document composed for the run
   (`Apiary.Policy.ComposedConfiguration`), and `provider_hosts/1` has the hosts of their
   API endpoints. A connection that fails its integrity code, or
@@ -528,7 +532,7 @@ defmodule Apiary.Connections do
   ## Connections
 
   @doc """
-  create_runtime/2 sets up a runtime of the catalogue (`connection.write`): `attrs` has
+  create_runtime/2 sets up a runtime of the catalogue (`runtime.write`): `attrs` has
   `runtime`, its name, `applies_to` (`all` by default) and `workspace_ids`, the workspaces
   of a `selected` one, each of the organisation, else `:workspace_not_found`. `{:ok, connection}`, or `{:error, refusal}`: `:runtime_unknown`.
   """
@@ -537,7 +541,7 @@ defmodule Apiary.Connections do
     attrs = stringify(attrs)
 
     with {:ok, runtime} <- fetch_runtime(attrs["runtime"]) do
-      create(scope, attrs, fn connection ->
+      create(scope, :"runtime.write", attrs, fn connection ->
         %{connection | kind: "runtime", name: runtime.name}
       end)
     end
@@ -563,7 +567,7 @@ defmodule Apiary.Connections do
   def create_integration(%Scope{} = scope, release_id, attrs) do
     attrs = stringify(attrs)
 
-    create(scope, attrs, fn connection, organisation_id ->
+    create(scope, :"connection.write", attrs, fn connection, organisation_id ->
       with {:ok, release, description} <- ready_release(organisation_id, release_id),
            {:ok, settings} <- settings(description, Map.get(attrs, "settings", %{})),
            :ok <- argument(description, blank_to_nil(attrs["argument"])) do
@@ -595,7 +599,7 @@ defmodule Apiary.Connections do
   def create_service(%Scope{} = scope, attrs) do
     attrs = stringify(attrs)
 
-    create(scope, attrs, fn connection, organisation_id ->
+    create(scope, :"connection.write", attrs, fn connection, organisation_id ->
       with {:ok, title, fields} <- service(organisation_id, attrs) do
         # A name given is left to `attrs_changeset/3`, which casts it, so it is checked.
         name = if blank_to_nil(attrs["name"]), do: nil, else: title
@@ -624,10 +628,11 @@ defmodule Apiary.Connections do
 
   defp service(_organisation_id, _attrs), do: {:error, :service_unknown}
 
-  # A new connection: `build` fills in its kind from the attributes, with the organisation
-  # when it needs to read from it; then the name, where it applies, the overlap check, the
-  # row, its workspaces and the entry, in one write.
-  defp create(scope, attrs, build) do
+  # A new connection, asked under `action`, the one for its kind (`write_action/1`):
+  # `build` fills in its kind from the attributes, with the organisation when it needs to
+  # read from it; then the name, where it applies, the overlap check, the row, its
+  # workspaces and the entry, in one write.
+  defp create(scope, action, attrs, build) do
     write(scope, fn scope, organisation ->
       new = %Connection{
         id: Ecto.UUID.generate(),
@@ -637,7 +642,7 @@ defmodule Apiary.Connections do
         updated_by_id: scope.user && scope.user.id
       }
 
-      with :ok <- Access.check(scope, :"connection.write", organisation),
+      with :ok <- Access.check(scope, action, organisation),
            {:ok, connection} <- built(build, new, organisation.id),
            workspaces = lock_rendered(connection, organisation.id),
            changeset = connection |> change() |> attrs_changeset(connection, attrs),
@@ -648,7 +653,7 @@ defmodule Apiary.Connections do
            {:ok, inserted} <- insert_sealed(changeset),
            :ok <- insert_workspaces(inserted, workspace_ids),
            {:ok, _entry} <-
-             Audit.record(Repo, scope, :"connection.write", inserted, %{
+             Audit.record(Repo, scope, action, inserted, %{
                after: audited(inserted),
                details: %{
                  change: "created",
@@ -695,7 +700,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  update_connection/3 changes a connection (`connection.write`): `applies_to`; a
+  update_connection/3 changes a connection (`write_action/1`): `applies_to`; a
   service's `name`; an integration's `settings` and `argument`, checked against its
   description; a provider as `update_provider/3` does. Switching to `selected` keeps the
   workspaces it lists.
@@ -807,7 +812,7 @@ defmodule Apiary.Connections do
 
   @doc """
   put_workspace/3 makes a connection apply to the workspace `workspace_id` of the scope's
-  organisation (`connection.write`), not marked for deletion: `{:ok, connection}`, or
+  organisation (`write_action/1`), not marked for deletion: `{:ok, connection}`, or
   `{:error, refusal}`, `:workspace_not_found`. A workspace it lists already is kept, with
   no entry.
   """
@@ -830,7 +835,7 @@ defmodule Apiary.Connections do
     with :ok <- no_overlap(organisation.id, current, [workspace_id | listed]),
          :ok <- insert_workspaces(current, [workspace_id]),
          {:ok, _entry} <-
-           Audit.record(Repo, scope, :"connection.write", current, %{
+           Audit.record(Repo, scope, write_action(current), current, %{
              details: %{
                change: "workspace_added",
                connection_id: current.public_id,
@@ -843,7 +848,7 @@ defmodule Apiary.Connections do
 
   @doc """
   remove_workspace/3 takes the workspace `workspace_id` from a connection's list
-  (`connection.write`): `{:ok, connection}`, or `{:error, refusal}`,
+  (`write_action/1`): `{:ok, connection}`, or `{:error, refusal}`,
   `:workspace_not_found` for one it does not list.
   """
   @spec remove_workspace(Scope.t(), Connection.t(), term) ::
@@ -857,7 +862,7 @@ defmodule Apiary.Connections do
                  where: w.connection_id == ^current.id and w.workspace_id == ^uuid
              ),
            {:ok, _entry} <-
-             Audit.record(Repo, scope, :"connection.write", current, %{
+             Audit.record(Repo, scope, write_action(current), current, %{
                details: %{
                  change: "workspace_removed",
                  connection_id: current.public_id,
@@ -875,7 +880,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  delete_connection/2 removes a connection with its list of workspaces (`connection.write`):
+  delete_connection/2 removes a connection with its list of workspaces (`write_action/1`):
   `{:ok, connection}`, the connection as it was, or `{:error, refusal}`. A provider goes as
   `delete_provider/2` deletes it.
   """
@@ -888,7 +893,7 @@ defmodule Apiary.Connections do
     write_connection(scope, connection, fn scope, _organisation, current ->
       with {:ok, deleted} <- Repo.delete(current),
            {:ok, _entry} <-
-             Audit.record(Repo, scope, :"connection.write", deleted, %{
+             Audit.record(Repo, scope, write_action(current), deleted, %{
                before: audited(current),
                details: %{
                  change: "deleted",
@@ -913,7 +918,7 @@ defmodule Apiary.Connections do
                Audit.record(
                  Repo,
                  scope,
-                 :"connection.write",
+                 write_action(current),
                  updated,
                  Map.put(changed, :details, %{
                    change: change,
@@ -1161,7 +1166,7 @@ defmodule Apiary.Connections do
 
   @doc """
   create_provider/2 adds a model provider of the catalogue to the scope's organisation
-  (`connection.write`), in one transaction with its keys and its models. `attrs` has:
+  (`provider.write`), in one transaction with its keys and its models. `attrs` has:
 
     * `provider`, the name of a provider of the catalogue, else `:provider_unknown`;
     * `name`, the description's title by default; `applies_to` (`all` by default) and
@@ -1184,7 +1189,7 @@ defmodule Apiary.Connections do
 
     write(scope, fn scope, organisation ->
       with :ok <- providers_shown(scope),
-           :ok <- Access.check(scope, :"connection.write", organisation),
+           :ok <- Access.check(scope, :"provider.write", organisation),
            {:ok, provider} <- fetch_provider(attrs["provider"]),
            new = new_provider(scope, organisation, provider),
            changeset = new |> change() |> attrs_changeset(new, attrs),
@@ -1203,7 +1208,7 @@ defmodule Apiary.Connections do
            :ok <- insert_workspaces(inserted, workspace_ids),
            :ok <- insert_models(inserted, provider.models),
            {:ok, _entry} <-
-             Audit.record(Repo, scope, :"connection.write", inserted, %{
+             Audit.record(Repo, scope, :"provider.write", inserted, %{
                after: provider_audited(inserted),
                details: %{
                  change: "provider_created",
@@ -1359,7 +1364,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  update_provider/3 changes a model provider (`connection.write`): its `name`,
+  update_provider/3 changes a model provider (`provider.write`): its `name`,
   `applies_to` and `settings`, checked as `create_provider/2` checks them. A change of its
   settings alone that changes an address setting is entered as `provider_address_changed`,
   with the host before and after. `{:ok, provider}`, or `{:error, refusal}`:
@@ -1418,7 +1423,7 @@ defmodule Apiary.Connections do
                Audit.record(
                  Repo,
                  scope,
-                 :"connection.write",
+                 :"provider.write",
                  updated,
                  Map.put(changed, :details, %{
                    change: change,
@@ -1443,25 +1448,25 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  delete_provider/2 removes a model provider (`connection.write`) with its workspaces, its
+  delete_provider/2 removes a model provider (`provider.write`) with its workspaces, its
   models and its keys' secret: `{:ok, provider}`, the provider as it was, or
   `{:error, refusal}`: `{:model_in_use, places}` while a model choice uses it, with the
   places of those choices; `{:provider_in_use, %{places: places, runs: run_public_ids}}`
   while a run that is pending or running uses it, with the public ids of those runs, and
-  the places of the choices that use it, if any. It leaves one `connection.write` entry.
+  the places of the choices that use it, if any. It leaves one `provider.write` entry.
   """
   @spec delete_provider(Scope.t(), Connection.t()) :: {:ok, Connection.t()} | {:error, refusal}
   def delete_provider(%Scope{} = scope, %Connection{provider_kind: kind} = provider)
       when is_binary(kind) do
     write_connection(scope, provider, fn scope, _organisation, current ->
       # The model choices and the pending or running runs that use the provider, read
-      # without a lock under the provider's row lock. A handover holds the row `FOR SHARE`
+      # without a lock under the provider's row lock. A claim holds the row `FOR SHARE`
       # until it commits (`Apiary.Dispatches.RunSettings`), so a run it registers is read
-      # here, and a handover that comes after reads the provider as deleted.
+      # here, and a claim that comes after reads the provider as deleted.
       with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
            {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-
-             Audit.record(Repo, scope, :"connection.write", deleted, %{
+             Audit.record(Repo, scope, :"provider.write", deleted, %{
                before: provider_audited(current),
                details: %{
                  change: "provider_deleted",
@@ -1505,7 +1510,7 @@ defmodule Apiary.Connections do
 
   @doc """
   put_default_key/3 makes the key with the value id `value_id` the model provider's
-  default key (`connection.write`), with the keys' secret's row held `FOR SHARE`, so the
+  default key (`provider.write`), with the keys' secret's row held `FOR SHARE`, so the
   key is not deleted meanwhile. `{:ok, provider}`, or `{:error, refusal}`: a changeset
   whose error is on `default_value_id` for a value id the provider's keys do not have.
   """
@@ -1522,7 +1527,7 @@ defmodule Apiary.Connections do
         else
           with {:ok, updated} <- changeset |> Coded.seal() |> Repo.update(),
                {:ok, _entry} <-
-                 Audit.record(Repo, scope, :"connection.write", updated, %{
+                 Audit.record(Repo, scope, :"provider.write", updated, %{
                    before: %{default_value_id: current.default_value_id},
                    after: %{default_value_id: value_id},
                    details: %{
@@ -1538,7 +1543,7 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  add_provider_key/3 adds a key to a model provider's keys (`connection.write`): `attrs`
+  add_provider_key/3 adds a key to a model provider's keys (`provider.write`): `attrs`
   has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them. `{:ok, provider}`,
   or `{:error, refusal}` as `Apiary.Secrets.add_value/4` answers.
   """
@@ -1555,7 +1560,7 @@ defmodule Apiary.Connections do
 
   @doc """
   set_provider_key/4 replaces the value of a model provider's key with the value id
-  `value_id` (`connection.write`). `{:ok, provider}`, or `{:error, refusal}` as
+  `value_id` (`provider.write`). `{:ok, provider}`, or `{:error, refusal}` as
   `Apiary.Secrets.set_value/5` answers.
   """
   @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t()) ::
@@ -1574,7 +1579,7 @@ defmodule Apiary.Connections do
 
   @doc """
   rename_provider_key/4 gives a model provider's key another value id
-  (`connection.write`). `{:ok, provider}`, or `{:error, refusal}` as
+  (`provider.write`). `{:ok, provider}`, or `{:error, refusal}` as
   `Apiary.Secrets.rename_value/5` answers, or a changeset whose error is on `value_id` for
   its default key or a key a model choice uses.
   """
@@ -1595,7 +1600,7 @@ defmodule Apiary.Connections do
       )
 
   @doc """
-  delete_provider_key/3 deletes a model provider's key (`connection.write`).
+  delete_provider_key/3 deletes a model provider's key (`provider.write`).
   `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.delete_value/4` answers:
   `:last_value` for its only key, or a changeset whose error is on `value_id` for its
   default key or a key a model choice uses.
@@ -1630,7 +1635,7 @@ defmodule Apiary.Connections do
                  Audit.record(
                    Repo,
                    scope,
-                   :"connection.write",
+                   :"provider.write",
                    current,
                    Map.put(change, :details, details)
                  ),
@@ -1682,7 +1687,7 @@ defmodule Apiary.Connections do
 
   @doc """
   add_provider_model/3 adds a model to the end of a model provider's list
-  (`connection.write`): `attrs` has `model_id`, `title` (the model id by default) and
+  (`provider.write`): `attrs` has `model_id`, `title` (the model id by default) and
   `effort`, a list of effort values, none by default. A provider with no default model
   takes it as its default. `{:ok, provider}`, or `{:error, refusal}`: a changeset whose
   errors are on `model_id`, `title` or `effort`, `model_id`'s when the provider has the
@@ -1745,7 +1750,7 @@ defmodule Apiary.Connections do
 
   @doc """
   update_provider_model/4 changes the `title` and `effort` of the model with the exact id
-  `model_id` on a model provider's list (`connection.write`). `{:ok, provider}`, or
+  `model_id` on a model provider's list (`provider.write`). `{:ok, provider}`, or
   `{:error, refusal}`: `:not_found` for a model the list does not have, a changeset whose
   errors are on `title` or `effort`. A change that changes nothing leaves no entry.
   """
@@ -1784,7 +1789,7 @@ defmodule Apiary.Connections do
 
   @doc """
   delete_provider_model/3 removes the model with the exact id `model_id` from a model
-  provider's list (`connection.write`). When it was the default, the first model left on
+  provider's list (`provider.write`). When it was the default, the first model left on
   the list becomes the default. `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for
   a model the list does not have, `{:model_in_use, places}` while a model choice uses the
   model, by its model or a tier, with the places of those choices.
@@ -1824,7 +1829,7 @@ defmodule Apiary.Connections do
 
   @doc """
   put_default_model/3 makes the model with the exact id `model_id` the model provider's
-  default model (`connection.write`). `{:ok, provider}`, or `{:error, refusal}`:
+  default model (`provider.write`). `{:ok, provider}`, or `{:error, refusal}`:
   `:not_found` for a model the list does not have.
   """
   @spec put_default_model(Scope.t(), Connection.t(), String.t()) ::
@@ -1871,7 +1876,7 @@ defmodule Apiary.Connections do
         name: provider.name
       })
 
-    Audit.record(Repo, scope, :"connection.write", provider, Map.put(entry, :details, details))
+    Audit.record(Repo, scope, :"provider.write", provider, Map.put(entry, :details, details))
   end
 
   defp model_audited(%ProviderModel{} = model),
@@ -2087,6 +2092,16 @@ defmodule Apiary.Connections do
   defp write(_scope, _fun), do: {:error, :not_found}
 
   @doc """
+  write_action/1 is the action of `Apiary.Access` that a write to `connection` is asked
+  under, by its kind: `provider.write` for a model provider, `runtime.write` for a
+  runtime, and `connection.write` for an integration and a service.
+  """
+  @spec write_action(Connection.t()) :: Access.action()
+  def write_action(%Connection{provider_kind: kind}) when is_binary(kind), do: :"provider.write"
+  def write_action(%Connection{kind: "runtime"}), do: :"runtime.write"
+  def write_action(%Connection{}), do: :"connection.write"
+
+  @doc """
   lock/1 takes the integrations lock of the organisation `organisation_id` for the rest
   of the transaction: a transaction-level advisory lock on the key
   `hashtextextended('apiary:integrations:' || organisation_id, 0)`. Every write to the
@@ -2107,8 +2122,9 @@ defmodule Apiary.Connections do
   end
 
   # A write to one connection: the row read again under `FOR UPDATE` in the scope's
-  # organisation, with its workspaces, then asked of. A provider needs its features first,
-  # and belongs to the organisation's chain.
+  # organisation, with its workspaces, then asked of under the action for its kind
+  # (`write_action/1`). A provider needs its features first, and belongs to the
+  # organisation's chain.
   defp write_connection(scope, %Connection{id: id}, fun) do
     write(scope, fn scope, organisation ->
       with %Connection{} = current <-
@@ -2116,7 +2132,7 @@ defmodule Apiary.Connections do
                from c in connections(organisation.id), where: c.id == ^id, lock: "FOR UPDATE"
              ),
            :ok <- provider_shown(scope, current),
-           :ok <- Access.check(scope, :"connection.write", current),
+           :ok <- Access.check(scope, write_action(current), current),
            :ok <- organisation_chain(current) do
         current = Repo.preload(current, preloads(current))
         workspaces = lock_rendered(current, organisation.id)

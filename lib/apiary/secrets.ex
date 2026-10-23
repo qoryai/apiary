@@ -71,9 +71,9 @@ defmodule Apiary.Secrets do
   reads of the organisation's secrets leave it out, and a write to it is not found,
   unless `Apiary.Connections` writes it as the keys of the provider that links it
   (`provider: provider` on `set_value/5`, `add_value/4`, `rename_value/5` and
-  `delete_value/4`). That write asks `Apiary.Access` for `connection.write` on the
+  `delete_value/4`). That write asks `Apiary.Access` for `provider.write` on the
   organisation, with the `factory` feature shown to the scope, instead of the edition, and
-  leaves no `secret.write` entry: the provider's `connection.write` entry records it.
+  leaves no `secret.write` entry: the provider's `provider.write` entry records it.
 
   Their values are encrypted under the organisation's data key
   (`Apiary.Secrets.OrganisationDataKey`), one per organisation, made with its first
@@ -779,7 +779,7 @@ defmodule Apiary.Secrets do
   defp not_in_use(uses), do: {:error, {:in_use, uses}}
 
   # A change's `secret.write` entry; none for a model provider's keys, whose provider's
-  # `connection.write` entry records the change (`Apiary.Connections`).
+  # `provider.write` entry records the change (`Apiary.Connections`).
   defp entry(opts, scope, %Secret{} = secret, attrs) do
     if opts[:provider],
       do: {:ok, nil},
@@ -797,10 +797,10 @@ defmodule Apiary.Secrets do
   `values`, a list of maps of `value_id` and `value`, each value id required, as
   `create_secret/2` takes several values. `{:ok, secret}`, or `{:error, refusal}` as
   `create_secret/2` answers. It leaves no `secret.write` entry: the provider's
-  `connection.write` entry records it.
+  `provider.write` entry records it.
 
   `Apiary.Connections` calls it in the transaction that adds the provider, after the
-  provider's locks; it asks `Apiary.Access` for `connection.write` with the `factory`
+  provider's locks; it asks `Apiary.Access` for `provider.write` with the `factory`
   feature, not the edition, then takes the organisation's advisory lock for its secrets.
   """
   @spec create_provider_keys(Scope.t(), map) :: {:ok, Secret.t()} | {:error, refusal}
@@ -833,10 +833,10 @@ defmodule Apiary.Secrets do
   the provider's row and answers `{:ok, deleted}`, then deletes the secret. `{:ok, secret}`, or
   `{:error, refusal}`: `:not_found` where the scope's organisation has no such provider
   or the provider links no secret. It leaves no `secret.write` entry: the provider's
-  `connection.write` entry records it.
+  `provider.write` entry records it.
 
   `Apiary.Connections` calls it in the transaction that deletes the provider, with the
-  provider's row held `FOR UPDATE`; it asks `Apiary.Access` for `connection.write` with
+  provider's row held `FOR UPDATE`; it asks `Apiary.Access` for `provider.write` with
   the `factory` feature, not the edition, then takes the organisation's advisory lock for
   its secrets and the secret's row.
   """
@@ -874,11 +874,11 @@ defmodule Apiary.Secrets do
 
   defp linked_keys(_scope, _provider), do: nil
 
-  # The organisation's answer for a model provider's keys: `connection.write`, with the
+  # The organisation's answer for a model provider's keys: `provider.write`, with the
   # `factory` feature shown to the scope.
   defp provider_verdict(%Scope{organisation: %Organisation{} = organisation} = scope) do
     if Features.visible?(scope, :factory),
-      do: Access.check(scope, :"connection.write", organisation),
+      do: Access.check(scope, :"provider.write", organisation),
       else: {:error, :not_found}
   end
 

@@ -69,16 +69,15 @@ defmodule Apiary.Runs.Sender do
   for any other.
   """
   @spec may_send?(Run.t(), AccessKey.t()) :: boolean
-  def may_send?(%Run{run_key_payload: payload} = run, %AccessKey{node_id: node_id})
-      when is_binary(payload) do
-    case run do
-      %Run{gateway_id: ^node_id, attached_at: %DateTime{}} when is_binary(node_id) -> true
-      _run -> false
+  # A run registered with a run code goes through a gateway before its code is redeemed,
+  # with no run key yet: nobody sends for it until its gateway attaches it.
+  def may_send?(%Run{} = run, %AccessKey{node_id: node_id}) do
+    cond do
+      not is_binary(node_id) -> false
+      Run.through_gateway?(run) -> run.gateway_id == node_id and not is_nil(run.attached_at)
+      true -> run.node_id == node_id
     end
   end
-
-  def may_send?(%Run{node_id: node_id}, %AccessKey{node_id: node_id}) when is_binary(node_id),
-    do: true
 
   def may_send?(_run, _access_key), do: false
 
@@ -98,14 +97,9 @@ defmodule Apiary.Runs.Sender do
   instance holds.
   """
   @spec attaching_instance?(Run.t(), String.t() | nil) :: boolean
-  def attaching_instance?(
-        %Run{run_key_payload: payload, gateway_instance_id: stored},
-        instance_id
-      )
-      when is_binary(payload),
-      do: is_nil(stored) or stored === instance_id
-
-  def attaching_instance?(%Run{}, _instance_id), do: true
+  def attaching_instance?(%Run{gateway_instance_id: stored} = run, instance_id) do
+    if Run.through_gateway?(run), do: is_nil(stored) or stored === instance_id, else: true
+  end
 
   @doc """
   Gives `run`, attached through a gateway, the instance id `instance_id` as its attaching

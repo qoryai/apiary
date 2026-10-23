@@ -31,7 +31,7 @@
       "$ref": "#/$defs/ref"
     },
     "url": {
-      "description": "An https URL, at most 2048 characters, as RFC 3986 writes a URI: https://, a host, a port when one is written, then a path, a query and a fragment, each optional. The host is a name of letters, digits, the characters -._~!$&'()*+,;= and percent-encodings, or an IPv6 address in brackets as RFC 3986 writes one, which hexadecimal digits and dots may follow after the closing bracket, as the control plane's URI parser allows; no user information comes before the host. A colon after the host may stand alone, or be followed by a port of at most 5 digits whose value is from 1 to 65535, leading zeros allowed. Every % starts a percent-encoding, % and two hexadecimal digits, and the URL holds no character outside RFC 3986's.",
+      "description": "An https URL, at most 2048 characters, as RFC 3986 writes a URI: https://, a host, a port when one is written, then a path, a query and a fragment, each optional. The host is a name of letters, digits, the characters -._~!$&'()*+,;=, the percent-encodings %80 to %FF in either case, and %25, or an IPv6 address in brackets as RFC 3986 writes one, and only a port, a path, a query or a fragment follows the closing bracket; no user information comes before the host. A colon after the host may stand alone, or be followed by a port of at most 5 digits whose value is from 1 to 65535, leading zeros allowed. Every % starts a percent-encoding, % and two hexadecimal digits, and the URL holds no character outside RFC 3986's.",
       "type": "string",
       "format": "uri",
       "maxLength": 2048,

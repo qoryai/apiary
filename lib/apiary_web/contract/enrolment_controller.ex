@@ -2,9 +2,9 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
   @moduledoc """
   Enrolment, `POST /.well-known/qory-enrolment`: a machine enrols a new access key with an
   enrolment code an owner or an admin made on a node (the Forager contract's "Enrolment",
-  `enrolment.schema.json`). The request carries no access key id and no request
-  signature: the code and the proof authenticate it, so it goes through no
-  `ApiaryWeb.Contract.SignedRequest`. Its body is read raw (`ApiaryWeb.Contract.RawBody`)
+  `enrolment.schema.json`). The code and the proof authenticate it, so it goes through no
+  `ApiaryWeb.Contract.SignedRequest`; a run code's also needs the signature of the
+  gateway's relay, below. Its body is read raw (`ApiaryWeb.Contract.RawBody`)
   and strictly (`Apiary.Contract.Enrolment`); the code is redeemed by
   `Apiary.AccessKeys.enrol/2`.
 
@@ -43,9 +43,23 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     12. `201`, signed, with the access key id, its node and its kind, `stored_secrets`
         and the instance's keys: the key is active.
 
-  An enrolment a gateway relays arrives unchanged, from the gateway's address, and is
-  answered as any other: step 4 counts the gateway's address, one limit for every machine
-  behind it, not raised for a gateway (`docs/contract-assumptions.md`).
+  An enrolment a gateway relays arrives from the gateway's address, its body unchanged,
+  and is answered as any other: step 4 counts the gateway's address, one limit for every
+  machine behind it, not raised for a gateway (`docs/contract-assumptions.md`).
+
+  **A run code's relay.** The relay signs every enrolment it forwards as a POST under the
+  gateway's access key: `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id` and
+  `X-Qory-Signature-Ed25519` over the request string
+  (`Apiary.Contract.SignedMessage.request/5`) of the key id, the instance id, `POST`, the
+  target as sent and the raw body byte for byte. For a run code (`qecr_`), those three
+  headers are required, each once, the instance id of the contract's form, and the
+  signature must verify as a signed request's does
+  (`ApiaryWeb.Contract.SignedRequest.relayed/1`) under a live key of the gateway the claim
+  bound the code to; any key of that node passes, so the key in use and the one that
+  replaces it both do. A missing header, a signature that does not verify, or a key of
+  another node is the `401` of step 7, the same status and body, and nothing is written.
+  The body's timestamp window, the single use and the retry are as for any run code. For
+  any other code the three headers are not read.
 
   The order of 8 to 12 is `Apiary.AccessKeys.enrol/2`'s. A signed answer is signed by
   `ApiaryWeb.Contract.SignedAnswer.put_enrolment/3`: `X-Qory-Signature-Ed25519`, the
@@ -62,10 +76,10 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
   use ApiaryWeb, :controller
 
   alias Apiary.{AccessKeys, SigningKey}
-  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.Enrolment
-  alias Apiary.Runs.RateLimit
-  alias ApiaryWeb.Contract.{ContractVersion, SignedAnswer}
+  alias Apiary.Runs.{RateLimit, RunCode}
+  alias ApiaryWeb.Contract.{ContractVersion, SignedAnswer, SignedRequest}
 
   @content_type "application/json"
   # The headers the enrolment reads, each refused when sent more than once.
@@ -79,7 +93,10 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
          :ok <- within_rate(origin),
          {:ok, _version} <- version(conn),
          {:ok, request} <- Enrolment.decode(conn.assigns[:raw_body]) do
-      case AccessKeys.enrol(request, origin: origin, code_limit: code_limit()) do
+      case redeem(request, origin, conn) do
+        {:ok, %{run_key: run_key} = redeemed} ->
+          signed(conn, request, 201, run_answer(redeemed, run_key))
+
         {:ok, key} ->
           signed(conn, request, 201, answer(key))
 
@@ -161,7 +178,31 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     end
   end
 
-  # The code's own limit, which `Apiary.AccessKeys.enrol/2` counts once the key is proven.
+  # A run code (`qecr_`) is a run's, redeemed for its run key by `Apiary.Runs.RunCode`; any
+  # other code a node's. A run code is answered in the order above, and steps 10 and 11
+  # never apply to it: its `401` is also a code at or past its 15 minutes, a code of a run
+  # that has ended, and a code redeemed before by another public key; its `201` has the
+  # run's id, its run key and the instance's keys (`Apiary.Contract.Enrolment`,
+  # `run_answer_body/1`), and makes no access key. The same public key is answered the
+  # same run id and run key again while the code's 15 minutes last, with the server's keys
+  # as they are at that moment. A run code is redeemed only as the gateway the claim bound
+  # it to relays it (the moduledoc); the relay's headers are read for a run code alone.
+  defp redeem(%Enrolment{code_head: head} = request, origin, conn) do
+    if EnrolmentCode.run_code?(head),
+      do: RunCode.redeem(request, code_limit: code_limit(), relayed_by: relayed_by(conn)),
+      else: AccessKeys.enrol(request, origin: origin, code_limit: code_limit())
+  end
+
+  # The id of the node whose live access key signed the request as a relay, or nil.
+  defp relayed_by(conn) do
+    case SignedRequest.relayed(conn) do
+      {:ok, %AccessKey{node_id: node_id}} -> node_id
+      :unauthorized -> nil
+    end
+  end
+
+  # The code's limit, which `Apiary.AccessKeys.enrol/2` and `Apiary.Runs.RunCode.redeem/2`
+  # count once the key is proven.
   defp code_limit do
     config = Application.get_env(:apiary, __MODULE__, [])
     [rate: Keyword.get(config, :code_rate, 1), burst: Keyword.get(config, :code_burst, 5)]
@@ -186,6 +227,15 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
       node_id: node.public_id,
       node_kind: node.kind,
       stored_secrets: key.allow_secrets,
+      apiary_public_key: SigningKey.apiary_public_key()
+    })
+  end
+
+  defp run_answer(%{run_id: run_id} = redeemed, run_key) do
+    Enrolment.run_answer_body(%{
+      run_id: run_id,
+      run_key: run_key,
+      documents: redeemed[:documents],
       apiary_public_key: SigningKey.apiary_public_key()
     })
   end

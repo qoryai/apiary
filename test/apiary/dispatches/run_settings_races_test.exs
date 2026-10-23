@@ -1,16 +1,16 @@
 defmodule Apiary.Dispatches.RunSettingsRacesTest do
-  # The handover of an explore run whose model choice names a provider
+  # The claim of an explore run whose model choice names a provider
   # (`Apiary.Dispatches.RunSettings`), racing a change of that provider: its address, or
   # its deletion with the choice that names it. Each side runs on a connection apart,
   # outside the SQL sandbox, so each commits and each waits on the other's locks as it
   # would in production. Not async: what these tests commit is visible to every other
   # test while they run, and they delete it again before they end.
   #
-  # The rule under test: the handover reads the choices without a lock, then takes the
+  # The rule under test: the claim reads the choices without a lock, then takes the
   # provider's row and its keys' secret's row `FOR SHARE`, before anything else; a change
   # of the provider takes its row `FOR UPDATE`. So the two take turns, whoever comes
   # second sees what the first wrote, and neither deadlocks: a deletion that comes second
-  # reads the run the handover registered, and is refused.
+  # reads the run the claim registered, and is refused.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -93,17 +93,23 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
     Map.merge(place, %{scope: scope, made: made, provider: provider})
   end
 
-  # A run of the queue of a fresh work item, claimed and said started: committed.
-  defp started!(ctx) do
+  # A run of the queue of a fresh work item, waiting: committed.
+  defp queued!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     Agent.update(ctx.made, &[work_item.adapter_id | &1])
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(ctx.key)
-    dispatch
   end
 
-  defp handover(ctx, dispatch),
-    do: fn -> Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body}) end
+  # The claim that takes the run, which registers it: `{:ok, documents}`, what the run's
+  # documents are made from with the registered run as `run`; or the claim's answer.
+  defp claim(ctx) do
+    fn ->
+      case Dispatches.claim(ctx.key, Dispatches.now(), @body) do
+        {:ok, %{registered: run, documents: documents}} -> {:ok, Map.put(documents, :run, run)}
+        other -> other
+      end
+    end
+  end
 
   defp change_address(ctx),
     do: fn ->
@@ -128,10 +134,10 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   defp provider_there?(ctx),
     do: Repo.exists?(from c in Connection, where: c.id == ^ctx.provider.id)
 
-  describe "a handover and a change of the provider's address" do
-    test "the handover first: the change waits, and the run keeps the address before", ctx do
-      dispatch = started!(ctx)
-      {first, first_pid} = hold(handover(ctx, dispatch))
+  describe "a claim and a change of the provider's address" do
+    test "the claim first: the change waits, and the run keeps the address before", ctx do
+      queued!(ctx)
+      {first, first_pid} = hold(claim(ctx))
       assert {:ok, handed} = first.result
 
       second = start(change_address(ctx))
@@ -142,12 +148,12 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       assert %Run{provider_api: %{"endpoint" => @old_address}} = run!(handed)
     end
 
-    test "the change first: the handover waits, and the run takes the address after", ctx do
-      dispatch = started!(ctx)
+    test "the change first: the claim waits, and the run takes the address after", ctx do
+      queued!(ctx)
       {first, first_pid} = hold(change_address(ctx))
       assert {:ok, %Connection{}} = first.result
 
-      second = start(handover(ctx, dispatch))
+      second = start(claim(ctx))
       await_blocked(second.backend, first_pid)
       commit(first)
 
@@ -156,11 +162,11 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
     end
   end
 
-  describe "a handover and the provider's deletion" do
-    test "the handover first: the deletion waits, then is refused for the run it registered",
+  describe "a claim and the provider's deletion" do
+    test "the claim first: the deletion waits, then is refused for the run it registered",
          ctx do
-      dispatch = started!(ctx)
-      {first, first_pid} = hold(handover(ctx, dispatch))
+      queued!(ctx)
+      {first, first_pid} = hold(claim(ctx))
       assert {:ok, handed} = first.result
 
       second = start(delete_provider(ctx))
@@ -183,12 +189,12 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       assert provider_id == ctx.provider.id
     end
 
-    test "the deletion first: the handover waits, then finds no choice", ctx do
-      dispatch = started!(ctx)
+    test "the deletion first: the claim waits, then finds no choice", ctx do
+      queued!(ctx)
       {first, first_pid} = hold(delete_provider(ctx))
       assert {:ok, %Connection{}} = first.result
 
-      second = start(handover(ctx, dispatch))
+      second = start(claim(ctx))
       await_blocked(second.backend, first_pid)
       commit(first)
 

@@ -6,7 +6,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   organisation, its workspaces, people, weeks of runs across about a hundred and fifty
   repositories, nodes, keys, a security policy, secrets, variables and integrations, and,
   with the `factory` feature, two adapters' tickets and work items. All of it synthetic
-  and neutral. A development tool: it refuses to run in production.
+  and neutral. A development tool: it refuses to run in production. On a release,
+  `Apiary.Release.demo/1` makes the same fill in an organisation Acme set up before.
 
       unset DATABASE_URL
       export APIARY_DEV_DATABASE=apiary_redesign_demo
@@ -59,12 +60,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       turned off; acme/warehouse to Shop ops, or to Main where the edition allows one
       workspace; acme/sandbox to none. Their 42 tickets, open and closed, filed by
       people and by bots, with labels and comments. Ten work items of those tickets,
-      taken in by members of Main: three wait for their first run; one waits to run
-      again, as the pool spot-runners gave its run back; one more, whose run was given
-      back too, is sent to Explore again, and its second run waits; two are declined,
-      two closed and one undone. A work item's Explore run gives a result once a gateway
-      takes it over, and the demo has no gateway, so no work item waits for an answer
-      or is confirmed. Beside it, a source that is no forge: the adapter **Helpdesk**,
+      taken in by members of Main: seven wait for their first run; two are closed and one
+      undone. A node pool claims a run through a gateway, and the demo has no gateway, so
+      no run is claimed, and no work item waits for an answer, is confirmed, is declined
+      or is sent to Explore again. Beside it, a source that is no forge: the adapter **Helpdesk**,
       whose words are incident and queue, connected for Acme too. Its two queues,
       acme/customer-support and acme/billing-support, have no target; their 12
       incidents are open and closed, and some have comments. None is taken in, as a take
@@ -105,11 +104,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   alias Apiary.{Repo, Secrets, Targets, Variables}
   alias Apiary.AccessKeys.EnrolmentCode
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Nodes.Node
+  alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.{Run, Target}
   alias Mix.Tasks.Apiary.Demo
   alias Mix.Tasks.Apiary.Demo.Console.Factory
   alias Mix.Tasks.Apiary.Demo.History
+  alias Mix.Tasks.Apiary.Demo.Shell
 
   @switches [runs: :integer, days: :integer, seed: :integer, concurrency: :integer]
 
@@ -262,20 +263,126 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       where: not is_nil(c.cancelled_at)
   end
 
+  ## The release command's fill
+
+  @doc false
+  # set_up/0 is the release command's check (`Apiary.Release.demo/1`) of the instance it
+  # fills: `{:ok, {acme, main}}` when the instance is set up with the organisation Acme,
+  # whose workspace Main has no run and no node. Otherwise `{:error, reason}`: the instance
+  # is not set up (`:not_set_up`), its organisation is not Acme (`{:not_acme, slug}`, with
+  # the organisation's slug), Acme has no workspace Main (`:no_main`), or Main has runs or
+  # nodes (`:filled`).
+  @spec set_up() ::
+          {:ok, {%Organisation{}, %Workspace{}}}
+          | {:error, :not_set_up | {:not_acme, String.t()} | :no_main | :filled}
+  def set_up do
+    with {:ok, organisation} <- set_up_acme(),
+         {:ok, workspace} <- empty_main(organisation),
+         do: {:ok, {organisation, workspace}}
+  end
+
+  @doc false
+  # fill_set_up/2 is the release command's fill of `{acme, main}`, which `set_up/0`
+  # returned: the fill the task makes after its sign-up, with the task's switches as
+  # `opts`, and printing nothing. It is made in Dana's name: the fill makes her account
+  # first, unless it exists, and makes her an owner of Acme, an instance admin, as
+  # `Apiary.Release.grant_instance_admin/2` does. Each account it makes gets a random
+  # password nobody is told. Returns how many runs and repositories Main has after it,
+  # and how many people and pending invitations Acme has.
+  @spec fill_set_up({%Organisation{}, %Workspace{}}, keyword) :: %{atom => non_neg_integer}
+  def fill_set_up({%Organisation{} = organisation, %Workspace{} = workspace}, opts \\ []) do
+    Shell.quietly(fn ->
+      owner = History.account!(@owner, :random)
+
+      {:ok, _granted} =
+        Organisations.grant_instance_admin(owner, %{worker: "Apiary.Release.demo/1"})
+
+      history(opts, passwords: :random, as: owner)
+      fill_main(owner, opts)
+      live(owner)
+    end)
+
+    summary(organisation, workspace)
+  end
+
+  defp set_up_acme do
+    case Apiary.Edition.instance_organisation_id() do
+      nil ->
+        {:error, :not_set_up}
+
+      id ->
+        case Repo.get(Organisation, id) do
+          %Organisation{slug: "acme", deletion_marked_at: nil} = acme -> {:ok, acme}
+          %Organisation{slug: slug} -> {:error, {:not_acme, slug}}
+          nil -> {:error, :not_set_up}
+        end
+    end
+  end
+
+  defp empty_main(organisation) do
+    workspace =
+      Repo.one(
+        from w in Workspace,
+          where: w.organisation_id == ^organisation.id and w.slug == "main",
+          where: is_nil(w.deletion_marked_at)
+      )
+
+    cond do
+      workspace == nil -> {:error, :no_main}
+      Repo.exists?(from r in Run, where: r.workspace_id == ^workspace.id) -> {:error, :filled}
+      Repo.exists?(from n in Node, where: n.workspace_id == ^workspace.id) -> {:error, :filled}
+      true -> {:ok, workspace}
+    end
+  end
+
+  # How many runs and repositories Main has, and how many people and pending invitations
+  # Acme has.
+  defp summary(organisation, workspace) do
+    count = &Repo.aggregate(&1, :count)
+    now = DateTime.utc_now()
+
+    %{
+      runs: count.(from r in Run, where: r.workspace_id == ^workspace.id),
+      repositories: count.(from t in Target, where: t.workspace_id == ^workspace.id),
+      people: count.(from m in Membership, where: m.organisation_id == ^organisation.id),
+      invitations:
+        count.(
+          from i in Invitation,
+            where: i.organisation_id == ^organisation.id and is_nil(i.accepted_at),
+            where: i.expires_at > ^now
+        )
+    }
+  end
+
   ## The fill
 
   defp fill(opts) do
+    owner = sign_up!()
+    history(opts, [])
+    fill_main(owner, opts)
+    owner
+  end
+
+  # Main's history, by the task's switches `opts` and History's options `more`.
+  defp history(opts, more) do
+    History.fill(
+      [
+        workspace: "acme/main",
+        repositories: 150,
+        runs: Keyword.get(opts, :runs, 6_000),
+        days: Keyword.get(opts, :days, 56),
+        seed: Keyword.get(opts, :seed, 1),
+        concurrency: Keyword.get(opts, :concurrency, 6)
+      ] ++ more
+    )
+  end
+
+  # The fill after Main's history, in `owner`'s name: Dana's, an owner of Acme.
+  defp fill_main(owner, opts) do
     runs = Keyword.get(opts, :runs, 6_000)
     days = Keyword.get(opts, :days, 56)
     seed = Keyword.get(opts, :seed, 1)
-    concurrency = ["--concurrency", "#{Keyword.get(opts, :concurrency, 6)}"]
-
-    owner = sign_up!()
-
-    History.run(
-      ~w(--workspace acme/main --repositories 150) ++
-        ["--runs", "#{runs}", "--days", "#{days}", "--seed", "#{seed}"] ++ concurrency
-    )
+    concurrency = Keyword.get(opts, :concurrency, 6)
 
     main = scope!(owner, "main")
     replays(main)
@@ -289,10 +396,14 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
     second =
       with %Scope{} = scope <- second_workspace(main, owner) do
-        History.run(
-          ~w(--workspace acme/#{scope.workspace.slug} --repositories 30 --skip-members) ++
-            ["--runs", "#{max(div(runs, 7), 10)}", "--days", "#{max(div(days, 2), 2)}"] ++
-            ["--seed", "#{seed + 1}"] ++ concurrency
+        History.fill(
+          workspace: "acme/#{scope.workspace.slug}",
+          repositories: 30,
+          skip_members: true,
+          runs: max(div(runs, 7), 10),
+          days: max(div(days, 2), 2),
+          seed: seed + 1,
+          concurrency: concurrency
         )
 
         if Apiary.Features.on?(:secrets), do: variables_of_second(scope)
@@ -307,7 +418,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     finish(main)
 
     counts([main | second || []])
-    owner
   end
 
   # Shop ops, where the edition allows a second workspace; the core's allows one.
@@ -323,7 +433,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         scope!(owner, slug)
 
       {:error, :limit} ->
-        Mix.shell().info("The edition allows acme one workspace: #{slug} is not made")
+        Shell.info("The edition allows acme one workspace: #{slug} is not made")
         nil
     end
   end
@@ -356,7 +466,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   defp scope!(%User{} = user, workspace_slug) do
     case Organisations.resolve_scope(Scope.for_user(user), "acme", workspace_slug) do
       {:ok, scope} -> Scope.put_origin(scope, %{worker: "demo"})
-      :error -> Mix.raise("#{@owner} does not reach acme/#{workspace_slug}")
+      :error -> Shell.raise!("#{@owner} does not reach acme/#{workspace_slug}")
     end
   end
 
@@ -367,13 +477,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
     fun.(fn token ->
       send(parent, {ref, token})
-      "#{ApiaryWeb.Endpoint.url()}/demo/#{token}"
+      "#{Apiary.Setup.public_url()}/demo/#{token}"
     end)
 
     receive do
       {^ref, token} -> token
     after
-      0 -> Mix.raise("no token was handed over")
+      0 -> Shell.raise!("no token was handed over")
     end
   end
 
@@ -387,7 +497,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       {:ok, _run} = Demo.replay(key, recording(name), DateTime.add(now, -minutes_ago, :minute))
     end
 
-    Mix.shell().info("#{length(@replays)} recordings replayed")
+    Shell.info("#{length(@replays)} recordings replayed")
   end
 
   # The key of the node Dana's laptop runs as, as a verified request carries it.
@@ -396,7 +506,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       scope
       |> AccessKeys.list_workspace_node_keys()
       |> Enum.find(&(&1.node.name == "dana-laptop" and &1.label == "dana-laptop")) ||
-        Mix.raise("Main has no node dana-laptop with its key")
+        Shell.raise!("Main has no node dana-laptop with its key")
 
     Demo.access_key!(key.key_id)
   end
@@ -425,7 +535,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     add_key!(scope, pool, "spot-runners-a", false)
     add_key!(scope, pool, "spot-runners-b", false)
 
-    Mix.shell().info("Nodes build-01, build-02 and spot-runners, with their keys")
+    Shell.info("Nodes build-01, build-02 and spot-runners, with their keys")
   end
 
   # A key added by its public key, as Generate a key adds one made in a browser
@@ -469,7 +579,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       end
     end
 
-    Mix.shell().info("#{length(secrets)} secrets")
+    Shell.info("#{length(secrets)} secrets")
   end
 
   defp variables(scope) do
@@ -511,7 +621,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
           count + 1
       end
 
-    Mix.shell().info("#{length(workspace)} variables of the workspace, #{count} of repositories")
+    Shell.info("#{length(workspace)} variables of the workspace, #{count} of repositories")
   end
 
   defp variables_of_second(scope) do
@@ -576,7 +686,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     {source, version} = @missing
     %{state: "failed"} = release!(scope, source, version)
 
-    Mix.shell().info(
+    Shell.info(
       "Connections: the claude runtime, npm and Sentry, two integrations; one release failed"
     )
   end
@@ -723,9 +833,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         AccessKeys.create_enrolment_code(main, build_02, %{"label_hint" => "build-02-next"})
     end
 
-    Mix.shell().info("""
+    Shell.info("""
 
-    A run alive now: #{ApiaryWeb.Endpoint.url()}/acme/main/runs/#{run.public_id}
+    A run alive now: #{Apiary.Setup.public_url()}/acme/main/runs/#{run.public_id}
     Sign in as #{@owner}: see `mix help apiary.demo.console`.\
     """)
   end
@@ -754,7 +864,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
             select: {r.state, count()}
         )
 
-      Mix.shell().info("""
+      Shell.info("""
 
       acme/#{workspace.slug}: #{targets} repositories (#{format(systems)})
         runs: #{format(states)}\

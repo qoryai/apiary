@@ -17,10 +17,13 @@ defmodule Apiary.Runs.Outcome do
   outcome with no `state` is `cancelled` with the reason `stopped`.
 
   `give/4` stores it on the run. A key `Apiary.Access` does not let post
-  (`run.post_events`) is `{:error, :not_found}`. Then, the first that applies:
+  (`run.post_events`) is `{:error, :not_found}`, and so is a run of a workspace's queue,
+  which a node pool claimed (`dispatch_run_id`), whatever the key: such a run ends by its
+  exit, its refusal or the lost-run check, never by an outcome. Then, the first that
+  applies:
 
-    1. a repeat: the same outcome again, under any active key of the node or node pool
-       the run is bound to (`Apiary.Runs.Sender`), is given the same answer, nothing
+    1. a repeat: the same outcome again, under any active key of the node the run is
+       bound to (`Apiary.Runs.Sender`), is given the same answer, nothing
        stored again. The same outcome is the same state and reason as `parse/1` reads
        them, whatever its bytes: a new `time`, a reason dropped by the rules above, and
        no state at all (cancelled, stopped) all count. The first outcome's `time`, when it
@@ -44,10 +47,9 @@ defmodule Apiary.Runs.Outcome do
 
   require Logger
 
-  alias Apiary.{Access, Dispatches, Repo, Runs}
+  alias Apiary.{Access, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.RunEnd
   alias Apiary.Runs.{Batch, Fold, Projector, Run, Sender}
 
   @version "version"
@@ -63,9 +65,9 @@ defmodule Apiary.Runs.Outcome do
   # never writes, and `released`, which Qory sets itself for a run its starter released
   # (`Apiary.Runs.Fold.settle/1`): a starter's outcome may not give one.
   @reserved ~w(
-    timeout interrupted quiet credential_expired stopped session_lost gateway_lost
+    timeout interrupted no_session quiet credential_expired stopped session_lost gateway_lost
     batch_refused credential_check_unreachable credential_check_invalid run_closed
-    run_ended_at_issuer issuer_unreachable issuer_answer_invalid released
+    run_ended_at_issuer issuer_unreachable issuer_answer_invalid image_missing released
   )
   @max_skew_seconds 300
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
@@ -153,10 +155,9 @@ defmodule Apiary.Runs.Outcome do
     with :ok <- may_post(Scope.for_access_key(access_key)),
          true <- Batch.uuid?(run_id) || {:error, :not_found},
          %Run{} = held <- held(access_key, run_id) || {:error, :not_found},
-         {:ok, %{run: run, repeated: repeated, changed: changed}} <-
-           store(held, access_key, outcome, digest, now) do
+         true <- is_nil(held.dispatch_run_id) || {:error, :not_found},
+         {:ok, %{run: run, repeated: repeated}} <- store(held, access_key, outcome, digest, now) do
       if not repeated, do: Runs.broadcast_changed(run)
-      Dispatches.broadcast(changed)
       {:ok, %{run: run, repeated: repeated}}
     end
   rescue
@@ -186,16 +187,10 @@ defmodule Apiary.Runs.Outcome do
 
   # Under the run's projection lock and its row's, as a projection writes it, so a pass
   # and the outcome never write over each other: whichever comes second reads the other's.
-  # A run a workspace's queue handed over has the queue's run locked before them, as every
-  # path that locks the two does, a prebuild's environment record before that, and ends it
-  # with the outcome (`run_ended`) unless it ended before, lost, released or, for a
-  # prebuild, by its prebuilt, a prebuild so ended recording its last build as failed
-  # (`Apiary.Dispatches.RunEnd`): the workspaces whose slots that changed are told once the
-  # transaction commits.
-  defp store(%Run{id: id, dispatch_run_id: dispatch_run_id}, access_key, outcome, digest, now) do
+  # A run of a workspace's queue never comes here (`give/4`), so nothing of the queue is
+  # locked or ended.
+  defp store(%Run{id: id}, access_key, outcome, digest, now) do
     Repo.transact(fn ->
-      held = RunEnd.hold(dispatch_run_id)
-      dispatch_run = RunEnd.lock(dispatch_run_id)
       Projector.lock(id)
       run = Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
 
@@ -207,7 +202,7 @@ defmodule Apiary.Runs.Outcome do
           {:error, :not_found}
 
         same?(run, outcome) ->
-          {:ok, %{run: run, repeated: true, changed: []}}
+          {:ok, %{run: run, repeated: true}}
 
         not is_nil(run.events_pruned_at) ->
           {:error, :not_found}
@@ -216,9 +211,7 @@ defmodule Apiary.Runs.Outcome do
           {:error, :outcome_given}
 
         true ->
-          run = put(run, outcome, digest, now)
-          changed = RunEnd.finish(dispatch_run, run, :run_ended, now, held)
-          {:ok, %{run: run, repeated: false, changed: changed}}
+          {:ok, %{run: put(run, outcome, digest, now), repeated: false}}
       end
     end)
   end

@@ -285,13 +285,12 @@ defmodule Apiary.SchemaConstraintsTest do
           "https://a@gateway.example",
           "https://gateway.example?x",
           "https://gate way.example",
-          "https://" <> String.duplicate("a", 2041),
           "https://edge.example.com;rm$IFS-rf$IFS~",
           "https://edge_01.example",
           "https://edge..example",
           "https://-edge.example",
+          "https://gateway.example.",
           "https://" <> String.duplicate("a", 64) <> ".example",
-          "https://10.0.0.256",
           "https://2001:db8::1",
           "https://[2001:db8::1%25eth0]",
           "https://gateway.example:65536",
@@ -311,16 +310,18 @@ defmodule Apiary.SchemaConstraintsTest do
       end)
     end
 
-    # A name of 253 characters, not 254; an IPv4 address and an IPv6 one in brackets.
+    # A label of 63 characters, not 64; an address of 300 characters, not 301; in
+    # brackets, an IPv6 address and no IPv4 one.
     label = String.duplicate("a", 63)
-    longest = Enum.join([label, label, label, String.duplicate("b", 61)], ".")
+
+    longest =
+      "https://" <> Enum.join([label, label, label, label, String.duplicate("b", 36)], ".")
+
+    assert String.length(longest) == 300
 
     for url <- [
-          "https://#{longest}b",
+          "#{longest}b",
           "https://#{label}a.example",
-          "https://10.0.0.256",
-          "https://010.0.0.5",
-          "https://10.0.0",
           "https://[10.0.0.5]",
           "https://[2001:db8:::1]",
           "https://[1:2:3:4:5:6:7:8:9]",
@@ -329,10 +330,12 @@ defmodule Apiary.SchemaConstraintsTest do
       refused("nodes_url_check", fn -> update!("nodes", gateway.id, "url = $2", [url]) end)
     end
 
+    # A label may be digits alone, so 10.0.0.256 is a DNS name.
     for url <-
           ~w(https://gateway.example:8443 https://10.0.0.5 https://255.255.255.255
-             https://[2001:db8::1]:443 https://[::ffff:10.0.0.5] https://[::]
-             https://gateway.example.) ++ ["https://#{longest}", "https://#{longest}."] do
+             https://10.0.0.256 https://010.0.0.5 https://10.0.0
+             https://[2001:db8::1]:443 https://[::ffff:10.0.0.5] https://[::]) ++
+            [longest] do
       assert %{num_rows: 1} = update!("nodes", gateway.id, "url = $2", [url]), url
     end
 

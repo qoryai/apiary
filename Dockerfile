@@ -88,9 +88,13 @@ RUN mix release
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE} AS final
 
+# Debian's advisory DSA-6572-1 (2026-10-20) removes two root certificates after eMudhra
+# intermediate certificates were compromised. The build stops on an older ca-certificates.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && { dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1 \
+    || { echo "error: install ca-certificates 20250419+deb13u1 or later from trixie-security; found $(dpkg-query -W -f='${Version}' ca-certificates)" >&2; exit 1; }; }
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \

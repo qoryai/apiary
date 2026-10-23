@@ -456,10 +456,17 @@ defmodule Apiary.OrganisationGatewaysTest do
       assert {:ok, %{run: %Run{attached_at: %DateTime{}}}} = attach(verified, run, run_key)
       assert {:ok, %{status: 202, inserted: 1}} = post(verified, run)
 
-      # The run's reload is answered to it: the workspace serves no run configuration
-      # here, so not found, as for any gateway.
-      assert Apiary.Runs.Registration.fetch(verified, run.node_run_id, instance_id()) ==
-               {:error, :not_found}
+      # The run's reload is answered to it, as for any gateway. With the `registry`
+      # feature, its run configuration has the run's registry credential and no other.
+      # Without the feature, not found: the workspace serves no run configuration here.
+      reload = Apiary.Runs.Registration.fetch(verified, run.node_run_id, instance_id())
+
+      if Apiary.Features.on?(:registry) do
+        assert {:ok, %{settings: settings}} = reload
+        assert %{"credentials" => [%{"name" => "registry"}]} = Jason.decode!(settings)
+      else
+        assert reload == {:error, :not_found}
+      end
     end
 
     test "its key acts for no run of its own organisation's workspaces",

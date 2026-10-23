@@ -117,7 +117,10 @@ defmodule Apiary.AccessRows do
       {:"variable.edit", yes: @owners ++ [:admin]},
       {:"connection.read", yes: @owners ++ [:member, :admin]},
       {:"connection.write", yes: @owners ++ [:admin]},
+      {:"provider.write", yes: @owners ++ [:admin]},
+      {:"runtime.write", yes: @owners ++ [:admin]},
       {:"model_choice.write", yes: @owners ++ [:admin]},
+      {:"time_limit.edit", yes: @owners ++ [:admin]},
       {:"run.post_events", yes: [:access_key, :pool_key, :hidden]},
       {:"run_configuration.fetch", yes: [:access_key, :pool_key, :hidden]},
       {:"secret.seal", yes: [:access_key, :hidden]},
@@ -150,10 +153,9 @@ defmodule Apiary.AccessRows do
       {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
       {:"dispatch.claim", yes: [:pool_key, :hidden]},
       {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
-      {:"dispatch.handover", yes: [:pool_key, :hidden]},
       {:"dispatch.release", yes: [:pool_key, :hidden]},
       {:"target.set_further_repositories", yes: @owners ++ [:admin]},
-      {:"dispatch.prebuilt", yes: [:pool_key, :hidden]},
+      {:"dispatch.machine_log", yes: [:pool_key, :hidden]},
       {:"target.rebuild_environment", yes: @owners ++ [:member, :admin]}
     ]
   end

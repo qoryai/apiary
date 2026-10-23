@@ -64,12 +64,9 @@ defmodule Apiary.Adapters.Collections do
   # it; the old target stays, as on a move. No target is made in a workspace marked for
   # deletion.
   #
-  # **Prebuilds**: a part applies the trigger of `Apiary.Environments.trigger/2` to the
-  # collections it made or updated, and an assign to those it assigned or moved to a
-  # workspace, in its transaction: a prebuild is queued for each live node pool of the
-  # collection's workspace whose record of it is missing, was queued for another
-  # `environment_ref`, or was retired after it was last queued, and a collection named
-  # without one retires its records.
+  # **Prebuilds**: neither a part nor an assign queues a build. A run of a collection's
+  # target waits for a node pool's build of the collection's `environment_ref`, which the
+  # pool's next claim queues (`Apiary.Environments`).
   #
   # **The end of a collection** is final: by `POST /v1/sources/disconnect`
   # (`disconnect/2`), by a listing of another connection of the adapter that names its
@@ -167,7 +164,7 @@ defmodule Apiary.Adapters.Collections do
   #      connection's row, then the feed's counter;
   #   4. the targets an assign or a part makes, by workspace, then by system and path: a
   #      part makes them after every collection it writes, its ends included
-  #      (`finish_part/4`);
+  #      (`finish_part/3`);
   #   5. the work items, `FOR UPDATE`, by id, where a change holds several
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
@@ -175,13 +172,7 @@ defmodule Apiary.Adapters.Collections do
   #      work item, as a comment's deletion holds it (`Apiary.WorkItems.Moves`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
-  #   7. the environment records of the collections an assign assigns or moves to a
-  #      workspace, or a part makes or updates, `FOR UPDATE`, by collection and then pool,
-  #      then the prebuilds their trigger queues or ends (`Apiary.Environments.trigger/2`;
-  #      `Apiary.Dispatches.Slots` names the order from the records on): an assign takes
-  #      them after its targets (`relink/5`), and a part after its targets, so after every
-  #      collection it holds, its ends included (`finish_part/4`);
-  #   8. the adapter's feed counter, last.
+  #   7. the adapter's feed counter, last.
   #
   # A start that changes the adapter's `items` holds, after its row, the adapter's
   # connections that have not ended `FOR SHARE`, by id, then every live collection of
@@ -213,7 +204,7 @@ defmodule Apiary.Adapters.Collections do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Adapters, Audit, Environments, PublicId, Repo}
+  alias Apiary.{Access, Adapters, Audit, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Connections, Feed, Wire}
   alias Apiary.Lingo.Domain
@@ -315,7 +306,7 @@ defmodule Apiary.Adapters.Collections do
         now = DateTime.utc_now()
         put = put_collections(connection, adapter, collections, part.started_at, now)
         {ended, completed?} = complete(connection, listing, now)
-        :ok = finish_part(connection, put, ended, now)
+        :ok = finish_part(connection, put, ended)
         ids = Enum.map(put.put, & &1.id) ++ Enum.map(ended, & &1.id)
         {:ok, {connection, ids, is_nil(found.listed_at) or completed?, put.elsewhere}}
       end
@@ -359,7 +350,7 @@ defmodule Apiary.Adapters.Collections do
   #      trail; once each commits, it is broadcast to that organisation;
   #   2. then, in one transaction, the refs no connection holds live any more are made
   #      under `connection` as a listing's part makes collections (`hold_listed/2`,
-  #      `put_collections/5`, `finish_part/4`): new, with nothing of the ended one, so no
+  #      `put_collections/5`, `finish_part/3`): new, with nothing of the ended one, so no
   #      workspace and no Backlog switch come over, and assigned to the organisation's
   #      only workspace when it has one, as any collection a part makes. Once it commits,
   #      they are broadcast.
@@ -382,7 +373,7 @@ defmodule Apiary.Adapters.Collections do
       with {:ok, adapter, _found, held} <- hold_listed(key_scope, connection.public_id) do
         now = DateTime.utc_now()
         put = put_collections(held, adapter, free, started_at, now)
-        :ok = finish_part(held, put, [], now)
+        :ok = finish_part(held, put, [])
         {:ok, {held, Enum.map(put.put, & &1.id), put.elsewhere}}
       end
     end)
@@ -542,7 +533,7 @@ defmodule Apiary.Adapters.Collections do
   # the module says. A ref live under another connection of the adapter is left as it is
   # here, and moved once the part commits (`move_here/5`). A collection made here is
   # assigned to the organisation's only workspace, when it has one (`only_workspace/1`).
-  # It makes no target and writes no feed entry: `finish_part/4` does, after
+  # It makes no target and writes no feed entry: `finish_part/3` does, after
   # `complete/3`. `%{put: collections, made: ids, assigned: before, workspaces: held,
   # elsewhere: named}`: the collections made or updated, each with its adapter, the ids of
   # those made, the assigned ones as they stood before the part (`assigned_before/2`),
@@ -670,12 +661,10 @@ defmodule Apiary.Adapters.Collections do
   # the part holds the targets and the adapter's feed counter after them all, as the
   # module's lock order says: each collection made in a workspace, and each one in a
   # workspace whose target the part changes, makes its target there
-  # (`insert_listed_targets/4`); then the trigger of `Apiary.Environments.trigger/2`, at
-  # `now`, for the collections made or updated; then the feed's `linked` entry for each
-  # one made linked
+  # (`insert_listed_targets/4`); then the feed's `linked` entry for each one made linked
   # and each updated one whose `items` linked it (`flipped/2`), its `unlinked` entry for
   # each updated one whose `items` unlinked it, then for each of `ended` that was linked.
-  defp finish_part(%Connection{} = connection, put, ended, now) do
+  defp finish_part(%Connection{} = connection, put, ended) do
     %{put: collections, made: made, assigned: assigned, workspaces: workspaces} = put
 
     # Made here, or with another workspace or target than before the part.
@@ -685,8 +674,6 @@ defmodule Apiary.Adapters.Collections do
 
     :ok =
       insert_listed_targets(connection.organisation_id, workspaces, collections, new_target?)
-
-    _queued = Environments.trigger(collections, now)
 
     {made_now, updated} = Enum.split_with(collections, &MapSet.member?(made, &1.id))
     {linked, unlinked} = flipped(updated, assigned)
@@ -822,7 +809,7 @@ defmodule Apiary.Adapters.Collections do
   # live collection of `connection` that the listing did not name, and that no newer
   # listing named (`last_listed_at` before the listing's `started_at`), and marks the
   # connection's listing complete (`listing_completed_at`). `{ended, completed?}`, the
-  # collections it ended, whose `unlinked` entries `finish_part/4` writes.
+  # collections it ended, whose `unlinked` entries `finish_part/3` writes.
   defp complete(%Connection{} = connection, listing, now) do
     if is_nil(listing.completed_at) and is_integer(listing.last_part) and
          length(listing.parts) == listing.last_part do
@@ -1704,11 +1691,6 @@ defmodule Apiary.Adapters.Collections do
       )
 
     if workspace_id do
-      _queued =
-        changed
-        |> Enum.map(&%{&1 | workspace_id: workspace_id, updated_at: now})
-        |> Environments.trigger(now)
-
       changed
       |> Repo.preload(:adapter)
       |> Enum.filter(

@@ -45,7 +45,7 @@ defmodule Apiary.ModelChoicesInUseTest do
       {:ok, _} =
         ModelChoices.put_choice(
           scope,
-          {target, "explore"},
+          {target, "hello"},
           Map.put(attrs(provider), :tiers, %{"light" => "claude-haiku-5-5"})
         )
 
@@ -58,7 +58,7 @@ defmodule Apiary.ModelChoicesInUseTest do
       assert Enum.map(places, & &1.level) == [6, 2]
 
       assert Enum.map(places, &ModelChoices.place_words/1) ==
-               ["the organisation's default", "github.example/acme/shop, explore runs"]
+               ["the organisation's default", "github.example/acme/shop, hello runs"]
     end
 
     test "the provider is not removed, and the refusal names the places (T27)", %{
@@ -69,7 +69,7 @@ defmodule Apiary.ModelChoicesInUseTest do
       assert length(places) == 2
 
       assert ModelChoices.in_use_words("Anthropic API key", places) ==
-               "Change the model choices that use Anthropic API key first: the organisation's default, github.example/acme/shop, explore runs."
+               "Change the model choices that use Anthropic API key first: the organisation's default, github.example/acme/shop, hello runs."
 
       assert Repo.get(Connection, provider.id)
 
@@ -79,7 +79,7 @@ defmodule Apiary.ModelChoicesInUseTest do
              ) == 1
 
       {:ok, _} = ModelChoices.delete_choice(scope, :organisation)
-      {:ok, _} = ModelChoices.delete_choice(scope, {Repo.one!(Target), "explore"})
+      {:ok, _} = ModelChoices.delete_choice(scope, {Repo.one!(Target), "hello"})
       assert {:ok, _} = Connections.delete_provider(scope, provider)
     end
 
@@ -106,7 +106,7 @@ defmodule Apiary.ModelChoicesInUseTest do
                errors(Connections.delete_provider_key(scope, provider, "spare"))
 
       assert message ==
-               "Change the model choices that use the key spare first: github.example/acme/shop, explore runs."
+               "Change the model choices that use the key spare first: github.example/acme/shop, hello runs."
 
       assert %{value_id: [^message]} =
                errors(Connections.rename_provider_key(scope, provider, "spare", "other"))
@@ -122,7 +122,7 @@ defmodule Apiary.ModelChoicesInUseTest do
     test "a listing of five and more names five and counts the rest", %{provider: provider} do
       places =
         for n <- 1..7,
-            do: %{level: 3, workspace: "W", target: "t#{n}", run_kind: nil, value_id: nil}
+            do: %{level: 3, workspace: "W", target: "t#{n}", workflow: nil, value_id: nil}
 
       words = ModelChoices.in_use_words(provider.name, places)
       assert words =~ "t1, t2, t3, t4, t5 and 2 more."

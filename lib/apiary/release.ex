@@ -14,7 +14,8 @@ defmodule Apiary.Release do
   scripted install, which claims a fresh instance, and for recovery when none is left.
   `password_link/1` prints a one-time link that sets an account's password.
   `accept_signing_key/0` records a new signing key's fingerprint, for the boot's key
-  check (`Apiary.KeyCheck`). An edition's commands run the way these do (`run/1`).
+  check (`Apiary.KeyCheck`). `demo/0` fills a test instance with the demo. An edition's
+  commands run the way these do (`run/1`).
   """
   @app :apiary
 
@@ -71,14 +72,7 @@ defmodule Apiary.Release do
     for repo <- repos() do
       {:ok, result, _} =
         Ecto.Migrator.with_repo(repo, fn _repo ->
-          # A projection announces itself; outside the running application nobody listens,
-          # but the name has to exist.
-          {:ok, pubsub} =
-            Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
-
-          result = Apiary.Runs.Rebuild.run(opts)
-          Supervisor.stop(pubsub)
-          result
+          with_pubsub(fn -> Apiary.Runs.Rebuild.run(opts) end)
         end)
 
       result
@@ -96,16 +90,7 @@ defmodule Apiary.Release do
 
     for repo <- repos() do
       {:ok, result, _} =
-        Ecto.Migrator.with_repo(repo, fn _repo ->
-          # A new version is announced; outside the running application nobody listens,
-          # but the name has to exist.
-          {:ok, pubsub} =
-            Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
-
-          result = Apiary.Policy.rerender_all()
-          Supervisor.stop(pubsub)
-          result
-        end)
+        Ecto.Migrator.with_repo(repo, fn _repo -> with_pubsub(&Apiary.Policy.rerender_all/0) end)
 
       result
     end
@@ -428,6 +413,155 @@ defmodule Apiary.Release do
   end
 
   @doc """
+  Fills a test instance with the demo of `mix apiary.demo.console`:
+  `bin/apiary eval 'Apiary.Release.demo()'`. `opts` are the task's switches `runs:`,
+  `days:`, `seed:` and `concurrency:`, with the same defaults, as in
+  `Apiary.Release.demo(runs: 3000)`.
+
+  The instance is set up first with the organisation name Acme (slug `acme`). The demo
+  fills Acme and its workspace Main: about 6,000 runs over 56 days in about 150
+  repositories; 11 more people at every level, Dana (`dana@example.com`) an owner and so
+  an instance admin, and two invitations pending; and nodes and their keys. With mail
+  set, each person the demo adds gets a log-in email, and each person it invites gets an
+  invitation email. The command makes nothing and stops when the instance is not set up,
+  its organisation is not Acme, or its workspace Main already has runs or nodes.
+
+  Nobody knows the password of an account the demo makes: each has a random one. The
+  output says how to print a link that sets Dana's (`password_link/1`).
+
+  A release command runs no endpoint and no job queue. The demo's links take the
+  configured address (`Apiary.Setup.public_url/0`). The processes of the application
+  that the demo's steps call are started for the command, Oban among them with no queue
+  and no plugin: a job the demo queues is inserted and not run here, and the demo does
+  that job's work itself, as under Mix. The instance's queue runs the job later and finds
+  nothing left to do. Prints one line on stderr as it starts, then what it made; returns
+  `{:ok, summary}` or `{:error, reason}`.
+  """
+  @spec demo(keyword) :: {:ok, map} | {:error, atom}
+  def demo(opts \\ []) do
+    load_app()
+    # `bin/apiary eval` starts none of the release's applications, and the demo calls
+    # processes that start with theirs: the PubSub's process group, Oban's registry, the
+    # mailer's and the HTTP client's.
+    for app <- [:phoenix_pubsub, :oban, :swoosh, :gen_smtp, :req],
+        do: {:ok, _apps} = Application.ensure_all_started(app)
+
+    fill = fn _repo -> with_demo_processes(fn -> demo_now(opts) end) end
+
+    # The history is written by `concurrency:` processes at once (6), and a release
+    # command's repository has 2 connections unless told: two more than the writers, and
+    # 8 at least.
+    pool_size = max(Keyword.get(opts, :concurrency, 6) + 2, 8)
+
+    for repo <- repos() do
+      {:ok, result, _} = Ecto.Migrator.with_repo(repo, fill, pool_size: pool_size)
+      result
+    end
+    |> List.first()
+  end
+
+  defp demo_now(opts) do
+    alias Mix.Tasks.Apiary.Demo.Console
+
+    case Console.set_up() do
+      {:ok, set_up} ->
+        IO.puts(:stderr, "Loading the demo into acme/main.")
+
+        summary = quietly(fn -> Console.fill_set_up(set_up, opts) end)
+        url = "#{Apiary.Setup.public_url()}/acme/main"
+
+        IO.puts(
+          "acme/main has #{summary.runs} runs in #{summary.repositories} repositories; " <>
+            "acme has #{summary.people} people and #{summary.invitations} pending invitations."
+        )
+
+        IO.puts(
+          "To sign in as dana@example.com (instance admin), print a link that sets the " <>
+            ~s{password: bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'}
+        )
+
+        if Apiary.Features.on?(:factory),
+          do: IO.puts("Open the Backlog and take a ticket in: #{url}/backlog"),
+          else: IO.puts("Open the runs: #{url}/runs")
+
+        {:ok, summary}
+
+      {:error, {:not_acme, slug}} ->
+        IO.puts(
+          "Run this command on an instance set up with the organisation name Acme. " <>
+            "This instance's organisation has the slug #{slug}."
+        )
+
+        {:error, :not_acme}
+
+      {:error, reason} ->
+        IO.puts(demo_refusal(reason))
+        {:error, reason}
+    end
+  end
+
+  defp demo_refusal(:not_set_up),
+    do:
+      "Set up the instance with the organisation name Acme, then run this command again. " <>
+        "The instance is not set up yet."
+
+  defp demo_refusal(:no_main),
+    do:
+      "Run this command on an instance set up with the organisation name Acme. " <>
+        "The organisation acme has no workspace main."
+
+  defp demo_refusal(:filled),
+    do:
+      "Run this command on a new instance set up with the organisation name Acme. " <>
+        "acme/main already has runs or nodes."
+
+  # Only errors are logged while the demo fills: the fill logs a warning for the
+  # integration release whose fetch fails on purpose.
+  defp quietly(fun) do
+    level = Logger.level()
+    Logger.configure(level: :error)
+
+    try do
+      fun.()
+    after
+      Logger.configure(level: level)
+    end
+  end
+
+  # The processes of the application that the demo's steps call, each started for the
+  # command where it does not run: the name changes announce on (`Apiary.PubSub`), the
+  # supervisor of the runs' projections, the rate limit of enrolments, the throttle of
+  # node sightings, and Oban, with no queue and no plugin, so a job is inserted and none
+  # runs.
+  defp with_demo_processes(fun) do
+    children =
+      for {name, child} <- [
+            {Apiary.PubSub, {Phoenix.PubSub, name: Apiary.PubSub}},
+            {Apiary.Runs.TaskSupervisor, {Task.Supervisor, name: Apiary.Runs.TaskSupervisor}},
+            {Apiary.Runs.RateLimit, Apiary.Runs.RateLimit},
+            {Apiary.Nodes.Throttle, Apiary.Nodes.Throttle}
+          ],
+          Process.whereis(name) == nil,
+          do: child
+
+    children = if Oban.whereis(Oban), do: children, else: children ++ [{Oban, insert_only()}]
+    {:ok, supervisor} = Supervisor.start_link(children, strategy: :one_for_one)
+
+    try do
+      fun.()
+    after
+      Supervisor.stop(supervisor)
+    end
+  end
+
+  defp insert_only do
+    @app
+    |> Application.fetch_env!(Oban)
+    |> Keyword.drop([:pruner, :lifeline, :crontab])
+    |> Keyword.merge(queues: false, plugins: false, peer: false, stager: false)
+  end
+
+  @doc """
   run/1 runs `fun` as a release command: with the application loaded, on the release's
   repository, and with the name its changes announce on (`Apiary.PubSub`), started for
   the command where the application is not running. `fun`'s answer. For the commands of
@@ -455,11 +589,14 @@ defmodule Apiary.Release do
   def refusal(_reason), do: "the database refused the change"
 
   # Outside the running application nobody listens to what a change announces, but the
-  # name has to exist; inside it, it does.
+  # name has to exist; inside it, it does. `bin/apiary eval` starts kernel and stdlib
+  # only, and `Phoenix.PubSub` fails to start until the `phoenix_pubsub` application runs.
   defp with_pubsub(fun) do
     if Process.whereis(Apiary.PubSub) do
       fun.()
     else
+      {:ok, _} = Application.ensure_all_started(:phoenix_pubsub)
+
       {:ok, pubsub} =
         Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
 

@@ -10,13 +10,7 @@ defmodule Apiary.AuditChanges do
   import Apiary.AccountsFixtures, only: [unique_user_email: 0, valid_user_attributes: 1]
   import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
 
-  import Apiary.DispatchedRunsFixtures,
-    only: [
-      dispatched!: 1,
-      handover_place_fixture: 1,
-      prebuild_handed_over!: 2,
-      prebuilt_meta: 1
-    ]
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1]
 
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -116,7 +110,10 @@ defmodule Apiary.AuditChanges do
       :"secret.write",
       :"variable.edit",
       :"connection.write",
+      :"provider.write",
+      :"runtime.write",
       :"model_choice.write",
+      :"time_limit.edit",
       :"adapter.create",
       :"adapter.edit",
       :"adapter.set_interval",
@@ -128,10 +125,8 @@ defmodule Apiary.AuditChanges do
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
-      :"dispatch.handover",
       :"dispatch.release",
       :"target.set_further_repositories",
-      :"dispatch.prebuilt",
       :"target.rebuild_environment",
       :"secret.seal"
     ] ++ @work_item_moves ++ @work_item_comments
@@ -570,34 +565,16 @@ defmodule Apiary.AuditChanges do
     }
   end
 
-  # A node pool's starter has the run of a dispatch its pool claimed handed over, in the
-  # trail of the workspace's organisation, about the run registered for it; the entry's
-  # actor is the pool's key.
-  def make(:"dispatch.handover", %{scope: scope}) do
-    %{key: key} = handover_place_fixture(scope)
-    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(key)
-    before = entries()
-
-    {:ok, %{run: run}} =
-      Apiary.Dispatches.handover(key, dispatch.public_id, %{body: "{}"})
-
-    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
-
-    %{
-      scope: Scope.for_access_key(key),
-      subject: {"run", run.id},
-      before: before,
-      actor: {:access_key, key.id}
-    }
-  end
-
   # A gateway's secrets request seals a run's model key to its access key, in the trail of
   # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
   # the entry keeps nothing of the key's value.
   def make(:"secret.seal", %{scope: scope}) do
     {ctx, key, now} = sealed_run(scope)
-    body = secrets_request(ctx.run, ctx.attached.digest, [ctx.provider.public_id], now)
+    # The credential names of the run's run configuration, in its order: the model key's
+    # and, with the `registry` feature, the registry credential's after it.
+    document = Jason.decode!(ctx.attached.settings)
+    credentials = for %{"name" => name} <- document["credentials"], do: name
+    body = secrets_request(ctx.run, ctx.attached.digest, credentials, now)
     before = entries()
 
     {:ok, _answer} =
@@ -618,13 +595,12 @@ defmodule Apiary.AuditChanges do
   def make(:"dispatch.release", %{scope: scope}) do
     %{key: key} = handover_place_fixture(scope)
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(key)
+    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(key, Apiary.Dispatches.now())
     before = entries()
 
     :ok =
       Apiary.Dispatches.release(key, dispatch.public_id, %{
-        reason: "The job could not start.",
-        retry: false
+        reason: "The job could not start."
       })
 
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
@@ -632,24 +608,6 @@ defmodule Apiary.AuditChanges do
     %{
       scope: Scope.for_access_key(key),
       subject: {"node", key.node_id},
-      before: before,
-      actor: {:access_key, key.id}
-    }
-  end
-
-  # A node pool's starter reports the image a prebuild its pool claimed built, after its
-  # handover, in the trail of the workspace's organisation, about the run registered for
-  # it; the entry's actor is the pool's key.
-  def make(:"dispatch.prebuilt", %{scope: scope}) do
-    %{key: key} = handover_place_fixture(scope)
-    %{dispatch: dispatch, dispatch_run: queued, run: run} = prebuild_handed_over!(scope, key)
-    before = entries()
-    :ok = Apiary.Dispatches.prebuilt(key, dispatch.public_id, prebuilt_meta(queued))
-    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
-
-    %{
-      scope: Scope.for_access_key(key),
-      subject: {"run", run.id},
       before: before,
       actor: {:access_key, key.id}
     }
@@ -738,6 +696,26 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"connection", connection.id}, before: before}
   end
 
+  # A model provider is added: the key's value is the secret no entry may hold.
+  def make(:"provider.write", %{scope: scope}) do
+    value = "sk-audit-provider-key"
+    before = entries()
+
+    {:ok, provider} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: value}]
+      })
+
+    %{scope: scope, subject: {"connection", provider.id}, before: before, secret: value}
+  end
+
+  def make(:"runtime.write", %{scope: scope}) do
+    before = entries()
+    {:ok, connection} = Apiary.Connections.create_runtime(scope, %{runtime: "claude"})
+    %{scope: scope, subject: {"connection", connection.id}, before: before}
+  end
+
   # A model provider is added, then the workspace's choice names it, in the workspace's
   # trail, about the choice. The key's value is the secret no entry may hold.
   def make(:"model_choice.write", %{scope: scope}) do
@@ -755,6 +733,14 @@ defmodule Apiary.AuditChanges do
       Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
 
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
+  end
+
+  # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
+  # the limit.
+  def make(:"time_limit.edit", %{scope: scope}) do
+    before = entries()
+    {:ok, limit} = Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)
+    %{scope: scope, subject: {"time_limit", limit.id}, before: before}
   end
 
   def make(:"organisation.delete", %{scope: scope}) do
@@ -935,38 +921,18 @@ defmodule Apiary.AuditChanges do
      Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)}
   end
 
-  # A dispatch another pool of the workspace claimed is not the key's to hand over.
-  def refuse(:"dispatch.handover", %{scope: scope}) do
-    %{key: claimer} = handover_place_fixture(scope)
-    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
-    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(claimer)
-    before = entries()
-    {before, Apiary.Dispatches.handover(other, dispatch.public_id, %{body: "{}"})}
-  end
-
   # A dispatch another pool of the workspace claimed is not the key's to give back.
   def refuse(:"dispatch.release", %{scope: scope}) do
     %{key: claimer} = handover_place_fixture(scope)
     %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    %{dispatch: dispatch} = dispatched!(claimer)
+    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(claimer, Apiary.Dispatches.now())
     before = entries()
 
     {before,
      Apiary.Dispatches.release(other, dispatch.public_id, %{
-       reason: "The job could not start.",
-       retry: false
+       reason: "The job could not start."
      })}
-  end
-
-  # A dispatch another pool of the workspace claimed is not the key's to report on.
-  def refuse(:"dispatch.prebuilt", %{scope: scope}) do
-    %{key: claimer} = handover_place_fixture(scope)
-    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
-    %{dispatch: dispatch, dispatch_run: queued} = prebuild_handed_over!(scope, claimer)
-    before = entries()
-    {before, Apiary.Dispatches.prebuilt(other, dispatch.public_id, prebuilt_meta(queued))}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,
@@ -1335,8 +1301,21 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"connection.write", scope, _),
     do: Apiary.Connections.create_service(scope, %{service: "sentry"})
 
+  defp attempt(:"provider.write", scope, _),
+    do:
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: "sk-audit-provider-key"}]
+      })
+
+  defp attempt(:"runtime.write", scope, _),
+    do: Apiary.Connections.create_runtime(scope, %{runtime: "claude"})
+
   defp attempt(:"model_choice.write", scope, _),
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
+
+  defp attempt(:"time_limit.edit", scope, _),
+    do: Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)
 
   defp attempt(:"retention.edit", scope, _),
     do: Retention.update_retention(scope, %{events_retention_days: 30})

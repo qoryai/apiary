@@ -90,9 +90,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   @ended [:declined, :closed, :undone]
   @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
   @no_result [:no_result, :lost, :cancelled]
-  # The end causes of a run that ended at its handover, before it started, because the
-  # handover could not form what the run is made from (`Apiary.Dispatches.Handover`).
-  @unstarted [:variables_invalid, :ticket_gone, :inputs_invalid]
+  # The end causes of a run that ended before it started: at its claim, because the claim
+  # could not form what the run is made from (`Apiary.Dispatches.Handover`), or while it
+  # waited for its environment image's build, which failed (`Apiary.Environments`).
+  @unstarted [:variables_invalid, :ticket_gone, :inputs_invalid, :build_failed]
   @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
   @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
 
@@ -1754,8 +1755,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       repository keeps its tickets out of the Backlog (`backlog_off`); or what happened to
       the last run;
     * no result, lost or cancelled: what happened, and the run's page; for a run that
-      ended at its handover, before it started (`:end_cause` `:variables_invalid`,
-      `:ticket_gone` or `:inputs_invalid`), what a member fixes and why;
+      ended at its claim, before it started (`:end_cause` `:variables_invalid`,
+      `:ticket_gone` or `:inputs_invalid`), or while it waited for its environment
+      image's build, which failed (`:build_failed`), what a member fixes and why;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
       with Qory's words under Show Qory's words;
@@ -2626,7 +2628,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       {"hero-signal-slash-micro", gettext("The run was lost."),
        gettext(
-         "It stopped reporting before it ended. There is nothing for Qory to show or for a member to confirm."
+         "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."
        )}
 
   defp no_result_words(%{state: :cancelled}),
@@ -2662,7 +2664,8 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
        )}
 
-  # What a member does about a run that ended at its handover, and why it ended.
+  # What a member does about a run that ended before it started, at its claim or while it
+  # waited for its environment image's build, and why it ended.
   defp unstarted_words(:variables_invalid),
     do:
       gettext(
@@ -2679,6 +2682,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       gettext(
         "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."
+      )
+
+  defp unstarted_words(:build_failed),
+    do:
+      gettext(
+        "Check why the build failed on the target's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
       )
 
   attr :id, :string, required: true

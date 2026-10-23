@@ -118,7 +118,12 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
         from e in Event,
           where:
             e.workspace_id == ^scope.workspace.id and
-              e.type in ["dev.qory.run.exited", "dev.qory.run.started"],
+              e.type in [
+                "dev.qory.run.exited",
+                "dev.qory.run.started",
+                "dev.qory.session.started",
+                "dev.qory.session.exited"
+              ],
           select: {e.run_id, e.type, e.data}
       )
 
@@ -143,11 +148,31 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
       assert code == :any or data["exit_code"] == code, reason
     end
 
-    # A session opens every run, and its start names no credential.
+    # Forager's open opens every run, and its start names no credential and no runtime.
     for {_run, "dev.qory.run.started", data} <- events do
-      assert data["opened_by"] == "session"
+      assert data["opened_by"] == "run"
       refute Map.has_key?(data, "credential")
+      refute Map.has_key?(data, "runtime")
     end
+
+    # Every started run has one session, session 1, and every exit the session's exit
+    # before it.
+    by_run = Enum.group_by(events, &elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})
+
+    for {_run, run_events} <- by_run, types = Enum.map(run_events, &elem(&1, 0)) do
+      assert Enum.count(types, &(&1 == "dev.qory.session.started")) ==
+               Enum.count(types, &(&1 == "dev.qory.run.started"))
+
+      assert Enum.count(types, &(&1 == "dev.qory.session.exited")) ==
+               Enum.count(types, &(&1 == "dev.qory.run.exited"))
+
+      for {type, data} <- run_events,
+          type in ["dev.qory.session.started", "dev.qory.session.exited"] do
+        assert data["session"] == 1
+      end
+    end
+
+    assert Enum.any?(runs, &(&1.runtime == "claude"))
   end
 
   test "the runs say what they are about, as a caller would, on hosts under example.com",

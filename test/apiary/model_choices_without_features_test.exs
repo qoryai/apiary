@@ -43,9 +43,9 @@ defmodule Apiary.ModelChoicesWithoutFeaturesTest do
       for place <- [
             :organisation,
             :workspace,
-            {:workspace, "explore"},
+            {:workspace, "hello"},
             target,
-            {target, "explore"}
+            {target, "hello"}
           ] do
         assert ModelChoices.put_choice(scope, place, attrs) == {:error, :not_found}
         assert ModelChoices.delete_choice(scope, place) == {:error, :not_found}
@@ -54,7 +54,7 @@ defmodule Apiary.ModelChoicesWithoutFeaturesTest do
       end
 
       assert ModelChoices.list_choices(scope) == {:error, :not_found}
-      assert ModelChoices.resolve(scope, target, "explore") == {:error, :not_found}
+      assert ModelChoices.resolve(scope, target, "hello") == {:error, :not_found}
 
       assert Repo.aggregate(ModelChoice, :count) == 1
       assert Repo.get_by!(ModelChoice, workspace_id: scope.workspace.id).locked

@@ -70,6 +70,21 @@ defmodule Apiary.Contract.EnrolmentTest do
       end
     end
 
+    test "a run code reads with its prefix, the contract's pattern's" do
+      prefix = EnrolmentCode.run_prefix()
+      assert prefix =~ ~r/\Aqecr_\z/
+      refute prefix in Map.values(EnrolmentCode.prefixes())
+      {body, _public_key} = request(%{"code" => prefix <> @body <> "." <> @fingerprint})
+      assert {:ok, request} = Enrolment.decode(Jason.encode!(body))
+      assert request.code_head == prefix <> @body
+      assert EnrolmentCode.run_code?(request.code_head)
+
+      {upper, _public_key} =
+        request(%{"code" => String.upcase(prefix) <> @body <> "." <> @fingerprint})
+
+      assert Enrolment.decode(Jason.encode!(upper)) == {:error, ["code"]}
+    end
+
     test "a code outside the contract's pattern is refused, for its code" do
       prefix = EnrolmentCode.prefix(:node)
 
@@ -163,14 +178,17 @@ defmodule Apiary.Contract.EnrolmentTest do
     for prefix <- Map.values(EnrolmentCode.prefixes()),
         do: assert(Enrolment.issued_code(prefix <> @body, @fingerprint) =~ prefix)
 
+    assert Enrolment.issued_code(EnrolmentCode.run_prefix() <> @body, @fingerprint) ==
+             EnrolmentCode.run_prefix() <> @body <> "." <> @fingerprint
+
     assert_raise ArgumentError, fn ->
       Enrolment.issued_code("qec" <> unknown_letter() <> "_" <> @body, @fingerprint)
     end
   end
 
-  # A letter no kind's prefix carries after `qec`.
+  # A letter no kind's prefix, nor a run code's, carries after `qec`.
   defp unknown_letter do
-    prefixes = Map.values(EnrolmentCode.prefixes())
+    prefixes = [EnrolmentCode.run_prefix() | Map.values(EnrolmentCode.prefixes())]
     Enum.find_value(?a..?z, &if(("qec" <> <<&1>> <> "_") not in prefixes, do: <<&1>>))
   end
 end

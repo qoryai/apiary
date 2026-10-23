@@ -19,6 +19,8 @@ defmodule Apiary.InstanceConfig.Row do
     field :audit_address_retention_days, :integer
     field :deletion_grace_days, :integer
     field :invitations_per_day, :integer
+    # The days a dispatch's machine log is kept (`Apiary.Dispatches.MachineLogs`).
+    field :machine_log_retention_days, :integer
     field :updated_at, :utc_datetime_usec
   end
 

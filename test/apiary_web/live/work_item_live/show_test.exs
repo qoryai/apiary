@@ -339,7 +339,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
             {:ticket_gone,
              "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."},
             {:inputs_invalid,
-             "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."}
+             "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."},
+            # A software workspace's word for the target.
+            {:build_failed,
+             "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."}
           ] do
         work_item = work_item_fixture(scope)
         explore_run_fixture(work_item, end_cause: cause)

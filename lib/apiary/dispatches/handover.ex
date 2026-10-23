@@ -2,11 +2,12 @@ defmodule Apiary.Dispatches.Handover do
   @moduledoc false
 
   # A node pool's starter on a dispatch its pool claimed (the provisioner contract,
-  # `contracts/provisioner/v1`): `dispatched/3`, the starter started the job for it
-  # (`dispatched.schema.json`), and `handover/3`, the job asks for its run key and its
-  # input (`handover.schema.json`). `Apiary.Dispatches` delegates both here.
+  # `contracts/provisioner/v1`), and the run a claim registers. `Apiary.Dispatches` calls
+  # `register/2` inside its claim's transaction for the run the claim took, and delegates
+  # `dispatched/3`, the starter started the machine for the dispatch
+  # (`dispatched.schema.json`), here.
   #
-  # ## What both ask first
+  # ## What `dispatched/3` and a release ask first
   #
   # A `dispatch_id` not of a dispatch's shape is `{:error, :forbidden}`, looked up nowhere.
   # Then, in one transaction:
@@ -15,7 +16,7 @@ defmodule Apiary.Dispatches.Handover do
   #      (`Apiary.Dispatches.current_key/1`): revoked, of a pool deleted, or of a place out
   #      of use since, `{:error, :unauthorized}`;
   #   2. the dispatch by its public id, read without a lock, and the action,
-  #      `dispatch.dispatched` or `dispatch.handover`, asked of it (`Apiary.Access`): an
+  #      `dispatch.dispatched` or `dispatch.release`, asked of it (`Apiary.Access`): an
   #      unknown dispatch, one another pool claimed and any refusal of the key are one
   #      answer, `{:error, :forbidden}`, so nobody learns whether an id exists;
   #   3. the slots due freed for the dispatch's run (`Apiary.Dispatches.Slots.free/2`), so
@@ -27,58 +28,53 @@ defmodule Apiary.Dispatches.Handover do
   #
   # The release asks the same, in the same transaction (`transact/5`), and holds one row
   # between steps 2 and 3: its run's work item or environment record
-  # (`Apiary.Dispatches.Release`). So does a prebuilt, which holds a prebuild's
-  # environment record (`Apiary.Dispatches.Prebuilt`).
+  # (`Apiary.Dispatches.Release`).
   #
   # ## `dispatched/3`
   #
-  # Then a dispatch that was not handed over and whose lease lapsed, `stale_at` set or the
-  # clock at or past `lease_until`, is `{:error, :lease_expired}`. Else it is `:ok`: the
-  # first `dispatched` sets `dispatched_at` and the job's `external_*`, when the body names
-  # it; a later one changes nothing.
+  # Then a dispatch handed over is `:ok`: the first `dispatched` sets `dispatched_at` and
+  # the job's `external_*`, when the body has them, and a later one changes nothing,
+  # whatever the clock. A dispatch not handed over whose lease lapsed, `stale_at` set or
+  # the clock at or past `lease_until`, is `{:error, :lease_expired}`. Else the
+  # `dispatched` sets `dispatched_at` and the job's `external_*`, and hands the dispatch
+  # over: `handed_over_at` the clock, the run of the queue `handed_over`. From then on the
+  # dispatch keeps no lease: it never goes stale, and its slot stays held until its run
+  # ends (`Apiary.Dispatches.RunEnd`). The run counts toward its pool's limit by its
+  # dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`).
   #
-  # ## `handover/3`
+  # ## At the claim: `register/2`
   #
-  # After the five above, the first of these that applies:
+  # For the run of the queue the claim took and its dispatch, the first of these that
+  # applies:
   #
-  #   6. the run was handed over before, through this dispatch or another: `{:error,
-  #      :handed_over}`;
-  #   7. the dispatch is stale, or the clock is at or past its `lease_until`:
-  #      `{:error, :lease_expired}`;
-  #   8. the starter has not said `dispatched`: `{:error, :not_dispatched}`;
-  #   9. the pool's choice of gateway, as it resolves now (`Apiary.Gateways.resolve/1`),
-  #      leads to no gateway: direct, no default gateway, a named gateway that may not
-  #      serve the workspace, or a gateway with no active key; or the gateway, read
-  #      `FOR SHARE` as its deletion holds it `FOR UPDATE`, may no longer serve the
-  #      workspace: `{:error, :no_gateway}`. The dispatch stays claimed;
-  #   10. what the run is formed from, which the handover cannot form: the run of the
-  #       queue and its dispatch end, in the transaction, with a cause the run of the queue
-  #       keeps, a stale dispatch of it `run_ended`, and the slot the dispatch took is freed
-  #       once; `{:error, :gone}`, so the starter stops the job it started. A prebuild whose
-  #       collection ended, is assigned to no workspace or another one, or has no target
-  #       ends `collection_ended`: its assignment, its workspace, its end and its target are
-  #       read, never its Backlog switch or whether it has items. Run variables of the
-  #       target, and of the further paths its runs also read where the workspace's
-  #       domain has a label for them (`Apiary.Targets.further_repositories/1`), that
-  #       break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
-  #       `variables_invalid`; an explore run whose work item's ticket is no longer kept,
-  #       `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`),
-  #       or whose work item has no target in a domain that requires one
-  #       (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`; an explore run
-  #       whose model choice cannot be formed (`Apiary.Dispatches.RunSettings`):
-  #       `provider_gone`, `runtime_unserved`, `key_gone` or `model_gone`; and, checked
-  #       last, with the features `factory` and `secrets` on, an explore run whose model
-  #       choice has a provider, while one of the gateway's active keys the run key lists
-  #       was made without the stored-secrets flag (`allow_secrets`), or the provider's
-  #       key may not be sealed for a gateway of the gateway's organisation
-  #       (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as
-  #       such a gateway never receives the run's model key, and the run never starts on
-  #       a model nobody chose;
-  #   11. the run key cannot be made for the gateway's address
-  #       (`Apiary.Runs.Registration.issue_through/5`), the run settings take more than 64
-  #       KiB, the answer takes more than 1 MiB with every comment left out of its input,
-  #       or anything else fails: `{:error, :unavailable}`, and the transaction rolls
-  #       back: no run, no run key, the dispatch as it was.
+  #   1. what the run is formed from, which the claim cannot form: the run of the queue
+  #      and its dispatch end, in the claim's transaction, with a cause the run of the
+  #      queue keeps, a stale dispatch of it `run_ended`, and the slot the dispatch took is
+  #      freed once (`end_claimed/3`); the claim then takes the next waiting run. A
+  #      prebuild whose collection ended, is assigned to no workspace or another one, or
+  #      has no target ends `collection_ended`: its assignment, its workspace, its end and
+  #      its target are read, never its Backlog switch or whether it has items. Run
+  #      variables of the target, and of the further paths its runs also read where the
+  #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
+  #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
+  #      `variables_invalid`; an explore run whose work item's ticket is no longer kept,
+  #      `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`), or
+  #      whose work item has no target in a domain that requires one
+  #      (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`; an explore run
+  #      whose model choice cannot be formed (`Apiary.Dispatches.RunSettings`):
+  #      `provider_gone`, `runtime_unserved`, `key_gone` or `model_gone`; and, checked
+  #      last, with the features `factory` and `secrets` on, an explore run whose model
+  #      choice has a provider, while one of the gateway's active keys the run key lists
+  #      was made without the stored-secrets flag (`allow_secrets`), or the provider's key
+  #      may not be sealed for a gateway of the gateway's organisation
+  #      (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as such
+  #      a gateway never receives the run's model key, and the run never starts on a model
+  #      nobody chose;
+  #   2. the run key cannot be made for the gateway's address
+  #      (`Apiary.Runs.Registration.issue_grant/3`), the run settings take more than 64
+  #      KiB, the input does not fit 1 MiB with every comment left out, the run's model
+  #      choices changed while the claim read them, or anything else fails:
+  #      `{:error, :unavailable}`, and the claim's transaction rolls back.
   #
   # Else the run is registered, as a registration through the gateway by the pool:
   # `pending`, its `node_run_id` the run's `run_id`, on the pool, its instance the run's
@@ -87,46 +83,54 @@ defmodule Apiary.Dispatches.Handover do
   # run variables, the label of its paths (`Apiary.Lingo.Domain.paths_label/1`) with its
   # QORY_RUN_REPOSITORIES as the value, `about` the step and, for an explore run, its
   # work item, its run variables (`registration_variables`), none where the domain gives
-  # none, its registration digest the
-  # SHA-256 of the handover's body, with no heartbeat interval, no answer digest and no
-  # contract version until its attach; with the gateway, its run key's payload and
-  # signature, when the run key was made and the end of its attach window, 600 seconds
-  # after (`Apiary.Runs.Registration.attach_window/1`). Its run key's instance id is the
-  # run's id. The dispatch is handed over at the clock, before its `lease_until`, the run
-  # of the queue `handed_over`, and the slot stays held: the run counts toward its pool's
-  # limit by its dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`). The
-  # action is recorded in the audit trail, about the registered run, with the dispatch's
-  # public id and the step. The registration, the run key and the handover are one write:
-  # of two handovers of one run, the second waits at the run of the queue, then finds it
-  # handed over.
-  #
-  # The answer has the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and
-  # the run's target, or no target for an explore run whose work item has none. An explore
-  # run's input has the same domain and the same target, from the same values.
+  # none, its registration digest the SHA-256 of the claim's body, with no heartbeat
+  # interval, no answer digest and no contract version until its attach; with the
+  # gateway and a run code in place of a run key (`Apiary.Runs.RunCode`): the code's
+  # SHA-256, its expiry 15 minutes after the claim, the grant its run key will be made
+  # from at the code's redemption, `run_key_issued_at` the claim and `attach_by` the
+  # code's expiry. A run key of the grant is made all the same, and given to nobody, so a
+  # grant no run key can be made for refuses the claim as step 2 says. The run key's
+  # instance id is the run's id. The dispatch stays claimed, and so does the run of the
+  # queue.
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
   # provider's row id, its keys' secret's row id, the chosen key's value id, the
   # provider's chain and the API of the provider the run uses; later reads take those,
-  # never the choices. The answer, encoded, takes
-  # at most 1 MiB: the input is given what the rest of the answer leaves, measured with a
-  # run key of the longest length the contract allows, and leaves out its oldest comments
-  # first (`comments_omitted`).
+  # never the choices. Its input is formed with the name of the workspace's domain
+  # (`Apiary.Lingo.Domain.name/1`) and the run's target, or none for an explore run whose
+  # work item has none, and takes what the rest of the run's documents leave of their
+  # limit: it leaves out its oldest comments first (`comments_omitted`). The documents'
+  # limit is what the 201 to the code's redemption leaves them within 1 MiB, the rest of
+  # that 201 measured with a run key of the run's grant, less 1,024 bytes. The claim
+  # encodes the documents once and keeps the bytes on the registered run
+  # (`runs.run_documents`), which every redemption answers as they are.
   #
-  # A refusal commits what the lapse of step 3 wrote, and an end what it ended. Once the
-  # transaction commits, the run is broadcast as changed and the workspaces whose queue or
-  # slots changed are told. An exception in the transaction rolls it back, is logged by
-  # its module alone, never the key, the body or the input, and is
-  # `{:error, :unavailable}`. The broadcast and the telling, after the commit, never change
-  # the answer: a failure of either is logged by its module, or its kind, alone.
+  # **The registered run lives as long as the claim.** While its run of the queue is
+  # claimed, a registered run has neither attached nor had its code redeemed. When the run
+  # of the queue leaves `claimed` other than by its handover, its lease lapsed
+  # (`Apiary.Dispatches.Slots`), its starter released it (`Apiary.Dispatches.Release`) or
+  # its work item was closed (`Apiary.Dispatches.cancel_for_close/2`), the registered run
+  # is deleted with its run code, in the same transaction (`drop/1`): the code redeems no
+  # more, and a run that waits again is registered anew, with a new code, by the claim
+  # that takes it next. A dispatch is handed over at its first `dispatched`, or at the
+  # first redemption of its run code (`Apiary.Runs.RunCode.redeem/2`), whichever comes
+  # first.
   #
-  # Locks, in the order `Apiary.Dispatches.Slots` gives, after those of an explore run's
-  # model providers: the rows of the model providers its choices name `FOR SHARE`, then
-  # the rows of their keys' secrets `FOR SHARE` (`Apiary.Dispatches.RunSettings`), taken
-  # before anything else, then the environment records a lapse needs, the run of the
-  # queue, the dispatch, the gateway's row `FOR SHARE`, then the registered run,
-  # inserted. Nothing else is locked: not the pool, its connection, its collection, the
-  # work item or the workspace.
+  # A refusal of `dispatched/3` commits what the lapse of step 3 wrote. Once the
+  # transaction commits, the workspaces whose queue or slots changed are told. An
+  # exception in the transaction rolls it back, is logged by its module alone, never the
+  # key or the body, and is `{:error, :unavailable}`. The telling, after the commit, never
+  # changes the answer: a failure of it is logged by its module, or its kind, alone.
+  #
+  # Locks of `register/2`, after those the claim holds (`Apiary.Dispatches`: the pool's
+  # row, the gateway's row `FOR SHARE`, the records a lapse needs, the run of the queue it
+  # took, and the dispatch it wrote): the rows of the model providers an explore run's
+  # choices name `FOR SHARE`, then the rows of their keys' secrets `FOR SHARE`
+  # (`Apiary.Dispatches.RunSettings`), then the registered run, inserted. A change of a
+  # provider or of its keys locks nothing of the queue, so it and a claim take turns at
+  # the provider's row alone. Nothing else is locked: not the pool's connection, its
+  # collection, the work item or the workspace.
 
   import Ecto.Query, only: [from: 2]
 
@@ -135,83 +139,82 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.{
     Access,
     AccessKeys,
-    Audit,
     Dispatches,
     Gateways,
     Nodes,
     PublicId,
     Repo,
     Runs,
+    Stacks,
     Targets
   }
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Inputs, RunEnd, RunSettings, Slots}
+
+  alias Apiary.Dispatches.{
+    Dispatch,
+    DispatchRun,
+    Inputs,
+    RunEnd,
+    RunSettings,
+    Slots
+  }
+
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunVariables, Target}
+  alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunCode, RunVariables, Target}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
 
   @prebuild DispatchRun.prebuild()
-  # The causes a claimed run ends for when its handover cannot form what it is made from.
+  # The causes a claimed run ends for when the claim cannot form what it is made from.
   @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++
               RunSettings.causes() ++ [:secrets_not_allowed]
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
-    "dispatch.handover": "a handover could not be made",
-    "dispatch.release": "a release could not be made",
-    "dispatch.prebuilt": "a prebuilt could not be recorded"
+    "dispatch.release": "a release could not be made"
   }
-  # The attach window of a run registered by its handover, in seconds.
+  # The attach window of the run key made, and given to nobody, at the claim, in seconds.
   @attach_seconds 600
-  # The most bytes the handover answer takes, encoded: 1 MiB, the provisioner contract's.
+  # The most bytes the 201 to the run code's redemption takes, encoded: 1 MiB, what the
+  # gateway's relay passes back.
   @answer_bytes 1_048_576
-  # The revision of the provisioner contract the answer is built for, and the longest run
-  # key (`handover-answer.schema.json`), by which the answer is measured before the run
-  # key is made.
-  @revision 3
-  @longest_run_key "qrk_" <> String.duplicate("A", 2044)
+  # The bytes kept free in that 201 beside what the claim measures: a second key of the
+  # server's, should it rotate before the redemption, and the digits of the run key's times.
+  @answer_margin 1_024
 
   @typedoc """
-  A handover answered: the registered run, its run key, the run of the queue, the name of
-  its workspace's domain, the run's target (nil for an explore run without one), its work
-  item (nil for a prebuild), its run settings (nil for none,
-  `Apiary.Dispatches.RunSettings`) and the step's input.
+  A run registered at its claim: the registered run, its run code, the address of the
+  gateway the claim resolved to, and what the run's documents are made from
+  (`ApiaryWeb.Contract.DispatchAnswer.documents/1`).
   """
-  @type handed_over :: %{
+  @type registered :: %{
           run: Run.t(),
-          run_key: String.t(),
-          dispatch_run: DispatchRun.t(),
-          domain: String.t(),
-          target: %{system: String.t(), path: String.t()} | nil,
-          work_item: WorkItem.t() | nil,
-          run_settings: Jason.OrderedObject.t() | nil,
-          inputs: Jason.OrderedObject.t()
+          run_code: String.t(),
+          gateway_url: String.t(),
+          documents: map
         }
 
   @type refusal ::
           :unauthorized
           | :forbidden
           | :gone
-          | :handed_over
           | :lease_expired
-          | :not_dispatched
-          | :no_gateway
           | :unavailable
 
-  # unformed/0 is every cause a claimed run ends for when its handover cannot form what
-  # it is made from, each with the outcome `error` on a run that is not a prebuild.
+  # unformed/0 is every cause a claimed run ends for when the claim cannot form what it
+  # is made from, each with the outcome `error` on a run that is not a prebuild.
   @doc false
   @spec unformed() :: [atom]
   def unformed, do: @unformed
 
-  # dispatched/3 records that the starter started the job for the dispatch `dispatch_id`
-  # of the pool of `access_key`, with the job's `external` (nil for none): the moduledoc.
+  # dispatched/3 records that the starter started the machine for the dispatch
+  # `dispatch_id` of the pool of `access_key`, with the job's `external` (nil for none):
+  # the moduledoc.
   @doc false
   @spec dispatched(AccessKey.t(), term, %{external: map | nil}) ::
           :ok | {:error, refusal}
@@ -229,31 +232,150 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # handover/3 hands the run of the dispatch `dispatch_id` of the pool of `access_key`
-  # over, for the handover's raw `body`: the moduledoc.
+  # register/2 registers the run of the queue `claimed.run`, which the claim took, with
+  # a run code, through the gateway `claimed.gateway`, inside the claim's transaction:
+  # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
+  # ended, or `{:error, :unavailable}` (the moduledoc). `claimed` has the key, the
+  # dispatch, the run of the queue, the gateway and its workspace, the gateway's active
+  # keys, at most two, the clock and the claim's body.
   @doc false
-  @spec handover(AccessKey.t(), term, %{body: binary}) ::
-          {:ok, handed_over} | {:error, refusal}
-  def handover(%AccessKey{key_id: key_id}, dispatch_id, %{body: body}) when is_binary(body) do
-    if Dispatch.public_id?(dispatch_id) do
-      key_id
-      |> transact(dispatch_id, :"dispatch.handover", &RunSettings.hold/1, fn locked ->
-        with :ok <- not_ended(locked),
-             :ok <- not_handed_over(locked),
-             :ok <- lease_held(locked),
-             :ok <- was_dispatched(locked),
-             {:ok, gateway, keys} <- gateway(locked) do
-          hand_over(locked, gateway, keys, body)
-        end
-      end)
-      |> answered()
-      |> broadcast_run()
-    else
-      {:error, :forbidden}
+  @spec register(map, DateTime.t()) ::
+          {:ok, registered} | {:ended, [Ecto.UUID.t()]} | {:error, :unavailable}
+  def register(%{run: %DispatchRun{} = dispatch_run} = claimed, %DateTime{} = now) do
+    case RunSettings.hold(dispatch_run) do
+      :unstable ->
+        Logger.error(
+          "a claim could not be made: the run's model choices changed while the claim read them"
+        )
+
+        {:error, :unavailable}
+
+      held ->
+        claimed
+        |> Map.merge(%{held: held, now: now})
+        |> register_held()
     end
   end
 
-  ## What both ask first
+  defp register_held(%{gateway: {gateway, workspace}, keys: keys} = locked) do
+    pool = locked.key.node
+
+    grant =
+      Registration.through_grant(gateway, keys, %{
+        run_id: locked.run.run_id,
+        workspace: workspace.public_id,
+        node_id: pool.public_id,
+        instance_id: locked.run.run_id
+      })
+
+    # The run key of the grant, given to nobody: the 201 to the code's redemption carries
+    # a run key of this grant, as long, and the documents take what the rest leaves.
+    issued = Registration.issue_grant(grant, locked.now, @attach_seconds)
+    locked = Map.put(locked, :documents_limit, documents_limit(locked.run, issued))
+
+    case locked |> formed(workspace) |> sealable(gateway, workspace, keys) do
+      {:end, cause} ->
+        {:ended, end_claimed(locked.run, cause, locked.now)}
+
+      :unavailable ->
+        Logger.error("a claim could not be made: the run's documents do not fit their limit")
+        {:error, :unavailable}
+
+      :unstable ->
+        Logger.error(
+          "a claim could not be made: the run's model choices changed while the claim read them"
+        )
+
+        {:error, :unavailable}
+
+      {:ok, formed} ->
+        documents = formed.answer |> DispatchAnswer.documents() |> Jason.encode!()
+
+        with {:ok, _given_to_nobody} <- issued,
+             :ok <- within(documents, locked.documents_limit) do
+          %{code: code, through: through} = RunCode.issue(grant, locked.now)
+
+          run =
+            insert_run(
+              locked,
+              formed,
+              through |> Map.put(:gateway_id, gateway.id) |> Map.put(:run_documents, documents)
+            )
+
+          {:ok,
+           %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
+        end
+    end
+  end
+
+  # The most bytes the run's documents take, encoded: what the 201 to the code's
+  # redemption leaves them, measured with the run key `issued` and the server's keys as
+  # they are now, less `@answer_margin`. A run key that cannot be made measures nothing:
+  # the claim is refused after the run is formed.
+  defp documents_limit(%DispatchRun{run_id: run_id}, {:ok, %{run_key: run_key}}) do
+    rest =
+      Apiary.Contract.Enrolment.run_answer_body(%{
+        run_id: run_id,
+        run_key: run_key,
+        documents: "{}",
+        apiary_public_key: Apiary.SigningKey.apiary_public_key()
+      })
+
+    answer_limit() - (byte_size(rest) - 2) - @answer_margin
+  end
+
+  defp documents_limit(_dispatch_run, _not_issued), do: answer_limit() - @answer_margin
+
+  defp within(documents, limit) when byte_size(documents) <= limit, do: :ok
+
+  defp within(_documents, _limit) do
+    Logger.error("a claim could not be made: the run's documents do not fit their limit")
+    {:error, :unavailable}
+  end
+
+  # drop/1 deletes the runs registered for the runs of the queue `dispatch_run_ids` that
+  # never attached and whose run code was never redeemed, with their run codes, inside
+  # the caller's transaction, which holds those runs of the queue: what a run of the
+  # queue leaving `claimed` other than by its handover does (the moduledoc). The ids of
+  # the runs deleted.
+  @doc false
+  @spec drop([Ecto.UUID.t()]) :: [Ecto.UUID.t()]
+  def drop([]), do: []
+
+  def drop(dispatch_run_ids) when is_list(dispatch_run_ids) do
+    {_count, ids} =
+      Repo.delete_all(
+        from(r in Run,
+          where: r.dispatch_run_id in ^dispatch_run_ids,
+          where: is_nil(r.attached_at) and is_nil(r.run_code_public_key),
+          select: r.id
+        )
+      )
+
+    ids
+  end
+
+  # hand_over/2 hands the claimed dispatch `dispatch` of the run of the queue
+  # `dispatch_run` over at `now`, inside the caller's transaction, which holds both: at
+  # its first `dispatched`, or at the first redemption of its run's code
+  # (`Apiary.Runs.RunCode`).
+  @doc false
+  @spec hand_over(DispatchRun.t(), Dispatch.t(), DateTime.t()) :: :ok
+  def hand_over(%DispatchRun{id: run_id}, %Dispatch{id: id}, %DateTime{} = now) do
+    {1, _rows} =
+      Repo.update_all(from(d in Dispatch, where: d.id == ^id),
+        set: [handed_over_at: now, updated_at: now]
+      )
+
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run_id),
+        set: [state: :handed_over, updated_at: now]
+      )
+
+    :ok
+  end
+
+  ## What dispatched and a release ask first
 
   # transact/5 is the transaction of the moduledoc's five first steps, then `fun` on what
   # they hold, for the action `action` of the key `key_id` on the dispatch `dispatch_id`;
@@ -371,14 +493,19 @@ defmodule Apiary.Dispatches.Handover do
 
   ## Dispatched
 
-  # A dispatch handed over keeps its lease no more: its `dispatched` changes nothing.
-  defp record_dispatched(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}}, _external),
-    do: {:done, :ok, []}
+  # A dispatch handed over keeps no lease: its first `dispatched` is recorded, and a
+  # later one changes nothing, whatever the clock.
+  defp record_dispatched(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}} = locked, external) do
+    if is_nil(locked.dispatch.dispatched_at), do: set_dispatched(locked, external)
+    {:done, :ok, []}
+  end
 
+  # The first `dispatched` of a claimed dispatch, within its lease, hands it over.
   defp record_dispatched(locked, external) do
     with :ok <- lease_held(locked) do
-      if is_nil(locked.dispatch.dispatched_at), do: set_dispatched(locked, external)
-      {:done, :ok, []}
+      set_dispatched(locked, external)
+      :ok = hand_over(locked.run, locked.dispatch, locked.now)
+      {:done, :ok, [locked.dispatch.workspace_id]}
     end
   end
 
@@ -398,17 +525,18 @@ defmodule Apiary.Dispatches.Handover do
       )
   end
 
-  ## Handover
+  ## At the claim
 
-  defp not_handed_over(%{run: %DispatchRun{state: :handed_over}}), do: {:refused, :handed_over}
-  defp not_handed_over(_locked), do: :ok
-
-  defp was_dispatched(%{dispatch: %Dispatch{dispatched_at: nil}}), do: {:refused, :not_dispatched}
-  defp was_dispatched(_locked), do: :ok
-
-  # The gateway the pool's choice resolves to now, read `FOR SHARE`, with its active keys,
-  # at most two, oldest first.
-  defp gateway(%{key: %AccessKey{node: %Node{} = pool}}) do
+  # gateway/1 is the gateway the choice of `pool`, the claiming key's node pool, resolves
+  # to now (`Apiary.Gateways.resolve/1`), read `FOR SHARE` as its deletion holds it
+  # `FOR UPDATE`, with its workspace and its active keys, at most two, oldest first; or
+  # `{:error, :no_gateway}`: the choice is direct, no default gateway resolves, a named
+  # gateway may not serve the workspace, or the gateway has no active key. Inside the
+  # claim's transaction.
+  @doc false
+  @spec gateway(Node.t()) ::
+          {:ok, {Node.t(), Workspace.t()}, [AccessKey.t()]} | {:error, :no_gateway}
+  def gateway(%Node{} = pool) do
     workspace = Repo.get!(Workspace, pool.workspace_id)
 
     with {:gateway, %Node{id: id}} <- Gateways.resolve(%{pool | workspace: workspace}),
@@ -417,41 +545,7 @@ defmodule Apiary.Dispatches.Handover do
          [_ | _] = keys <- AccessKeys.active_keys(gateway) do
       {:ok, {gateway, workspace}, Enum.take(keys, 2)}
     else
-      _direct_or_none -> {:refused, :no_gateway}
-    end
-  end
-
-  defp hand_over(locked, {gateway, workspace}, keys, body) do
-    case locked |> formed(workspace) |> sealable(gateway, workspace, keys) do
-      {:end, cause} ->
-        {:ended, end_claimed(locked.run, cause, locked.now)}
-
-      :unavailable ->
-        Logger.error("a handover could not be made: the answer does not fit its limit")
-        {:error, :unavailable}
-
-      :unstable ->
-        Logger.error(
-          "a handover could not be made: the run's model choices changed while the handover read them"
-        )
-
-        {:error, :unavailable}
-
-      {:ok, formed} ->
-        pool = locked.key.node
-
-        grant = %{
-          run_id: locked.run.run_id,
-          workspace: workspace.public_id,
-          node_id: pool.public_id,
-          instance_id: locked.run.run_id
-        }
-
-        with {:ok, %{run_key: run_key, through: through}} <-
-               Registration.issue_through(gateway, keys, grant, locked.now, @attach_seconds) do
-          run = register(locked, formed, through, body)
-          {:done, {:ok, Map.merge(formed.answer, %{run: run, run_key: run_key})}, []}
-        end
+      _direct_or_none -> {:error, :no_gateway}
     end
   end
 
@@ -480,7 +574,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
     case collection(dispatch_run) do
       {:ok, target} ->
-        formed(dispatch_run, workspace, target, nil, nil, fn _domain ->
+        formed(dispatch_run, workspace, target, nil, nil, nil, fn _domain ->
           {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
         end)
 
@@ -492,21 +586,25 @@ defmodule Apiary.Dispatches.Handover do
   # An explore run has its work item's target, nil for none; a work item without one in
   # a domain that requires a target ends `inputs_invalid`. Its run settings come next
   # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
-  # `RunSettings.causes/0` lists, or refuse the handover. The answer and the input get the same target and the same domain, and the
-  # input the bytes of the answer's limit that the rest of the answer leaves.
-  defp formed(%{run: %DispatchRun{} = dispatch_run, held: held}, workspace) do
+  # `RunSettings.causes/0` lists, or refuse the claim. The run's documents and the input
+  # get the same target and the same domain, and the input the bytes of the documents'
+  # limit that the rest of the documents leave.
+  defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
+    stack = stack(locked.key, workspace, target)
 
     with false <- is_nil(target) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
-      formed(dispatch_run, workspace, target, work_item, settings, fn domain ->
+      formed(dispatch_run, workspace, target, work_item, settings, stack, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
+          documents_limit: locked.documents_limit,
           domain: domain,
           target: target,
           work_item: work_item,
-          run_settings: settings && settings.wire
+          run_settings: settings && settings.wire,
+          stack: stack
         }
 
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
@@ -519,27 +617,20 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # The bytes of `answer_limit/0` that the answer leaves its input: the limit less the
-  # answer encoded with an empty input and the longest run key, which the contract allows.
-  defp budget(%{dispatch_run: dispatch_run} = rest) do
+  # The bytes of the documents' limit that the rest of the run's documents leave its
+  # input: the limit less the documents encoded with an empty input.
+  defp budget(%{dispatch_run: dispatch_run, documents_limit: limit} = rest) do
     empty =
-      DispatchAnswer.handover_body(%{
-        revision: @revision,
-        run_id: dispatch_run.run_id,
-        run_key: @longest_run_key,
-        step: dispatch_run.step,
-        domain: rest.domain,
-        target: rest.target,
-        work_item: rest.work_item,
-        run_settings: rest.run_settings,
-        inputs: Jason.OrderedObject.new([])
-      })
+      rest
+      |> Map.merge(%{step: dispatch_run.step, inputs: Jason.OrderedObject.new([])})
+      |> DispatchAnswer.documents()
+      |> Jason.encode!()
 
-    max(answer_limit() - (byte_size(empty) - 2), 1)
+    max(limit - (byte_size(empty) - 2), 1)
   end
 
-  # answer_limit/0 is the most bytes the answer takes, encoded: 1 MiB. A test sets
-  # `config :apiary, Apiary.Dispatches.Handover, answer_limit: bytes`
+  # answer_limit/0 is the most bytes the 201 to a run code's redemption takes, encoded:
+  # 1 MiB. A test sets `config :apiary, Apiary.Dispatches.Handover, answer_limit: bytes`
   # (`Application.put_env/3`, in a module that is not async), to see the input cut.
   defp answer_limit do
     :apiary
@@ -547,9 +638,15 @@ defmodule Apiary.Dispatches.Handover do
     |> Keyword.get(:answer_limit, @answer_bytes)
   end
 
+  # The stack, the workflow and `harness_hidden` of an explore run of `workspace`, the
+  # key's workspace, in the key's organisation, at `target` (`Apiary.Stacks.for_run/3`);
+  # nil for none.
+  defp stack(%AccessKey{organisation: organisation}, %Workspace{} = workspace, target),
+    do: Stacks.for_run(organisation, workspace, target)
+
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
-  defp formed(dispatch_run, workspace, target, work_item, settings, inputs) do
+  defp formed(dispatch_run, workspace, target, work_item, settings, stack, inputs) do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
@@ -568,10 +665,12 @@ defmodule Apiary.Dispatches.Handover do
          settings: settings,
          answer: %{
            dispatch_run: dispatch_run,
+           step: dispatch_run.step,
            domain: domain,
            target: target,
            work_item: work_item,
            run_settings: settings && settings.wire,
+           stack: stack,
            inputs: inputs
          }
        }}
@@ -662,7 +761,7 @@ defmodule Apiary.Dispatches.Handover do
 
   # end_claimed/3 ends the run of the queue, claimed, and its dispatch with `cause`; a
   # stale dispatch of it `run_ended`; the slot freed once. A run that is not a prebuild,
-  # ended because its handover could not form it, gave an error, stored in the same
+  # ended because the claim could not form it, gave an error, stored in the same
   # write (`Apiary.Dispatches.Settle`). The workspaces whose queue or slots changed.
   # Inside the transaction that holds the run of the queue.
   @doc false
@@ -700,53 +799,32 @@ defmodule Apiary.Dispatches.Handover do
 
   defp gave(%DispatchRun{}, _cause), do: []
 
-  # The registered run, the dispatch handed over and the audit entry: one write.
-  defp register(
-         %{key: key, dispatch: dispatch, run: dispatch_run, now: now},
-         formed,
-         through,
-         body
-       ) do
-    run =
-      %Run{
-        public_id: Run.new_public_id(),
-        organisation_id: key.organisation_id,
-        workspace_id: key.workspace_id,
-        node_run_id: dispatch_run.run_id,
-        access_key_id: key.id,
-        state: "pending",
-        registered_at: now,
-        registration_labels: formed.labels,
-        registration_about: formed.about,
-        registration_digest: :crypto.hash(:sha256, body),
-        registration_variables: formed.variables,
-        run_settings: formed.settings && formed.settings.stored,
-        projected_sequence: Run.projected_from(%{registered_at: now}),
-        dispatch_run_id: dispatch_run.id,
-        inserted_at: now,
-        updated_at: now
-      }
-      |> struct!(Nodes.placement(key.node, dispatch_run.run_id))
-      |> struct!(through)
-      |> struct!((formed.settings && formed.settings.columns) || %{})
-      |> PublicId.Insert.insert!()
-
-    {1, _rows} =
-      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
-        set: [handed_over_at: now, updated_at: now]
-      )
-
-    {1, _rows} =
-      Repo.update_all(from(r in DispatchRun, where: r.id == ^dispatch_run.id),
-        set: [state: :handed_over, updated_at: now]
-      )
-
-    {:ok, _entry} =
-      Audit.record(Repo, Scope.for_access_key(key), :"dispatch.handover", run, %{
-        details: %{"dispatch_id" => dispatch.public_id, "step" => dispatch_run.step}
-      })
-
-    run
+  # The registered run, pending, with its run code, and, for an explore run, the image the
+  # claim read for it (`Apiary.Environments.claim_image/2`), nil for the pool's default.
+  defp insert_run(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do
+    %Run{
+      public_id: Run.new_public_id(),
+      organisation_id: key.organisation_id,
+      workspace_id: key.workspace_id,
+      node_run_id: dispatch_run.run_id,
+      access_key_id: key.id,
+      state: "pending",
+      registered_at: now,
+      registration_labels: formed.labels,
+      registration_about: formed.about,
+      registration_digest: :crypto.hash(:sha256, body),
+      registration_variables: formed.variables,
+      run_settings: formed.settings && formed.settings.stored,
+      projected_sequence: Run.projected_from(%{registered_at: now}),
+      dispatch_run_id: dispatch_run.id,
+      configured_image: Map.get(locked, :image),
+      inserted_at: now,
+      updated_at: now
+    }
+    |> struct!(Nodes.placement(key.node, dispatch_run.run_id))
+    |> struct!(through)
+    |> struct!((formed.settings && formed.settings.columns) || %{})
+    |> PublicId.Insert.insert!()
   end
 
   defp unavailable(what, exception) do

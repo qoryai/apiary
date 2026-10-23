@@ -10,6 +10,7 @@ defmodule Apiary.DispatchesTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -22,9 +23,10 @@ defmodule Apiary.DispatchesTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
+    gateway = workspace_gateway!(scope)
     pool = pool_fixture(scope)
     %{access_key: key} = enrolled_key_fixture(scope, pool)
-    %{scope: scope, pool: pool, key: key}
+    %{scope: scope, gateway: gateway, pool: pool, key: key}
   end
 
   defp queue!(work_item, take_in \\ 1) do
@@ -264,7 +266,7 @@ defmodule Apiary.DispatchesTest do
       assert_receive {Dispatches, :changed}
     end
 
-    test "while one waits for the collection and the pool, sets the newer environment_ref on it",
+    test "while one of the ref waits for the collection and the pool, gives it back; another ref waits beside it",
          ctx do
       collection = collection_fixture(ctx.scope)
       other = pool_fixture(ctx.scope)
@@ -273,33 +275,29 @@ defmodule Apiary.DispatchesTest do
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
       {:ok, again} =
-        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
       assert {again.id, again.run_id, again.queued_at} ==
                {first.id, first.run_id, first.queued_at}
 
-      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = run!(first)
+      {:ok, beside} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
+
+      assert beside.id != first.id
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} = run!(first)
+      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = run!(beside)
 
       # Another pool gets a separate one.
       {:ok, theirs} =
-        Repo.transact(fn -> Dispatches.queue_prebuild(collection, other, "env-2") end)
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, other, "env-1") end)
 
       assert theirs.id != first.id
 
-      # Claimed, it is left as it is, and the next waits beside it.
-      assert {:ok, %{run: %{id: claimed_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
-      assert claimed_id == first.id
-
-      {:ok, next} =
-        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-3") end)
-
-      assert next.id != first.id
-      assert %DispatchRun{state: :claimed, environment_ref: "env-2"} = run!(first)
-      assert %DispatchRun{state: :waiting, environment_ref: "env-3"} = run!(next)
-
-      # The database holds one waiting per collection and pool.
-      assert_raise Postgrex.Error, ~r/dispatch_runs_waiting_prebuild_index/, fn ->
-        Repo.update_all(from(r in DispatchRun, where: r.id == ^first.id), set: [state: :waiting])
+      # The database holds one waiting per collection, pool and ref.
+      assert_raise Postgrex.Error, ~r/dispatch_runs_waiting_prebuild_ref_index/, fn ->
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^beside.id),
+          set: [environment_ref: "env-1"]
+        )
       end
     end
 
@@ -830,15 +828,24 @@ defmodule Apiary.DispatchesTest do
       run = queued!(ctx.scope)
 
       Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
-        set: [gateway_choice: :default]
+        set: [gateway_choice: :direct]
       )
 
       assert Dispatches.claim(ctx.key, Dispatches.now()) == {:error, :no_gateway}
       assert run!(run).state == :waiting
 
-      gateway = gateway_fixture(ctx.scope)
-      {:ok, _} = Nodes.make_default_gateway(ctx.scope, gateway)
-      enrolled_key_fixture(ctx.scope, gateway)
+      Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
+        set: [gateway_choice: :named, gateway_id: nil]
+      )
+
+      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:error, :no_gateway}
+      assert run!(run).state == :waiting
+      assert Repo.aggregate(Apiary.Runs.Run, :count) == 0
+
+      Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
+        set: [gateway_choice: :default]
+      )
+
       assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now())
       assert id == run.id
     end
@@ -989,12 +996,10 @@ defmodule Apiary.DispatchesTest do
     test "a dispatched run counts by its slot, not again by its instance", ctx do
       pool = pool_fixture(ctx.scope, instance_limit: 2)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
-      run = queued!(ctx.scope)
+      queued!(ctx.scope)
       claimed!(key)
 
-      # The run registered for it, alive on the pool, as its handover makes it.
-      node_run_fixture(pool, run.run_id, %{dispatch_run_id: run.id})
-
+      # The run its claim registered, alive on the pool.
       assert Nodes.instances_in_use(pool, Dispatches.now()) == 1
       node_run_fixture(pool, "i_direct")
       assert Nodes.instances_in_use(pool, Dispatches.now()) == 2

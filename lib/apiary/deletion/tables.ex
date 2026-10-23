@@ -34,12 +34,13 @@ defmodule Apiary.Deletion.Tables do
   @typedoc "What a table holds: an organisation's rows, or a workspace's too."
   @type mark :: :organisation | :workspace
 
-  # Children first: a run's events, log and connections before the run; the deliveries
+  # Children first: a run's events, log, connections and steps before the run; the deliveries
   # before the access keys they name; the composed run configurations before the run
   # configurations they were composed from; the run configurations and the policy's rules
-  # before the targets, and so are the pins; the runs before the runs of the queue they name, the
-  # dispatches before the runs of the queue, the node pools and the access keys they name,
-  # and the runs of the queue before their work items; the environment records before the
+  # before the targets, and so are the pins; the runs before the runs of the queue they
+  # name, a dispatch's machine log before the dispatch, the dispatches before the runs of
+  # the queue, the node pools and the access keys they name, and the runs of the queue
+  # before their work items; the environment records before the
   # node pools and the collections they name; a node's instances before the access keys
   # they name; the access keys before the enrolment codes they arrived by, and
   # the keys, the codes, the runs, the instances and the organisation's connections to
@@ -62,10 +63,12 @@ defmodule Apiary.Deletion.Tables do
     {"log_chunks", :workspace},
     {"events", :workspace},
     {"connections", :workspace},
+    {"run_steps", :workspace},
     {"deliveries", :workspace},
     {"composed_run_configurations", :workspace},
     {"run_configurations", :workspace},
     {"runs", :workspace},
+    {"dispatch_machine_logs", :workspace},
     {"dispatches", :workspace},
     {"dispatch_runs", :workspace},
     {"environments", :workspace},
@@ -74,6 +77,8 @@ defmodule Apiary.Deletion.Tables do
     {"work_item_confirmations", :workspace},
     {"work_item_comments", :workspace},
     {"model_choices", :workspace},
+    {"time_limits", :workspace},
+    {"stacks", :workspace},
     {"work_items", :workspace},
     {"work_item_counters", :workspace},
     {"retention_runs", :workspace},

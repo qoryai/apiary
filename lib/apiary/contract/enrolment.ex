@@ -67,8 +67,9 @@ defmodule Apiary.Contract.Enrolment do
   @typep node_kind :: :node | :pool | :gateway | :adapter
 
   @members ~w(version code name public_key timestamp proof)
-  # A code after its prefix, one of every kind's (`EnrolmentCode.prefixes/0`): together
-  # the contract's pattern, `^qec[npgi]_` and this.
+  # A code after its prefix, one of every kind's (`EnrolmentCode.prefixes/0`) or a run
+  # code's (`EnrolmentCode.run_prefix/0`, which `Apiary.Runs.RunCode` redeems): together
+  # the contract's pattern, `^qec[npgir]_` and this.
   @code_rest ~r/\A[0-9A-HJKMNP-TV-Z]{26}(\.[A-Za-z0-9_-]{22}){1,2}\z/
   @name ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @public_key ~r/\A[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]\z/
@@ -127,9 +128,9 @@ defmodule Apiary.Contract.Enrolment do
   defp valid?("proof", value),
     do: is_binary(value) and value =~ @proof and Ed25519.decode(value, 64) != :error
 
-  # A kind's prefix, as written, then the rest of a code.
+  # A kind's prefix or a run code's, as written, then the rest of a code.
   defp code?(value) do
-    Enum.any?(Map.values(EnrolmentCode.prefixes()), fn prefix ->
+    Enum.any?([EnrolmentCode.run_prefix() | Map.values(EnrolmentCode.prefixes())], fn prefix ->
       String.starts_with?(value, prefix) and
         binary_part(value, byte_size(prefix), byte_size(value) - byte_size(prefix)) =~
           @code_rest
@@ -167,9 +168,10 @@ defmodule Apiary.Contract.Enrolment do
   the prefix of its node's kind and 26 characters `Apiary.AccessKeys.create_enrolment_code/3`
   returns, then `.` and `fingerprint`, the fingerprint of the server's key.
   """
+  # A run code (`Apiary.Runs.RunCode`) is given the same way.
   @spec issued_code(String.t(), String.t()) :: String.t()
   def issued_code(code, fingerprint) when is_binary(code) and is_binary(fingerprint) do
-    if EnrolmentCode.prefixed?(code),
+    if EnrolmentCode.prefixed?(code) or EnrolmentCode.run_code?(code),
       do: code <> "." <> fingerprint,
       else: raise(ArgumentError, "not an enrolment code")
   end
@@ -223,6 +225,42 @@ defmodule Apiary.Contract.Enrolment do
         {"stored_secrets", answer.stored_secrets},
         {"apiary_public_key", keys(answer.apiary_public_key)}
       ])
+    )
+  end
+
+  # run_answer_body/1 is the body of the `201` to a run code (`$defs/run_answer`,
+  # `fixtures/known-answers/enrolment-run-answer.json`), in this order: `version`,
+  # `run_id`, the run's id in lower case, `run_key`, `apiary_public_key`, the server's
+  # keys as `Apiary.SigningKey.apiary_public_key/1` lists them, and `documents`, the run's
+  # documents as the claim encoded them (`Apiary.Dispatches.Handover`), written as they
+  # are, and left out when nil. The redemption makes no access key
+  # (`Apiary.Runs.RunCode`).
+  @doc false
+  @spec run_answer_body(%{
+          required(:run_id) => String.t(),
+          required(:run_key) => String.t(),
+          optional(:documents) => binary | nil,
+          required(:apiary_public_key) => [map, ...]
+        }) :: binary
+  def run_answer_body(
+        %{run_id: run_id, run_key: run_key, apiary_public_key: [_ | _] = keys} = answer
+      )
+      when is_binary(run_id) and is_binary(run_key) do
+    documents =
+      case Map.get(answer, :documents) do
+        nil -> []
+        documents when is_binary(documents) -> [{"documents", Jason.Fragment.new(documents)}]
+      end
+
+    Jason.encode!(
+      Jason.OrderedObject.new(
+        [
+          {"version", 1},
+          {"run_id", run_id},
+          {"run_key", run_key},
+          {"apiary_public_key", keys(keys)}
+        ] ++ documents
+      )
     )
   end
 

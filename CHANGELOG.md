@@ -15,11 +15,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An instance admin can rename the product in Instance settings › General: the browser
   tab, the sidebar, the log-in pages and every email show the name, with “Powered by Qory
   Apiary” beside it.
-- `deploy/aws/delete-kept.sh` deletes what a deleted test stack of the AWS template kept:
-  its key secrets, its log groups, and the snapshots its database left when the stack was
-  deleted and when an update replaced it. Without `--yes` it lists them and deletes
-  nothing; it refuses a stack that is not deleted and anything a stack that is not
-  deleted still uses, and says what is left after a delete.
 - An instance admin can change, in Instance settings › Configuration, how long the audit
   log keeps an entry and the IP address it came from, the grace period before a deleted
   workspace or organisation is purged, and the invitations an organisation makes a day:
@@ -30,10 +25,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   daily job, a new grace period to what is deleted after it, and a new number of
   invitations at once. Each change is an `instance.configure` entry in the trail of the
   instance's organisation, with the values before and after.
-- The AWS template's Advanced group has Features (optional), `Features`, passed as
-  `QORY_FEATURES` only when set. An Update with a new value starts a new task with it, and
-  a name Qory Apiary does not know rolls the update back. As with every field but the
-  download key, with Version empty, changing it also looks up the newest release.
+- `bin/apiary eval 'Apiary.Release.demo()'` loads synthetic runs, people and nodes into a new
+  instance set up with the organisation name Acme, to try Qory Apiary with data in it
+  (`guides/install.md`, "Load the demo into a test instance"). It writes nothing when the
+  instance is not set up, its organisation is not Acme, or its workspace Main already has
+  runs or nodes.
+- Qory Apiary keeps each step of a run from `dev.qory.run.step_started` and
+  `dev.qory.run.step_exited`: a fetch, compose, image, setup, join or wall, with its state,
+  exit code and duration, and its log lines under the step's number.
 
 ### Changed
 
@@ -54,6 +53,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   characters are counted in code points, so a letter's accent marks count too. An account
   whose address already holds such a character still logs in with it. An invitation to an
   address with a NUL in it is refused with the address's error, not a server error.
+- The AWS CloudFormation template is removed. A Qory Apiary release no longer attaches
+  `apiary.yaml`.
+- Forager opens a run once, at its gateway, and each session joins it. The events endpoint
+  takes `dev.qory.run.started` only with `opened_by` `run`, and each session as
+  `dev.qory.session.started` and `dev.qory.session.exited`. A batch with a
+  `dev.qory.run.started` whose `opened_by` is absent or `session`, as Forager 0.7.0 sends
+  it, gets `400 invalid_request`. Qory Apiary reads runtime events under their
+  `dev.qory.runtime.*` names, and a run's runtime is that of its last session. A run
+  recorded before the upgrade keeps its runtime, cost and log, and its Timeline shows no
+  prompts, turns or results. Do not run `Apiary.Release.rebuild()` after this upgrade: it
+  clears the runtime and cost of those runs, and the command, arguments, folder, image and
+  terminal size.
+- A gateway's address follows the contracts' rule: `https://`, a host name or an IPv6
+  address in brackets, an optional port, and nothing after them, at most 300 characters.
+  Before, an address could end in a dot and be up to 2,048 characters long. Qory Apiary does
+  not start while a gateway's address breaks the rule: the migration stops, lists those
+  gateways' ids, deleted gateways included, and changes nothing. Give each gateway that is
+  not deleted a new address in its **Settings › General** on the release before, then
+  start the upgrade again.
 <!-- feature: secrets -->
 - An integration description is refused when it goes past the limits the integration
   contract states (1024 list entries, 1024 members in an object, 4096 values, strings of
@@ -63,6 +81,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An integration's settings check counts large text toward its memory limit.
 - An integration's settings check refuses a schema, or settings checked as regular
   expressions, whose patterns would take more than 16 MiB of memory once compiled.
+- The access action `connection.write` is split in three. `provider.write` covers model
+  providers, their keys and models, and the organisation's default model choice;
+  `runtime.write` covers runtimes; `connection.write` keeps integrations, services, an
+  integration's release and the organisation's service definitions. Owners and admins hold
+  all three, so what they may do is as before; an edition can grant one without the
+  others. A change to a model provider or a runtime leaves an audit entry of its new
+  action, and the Audit log's “Integration changed” filter finds the entries of all
+  three, those written before the split included.
 <!-- /feature -->
 
 ### Security
@@ -73,6 +99,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `RELEASE_COOKIE` must be set, the same secret on every node, or Qory Apiary stops at
   start. Without `RELEASE_COOKIE`, each start makes a new random cookie, so the cookie in
   the image is never used.
+- The image build stops unless `ca-certificates` is 20250419+deb13u1 or later. That version
+  removes the emSign ECC Root CA - G3 and Comodo AAA Services roots after eMudhra
+  intermediate CA certificates were compromised (Debian DSA-6572-1).
 
 ### Migrations
 

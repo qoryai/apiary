@@ -20,8 +20,10 @@ defmodule Apiary.Runs.Liveness do
       attach window (`attach_by`), and not before, whatever its interval;
     * a run whose attach set a deadline for its end (`backstop_at`) is lost once that
       deadline has passed, `pending` or `running`, however recently it was heard from. A
-      run is given one at its attach only, and a run with its outcome or its exit is
-      neither pending nor running, so it is left alone.
+      run is given one at its attach only, and a run with its exit is neither pending nor
+      running, so it is left alone. When the check ends the dispatch of a run of the queue
+      that went 600 seconds without a heartbeat, it moves that run's deadline back to the
+      end of that silence, so the run stays lost.
 
   **A heartbeat's time.** A heartbeat counts as heard at its `time`, corrected by the
   run's clock offset, plus a tolerance of 300 seconds, and never after its arrival
@@ -47,7 +49,7 @@ defmodule Apiary.Runs.Liveness do
   stored value can make a rule raise: the interval is bounded inside the SQL. `lost` is
   not final: a later heartbeat or the exit corrects the state through the projector, but
   for a run past its `backstop_at`, which no heartbeat or start brings back
-  (`past_backstop?/2`): only its exit or its starter's outcome changes it.
+  (`past_backstop?/2`): only its exit changes it, as a run of the queue takes no outcome.
 
   **Alive.** The two rules are one condition each, shared: `alive/2` is their negation,
   for whatever counts the runs that are still alive, as a node's running instances and
@@ -98,11 +100,11 @@ defmodule Apiary.Runs.Liveness do
     lost = mark(running_silent(now), now) ++ mark(pending_silent(now), now)
     Enum.each(lost, &Runs.broadcast_changed/1)
     # Then the runs a workspace's queue handed over that ended, lost by the rules above or
-    # by their outcome or exit: their dispatches end and free their slots once
+    # by their exit: their dispatches end and free their slots once
     # (`Apiary.Dispatches.RunEnd`).
     Apiary.Dispatches.broadcast(RunEnd.lose(now))
-    # Then the runs of the queue ended by their outcome or exit whose registered run is
-    # settled since, and whose outcome is not yet stored: what each gave is stored
+    # Then the runs of the queue ended by their exit whose registered run is settled
+    # since, and whose result outcome is not yet stored: what each gave is stored
     # (`Apiary.Dispatches.Settle`).
     Apiary.Dispatches.broadcast(Settle.sweep(now))
     lost
@@ -176,7 +178,7 @@ defmodule Apiary.Runs.Liveness do
 
   @doc """
   Whether `at` is past `run`'s `backstop_at`, the deadline its attach set for its end: by
-  then a run that has neither its outcome nor its exit is lost, and no heartbeat or start
+  then a run that has no exit is lost, and no heartbeat or start
   that arrives after it brings the run back. False for a run with none.
   """
   @spec past_backstop?(map(), DateTime.t()) :: boolean()

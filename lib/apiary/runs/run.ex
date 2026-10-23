@@ -52,6 +52,8 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
+    # What the run runs, from its last `session.started` (`Apiary.Runs.Fold`): `runtime`,
+    # `runtime_version`, `command`, `args`, `dir`, `interactive` and `image`.
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
@@ -60,8 +62,9 @@ defmodule Apiary.Runs.Run do
     field :args, {:array, :string}, default: []
     field :dir, :string
     field :interactive, :boolean
-    # The pseudo-terminal's size as the record last said it: `terminal` of `run.started`,
-    # then each `run.resized`. Null on pipes, and when Forager reported no size.
+    # The pseudo-terminal's size as the record last said it: the later by sequence of the
+    # last `session.started`'s `terminal` and the last `run.resized`. Null on pipes, and
+    # when Forager reported no size.
     field :terminal_cols, :integer
     field :terminal_rows, :integer
     field :host, :string
@@ -136,7 +139,7 @@ defmodule Apiary.Runs.Run do
     field :registration_variables, :map
 
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
-    # (`Apiary.Dispatches.RunSettings`), as the handover answered them, with no key, and
+    # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
     # the model provider the run uses: its row, its keys' secret's row, the value id of
     # its chosen key, its chain, and the API of the provider the run uses
     # (`provider_api`: `format`, `endpoint`, `auth` and, when the description lists them,
@@ -198,17 +201,44 @@ defmodule Apiary.Runs.Run do
     field :attach_interval_seconds, :integer
     field :attach_answer_digest, :string
     field :gateway_instance_id, :string
+    # A run registered with a run code (`Apiary.Runs.RunCode`), in place of a run key:
+    # the code's SHA-256, never the code; when the code expires, 15 minutes after the
+    # claim; what its run key grants, fixed at the claim; and the public key that redeemed
+    # the code first, nil until then. Until the redemption the run has no run key
+    # payload, its `run_key_issued_at` is the claim and its `attach_by` the code's
+    # expiry; the redemption sets the run key's four fields and the public key together.
+    # All nil for every other run. Not folded: a rebuild keeps them.
+    field :run_code_sha256, :binary, redact: true
+    field :run_code_expires_at, :utc_datetime_usec
+    field :run_code_grant, :map
+    field :run_code_public_key, :binary
+    # For such a run: the timestamp of the proof of the newest accepted redemption of its
+    # code, the first or a retry, in Unix seconds; a retry by the same public key needs a
+    # newer one. Nil until the first redemption.
+    field :run_code_proof_timestamp, :integer
+    # For such a run: its documents, encoded at the claim, which every redemption of its
+    # code answers byte for byte. Nil for every other run. Not folded.
+    field :run_documents, :binary
+    # With the `registry` feature: the SHA-256 of the registry credential the secrets
+    # request sealed for the run's gateway last (`Apiary.Registry.Credential`), never the
+    # credential; nil until then. Not folded: a rebuild keeps it.
+    field :registry_credential_sha256, :binary, redact: true
 
-    # The run of a workspace's queue this run is, set when its dispatch is handed over and
-    # the run registered for it, unique; nil for every other run.
+    # The run of a workspace's queue this run is, set when its claim registers it, unique;
+    # nil for every other run.
     belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
-    # For such a run: when its starter released it after the handover, which the run reads
-    # as cancelled with the reason `released` until its starter's outcome decides
-    # (`Apiary.Runs.Fold`); and, set at its attach, when it is lost should it have neither
-    # an outcome nor an exit by then (`Apiary.Runs.Liveness`). Nil for every other run. Not
-    # folded: a rebuild keeps them.
+    # For such a run: `released_at`, when its starter released it after the handover,
+    # which the run reads as cancelled with the reason `released` (`Apiary.Runs.Fold`).
+    # Nothing writes it since a release after the handover is refused (`machine_exists`);
+    # a run released before that keeps it. `backstop_at`, set at its attach: when the run
+    # is lost should it have no exit by then (`Apiary.Runs.Liveness`); a run of the queue
+    # takes no outcome. Nil for every other run. Not folded: a rebuild keeps them.
     field :released_at, :utc_datetime_usec
     field :backstop_at, :utc_datetime_usec
+    # For such a run: when the lost-run check ended it for 600 s without a heartbeat and
+    # moved its `backstop_at` back to the end of that silence (`Apiary.Dispatches.RunEnd`).
+    # Nil for every other run. Not folded: a rebuild keeps it.
+    field :silenced_at, :utc_datetime_usec
     # For such a run, not a prebuild: the image its attach gave it, its pool's recorded
     # image for its target (`Apiary.Environments.image_for/2`), named at the top level of
     # every run configuration it is answered from then on
@@ -298,8 +328,11 @@ defmodule Apiary.Runs.Run do
   Whether the run goes through a gateway: its registration was given a run key, whatever
   has become of the gateway since.
   """
+  # A run registered with a run code (`Apiary.Runs.RunCode`) goes through a gateway
+  # before its code is redeemed too, with no run key payload until then.
   @spec through_gateway?(t() | map()) :: boolean()
   def through_gateway?(%{run_key_payload: payload}) when is_binary(payload), do: true
+  def through_gateway?(%{run_code_sha256: hash}) when is_binary(hash), do: true
   def through_gateway?(_run), do: false
 
   @doc """

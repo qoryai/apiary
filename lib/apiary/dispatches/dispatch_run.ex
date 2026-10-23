@@ -3,9 +3,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # workspace, which any node pool of the workspace may claim from.
   #
   # `run_id` is the run's id, a UUID Qory gives it when it queues the run, unique on the
-  # instance: the `run_id` the contract carries, and, once the run is handed over, the run
-  # id of the run registered for it (`Apiary.Runs.Run`, whose `dispatch_run_id` names this
-  # row). A run released before its handover with retry, or whose lease lapsed, waits
+  # instance: the `run_id` the contract carries, and, once the run is claimed, the run id
+  # of the run its claim registered (`Apiary.Runs.Run`, whose `dispatch_run_id` names this
+  # row). A run released before its handover, or whose lease lapsed, waits
   # again with the same `run_id`; any other new run is a new row with a new one.
   #
   # `step` is the step the run is for, in the contract's pattern. `take_in` is the take in
@@ -16,13 +16,15 @@ defmodule Apiary.Dispatches.DispatchRun do
   # A run for the step `prebuild` (`prebuild_changeset/2`) has no work item and no take
   # in: it builds the environment of a collection's target (`source_collection_id`) for
   # one node pool of its workspace, `pool_id`, which alone may claim it, and names the
-  # collection's `environment_ref` it was queued for. At most one waits per collection and
-  # pool (`Apiary.Dispatches.queue_prebuild/3`). `environment_ref_at` is when it took that
-  # `environment_ref`: when it was queued, and again whenever the ref changes while it
-  # waits, or as it waits again with its environment record's `queued_ref`
-  # (`Apiary.Dispatches.Slots`); `queued_at` stays as it was, so the ref's time is this.
-  # Every other run is held for no pool and has none of the three
+  # collection's `environment_ref` it was queued for. At most one waits per collection,
+  # pool and `environment_ref` (`Apiary.Dispatches.queue_prebuild/3`). `environment_ref_at`
+  # is when it was queued for that `environment_ref`, which no write changes since. Every
+  # other run is held for no pool and has none of the three
   # (`20261017160000_queue_prebuilds`).
+  #
+  # `image_requeue` is true for a run queued after the run before it in its take in
+  # ended by an exit that found its image missing from the registry, with one more
+  # attempt in its take in (`Apiary.Dispatches.RunEnd`); false for any other.
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `end_detail` is
@@ -33,7 +35,7 @@ defmodule Apiary.Dispatches.DispatchRun do
   # (`Apiary.Dispatches.Settle`, `result_outcomes/0`), and `result` the run's result, a
   # JSON object, for a `:proposal` or `:questions` only, until retention clears it
   # (`Apiary.Retention`). Only a run that is not a prebuild has an outcome: one ended
-  # `run_ended`, once decided, and `:error` for one whose handover could not form it
+  # `run_ended`, once decided, and `:error` for one whose claim could not form it
   # (`Apiary.Dispatches.Handover`). Qory writes both; no changeset casts them
   # (`20261019001000_keep_what_a_run_of_the_queue_gave`).
   #
@@ -49,19 +51,22 @@ defmodule Apiary.Dispatches.DispatchRun do
   # The causes a run of the queue, or a dispatch of one, ends for, and where each is named:
   # `released`, the starter's release (release.schema.json); `closed` and `undone`, its
   # work item closed or undone before its handover (refusal.schema.json, 410 gone);
-  # `run_ended`, the run ended by its outcome or its exit after its handover, and a stale
-  # dispatch with its run (handover.schema.json); `lost`, a handed-over run the liveness
+  # `run_ended`, the run ended by its exit after its handover, or, for a run that is not
+  # a prebuild, by an outcome stored on it before a run of the queue was refused one, and
+  # a stale
+  # dispatch with its run; `lost`, a handed-over run the liveness
   # check ended; `collection_ended`, the collection of a prebuild ended, was assigned to
   # none or to another workspace, has no target or no `environment_ref`, or its
   # connection ended, before its handover; `superseded`, a claimed prebuild whose lease
-  # lapsed while another prebuild of its collection and pool waited or went back to
-  # waiting (`Apiary.Dispatches.Slots`); `variables_invalid`, `ticket_gone` and
-  # `inputs_invalid`, a claimed run whose handover could not form its run variables, its
+  # lapsed while another prebuild of its collection, pool and `environment_ref` waited or
+  # went back to waiting (`Apiary.Dispatches.Slots`), or a prebuild a claim took whose
+  # `environment_ref` is no longer its collection's (`Apiary.Dispatches`); `variables_invalid`, `ticket_gone` and
+  # `inputs_invalid`, a claimed run whose claim could not form its run variables, its
   # work item's ticket, or the step's input (`Apiary.Dispatches.Handover`), 410 gone;
-  # `prebuilt`, a prebuild handed over whose starter reported the image it built
-  # (prebuilt.schema.json), its registered run left to its outcome; `provider_gone`,
+  # `prebuilt`, a prebuild handed over that a report of the image it built ended, which
+  # no request makes any more, its registered run left to its outcome; `provider_gone`,
   # `runtime_unserved`, `key_gone` and `model_gone`, a claimed explore run whose model
-  # choice its handover could not form: its model provider is gone, fails its integrity
+  # choice its claim could not form: its model provider is gone, fails its integrity
   # code, does not apply to the workspace, has a description the catalogue changed since
   # the provider was added, or has an endpoint address the endpoint rule refuses
   # (`provider_gone`); no longer serves the runtime (`runtime_unserved`); no longer has
@@ -71,7 +76,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   # made without the stored-secrets flag (`allow_secrets`), so the gateway may not get
   # the run's model key (`Apiary.Dispatches.Handover`), 410 gone; `run_refused`, a run
   # its gateway refused before it started (`dev.qory.run.refused`), not queued again, with
-  # the refusal's code kept as `end_detail` (`Apiary.Dispatches.RunEnd.refused/1`).
+  # the refusal's code kept as `end_detail` (`Apiary.Dispatches.RunEnd.refused/1`);
+  # `build_failed`, a waiting run held for its target's build, whose build failed, or was
+  # lost twice, while no node pool had an image for its target (`Apiary.Environments`),
+  # with the outcome `error`.
   @end_causes [
     :released,
     :closed,
@@ -89,7 +97,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :key_gone,
     :model_gone,
     :secrets_not_allowed,
-    :run_refused
+    :run_refused,
+    :build_failed
   ]
 
   # What a run gave (`Apiary.Explore.Result.outcome/1`).
@@ -117,6 +126,7 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :environment_ref_at, :utc_datetime_usec
     field :result_outcome, Ecto.Enum, values: @result_outcomes
     field :result, :map
+    field :image_requeue, :boolean, default: false
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

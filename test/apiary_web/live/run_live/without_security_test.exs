@@ -91,7 +91,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(lv, "#run-facts", "claude")
       assert has_element?(lv, "#timeline", "Run started")
       assert has_element?(lv, "#timeline", "Run ended")
-      refute has_element?(lv, "#e-2")
+      refute has_element?(lv, "#e-3")
 
       # the connections inline: the decision and the tool, never the rule
       assert has_element?(lv, "#timeline .q-cx .q-dest-tool .q-tool-name", "files")
@@ -100,7 +100,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
       # a link to the policy's item is no way to it: the sequence is dropped
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=2")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=3")
 
       refute has_element?(lv, "ol#timeline[data-target]")
       refute_policy(render(lv))

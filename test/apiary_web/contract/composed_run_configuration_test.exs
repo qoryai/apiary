@@ -12,7 +12,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
-  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, dispatched!: 1]
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, redeemed_run_key!: 1]
   import Apiary.NodesFixtures, only: [collection_fixture: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -24,6 +24,9 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
+  # Without the `registry` feature, whose members `ApiaryWeb.RegistryTokenTest`
+  # covers: the features are the whole node's, so the module is not async.
+  setup {Apiary.DataCase, :without_registry}
 
   @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
   @naming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example"]},"image":"with-docker"}})
@@ -76,52 +79,41 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       workspace_id: ctx.scope.workspace.id,
       pool_id: ctx.pool.id,
       source_collection_id: collection.id,
-      queued_ref: "env-1",
-      queued_at: now,
-      queued_target_system: system,
-      queued_target_path: path,
       image: @image,
       size: 734_003_200,
       commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c",
       built_at: now,
       reported_ref: "env-1",
+      built_ref: "env-1",
       built_target_system: built_system,
       built_target_path: built_path,
       built_queued_at: now
     })
   end
 
-  # The target a run of the queue is handed over for: the work item's collection's.
+  # The target a run of the queue is claimed for: the work item's collection's.
   @shop {"forge.example.com", "acme/shop"}
 
-  # A run of the queue for the step explore, claimed by the pool, its job started and
-  # handed over: its id and run key.
+  # A run of the queue for the step explore, claimed by the pool, its machine started and
+  # its run code redeemed: its id and run key.
   defp explore!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-    assert pool_post(ctx, dispatch, "dispatched").status == 204
-    handover = pool_post(ctx, dispatch, "handover")
-    assert %{"run_id" => run_id, "run_key" => run_key} = json_response(handover, 200)
-    {run_id, run_key}
+    {:ok, claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+    assert pool_post(ctx, claimed.dispatch, "dispatched").status == 204
+    {claimed.registered.node_run_id, redeemed_run_key!(claimed.run_code)}
   end
 
-  # A prebuild of a fresh collection, queued by the trigger, claimed by the pool and
-  # handed over: its id and run key.
+  # A prebuild of a fresh collection, queued by the trigger, claimed by the pool and its
+  # run code redeemed: its id and run key.
   defp prebuild!(ctx) do
     collection = collection_fixture(ctx.scope, target_path: "acme/shop")
 
     {:ok, _queued} =
-      Repo.transact(fn -> {:ok, Apiary.Environments.trigger([collection], Dispatches.now())} end)
+      {:ok, Apiary.DispatchedRunsFixtures.queue_builds!(collection)}
 
-    %{dispatch: dispatch} = dispatched!(ctx.key)
-
-    {:ok, %{run: run, run_key: run_key}} =
-      Dispatches.handover(ctx.key, dispatch.public_id, %{
-        body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-      })
-
-    {run.node_run_id, run_key}
+    {:ok, claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+    {claimed.registered.node_run_id, redeemed_run_key!(claimed.run_code)}
   end
 
   # A run a node registered itself, through the workspace's gateway: its id and run key.
@@ -161,7 +153,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       target: "/v1/dispatches/#{dispatch.public_id}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 

@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   # A run's model key and the gateway's organisation (`Apiary.Runs.ProviderCredential`):
   # a key of a provider of the organisation's chain goes only to a gateway of the run's
   # organisation, and a key of a provider of an operator's chain only to a gateway of an
-  # operator that serves the run's organisation, at the handover and at the secrets
+  # operator that serves the run's organisation, at the claim and at the secrets
   # request. The edition's seams are `Apiary.EditionStubs.ServesAcrossWithChain`: the
   # operator's organisation-level gateways serve the client's workspaces. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
@@ -28,8 +28,10 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
+  # Without the `registry` feature, whose credential `ApiaryWeb.RegistryTokenTest`
+  # covers: the features are the whole node's, so the module is not async.
+  setup {Apiary.DataCase, :without_registry}
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @api %{
     "format" => "anthropic-messages",
     "endpoint" => "https://api.anthropic.com",
@@ -63,16 +65,24 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   defp client_gateway(ctx), do: keyed(ctx.client, gateway_fixture(ctx.client))
 
   # A pool of the client's workspace, made after its gateway, whose choice is the default,
-  # and an explore run of a fresh work item handed over by its key: the handover's answer
-  # and the run of the queue.
+  # and an explore run of a fresh work item claimed by its key: `{:ok, %{run: run,
+  # run_key: run_key}}`, the registered run and the run key its code was redeemed for, or
+  # `{:error, :gone}` for a run the claim ended; and the run of the queue.
   defp hand_over(ctx) do
     pool = pool_fixture(ctx.client)
     :default = pool.gateway_choice
     %{access_key: pool_key} = enrolled_key_fixture(ctx.client, pool)
     work_item = work_item_fixture(ctx.client)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(pool_key)
-    {Dispatches.handover(pool_key, dispatch.public_id, %{body: @body}), queued}
+
+    case Dispatches.claim(pool_key, Dispatches.now()) do
+      {:ok, :none} ->
+        {{:error, :gone}, queued}
+
+      {:ok, claimed} ->
+        run_key = redeemed_run_key!(claimed.run_code)
+        {{:ok, %{run: claimed.registered, run_key: run_key}}, queued}
+    end
   end
 
   defp attach!({key, _seed}, handed) do
@@ -87,8 +97,8 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
     Repo.get!(Run, handed.run.id)
   end
 
-  # The provider written on the run past the handover, as a run whose handover set it
-  # would keep it.
+  # The provider written on the run past the claim, as a run whose claim set it would keep
+  # it.
   defp set_provider!(%Run{id: id}, provider, chain) do
     {1, _rows} =
       Repo.update_all(from(r in Run, where: r.id == ^id),
@@ -160,7 +170,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   end
 
   describe "a provider of the organisation's chain" do
-    test "ends the run at the handover through an operator's gateway", ctx do
+    test "ends the run at the claim through an operator's gateway", ctx do
       operator_gateway(ctx)
 
       {:ok, _choice} =
@@ -240,7 +250,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
       assert seals() == []
     end
 
-    test "ends the run at the handover through the client's gateway", ctx do
+    test "ends the run at the claim through the client's gateway", ctx do
       client_gateway(ctx)
       operator_chain!(ctx)
 
@@ -251,7 +261,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
 
     test "is not sealed for the client's gateway", ctx do
       gateway_key = client_gateway(ctx)
-      # No choice of the operator's chain: the run is handed over with the runtime alone.
+      # No choice of the operator's chain: the run is claimed with the runtime alone.
       provider = operator_chain!(ctx, false)
       {{:ok, handed}, _queued} = hand_over(ctx)
       run = gateway_key |> attach!(handed) |> set_provider!(provider, "operator")

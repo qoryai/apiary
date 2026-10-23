@@ -11,26 +11,32 @@ defmodule Apiary.DispatchesRacesTest do
   # claims, of one pool or of two, never take one run. Two next runs of one take in
   # (`Apiary.Dispatches.queue_next/2`) take turns on the work item's row, so one is
   # written and the other finds it waiting, as nothing here claims, undoes or closes it.
-  # One prebuild waits per collection and node pool: two triggers at once take turns on
-  # the environment record, two queues at once on the index of the waiting ones, and a
-  # lapse that would make a claimed prebuild wait again waits for a trigger that holds
-  # the record. Every path takes its locks in the one order `Apiary.Dispatches.Slots`
-  # names, so none of them, let go together, waits on another for good.
+  # One prebuild waits per collection, node pool and `environment_ref`: two queues at once
+  # take turns on the index of the waiting ones, and a lapse that would make a claimed
+  # prebuild wait again waits for a build queued under the record. A run held for its
+  # pool's build of its target (`Apiary.Environments.held/2`) is never taken while it is
+  # held, and the claim that queues its build holds the target's collections first, with
+  # the collections of the pool's lapsed prebuilds, so a key change, an assign or a
+  # Backlog switch waits for it. Every path takes its locks in the one order
+  # `Apiary.Dispatches.Slots` names, so none of them, let go together, waits on another
+  # for good.
   use ExUnit.Case, async: false
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.Races
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Environments, Repo}
-  alias Apiary.AccessKeys.PublicKey
-  alias Apiary.Adapters.Collection
+  alias Apiary.{Dispatches, Repo}
+  alias Apiary.AccessKeys.{AccessKey, PublicKey}
+  alias Apiary.Adapters.{Collection, Collections, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
+  alias Apiary.Runs.Target
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
@@ -40,7 +46,14 @@ defmodule Apiary.DispatchesRacesTest do
 
   setup do
     %{scope: scope} = sign_up()
-    {:ok, made} = Agent.start(fn -> %{public_keys: [], adapters: []} end)
+    # The workspace's default gateway, which the pools' claims resolve to, and its key's
+    # public half, which outlives the organisation.
+    gateway = workspace_gateway!(scope)
+
+    gateway_key =
+      Repo.one!(from k in AccessKey, where: k.node_id == ^gateway.id, select: k.public_key)
+
+    {:ok, made} = Agent.start(fn -> %{public_keys: [gateway_key], adapters: []} end)
 
     # Before the clean up of `setup_races`: the organisation, then what outlives it.
     on_exit(fn ->
@@ -71,13 +84,20 @@ defmodule Apiary.DispatchesRacesTest do
     end
   end
 
-  # A live collection of the scope's workspace, with a target, under a connection of
-  # an adapter remembered for `on_exit`.
-  defp collection!(ctx, ref \\ "SHOP") do
-    connection = ticket_connection_fixture(ctx.scope)
-    Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
+  # A live collection of the scope's workspace, with the target `acme/shop` or `path` on
+  # `code.example.com`, under a fresh connection of an adapter remembered for `on_exit`,
+  # or under the connection `opts[:connection]`; its id `opts[:id]` when given, and its
+  # `environment_ref` `opts[:environment_ref]`, else `env-0`.
+  defp collection!(ctx, ref \\ "SHOP", path \\ "acme/shop", opts \\ []) do
+    connection =
+      Keyword.get_lazy(opts, :connection, fn ->
+        connection = ticket_connection_fixture(ctx.scope)
+        Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
+        connection
+      end)
 
     Repo.insert!(%Collection{
+      id: opts[:id],
       public_id: Apiary.PublicId.generate(Collection.prefix()),
       organisation_id: ctx.scope.organisation.id,
       adapter_id: connection.adapter_id,
@@ -87,33 +107,107 @@ defmodule Apiary.DispatchesRacesTest do
       url: "https://code.example.com/acme/shop",
       title: "shop",
       target_system: "code.example.com",
-      target_path: "acme/shop",
-      environment_ref: "env-0",
+      target_path: path,
+      environment_ref: Keyword.get(opts, :environment_ref, "env-0"),
       last_listed_at: DateTime.utc_now(:second)
     })
   end
 
-  # The trigger for `collection` named with `ref`, in a separate transaction.
-  defp trigger(collection, ref) do
-    fn ->
-      Repo.transact(fn ->
-        {:ok, Environments.trigger([%{collection | environment_ref: ref}], Dispatches.now())}
-      end)
-    end
+  # Two collections of one connection with the target `path`, and a run held for that
+  # target: `lapsed`, the lower id, whose `environment_ref` `env-1` has a prebuild
+  # claimed by `key` for `pool` whose lease lapsed, so no build of it is due, and `due`,
+  # whose `env-0` has none, so a claim of the pool queues one. The claim's free sets the
+  # lapsed prebuild waiting again and its take writes it again, which takes a
+  # `FOR KEY SHARE` lock on `lapsed`. With the target's row, for a Backlog switch.
+  defp lapsed_pair!(ctx, key, pool, path) do
+    connection = ticket_connection_fixture(ctx.scope)
+    Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
+    [low, high] = Enum.sort([Ecto.UUID.generate(), Ecto.UUID.generate()])
+    on = [connection: connection]
+    lapsed = collection!(ctx, "L-" <> path, path, [id: low, environment_ref: "env-1"] ++ on)
+    due = collection!(ctx, "D-" <> path, path, [id: high] ++ on)
+    :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
+    _held = held!(ctx, path)
+    target = %{system: "code.example.com", path: path}
+    :ok = Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [target])
+
+    %{
+      connection: connection,
+      lapsed: lapsed,
+      due: due,
+      target: Repo.get_by!(Target, workspace_id: ctx.scope.workspace.id, path: path)
+    }
   end
 
-  # The trigger for `collections`, in the order given, each named with `ref` (nil for
-  # none), in one transaction: what it answered, or what it raised.
-  defp listing(collections, ref) do
+  # A listing's part that gives `collections` the `environment_ref` `ref`: their
+  # connections held `FOR UPDATE` by id, then each collection `FOR UPDATE` by id, as a
+  # part holds them, then changed, in one transaction: what it answered, or what it
+  # raised.
+  defp part(collections, ref) do
     rescued(fn ->
       Repo.transact(fn ->
-        {:ok,
-         Environments.trigger(
-           Enum.map(collections, &%{&1 | environment_ref: ref}),
-           Dispatches.now()
-         )}
+        ids = collections |> Enum.map(& &1.id) |> Enum.sort()
+        connection_ids = collections |> Enum.map(& &1.connection_id) |> Enum.uniq()
+
+        _connections =
+          Repo.all(
+            from k in Apiary.Adapters.Connection,
+              where: k.id in ^connection_ids,
+              order_by: k.id,
+              lock: "FOR UPDATE",
+              select: k.id
+          )
+
+        _held =
+          Repo.all(from c in Collection, where: c.id in ^ids, order_by: c.id, lock: "FOR UPDATE")
+
+        {_count, _rows} =
+          Repo.update_all(from(c in Collection, where: c.id in ^ids),
+            set: [environment_ref: ref]
+          )
+
+        {:ok, :changed}
       end)
     end)
+  end
+
+  # A Rebuild of `collections` for `pools`: each held `FOR SHARE` by id, then their
+  # records `FOR UPDATE`, by collection and then pool, in one statement, then a prebuild
+  # of each with an `environment_ref` queued for each pool, in one transaction: what it
+  # answered, or what it raised.
+  defp rebuild(collections, pools) do
+    rescued(fn ->
+      Repo.transact(fn -> {:ok, collections |> hold_rebuild() |> queue_rebuild(pools)} end)
+    end)
+  end
+
+  # The first half of `rebuild/2`, inside the caller's transaction: `collections` held
+  # `FOR SHARE` by id, then their records `FOR UPDATE`; the collections held.
+  defp hold_rebuild(collections) do
+    ids = collections |> Enum.map(& &1.id) |> Enum.sort()
+
+    held =
+      Repo.all(from c in Collection, where: c.id in ^ids, order_by: c.id, lock: "FOR SHARE")
+
+    _records =
+      Repo.all(
+        from e in Record,
+          where: e.source_collection_id in ^ids,
+          order_by: [e.source_collection_id, e.pool_id],
+          lock: "FOR UPDATE",
+          select: e.id
+      )
+
+    held
+  end
+
+  # The second half of `rebuild/2`: a prebuild of each of the collections `held` queued
+  # for each pool; the prebuilds queued.
+  defp queue_rebuild(held, pools) do
+    for %Collection{environment_ref: ref} = collection <- held, is_binary(ref), pool <- pools do
+      {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
+      run
+    end
   end
 
   # `fun`, its exception's message for what it answered should it raise one.
@@ -127,7 +221,7 @@ defmodule Apiary.DispatchesRacesTest do
     end
   end
 
-  # Locks the environment records of `collection` `FOR UPDATE`, as a trigger or a lapse
+  # Locks the environment records of `collection` `FOR UPDATE`, as a Rebuild or a lapse
   # does.
   defp lock_records(collection) do
     Repo.all(
@@ -138,18 +232,15 @@ defmodule Apiary.DispatchesRacesTest do
     )
   end
 
-  # The `environment_ref` of each prebuild of `collection` that waits for `pool`, and the
-  # record's `queued_ref`.
-  defp waiting_and_queued(collection, pool) do
-    waiting =
-      Repo.all(
-        from r in DispatchRun,
-          where: r.source_collection_id == ^collection.id and r.pool_id == ^pool.id,
-          where: r.state == :waiting,
-          select: r.environment_ref
-      )
-
-    {waiting, Environments.fetch(pool.id, collection.id).queued_ref}
+  # The `environment_ref` of each prebuild of `collection` that waits for `pool`, sorted.
+  defp waiting(collection, pool) do
+    Repo.all(
+      from r in DispatchRun,
+        where: r.source_collection_id == ^collection.id and r.pool_id == ^pool.id,
+        where: r.state == :waiting,
+        order_by: r.environment_ref,
+        select: r.environment_ref
+    )
   end
 
   # The prebuilds of `collection`, `{state, environment_ref}`, the oldest first.
@@ -209,6 +300,18 @@ defmodule Apiary.DispatchesRacesTest do
     {^count, _rows} = Repo.insert_all(DispatchRun, runs)
     {^count, _rows} = Repo.insert_all(Dispatch, dispatches)
     :ok
+  end
+
+  # A waiting run of a fresh work item in Explore whose target is `acme/shop` or `path` on
+  # `code.example.com`, as a collection's of `collection!/3`: held for its pool's build of
+  # that target.
+  defp held!(ctx, path \\ "acme/shop") do
+    work_item =
+      work_item_fixture(ctx.scope, %{target_system: "code.example.com", target_path: path})
+
+    Agent.update(ctx.made, &%{&1 | adapters: [work_item.adapter_id | &1.adapters]})
+    {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    run
   end
 
   # The claims of `keys`, all let go at once.
@@ -319,47 +422,8 @@ defmodule Apiary.DispatchesRacesTest do
            ) == [{1, :ended}, {2, :waiting}]
   end
 
-  describe "one prebuild waits per collection and node pool" do
-    test "of two triggers at once, the second waits on the record and sets its environment_ref on the waiting one",
-         ctx do
-      pool = pool_fixture(ctx.scope)
-      collection = collection!(ctx)
-
-      {first, holder} =
-        hold(fn ->
-          Environments.trigger([%{collection | environment_ref: "env-1"}], Dispatches.now())
-        end)
-
-      assert [%DispatchRun{environment_ref: "env-1"}] = first.result
-
-      second = start(trigger(collection, "env-2"))
-      await_blocked(second.backend, holder)
-      commit(first)
-
-      assert {:ok, [%DispatchRun{id: id, environment_ref: "env-2"}]} = Task.await(second.task)
-      assert id == hd(first.result).id
-      assert prebuilds(collection) == [{:waiting, "env-2"}]
-      assert %Record{queued_ref: "env-2"} = Environments.fetch(pool.id, collection.id)
-    end
-
-    test "of many triggers let go at once, with two environment_refs, one prebuild waits",
-         ctx do
-      pool = pool_fixture(ctx.scope)
-      collection = collection!(ctx)
-
-      answers =
-        ~w(env-1 env-2)
-        |> Stream.cycle()
-        |> Enum.take(sides(6))
-        |> Enum.map(&trigger(collection, &1))
-        |> together()
-
-      assert Enum.all?(answers, &match?({:ok, _queued}, &1))
-      assert [{:waiting, ref}] = prebuilds(collection)
-      assert %Record{queued_ref: ^ref} = Environments.fetch(pool.id, collection.id)
-    end
-
-    test "of two queues at once, the second waits on the index and sets its environment_ref on the first",
+  describe "one prebuild waits per collection, node pool and environment_ref" do
+    test "of two queues at once for one ref, the second waits on the index and finds the first",
          ctx do
       pool = pool_fixture(ctx.scope)
       collection = collection!(ctx)
@@ -369,32 +433,39 @@ defmodule Apiary.DispatchesRacesTest do
 
       second =
         start(fn ->
-          Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-2") end)
+          Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-1") end)
         end)
 
       await_blocked(second.backend, holder)
       commit(first)
 
-      assert {:ok, %DispatchRun{id: id, environment_ref: "env-2"}} = Task.await(second.task)
+      assert {:ok, %DispatchRun{id: id, environment_ref: "env-1"}} = Task.await(second.task)
       assert id == run.id
-      assert prebuilds(collection) == [{:waiting, "env-2"}]
+      assert prebuilds(collection) == [{:waiting, "env-1"}]
+
+      # Another ref waits beside it.
+      {:ok, _other} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-2") end)
+
+      assert waiting(collection, pool) == ~w(env-1 env-2)
     end
 
-    test "a lapse waits for the trigger that holds the record, then ends the claimed one superseded",
+    test "a lapse waits for a build of its ref queued under the record, then ends the claimed one superseded",
          ctx do
       pool = pool_fixture(ctx.scope)
       key = key!(ctx, pool)
       collection = collection!(ctx)
 
-      {:ok, [run]} = trigger(collection, "env-1").()
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-0") end)
       {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
 
       {first, holder} =
         hold(fn ->
-          Environments.trigger([%{collection | environment_ref: "env-2"}], Dispatches.now())
+          _locked = lock_records(collection)
+          Dispatches.queue_prebuild(collection, pool, "env-0")
         end)
 
-      assert [%DispatchRun{environment_ref: "env-2"}] = first.result
+      assert {:ok, %DispatchRun{environment_ref: "env-0"}} = first.result
 
       sweep = start(fn -> Dispatches.sweep(dispatch.lease_until) end)
       await_blocked(sweep.backend, holder)
@@ -402,122 +473,19 @@ defmodule Apiary.DispatchesRacesTest do
       Task.await(sweep.task)
 
       assert %DispatchRun{state: :ended, end_cause: :superseded} = Repo.get!(DispatchRun, run.id)
-      assert prebuilds(collection) == [{:ended, "env-1"}, {:waiting, "env-2"}]
+      assert prebuilds(collection) == [{:ended, "env-0"}, {:waiting, "env-0"}]
       assert %Dispatch{end_cause: :run_ended} = Repo.get!(Dispatch, dispatch.id)
     end
 
-    test "a claim waits for a trigger paused between its record and its prebuild, which never waits on the claim's pool",
-         ctx do
-      pool = pool_fixture(ctx.scope)
-      key = key!(ctx, pool)
-      collection = collection!(ctx)
-
-      {:ok, [run]} = trigger(collection, "env-1").()
-
-      {:ok, %{dispatch: dispatch}} =
-        Dispatches.claim(key, DateTime.add(Dispatches.now(), -700, :second))
-
-      # The trigger's first half: its record locked, as its upsert locks it.
-      {first, holder} = hold(fn -> lock_records(collection) end)
-
-      # The claim locks the pool, then waits on the record of its lapsed prebuild.
-      claim = start(fn -> Dispatches.claim(key, Dispatches.now()) end)
-      await_waited(claim.backend, holder)
-
-      # The trigger's second half: the record's queued_ref, then the prebuild, whose
-      # foreign key to the pool takes its row FOR KEY SHARE beside the claim's lock.
-      assert {:ok, %DispatchRun{id: queued, environment_ref: "env-2"}} =
-               continue(first, fn ->
-                 Repo.update_all(
-                   from(e in Record, where: e.source_collection_id == ^collection.id),
-                   set: [queued_ref: "env-2"]
-                 )
-
-                 Dispatches.queue_prebuild(collection, pool, "env-2")
-               end)
-
-      commit(first)
-
-      # The claim then finds it waiting: the lapsed one gives way, and it takes the new one.
-      assert {:ok, %{run: %DispatchRun{id: ^queued, environment_ref: "env-2"}}} =
-               Task.await(claim.task)
-
-      assert %DispatchRun{state: :ended, end_cause: :superseded} = Repo.get!(DispatchRun, run.id)
-      assert %Dispatch{end_cause: :run_ended} = Repo.get!(Dispatch, dispatch.id)
-    end
-
-    test "a trigger locks its records by collection, whatever order the listing names them in",
-         ctx do
-      pool = pool_fixture(ctx.scope)
-      [low, high] = Enum.sort_by([collection!(ctx, "A"), collection!(ctx, "B")], & &1.id)
-      {:ok, _queued} = listing([low, high], "env-1").()
-
-      # A lapse part way: the lower collection's record locked.
-      {first, holder} = hold(fn -> lock_records(low) end)
-
-      # The listing names the higher one first, without an environment_ref, so it retires
-      # it, and the lower one with a new one: it waits on the lower one's record first.
-      changed =
-        start(
-          rescued(fn ->
-            Repo.transact(fn ->
-              {:ok,
-               Environments.trigger(
-                 [%{high | environment_ref: nil}, %{low | environment_ref: "env-2"}],
-                 Dispatches.now()
-               )}
-            end)
-          end)
-        )
-
-      await_waited(changed.backend, holder)
-
-      # The lapse goes on to the higher one's record, which the listing has not locked.
-      assert [_id] = continue(first, fn -> lock_records(high) end)
-      commit(first)
-
-      assert {:ok, [%DispatchRun{environment_ref: "env-2"}]} = Task.await(changed.task)
-      assert waiting_and_queued(low, pool) == {["env-2"], "env-2"}
-      assert waiting_and_queued(high, pool) == {[], "env-1"}
-    end
-
-    test "a sweep waits for a listing that holds the records of two collections, and each lapsed one gives way",
+    # A Rebuild that holds a later batch's record and then asks for an earlier one's never
+    # waits on the sweep for good.
+    test "a sweep of more than one batch locks the records of every batch before its first",
          ctx do
       pool = pool_fixture(ctx.scope)
       key = key!(ctx, pool)
       [low, high] = Enum.sort_by([collection!(ctx, "A"), collection!(ctx, "B")], & &1.id)
-      {:ok, _queued} = listing([low, high], "env-1").()
-      back = DateTime.add(Dispatches.now(), -700, :second)
-      {:ok, %{run: one}} = Dispatches.claim(key, back)
-      {:ok, %{run: two}} = Dispatches.claim(key, back)
-
-      {first, holder} =
-        hold(fn ->
-          Environments.trigger(
-            [%{high | environment_ref: "env-2"}, %{low | environment_ref: "env-2"}],
-            Dispatches.now()
-          )
-        end)
-
-      sweep = start(rescued(fn -> Dispatches.sweep(Dispatches.now()) end))
-      await_waited(sweep.backend, holder)
-      commit(first)
-
-      assert [_workspace] = Task.await(sweep.task)
-
-      for run <- [one, two],
-          do: assert(%DispatchRun{end_cause: :superseded} = Repo.get!(DispatchRun, run.id))
-
-      for collection <- [low, high],
-          do: assert(waiting_and_queued(collection, pool) == {["env-2"], "env-2"})
-    end
-
-    test "a sweep of more than one batch locks the records of every batch before its first, so a listing that holds a later batch's record and then asks for an earlier one's never waits on it for good",
-         ctx do
-      pool = pool_fixture(ctx.scope)
-      key = key!(ctx, pool)
-      [low, high] = Enum.sort_by([collection!(ctx, "A"), collection!(ctx, "B")], & &1.id)
-      {:ok, _queued} = listing([low, high], "env-1").()
+      {:ok, :changed} = part([low, high], "env-1").()
+      {:ok, _queued} = rebuild([low, high], [pool]).()
 
       # None waits for the higher one, so one of its lapsed ones waits again.
       {1, _rows} =
@@ -534,13 +502,13 @@ defmodule Apiary.DispatchesRacesTest do
       highs = first_batch ++ [last]
       claimed_prebuilds!(ctx, key, pool, [{low, lower} | Enum.map(highs, &{high, &1})])
 
-      # A listing part way: the lower collection's record locked.
+      # A Rebuild part way: the lower collection's record locked.
       {first, holder} = hold(fn -> lock_records(low) end)
 
       sweep = start(rescued(fn -> Dispatches.sweep(Dispatches.now()) end))
       await_waited(sweep.backend, holder)
 
-      # The listing goes on to the higher one's record, which the sweep took no lock on
+      # The Rebuild goes on to the higher one's record, which the sweep took no lock on
       # before the lower one's.
       assert [_id] = continue(first, fn -> lock_records(high) end)
       commit(first)
@@ -564,7 +532,7 @@ defmodule Apiary.DispatchesRacesTest do
                Repo.get!(DispatchRun, again)
 
       for collection <- [low, high],
-          do: assert(waiting_and_queued(collection, pool) == {["env-1"], "env-1"})
+          do: assert(waiting(collection, pool) == ["env-1"])
 
       assert Repo.aggregate(
                from(d in Dispatch,
@@ -575,26 +543,28 @@ defmodule Apiary.DispatchesRacesTest do
              ) == 501
     end
 
-    test "flips of two collections in any order, sweeps, lapses and claims together: no error, and what waits carries the record's queued_ref",
+    test "key changes of two collections, a Rebuild, sweeps, lapses and claims of held runs together: no error, one prebuild waits per ref at most",
          ctx do
       pool = pool_fixture(ctx.scope)
       keys = [key!(ctx, pool), key!(ctx, pool)]
       collections = [collection!(ctx, "A"), collection!(ctx, "B")]
-      {:ok, _queued} = listing(collections, "env-0").()
+      {:ok, _queued} = rebuild(collections, [pool]).()
 
       raised =
         for round <- 1..15, reduce: [] do
           raised ->
-            # A claim at a time long gone lapses at once, so the sweep of the same round, or
-            # the next, finds two claimed prebuilds of one collection and pool.
+            # A run held for the collections' target each round, whose claim queues its
+            # build; a claim at a time long gone lapses at once, so the sweep of the same
+            # round, or the next, finds claimed prebuilds of one collection and pool.
+            _held = held!(ctx)
             back = DateTime.add(Dispatches.now(), -700, :second)
             dropped = if rem(round, 4) == 0, do: nil, else: "env-#{round}c"
 
             answers =
               [
-                listing: listing(Enum.shuffle(collections), "env-#{round}a"),
-                listing: listing(Enum.shuffle(collections), "env-#{round}b"),
-                listing: listing(Enum.shuffle(collections), dropped),
+                part: part(Enum.shuffle(collections), "env-#{round}a"),
+                part: part(Enum.shuffle(collections), dropped),
+                rebuild: rebuild(Enum.shuffle(collections), [pool]),
                 sweep: rescued(fn -> Dispatches.sweep(Dispatches.now()) end),
                 lapsing_claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 0), back) end),
                 claim: rescued(fn -> Dispatches.claim(Enum.at(keys, 1), Dispatches.now()) end)
@@ -604,14 +574,413 @@ defmodule Apiary.DispatchesRacesTest do
               |> together()
 
             for collection <- collections do
-              {waiting, queued_ref} = waiting_and_queued(collection, pool)
-              assert waiting in [[], [queued_ref]], "round #{round}: #{inspect(waiting)}"
+              waiting = waiting(collection, pool)
+              assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
             end
 
             raised ++ for({name, {:raised, message}} <- answers, do: {round, name, message})
         end
 
       assert raised == []
+    end
+  end
+
+  describe "a claim that queues a build" do
+    # A claim of `key`, each answer one of: a run taken, nothing, or `:unavailable`; what
+    # it raised otherwise. A claim answers `:unavailable` for any error of the database,
+    # a deadlock included, and logs that it could not be made: that log line is the
+    # answer then, `{:failed, line}`.
+    defp claim_answer(key) do
+      rescued(fn ->
+        {answer, log} =
+          ExUnit.CaptureLog.with_log(fn -> Dispatches.claim(key, Dispatches.now()) end)
+
+        case {answer, Regex.run(~r/a claim could not be made[^\n]*/, log)} do
+          {_answer, [line]} -> {:failed, line}
+          {{:ok, _claimed}, nil} -> answer
+          {{:error, :unavailable}, nil} -> answer
+        end
+      end)
+    end
+
+    # The environment records of `collection` for `pool`.
+    defp records(collection, pool) do
+      Repo.aggregate(
+        from(e in Record,
+          where: e.source_collection_id == ^collection.id and e.pool_id == ^pool.id
+        ),
+        :count
+      )
+    end
+
+    test "and a Rebuild at once, with lapsed prebuilds to free: no deadlock, one record, one build per ref",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      raised =
+        for round <- 1..15, reduce: [] do
+          raised ->
+            # A run held for a fresh target with no record for the pool, and a lapsed
+            # claimed prebuild of another collection of that target, whose record the
+            # claim's free locks before its runs.
+            path = "acme/rebuild-#{round}"
+            collection = collection!(ctx, "R#{round}", path)
+            lapsed = collection!(ctx, "L#{round}", path)
+            {:ok, _queued} = rebuild([lapsed], [pool]).()
+            :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
+            _held = held!(ctx, path)
+            both = Enum.shuffle([collection, lapsed])
+
+            answers =
+              if rem(round, 2) == 1 do
+                # The Rebuild paused once it holds the records, the claim's free waiting
+                # for them, then the Rebuild's prebuilds queued, before it commits.
+                {rebuild, rebuild_backend} = hold(fn -> hold_rebuild(both) end)
+                claim = start(claim_answer(key))
+                await_blocked(claim.backend, rebuild_backend)
+
+                queued =
+                  continue(
+                    rebuild,
+                    rescued(fn -> {:ok, queue_rebuild(rebuild.result, [pool])} end)
+                  )
+
+                commit(rebuild)
+                [claim: Task.await(claim.task, 15_000), rebuild: queued]
+              else
+                [claim: claim_answer(key), rebuild: rebuild(both, [pool])]
+                |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+                |> together()
+              end
+
+            assert records(collection, pool) == 1
+
+            for c <- [collection, lapsed] do
+              waiting = waiting(c, pool)
+              assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
+            end
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
+        end
+
+      assert raised == []
+    end
+
+    test "and a listing's part at once, with a lapsed prebuild of a lower collection of the connection: no deadlock, the keys change, one build per ref",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      raised =
+        for round <- 1..6, reduce: [] do
+          raised ->
+            path = "acme/part-#{round}"
+            %{lapsed: lapsed, due: due} = lapsed_pair!(ctx, key, pool, path)
+            changed = "part-#{round}"
+
+            answers =
+              [
+                claim: claim_answer(key),
+                part: part([lapsed, due], changed)
+              ]
+              |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+              |> together()
+
+            assert {:part, {:ok, :changed}} in answers
+
+            for collection <- [lapsed, due] do
+              assert %Collection{environment_ref: ^changed} = Repo.get!(Collection, collection.id)
+              waiting = waiting(collection, pool)
+              assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
+            end
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
+        end
+
+      assert raised == []
+    end
+  end
+
+  describe "a claim that frees a lapsed prebuild of a lower collection of a connection" do
+    # A Backlog switch of the pair's target off, or an unassign of the pair from the
+    # workspace: each holds the connection `FOR SHARE`, then both collections
+    # `FOR UPDATE`, by id, and writes them. What it answered, or what it raised.
+    defp change_pair(ctx, :switch, pair),
+      do: rescued(fn -> Collections.set_backlog(ctx.scope, pair.target, false) end)
+
+    defp change_pair(ctx, :assign, pair) do
+      ids = [pair.lapsed.id, pair.due.id]
+      rescued(fn -> Collections.assign_collections(ctx.scope, pair.connection, ids, nil) end)
+    end
+
+    # The first steps of `change_pair/3`, inside the caller's transaction, up to the lower
+    # collection: the connection `FOR SHARE`, the workspace `FOR SHARE` for a switch, and
+    # `lapsed` `FOR UPDATE`, the first row its one statement holds.
+    defp hold_lower(ctx, change, pair) do
+      _connection =
+        Repo.one!(from k in Connection, where: k.id == ^pair.connection.id, lock: "FOR SHARE")
+
+      if change == :switch do
+        _workspace =
+          Repo.one!(
+            from w in Apiary.Organisations.Workspace,
+              where: w.id == ^ctx.scope.workspace.id,
+              lock: "FOR SHARE",
+              select: w.id
+          )
+      end
+
+      Repo.one!(from c in Collection, where: c.id == ^pair.lapsed.id, lock: "FOR UPDATE")
+    end
+
+    # Whether `change` wrote both collections of `pair`.
+    defp written?(:switch, pair),
+      do: Enum.all?([pair.lapsed, pair.due], &(Repo.get!(Collection, &1.id).backlog == false))
+
+    defp written?(:assign, pair),
+      do: Enum.all?([pair.lapsed, pair.due], &is_nil(Repo.get!(Collection, &1.id).workspace_id))
+
+    for {change, name} <- [switch: "a Backlog switch", assign: "an assign"] do
+      test "and #{name} of the pair, paused once it holds the lower one: no deadlock, both written",
+           ctx do
+        pool = pool_fixture(ctx.scope)
+        key = key!(ctx, pool)
+
+        for round <- 1..3 do
+          pair = lapsed_pair!(ctx, key, pool, "acme/#{unquote(change)}-paused-#{round}")
+
+          # The change waits on the claim, or the claim on the change, past half the
+          # deadlock timeout, before the change goes on: should they wait on each other,
+          # Postgres aborts the claim.
+          {held, held_backend} = hold(fn -> hold_lower(ctx, unquote(change), pair) end)
+          claim = start(claim_answer(key))
+          await_waited(claim.backend, held_backend)
+          changed = continue(held, change_pair(ctx, unquote(change), pair))
+          commit(held)
+          answer = Task.await(claim.task, 15_000)
+
+          assert changed == {:ok, 2}, "round #{round}: #{inspect(changed)}"
+
+          assert match?({:ok, _}, answer) or answer == {:error, :unavailable},
+                 "round #{round}: #{inspect(answer)}"
+
+          assert written?(unquote(change), pair)
+        end
+      end
+    end
+
+    test "and switches and assigns of the pair at once: no deadlock, both written", ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      raised =
+        for round <- 1..12, reduce: [] do
+          raised ->
+            change = Enum.at([:switch, :assign], rem(round, 2))
+            pair = lapsed_pair!(ctx, key, pool, "acme/#{change}-#{round}")
+
+            answers =
+              [claim: claim_answer(key), change: change_pair(ctx, change, pair)]
+              |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+              |> together()
+
+            assert {:change, {:ok, 2}} in answers, "round #{round}: #{inspect(answers)}"
+            assert written?(change, pair)
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
+        end
+
+      assert raised == []
+    end
+  end
+
+  describe "a claim of a run held for its build" do
+    @built "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("5e", 32)
+
+    # A collection of the round's target `path` with `env-0`, a run held for its build,
+    # and the build claimed by `key`: committed.
+    defp build_claimed!(ctx, key, path) do
+      collection = collection!(ctx, path, path)
+      run = held!(ctx, path)
+
+      assert {:ok, %{run: %DispatchRun{step: "prebuild"} = build}} =
+               Dispatches.claim(key, Dispatches.now())
+
+      assert build.source_collection_id == collection.id
+      %{collection: collection, run: run, build: build}
+    end
+
+    # The build of `round` recorded, as `Apiary.Dispatches.Built` records it: the record
+    # `FOR UPDATE`, then the image.
+    defp record_build(round) do
+      fn ->
+        Repo.transact(fn ->
+          build = Repo.get!(DispatchRun, round.build.id)
+          _record = Apiary.Environments.lock_record(build.pool_id, build.source_collection_id)
+
+          :ok =
+            Apiary.Environments.record_build(
+              build,
+              %{image: @built, size: 1_048_576, commit: "4b7d0a3f", environment_ref: "env-0"},
+              %{system: "code.example.com", path: round.collection.target_path},
+              Dispatches.now()
+            )
+
+          {:ok, :recorded}
+        end)
+      end
+    end
+
+    # What a claim of `key` took: the held run with `@built`, nothing, or, for `allowed`,
+    # a prebuild; never the held run in the pool's default image.
+    defp assert_claim(answer, round, allowed \\ []) do
+      case answer do
+        {:ok, :none} ->
+          :none
+
+        {:ok, %{run: %DispatchRun{id: id}, registered: registered}} ->
+          if id == round.run.id do
+            assert registered.configured_image == @built
+            :held_run
+          else
+            assert %DispatchRun{step: "prebuild"} = Repo.get!(DispatchRun, id)
+            assert :prebuild in allowed
+            :prebuild
+          end
+      end
+    end
+
+    # Ends what waits of the round, so the next round's claim takes the next build.
+    defp end_round!(round) do
+      {_count, _rows} =
+        Repo.update_all(
+          from(r in DispatchRun,
+            where: r.source_collection_id == ^round.collection.id or r.id == ^round.run.id,
+            where: fragment("? = 'waiting'", r.state)
+          ),
+          set: [state: :ended, end_cause: :collection_ended]
+        )
+    end
+
+    test "and the build's record at once: the claim takes the run in the built image, or nothing",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      for n <- 1..4 do
+        round = build_claimed!(ctx, key, "acme/built-#{n}")
+
+        [recorded, claimed] =
+          together([record_build(round), fn -> Dispatches.claim(key, Dispatches.now()) end])
+
+        assert recorded == {:ok, :recorded}
+
+        case assert_claim(claimed, round) do
+          :held_run -> :ok
+          :none -> assert_claim(Dispatches.claim(key, Dispatches.now()), round)
+        end
+
+        assert %DispatchRun{state: :claimed} = Repo.get!(DispatchRun, round.run.id)
+        end_round!(round)
+      end
+    end
+
+    test "and a key change at once: the run stays held, and one build waits per ref", ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      for n <- 1..4 do
+        round = build_claimed!(ctx, key, "acme/key-#{n}")
+
+        [changed, claimed] =
+          together([
+            part([round.collection], "env-#{n}"),
+            fn -> Dispatches.claim(key, Dispatches.now()) end
+          ])
+
+        assert changed == {:ok, :changed}
+        assert_claim(claimed, round, [:prebuild])
+        assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, round.run.id)
+
+        waiting = waiting(round.collection, pool)
+        assert waiting == Enum.uniq(waiting)
+
+        # The next claim queues the new ref's build, if the first did not, and the run
+        # stays held.
+        assert_claim(Dispatches.claim(key, Dispatches.now()), round, [:prebuild])
+        assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, round.run.id)
+        end_round!(round)
+      end
+    end
+
+    test "and a release of its build at once: one release, the run stays held, one build waits",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      for n <- 1..4 do
+        round = build_claimed!(ctx, key, "acme/release-#{n}")
+        dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^round.build.id)
+
+        [released, claimed] =
+          together([
+            fn -> Dispatches.release(key, dispatch.public_id, %{reason: "No machine."}) end,
+            fn -> Dispatches.claim(key, Dispatches.now()) end
+          ])
+
+        assert released == :ok
+        assert_claim(claimed, round, [:prebuild])
+        assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, round.run.id)
+        assert %Dispatch{end_cause: :released} = Repo.get!(Dispatch, dispatch.id)
+
+        live =
+          Repo.all(
+            from r in DispatchRun,
+              where: r.source_collection_id == ^round.collection.id,
+              where: r.state in [:waiting, :claimed],
+              select: r.environment_ref
+          )
+
+        assert live == ["env-0"]
+        end_round!(round)
+      end
+    end
+
+    test "and a close of its work item at once: the run ends closed once, never taken", ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      for n <- 1..4 do
+        round = build_claimed!(ctx, key, "acme/close-#{n}")
+        work_item = Repo.get!(WorkItem, round.run.work_item_id)
+
+        [closed, claimed] =
+          together([
+            fn -> Apiary.WorkItems.close(ctx.scope, work_item) end,
+            fn -> Dispatches.claim(key, Dispatches.now()) end
+          ])
+
+        assert {:ok, %WorkItem{state: :closed}} = closed
+        assert {:ok, :none} = claimed
+
+        assert %DispatchRun{state: :ended, end_cause: :closed} =
+                 Repo.get!(DispatchRun, round.run.id)
+
+        end_round!(round)
+      end
     end
   end
 end

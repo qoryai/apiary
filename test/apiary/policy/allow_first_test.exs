@@ -22,7 +22,7 @@ defmodule Apiary.Policy.AllowFirstTest do
 
   # The policy files vendored from qoryai/forager at the commit in `.forager-contract-ref`,
   # by their SHA-256 there.
-  @forager_ref "072c240d154ceacd8fd1055cb9a63152c724f09f"
+  @forager_ref "b6ac9f0604569bdd3ac5a67a74aa4ee79e649ceb"
   @vendored_sha256 %{
     "priv/contract/policy.schema.json" =>
       "13da5724b2a6760420ca0c4236ac894edcafb87645d8e2569f3219b692cd03e5",

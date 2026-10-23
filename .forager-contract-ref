@@ -1,16 +1,16 @@
 # The commit of qoryai/forager whose contracts/forager/v1 the :contract tests replay, in
 # CI and in development (Apiary.ContractFixtures.contract_dir/0): a commit of Forager's
 # main branch after its release v0.7.0, pinned by its id, where an enrolment code's
-# prefix names its node's kind (`qec[npgi]_`): the contract of Forager in three parts
-# over one core, the session, the gateway and the wall, with a gateway between the
-# session and Qory Apiary, every run's exit saying how the run ended, discovery listing
-# the one workspace an access key's node or node pool belongs to, and a run that goes
-# through a gateway: the run key, the registration's gateway shape, the attach, the
-# outcome and the end member, a gateway's key in discovery and enrolment, a gateway's
-# enrolment request and its signed answer, a gateway's discovery document without
-# workspaces, and the refusals of a gateway that may no longer serve a run's workspace;
-# a run configuration and a policy may name the image by a reference pinned by digest,
-# and Forager's deny list leaves in the server's values of QORY_RUN_SYSTEM and
+# prefix names its node's kind (`qec[npgi]_`): Forager's module in three parts over one
+# core, the session, the gateway and the wall, with a gateway between the session and
+# Qory Apiary, every run's exit saying how the run ended, discovery listing the one
+# workspace an access key's node or node pool belongs to, and a run that goes through a
+# gateway: the run key, the registration's gateway shape, the attach, the outcome and
+# the end member, a gateway's key in discovery and enrolment, a gateway's enrolment
+# request and its signed answer, a gateway's discovery document without workspaces, and
+# the refusals of a gateway that may no longer serve a run's workspace; a run
+# configuration and a policy may name the image by a reference pinned by digest, and
+# Forager's deny list leaves in the server's values of QORY_RUN_SYSTEM and
 # QORY_RUN_REPOSITORIES; the fixed list of model API formats (api-format.schema.json),
 # and a runtime's `model` in runtimes.json, with the formats it sends; a run
 # configuration's `credentials`, whose values the server seals to the access key in its
@@ -20,12 +20,48 @@
 # `model.keys`, the variables it reads a model key from, each for one API format and
 # auth, an OAuth token marked `oauth`; the sealed answer to the secrets request, with
 # its known answers under fixtures/sealed; and a policy's `egress.allow_first`, at most
-# 64 exact hosts that the gateway allows before `deny` and `allow`.
+# 64 exact hosts that the gateway allows before `deny` and `allow`; the 13 event types
+# that a runtime descriptor produces, each `dev.qory.runtime.<name>`; and a run split
+# from its sessions: `dev.qory.run.started` with `opened_by` `run` and no runtime
+# members, a `dev.qory.session.started` with the runtime members and a
+# `dev.qory.session.exited` for each session, numbered from 1, and the
+# `dev.qory.run.exited` reason `no_session`, a run closed with no session started; and a
+# wall that refuses a session after its `dev.qory.session.started`, whose
+# `dev.qory.session.exited` has the refusal's code as its reason; `session`, the
+# session's number, on each `dev.qory.run.log`, `dev.qory.run.resized` and runtime event
+# of a session, and no `image_fetch_ms` on `dev.qory.session.started`; and the steps of
+# a run's host work and joins, each a `dev.qory.run.step_started` and a
+# `dev.qory.run.step_exited` numbered from 1, with `step` on each `dev.qory.run.log` of
+# a step; and a run code, `qecr_`, which a machine redeems once at enrolment for its
+# run's run key, answered `$defs/run_answer` of `enrolment.schema.json`, with the run's
+# `documents`; and `machine` and `setup`, optional members of `dev.qory.run.started`;
+# and a run key's `gateway_url` of `https://`, a host and an optional port alone, at
+# most 300 characters; and a gateway's relay that signs a run code's enrolment as the
+# gateway, `qory-request-ed25519-v1`, over the raw body, with no timestamp header; and
+# `environment_image` and `base`, optional members of `dev.qory.run.built`, the
+# environment image and the base image by their digests; and `(a name that contains a
+# run code)` and `(a value that contains a run code)`, the phrases in place of a name or
+# a value that contains `qecr_` and neither `qak_` nor `qrk_`; and `stack_proxy_secret`,
+# a member of `link-run-answer` on the local link alone, which a `link-reload-answer`
+# must not contain; and a run with a run key, whose `dev.qory.run.started` has no
+# `host`, whose `dev.qory.session.started` has `dir` `/workspace` and no `harness`, and
+# whose `command`, `args`, `cwd` and `prompt` have `<run>`, `<home>` and `<inputs>` in
+# place of the run directory, the harness home and the inputs directory, and whose `cwd`
+# and `prompt` have `/workspace` in place of the working directory; and `qecr_` in the
+# strings for which `(*session.Run).Built` returns an error, in any case, in the image
+# and in `environment_image` and `base` of `dev.qory.run.built`; and `setup` of
+# `dev.qory.run.started`, where the run's setup commands run, or would run if it had
+# any, absent when the run has nowhere to run setup commands; and `runner` `true` on the
+# `line` event of a setup record, written by the runner when it cannot start or wait for
+# the command; and the line `session <n> starts on this machine`, which the session
+# reports on stderr by default, with the host, the directories on the machine, the
+# command and the arguments, and the harness sources that a run with a run key leaves
+# out of its events or replaces.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-072c240d154ceacd8fd1055cb9a63152c724f09f
+b6ac9f0604569bdd3ac5a67a74aa4ee79e649ceb
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json

@@ -1,7 +1,8 @@
 defmodule Apiary.Dispatches.ReleaseRacesTest do
   # The release of a claimed run of the queue (`Apiary.Dispatches.Release`) racing
-  # another release, the handover, the starter's outcome, the lapse of the lease and the
-  # sweep, a close of its work item and a trigger of its collection, each on a separate
+  # another release, `dispatched`, the redemption of the run code, the run's exit,
+  # the lapse of the lease and the sweep, a close of its work item and a build queued for
+  # its collection's ref, each on a separate
   # connection, outside the SQL sandbox, so each commits and each waits on the other's
   # locks as it would in production. Not async: what these tests commit is visible to
   # every other test while they run, and they delete it again before they end; the
@@ -9,10 +10,13 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   # made.
   #
   # The rules under test: a release holds its run's work item or environment record
-  # first, then frees what lapsed of its run, then locks the run of the queue, then its
-  # dispatch, as every end, the handover and the sweep lock them; so a release and any of
-  # them take turns, whoever comes second finds what the first wrote, one release acts,
-  # one next run is queued at most, the slot is freed once, and none deadlocks.
+  # first, as the end by the run's exit holds the same row first (a work item
+  # `FOR KEY SHARE`, `Apiary.Dispatches.RunEnd`), then frees what lapsed of its run, then
+  # locks the run of the queue, then its dispatch, as every end, `dispatched`, the
+  # redemption and the sweep lock them; so a release and any of them take turns, whoever
+  # comes second finds what the first wrote, one release acts, a release after the
+  # handover is `machine_exists`, the slot is freed once, and none deadlocks. The release
+  # and the exit's end at once, several rounds, are in `Apiary.Dispatches.RunEndRacesTest`.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -29,13 +33,11 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Run, RunCode}
   alias Apiary.WorkItems.WorkItem
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag needs: :factory
-
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
 
   setup_all :clean_up_leftovers
   setup :setup_races
@@ -83,18 +85,22 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
 
   defp made!(ctx, adapter_id), do: Agent.update(ctx.made, &[adapter_id | &1])
 
-  # A run of the queue of a fresh work item, claimed and said started: committed.
+  # A run of the queue of a fresh work item, claimed, before `dispatched`: committed.
   defp started!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     made!(ctx, work_item.adapter_id)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(ctx.key)
+
+    {:ok, %{dispatch: dispatch, registered: run, run_code: code}} =
+      Dispatches.claim(ctx.key, Dispatches.now())
+
     assert dispatch.dispatch_run_id == queued.id
-    %{work_item: work_item, dispatch_run: queued, dispatch: dispatch}
+
+    %{work_item: work_item, dispatch_run: queued, dispatch: dispatch, run: run, code: code}
   end
 
-  # A prebuild of a fresh collection, with the pool's environment record of it, claimed
-  # and said started: committed.
+  # A prebuild of a fresh collection, with the pool's environment record of it, claimed,
+  # before `dispatched`: committed.
   defp prebuild_started!(ctx) do
     collection = collection_fixture(ctx.scope)
     made!(ctx, collection.adapter_id)
@@ -104,33 +110,33 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
         organisation_id: ctx.scope.organisation.id,
         workspace_id: ctx.scope.workspace.id,
         pool_id: ctx.pool.id,
-        source_collection_id: collection.id,
-        queued_ref: "env-1",
-        queued_at: DateTime.utc_now()
+        source_collection_id: collection.id
       })
 
     {:ok, queued} =
       Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-    %{dispatch: dispatch} = dispatched!(ctx.key)
+    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
     assert dispatch.dispatch_run_id == queued.id
     %{collection: collection, record: record, dispatch_run: queued, dispatch: dispatch}
   end
 
-  defp release(ctx, claimed, retry),
-    do: fn -> release_now(ctx, claimed, retry) end
-
-  defp release_now(ctx, %{dispatch: dispatch}, retry) do
-    Dispatches.release(ctx.key, dispatch.public_id, %{
-      reason: "The job could not start.",
-      retry: retry
-    })
+  defp release(ctx, %{dispatch: dispatch}) do
+    fn ->
+      Dispatches.release(ctx.key, dispatch.public_id, %{reason: "The job could not start."})
+    end
   end
 
-  defp handover(ctx, %{dispatch: dispatch}) do
-    fn ->
-      Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body})
-    end
+  defp dispatched(ctx, %{dispatch: dispatch}),
+    do: fn -> Dispatches.dispatched(ctx.key, dispatch.public_id, %{external: nil}) end
+
+  # The machine's redemption of the run code, under a fresh key pair.
+  defp redeem(%{code: code}) do
+    request =
+      run_code_request(code, Apiary.AccessKeysFixtures.ed25519_key_pair(), DateTime.utc_now())
+
+    gateway = bound_gateway(code)
+    fn -> RunCode.redeem(request, relayed_by: gateway) end
   end
 
   defp sweep(at), do: fn -> Dispatches.sweep(at) end
@@ -146,16 +152,13 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     end
   end
 
-  # A new `environment_ref` of the prebuild's collection, triggered as a listing does.
-  defp trigger(%{collection: %Collection{id: id}}, ref) do
+  # A prebuild of the prebuild's collection and pool queued for its ref under the record's
+  # lock, as a Rebuild queues one.
+  defp queue_build(ctx, %{collection: %Collection{id: id}}) do
     fn ->
       Repo.transact(fn ->
-        {1, _rows} =
-          Repo.update_all(from(c in Collection, where: c.id == ^id),
-            set: [environment_ref: ref]
-          )
-
-        {:ok, Environments.trigger([Repo.get!(Collection, id)], Dispatches.now())}
+        _record = Environments.lock_record(ctx.pool.id, id)
+        Dispatches.queue_prebuild(Repo.get!(Collection, id), ctx.pool, "env-1")
       end)
     end
   end
@@ -190,13 +193,18 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   defp queue_run!(claimed), do: Repo.get!(DispatchRun, claimed.dispatch_run.id)
   defp dispatch!(claimed), do: Repo.get!(Dispatch, claimed.dispatch.id)
 
-  # The dispatch released once: ended `released`, the slot freed once, one entry.
+  defp registered(claimed),
+    do: Repo.one(from r in Run, where: r.dispatch_run_id == ^claimed.dispatch_run.id)
+
+  # The dispatch released once: ended `released`, the slot freed once, one entry, the
+  # registered run deleted.
   defp released!(ctx, claimed) do
     assert %Dispatch{end_cause: :released, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
              dispatch!(claimed)
 
     assert length(entries(claimed)) == 1
     assert Slots.held(ctx.pool.id) == 0
+    assert registered(claimed) == nil
   end
 
   # Ends what waits of the work item's take in, so the next round's claim takes the run
@@ -213,10 +221,10 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   end
 
   describe "two releases" do
-    test "before the handover, at once: one acts, the others are gone", ctx do
+    test "at once: one acts, the others are gone", ctx do
       for _round <- 1..3 do
         claimed = started!(ctx)
-        answers = together(List.duplicate(release(ctx, claimed, true), sides(3)))
+        answers = together(List.duplicate(release(ctx, claimed), sides(3)))
 
         assert Enum.count(answers, &(&1 == :ok)) == 1
         assert Enum.all?(answers, &(&1 == :ok or &1 == {:error, :gone}))
@@ -225,74 +233,92 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
         end_waiting!(claimed)
       end
     end
-
-    test "after the handover, at once, with retry: one acts and one next run is queued",
-         ctx do
-      for _round <- 1..3 do
-        claimed = started!(ctx)
-        {:ok, _handed} = handover(ctx, claimed).()
-        answers = together(List.duplicate(release(ctx, claimed, true), sides(3)))
-
-        assert Enum.count(answers, &(&1 == :ok)) == 1
-        assert Enum.all?(answers, &(&1 == :ok or &1 == {:error, :gone}))
-        assert [%{state: :ended}, %{attempt: 2, state: :waiting}] = runs_of(claimed)
-        released!(ctx, claimed)
-        end_waiting!(claimed)
-      end
-    end
   end
 
-  describe "a release and the handover" do
-    test "the handover first: the release waits, then ends the run handed over and queues the next",
+  describe "a release and dispatched" do
+    test "dispatched first: the release waits, then is machine_exists, and writes nothing",
          ctx do
       claimed = started!(ctx)
 
-      {first, first_pid} = hold(handover(ctx, claimed))
-      assert {:ok, %{run: run}} = first.result
+      {first, first_pid} = hold(dispatched(ctx, claimed))
+      assert first.result == :ok
 
-      second = start(release(ctx, claimed, true))
+      second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert Task.await(second.task) == :ok
-      assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(claimed)
-      assert %Run{state: "cancelled", released_at: %DateTime{}} = Repo.get!(Run, run.id)
-      assert [_first, %{attempt: 2, state: :waiting}] = runs_of(claimed)
-      released!(ctx, claimed)
-      assert [%Entry{subject_kind: "run"}] = entries(claimed)
+      assert Task.await(second.task) == {:error, :machine_exists}
+      assert %DispatchRun{state: :handed_over} = queue_run!(claimed)
+      assert %Dispatch{ended_at: nil, handed_over_at: %DateTime{}} = dispatch!(claimed)
+      assert registered(claimed).id == claimed.run.id
+      assert entries(claimed) == []
     end
 
-    test "the release first: the handover waits, then is gone", ctx do
+    test "the release first: dispatched waits, then is gone", ctx do
       claimed = started!(ctx)
 
-      {first, first_pid} = hold(release(ctx, claimed, true))
+      {first, first_pid} = hold(release(ctx, claimed))
       assert first.result == :ok
 
-      second = start(handover(ctx, claimed))
+      second = start(dispatched(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
       assert Task.await(second.task) == {:error, :gone}
       assert queue_run!(claimed).state == :waiting
-      assert Repo.all(from r in Run, where: r.dispatch_run_id == ^claimed.dispatch_run.id) == []
       released!(ctx, claimed)
     end
   end
 
-  describe "a release and the starter's outcome" do
-    test "the outcome first: the release waits, then is gone, and writes nothing", ctx do
+  describe "a release and the redemption of the run code" do
+    test "the redemption first: the release waits, then is machine_exists", ctx do
       claimed = started!(ctx)
-      {:ok, %{run: run}} = handover(ctx, claimed).()
-      run = Repo.get!(Run, run.id)
+
+      {first, first_pid} = hold(redeem(claimed))
+      assert {:ok, %{run_key: _run_key}} = first.result
+
+      second = start(release(ctx, claimed))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :machine_exists}
+      assert %DispatchRun{state: :handed_over} = queue_run!(claimed)
+      assert %Run{run_key_payload: payload} = registered(claimed)
+      assert is_binary(payload)
+      assert entries(claimed) == []
+    end
+
+    test "the release first: the redemption waits, then is refused, the run deleted", ctx do
+      claimed = started!(ctx)
+
+      {first, first_pid} = hold(release(ctx, claimed))
+      assert first.result == :ok
+
+      second = start(redeem(claimed))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :unauthorized}
+      assert queue_run!(claimed).state == :waiting
+      released!(ctx, claimed)
+    end
+  end
+
+  describe "a release and the run's exit" do
+    test "the exit's end first: the release waits, then is gone, and writes nothing", ctx do
+      claimed = started!(ctx)
+      :ok = dispatched(ctx, claimed).()
+      run = Repo.get!(Run, claimed.run.id)
+      exited!(run)
 
       {first, first_pid} =
         hold(fn ->
-          Repo.transact(fn -> {:ok, give_outcome(ctx.key, run, "succeeded")} end)
+          Repo.transact(fn -> {:ok, Apiary.Runs.Projector.project(run)} end)
         end)
 
-      assert {:ok, {:ok, _given}} = first.result
+      assert {:ok, {:ok, %Run{}}} = first.result
 
-      second = start(release(ctx, claimed, true))
+      second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
@@ -312,7 +338,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       {first, first_pid} = hold(sweep(DateTime.utc_now()))
       assert ctx.scope.workspace.id in first.result
 
-      second = start(release(ctx, claimed, false))
+      second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
@@ -325,7 +351,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     test "the release first: the sweep after the lease waits, and frees nothing again", ctx do
       claimed = started!(ctx)
 
-      {first, first_pid} = hold(release(ctx, claimed, false))
+      {first, first_pid} = hold(release(ctx, claimed))
       assert first.result == :ok
 
       second = start(sweep(DateTime.add(claimed.dispatch.lease_until, 1, :second)))
@@ -333,7 +359,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       commit(first)
 
       Task.await(second.task)
-      assert %DispatchRun{state: :ended, end_cause: :released} = queue_run!(claimed)
+      assert %DispatchRun{state: :waiting} = queue_run!(claimed)
       assert %Dispatch{stale_at: nil} = dispatch!(claimed)
       released!(ctx, claimed)
     end
@@ -346,7 +372,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       {first, first_pid} = hold(close(ctx, claimed))
       assert {:ok, _changed} = first.result
 
-      second = start(release(ctx, claimed, true))
+      second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
@@ -355,11 +381,10 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       assert entries(claimed) == []
     end
 
-    test "the release first, with retry: the close waits, then ends the run waiting again",
-         ctx do
+    test "the release first: the close waits, then ends the run waiting again", ctx do
       claimed = started!(ctx)
 
-      {first, first_pid} = hold(release(ctx, claimed, true))
+      {first, first_pid} = hold(release(ctx, claimed))
       assert first.result == :ok
 
       second = start(close(ctx, claimed))
@@ -371,102 +396,113 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       released!(ctx, claimed)
     end
 
-    test "after the handover, the close first: the release waits, then queues nothing", ctx do
+    test "after dispatched, the close first: the release waits, then is machine_exists",
+         ctx do
       claimed = started!(ctx)
-      {:ok, _handed} = handover(ctx, claimed).()
+      :ok = dispatched(ctx, claimed).()
 
       {first, first_pid} = hold(close(ctx, claimed))
       assert {:ok, _changed} = first.result
 
-      second = start(release(ctx, claimed, true))
+      second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert Task.await(second.task) == :ok
-      assert [%{end_cause: :released}] = runs_of(claimed)
-      released!(ctx, claimed)
+      assert Task.await(second.task) == {:error, :machine_exists}
+      assert [%{state: :handed_over}] = runs_of(claimed)
+      assert entries(claimed) == []
     end
   end
 
-  describe "a release of a prebuild and a trigger of its collection" do
-    test "the trigger first: the release waits on the record, then is superseded by the run the trigger queued",
+  describe "a release of a prebuild and a build queued for its ref" do
+    test "the build first: the release waits on the record, then is superseded by the run that waits",
          ctx do
       claimed = prebuild_started!(ctx)
 
-      {first, first_pid} = hold(trigger(claimed, "env-2"))
-      assert {:ok, [%DispatchRun{} = queued]} = first.result
+      {first, first_pid} = hold(queue_build(ctx, claimed))
+      assert {:ok, %DispatchRun{} = queued} = first.result
 
-      second = start(release(ctx, claimed, true))
+      second = start(release(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
       assert Task.await(second.task) == :ok
       assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(claimed)
 
-      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} =
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} =
                Repo.get!(DispatchRun, queued.id)
 
       released!(ctx, claimed)
     end
 
-    test "the release first: the trigger waits on the record, then sets its ref on the run that waits again",
+    test "the release first: the build waits on the record, then finds the run waiting again",
          ctx do
       claimed = prebuild_started!(ctx)
 
-      {first, first_pid} = hold(release(ctx, claimed, true))
+      {first, first_pid} = hold(release(ctx, claimed))
       assert first.result == :ok
 
-      second = start(trigger(claimed, "env-2"))
+      second = start(queue_build(ctx, claimed))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, [%DispatchRun{id: id}]} = Task.await(second.task)
+      assert {:ok, %DispatchRun{id: id}} = Task.await(second.task)
       assert id == claimed.dispatch_run.id
 
-      assert %DispatchRun{state: :waiting, environment_ref: "env-2"} = queue_run!(claimed)
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} = queue_run!(claimed)
       released!(ctx, claimed)
     end
 
     test "at once, with the sweep, none deadlocks", ctx do
-      for round <- 1..3 do
+      for _round <- 1..3 do
         claimed = prebuild_started!(ctx)
 
-        [released, _triggered, _swept] =
+        [released, _queued, _swept] =
           together([
-            release(ctx, claimed, true),
-            trigger(claimed, "env-#{round + 1}"),
+            release(ctx, claimed),
+            queue_build(ctx, claimed),
             sweep(DateTime.utc_now())
           ])
 
         assert released == :ok
         released!(ctx, claimed)
 
-        assert [%DispatchRun{environment_ref: ref}] =
+        assert [%DispatchRun{environment_ref: "env-1"}] =
                  Repo.all(
                    from r in DispatchRun,
                      where: r.source_collection_id == ^claimed.collection.id,
                      where: fragment("? = 'waiting'", r.state)
                  )
 
-        assert ref == "env-#{round + 1}"
-
-        {:ok, :ok} =
-          Repo.transact(fn ->
-            {:ok, Dispatches.end_waiting_prebuilds([claimed.collection.id], Dispatches.now())}
-          end)
+        {_count, _rows} =
+          Repo.update_all(
+            from(r in DispatchRun,
+              where: r.source_collection_id == ^claimed.collection.id,
+              where: fragment("? = 'waiting'", r.state)
+            ),
+            set: [state: :ended, end_cause: :collection_ended]
+          )
       end
     end
   end
 
-  test "everything at once: one release or end decides, one next run at most, and none deadlocks",
-       ctx do
+  # The run's exit, stored, which its projection folds and ends the run of the queue by.
+  defp exited!(run),
+    do:
+      Apiary.RunEventsFixtures.event_fixture(run, 9, "run.exited", %{
+        "state" => "succeeded",
+        "exit_code" => 0
+      })
+
+  test "everything at once: one release or the handover decides, and none deadlocks", ctx do
     for _round <- 1..3 do
       claimed = started!(ctx)
 
       sides = [
-        fn -> {:release, release(ctx, claimed, true).()} end,
-        fn -> {:release, release(ctx, claimed, false).()} end,
-        fn -> {:handover, handover(ctx, claimed).()} end,
+        fn -> {:release, release(ctx, claimed).()} end,
+        fn -> {:release, release(ctx, claimed).()} end,
+        fn -> {:dispatched, dispatched(ctx, claimed).()} end,
+        fn -> {:redeem, redeem(claimed).()} end,
         fn -> {:close, close(ctx, claimed).()} end,
         fn -> {:sweep, sweep(DateTime.utc_now()).()} end
       ]
@@ -476,18 +512,18 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
 
       assert Enum.count(releases, &(&1 == :ok)) <= 1
       assert length(entries(claimed)) == Enum.count(releases, &(&1 == :ok))
-      assert Enum.count(runs_of(claimed), &(&1.attempt == 2)) <= 1
+      assert [_only] = runs_of(claimed)
 
-      # Whatever came first, nothing is left holding the slot, but a run handed over.
-      case queue_run!(claimed) do
-        %DispatchRun{state: :handed_over} ->
-          {:ok, _released} =
-            Repo.transact(fn ->
-              Dispatches.end_run_released(claimed.dispatch_run.id, Dispatches.now())
-            end)
+      # A release that acted and a handover never both happen.
+      handed_over? = not is_nil(dispatch!(claimed).handed_over_at)
+      refute handed_over? and Enum.member?(releases, :ok)
 
-        _waiting_or_ended ->
-          :ok
+      # Whatever came first, nothing is left holding the slot, but a run handed over,
+      # which its exit ends.
+      if queue_run!(claimed).state == :handed_over do
+        run = Repo.get!(Run, claimed.run.id)
+        exited!(run)
+        {:ok, _run} = Apiary.Runs.Projector.project(run)
       end
 
       end_waiting!(claimed)

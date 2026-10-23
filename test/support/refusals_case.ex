@@ -36,7 +36,8 @@ defmodule ApiaryWeb.RefusalsCase do
       a page that did not open without an alert;
     * `:ignored`: the page drops the event: no flash, no write error, no redirect.
 
-  The other options: `needs:`, the feature the row needs beside its action's; `prelude:`,
+  The other options: `needs:`, the feature the row needs instead of its action's, or a list
+  of features, of which the suite leaves the row out when any is off; `prelude:`,
   events sent first, as the actor, to open a dialog, `[{event, params}]`; `meanwhile:`, a
   change made after the page opened (`c:meanwhile/2`); `setup:`, a change made before the
   page opens (`c:before_page/2`). An actor may be changed after the page opened too, by
@@ -191,7 +192,7 @@ defmodule ApiaryWeb.RefusalsCase do
   @doc """
   rows/1 is the rows of `modules`, in their order, each a map: `action`, `actor`, `page`,
   `event`, `params`, `opts`, and from the options `answer` and `needs`, the row's feature
-  or its action's.
+  or features, or its action's feature.
   """
   @spec rows([module]) :: [map]
   def rows(modules) do

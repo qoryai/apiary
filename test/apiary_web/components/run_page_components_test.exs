@@ -191,10 +191,29 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     )
   end
 
+  # The run's start item of a `run.started` with `data`, then a `session.started` with
+  # `session`, which gives the item its runtime.
+  defp started_html(data, session) do
+    events = [
+      %{sequence: 1, type: "dev.qory.run.started", time: @t0, data: data},
+      %{sequence: 2, type: "dev.qory.session.started", time: @t0, data: session}
+    ]
+
+    index = Timeline.index(Enum.map(events, &Map.delete(&1, :data)))
+    [item] = Timeline.build(index.items, Map.new(events, &{&1.sequence, Timeline.slim(&1)}))
+
+    render_component(&RunPageComponents.timeline_item/1,
+      id: "e-1",
+      item: item,
+      started_at: @t0,
+      seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+    )
+  end
+
   describe "the timeline's items, texts the run's report sent" do
     test "a tool call: its tool and its summary cleaned, isolated in <bdi>" do
       html =
-        item_html("dev.qory.session.tool_started", %{
+        item_html("dev.qory.runtime.tool_started", %{
           "tool" => dirty("Bash"),
           "input" => %{"command" => dirty("ls")}
         })
@@ -206,7 +225,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
     test "a tool call's pattern and path: each cleaned; one sent blank is marked" do
       html =
-        item_html("dev.qory.session.tool_started", %{
+        item_html("dev.qory.runtime.tool_started", %{
           "tool" => "Grep",
           "input" => %{"pattern" => dirty("TODO"), "path" => " "}
         })
@@ -214,13 +233,13 @@ defmodule ApiaryWeb.RunPageComponentsTest do
       assert texts(html, ".q-s-mono > bdi") == [clean("TODO"), @shown_control]
       assert texts(html, ".q-k-mono > bdi") == ["Grep"]
 
-      blank = item_html("dev.qory.session.tool_started", %{"tool" => @zwsp})
+      blank = item_html("dev.qory.runtime.tool_started", %{"tool" => @zwsp})
       assert texts(blank, ".q-k-mono > bdi") == [@shown_control]
     end
 
     test "a session started: its model, source and directory cleaned" do
       html =
-        item_html("dev.qory.session.started", %{
+        item_html("dev.qory.runtime.started", %{
           "model" => dirty("opus"),
           "source" => dirty("startup"),
           "cwd" => dirty("/work")
@@ -229,13 +248,13 @@ defmodule ApiaryWeb.RunPageComponentsTest do
       assert texts(html, ".q-s bdi") == [clean("opus"), clean("startup"), clean("/work")]
       refute_dirty(html)
 
-      blank = item_html("dev.qory.session.started", %{"model" => " ", "cwd" => @zwsp})
+      blank = item_html("dev.qory.runtime.started", %{"model" => " ", "cwd" => @zwsp})
       assert texts(blank, ".q-s bdi") == [@shown_control, @shown_control]
     end
 
     test "what a prompt said: cleaned, its line breaks kept; one sent blank is marked" do
       html =
-        item_html("dev.qory.session.prompt_submitted", %{
+        item_html("dev.qory.runtime.prompt_submitted", %{
           "prompt" => "Fix the build\n\t" <> dirty("now")
         })
 
@@ -243,7 +262,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
       refute_dirty(html)
 
       for blank <- @blanks do
-        html = item_html("dev.qory.session.prompt_submitted", %{"prompt" => blank})
+        html = item_html("dev.qory.runtime.prompt_submitted", %{"prompt" => blank})
         assert html |> texts(".q-say") |> Enum.map(&String.trim/1) |> Enum.all?(&(&1 != ""))
         assert LazyHTML.text(query(html, ".q-say")) =~ @shown_control
       end
@@ -251,7 +270,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
     test "a notification, a failed turn and a result's outcome: cleaned" do
       html =
-        item_html("dev.qory.session.notification", %{
+        item_html("dev.qory.runtime.notification", %{
           "kind" => dirty("idle"),
           "message" => dirty("waiting")
         })
@@ -261,7 +280,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
              ]
 
       html =
-        item_html("dev.qory.session.turn_failed", %{
+        item_html("dev.qory.runtime.turn_failed", %{
           "error" => dirty("rate_limit"),
           "message" => " "
         })
@@ -270,7 +289,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
                clean("rate_limit") <> " · " <> @shown_control
              ]
 
-      html = item_html("dev.qory.session.result", %{"outcome" => dirty("error")})
+      html = item_html("dev.qory.runtime.result", %{"outcome" => dirty("error")})
       assert LazyHTML.text(query(html, ".q-s")) =~ clean("error")
 
       for html <- [html] do
@@ -280,7 +299,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
     test "a subagent's id: cleaned, isolated in <bdi>" do
       html =
-        item_html("dev.qory.session.subagent_started", %{
+        item_html("dev.qory.runtime.subagent_started", %{
           "agent_id" => dirty("agent-1"),
           "agent_type" => "Explore"
         })
@@ -291,12 +310,10 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
     test "a run started: its runtime, version, host and wall cleaned; a host sent blank marked" do
       html =
-        item_html("dev.qory.run.started", %{
-          "runtime" => dirty("claude"),
-          "runtime_version" => dirty("2.1"),
-          "host" => dirty("dev-box"),
-          "wall" => dirty("docker")
-        })
+        started_html(
+          %{"host" => dirty("dev-box"), "wall" => dirty("docker")},
+          %{"runtime" => dirty("claude"), "runtime_version" => dirty("2.1")}
+        )
 
       said = LazyHTML.text(query(html, ".q-s"))
 
@@ -305,7 +322,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
 
       refute_dirty(html)
 
-      blank = item_html("dev.qory.run.started", %{"runtime" => "claude", "host" => @zwsp})
+      blank = started_html(%{"host" => @zwsp}, %{"runtime" => "claude"})
       assert LazyHTML.text(query(blank, ".q-s")) =~ "on #{@shown_control}"
       refute LazyHTML.text(query(blank, ".q-s")) =~ "n/a"
     end
@@ -359,13 +376,13 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     events = [
       %{
         sequence: 1,
-        type: "dev.qory.session.tool_started",
+        type: "dev.qory.runtime.tool_started",
         time: @t0,
         data: %{"tool" => "Bash", "tool_use_id" => "a"}
       },
       %{
         sequence: 2,
-        type: "dev.qory.session.tool_finished",
+        type: "dev.qory.runtime.tool_finished",
         time: @t0,
         data: Map.merge(%{"tool" => "Bash", "tool_use_id" => "a"}, finished)
       }
@@ -450,7 +467,7 @@ defmodule ApiaryWeb.RunPageComponentsTest do
   end
 
   describe "the timeline's Session ended" do
-    defp session_ended(data), do: item_html("dev.qory.session.ended", data)
+    defp session_ended(data), do: item_html("dev.qory.runtime.ended", data)
 
     test "shows the reason cleaned, isolated in <bdi>" do
       html = session_ended(%{"reason" => dirty("logout")})

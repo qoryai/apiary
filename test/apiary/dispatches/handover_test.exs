@@ -1,12 +1,13 @@
 defmodule Apiary.Dispatches.HandoverTest do
-  # A node pool's starter on a dispatch its pool claimed (`Apiary.Dispatches.Handover`):
-  # `dispatched/3` and `handover/3`, each refusal in the contract's order, the lapse
-  # judged before anything else and committed, the runs the handover cannot form ended
-  # in its transaction and answered as a dispatch that ended, a failure that writes
-  # nothing, and the run a handover registers: on the pool, its instance the run's id, its
-  # labels and its run variables from the target, what it is about from the step and the
-  # work item, its run key bound to the gateway and its parts never inspected, the slot
-  # kept, one audit entry.
+  # The run a claim registers (`Apiary.Dispatches.Handover.register/2`, through
+  # `Apiary.Dispatches.claim/3`), and a node pool's starter on a dispatch its pool claimed
+  # (`dispatched/3`): the run registered on the pool, its instance the run's id, its labels
+  # and its run variables from the target, what it is about from the step and the work
+  # item, its run code bound to the gateway and its grant, the dispatch and the run of the
+  # queue left claimed; the runs the claim cannot form ended in its transaction, and the
+  # claim's next run taken; no gateway and a failure, after which nothing is written;
+  # each refusal of `dispatched/3` in the contract's order, the lapse judged before
+  # anything else and committed, and the handover at the first `dispatched`.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -19,16 +20,15 @@ defmodule Apiary.Dispatches.HandoverTest do
 
   alias Apiary.{Dispatches, Nodes, Repo}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Inputs, Slots}
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.{Registration, Run, RunKey}
+  alias Apiary.Runs.{Registration, Run, RunCode}
   alias Apiary.Sources.Comment
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
 
-  @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+  @body ~s({"version":3,"time":"2026-10-18T12:00:00Z"})
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -50,26 +50,33 @@ defmodule Apiary.Dispatches.HandoverTest do
     {collection, run}
   end
 
-  defp claimed!(ctx) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-    dispatch
-  end
+  defp claim(ctx), do: Dispatches.claim(ctx.key, Dispatches.now(), @body)
 
-  defp handover(key, dispatch_id),
-    do: Dispatches.handover(key, id(dispatch_id), %{body: @body})
+  # A claim that took a run: what it took.
+  defp claimed!(ctx) do
+    {:ok, %{dispatch: %Dispatch{}} = claimed} = claim(ctx)
+    claimed
+  end
 
   defp dispatched(key, dispatch_id, external \\ nil),
     do: Dispatches.dispatched(key, id(dispatch_id), %{external: external})
 
+  defp id(%{dispatch: %Dispatch{public_id: public_id}}), do: public_id
   defp id(%Dispatch{public_id: public_id}), do: public_id
   defp id(public_id), do: public_id
 
+  defp dispatch!(%{dispatch: dispatch}), do: dispatch!(dispatch)
   defp dispatch!(%Dispatch{id: id}), do: Repo.get!(Dispatch, id)
   defp queue_run!(%DispatchRun{id: id}), do: Repo.get!(DispatchRun, id)
   defp runs, do: Repo.aggregate(Run, :count)
-  defp entries, do: Repo.all(from e in Entry, where: e.action == "dispatch.handover")
+  defp dispatches, do: Repo.aggregate(Dispatch, :count)
+
+  # The inputs of the run's documents, as JSON decodes them.
+  defp inputs(%{documents: %{inputs: inputs}}), do: inputs |> Jason.encode!() |> Jason.decode!()
 
   # Past its lease, as the clock would have it ten minutes and more after the claim.
+  defp lapse!(%{dispatch: dispatch}), do: lapse!(dispatch)
+
   defp lapse!(%Dispatch{id: id}) do
     now = DateTime.utc_now()
 
@@ -87,10 +94,10 @@ defmodule Apiary.Dispatches.HandoverTest do
   defp set_node!(%Node{id: id}, fields),
     do: {1, _rows} = Repo.update_all(from(n in Node, where: n.id == ^id), set: fields)
 
-  # The run of the queue and its dispatch ended with `cause`, the slot freed once.
-  # An explore run its handover could not form gave an error, stored with its end; a
-  # prebuild gave nothing.
-  defp ended!(ctx, %DispatchRun{} = run, %Dispatch{} = dispatch, cause) do
+  # The run of the queue and the dispatch the claim wrote for it ended with `cause`, the
+  # slot freed once, no run registered. An explore run the claim could not form gave an
+  # error, stored with its end; a prebuild gave nothing.
+  defp ended!(ctx, %DispatchRun{} = run, cause) do
     outcome =
       if run.step != "prebuild" and cause in [:variables_invalid, :ticket_gone, :inputs_invalid],
         do: :error
@@ -98,28 +105,25 @@ defmodule Apiary.Dispatches.HandoverTest do
     assert %DispatchRun{state: :ended, end_cause: ^cause, result_outcome: ^outcome, result: nil} =
              queue_run!(run)
 
-    assert %Dispatch{end_cause: ^cause, ended_at: %DateTime{} = at, slot_freed_at: at} =
-             dispatch!(dispatch)
+    assert [%Dispatch{end_cause: ^cause, ended_at: %DateTime{} = at, slot_freed_at: at}] =
+             Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^run.id)
 
     assert Slots.held(ctx.pool.id) == 0
     assert runs() == 0
-    assert entries() == []
   end
 
-  describe "a handover of an explore run" do
-    test "registers the run through the gateway, on the pool, its instance the run's id", ctx do
+  describe "the run a claim of an explore run registers" do
+    test "is registered through the gateway, on the pool, its instance the run's id", ctx do
       {work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      in_use = Nodes.instances_in_use(ctx.pool, Dispatches.now())
+      claimed = claimed!(ctx)
+      assert claimed.run.id == queued.id
+      assert claimed.work_item.id == work_item.id
+      assert claimed.documents.domain == "software"
+      assert claimed.documents.target == %{system: "forge.example.com", path: "acme/shop"}
+      assert claimed.documents.work_item.id == work_item.id
+      assert claimed.gateway_url == ctx.gateway.url
 
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-      assert handed.dispatch_run.id == queued.id
-      assert handed.work_item.id == work_item.id
-      assert handed.domain == "software"
-      assert handed.target == %{system: "forge.example.com", path: "acme/shop"}
-
-      run = Repo.get!(Run, handed.run.id)
+      run = Repo.get!(Run, claimed.registered.id)
       run_id = queued.run_id
       pool_id = ctx.pool.id
       key_id = ctx.key.id
@@ -139,6 +143,9 @@ defmodule Apiary.Dispatches.HandoverTest do
                registration_interval_seconds: nil,
                registration_answer_digest: nil,
                attached_at: nil,
+               run_key_payload: nil,
+               run_key_signature: nil,
+               run_code_public_key: nil,
                projected_sequence: 1
              } = run
 
@@ -159,53 +166,44 @@ defmodule Apiary.Dispatches.HandoverTest do
              }
 
       assert run.registration_digest == :crypto.hash(:sha256, @body)
-      assert DateTime.diff(run.attach_by, run.run_key_issued_at) == 600
+
+      # The run code: its SHA-256 kept, never the code; its expiry 15 minutes after the
+      # claim, the attach window with it; the grant its run key is made from at the
+      # code's redemption, bound to the gateway.
+      assert run.run_code_sha256 != nil
+      refute inspect(run, limit: :infinity) =~ claimed.run_code
+
+      assert DateTime.diff(run.run_code_expires_at, run.run_key_issued_at) ==
+               RunCode.ttl_seconds()
+
+      assert run.attach_by == run.run_code_expires_at
       assert run.run_key_issued_at == DateTime.truncate(run.registered_at, :second) |> usec()
 
-      # The run key is the run's, bound to the gateway, and given once: the run keeps its
-      # payload and signature.
-      assert {:ok, grant, payload} = RunKey.verify(handed.run_key)
-      assert payload == run.run_key_payload
-      assert is_binary(run.run_key_signature)
-
-      # Neither part shows when the run is inspected, as a crash report would show the run
-      # the handover broadcasts.
-      for shown <- [inspect(run, limit: :infinity), inspect(handed.run, limit: :infinity)] do
-        refute shown =~ "run_key_payload"
-        refute shown =~ "run_key_signature"
-        refute shown =~ inspect(run.run_key_payload)
-      end
-
-      assert grant.run_id == run_id
-      assert grant.instance_id == run_id
-      assert grant.node_id == ctx.pool.public_id
-      assert grant.workspace == ctx.scope.workspace.public_id
-      assert grant.gateway == ctx.gateway.public_id
       {gateway_key, _seed} = ctx.gateway_key
-      assert grant.gateway_public_keys == [gateway_key.public_key]
-      assert DateTime.diff(grant.attach_by, grant.issued) == 600
 
-      # The dispatch handed over, its slot kept; the run counts by its slot alone.
-      assert %Dispatch{handed_over_at: at, slot_freed_at: nil, ended_at: nil} =
-               dispatch!(dispatch)
+      assert run.run_code_grant == %{
+               "run_id" => run_id,
+               "instance_id" => run_id,
+               "node_id" => ctx.pool.public_id,
+               "workspace" => ctx.scope.workspace.public_id,
+               "gateway" => ctx.gateway.public_id,
+               "gateway_url" => ctx.gateway.url,
+               "gateway_public_keys" => [Apiary.Contract.Ed25519.encode(gateway_key.public_key)]
+             }
 
-      assert at == run.registered_at
-      assert queue_run!(queued).state == :handed_over
+      # The dispatch and the run of the queue stay claimed, the slot held; the run counts
+      # by its slot alone.
+      assert %Dispatch{handed_over_at: nil, slot_freed_at: nil, ended_at: nil} =
+               dispatch!(claimed)
+
+      assert queue_run!(queued).state == :claimed
       assert Slots.held(ctx.pool.id) == 1
-      assert Nodes.instances_in_use(ctx.pool, Dispatches.now()) == in_use
-
-      # One audit entry, by the pool's key, about the registered run.
-      assert [entry] = entries()
-      assert {entry.subject_kind, entry.subject_id} == {"run", run.id}
-      assert {entry.actor_kind, entry.actor_id} == {:access_key, ctx.key.id}
-      assert entry.details == %{"dispatch_id" => dispatch.public_id, "step" => "explore"}
+      assert Nodes.instances_in_use(ctx.pool, Dispatches.now()) == 1
     end
 
     test "leaves the run's id refused at the run endpoint, under any key", ctx do
       {_work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      assert {:ok, _handed} = handover(ctx.key, dispatch)
+      _claimed = claimed!(ctx)
 
       %{access_key: node_key} = contract_key_fixture(ctx.scope, %{})
 
@@ -224,14 +222,10 @@ defmodule Apiary.Dispatches.HandoverTest do
       end
     end
 
-    test "gives the explore input, from the rows Qory keeps", ctx do
+    test "has the explore input, from the rows Qory keeps", ctx do
       {work_item, _queued} = queued!(ctx, %{first_instruction: "Look at the cart first."})
       item = Repo.get!(Apiary.Sources.Item, work_item.item_id)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      assert {:ok, %{inputs: inputs}} = handover(ctx.key, dispatch)
-      inputs = inputs |> Jason.encode!() |> Jason.decode!()
+      inputs = inputs(claimed!(ctx))
 
       assert inputs["version"] == 1
       assert inputs["work_item"]["id"] == work_item.public_id
@@ -261,20 +255,23 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
   end
 
-  describe "a prebuild's handover" do
-    test "is served: its collection's target, its input exactly the ref it was queued for",
-         ctx do
+  describe "the run a claim of a prebuild registers" do
+    test "has its collection's target, its input exactly the ref it was queued for", ctx do
       {collection, queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
+      claimed = claimed!(ctx)
 
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-      assert handed.work_item == nil
-      assert handed.domain == "software"
-      assert handed.target == %{system: collection.target_system, path: collection.target_path}
-      assert Jason.encode!(handed.inputs) == ~s({"version":1,"environment_ref":"env-1"})
+      assert claimed.documents.work_item == nil
+      assert claimed.documents.domain == "software"
 
-      run = Repo.get!(Run, handed.run.id)
+      assert claimed.documents.target == %{
+               system: collection.target_system,
+               path: collection.target_path
+             }
+
+      assert Jason.encode!(claimed.documents.inputs) ==
+               ~s({"version":1,"environment_ref":"env-1"})
+
+      run = Repo.get!(Run, claimed.registered.id)
       assert run.registration_about == %{"kind" => "prebuild"}
 
       assert run.registration_labels == %{
@@ -288,14 +285,55 @@ defmodule Apiary.Dispatches.HandoverTest do
                "QORY_RUN_REPOSITORIES" => collection.target_path
              }
 
-      assert queue_run!(queued).state == :handed_over
-      assert [%Entry{details: %{"step" => "prebuild"}}] = entries()
+      assert queue_run!(queued).state == :claimed
     end
 
-    test "ends the run collection_ended when its collection ended, was unassigned, moved or lost its target",
+    test "is registered with its Backlog switch off, or a collection with no items", ctx do
+      {collection, _queued} = prebuild!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^collection.id),
+          set: [backlog: false, items: false]
+        )
+
+      assert %{registered: %Run{}} = claimed!(ctx)
+    end
+
+    test "keeps the ref it was claimed for, while a newer one waits", ctx do
+      {collection, _queued} = prebuild!(ctx)
+      claimed = claimed!(ctx)
+
+      # The collection's ref changes after the claim: another prebuild waits for the new
+      # one, and the claimed run keeps the ref it was queued for.
+      {:ok, _waiting} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
+
+      assert :ok = dispatched(ctx.key, claimed)
+      assert runs() == 1
+      run = Repo.get!(Run, claimed.registered.id)
+      assert run.dispatch_run_id == claimed.run.id
+    end
+
+    test "superseded while its lease lapsed is gone, its registered run deleted", ctx do
+      {collection, queued} = prebuild!(ctx)
+      claimed = claimed!(ctx)
+
+      # Another prebuild of the collection, pool and ref waits while the first is claimed.
+      {:ok, _waiting} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
+
+      lapse!(claimed)
+      assert dispatched(ctx.key, claimed) == {:error, :gone}
+      assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(queued)
+      assert %Dispatch{end_cause: :run_ended, stale_at: %DateTime{}} = dispatch!(claimed)
+      assert runs() == 0
+    end
+
+    test "ends collection_ended when its collection ended, was unassigned, moved or lost its target",
          ctx do
       other = workspace_fixture(ctx.scope.organisation)
 
+      # The claim ends the run as it takes it, before it claims it: no dispatch.
       for change <- [
             [ended_at: DateTime.utc_now(), ended_reason: :not_listed],
             [workspace_id: nil],
@@ -303,180 +341,24 @@ defmodule Apiary.Dispatches.HandoverTest do
             [target_system: nil, target_path: nil]
           ] do
         {collection, queued} = prebuild!(ctx)
-        dispatch = claimed!(ctx)
-        :ok = dispatched(ctx.key, dispatch)
+        before = dispatches()
 
         {1, _rows} =
           Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^collection.id),
             set: change
           )
 
-        assert handover(ctx.key, dispatch) == {:error, :gone}
-        ended!(ctx, queued, dispatch, :collection_ended)
-        assert handover(ctx.key, dispatch) == {:error, :gone}
+        assert claim(ctx) == {:ok, :none}
+        assert %DispatchRun{state: :ended, end_cause: :collection_ended} = queue_run!(queued)
+        assert dispatches() == before
+        assert runs() == 0
       end
-    end
-
-    test "is served with its Backlog switch off, or a collection with no items", ctx do
-      {collection, _queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      {1, _rows} =
-        Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^collection.id),
-          set: [backlog: false, items: false]
-        )
-
-      assert {:ok, _handed} = handover(ctx.key, dispatch)
-    end
-
-    test "gives the ref it was claimed for, while a newer one waits", ctx do
-      {collection, _queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      # The collection's ref changes after the claim: another prebuild waits for the new
-      # one, and the claimed run keeps the ref it was queued for.
-      {:ok, _waiting} =
-        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
-
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-      assert Jason.encode!(handed.inputs) == ~s({"version":1,"environment_ref":"env-1"})
-    end
-
-    test "superseded while its lease lapsed is gone", ctx do
-      {collection, queued} = prebuild!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      # Another prebuild of the collection and pool waits while the first is claimed.
-      {:ok, _waiting} =
-        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-2") end)
-
-      lapse!(dispatch)
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      assert %DispatchRun{state: :ended, end_cause: :superseded} = queue_run!(queued)
-      assert %Dispatch{end_cause: :run_ended, stale_at: %DateTime{}} = dispatch!(dispatch)
-      assert runs() == 0
     end
   end
 
-  describe "the refusals, in their order" do
-    test "an id not of a dispatch's shape, an unknown one and another pool's are one answer, forbidden",
-         ctx do
-      queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      %{access_key: other} = enrolled_key_fixture(ctx.scope, pool_fixture(ctx.scope))
-
-      for {key, id} <- [
-            {ctx.key, "dp_0000000000000000"},
-            {ctx.key, "not a dispatch"},
-            {ctx.key, nil},
-            {ctx.key, String.upcase(dispatch.public_id)},
-            {other, dispatch.public_id}
-          ] do
-        assert handover(key, id) == {:error, :forbidden}
-        assert dispatched(key, id) == {:error, :forbidden}
-      end
-
-      # Another organisation's pool.
-      %{scope: elsewhere} = sign_up_fixture()
-      %{key: elsewhere_key} = handover_place_fixture(elsewhere)
-      assert handover(elsewhere_key, dispatch) == {:error, :forbidden}
-
-      assert runs() == 0
-      assert dispatch!(dispatch).handed_over_at == nil
-    end
-
-    test "a key that is no longer a pool's verified key is unauthorized", ctx do
-      queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      %{access_key: node_key} = contract_key_fixture(ctx.scope, %{})
-      assert handover(node_key, dispatch) == {:error, :unauthorized}
-
-      {1, _rows} =
-        Repo.update_all(from(k in AccessKey, where: k.id == ^ctx.key.id),
-          set: [revoked_at: DateTime.utc_now()]
-        )
-
-      assert handover(ctx.key, dispatch) == {:error, :unauthorized}
-      assert dispatched(ctx.key, dispatch) == {:error, :unauthorized}
-    end
-
-    test "a dispatch that ended is gone, before handed_over and lease_expired", ctx do
-      {work_item, _queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      {:ok, _changed} =
-        Repo.transact(fn -> Dispatches.cancel_for_close([work_item.id], Dispatches.now()) end)
-
-      lapse!(dispatch)
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      assert dispatched(ctx.key, dispatch) == {:error, :gone}
-    end
-
-    test "a second handover is handed_over, before lease_expired, and a run handed over then ended is gone",
-         ctx do
-      queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-
-      assert handover(ctx.key, dispatch) == {:error, :handed_over}
-      # A dispatched after the handover changes nothing.
-      assert dispatched(ctx.key, dispatch) == :ok
-      assert length(entries()) == 1
-      assert runs() == 1
-
-      {:ok, _ended} =
-        Repo.transact(fn ->
-          Dispatches.end_run_released(handed.dispatch_run.id, Dispatches.now())
-        end)
-
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-    end
-
-    test "a lease lapsed and not yet swept lapses first, committed: lease_expired, the run waits again",
-         ctx do
+  describe "a claim with no gateway, or that fails" do
+    test "is no_gateway for each cause, and writes nothing", ctx do
       {_work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      lapse!(dispatch)
-
-      assert handover(ctx.key, dispatch) == {:error, :lease_expired}
-      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: %DateTime{}} = dispatch!(dispatch)
-      assert queue_run!(queued).state == :waiting
-      assert Slots.held(ctx.pool.id) == 0
-      assert dispatched(ctx.key, dispatch) == {:error, :lease_expired}
-      assert handover(ctx.key, dispatch) == {:error, :lease_expired}
-      assert runs() == 0
-
-      # Handed over through a later dispatch, the stale one is handed_over.
-      later = claimed!(ctx)
-      :ok = dispatched(ctx.key, later)
-      assert {:ok, _handed} = handover(ctx.key, later)
-      assert handover(ctx.key, dispatch) == {:error, :handed_over}
-      assert dispatched(ctx.key, dispatch) == {:error, :lease_expired}
-    end
-
-    test "before dispatched is not_dispatched, before no_gateway", ctx do
-      queued!(ctx)
-      dispatch = claimed!(ctx)
-      set_node!(ctx.pool, gateway_choice: :direct)
-
-      assert handover(ctx.key, dispatch) == {:error, :not_dispatched}
-      :ok = dispatched(ctx.key, dispatch)
-      assert handover(ctx.key, dispatch) == {:error, :no_gateway}
-    end
-
-    test "no_gateway for each cause, the dispatch left claimed", ctx do
-      {_work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
       other_workspace = workspace_fixture(ctx.scope.organisation)
       elsewhere = gateway_fixture(%{ctx.scope | workspace: other_workspace})
       {gateway_key, _seed} = ctx.gateway_key
@@ -502,20 +384,17 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       for {break, mend} <- causes do
         break.()
-        assert handover(ctx.key, dispatch) == {:error, :no_gateway}
-        assert %Dispatch{handed_over_at: nil, ended_at: nil} = dispatch!(dispatch)
-        assert queue_run!(queued).state == :claimed
+        assert claim(ctx) == {:error, :no_gateway}
+        assert queue_run!(queued).state == :waiting
+        assert {dispatches(), runs()} == {0, 0}
         mend.()
       end
 
-      assert runs() == 0
-      assert {:ok, _handed} = handover(ctx.key, dispatch)
+      assert %{registered: %Run{}} = claimed!(ctx)
     end
 
     test "a run that cannot be stored is unavailable, and nothing is written", ctx do
       {_work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
       # A row of the run's id in the workspace already, which no product path writes: the
       # registered run cannot be inserted.
@@ -529,21 +408,111 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          assert handover(ctx.key, dispatch) == {:error, :unavailable}
+          assert claim(ctx) == {:error, :unavailable}
         end)
 
-      assert log =~ "a handover could not be made: Ecto.ConstraintError"
+      assert log =~ "a claim could not be made: Ecto.ConstraintError"
       refute log =~ queued.run_id
       assert runs() == 1
-      assert entries() == []
-
-      assert %Dispatch{handed_over_at: nil, ended_at: nil, slot_freed_at: nil} =
-               dispatch!(dispatch)
-
-      assert queue_run!(queued).state == :claimed
+      assert dispatches() == 0
+      assert queue_run!(queued).state == :waiting
+      assert Slots.held(ctx.pool.id) == 0
 
       Repo.delete!(in_the_way)
-      assert {:ok, _handed} = handover(ctx.key, dispatch)
+      assert %{registered: %Run{}} = claimed!(ctx)
+    end
+  end
+
+  describe "the refusals of dispatched, in their order" do
+    test "an id not of a dispatch's shape, an unknown one and another pool's are one answer, forbidden",
+         ctx do
+      queued!(ctx)
+      claimed = claimed!(ctx)
+      %{access_key: other} = enrolled_key_fixture(ctx.scope, pool_fixture(ctx.scope))
+
+      for {key, id} <- [
+            {ctx.key, "dp_0000000000000000"},
+            {ctx.key, "not a dispatch"},
+            {ctx.key, nil},
+            {ctx.key, String.upcase(claimed.dispatch.public_id)},
+            {other, claimed.dispatch.public_id}
+          ] do
+        assert dispatched(key, id) == {:error, :forbidden}
+      end
+
+      # Another organisation's pool.
+      %{scope: elsewhere} = sign_up_fixture()
+      %{key: elsewhere_key} = handover_place_fixture(elsewhere)
+      assert dispatched(elsewhere_key, claimed) == {:error, :forbidden}
+
+      assert %Dispatch{handed_over_at: nil, dispatched_at: nil} = dispatch!(claimed)
+    end
+
+    test "a key that is no longer a pool's verified key is unauthorized", ctx do
+      queued!(ctx)
+      claimed = claimed!(ctx)
+
+      %{access_key: node_key} = contract_key_fixture(ctx.scope, %{})
+      assert dispatched(node_key, claimed) == {:error, :unauthorized}
+
+      {1, _rows} =
+        Repo.update_all(from(k in AccessKey, where: k.id == ^ctx.key.id),
+          set: [revoked_at: DateTime.utc_now()]
+        )
+
+      assert dispatched(ctx.key, claimed) == {:error, :unauthorized}
+      assert %Dispatch{handed_over_at: nil, dispatched_at: nil} = dispatch!(claimed)
+    end
+
+    test "a dispatch that ended is gone, before lease_expired, its registered run deleted",
+         ctx do
+      {work_item, _queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+
+      {:ok, _changed} =
+        Repo.transact(fn -> Dispatches.cancel_for_close([work_item.id], Dispatches.now()) end)
+
+      assert runs() == 0
+      lapse!(claimed)
+      assert dispatched(ctx.key, claimed) == {:error, :gone}
+    end
+
+    test "a dispatch of a run that ended after its handover is gone", ctx do
+      {_work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      assert dispatched(ctx.key, claimed) == :ok
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      assert dispatched(ctx.key, claimed) == {:error, :gone}
+    end
+
+    test "a lease lapsed and not yet swept lapses first, committed: lease_expired, the run waits again",
+         ctx do
+      {_work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      lapse!(claimed)
+
+      assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
+
+      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: %DateTime{}, dispatched_at: nil} =
+               dispatch!(claimed)
+
+      assert queue_run!(queued).state == :waiting
+      assert Slots.held(ctx.pool.id) == 0
+      assert runs() == 0
+      assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
+
+      # A later claim registers the run anew, with another code; the stale dispatch stays
+      # lease_expired.
+      later = claimed!(ctx)
+      assert later.run_code != claimed.run_code
+      assert later.registered.id != claimed.registered.id
+      assert dispatched(ctx.key, later) == :ok
+      assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
     end
   end
 
@@ -564,12 +533,8 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "follow its repository in QORY_RUN_REPOSITORIES, in the order saved", ctx do
       further!(ctx, "acme/docs\nacme/tools")
       {_work_item, _queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-
-      run = Repo.get!(Run, handed.run.id)
+      run = Repo.get!(Run, claimed!(ctx).registered.id)
 
       assert run.registration_variables == %{
                "QORY_RUN_SYSTEM" => "forge.example.com",
@@ -586,19 +551,16 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "an empty saved list gives the repositories label its repository alone", ctx do
       further!(ctx, "")
       {_work_item, _queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-
-      assert Repo.get!(Run, handed.run.id).registration_labels == %{
+      assert Repo.get!(Run, claimed!(ctx).registered.id).registration_labels == %{
                "forge" => "forge.example.com",
                "repository" => "acme/shop",
                "repositories" => "acme/shop"
              }
     end
 
-    test "a saved list that breaks the rules now ends the run variables_invalid, gone", ctx do
+    test "a saved list that breaks the rules now ends the run variables_invalid at the claim",
+         ctx do
       target = further!(ctx, "acme/docs")
 
       {1, _rows} =
@@ -607,53 +569,43 @@ defmodule Apiary.Dispatches.HandoverTest do
         )
 
       {_work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      ended!(ctx, queued, dispatch, :variables_invalid)
+      assert claim(ctx) == {:ok, :none}
+      ended!(ctx, queued, :variables_invalid)
     end
   end
 
-  describe "a run its handover cannot form" do
-    test "with run variables that break their rules ends variables_invalid, gone", ctx do
+  describe "a run the claim cannot form" do
+    test "with run variables that break their rules ends variables_invalid", ctx do
       {_work_item, queued} = queued!(ctx, %{target_path: "acme/shop/web"})
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      ended!(ctx, queued, dispatch, :variables_invalid)
-      assert dispatched(ctx.key, dispatch) == {:error, :gone}
+      assert claim(ctx) == {:ok, :none}
+      ended!(ctx, queued, :variables_invalid)
     end
 
-    test "whose software work item lost its target after the claim ends inputs_invalid, gone",
-         ctx do
+    test "whose software work item has no target ends inputs_invalid", ctx do
       {work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
           set: [target_system: nil, target_path: nil]
         )
 
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      ended!(ctx, queued, dispatch, :inputs_invalid)
+      assert claim(ctx) == {:ok, :none}
+      ended!(ctx, queued, :inputs_invalid)
     end
 
-    test "whose work item's ticket is gone ends ticket_gone, gone", ctx do
+    test "whose work item's ticket is gone ends ticket_gone", ctx do
       {work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [item_id: nil])
 
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      ended!(ctx, queued, dispatch, :ticket_gone)
+      assert claim(ctx) == {:ok, :none}
+      ended!(ctx, queued, :ticket_gone)
     end
 
-    test "whose input breaks the contract's rules ends inputs_invalid, gone", ctx do
+    test "whose input breaks the contract's rules ends inputs_invalid", ctx do
       {work_item, queued} = queued!(ctx)
 
       # Written to the row, past the changeset that now refuses it: one stored before then.
@@ -662,14 +614,11 @@ defmodule Apiary.Dispatches.HandoverTest do
           set: [first_instruction: "Look \e[31mhere\e[0m."]
         )
 
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      ended!(ctx, queued, dispatch, :inputs_invalid)
+      assert claim(ctx) == {:ok, :none}
+      ended!(ctx, queued, :inputs_invalid)
     end
 
-    test "whose answers name a member by a name the contract refuses ends inputs_invalid, gone",
+    test "whose answers name a member by a name the contract refuses ends inputs_invalid",
          ctx do
       {work_item, queued} = queued!(ctx)
       %{user: member} = member_fixture(ctx.scope)
@@ -692,46 +641,48 @@ defmodule Apiary.Dispatches.HandoverTest do
         answered_at: DateTime.utc_now()
       })
 
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      ended!(ctx, queued, dispatch, :inputs_invalid)
+      assert claim(ctx) == {:ok, :none}
+      ended!(ctx, queued, :inputs_invalid)
     end
 
     test "ends a stale dispatch of it run_ended", ctx do
       {work_item, queued} = queued!(ctx)
       stale = claimed!(ctx)
       lapse!(stale)
-      assert handover(ctx.key, stale) == {:error, :lease_expired}
-
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
+      assert dispatched(ctx.key, stale) == {:error, :lease_expired}
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [item_id: nil])
 
-      assert handover(ctx.key, dispatch) == {:error, :gone}
-      ended!(ctx, queued, dispatch, :ticket_gone)
+      assert claim(ctx) == {:ok, :none}
+      assert %DispatchRun{state: :ended, end_cause: :ticket_gone} = queue_run!(queued)
       assert %Dispatch{end_cause: :run_ended} = dispatch!(stale)
+      assert Slots.held(ctx.pool.id) == 0
+      assert runs() == 0
+    end
+
+    test "is ended, and the claim takes the next waiting run", ctx do
+      {_work_item, broken} = queued!(ctx, %{target_path: "acme/shop/web"})
+      {_work_item, next} = queued!(ctx)
+
+      claimed = claimed!(ctx)
+      assert claimed.run.id == next.id
+      assert %DispatchRun{state: :ended, end_cause: :variables_invalid} = queue_run!(broken)
+      assert runs() == 1
     end
   end
 
-  describe "a handover in a workspace of the general domain" do
-    test "labels the run with the domain's target labels, and gives it no run variables",
-         ctx do
+  describe "the run a claim registers in a workspace of the general domain" do
+    test "has the domain's target labels, and no run variables", ctx do
       with_domain(ctx.scope, "general")
 
       {_work_item, _queued} =
         queued!(ctx, %{target_system: "ads.example.com", target_path: "accounts/1234/-a"})
 
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
+      claimed = claimed!(ctx)
+      assert claimed.documents.target == %{system: "ads.example.com", path: "accounts/1234/-a"}
 
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-      assert handed.target == %{system: "ads.example.com", path: "accounts/1234/-a"}
-
-      run = Repo.get!(Run, handed.run.id)
+      run = Repo.get!(Run, claimed.registered.id)
 
       assert run.registration_labels == %{
                "system" => "ads.example.com",
@@ -741,24 +692,21 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert run.registration_variables == nil
     end
 
-    test "hands over a run whose work item has no target: its domain, no target, an input without one",
-         ctx do
+    test "of a work item with no target: its domain, no target, an input without one", ctx do
       with_domain(ctx.scope, "general")
       {work_item, queued} = queued!(ctx, %{target_system: nil, target_path: nil})
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
 
-      assert {:ok, handed} = handover(ctx.key, dispatch)
-      assert {handed.dispatch_run.id, handed.work_item.id} == {queued.id, work_item.id}
-      assert {handed.domain, handed.target} == {"general", nil}
+      claimed = claimed!(ctx)
+      assert {claimed.run.id, claimed.work_item.id} == {queued.id, work_item.id}
+      assert {claimed.documents.domain, claimed.documents.target} == {"general", nil}
 
-      inputs = handed.inputs |> Jason.encode!() |> Jason.decode!()
+      inputs = inputs(claimed)
       assert inputs["domain"] == "general"
       refute Map.has_key?(inputs, "target")
 
-      run = Repo.get!(Run, handed.run.id)
+      run = Repo.get!(Run, claimed.registered.id)
       assert {run.registration_labels, run.registration_variables} == {%{}, nil}
-      assert queue_run!(queued).state == :handed_over
+      assert queue_run!(queued).state == :claimed
     end
   end
 
@@ -771,18 +719,12 @@ defmodule Apiary.Dispatches.HandoverTest do
           set: [deleted_at: DateTime.utc_now(:second), email: nil]
         )
 
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      assert {:ok, %{inputs: inputs}} = handover(ctx.key, dispatch)
-
-      assert inputs |> Jason.encode!() |> Jason.decode!() |> get_in(["instruction", "by"]) ==
-               %{"name" => "former member"}
-
+      assert get_in(inputs(claimed!(ctx)), ["instruction", "by"]) == %{"name" => "former member"}
       assert Inputs.former_member() == "former member"
       assert work_item.taken_in_by_id == ctx.scope.user.id
     end
 
-    test "gives the comments not deleted, oldest first, each author as the source named them",
+    test "has the comments not deleted, oldest first, each author as the source named them",
          ctx do
       {work_item, _queued} = queued!(ctx)
       at = DateTime.utc_now(:second)
@@ -803,10 +745,7 @@ defmodule Apiary.Dispatches.HandoverTest do
         )
       end
 
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      assert {:ok, %{inputs: inputs}} = handover(ctx.key, dispatch)
-      inputs = inputs |> Jason.encode!() |> Jason.decode!()
+      inputs = inputs(claimed!(ctx))
 
       assert inputs["comments"] == [
                %{
@@ -841,11 +780,7 @@ defmodule Apiary.Dispatches.HandoverTest do
               nil
             )
 
-      dispatch = claimed!(ctx)
-      :ok = dispatched(ctx.key, dispatch)
-      assert {:ok, %{inputs: inputs}} = handover(ctx.key, dispatch)
-
-      encoded = Jason.encode!(inputs)
+      encoded = Jason.encode!(claimed!(ctx).documents.inputs)
       assert byte_size(encoded) <= Inputs.max_bytes()
       decoded = Jason.decode!(encoded)
       kept = decoded["comments"]
@@ -862,42 +797,61 @@ defmodule Apiary.Dispatches.HandoverTest do
   end
 
   describe "dispatched" do
+    test "within the lease hands the dispatch over, the slot kept", ctx do
+      {_work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+
+      assert dispatched(ctx.key, claimed) == :ok
+
+      assert %Dispatch{
+               dispatched_at: %DateTime{} = at,
+               handed_over_at: at,
+               slot_freed_at: nil,
+               ended_at: nil
+             } = dispatch!(claimed)
+
+      assert queue_run!(queued).state == :handed_over
+      assert Slots.held(ctx.pool.id) == 1
+      assert Repo.get!(Run, claimed.registered.id).state == "pending"
+    end
+
     test "records when, and the job it names, once", ctx do
       queued!(ctx)
-      dispatch = claimed!(ctx)
+      claimed = claimed!(ctx)
       external = %{type: "batch", ref: "job-1", url: "https://jobs.example.com/job-1"}
 
-      assert dispatched(ctx.key, dispatch, external) == :ok
+      assert dispatched(ctx.key, claimed, external) == :ok
 
       assert %Dispatch{
                dispatched_at: %DateTime{} = at,
                external_type: "batch",
                external_ref: "job-1",
                external_url: "https://jobs.example.com/job-1"
-             } = dispatch!(dispatch)
+             } = dispatch!(claimed)
 
       other = %{type: "other", ref: "job-2", url: "https://jobs.example.com/job-2"}
-      assert dispatched(ctx.key, dispatch, other) == :ok
-      assert %Dispatch{dispatched_at: ^at, external_ref: "job-1"} = dispatch!(dispatch)
+      assert dispatched(ctx.key, claimed, other) == :ok
+      assert %Dispatch{dispatched_at: ^at, external_ref: "job-1"} = dispatch!(claimed)
     end
 
     test "with no job named records when alone", ctx do
       queued!(ctx)
-      dispatch = claimed!(ctx)
-      assert dispatched(ctx.key, dispatch) == :ok
+      claimed = claimed!(ctx)
+      assert dispatched(ctx.key, claimed) == :ok
 
       assert %Dispatch{dispatched_at: %DateTime{}, external_type: nil, external_ref: nil} =
-               dispatch!(dispatch)
+               dispatch!(claimed)
     end
 
     test "after the lease lapsed is lease_expired, the lapse committed", ctx do
       {_work_item, queued} = queued!(ctx)
-      dispatch = claimed!(ctx)
-      lapse!(dispatch)
+      claimed = claimed!(ctx)
+      lapse!(claimed)
 
-      assert dispatched(ctx.key, dispatch) == {:error, :lease_expired}
-      assert %Dispatch{stale_at: %DateTime{}, dispatched_at: nil} = dispatch!(dispatch)
+      assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
+      assert %Dispatch{stale_at: %DateTime{}, dispatched_at: nil} = dispatch!(claimed)
       assert queue_run!(queued).state == :waiting
+      assert runs() == 0
     end
   end
 

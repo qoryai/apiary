@@ -91,6 +91,8 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     {actions, view}
   end
 
+  # The actions the Action filter offers: `connection.write` stands for the three that
+  # split it, so `provider.write` and `runtime.write` are not options of their own.
   @secrets_actions ~w(secret.write variable.edit connection.write)
 
   # Every action of the feature, of `Apiary.Access`.
@@ -101,7 +103,9 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     :"variable.read",
     :"variable.edit",
     :"connection.read",
-    :"connection.write"
+    :"connection.write",
+    :"provider.write",
+    :"runtime.write"
   ]
 
   # Runs `fun` on the instance with the feature, as a test of it off makes what an instance

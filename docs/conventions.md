@@ -66,6 +66,16 @@ A suite starts with `Apiary.TestSetup.start!/1`: the core's from `test/test_help
 an edition's from the edition's test helper, each giving the tags it leaves out beside
 the ones `start!/1` leaves out itself.
 
+A test that exercises a feature is tagged `@tag needs: :security` (or `@moduletag`), and a run
+without that feature leaves it out. A test that exercises two features is tagged
+`@tag needs: [:security, :secrets]`, and a run with either off leaves it out. A tag on a test
+replaces the module's tag: a test in a module tagged `needs: :security` lists `:security` again
+when it adds a feature. `Apiary.DataCase` and `ApiaryWeb.ConnCase` accept a list; a module with
+`use ExUnit.Case` alone adds `@before_compile Apiary.TestSetup` after it. Without it, in a run
+with a feature off, ExUnit logs an ArgumentError, leaves every test of the module out of the
+result, and `mix test` exits 0. A row of `ApiaryWeb.RefusalsCase` takes
+`needs:` in the same way. The core's suite checks `Apiary.TestSetup.unhooked/0` for such modules.
+
 A template that makes many people and places for each of many tests may make them once
 for its module (`cast: :module` of `Apiary.AccessCase` and `ApiaryWeb.RefusalsCase`, on
 `Apiary.DataCase.setup_module_sandbox/2`): one sandbox for the module, and each test

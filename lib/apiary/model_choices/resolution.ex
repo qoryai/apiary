@@ -3,9 +3,10 @@ defmodule Apiary.ModelChoices.Resolution do
   # one model, one effort value or none, and a tier map. Pure: choices and providers in,
   # a resolution out. `Apiary.ModelChoices` reads what it takes.
   #
-  # The levels, from the most specific: 2, the target and the run kind; 3, the target;
-  # 4, the workspace and the run kind; 5, the workspace; 6, the organisation's default
-  # (`Apiary.ModelChoices.ModelChoice`). A run with no target has no levels 2 and 3.
+  # The levels, from the most specific: 2, the target and the workflow; 3, the target;
+  # 4, the workspace and the workflow; 5, the workspace; 6, the organisation's default
+  # (`Apiary.ModelChoices.ModelChoice`). A run with no target has no levels 2 and 3, and
+  # a run with no workflow no levels 2 and 4.
   #
   # **The order.** A locked choice of the workspace (levels 4 and 5) comes first, the
   # more specific first; then levels 2 to 6, each once.
@@ -45,14 +46,14 @@ defmodule Apiary.ModelChoices.Resolution do
 
   @typedoc """
   What a resolution reads: the model choices of the organisation's chain at levels 2 to 6
-  (rows of other places are left out here), the run's workspace, target (nil for none) and run kind, and the providers the choices name,
+  (rows of other places are left out here), the run's workspace, target (nil for none) and workflow (nil for none), and the providers the choices name,
   by their row id.
   """
   @type input :: %{
           required(:choices) => [ModelChoice.t()],
           required(:workspace_id) => Ecto.UUID.t(),
           required(:target_id) => Ecto.UUID.t() | nil,
-          required(:run_kind) => String.t(),
+          required(:workflow) => String.t() | nil,
           required(:providers) => %{Ecto.UUID.t() => provider}
         }
 
@@ -121,7 +122,7 @@ defmodule Apiary.ModelChoices.Resolution do
   defp place(%ModelChoice{} = choice, input) do
     level = ModelChoice.level(choice)
     same_workspace = choice.workspace_id == input.workspace_id
-    same_kind = choice.run_kind == input.run_kind
+    same_workflow = is_binary(input.workflow) and choice.workflow == input.workflow
 
     same_target =
       not is_nil(input.target_id) and choice.target_id == input.target_id and same_workspace
@@ -129,9 +130,9 @@ defmodule Apiary.ModelChoices.Resolution do
     cond do
       level == 6 -> 6
       level == 5 and same_workspace -> 5
-      level == 4 and same_workspace and same_kind -> 4
+      level == 4 and same_workspace and same_workflow -> 4
       level == 3 and same_target -> 3
-      level == 2 and same_target and same_kind -> 2
+      level == 2 and same_target and same_workflow -> 2
       true -> nil
     end
   end

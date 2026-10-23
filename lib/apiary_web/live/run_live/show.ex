@@ -42,6 +42,7 @@ defmodule ApiaryWeb.RunLive.Show do
   import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 2]
 
   alias Apiary.Access
+  alias Apiary.Dispatches
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -172,11 +173,7 @@ defmodule ApiaryWeb.RunLive.Show do
                     join([shown_sent(@run.runtime), shown_sent(@run.runtime_version)])
                   } />
                 </span>
-                <span
-                  :if={@run.host}
-                  id="run-host"
-                  class="font-mono text-[12.5px]"
-                ><.external_text text={@run.host} /></span>
+                <.ran_on run={@run} id="run-host" class="font-mono text-[12.5px]" />
                 <span :if={@run.started_at} id="run-started-at">
                   <span class="sr-only">{gettext("Started")}</span>
                   <.relative_time id="run-started" at={@run.started_at} />
@@ -839,7 +836,15 @@ defmodule ApiaryWeb.RunLive.Show do
             ><.external_text text={@run.runtime_version} /></span>
           </dd>
           <dt>{gettext("Host")}</dt>
-          <dd class="font-mono"><.external_text text={@run.host} />{if !@run.host, do: na()}</dd>
+          <%!-- A pool's run shows its pool's name (`place_of/1`). --%>
+          <%= case place_of(@run) do %>
+            <% {:pool, name} -> %>
+              <dd id="rail-host">{name}</dd>
+            <% {:host, host} -> %>
+              <dd id="rail-host" class="font-mono"><.external_text text={host} /></dd>
+            <% nil -> %>
+              <dd id="rail-host" class="font-mono">{na()}</dd>
+          <% end %>
           <dt>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>
@@ -1691,7 +1696,21 @@ defmodule ApiaryWeb.RunLive.Show do
     scope
     |> Record.items(run, light, full: MapSet.to_list(full))
     |> with_versions(socket)
+    |> with_pool(run)
   end
+
+  # A pool's run starts on its pool: the Run started item shows the pool's name in place
+  # of the host its `run.started` reported (`place_of/1`).
+  defp with_pool(items, %Run{dispatch_run_id: id} = run) when is_binary(id) do
+    pool = with {:pool, name} <- place_of(run), do: name
+
+    Enum.map(items, fn
+      %{kind: :run_started} = item -> Map.put(item, :host, pool)
+      item -> item
+    end)
+  end
+
+  defp with_pool(items, _run), do: items
 
   # The version each policy applied names, where this workspace rendered it. The run's own
   # are held already; any other digest costs one indexed read, and a build asks for at
@@ -1753,11 +1772,33 @@ defmodule ApiaryWeb.RunLive.Show do
     assign(socket, index: %{index | items: items, by_seq: by_seq})
   end
 
-  # Why a run that ended badly ended so, said in its header: the last of its timeline's
-  # results that was no success, failed turns and failed tools, read whole, with the way
-  # to that item. Nothing for a run that is alive or ended well, or whose timeline says
-  # no more than its state.
+  # Why a run that ended badly ended so, said in its header: for a run of the queue
+  # whose image was missing from the registry and whose work was queued again
+  # (`Apiary.Dispatches.requeued_for_image?/1`), that, with the way to its exit; else the
+  # last of its timeline's results that was no success, failed turns and failed tools,
+  # read whole, with the way to that item. Nothing for a run that is alive or ended well,
+  # or whose timeline says no more than its state.
   defp assign_ending(%{assigns: %{run: %Run{state: state} = run, index: index}} = socket) do
+    exited = Enum.find(index.items, &(&1.kind == :run_exited))
+
+    if exited && Dispatches.requeued_for_image?(run) do
+      assign(socket,
+        ending: %{
+          seq: exited.seq,
+          text:
+            gettext(
+              "Ended before it started: its environment image was missing from the registry. The work is queued again and waits for a new build of the image."
+            )
+        }
+      )
+    else
+      assign_ending(socket, state, run, index)
+    end
+  end
+
+  defp assign_ending(socket), do: assign(socket, ending: nil)
+
+  defp assign_ending(socket, state, run, index) do
     if state in Run.ended_badly_states() do
       candidates =
         index.items
@@ -1777,8 +1818,6 @@ defmodule ApiaryWeb.RunLive.Show do
       assign(socket, ending: nil)
     end
   end
-
-  defp assign_ending(socket), do: assign(socket, ending: nil)
 
   defp ending_of(%{kind: :result, outcome: outcome, text: text} = item)
        when outcome != "success" and is_binary(text) and text != "",
@@ -2700,7 +2739,7 @@ defmodule ApiaryWeb.RunLive.Show do
         # started, whatever the tab. Only `session_id` is assigned, so the Timeline's window
         # stays as it is.
         |> then(
-          &if("dev.qory.session.started" in types,
+          &if("dev.qory.runtime.started" in types,
             do: assign(&1, session_id: Record.session_id(scope, run)),
             else: &1
           )

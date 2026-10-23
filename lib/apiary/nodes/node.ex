@@ -34,6 +34,7 @@ defmodule Apiary.Nodes.Node do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
+  alias Apiary.Contract.GatewayUrl
   alias Apiary.Integrations.Description
 
   @typedoc "A node or a node pool of a workspace."
@@ -62,6 +63,9 @@ defmodule Apiary.Nodes.Node do
   @choices [:direct, :default, :named]
   @max_limit 10_000
   @max_url 2048
+  # A gateway's address, at most as the contracts' `gateway_url` allows
+  # (`Apiary.Contract.GatewayUrl`).
+  @max_gateway_url GatewayUrl.max_length()
   @max_adapter_name 64
   # An adapter's intervals, in seconds: a minute to a day (`nodes_sync_check`).
   @min_interval 60
@@ -150,7 +154,7 @@ defmodule Apiary.Nodes.Node do
   @spec choices() :: [choice]
   def choices, do: @choices
 
-  @doc "max_url/0 is the longest a gateway's address may be, in characters."
+  @doc "max_url/0 is the longest an adapter's connect or setup address may be, in characters."
   @spec max_url() :: pos_integer
   def max_url, do: @max_url
 
@@ -447,7 +451,7 @@ defmodule Apiary.Nodes.Node do
         changeset
         |> cast(attrs, [:url])
         |> validate_required([:url])
-        |> validate_length(:url, max: @max_url)
+        |> validate_length(:url, max: @max_gateway_url)
         |> validate_url()
 
       _other ->
@@ -490,13 +494,13 @@ defmodule Apiary.Nodes.Node do
   end
 
   @doc """
-  validate_url/1 checks `changeset`'s `url`, a gateway's address: `https://`, then a host
-  and an optional port, 1 to 65535, and nothing else: no user, path, query or fragment.
-  The host is a DNS name (labels of letters, digits and `-`, 1 to 63 characters each,
-  neither starting nor ending with `-`, the last not all digits, 253 characters at most,
-  with an optional trailing dot), an IPv4 address, or an IPv6 address in brackets. A run
-  key names the gateway by it, and only over TLS (`Apiary.Runs.RunKey`). The database
-  holds it to the same (`nodes_url_check`).
+  validate_url/1 checks `changeset`'s `url`, a gateway's address, by the contracts' rule
+  (`Apiary.Contract.GatewayUrl`): `https://`, then a host of DNS labels or an IPv6
+  address in brackets, then an optional port, 1 to 65535, and nothing else; no user,
+  percent-encoding, underscore, trailing dot, path, query or fragment. A claim answers it
+  as `gateway_url`, and a run key names the gateway by it, only over TLS
+  (`Apiary.Runs.RunKey`). An address of another scheme that is otherwise right is told to
+  start with `https://`. The length, at most 300 characters, is checked apart.
   """
   @spec validate_url(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate_url(changeset) do
@@ -508,19 +512,18 @@ defmodule Apiary.Nodes.Node do
     end)
   end
 
-  # A scheme in lower case, `://`, then the host and the port alone: a name or an IPv4
-  # address, or an IPv6 address in brackets, and a port without a leading zero.
-  @address ~r{\A[a-z][a-z0-9+.-]*://(?<host>[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::[1-9][0-9]*)?\z}
+  # A scheme in lower case, then `://` and the rest.
+  @scheme ~r{\A[a-z][a-z0-9+.-]*://(?<rest>.*)\z}s
 
   defp address(url) do
-    with %{"host" => host} <- Regex.named_captures(@address, url),
-         true <- host?(host),
-         {:ok, %URI{scheme: scheme, port: port}} when port in 1..65_535 <- URI.new(url) do
-      if scheme == "https",
-        do: :ok,
-        else: {:error, dgettext_noop("errors", "must start with https://")}
-    else
-      _not_an_address ->
+    cond do
+      GatewayUrl.shape?(url) ->
+        :ok
+
+      https_but_scheme?(url) ->
+        {:error, dgettext_noop("errors", "must start with https://")}
+
+      true ->
         {:error,
          dgettext_noop(
            "errors",
@@ -529,27 +532,11 @@ defmodule Apiary.Nodes.Node do
     end
   end
 
-  # An IPv6 address in brackets, an IPv4 address, or a DNS name.
-  defp host?("[" <> bracketed), do: ip?(String.trim_trailing(bracketed, "]"), 8)
-  defp host?(host), do: ip?(host, 4) or name?(host)
-
-  defp ip?(host, size) do
-    case :inet.parse_strict_address(String.to_charlist(host)) do
-      {:ok, address} -> tuple_size(address) == size
-      {:error, _einval} -> false
+  defp https_but_scheme?(url) do
+    case Regex.named_captures(@scheme, url) do
+      %{"rest" => rest} -> GatewayUrl.shape?("https://" <> rest)
+      nil -> false
     end
-  end
-
-  @label ~r/\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\z/
-
-  # Labels joined by dots, the last not all digits (a bad IPv4 address is no name), 253
-  # characters at most without the optional trailing dot.
-  defp name?(host) do
-    name = String.replace_suffix(host, ".", "")
-    labels = String.split(name, ".")
-
-    byte_size(name) <= 253 and Enum.all?(labels, &(&1 =~ @label)) and
-      not (List.last(labels) =~ ~r/\A[0-9]+\z/)
   end
 
   defp put_public_id(changeset) do

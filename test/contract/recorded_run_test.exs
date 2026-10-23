@@ -64,17 +64,31 @@ defmodule Apiary.Contract.RecordedRunTest do
 
       for event <- events, do: assert(:ok = ContractSchema.validate(schema, event))
 
-      # The policy names the image by a reference pinned by digest, which the schema
-      # holds to its rule: the same reference with a tag in place of the digest fails.
       applied = Enum.find(events, &(&1["type"] == "dev.qory.run.policy_applied"))
       assert applied["data"]["source"] == "config"
       refute Map.has_key?(applied["data"], "url")
       refute Map.has_key?(applied["data"], "run_configuration")
-      assert applied["data"]["image"] =~ ~r/@sha256:[0-9a-f]{64}\z/
 
-      tagged = update_in(applied, ["data", "image"], &String.replace(&1, ~r/@.*\z/, ":latest"))
-      assert {:error, _} = ContractSchema.validate(schema, tagged)
+      # A policy that names the image names it by a reference pinned by digest, which the
+      # schema holds to its rule: the same reference with a tag in place of the digest
+      # fails.
+      if image = applied["data"]["image"] do
+        assert image =~ ~r/@sha256:[0-9a-f]{64}\z/
+        tagged = put_in(applied, ["data", "image"], String.replace(image, ~r/@.*\z/, ":latest"))
+        assert {:error, _} = ContractSchema.validate(schema, tagged)
+      end
     end
+  end
+
+  test "one record of a run with no server, or more, has a policy that names an image" do
+    images =
+      for file <- @serverless,
+          event <- file |> lines() |> Enum.map(&Jason.decode!/1),
+          event["type"] == "dev.qory.run.policy_applied",
+          image = event["data"]["image"],
+          do: image
+
+    assert images != []
   end
 
   setup do
