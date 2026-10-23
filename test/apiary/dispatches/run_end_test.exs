@@ -613,8 +613,10 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_queued_again(ctx)
     end
 
-    test "ended by its backstop records the build failed, timed_out, and queues it again",
+    test "ended by its backstop records the build failed, timed_out, queues nothing and ends the held runs",
          ctx do
+      held = [held!(ctx)]
+
       # A release failed the build before: its reason goes with the new failure.
       {1, _rows} =
         Repo.update_all(from(r in Record, where: r.id == ^ctx.record.id),
@@ -639,11 +641,18 @@ defmodule Apiary.Dispatches.RunEndTest do
       Liveness.check(after_it)
       assert_ended(ctx.handed, :lost)
 
-      assert %Record{failure_cause: :timed_out, failure_reason: nil, failed_at: ^after_it} =
-               record!(ctx.record)
+      assert %Record{
+               failure_cause: :timed_out,
+               failure_reason: nil,
+               failed_at: ^after_it,
+               lost_ref: nil
+             } = record!(ctx.record)
 
+      # A build past its backstop failed: it is not queued again, and the runs held for
+      # it end.
       assert_build_kept(ctx)
-      assert_queued_again(ctx)
+      assert_nothing_queued(ctx)
+      assert_held_ended(held)
 
       # A second check changes nothing.
       ended = record!(ctx.record)
@@ -757,6 +766,28 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_held_ended(held)
       assert_nothing_queued(ctx)
       assert %DispatchRun{state: :waiting} = queue_run!(unheld)
+    end
+
+    @tag needs: [:factory, :security]
+    test "its failed exit ends no run whose target's run configuration names an image",
+         ctx do
+      held = [held!(ctx)]
+      document = ~s({"version":1,"security_policy":{"version":1,"image":"with-docker"}})
+
+      Repo.insert!(%Apiary.Policy.RunConfiguration{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        version: 1,
+        document: document,
+        digest: Apiary.Policy.Render.digest(document),
+        rendered_at: DateTime.utc_now()
+      })
+
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx, %{"state" => "failed", "exit_code" => 1})
+
+      assert %Record{failure_cause: :failed} = record!(ctx.record)
+      assert_held_waiting(held)
     end
 
     test "a first loss queues the build once more and the held runs wait; a second loss ends them",

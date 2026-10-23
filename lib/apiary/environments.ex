@@ -20,7 +20,10 @@ defmodule Apiary.Environments do
   # `environment_ref`, built for the target (`held/2`, a subquery on the run as
   # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/3`); a run
   # whose target no collection names, or of a workspace whose domain has no prebuilds, is
-  # never held and starts in the pool's default image.
+  # never held and starts in the pool's default image. On an instance with the feature
+  # `security`, a run whose target's run configuration in force names an image in its
+  # `security_policy` is never held either (`unset_by_policy/1`): it starts in that
+  # image, so it needs no build, queues none and ends with no build's failure.
   #
   # Whenever a run is held and no prebuild of its collection's `environment_ref` for the
   # pool waits, is claimed or is handed over, the pool's next claim queues one: before it
@@ -74,13 +77,14 @@ defmodule Apiary.Environments do
   #
   # `build_failed(record, dispatch_run, cause, collections, work_item_ids, now)` then
   # acts on the runs held for the build, only while the prebuild's `environment_ref` is
-  # still its collection's. The first loss of that ref, `lost` or `timed_out` with a
-  # `lost_ref` that is not the ref, on a live pool, sets `lost_ref` and queues one more
-  # prebuild of the ref for the pool. A failure, a second loss, or a loss on a deleted
-  # pool clears `lost_ref`; then, while no live pool keeps an image of the target from its
-  # collection's `environment_ref` and no prebuild of the held collections waits, is
-  # claimed or is handed over, the waiting runs of those work items, held for the target,
-  # end `build_failed` with the outcome `error` (`Apiary.Dispatches.end_held/4`).
+  # still its collection's. The first loss of that ref, `lost` with a `lost_ref` that is
+  # not the ref, on a live pool, sets `lost_ref` and queues one more prebuild of the ref
+  # for the pool. A failure (`failed`, or `timed_out`: a build past its backstop), a
+  # second loss, or a loss on a deleted pool clears `lost_ref`; then, while no live pool
+  # keeps an image of the target from its collection's `environment_ref` and no prebuild
+  # of the held collections waits, is claimed or is handed over, the waiting runs of those
+  # work items, held for the target, end `build_failed` with the outcome `error`
+  # (`Apiary.Dispatches.end_held/4`).
   #
   # ## A run's image: `image_for/2`
   #
@@ -304,9 +308,10 @@ defmodule Apiary.Environments do
   # build_failed/5 applies the end of the prebuild `dispatch_run`, whose last build
   # `record_end_failure/3` recorded as failed by `failure`, to the runs held for its
   # build, inside the caller's transaction, under what `hold_build/2` held: `collections`
-  # and the work items `work_item_ids` (the moduledoc). The first loss of an
+  # and the work items `work_item_ids` (the moduledoc). The first loss (`:lost`) of an
   # `environment_ref` that is still its collection's queues one more prebuild of it for
-  # the pool; a failure, a second loss, or a loss on a deleted pool ends the waiting runs
+  # the pool; a failure (`:failed` or `:timed_out`), a second loss, or a loss on a
+  # deleted pool ends the waiting runs
   # held for the target `build_failed`, while no live pool has an image for the target
   # and no prebuild of its collections waits, is claimed or is handed over. What
   # changed, for `Apiary.Dispatches.broadcast/1`.
@@ -332,7 +337,7 @@ defmodule Apiary.Environments do
 
     case Enum.find(collections, &(&1.id == dispatch_run.source_collection_id)) do
       %Collection{environment_ref: ^ref} = collection ->
-        if failure in [:lost, :timed_out] and record.lost_ref != ref and
+        if failure == :lost and record.lost_ref != ref and
              match?(%Node{kind: :pool, deleted_at: nil}, pool) do
           {1, _rows} =
             Repo.update_all(from(r in Record, where: r.id == ^record.id),
@@ -445,7 +450,7 @@ defmodule Apiary.Environments do
   @spec claim_image(Node.t(), WorkItem.t()) :: {:ok, String.t() | nil} | :held
   def claim_image(
         %Node{kind: :pool, workspace_id: workspace_id} = pool,
-        %WorkItem{target_system: system, target_path: path}
+        %WorkItem{target_system: system, target_path: path} = work_item
       )
       when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
     target = %{system: system, path: path}
@@ -453,12 +458,23 @@ defmodule Apiary.Environments do
     cond do
       not prebuilt?(workspace_id) -> {:ok, nil}
       image = image_for(pool, target) -> {:ok, image}
-      named?(workspace_id, target) -> :held
+      named?(workspace_id, target) and unset_by_policy?(workspace_id, work_item) -> :held
       true -> {:ok, nil}
     end
   end
 
   def claim_image(%Node{}, %WorkItem{}), do: {:ok, nil}
+
+  # Whether the run configuration in force for the target of `work_item`, of the
+  # workspace `workspace_id`, names no image (`unset_by_policy/1`).
+  defp unset_by_policy?(workspace_id, %WorkItem{id: id}) do
+    Repo.exists?(
+      from w in WorkItem,
+        as: :work_item,
+        where: w.id == ^id,
+        where: ^unset_by_policy(workspace_id)
+    )
+  end
 
   # Whether a live collection assigned to the workspace `workspace_id` with the target
   # has an `environment_ref`.
@@ -961,12 +977,15 @@ defmodule Apiary.Environments do
   # held/2 is the query of the work item of a run of the queue bound `:run`, for
   # `exists/1`, when the run is held for the node pool `pool_id` of the workspace
   # `workspace_id`: its work item's target has a live collection assigned to the
-  # workspace with an `environment_ref`, and no such collection has a record for the pool
-  # whose image was built for the target from that `environment_ref` (the moduledoc).
+  # workspace with an `environment_ref`, no such collection has a record for the pool
+  # whose image was built for the target from that `environment_ref`, and the run
+  # configuration in force for the target names no image (`unset_by_policy/1`; the
+  # moduledoc).
   @doc false
   @spec held(Ecto.UUID.t(), Ecto.UUID.t()) :: Ecto.Query.t()
   def held(workspace_id, pool_id) when is_binary(workspace_id) and is_binary(pool_id) do
     from w in WorkItem,
+      as: :work_item,
       join: c in Collection,
       on:
         c.workspace_id == ^workspace_id and is_nil(c.ended_at) and
@@ -978,9 +997,46 @@ defmodule Apiary.Environments do
           e.built_ref == c.environment_ref and e.built_target_system == w.target_system and
           e.built_target_path == w.target_path,
       where: w.id == parent_as(:run).work_item_id,
+      where: ^unset_by_policy(workspace_id),
       group_by: w.id,
       having: count(e.id) == 0,
       select: w.id
+  end
+
+  # unset_by_policy/1 is the condition, on a work item bound `:work_item` of the
+  # workspace `workspace_id`, that the run configuration in force for its target, the
+  # target's newest version or else the workspace's (`Apiary.Policy.in_force/3`), names
+  # no image in its `security_policy`
+  # (`Apiary.Policy.ComposedConfiguration.names_image?/1`): a run of such a target starts
+  # in the policy's image, so it is held for no build. Always true on an instance without
+  # the feature `security`, where no run configuration is served.
+  @doc false
+  @spec unset_by_policy(Ecto.UUID.t()) :: Ecto.Query.dynamic_expr()
+  def unset_by_policy(workspace_id) when is_binary(workspace_id) do
+    if Features.on?(:security) do
+      dynamic(
+        [work_item: w],
+        fragment(
+          """
+          NOT COALESCE((
+            SELECT jsonb_typeof(c.document::jsonb -> 'security_policy') = 'object'
+              AND jsonb_exists(c.document::jsonb -> 'security_policy', 'image')
+            FROM run_configurations AS c
+            LEFT JOIN targets AS t ON t.id = c.target_id
+            WHERE c.workspace_id = ?
+              AND (c.target_id IS NULL OR (t.system = ? AND t.path = ?))
+            ORDER BY c.target_id IS NULL, c.version DESC
+            LIMIT 1
+          ), false)
+          """,
+          type(^workspace_id, Ecto.UUID),
+          w.target_system,
+          w.target_path
+        )
+      )
+    else
+      dynamic([work_item: _w], true)
+    end
   end
 
   # hold_builds/2 holds `FOR SHARE`, by id, inside the caller's transaction, the

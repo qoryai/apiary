@@ -23,6 +23,7 @@ defmodule Apiary.EnvironmentsTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Policy.{Render, RunConfiguration}
 
   @moduletag needs: :factory
 
@@ -423,6 +424,65 @@ defmodule Apiary.EnvironmentsTest do
       assert %{run: taken, registered: %{configured_image: nil}} = claim(ctx, ctx.pool)
       assert taken.id == run.id
       assert prebuilds(shop) == []
+    end
+
+    # A version of the run configuration of the workspace, for `target` (a
+    # `Apiary.Runs.Target`) or for none, after the newest one, with `document`.
+    defp configuration!(ctx, target, document) do
+      target_id = target && target.id
+
+      version =
+        Repo.one(
+          from c in RunConfiguration,
+            where: c.workspace_id == ^ctx.scope.workspace.id,
+            select: coalesce(max(c.version), 0)
+        )
+
+      Repo.insert!(%RunConfiguration{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        target_id: target_id,
+        version: version + 1,
+        document: document,
+        digest: Render.digest(document),
+        rendered_at: DateTime.utc_now()
+      })
+    end
+
+    @tag needs: [:factory, :security]
+    test "a run whose target's run configuration names an image waits for no build and queues none",
+         ctx do
+      shop = list(ctx, 1, %{environment_ref: "env-1"})
+      run = explore!(ctx)
+
+      shop_target = Apiary.Targets.get(ctx.scope, @shop_target.system, @shop_target.path)
+
+      configuration!(
+        ctx,
+        nil,
+        ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":[]},"image":"with-docker"}})
+      )
+
+      item = Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
+      assert Environments.claim_image(ctx.pool, item) == {:ok, nil}
+      assert %{run: taken, registered: %{configured_image: nil}} = claim(ctx, ctx.pool)
+      assert taken.id == run.id
+      assert prebuilds(shop) == []
+
+      # A version of the target's that names no image is the one in force for it: its next
+      # run is held, and the claim queues its build.
+      configuration!(
+        ctx,
+        shop_target,
+        ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":[]}}})
+      )
+
+      held = explore!(ctx)
+
+      assert %{run: %DispatchRun{step: "prebuild", environment_ref: "env-1"}} =
+               claim(ctx, ctx.pool)
+
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, held.id)
     end
 
     test "the claim's builds run only inside the caller's transaction", ctx do

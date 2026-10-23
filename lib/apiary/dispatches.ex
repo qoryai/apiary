@@ -412,7 +412,9 @@ defmodule Apiary.Dispatches do
   # work items with `target`, `build_failed`, with the outcome `error`, with any stale
   # dispatch of them (`run_ended`), inside the caller's transaction
   # (`Apiary.Environments.build_failed/6`): the workspace and the work items to tell. A
-  # run a claim took is no longer waiting and is left as it is.
+  # run a claim took is no longer waiting and is left as it is, and so is a run whose
+  # target's run configuration names an image (`Apiary.Environments.unset_by_policy/1`),
+  # as no build holds it.
   @doc false
   @spec end_held(
           [Ecto.UUID.t()],
@@ -430,10 +432,12 @@ defmodule Apiary.Dispatches do
       Repo.update_all(
         from(r in DispatchRun,
           join: w in WorkItem,
+          as: :work_item,
           on: w.id == r.work_item_id,
           where: r.work_item_id in ^work_item_ids and r.workspace_id == ^workspace_id,
           where: r.step != ^@prebuild and fragment("? = 'waiting'", r.state),
           where: w.target_system == ^system and w.target_path == ^path,
+          where: ^Environments.unset_by_policy(workspace_id),
           select: {r.id, r.work_item_id}
         ),
         set: [state: :ended, end_cause: :build_failed, result_outcome: :error, updated_at: now]

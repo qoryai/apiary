@@ -489,8 +489,8 @@ the environment record of its collection and of the pool that claimed it, `lost`
 prebuild its exit ends, `run_ended`, records it there too when the exit's state is
 `failed` or `lost`, as that state, with no reason; any other exit records no failure. The
 record keeps its last good build. While the prebuild's `environment_ref` is still its
-collection's, the first loss of that ref (`lost` or `timed_out`) queues one more
-prebuild of it for the pool; a `failed` exit or a second loss ends the runs held for
+collection's, the first loss of that ref (`lost`) queues one more prebuild of it for
+the pool; a `failed` exit, a `timed_out` end or a second loss ends the runs held for
 that build `build_failed`, with the outcome `error`, while no other live pool keeps an
 image of the target from its collection's `environment_ref` and no other prebuild of
 the target's collections waits, is claimed or is handed over (see the hold below). The
@@ -701,7 +701,9 @@ next claim; nothing else queues a build ahead of a run, apart from a member's Re
 an image found missing. The claim holds the collections it queues a build of
 `FOR SHARE`, by id, before the pool's row. A run whose target no collection names, or of
 a workspace whose domain has no prebuilds, waits for nothing and starts in the pool's
-default.
+default. With the feature `security`, a run whose target's run configuration in force
+names an image in its `security_policy` waits for nothing, queues no build and is not
+ended by a build's failure: it starts in the policy's image.
 
 A run given an image has its configuration composed for it
 (`Apiary.Policy.ComposedConfiguration`), `image` beside `security_policy` and never
