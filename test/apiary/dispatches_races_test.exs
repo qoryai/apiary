@@ -15,8 +15,9 @@ defmodule Apiary.DispatchesRacesTest do
   # take turns on the index of the waiting ones, and a lapse that would make a claimed
   # prebuild wait again waits for a build queued under the record. A run held for its
   # pool's build of its target (`Apiary.Environments.held/2`) is never taken while it is
-  # held, and the claim that queues its build holds the target's collections first, so a
-  # key change waits for it. Every path takes its locks in the one order
+  # held, and the claim that queues its build holds the target's collections first, with
+  # the collections of the pool's lapsed prebuilds, so a key change, an assign or a
+  # Backlog switch waits for it. Every path takes its locks in the one order
   # `Apiary.Dispatches.Slots` names, so none of them, let go together, waits on another
   # for good.
   use ExUnit.Case, async: false
@@ -30,11 +31,12 @@ defmodule Apiary.DispatchesRacesTest do
 
   alias Apiary.{Dispatches, Repo}
   alias Apiary.AccessKeys.{AccessKey, PublicKey}
-  alias Apiary.Adapters.Collection
+  alias Apiary.Adapters.{Collection, Collections, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
+  alias Apiary.Runs.Target
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
@@ -83,12 +85,19 @@ defmodule Apiary.DispatchesRacesTest do
   end
 
   # A live collection of the scope's workspace, with the target `acme/shop` or `path` on
-  # `code.example.com`, under a connection of an adapter remembered for `on_exit`.
-  defp collection!(ctx, ref \\ "SHOP", path \\ "acme/shop") do
-    connection = ticket_connection_fixture(ctx.scope)
-    Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
+  # `code.example.com`, under a fresh connection of an adapter remembered for `on_exit`,
+  # or under the connection `opts[:connection]`; its id `opts[:id]` when given, and its
+  # `environment_ref` `opts[:environment_ref]`, else `env-0`.
+  defp collection!(ctx, ref \\ "SHOP", path \\ "acme/shop", opts \\ []) do
+    connection =
+      Keyword.get_lazy(opts, :connection, fn ->
+        connection = ticket_connection_fixture(ctx.scope)
+        Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
+        connection
+      end)
 
     Repo.insert!(%Collection{
+      id: opts[:id],
       public_id: Apiary.PublicId.generate(Collection.prefix()),
       organisation_id: ctx.scope.organisation.id,
       adapter_id: connection.adapter_id,
@@ -99,9 +108,35 @@ defmodule Apiary.DispatchesRacesTest do
       title: "shop",
       target_system: "code.example.com",
       target_path: path,
-      environment_ref: "env-0",
+      environment_ref: Keyword.get(opts, :environment_ref, "env-0"),
       last_listed_at: DateTime.utc_now(:second)
     })
+  end
+
+  # Two collections of one connection with the target `path`, and a run held for that
+  # target: `lapsed`, the lower id, whose `environment_ref` `env-1` has a prebuild
+  # claimed by `key` for `pool` whose lease lapsed, so no build of it is due, and `due`,
+  # whose `env-0` has none, so a claim of the pool queues one. The claim's free sets the
+  # lapsed prebuild waiting again and its take writes it again, which takes a
+  # `FOR KEY SHARE` lock on `lapsed`. With the target's row, for a Backlog switch.
+  defp lapsed_pair!(ctx, key, pool, path) do
+    connection = ticket_connection_fixture(ctx.scope)
+    Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
+    [low, high] = Enum.sort([Ecto.UUID.generate(), Ecto.UUID.generate()])
+    on = [connection: connection]
+    lapsed = collection!(ctx, "L-" <> path, path, [id: low, environment_ref: "env-1"] ++ on)
+    due = collection!(ctx, "D-" <> path, path, [id: high] ++ on)
+    :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
+    _held = held!(ctx, path)
+    target = %{system: "code.example.com", path: path}
+    :ok = Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [target])
+
+    %{
+      connection: connection,
+      lapsed: lapsed,
+      due: due,
+      target: Repo.get_by!(Target, workspace_id: ctx.scope.workspace.id, path: path)
+    }
   end
 
   # A listing's part that gives `collections` the `environment_ref` `ref`: their
@@ -142,32 +177,37 @@ defmodule Apiary.DispatchesRacesTest do
   # answered, or what it raised.
   defp rebuild(collections, pools) do
     rescued(fn ->
-      Repo.transact(fn ->
-        ids = collections |> Enum.map(& &1.id) |> Enum.sort()
-
-        held =
-          Repo.all(from c in Collection, where: c.id in ^ids, order_by: c.id, lock: "FOR SHARE")
-
-        _records =
-          Repo.all(
-            from e in Record,
-              where: e.source_collection_id in ^ids,
-              order_by: [e.source_collection_id, e.pool_id],
-              lock: "FOR UPDATE",
-              select: e.id
-          )
-
-        queued =
-          for %Collection{environment_ref: ref} = collection <- held,
-              is_binary(ref),
-              pool <- pools do
-            {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
-            run
-          end
-
-        {:ok, queued}
-      end)
+      Repo.transact(fn -> {:ok, collections |> hold_rebuild() |> queue_rebuild(pools)} end)
     end)
+  end
+
+  # The first half of `rebuild/2`, inside the caller's transaction: `collections` held
+  # `FOR SHARE` by id, then their records `FOR UPDATE`; the collections held.
+  defp hold_rebuild(collections) do
+    ids = collections |> Enum.map(& &1.id) |> Enum.sort()
+
+    held =
+      Repo.all(from c in Collection, where: c.id in ^ids, order_by: c.id, lock: "FOR SHARE")
+
+    _records =
+      Repo.all(
+        from e in Record,
+          where: e.source_collection_id in ^ids,
+          order_by: [e.source_collection_id, e.pool_id],
+          lock: "FOR UPDATE",
+          select: e.id
+      )
+
+    held
+  end
+
+  # The second half of `rebuild/2`: a prebuild of each of the collections `held` queued
+  # for each pool; the prebuilds queued.
+  defp queue_rebuild(held, pools) do
+    for %Collection{environment_ref: ref} = collection <- held, is_binary(ref), pool <- pools do
+      {:ok, run} = Dispatches.queue_prebuild(collection, pool, ref)
+      run
+    end
   end
 
   # `fun`, its exception's message for what it answered should it raise one.
@@ -547,12 +587,18 @@ defmodule Apiary.DispatchesRacesTest do
 
   describe "a claim that queues a build" do
     # A claim of `key`, each answer one of: a run taken, nothing, or `:unavailable`; what
-    # it raised otherwise.
+    # it raised otherwise. A claim answers `:unavailable` for any error of the database,
+    # a deadlock included, and logs that it could not be made: that log line is the
+    # answer then, `{:failed, line}`.
     defp claim_answer(key) do
       rescued(fn ->
-        case Dispatches.claim(key, Dispatches.now()) do
-          {:ok, _claimed} = answer -> answer
-          {:error, :unavailable} = answer -> answer
+        {answer, log} =
+          ExUnit.CaptureLog.with_log(fn -> Dispatches.claim(key, Dispatches.now()) end)
+
+        case {answer, Regex.run(~r/a claim could not be made[^\n]*/, log)} do
+          {_answer, [line]} -> {:failed, line}
+          {{:ok, _claimed}, nil} -> answer
+          {{:error, :unavailable}, nil} -> answer
         end
       end)
     end
@@ -584,14 +630,29 @@ defmodule Apiary.DispatchesRacesTest do
             {:ok, _queued} = rebuild([lapsed], [pool]).()
             :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
             _held = held!(ctx, path)
+            both = Enum.shuffle([collection, lapsed])
 
             answers =
-              [
-                claim: claim_answer(key),
-                rebuild: rebuild(Enum.shuffle([collection, lapsed]), [pool])
-              ]
-              |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
-              |> together()
+              if rem(round, 2) == 1 do
+                # The Rebuild paused once it holds the records, the claim's free waiting
+                # for them, then the Rebuild's prebuilds queued, before it commits.
+                {rebuild, rebuild_backend} = hold(fn -> hold_rebuild(both) end)
+                claim = start(claim_answer(key))
+                await_blocked(claim.backend, rebuild_backend)
+
+                queued =
+                  continue(
+                    rebuild,
+                    rescued(fn -> {:ok, queue_rebuild(rebuild.result, [pool])} end)
+                  )
+
+                commit(rebuild)
+                [claim: Task.await(claim.task, 15_000), rebuild: queued]
+              else
+                [claim: claim_answer(key), rebuild: rebuild(both, [pool])]
+                |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+                |> together()
+              end
 
             assert records(collection, pool) == 1
 
@@ -610,7 +671,8 @@ defmodule Apiary.DispatchesRacesTest do
       assert raised == []
     end
 
-    test "and a listing's part at once: no deadlock, the key changes, one build per ref", ctx do
+    test "and a listing's part at once, with a lapsed prebuild of a lower collection of the connection: no deadlock, the keys change, one build per ref",
+         ctx do
       pool = pool_fixture(ctx.scope)
       key = key!(ctx, pool)
 
@@ -618,22 +680,121 @@ defmodule Apiary.DispatchesRacesTest do
         for round <- 1..6, reduce: [] do
           raised ->
             path = "acme/part-#{round}"
-            collection = collection!(ctx, "P#{round}", path)
-            _held = held!(ctx, path)
+            %{lapsed: lapsed, due: due} = lapsed_pair!(ctx, key, pool, path)
+            changed = "part-#{round}"
 
             answers =
               [
                 claim: claim_answer(key),
-                part: part([collection], "env-#{round}")
+                part: part([lapsed, due], changed)
               ]
               |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
               |> together()
 
             assert {:part, {:ok, :changed}} in answers
-            assert %Collection{environment_ref: ref} = Repo.get!(Collection, collection.id)
-            assert ref == "env-#{round}"
-            waiting = waiting(collection, pool)
-            assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
+
+            for collection <- [lapsed, due] do
+              assert %Collection{environment_ref: ^changed} = Repo.get!(Collection, collection.id)
+              waiting = waiting(collection, pool)
+              assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
+            end
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
+        end
+
+      assert raised == []
+    end
+  end
+
+  describe "a claim that frees a lapsed prebuild of a lower collection of a connection" do
+    # A Backlog switch of the pair's target off, or an unassign of the pair from the
+    # workspace: each holds the connection `FOR SHARE`, then both collections
+    # `FOR UPDATE`, by id, and writes them. What it answered, or what it raised.
+    defp change_pair(ctx, :switch, pair),
+      do: rescued(fn -> Collections.set_backlog(ctx.scope, pair.target, false) end)
+
+    defp change_pair(ctx, :assign, pair) do
+      ids = [pair.lapsed.id, pair.due.id]
+      rescued(fn -> Collections.assign_collections(ctx.scope, pair.connection, ids, nil) end)
+    end
+
+    # The first steps of `change_pair/3`, inside the caller's transaction, up to the lower
+    # collection: the connection `FOR SHARE`, the workspace `FOR SHARE` for a switch, and
+    # `lapsed` `FOR UPDATE`, the first row its one statement holds.
+    defp hold_lower(ctx, change, pair) do
+      _connection =
+        Repo.one!(from k in Connection, where: k.id == ^pair.connection.id, lock: "FOR SHARE")
+
+      if change == :switch do
+        _workspace =
+          Repo.one!(
+            from w in Apiary.Organisations.Workspace,
+              where: w.id == ^ctx.scope.workspace.id,
+              lock: "FOR SHARE",
+              select: w.id
+          )
+      end
+
+      Repo.one!(from c in Collection, where: c.id == ^pair.lapsed.id, lock: "FOR UPDATE")
+    end
+
+    # Whether `change` wrote both collections of `pair`.
+    defp written?(:switch, pair),
+      do: Enum.all?([pair.lapsed, pair.due], &(Repo.get!(Collection, &1.id).backlog == false))
+
+    defp written?(:assign, pair),
+      do: Enum.all?([pair.lapsed, pair.due], &is_nil(Repo.get!(Collection, &1.id).workspace_id))
+
+    for {change, name} <- [switch: "a Backlog switch", assign: "an assign"] do
+      test "and #{name} of the pair, paused once it holds the lower one: no deadlock, both written",
+           ctx do
+        pool = pool_fixture(ctx.scope)
+        key = key!(ctx, pool)
+
+        for round <- 1..3 do
+          pair = lapsed_pair!(ctx, key, pool, "acme/#{unquote(change)}-paused-#{round}")
+
+          # The change waits on the claim, or the claim on the change, past half the
+          # deadlock timeout, before the change goes on: should they wait on each other,
+          # Postgres refuses the claim.
+          {held, held_backend} = hold(fn -> hold_lower(ctx, unquote(change), pair) end)
+          claim = start(claim_answer(key))
+          await_waited(claim.backend, held_backend)
+          changed = continue(held, change_pair(ctx, unquote(change), pair))
+          commit(held)
+          answer = Task.await(claim.task, 15_000)
+
+          assert changed == {:ok, 2}, "round #{round}: #{inspect(changed)}"
+
+          assert match?({:ok, _}, answer) or answer == {:error, :unavailable},
+                 "round #{round}: #{inspect(answer)}"
+
+          assert written?(unquote(change), pair)
+        end
+      end
+    end
+
+    test "and switches and assigns of the pair at once: no deadlock, both written", ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      raised =
+        for round <- 1..12, reduce: [] do
+          raised ->
+            change = Enum.at([:switch, :assign], rem(round, 2))
+            pair = lapsed_pair!(ctx, key, pool, "acme/#{change}-#{round}")
+
+            answers =
+              [claim: claim_answer(key), change: change_pair(ctx, change, pair)]
+              |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+              |> together()
+
+            assert {:change, {:ok, 2}} in answers, "round #{round}: #{inspect(answers)}"
+            assert written?(change, pair)
 
             raised ++
               for {name, answer} <- answers,
