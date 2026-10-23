@@ -104,9 +104,9 @@ defmodule Apiary.Dispatches do
   #      direct among them, is `{:error, :no_gateway}`
   #      (`Apiary.Dispatches.Handover.gateway/1`);
   #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which inserts the missing
-  #      environment records of the collections held at 3 for the pool once it has locked
-  #      the records of the lapsed prebuilds and before it locks a run
-  #      (`Apiary.Environments.make_records/2`), then a prebuild of each
+  #      environment records of the collections held at 3 that the next step queues a
+  #      build of, once it has locked the records of the lapsed prebuilds and before it
+  #      locks a run (`Apiary.Environments.make_records/2`), then a prebuild of each
   #      collection held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
@@ -694,7 +694,7 @@ defmodule Apiary.Dispatches do
              builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
              {:ok, pool} <- lock_pool(key),
              {:ok, gateway, keys} <- Handover.gateway(pool) do
-          freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool.id) end)
+          freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
           queued = Environments.queue_builds(builds, pool)
           through = %{gateway: gateway, keys: keys, body: body}
 
