@@ -570,7 +570,11 @@ defmodule Apiary.AuditChanges do
   # the entry keeps nothing of the key's value.
   def make(:"secret.seal", %{scope: scope}) do
     {ctx, key, now} = sealed_run(scope)
-    body = secrets_request(ctx.run, ctx.attached.digest, [ctx.provider.public_id], now)
+    # The credential names of the run's run configuration, in its order: the model key's
+    # and, with the `registry` feature, the registry credential's after it.
+    document = Jason.decode!(ctx.attached.settings)
+    credentials = for %{"name" => name} <- document["credentials"], do: name
+    body = secrets_request(ctx.run, ctx.attached.digest, credentials, now)
     before = entries()
 
     {:ok, _answer} =
