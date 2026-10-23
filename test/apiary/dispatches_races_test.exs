@@ -573,7 +573,7 @@ defmodule Apiary.DispatchesRacesTest do
       key = key!(ctx, pool)
 
       raised =
-        for round <- 1..6, reduce: [] do
+        for round <- 1..15, reduce: [] do
           raised ->
             # A run held for a fresh target with no record for the pool, and a lapsed
             # claimed prebuild of another collection of that target, whose record the

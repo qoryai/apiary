@@ -51,9 +51,7 @@ defmodule Apiary.Dispatches.Slots do
   #      `Apiary.Environments.hold_missing/3`, and the end of a prebuild handed over,
   #      `Apiary.Environments.hold_build/2`; a claim holds the connections and then the
   #      collections it queues a build of `FOR SHARE`, by id,
-  #      `Apiary.Environments.hold_builds/2`, and then inserts the missing environment
-  #      records of those collections for its pool, as 3. has a Rebuild insert one). A
-  #      path that
+  #      `Apiary.Environments.hold_builds/2`). A path that
   #      holds a work item after them holds it next: the end of a prebuild handed over,
   #      the work items whose runs wait for its build, `FOR KEY SHARE`, by id; the end of
   #      a run whose image was missing, its work item `FOR UPDATE`;
@@ -66,9 +64,16 @@ defmodule Apiary.Dispatches.Slots do
   #      one statement: a Rebuild locks every record of its collections before it queues
   #      one prebuild (`Apiary.Environments.rebuild/2`), and `free/2` the records of every
   #      prebuild whose dispatch lapsed in its scope, those of every batch, before its
-  #      first batch locks a run. It reads them before their lock, as a run's collection
-  #      and pool never change. A prebuild seen lapsed only after that statement, its
-  #      dispatch or its record committed after it, is taken only when its record is
+  #      first batch locks a run. A path inserts a missing record only after that
+  #      statement, by collection: a Rebuild's prebuild inserts the record of its pool
+  #      where there is none (`Apiary.Dispatches.queue_prebuild/3`), and a claim's free,
+  #      after its statement and before its first batch, inserts the missing records of
+  #      the collections it queues a build of (`Apiary.Environments.make_records/2`). A
+  #      lock statement never waits on an insert not yet committed, so two such paths
+  #      wait on each other only among their inserts, which both make in one order. The
+  #      free reads the records before their lock, as a run's collection and pool never
+  #      change. A prebuild seen lapsed only after that statement, its dispatch or its
+  #      record committed after it, is taken only when its record is
   #      already locked, and is left for the next free otherwise. The free of an undo or a
   #      close, of the runs of work items, locks none;
   #   4. the runs of the queue whose dispatch lapsed, `FOR UPDATE`, by id (`free/2`), and
@@ -86,9 +91,10 @@ defmodule Apiary.Dispatches.Slots do
   #   6. the dispatches.
   #
   # A claim (`Apiary.Dispatches`) keeps the order: the connections and the collections it
-  # queues a build of, and their missing records, as 1. and 3., then the pool's row, as
-  # 2., then the gateway's row `FOR SHARE`, then the free of its pool, then the prebuilds
-  # it queues, as 5., whose records exist by then, then the waiting run it takes, as 5.,
+  # queues a build of, as 1., then the pool's row, as 2., then the gateway's row
+  # `FOR SHARE`, then the free of its pool, which inserts the missing records of those
+  # collections after its record statement, as 3., then the prebuilds it queues, as 5.,
+  # whose records exist by then, then the waiting run it takes, as 5.,
   # and its dispatch, inserted; then, for an explore run, the rows of the model
   # providers its choices name and of their keys' secrets, each `FOR SHARE`
   # (`Apiary.Dispatches.RunSettings`), which no path that locks anything above locks
@@ -184,14 +190,22 @@ defmodule Apiary.Dispatches.Slots do
 
   # Frees what is due at `now` for the dispatches of `pool_id`, of every pool with `:all`,
   # or of the runs `ids` with `{:runs, ids}`, as the moduledoc says: the ids of the
-  # workspaces whose queue or slots changed.
+  # workspaces whose queue or slots changed. `records` runs once the environment records
+  # are locked and before any run is: a claim makes there the records of the builds it
+  # queues (`Apiary.Environments.make_records/2`), so it writes records before runs.
   @doc false
-  @spec free(Ecto.UUID.t() | :all | {:runs, [Ecto.UUID.t()]}, DateTime.t()) :: [Ecto.UUID.t()]
-  def free(pool, %DateTime{} = now)
-      when is_binary(pool) or pool == :all or
-             (is_tuple(pool) and tuple_size(pool) == 2 and elem(pool, 0) == :runs) do
+  @spec free(
+          Ecto.UUID.t() | :all | {:runs, [Ecto.UUID.t()]},
+          DateTime.t(),
+          (-> :ok)
+        ) :: [Ecto.UUID.t()]
+  def free(pool, %DateTime{} = now, records_made \\ fn -> :ok end)
+      when (is_binary(pool) or pool == :all or
+              (is_tuple(pool) and tuple_size(pool) == 2 and elem(pool, 0) == :runs)) and
+             is_function(records_made, 0) do
     in_transaction!()
     records = lock_records(pool, now)
+    :ok = records_made.()
     lapsed = lapse(pool, now, records, nil, [])
     ended = free_ended(pool, now)
     Enum.uniq(lapsed ++ ended)

@@ -90,8 +90,7 @@ defmodule Apiary.Dispatches do
   #   2. `dispatch.claim` asked of the key's workspace (`Apiary.Access`): any refusal is
   #      `{:error, :forbidden}`, one answer whatever its reason;
   #   3. the connections and then the collections a build for the pool is due for, held
-  #      `FOR SHARE`, by id, and the environment record of each for the pool made where
-  #      there is none (`Apiary.Environments.hold_builds/2`): the collections of the
+  #      `FOR SHARE`, by id (`Apiary.Environments.hold_builds/2`): the collections of the
   #      targets of the runs held for the pool's build (`Apiary.Environments.held/2`) with
   #      no prebuild of their `environment_ref` for the pool waiting, claimed or handed
   #      over; then the pool's
@@ -103,7 +102,10 @@ defmodule Apiary.Dispatches do
   #      read `FOR SHARE`, with its active keys: a choice that leads to no gateway,
   #      direct among them, is `{:error, :no_gateway}`
   #      (`Apiary.Dispatches.Handover.gateway/1`);
-  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/2`), then a prebuild of each
+  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which inserts the missing
+  #      environment records of the collections held at 3 for the pool once it has locked
+  #      the records of the lapsed prebuilds and before it locks a run
+  #      (`Apiary.Environments.make_records/2`), then a prebuild of each
   #      collection held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
@@ -672,7 +674,7 @@ defmodule Apiary.Dispatches do
              builds = Environments.hold_builds(key.workspace_id, key.node_id),
              {:ok, pool} <- lock_pool(key),
              {:ok, gateway, keys} <- Handover.gateway(pool) do
-          freed = Slots.free(pool.id, now)
+          freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool.id) end)
           queued = Environments.queue_builds(builds, pool)
           through = %{gateway: gateway, keys: keys, body: body}
 
