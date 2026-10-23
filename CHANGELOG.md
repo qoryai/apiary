@@ -25,6 +25,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   daily job, a new grace period to what is deleted after it, and a new number of
   invitations at once. Each change is an `instance.configure` entry in the trail of the
   instance's organisation, with the values before and after.
+- `bin/apiary eval 'Apiary.Release.demo()'` loads synthetic runs, people and nodes into a new
+  instance set up with the organisation name Acme, to try Qory Apiary with data in it
+  (`guides/install.md`, "Load the demo into a test instance"). It writes nothing when the
+  instance is not set up, its organisation is not Acme, or its workspace Main already has
+  runs or nodes.
+- Qory Apiary keeps each step of a run from `dev.qory.run.step_started` and
+  `dev.qory.run.step_exited`: a fetch, compose, image, setup, join or wall, with its state,
+  exit code and duration, and its log lines under the step's number.
 
 ### Changed
 
@@ -47,6 +55,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   address with a NUL in it is refused with the address's error, not a server error.
 - The AWS CloudFormation template is removed. A Qory Apiary release no longer attaches
   `apiary.yaml`.
+- Forager opens a run once, at its gateway, and each session joins it. The events endpoint
+  takes `dev.qory.run.started` only with `opened_by` `run`, and each session as
+  `dev.qory.session.started` and `dev.qory.session.exited`. A batch with a
+  `dev.qory.run.started` whose `opened_by` is absent or `session`, as Forager 0.7.0 sends
+  it, gets `400 invalid_request`. Qory Apiary reads runtime events under their
+  `dev.qory.runtime.*` names, and a run's runtime is that of its last session. A run
+  recorded before the upgrade keeps its runtime, cost and log, and its Timeline shows no
+  prompts, turns or results. Do not run `Apiary.Release.rebuild()` after this upgrade: it
+  clears the runtime and cost of those runs, and the command, arguments, folder, image and
+  terminal size.
+- A gateway's address follows the contracts' rule: `https://`, a host name or an IPv6
+  address in brackets, an optional port, and nothing after them, at most 300 characters.
+  Before, an address could end in a dot and be up to 2,048 characters long. Qory Apiary does
+  not start while a gateway's address breaks the rule: the migration stops, lists those
+  gateways' ids, deleted gateways included, and changes nothing. Give each gateway that is
+  not deleted a new address in its **Settings › General** on the release before, then
+  start the upgrade again.
 <!-- feature: secrets -->
 - An integration description is refused when it goes past the limits the integration
   contract states (1024 list entries, 1024 members in an object, 4096 values, strings of
