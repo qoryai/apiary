@@ -487,7 +487,7 @@ The answers, in order; the first that applies is the answer:
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not an outcome, or breaks a rule | `{"error":"invalid_request","names":["<member>"]}` |
 | `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
-| `404` | the key may not post (`run.post_events`), or the run is of a workspace's queue, which a node pool claimed: such a run takes no outcome | `{"error":"not_found"}` |
+| `404` | the key may not post (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: the same outcome again, the same state and reason after the rules above, whatever its bytes or `time`, under any active key of the run's node; nothing changes | `{"version":1}` |
 | `404` | the workspace holds no run of this id, the run is another node's, or retention has pruned its events | `{"error":"not_found"}` |
 | `409` | the run was given another outcome, another state or reason: each run gets one | `{"error":"outcome_given"}` |
