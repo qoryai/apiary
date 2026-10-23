@@ -18,6 +18,7 @@ defmodule Apiary.DispatchesTest do
   alias Apiary.{AccessKeys, Dispatches, Nodes}
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
+  alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.WorkItems.WorkItem
 
@@ -975,6 +976,113 @@ defmodule Apiary.DispatchesTest do
       assert Dispatches.sweep(DateTime.add(dispatch.lease_until, 60, :second)) == []
       assert %Dispatch{stale_at: nil, slot_freed_at: nil} = dispatch!(dispatch)
       assert run!(run).state == :handed_over
+    end
+  end
+
+  describe "the sweep and a deleted pool's prebuilds" do
+    @describetag needs: :factory
+
+    setup ctx do
+      %{collection: collection_fixture(ctx.scope), deleted: pool_fixture(ctx.scope)}
+    end
+
+    defp queue_prebuild!(collection, pool) do
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, "env-1") end)
+      run
+    end
+
+    # A waiting run of a fresh work item in Explore with the collection's target.
+    defp held!(ctx) do
+      ctx.scope
+      |> work_item_fixture(%{
+        target_system: ctx.collection.target_system,
+        target_path: ctx.collection.target_path
+      })
+      |> queue!()
+    end
+
+    defp record!(collection, pool),
+      do: Repo.get_by!(Record, source_collection_id: collection.id, pool_id: pool.id)
+
+    test "ends its waiting prebuild lost, records the build failed, lost, and ends the held runs build_failed",
+         ctx do
+      prebuild = queue_prebuild!(ctx.collection, ctx.deleted)
+      mine = queue_prebuild!(ctx.collection, ctx.pool)
+      held = held!(ctx)
+      unheld = queued!(ctx.scope)
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)
+      :ok = Dispatches.subscribe(ctx.scope.workspace.id)
+
+      assert ctx.scope.workspace.id in Dispatches.sweep(Dispatches.now())
+
+      assert %DispatchRun{state: :ended, end_cause: :lost} = run!(prebuild)
+
+      assert %Record{failure_cause: :lost, failure_reason: nil, failed_at: %DateTime{}} =
+               record!(ctx.collection, ctx.deleted)
+
+      assert %DispatchRun{state: :ended, end_cause: :build_failed, result_outcome: :error} =
+               run!(held)
+
+      # The live pool's prebuild and a run of another target wait.
+      assert run!(mine).state == :waiting
+      assert run!(unheld).state == :waiting
+      assert_received {Dispatches, :changed}
+
+      # A second sweep ends nothing more.
+      assert Dispatches.sweep(Dispatches.now()) == []
+    end
+
+    test "ends no held run while a live pool has the image for the target", ctx do
+      prebuild = queue_prebuild!(ctx.collection, ctx.deleted)
+      held = held!(ctx)
+
+      Repo.insert!(%Record{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        pool_id: ctx.pool.id,
+        source_collection_id: ctx.collection.id,
+        image: "registry.example.com/acme/env@sha256:" <> String.duplicate("3b9d", 16),
+        size: 734_003_200,
+        commit: "9c1e4a7b",
+        built_at: DateTime.utc_now(),
+        reported_ref: "env-1",
+        built_ref: "env-1",
+        built_target_system: ctx.collection.target_system,
+        built_target_path: ctx.collection.target_path
+      })
+
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)
+      Dispatches.sweep(Dispatches.now())
+
+      assert %DispatchRun{state: :ended, end_cause: :lost} = run!(prebuild)
+      assert %Record{failure_cause: :lost} = record!(ctx.collection, ctx.deleted)
+      assert run!(held).state == :waiting
+    end
+
+    test "ends a prebuild claimed before the deletion once its lease lapses, with its dispatch",
+         ctx do
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.deleted)
+      prebuild = queue_prebuild!(ctx.collection, ctx.deleted)
+
+      assert {:ok, %{run: %{id: id}, dispatch: dispatch}} =
+               Dispatches.claim(key, Dispatches.now())
+
+      assert id == prebuild.id
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)
+
+      # Before its lease lapses, the claimed prebuild is left as it is.
+      Dispatches.sweep(DateTime.add(dispatch.lease_until, -1, :second))
+      assert run!(prebuild).state == :claimed
+
+      Dispatches.sweep(dispatch.lease_until)
+
+      assert %DispatchRun{state: :ended, end_cause: :lost} = run!(prebuild)
+
+      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: %DateTime{}} =
+               ended = dispatch!(dispatch)
+
+      assert {ended.end_cause, ended.ended_at} == {:run_ended, dispatch.lease_until}
+      assert Slots.held(ctx.deleted.id) == 0
     end
   end
 

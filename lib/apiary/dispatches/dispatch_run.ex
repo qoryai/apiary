@@ -55,9 +55,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   # a prebuild, by an outcome stored on it before a run of the queue was refused one, and
   # a stale
   # dispatch with its run; `lost`, a handed-over run the liveness
-  # check ended; `collection_ended`, the collection of a prebuild ended, was assigned to
-  # none or to another workspace, has no target or no `environment_ref`, or its
-  # connection ended, before its handover; `superseded`, a claimed prebuild whose lease
+  # check ended, or a waiting prebuild of a deleted node pool, which the sweep ended
+  # (`Apiary.Dispatches.end_deleted_prebuilds/1`); `collection_ended`, the collection of
+  # a prebuild ended, was assigned to none or to another workspace, has no target or no
+  # `environment_ref`, or its connection ended, before its handover; `superseded`, a claimed prebuild whose lease
   # lapsed while another prebuild of its collection, pool and `environment_ref` waited or
   # went back to waiting (`Apiary.Dispatches.Slots`), or a prebuild a claim took whose
   # `environment_ref` is no longer its collection's (`Apiary.Dispatches`); `variables_invalid`, `ticket_gone` and

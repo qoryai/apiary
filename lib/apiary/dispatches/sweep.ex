@@ -8,7 +8,9 @@ defmodule Apiary.Dispatches.Sweep do
   # queue; an ended dispatch whose slot is still held has it freed. Whatever the state of
   # the pool or of the key that claimed it, so the run of a deleted pool or of a revoked
   # key waits for the workspace's other pools. A claim frees what is due on its pool
-  # first too; the sweep frees the rest, of pools that claim nothing. Oban's cron plugin
+  # first too; the sweep frees the rest, of pools that claim nothing. It then ends the
+  # waiting prebuilds of deleted pools, `lost`, which no pool can claim
+  # (`Apiary.Dispatches.end_deleted_prebuilds/1`). Oban's cron plugin
   # enqueues it every minute, from the crontab the application starts Oban with; it is the
   # instance's work and names no organisation. Run twice, the second run frees nothing
   # more. Its clock is the queue's (`Apiary.Dispatches.now/0`).

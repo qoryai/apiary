@@ -34,7 +34,8 @@ defmodule Apiary.Dispatches.Slots do
   #   revoked key's dispatch lapses at its `lease_until` as any other does. Its run then
   #   waits for the workspace's other pools, unless it is a prebuild: a lapsed prebuild
   #   waits again or ends as above, and the one that waits is still held for its pool,
-  #   which alone may claim it.
+  #   which alone may claim it. A deleted pool claims nothing: the sweep ends its waiting
+  #   prebuilds `lost` (`Apiary.Dispatches.end_deleted_prebuilds/1`).
   #   It answers the ids of the workspaces whose queue or slots changed, for the caller to
   #   tell once its transaction commits (`Apiary.Dispatches.broadcast/1`).
   # - `free_slot/2` frees one dispatch's slot, for the paths that end a dispatch.
@@ -131,6 +132,10 @@ defmodule Apiary.Dispatches.Slots do
   # of the queue, its registered run and its dispatches; then, for a first loss of its
   # ref, the prebuild it queues again, as 5., or, for a failure, the waiting runs of those
   # work items it ends `build_failed`; then the free of its run, which finds none lapsed.
+  # The sweep's end of a waiting prebuild of a deleted pool
+  # (`Apiary.Dispatches.end_deleted_prebuilds/1`) holds the same rows in the same order,
+  # then locks the run of the queue, its dispatches, and the waiting runs it ends
+  # `build_failed`.
   # The end of any other run handed over, by the check or by an exit's projection, holds
   # its work item `FOR KEY SHARE` in place of the rows before the record, then the same.
   # The end of such a run whose exit says its image was missing first holds the
