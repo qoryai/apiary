@@ -58,9 +58,6 @@ defmodule Apiary.Application do
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Source.boot!()
     ApiaryWeb.Features.boot!()
-    # The machines file: one that is missing, cannot be read or breaks its rules stops the
-    # boot too.
-    Apiary.Dispatches.MachinesFile.boot!()
     # With the `registry` feature: a missing or malformed QORY_REGISTRY, and a registry
     # signing key that is missing or not a P-256 key, stop the boot too.
     Apiary.Registry.boot!()

@@ -19,7 +19,6 @@ defmodule Apiary.Stacks.ResolutionTest do
       workspace_id: @workspace,
       target_id: Keyword.get(opts, :target_id, @target),
       workflow: "explore",
-      default: Keyword.get(opts, :default, "software-standard"),
       operated: Keyword.get(opts, :operated, false),
       single_organisation: Keyword.get(opts, :single_organisation, true)
     }
@@ -63,7 +62,7 @@ defmodule Apiary.Stacks.ResolutionTest do
       end
     end
 
-    test "every stored level wins over the instance default" do
+    test "each stored level applies alone" do
       for level <- Stack.levels() do
         assert resolved(input([at(level)])).level == level
       end
@@ -77,24 +76,20 @@ defmodule Apiary.Stacks.ResolutionTest do
       assert resolution.level == :workspace_workflow
     end
 
-    test "the instance default applies when no level has a stack" do
-      resolution = resolved(input([]))
+    test "a resolution has the stack, the workflow, the level and the owner" do
+      stack = at(:workspace_workflow, stack: "software-standard")
 
-      assert resolution == %Resolution{
+      assert resolved(input([stack])) == %Resolution{
                stack: "software-standard",
                workflow: "explore",
-               level: :instance,
+               level: :workspace_workflow,
                owner: :instance,
                harness_hidden: false
              }
     end
 
-    test "no stack at any level and no default is none" do
-      assert Resolution.resolve(input([], default: nil)) == :none
-    end
-
-    test "a stored level applies without an instance default" do
-      assert resolved(input([at(:organisation)], default: nil)).level == :organisation
+    test "no stack at any level is none" do
+      assert Resolution.resolve(input([])) == :none
     end
 
     test "a run without a target skips both target levels" do
@@ -111,7 +106,7 @@ defmodule Apiary.Stacks.ResolutionTest do
         at(:organisation, organisation_id: @other_organisation)
       ]
 
-      assert resolved(input(stacks)).level == :instance
+      assert Resolution.resolve(input(stacks)) == :none
     end
   end
 
@@ -131,12 +126,12 @@ defmodule Apiary.Stacks.ResolutionTest do
 
   describe "harness_hidden" do
     test "is false for a name on an instance of one organisation" do
-      refute resolved(input([])).harness_hidden
       refute resolved(input([at(:workspace, stack: "software-standard")])).harness_hidden
     end
 
     test "is true for a name on an instance of more than one organisation" do
-      assert resolved(input([], single_organisation: false)).harness_hidden
+      stack = at(:workspace, stack: "software-standard")
+      assert resolved(input([stack], single_organisation: false)).harness_hidden
     end
 
     test "is false for a reference saved by the run's organisation" do
@@ -157,7 +152,9 @@ defmodule Apiary.Stacks.ResolutionTest do
     test "is true for an operated organisation, whoever owns the stack" do
       saved_by_run = at(:workspace, stack: @reference, saved_by_organisation_id: @organisation)
 
-      assert resolved(input([], operated: true)).harness_hidden
+      name = at(:workspace, stack: "software-standard")
+
+      assert resolved(input([name], operated: true)).harness_hidden
       assert resolved(input([saved_by_run], operated: true)).harness_hidden
     end
   end

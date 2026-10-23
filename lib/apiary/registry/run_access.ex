@@ -55,11 +55,11 @@ defmodule Apiary.Registry.RunAccess do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Features, InstanceConfig, Policy, Registry, Repo}
-  alias Apiary.Dispatches.{DispatchRun, MachinesFile}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
   alias Apiary.Registry.{Credential, Names}
   alias Apiary.Runs.{ProviderCredential, Run, Target}
@@ -203,7 +203,7 @@ defmodule Apiary.Registry.RunAccess do
              select: {d.environment_ref, p.public_id}
          ) do
       {ref, pool} when is_binary(ref) ->
-        key = environment_key(run, target_id, ref, machine(run) || pool)
+        key = environment_key(run, target_id, ref, pool)
 
         with instance when is_binary(instance) <- InstanceConfig.registry_instance(),
              do: Names.environment_name(instance, run.organisation_id, key)
@@ -216,10 +216,10 @@ defmodule Apiary.Registry.RunAccess do
   defp environment_name(_run, _target_id), do: nil
 
   # `<key>` for `run` (`Apiary.Registry.Names.environment_key/5`): its organisation, the
-  # `environment_ref` it builds, its machine kind, and the hosts of the run configuration
-  # in force for its target `target_id`: the `egress.allow` and `egress.allow_first` of
-  # its `security_policy`, and the hosts of its credentials, the model provider's and the
-  # registry credential's.
+  # `environment_ref` it builds, the public id of its node pool as its machine kind, and
+  # the hosts of the run configuration in force for its target `target_id`: the
+  # `egress.allow` and `egress.allow_first` of its `security_policy`, and the hosts of its
+  # credentials, the model provider's and the registry credential's.
   defp environment_key(run, target_id, environment_ref, machine) do
     egress =
       case Policy.in_force(run.organisation_id, run.workspace_id, target_id) do
@@ -249,20 +249,6 @@ defmodule Apiary.Registry.RunAccess do
 
       _none ->
         []
-    end
-  end
-
-  # The machine kind the machines file sets for the run's workspace, nil for none.
-  defp machine(run) do
-    case Repo.one(
-           from w in Workspace,
-             join: o in Organisation,
-             on: o.id == w.organisation_id,
-             where: w.id == ^run.workspace_id,
-             select: {o.slug, w.slug}
-         ) do
-      {organisation, workspace} -> MachinesFile.machine(organisation, workspace)
-      nil -> nil
     end
   end
 

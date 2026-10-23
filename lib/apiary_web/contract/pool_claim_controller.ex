@@ -25,11 +25,10 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #   5. a run claimed is `200`, signed, with `Cache-Control: no-store, no-transform`:
   #      the contract's `claim-answer.schema.json`, its `revision` the request's, inside
   #      the signed body. The answer is the machine request: `dispatch_id`, `pool_id`
-  #      (the key's node pool), `lease_until`, `machine`, `run_code`, `gateway_url` and
+  #      (the key's node pool), `lease_until`, `run_code`, `gateway_url` and
   #      `max_lifetime_minutes`, and nothing of the run, its id, its step, its target or
-  #      its work item. `machine` is the machine type of the
-  #      workspace's entry in the machines file (`Apiary.Dispatches.MachinesFile`), and
-  #      absent without one. `run_code` is the code the machine redeems for the run's key
+  #      its work item. The answer has no `machine`, so the starter uses its default
+  #      machine type. `run_code` is the code the machine redeems for the run's key
   #      (`Apiary.Runs.RunCode`), given once, in this answer, and logged nowhere;
   #      `gateway_url` is the address of the gateway the pool's choice resolved to at the
   #      claim, the run key's `gateway_url`, which the run key is made only for when it
@@ -199,21 +198,16 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   defp answer(conn, %{dispatch: dispatch, pool: pool} = claimed) do
     body =
       Jason.encode!(
-        Jason.OrderedObject.new(
-          [
-            {"version", 1},
-            {"revision", conn.assigns.contract_version},
-            {"dispatch_id", dispatch.public_id},
-            {"pool_id", pool.public_id},
-            {"lease_until", DispatchAnswer.time(dispatch.lease_until)}
-          ] ++
-            DispatchAnswer.machine(conn.assigns.access_key) ++
-            [
-              {"run_code", claimed.run_code},
-              {"gateway_url", claimed.gateway_url},
-              {"max_lifetime_minutes", lifetime_minutes(claimed.run)}
-            ]
-        )
+        Jason.OrderedObject.new([
+          {"version", 1},
+          {"revision", conn.assigns.contract_version},
+          {"dispatch_id", dispatch.public_id},
+          {"pool_id", pool.public_id},
+          {"lease_until", DispatchAnswer.time(dispatch.lease_until)},
+          {"run_code", claimed.run_code},
+          {"gateway_url", claimed.gateway_url},
+          {"max_lifetime_minutes", lifetime_minutes(claimed.run)}
+        ])
       )
 
     conn

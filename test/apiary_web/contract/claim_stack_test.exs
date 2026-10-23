@@ -1,12 +1,10 @@
-defmodule ApiaryWeb.Contract.MachinesAnswerTest do
-  # The claim answer's `machine`, from the entry of the run's workspace in the machines
-  # file (`Apiary.Dispatches.MachinesFile`), as a node pool's starter receives it: absent
-  # without a file or an entry or with an entry of a stack alone, present for an explore
-  # run and a prebuild alike; each answer valid under the vendored
-  # `claim-answer.schema.json`, so the module is tagged `:contract`. The run's documents
-  # have the entry's workflow, the stack that resolves (`Apiary.Stacks`) and
-  # `harness_hidden` for an explore run, and none of the three for a prebuild. Not async:
-  # the file read at boot and the features are the whole node's.
+defmodule ApiaryWeb.Contract.ClaimStackTest do
+  # The claim answer as a node pool's starter receives it, with no `machine`, and the
+  # run's documents: for an explore run, the workflow of the one stack row with a
+  # workflow at the run's places, the stack that resolves (`Apiary.Stacks`) and
+  # `harness_hidden`; none of the three with no such row, with two, and for a prebuild.
+  # Each answer is valid under the vendored `claim-answer.schema.json`, so the module is
+  # tagged `:contract`. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
@@ -16,12 +14,10 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo, Stacks}
-  alias Apiary.Dispatches.MachinesFile
   alias Apiary.Runs.Target
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
-  @moduletag :tmp_dir
   @moduletag :contract
 
   @vendored Path.expand("../../fixtures/contract", __DIR__)
@@ -56,41 +52,18 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   @stack "core"
   @reference "https://code.example.com/team/stacks#main:core"
 
-  setup %{tmp_dir: dir} do
-    setting = Application.fetch_env(:apiary, :machines_file_setting)
-    file = Application.fetch_env(:apiary, :machines_file)
-
-    on_exit(fn ->
-      restore(:machines_file_setting, setting)
-      restore(:machines_file, file)
-    end)
-
+  setup do
     Process.put(:now_time, {SignedRequest.now(), 0})
     %{scope: scope} = sign_up_fixture()
 
     scope
     |> handover_place_fixture()
-    |> Map.merge(%{
-      scope: scope,
-      dir: dir,
-      place: "#{scope.organisation.slug}/#{scope.workspace.slug}"
-    })
+    |> Map.put(:scope, scope)
   end
 
-  defp restore(key, {:ok, value}), do: Application.put_env(:apiary, key, value)
-  defp restore(key, :error), do: Application.delete_env(:apiary, key)
-
-  # Boots with a machines file of `workspaces`, its machine types small and large.
-  defp machines!(ctx, workspaces) do
-    path = Path.join(ctx.dir, "machines.json")
-    File.write!(path, Jason.encode!(%{"machines" => ~w(small large), "workspaces" => workspaces}))
-    Application.put_env(:apiary, :machines_file_setting, path)
-    MachinesFile.boot!()
-  end
-
-  defp no_file! do
-    Application.put_env(:apiary, :machines_file_setting, nil)
-    nil = MachinesFile.boot!()
+  # Stores the workspace's stack row for the workflow `hello`, with `stack`.
+  defp workflow!(ctx, stack \\ @stack) do
+    {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "hello"}, stack)
   end
 
   # A request's time, one second earlier for each request the test sends, so no two
@@ -176,21 +149,12 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
   @code ~w(run_code gateway_url max_lifetime_minutes)
 
   describe "an explore run" do
-    test "without a file has no machine", ctx do
-      no_file!()
-      explore!(ctx)
-      assert members(claim(ctx)) == @claim ++ @code
-    end
-
-    test "of a workspace with a machine and a stack has the machine", ctx do
-      machines!(ctx, %{
-        ctx.place => %{"machine" => "large", "stack" => @stack, "workflow" => "hello"}
-      })
-
+    test "with one stack row with a workflow has that workflow and its stack, and no machine",
+         ctx do
+      workflow!(ctx)
       explore!(ctx)
       claim = claim(ctx)
-      assert members(claim) == @claim ++ ~w(machine) ++ @code
-      assert Jason.decode!(claim)["machine"] == "large"
+      assert members(claim) == @claim ++ @code
       documents = documents(claim)
       assert %{"stack" => "core", "workflow" => "hello", "harness_hidden" => false} = documents
       assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
@@ -198,7 +162,6 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
 
     test "has the reference its target's level sets, shown to the organisation that saved it",
          ctx do
-      machines!(ctx, %{ctx.place => %{"stack" => @stack, "workflow" => "hello"}})
       {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "hello"}, @reference)
 
       explore!(ctx)
@@ -211,9 +174,10 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
     end
 
     test "hides the harness of a reference another organisation saved", ctx do
-      machines!(ctx, %{ctx.place => %{"stack" => @stack, "workflow" => "hello"}})
       %{scope: other} = sign_up_fixture()
-      {:ok, _stack} = Stacks.put_stack(other, {:workspace, ctx.scope.workspace}, @reference)
+
+      {:ok, _stack} =
+        Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "hello"}, @reference)
 
       explore!(ctx)
       documents = documents(claim(ctx))
@@ -224,60 +188,41 @@ defmodule ApiaryWeb.Contract.MachinesAnswerTest do
       assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
     end
 
-    test "of a workspace with a machine alone has the machine", ctx do
-      machines!(ctx, %{ctx.place => %{"machine" => "small"}})
+    test "with no stack row with a workflow has no stack, whatever its levels set, and no machine",
+         ctx do
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, "x")
+
       explore!(ctx)
       claim = claim(ctx)
-      assert members(claim) == @claim ++ ~w(machine) ++ @code
-      assert Jason.decode!(claim)["machine"] == "small"
+      assert members(claim) == @claim ++ @code
       documents = documents(claim)
       refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
       assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
     end
 
-    test "of a workspace with no workflow in the file has no stack, whatever its levels set",
-         ctx do
-      machines!(ctx, %{ctx.place => %{"machine" => "small"}})
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+    test "with two stack rows with a workflow has no stack", ctx do
+      workflow!(ctx)
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "review"}, @stack)
 
       explore!(ctx)
-      documents = documents(claim(ctx))
+      claim = claim(ctx)
+      assert members(claim) == @claim ++ @code
+      documents = documents(claim)
       refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
-    end
-
-    test "of a workspace with a stack alone has no machine", ctx do
-      machines!(ctx, %{ctx.place => %{"stack" => @stack, "workflow" => "hello"}})
-      explore!(ctx)
-      assert members(claim(ctx)) == @claim ++ @code
-    end
-
-    test "of a workspace not in the file has no machine", ctx do
-      other = "#{ctx.scope.organisation.slug}/other-#{System.unique_integer([:positive])}"
-
-      machines!(ctx, %{
-        other => %{"machine" => "small", "stack" => @stack, "workflow" => "hello"}
-      })
-
-      explore!(ctx)
-      assert members(claim(ctx)) == @claim ++ @code
     end
   end
 
   describe "a prebuild" do
-    test "of a workspace with a machine and a stack has the machine and no stack", ctx do
-      machines!(ctx, %{
-        ctx.place => %{"machine" => "small", "stack" => @stack, "workflow" => "hello"}
-      })
-
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+    test "of a workspace with a stack row with a workflow has no machine and no stack", ctx do
+      workflow!(ctx, @reference)
       collection = collection_fixture(ctx.scope)
 
       {:ok, _run} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
       claim = claim(ctx)
-      assert members(claim) == @claim ++ ~w(machine) ++ @code
-      assert Jason.decode!(claim)["machine"] == "small"
+      assert members(claim) == @claim ++ @code
       documents = documents(claim)
       refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}

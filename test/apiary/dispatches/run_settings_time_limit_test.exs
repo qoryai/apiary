@@ -1,60 +1,32 @@
 defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   # The `time_limit_minutes` of an explore run's `run_settings`
   # (`Apiary.Dispatches.RunSettings`): the minutes the time limits of the run's target and
-  # workspace come to for the workflow of the workspace's entry in the machines file, the
-  # last member, and absent with no limit or no workflow; and the model choices of that
-  # workflow, which apply only to its runs. Not async: the file read at boot and the
-  # features are the whole node's.
+  # workspace come to for the run's workflow, read from the one stack row with a workflow
+  # (`Apiary.Stacks.workflow/2`), the last member, and absent with no limit or no
+  # workflow; and the model choices of that workflow, which apply only to its runs. Not
+  # async: the features are the whole node's.
   use Apiary.DataCase, async: false
 
   import Apiary.DispatchedRunsFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, TimeLimits}
-  alias Apiary.Dispatches.MachinesFile
+  alias Apiary.{Connections, Dispatches, ModelChoices, Stacks, TimeLimits}
   alias Apiary.Runs.{Run, Target}
 
   @moduletag needs: :factory
-  @moduletag :tmp_dir
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @stack "core"
 
-  setup %{tmp_dir: dir} do
-    setting = Application.fetch_env(:apiary, :machines_file_setting)
-    file = Application.fetch_env(:apiary, :machines_file)
-
-    on_exit(fn ->
-      restore(:machines_file_setting, setting)
-      restore(:machines_file, file)
-    end)
-
+  setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope, dir: dir}
+    %{scope: scope}
   end
 
-  defp restore(key, {:ok, value}), do: Application.put_env(:apiary, key, value)
-  defp restore(key, :error), do: Application.delete_env(:apiary, key)
-
-  # Boots with a machines file whose entry for the scope's workspace has the stack and
-  # `workflow`.
-  defp workflow!(%{scope: scope, dir: dir}, workflow) do
-    path = Path.join(dir, "machines.json")
-    place = "#{scope.organisation.slug}/#{scope.workspace.slug}"
-
-    File.write!(
-      path,
-      Jason.encode!(%{"workspaces" => %{place => %{"stack" => @stack, "workflow" => workflow}}})
-    )
-
-    Application.put_env(:apiary, :machines_file_setting, path)
-    MachinesFile.boot!()
-  end
-
-  defp no_file! do
-    Application.put_env(:apiary, :machines_file_setting, nil)
-    nil = MachinesFile.boot!()
+  # Stores the workspace's stack row for `workflow`: the run's one row with a workflow.
+  defp workflow!(%{scope: scope}, workflow) do
+    {:ok, _stack} = Stacks.put_stack(scope, {:workspace, scope.workspace, workflow}, @stack)
   end
 
   # A fresh work item's explore run, queued and claimed under `place`'s pool key: what
@@ -87,13 +59,15 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     })
   end
 
-  describe "with the workspace's workflow in the machines file" do
+  describe "with one stack row with a workflow" do
     test "sends the workspace's limit after the runtime, and the run keeps it", ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
       claimed = claim!(ctx, place)
+
+      assert claimed.stack == %{stack: @stack, workflow: "hello", harness_hidden: false}
 
       assert settings(claimed) == %{"runtime" => "claude", "time_limit_minutes" => 90}
       assert keys(claimed) == ~w(runtime time_limit_minutes)
@@ -179,8 +153,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       assert %{"model" => "claude-haiku-5-5"} = settings(claim!(ctx, place))
     end
 
-    test "do not apply without a machines file", ctx do
-      no_file!()
+    test "do not apply without a stack row with a workflow", ctx do
       place = handover_place_fixture(ctx.scope, allow_secrets: true)
       ctx.choose.({:workspace, "hello"}, "claude-sonnet-5-5")
 
@@ -188,11 +161,24 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     end
   end
 
-  test "without a machines file, the member is absent whatever the limits", ctx do
-    no_file!()
+  test "without a stack row with a workflow, the member is absent whatever the limits", ctx do
     place = handover_place_fixture(ctx.scope)
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
-    assert settings(claim!(ctx, place)) == %{"runtime" => "claude"}
+
+    claimed = claim!(ctx, place)
+    assert settings(claimed) == %{"runtime" => "claude"}
+    assert claimed.stack == nil
+  end
+
+  test "with two stack rows with a workflow, the member is absent whatever the limits", ctx do
+    workflow!(ctx, "hello")
+    {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx.scope), "hello"}, @stack)
+    place = handover_place_fixture(ctx.scope)
+    {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+
+    claimed = claim!(ctx, place)
+    assert settings(claimed) == %{"runtime" => "claude"}
+    assert claimed.stack == nil
   end
 
   describe "with the feature factory off" do

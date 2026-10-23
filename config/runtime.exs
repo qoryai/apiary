@@ -167,15 +167,6 @@ if config_env() != :test do
   config :apiary, :machine_logs_dir, System.get_env("APIARY_MACHINE_LOGS_DIR")
 end
 
-# APIARY_MACHINES_FILE is the path of the machines file, a JSON file with the machine type
-# names and, per workspace, the machine type and the stack a node pool's starter is given
-# for the workspace's runs (`Apiary.Dispatches.MachinesFile`). Unset or blank, no answer
-# to a starter has either. `Apiary.Dispatches.MachinesFile.boot!/0` reads the file at
-# boot and stops a boot it refuses. Not read under test: the tests set it.
-if config_env() != :test do
-  config :apiary, :machines_file_setting, System.get_env("APIARY_MACHINES_FILE")
-end
-
 # QORY_REGISTRY is the private image registry's address, with the opt-in feature
 # registry: a host and an optional port, with no scheme or path, for example
 # registry.qory.example. Its signing key is registry-token.key in APIARY_KEYS_DIR

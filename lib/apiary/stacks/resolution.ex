@@ -6,11 +6,9 @@ defmodule Apiary.Stacks.Resolution do
   #
   # **The order.** The five stored levels, the most specific first
   # (`Apiary.Stacks.Stack.levels/0`): the target and the workflow, the target, the
-  # workspace and the workflow, the workspace, the organisation's default. Then the
-  # instance default: the stack name of the workspace's entry in the machines file
-  # (`Apiary.Dispatches.MachinesFile.stack/2`). The first level with a stack wins; a level
-  # without one passes to the next. A run with no target has no target levels. No stack
-  # at any level resolves to `:none`.
+  # workspace and the workflow, the workspace, the organisation's default. The first
+  # level with a stack wins; a level without one passes to the next. A run with no target
+  # has no target levels. No stack at any level resolves to `:none`.
   #
   # **The owner.** A name's owner is the instance, whoever saved it. A reference's owner is
   # the organisation of the person who saved it, when that person saved it as a member
@@ -31,8 +29,8 @@ defmodule Apiary.Stacks.Resolution do
   @typedoc """
   What a resolution reads: the stacks of the run's organisation (rows of other places and
   workflows are left out here), the run's organisation, workspace, target (nil for none)
-  and workflow, the instance default (nil for none), whether the run's organisation is
-  operated, and whether the instance has one organisation.
+  and workflow, whether the run's organisation is operated, and whether the instance has
+  one organisation.
   """
   @type input :: %{
           required(:stacks) => [Stack.t()],
@@ -40,13 +38,12 @@ defmodule Apiary.Stacks.Resolution do
           required(:workspace_id) => Ecto.UUID.t(),
           required(:target_id) => Ecto.UUID.t() | nil,
           required(:workflow) => String.t(),
-          required(:default) => String.t() | nil,
           required(:operated) => boolean,
           required(:single_organisation) => boolean
         }
 
-  @typedoc "The level a resolved stack came from: a stored level, or the instance default."
-  @type level :: Stack.level() | :instance
+  @typedoc "The level a resolved stack came from."
+  @type level :: Stack.level()
 
   @typedoc "The owner of a stack: the instance, an organisation's id, or nil for one deleted."
   @type owner :: :instance | Ecto.UUID.t() | nil
@@ -85,7 +82,7 @@ defmodule Apiary.Stacks.Resolution do
         end)
       end)
 
-    case found || default(input) do
+    case found do
       {level, stack, owner} ->
         {:ok,
          %__MODULE__{
@@ -108,9 +105,6 @@ defmodule Apiary.Stacks.Resolution do
   def owner(%Stack{stack: stack, saved_by_organisation_id: saved_by}) do
     if Contract.Stack.name?(stack), do: :instance, else: saved_by
   end
-
-  defp default(%{default: nil}), do: nil
-  defp default(%{default: name}), do: {:instance, name, :instance}
 
   # The level of `stack` for the run, or nil for a stack of another place or workflow.
   defp place(%Stack{} = stack, input) do
