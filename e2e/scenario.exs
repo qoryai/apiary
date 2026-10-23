@@ -154,8 +154,20 @@ defmodule E2E do
 
     run = Repo.get!(Run, connection.run_id)
     # Forager writes a policy applied event as the run opens and one as each session
-    # joins, both under the run configuration in force. This run has one session.
-    [opened, first] = applied(run)
+    # joins, both under the run configuration in force. This run has one session, and its
+    # join's event can be stored after the denied connection.
+    [opened, first] =
+      await(
+        "the policy applied events of the run's open and its session's join",
+        budget_ms + 30_000,
+        session_task,
+        fn ->
+          case applied(run) do
+            [_, _] = events -> events
+            _ -> nil
+          end
+        end
+      )
 
     unless opened.data["run_configuration"] == first.data["run_configuration"],
       do: fail("the run's open and its session's join applied different run configurations")

@@ -20,10 +20,10 @@ the sink.
 
 It leaves with status 0 only when every assertion held, and prints the timings:
 
-    allow -> policy applied after the allow, seen stored here   6.11 s
-    allow -> allowed connection, seen stored here               6.11 s   (budget 35 s)
-    deny  -> policy applied after the deny, seen stored here    4.97 s
-    deny  -> denied connection, seen stored here                4.98 s   (budget 35 s)
+    allow -> policy applied after the allow, seen stored here     6.11 s
+    allow -> allowed connection, seen stored here                 6.11 s   (budget 35 s)
+    deny  -> policy applied after the deny, seen stored here      4.97 s
+    deny  -> denied connection, seen stored here                  4.98 s   (budget 35 s)
     E2E PASS  allow_to_applied_ms=6108 allow_to_allowed_ms=6109 deny_to_applied_ms=4975 deny_to_denied_ms=4976
     E2E PASS  mail=sink set_up=logged_link log_in_link=mailed invitation=mailed
 
@@ -96,12 +96,12 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
    token and a password of the member's own), and has them ask
    for observe (`Apiary.Policy.set_mode/2`), which is an owner's or an admin's: a member
    changes the rules, not the mode. Then it notes the run's last sequence and waits for
-   the second allowed, connected egress event to the host after it, and for twice this
-   run's own time from the allow to the policy applied event after it, counted from the
-   refusal, whichever is later. The first allowed connection after the refusal may have
-   been on its way before it, and the second can come sooner than a change takes to come
-   back as a policy applied event: the session tries every three seconds by default, and
-   one propagation took about six.
+   the second allowed, connected egress event to the host after it, and for twice the
+   time this run takes from the allow to the policy applied event after it, counted from
+   the refusal, whichever is later. The first allowed connection after the refusal may
+   have been on its way before it, and the second can come sooner than a change takes to
+   come back as a policy applied event: the session tries every three seconds by default,
+   and one propagation took about six.
 7. Puts the workspace in observe as the owner, denies the host from the same row, and
    polls for a policy applied event after the deny, with the deny's digest, and a denied
    egress event to the host after it.
