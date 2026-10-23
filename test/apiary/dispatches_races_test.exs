@@ -983,4 +983,69 @@ defmodule Apiary.DispatchesRacesTest do
       end
     end
   end
+
+  describe "a sweep that ends a deleted pool's waiting prebuild" do
+    # The sweep at `now`, its changes, or `{:failed, line}` for the log line of a
+    # prebuild whose end raised (a deadlock among them), or what it raised.
+    defp sweep_answer do
+      rescued(fn ->
+        {answer, log} =
+          ExUnit.CaptureLog.with_log(fn -> Dispatches.sweep(Dispatches.now()) end)
+
+        case Regex.run(~r/prebuild end failed[^\n]*/, log) do
+          [line] -> {:failed, line}
+          nil -> {:ok, answer}
+        end
+      end)
+    end
+
+    test "and a claim that queues the held run's build, a Rebuild and a listing's part at once: no deadlock, it ends lost",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+
+      raised =
+        for round <- 1..8, reduce: [] do
+          raised ->
+            # A deleted pool's waiting prebuild of a collection whose target has a run
+            # held for the live pool's build, which the claim queues.
+            path = "acme/deleted-#{round}"
+            collection = collection!(ctx, "X#{round}", path)
+            deleted = pool_fixture(ctx.scope)
+            {:ok, [prebuild]} = rebuild([collection], [deleted]).()
+
+            {1, _rows} =
+              Repo.update_all(from(n in Node, where: n.id == ^deleted.id),
+                set: [deleted_at: DateTime.utc_now()]
+              )
+
+            _held = held!(ctx, path)
+
+            answers =
+              [
+                sweep: sweep_answer(),
+                claim: claim_answer(key),
+                rebuild: rebuild([collection], [pool]),
+                part: part([collection], "env-0")
+              ]
+              |> Enum.take(sides(4))
+              |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+              |> together()
+
+            assert %DispatchRun{state: :ended, end_cause: :lost} =
+                     Repo.get!(DispatchRun, prebuild.id)
+
+            waiting = waiting(collection, pool)
+            assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
+        end
+
+      assert raised == []
+    end
+  end
 end

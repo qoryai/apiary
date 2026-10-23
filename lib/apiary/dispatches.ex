@@ -104,10 +104,10 @@ defmodule Apiary.Dispatches do
   #      direct among them, is `{:error, :no_gateway}`
   #      (`Apiary.Dispatches.Handover.gateway/1`);
   #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which inserts the missing
-  #      environment records of the collections held at 3 for the pool once it has locked
-  #      the records of the lapsed prebuilds and before it locks a run
-  #      (`Apiary.Environments.make_records/2`), then a prebuild of each
-  #      collection held at 3 queued for the pool, where none is live yet
+  #      environment records of the collections held at 3 with no live prebuild of their
+  #      ref for the pool, once it has locked the records of the lapsed prebuilds and
+  #      before it locks a run (`Apiary.Environments.make_records/2`), then a prebuild of
+  #      each collection held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
@@ -171,8 +171,25 @@ defmodule Apiary.Dispatches do
   # ## The sweep: `sweep/1`
   #
   # `sweep(now)` frees what is due on every pool (`Apiary.Dispatches.Slots.free/2`), in
-  # its transaction, and tells the workspaces it changed. `Apiary.Dispatches.Sweep` runs it
-  # every minute.
+  # its transaction, then ends the waiting prebuilds of deleted node pools
+  # (`end_deleted_prebuilds/1`), and tells the workspaces it changed.
+  # `Apiary.Dispatches.Sweep` runs it every minute.
+  #
+  # Only a prebuild's pool may claim it, and a deleted pool claims nothing, so a prebuild
+  # of a deleted pool that waits, from before the deletion or back in the queue after its
+  # lease lapsed, would wait for good. `end_deleted_prebuilds(now)` ends such a prebuild
+  # `lost`, at most `@max_deleted` per sweep, each in a separate transaction, as the
+  # lost-run check ends a prebuild handed over (`Apiary.Dispatches.RunEnd`): it holds
+  # what `Apiary.Dispatches.RunEnd.hold/1` holds, the connections and then the
+  # collections of its target `FOR SHARE`, the work items whose runs wait for its build
+  # `FOR KEY SHARE`, then its environment record `FOR UPDATE`; then the run of the queue
+  # `FOR UPDATE`, ended only while it still waits, with a stale dispatch of it not yet
+  # ended (`run_ended`). The record then has its last build failed, `lost`, unless its
+  # image is newer than the prebuild's ref or was made by it
+  # (`Apiary.Environments.newer_build?/2`, `Apiary.Environments.built_by?/2`), and the
+  # runs held for the build go on as `Apiary.Environments.build_failed/6` has a loss on a
+  # deleted pool: they end `build_failed`, unless a live pool has an image for their
+  # target from its collection's `environment_ref`.
   #
   # ## The end of a run handed over: `backstop_seconds/1`
   #
@@ -218,6 +235,8 @@ defmodule Apiary.Dispatches do
   @lease_seconds 600
   # The waiting runs of work items no longer live one claim ends at most.
   @max_ended 100
+  # The waiting prebuilds of deleted node pools one sweep ends at most.
+  @max_deleted 100
 
   @typedoc """
   What a claim took: the dispatch, its run, the run's work item, or for a prebuild its
@@ -675,7 +694,7 @@ defmodule Apiary.Dispatches do
              builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
              {:ok, pool} <- lock_pool(key),
              {:ok, gateway, keys} <- Handover.gateway(pool) do
-          freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool.id) end)
+          freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
           queued = Environments.queue_builds(builds, pool)
           through = %{gateway: gateway, keys: keys, body: body}
 
@@ -1004,14 +1023,95 @@ defmodule Apiary.Dispatches do
 
   ## The sweep
 
-  # sweep/1 frees what is due at `now` on every pool and tells the workspaces it changed:
-  # their ids.
+  # sweep/1 frees what is due at `now` on every pool, ends the waiting prebuilds of
+  # deleted pools (`end_deleted_prebuilds/1`) and tells what changed: the ids of the
+  # workspaces, and the work items whose run ended.
   @doc false
-  @spec sweep(DateTime.t()) :: [Ecto.UUID.t()]
+  @spec sweep(DateTime.t()) :: [Ecto.UUID.t() | Settle.told()]
   def sweep(%DateTime{} = now) do
     {:ok, freed} = Repo.transact(fn -> {:ok, Slots.free(:all, now)} end)
-    broadcast(freed)
-    freed
+    changed = Enum.uniq(freed ++ end_deleted_prebuilds(now))
+    broadcast(changed)
+    changed
+  end
+
+  # end_deleted_prebuilds/1 ends `lost`, at `now`, the waiting prebuilds of deleted node
+  # pools, `@max_deleted` at most, by id, each in a separate transaction (the moduledoc).
+  # One that raises is logged by its id and the exception's module, and the rest are
+  # still ended. The ids of the workspaces whose queue changed, and the work items whose
+  # held runs ended, for the caller to tell (`broadcast/1`).
+  @doc false
+  @spec end_deleted_prebuilds(DateTime.t()) :: [Ecto.UUID.t() | Settle.told()]
+  def end_deleted_prebuilds(%DateTime{} = now) do
+    from(r in DispatchRun,
+      join: n in Node,
+      on: n.id == r.pool_id,
+      where: r.step == ^@prebuild and fragment("? = 'waiting'", r.state),
+      where: not is_nil(n.deleted_at),
+      order_by: r.id,
+      limit: @max_deleted,
+      select: r.id
+    )
+    |> Repo.all()
+    |> Enum.flat_map(&end_deleted_guarded(&1, now))
+    |> Enum.uniq()
+  end
+
+  defp end_deleted_guarded(id, now) do
+    {:ok, changed} = Repo.transact(fn -> {:ok, end_deleted(id, now)} end)
+    changed
+  rescue
+    error ->
+      Logger.error("prebuild end failed dispatch_run=#{id} error=#{inspect(error.__struct__)}")
+      []
+  end
+
+  # The rules again, under the locks: the prebuild still waits, and its pool is deleted.
+  defp end_deleted(id, now) do
+    held = RunEnd.hold(id)
+
+    case RunEnd.lock(id) do
+      %DispatchRun{step: @prebuild, state: :waiting, pool_id: pool_id} = run ->
+        if Repo.exists?(from n in Node, where: n.id == ^pool_id and not is_nil(n.deleted_at)),
+          do: [run.workspace_id | end_lost(run, held, now)],
+          else: []
+
+      _ended_or_claimed ->
+        []
+    end
+  end
+
+  # The waiting prebuild `run` ended `lost`, with a stale dispatch of it not yet ended
+  # (`run_ended`); its slot was freed when its lease lapsed. Then its build failed on the
+  # record `held` has, and the runs held for it go on (the moduledoc).
+  defp end_lost(%DispatchRun{id: id} = run, held, now) do
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
+        set: [state: :ended, end_cause: :lost, updated_at: now]
+      )
+
+    {_count, _rows} =
+      Repo.update_all(
+        from(d in Dispatch,
+          where: d.dispatch_run_id == ^id,
+          where: not is_nil(d.stale_at) and is_nil(d.ended_at)
+        ),
+        set: [ended_at: now, end_cause: :run_ended, updated_at: now]
+      )
+
+    case held do
+      {:build, %Record{} = record, collections, work_item_ids} ->
+        if Environments.newer_build?(record, run) or Environments.built_by?(record, run) do
+          []
+        else
+          :ok = Environments.record_end_failure(record, :lost, now)
+          lost = %{record | failure_cause: :lost}
+          Environments.build_failed(lost, run, :lost, collections, work_item_ids, now)
+        end
+
+      _no_record ->
+        []
+    end
   end
 
   ## The wake

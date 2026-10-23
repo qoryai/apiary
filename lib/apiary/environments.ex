@@ -32,10 +32,10 @@ defmodule Apiary.Environments do
   # dispatch lapsed at `now`, whose prebuilds its free writes, and holds their
   # connections `FOR SHARE`, by id, then all of them `FOR SHARE`, by id, in one
   # statement (`Apiary.Dispatches.Slots`). After the pool's row, its free locks the
-  # records of the pool's lapsed prebuilds, then `make_records(collections, pool_id)`
-  # inserts the missing records of those collections for the pool, by collection,
-  # before the free locks any run, as a Rebuild locks records and then inserts the
-  # missing ones. After the free,
+  # records of the pool's lapsed prebuilds, then `make_records(collections, pool)`
+  # inserts the missing records of those collections a build is due for on the pool,
+  # with no live prebuild of their ref for it, by collection, before the free locks any
+  # run, as a Rebuild locks records and then inserts the missing ones. After the free,
   # `queue_builds(collections, pool)` checks again and queues a prebuild of each for the
   # collection's `environment_ref` (`Apiary.Dispatches.queue_prebuild/3`, whose record then
   # exists, so the claim inserts no record after runs). So a key change while runs wait is
@@ -1113,19 +1113,26 @@ defmodule Apiary.Environments do
   end
 
   # make_records/2 inserts the environment record of each of `collections`, held by
-  # `hold_builds/3`, for the node pool `pool_id`, where there is none, by collection, as
-  # `Apiary.Dispatches.queue_prebuild/3` inserts it, inside the caller's transaction. A
-  # claim calls it inside its free, once the records of its lapsed prebuilds are locked
-  # and before any run is (`Apiary.Dispatches.Slots.free/3`), so the prebuilds
-  # `queue_builds/2` queues later insert no record after runs are locked, and the claim
-  # locks existing records and then inserts missing ones, as a Rebuild does (the
-  # moduledoc).
+  # `hold_builds/3`, that a build is due for on the node pool `pool`, with no live
+  # prebuild of its ref for the pool (`to_queue/3`), where there is none, by collection,
+  # as `Apiary.Dispatches.queue_prebuild/3` inserts it, inside the caller's transaction.
+  # A claim calls it inside its free, once the records of its
+  # lapsed prebuilds are locked and before any run is (`Apiary.Dispatches.Slots.free/3`),
+  # so the prebuilds `queue_builds/2` queues later insert no record after runs are
+  # locked, and the claim locks existing records and then inserts missing ones, as a
+  # Rebuild does (the moduledoc). A collection it leaves out has a live prebuild of its
+  # ref, so its record exists already, or no build is due for it, so `queue_builds/2`
+  # queues none.
   @doc false
-  @spec make_records([Collection.t()], Ecto.UUID.t()) :: :ok
-  def make_records([], _pool_id), do: :ok
+  @spec make_records([Collection.t()], Node.t()) :: :ok
+  def make_records(collections, %Node{} = pool) do
+    case to_queue(collections, pool, "make_records/2") do
+      [] -> :ok
+      due -> insert_records(due, pool.id)
+    end
+  end
 
-  def make_records(collections, pool_id) do
-    in_transaction!("make_records/2")
+  defp insert_records(collections, pool_id) do
     now = DateTime.utc_now()
 
     rows =
@@ -1158,10 +1165,23 @@ defmodule Apiary.Environments do
   # handed over (the moduledoc): the prebuilds queued.
   @doc false
   @spec queue_builds([Collection.t()], Node.t()) :: [DispatchRun.t()]
-  def queue_builds([], %Node{}), do: []
+  def queue_builds(collections, %Node{} = pool) do
+    for collection <- to_queue(collections, pool, "queue_builds/2") do
+      {:ok, run} = Dispatches.queue_prebuild(collection, pool, collection.environment_ref)
+      run
+    end
+  end
 
-  def queue_builds(collections, %Node{kind: :pool, deleted_at: nil} = pool) do
-    in_transaction!("queue_builds/2")
+  # Those of `collections` a build is due for on the node pool `pool`, as
+  # `make_records/2` and `queue_builds/2` read them when each runs: each live, assigned
+  # to the pool's workspace, with a target and an `environment_ref`, with no prebuild of
+  # that ref for the pool waiting, claimed or handed over. None for a deleted pool. It
+  # reads inside the caller's transaction; `what`, the caller, is named in the error
+  # raised outside one.
+  defp to_queue([], %Node{}, _what), do: []
+
+  defp to_queue(collections, %Node{kind: :pool, deleted_at: nil} = pool, what) do
+    in_transaction!(what)
     ids = Enum.map(collections, & &1.id)
 
     live =
@@ -1176,22 +1196,24 @@ defmodule Apiary.Environments do
       )
       |> MapSet.new()
 
-    for collection <- collections,
-        due?(collection) and collection.workspace_id == pool.workspace_id,
-        is_binary(collection.environment_ref),
-        not MapSet.member?(live, collection.id) do
-      {:ok, run} = Dispatches.queue_prebuild(collection, pool, collection.environment_ref)
-      run
-    end
+    Enum.filter(
+      collections,
+      &(due?(&1) and &1.workspace_id == pool.workspace_id and not MapSet.member?(live, &1.id))
+    )
   end
 
-  def queue_builds(_collections, %Node{}), do: []
+  defp to_queue(_collections, %Node{}, _what), do: []
 
   ## Helpers
 
   # A live collection assigned to a workspace, with a target and an `environment_ref`.
-  defp due?(%Collection{ended_at: nil, workspace_id: workspace_id, target_system: system}),
-    do: is_binary(workspace_id) and is_binary(system)
+  defp due?(%Collection{
+         ended_at: nil,
+         workspace_id: workspace_id,
+         target_system: system,
+         environment_ref: ref
+       }),
+       do: is_binary(workspace_id) and is_binary(system) and is_binary(ref)
 
   defp due?(%Collection{}), do: false
 

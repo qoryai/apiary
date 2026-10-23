@@ -490,9 +490,50 @@ defmodule Apiary.EnvironmentsTest do
         Environments.hold_builds(ctx.scope.workspace.id, ctx.pool.id, DateTime.utc_now())
       end
 
-      assert_raise ArgumentError, ~r/caller's transaction/, fn ->
+      assert_raise ArgumentError, ~r/make_records.*caller's transaction/, fn ->
+        Environments.make_records([ctx.app], ctx.pool)
+      end
+
+      assert_raise ArgumentError, ~r/queue_builds.*caller's transaction/, fn ->
         Environments.queue_builds([ctx.app], ctx.pool)
       end
+    end
+
+    test "make_records/2 writes a record only for a collection queue_builds/2 queues a build of",
+         ctx do
+      due = collection_fixture(ctx.scope, external_ref: "DUE")
+      ended = collection_fixture(ctx.scope, external_ref: "ENDED")
+      live = collection_fixture(ctx.scope, external_ref: "LIVE")
+
+      Repo.update_all(from(c in Collection, where: c.id == ^ended.id),
+        set: [ended_at: DateTime.utc_now(), ended_reason: :disconnected]
+      )
+
+      {:ok, waiting} = Repo.transact(fn -> Dispatches.queue_prebuild(live, ctx.pool, "env-1") end)
+      kept = Environments.fetch(ctx.pool.id, live.id)
+      collections = [ctx.app, Repo.get!(Collection, ended.id), live, due]
+
+      # Nothing to queue: no record is written.
+      {:ok, :ok} =
+        Repo.transact(fn -> {:ok, Environments.make_records([ctx.app, live], ctx.pool)} end)
+
+      assert Environments.fetch(ctx.pool.id, ctx.app.id) == nil
+      assert Environments.fetch(ctx.pool.id, live.id) == kept
+
+      {:ok, queued} =
+        Repo.transact(fn ->
+          :ok = Environments.make_records(collections, ctx.pool)
+          {:ok, Environments.queue_builds(collections, ctx.pool)}
+        end)
+
+      assert Enum.map(queued, & &1.source_collection_id) == [due.id]
+      assert %Record{image: nil} = Environments.fetch(ctx.pool.id, due.id)
+
+      for collection <- [ctx.app, ended],
+          do: assert(Environments.fetch(ctx.pool.id, collection.id) == nil)
+
+      assert Environments.fetch(ctx.pool.id, live.id) == kept
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, waiting.id)
     end
   end
 
