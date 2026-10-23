@@ -56,12 +56,16 @@
 # the command; and the line `session <n> starts on this machine`, which the session
 # reports on stderr by default, with the host, the directories on the machine, the
 # command and the arguments, and the harness sources that a run with a run key leaves
-# out of its events or replaces.
+# out of its events or replaces; and `(a name that contains an enrolment code)` and `(a
+# value that contains an enrolment code)`, the phrases in place of a name or a value
+# that contains `qecn_`, `qecp_`, `qecg_` or `qeci_`, in any case, and none of `qak_`,
+# `qrk_` and `qecr_`, in the 7 event schemas that have the other phrases; and those four
+# prefixes in the strings for which `(*session.Run).Built` returns an error.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-b6ac9f0604569bdd3ac5a67a74aa4ee79e649ceb
+8215d28776a1e75786ba3f84a4f2f7511f0deae4
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json
