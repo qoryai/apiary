@@ -13,6 +13,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
   import Apiary.SealedRunsFixtures
 
   alias Apiary.{InstanceConfig, Policy, Registry, Repo, SealedOpen, SigningKey}
+  alias Apiary.Adapters.Collection
   alias Apiary.Environments.Record
   alias Apiary.Registry.{Credential, Names, RunAccess}
   alias Apiary.Runs.{Attach, RateLimit, Run, Target}
@@ -60,6 +61,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
       run: Repo.get!(Run, registered.id),
       attached: attached,
       secrets_key: place.gateway_key,
+      collection: collection,
       target: target_name(scope, collection.target_system, collection.target_path)
     })
   end
@@ -450,6 +452,92 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
       for rule <- ["manifests/sha256:*", "blobs/*", "referrers/*"],
           do: assert("/v2/#{e}/#{rule}" in paths)
+    end
+
+    test "pushes to its target and its environment image while its collection keeps the target",
+         ctx do
+      e = environment(ctx)
+      query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
+
+      assert RunAccess.rights(ctx.run) == %{
+               ctx.target => ["pull", "push"],
+               e => ["pull", "push"]
+             }
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull", "push"]},
+               %{"type" => "repository", "name" => e, "actions" => ["pull", "push"]}
+             ]
+    end
+
+    test "pushes nowhere once a listing changes its collection's target after the claim",
+         ctx do
+      e = environment(ctx)
+      :ok = target_row(ctx.scope, "code.example.com", "acme/other")
+      other = target_name(ctx.scope, "code.example.com", "acme/other")
+
+      {1, _rows} =
+        Repo.update_all(from(c in Collection, where: c.id == ^ctx.collection.id),
+          set: [target_system: "code.example.com", target_path: "acme/other"]
+        )
+
+      run = Repo.get!(Run, ctx.run.id)
+      assert RunAccess.rights(run) == %{ctx.target => ["pull"]}
+
+      query =
+        scopes([
+          "repository:#{ctx.target}:pull,push",
+          "repository:#{other}:pull,push",
+          "repository:#{e}:pull,push"
+        ])
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
+             ]
+
+      assert RunAccess.member(run).paths ==
+               @base ++
+                 [
+                   "/v2/#{ctx.target}/manifests/sha256:*",
+                   "/v2/#{ctx.target}/blobs/*",
+                   "/v2/#{ctx.target}/referrers/*"
+                 ]
+    end
+
+    test "pushes nowhere without a dispatched target, whatever its labels are", ctx do
+      e = environment(ctx)
+      query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
+
+      # The collection has no target any more; the labels are still those of its old target.
+      {1, _rows} =
+        Repo.update_all(from(c in Collection, where: c.id == ^ctx.collection.id),
+          set: [target_system: nil, target_path: nil]
+        )
+
+      run = Repo.get!(Run, ctx.run.id)
+      assert RunAccess.rights(run) == %{ctx.target => ["pull"]}
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
+             ]
+
+      assert RunAccess.member(run).paths ==
+               @base ++
+                 [
+                   "/v2/#{ctx.target}/manifests/sha256:*",
+                   "/v2/#{ctx.target}/blobs/*",
+                   "/v2/#{ctx.target}/referrers/*"
+                 ]
+
+      # A run of no queue with the target's labels, as a registration stores them.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [dispatch_run_id: nil])
+
+      assert RunAccess.rights(Repo.get!(Run, ctx.run.id)) == %{ctx.target => ["pull"]}
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
+             ]
     end
 
     test "never pushes under shared/ or upstream/", ctx do
