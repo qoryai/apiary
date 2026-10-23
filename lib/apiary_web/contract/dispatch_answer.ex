@@ -1,29 +1,12 @@
 defmodule ApiaryWeb.Contract.DispatchAnswer do
   @moduledoc false
 
-  # The parts of the answers of the provisioner contract: the machine type of the claim
-  # answer (`ApiaryWeb.Contract.PoolClaimController`) from the machines file
-  # (`Apiary.Dispatches.MachinesFile`); a run's documents, with its target and its work
-  # item, as `definitions.schema.json` has them, what a run of a step may do on its
-  # target, present together with the target or left out with it, and the run's stack
-  # (`Apiary.Stacks.for_run/3`); and a time in UTC to the whole second.
+  # The parts of the answers of the provisioner contract: a run's documents, with its
+  # target and its work item, as `definitions.schema.json` has them, what a run of a step
+  # may do on its target, present together with the target or left out with it, and the
+  # run's stack (`Apiary.Stacks.for_run/3`); and a time in UTC to the whole second.
 
-  alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Dispatches.MachinesFile
   alias Apiary.{Stacks, WorkItems}
-
-  # machine/1 is the `machine` member of the claim answer of a run of the workspace of the
-  # node pool's key `access_key`, which `Apiary.AccessKeys.fetch_for_verification/1`
-  # loads with its organisation and its workspace: the machine type of the workspace's
-  # entry in the machines file, or no member.
-  @doc false
-  @spec machine(AccessKey.t()) :: [{String.t(), String.t()}]
-  def machine(%AccessKey{organisation: organisation, workspace: workspace}) do
-    case MachinesFile.machine(organisation.slug, workspace.slug) do
-      nil -> []
-      machine -> [{"machine", machine}]
-    end
-  end
 
   # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
   # this order: the run's `step`, the

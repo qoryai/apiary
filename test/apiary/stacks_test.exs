@@ -1,68 +1,40 @@
 defmodule Apiary.StacksTest do
-  # The stack at five levels: what each write stores, every refusal of a save, and what
-  # resolves for a run, the instance default from the machines file included. The
-  # resolution itself is `test/apiary/stacks/resolution_test.exs`. Not async: the
-  # machines file read at boot is the whole node's.
-  use Apiary.DataCase, async: false
+  # The stack at five levels: what each write stores, every refusal of a save, the run's
+  # workflow read from the rows with a workflow, and what resolves for a run. The
+  # resolution itself is `test/apiary/stacks/resolution_test.exs`.
+  use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Dispatches.MachinesFile
   alias Apiary.Runs.Target
   alias Apiary.Stacks
   alias Apiary.Stacks.{Resolution, Stack}
 
-  @moduletag :tmp_dir
-
   @reference "https://code.example.com/team/stacks#main:core"
   @other_reference "https://code.example.com/team/stacks#v2:general"
 
-  setup %{tmp_dir: dir} do
-    setting = Application.fetch_env(:apiary, :machines_file_setting)
-    file = Application.fetch_env(:apiary, :machines_file)
-
-    on_exit(fn ->
-      restore(:machines_file_setting, setting)
-      restore(:machines_file, file)
-    end)
-
+  setup do
     %{scope: scope} = sign_up_fixture()
 
-    target =
-      Repo.insert!(%Target{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        system: "system.example",
-        path: "team/place",
-        first_seen_at: DateTime.utc_now()
-      })
-
-    %{
-      scope: scope,
-      target: target,
-      dir: dir,
-      place: "#{scope.organisation.slug}/#{scope.workspace.slug}"
-    }
+    %{scope: scope, target: target!(scope, "team/place")}
   end
 
-  defp restore(key, {:ok, value}), do: Application.put_env(:apiary, key, value)
-  defp restore(key, :error), do: Application.delete_env(:apiary, key)
-
-  # Boots with a machines file whose entry for the scope's workspace is `entry`.
-  defp machines!(ctx, entry) do
-    path = Path.join(ctx.dir, "machines.json")
-
-    File.write!(
-      path,
-      Jason.encode!(%{"machines" => ~w(small), "workspaces" => %{ctx.place => entry}})
-    )
-
-    Application.put_env(:apiary, :machines_file_setting, path)
-    MachinesFile.boot!()
+  defp target!(scope, path) do
+    Repo.insert!(%Target{
+      organisation_id: scope.organisation.id,
+      workspace_id: scope.workspace.id,
+      system: "system.example",
+      path: path,
+      first_seen_at: DateTime.utc_now()
+    })
   end
 
-  defp default!(ctx),
-    do: machines!(ctx, %{"stack" => "software-standard", "workflow" => "explore"})
+  # The workspace's row for the workflow `explore`, with `stack`: the run's one row with a
+  # workflow.
+  defp workflow!(ctx, stack \\ "software-standard") do
+    {:ok, row} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "explore"}, stack)
+    row
+  end
 
   defp run_stack(ctx, target \\ :target) do
     target =
@@ -115,10 +87,9 @@ defmodule Apiary.StacksTest do
     end
 
     test "records a member's organisation, whose reference is shown to its runs", ctx do
-      default!(ctx)
       assert Stacks.saved_by(ctx.scope) == ctx.scope.organisation.id
 
-      {:ok, stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+      stack = workflow!(ctx, @reference)
 
       assert stack.saved_by_organisation_id == ctx.scope.organisation.id
       assert Resolution.owner(stack) == ctx.scope.organisation.id
@@ -126,7 +97,6 @@ defmodule Apiary.StacksTest do
     end
 
     test "records no organisation for an instance admin who is not a member", ctx do
-      default!(ctx)
       admin = instance_admin_scope()
       refute admin.organisation.id == ctx.scope.organisation.id
 
@@ -148,7 +118,9 @@ defmodule Apiary.StacksTest do
 
       for scope <- [without_membership, with_other_membership] do
         assert Stacks.saved_by(scope) == nil
-        {:ok, stack} = Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, @reference)
+
+        {:ok, stack} =
+          Stacks.put_stack(scope, {:workspace, ctx.scope.workspace, "explore"}, @reference)
 
         assert stack.saved_by_organisation_id == nil
         assert Resolution.owner(stack) == nil
@@ -195,8 +167,8 @@ defmodule Apiary.StacksTest do
 
   describe "delete_stack/1" do
     test "removes the stack at a place, and the next level applies", ctx do
-      default!(ctx)
-      place = {:workspace, ctx.scope.workspace}
+      workflow!(ctx)
+      place = {:target, ctx.target}
       {:ok, _stack} = Stacks.put_stack(ctx.scope, place, "level-one")
       assert run_stack(ctx).stack == "level-one"
 
@@ -210,51 +182,65 @@ defmodule Apiary.StacksTest do
     end
   end
 
-  describe "for_run/3" do
-    test "each level wins over the levels after it, down to the machines file", ctx do
-      default!(ctx)
+  describe "workflow/2" do
+    test "is the workflow of the one row with a workflow at the workspace", ctx do
+      workflow!(ctx)
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, "core")
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, "x")
 
-      for {level, place} <- places(ctx) do
-        {:ok, _stack} =
-          Stacks.put_stack(ctx.scope, place, "at-" <> String.replace("#{level}", "_", "-"))
-      end
-
-      for {level, place} <- places(ctx) do
-        assert run_stack(ctx).stack == "at-" <> String.replace("#{level}", "_", "-")
-        {:ok, _stack} = Stacks.delete_stack(place)
-      end
-
-      assert run_stack(ctx).stack == "software-standard"
+      assert Stacks.workflow(ctx.scope.workspace, ctx.target) == "explore"
+      assert Stacks.workflow(ctx.scope.workspace, nil) == "explore"
     end
 
-    test "an empty level falls through to the next", ctx do
-      default!(ctx)
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, ctx.target, "explore"}, "first")
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, "last")
+    test "is the workflow of the one row with a workflow at the run's target", ctx do
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, ctx.target, "review"}, "core")
 
-      assert run_stack(ctx).stack == "first"
-      assert run_stack(ctx, nil).stack == "last"
+      assert Stacks.workflow(ctx.scope.workspace, ctx.target) == "review"
+      assert Stacks.workflow(ctx.scope.workspace, nil) == nil
     end
 
-    test "a stack of another workflow is left out", ctx do
-      default!(ctx)
+    test "leaves out the rows with a workflow at another target", ctx do
+      workflow!(ctx)
+      other = target!(ctx.scope, "team/other")
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, other, "review"}, "core")
+
+      assert Stacks.workflow(ctx.scope.workspace, ctx.target) == "explore"
+      assert Stacks.workflow(ctx.scope.workspace, other) == nil
+    end
+
+    test "leaves out the rows of another workspace", ctx do
+      %{scope: other} = sign_up_fixture()
+      {:ok, _stack} = Stacks.put_stack(other, {:workspace, other.workspace, "explore"}, "core")
+
+      assert Stacks.workflow(ctx.scope.workspace, ctx.target) == nil
+    end
+
+    test "is nil for no row with a workflow", ctx do
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, ctx.target}, "core")
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, "core")
+
+      assert Stacks.workflow(ctx.scope.workspace, ctx.target) == nil
+    end
+
+    test "is nil for two rows with a workflow, whatever their workflows", ctx do
+      workflow!(ctx)
 
       {:ok, _stack} =
         Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "review"}, "x")
 
-      assert run_stack(ctx).stack == "software-standard"
+      assert Stacks.workflow(ctx.scope.workspace, nil) == nil
+
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace, "review"})
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, ctx.target, "explore"}, "x")
+      assert Stacks.workflow(ctx.scope.workspace, ctx.target) == nil
+      assert Stacks.workflow(ctx.scope.workspace, nil) == "explore"
     end
+  end
 
-    test "a target no row of the workspace has counts as none", ctx do
-      default!(ctx)
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, ctx.target}, "at-target")
-
-      assert run_stack(ctx, %{system: "system.example", path: "team/elsewhere"}).stack ==
-               "software-standard"
-    end
-
-    test "the instance default is the machines file's name for the workspace", ctx do
-      default!(ctx)
+  describe "for_run/3" do
+    test "one row with a workflow: the run has that workflow, its stack and harness_hidden",
+         ctx do
+      workflow!(ctx)
 
       assert run_stack(ctx) == %{
                stack: "software-standard",
@@ -263,44 +249,88 @@ defmodule Apiary.StacksTest do
              }
     end
 
-    test "a workspace without a workflow in the machines file has no stack", ctx do
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, "core")
+    test "no row with a workflow: the run has no stack, whatever the levels have", ctx do
+      for {level, place} <- places(ctx), level in [:target, :workspace, :organisation] do
+        {:ok, _stack} = Stacks.put_stack(ctx.scope, place, "core")
+      end
 
-      Application.put_env(:apiary, :machines_file_setting, nil)
-      nil = MachinesFile.boot!()
       assert run_stack(ctx) == nil
+      assert run_stack(ctx, nil) == nil
+    end
 
-      machines!(ctx, %{"machine" => "small"})
+    test "two rows with a workflow: the run has no stack", ctx do
+      workflow!(ctx)
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, ctx.target, "review"}, "x")
+
       assert run_stack(ctx) == nil
+      assert run_stack(ctx, nil).workflow == "explore"
+    end
+
+    test "a target row without a workflow wins over the workflow row at the workspace", ctx do
+      workflow!(ctx, "at-workspace-workflow")
+
+      for {level, place} <- places(ctx), level in [:target, :workspace, :organisation] do
+        {:ok, _stack} =
+          Stacks.put_stack(ctx.scope, place, "at-" <> String.replace("#{level}", "_", "-"))
+      end
+
+      assert run_stack(ctx).stack == "at-target"
+      assert run_stack(ctx, nil).stack == "at-workspace-workflow"
+
+      {:ok, _stack} = Stacks.delete_stack({:target, ctx.target})
+      assert run_stack(ctx).stack == "at-workspace-workflow"
+    end
+
+    test "a workflow row at the target wins over every other level", ctx do
+      for {level, place} <- places(ctx), level != :workspace_workflow do
+        {:ok, _stack} =
+          Stacks.put_stack(ctx.scope, place, "at-" <> String.replace("#{level}", "_", "-"))
+      end
+
+      assert run_stack(ctx) == %{
+               stack: "at-target-workflow",
+               workflow: "explore",
+               harness_hidden: false
+             }
+
+      assert run_stack(ctx, nil) == nil
+    end
+
+    test "a target no row of the workspace has counts as none", ctx do
+      workflow!(ctx)
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, ctx.target}, "at-target")
+
+      assert run_stack(ctx, %{system: "system.example", path: "team/elsewhere"}).stack ==
+               "software-standard"
     end
   end
 
   describe "harness_hidden" do
     test "is false for a name, on the core's instance of one organisation", ctx do
-      default!(ctx)
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, "core")
+      workflow!(ctx, "core")
       assert %{stack: "core", harness_hidden: false} = run_stack(ctx)
     end
 
     test "is false for a reference saved by the run's organisation", ctx do
-      default!(ctx)
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+      workflow!(ctx, @reference)
       assert %{stack: @reference, harness_hidden: false} = run_stack(ctx)
     end
 
     test "is true for a reference saved by another organisation", ctx do
-      default!(ctx)
       %{scope: other} = sign_up_fixture()
-      {:ok, _stack} = Stacks.put_stack(other, {:workspace, ctx.scope.workspace}, @reference)
+
+      {:ok, _stack} =
+        Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "explore"}, @reference)
+
       assert %{stack: @reference, harness_hidden: true} = run_stack(ctx)
     end
 
     test "is true when the run's organisation is operated", ctx do
-      default!(ctx)
+      workflow!(ctx)
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.Operated)
       assert %{stack: "software-standard", harness_hidden: true} = run_stack(ctx)
 
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
+      workflow!(ctx, @reference)
       assert %{stack: @reference, harness_hidden: true} = run_stack(ctx)
     end
   end

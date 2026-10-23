@@ -4,9 +4,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # The `run_settings` of a run's documents and the values a run keeps of them
   # (`Apiary.Runs.Run`): what the model choices of the run's workspace and target come to
   # (`Apiary.ModelChoices.Resolution`), checked again at the claim. The choices and the
-  # time limits are read for the workflow of the workspace's entry in the machines file
-  # (`Apiary.Dispatches.MachinesFile.stack/2`); for an entry with no workflow, only the
-  # choices without one apply.
+  # time limits are read for the run's workflow (`Apiary.Stacks.workflow/2`); for a run
+  # with no workflow, only the choices without one apply.
   # The claim (`Apiary.Dispatches.claim/3`) locks the pool's row, the gateway's row, the
   # records a lapse needs (`Apiary.Dispatches.Slots`), the run of the queue it took and the
   # dispatch it inserted, in that order; then `Apiary.Dispatches.Handover.register/2` calls
@@ -55,9 +54,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # one, `provider_models` (every model of the provider's list with the effort values that
   # both it and the runtime have) and `tiers`, a tier left out when no choice maps it to a
   # model the provider lists; then `time_limit_minutes`, the minutes the time limits of the
-  # run's workspace and target come to for the workflow of the workspace's entry in the
-  # machines file (`Apiary.TimeLimits.Resolution`, `Apiary.Dispatches.MachinesFile`), left
-  # out when no limit resolves or the entry has no workflow. The limits are read without a
+  # run's workspace and target come to for the run's workflow
+  # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), left out when no limit
+  # resolves or the run has no workflow. The workflow and the limits are read without a
   # lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
   # has the stored copy. Beside it, the run keeps the provider's row id, its keys'
   # secret's row id, the chosen key's value id, the provider's chain and the API the run
@@ -73,9 +72,9 @@ defmodule Apiary.Dispatches.RunSettings do
 
   require Logger
 
-  alias Apiary.{Connections, Edition, Features, ModelChoices, Repo, TimeLimits}
+  alias Apiary.{Connections, Edition, Features, ModelChoices, Repo, Stacks, TimeLimits}
   alias Apiary.Connections.{Connection, ProviderModel}
-  alias Apiary.Dispatches.{DispatchRun, MachinesFile}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime, Runtimes}
   alias Apiary.ModelChoices.Resolution
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -124,7 +123,7 @@ defmodule Apiary.Dispatches.RunSettings do
       workspace = Repo.get!(Workspace, workspace_id)
       organisation = Repo.get!(Organisation, workspace.organisation_id)
       target = target(workspace, id)
-      workflow = workflow(organisation, workspace)
+      workflow = Stacks.workflow(workspace, target)
 
       case lock(workspace, target, workflow, [], @lock_rounds) do
         {:ok, input} ->
@@ -143,14 +142,6 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   def hold(%DispatchRun{}), do: nil
-
-  # The workflow of the workspace's entry in the machines file, nil for none.
-  defp workflow(%Organisation{slug: organisation_slug}, %Workspace{slug: workspace_slug}) do
-    case MachinesFile.stack(organisation_slug, workspace_slug) do
-      %{workflow: workflow} -> workflow
-      _none -> nil
-    end
-  end
 
   # The minutes the time limits come to for `workflow`, nil for no limit or no workflow.
   defp time_limit(_workspace, _target, nil), do: nil

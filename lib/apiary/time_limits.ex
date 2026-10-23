@@ -1,8 +1,8 @@
 defmodule Apiary.TimeLimits do
   # The time limits of a workspace: the whole minutes, 15 to 1440, that a run of one
   # workflow may take (`Apiary.TimeLimits.TimeLimit`), set at the workspace or at a target
-  # of it, and resolved for each run by `Apiary.TimeLimits.Resolution`. A workflow is
-  # named as the machines file names it (`Apiary.Dispatches.MachinesFile`).
+  # of it, and resolved for each run by `Apiary.TimeLimits.Resolution`. A run's workflow
+  # is read from the stacks of its places (`Apiary.Stacks.workflow/2`).
   #
   # ## Places
   #
@@ -22,8 +22,8 @@ defmodule Apiary.TimeLimits do
   #
   # ## Refused on save
   #
-  # `workflow`: a lower-case letter, then up to 63 lower-case letters, digits and hyphens,
-  # as the machines file names a workflow. `minutes`: a whole number from 15 to 1440.
+  # `workflow`: a lower-case letter, then up to 63 lower-case letters, digits and hyphens.
+  # `minutes`: a whole number from 15 to 1440.
   # Each refusal is a changeset error on its field.
   #
   # ## Locks

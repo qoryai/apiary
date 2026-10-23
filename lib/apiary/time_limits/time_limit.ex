@@ -1,8 +1,8 @@
 defmodule Apiary.TimeLimits.TimeLimit do
   # A time limit for the runs of one workflow, set at a place of a workspace: the whole
   # `minutes`, 15 to 1440, that a run of the workflow `workflow` may take. The place is
-  # the workspace, or a target of it (`target_id`). `workflow` is a workflow name of the
-  # machines file (`Apiary.Dispatches.MachinesFile`).
+  # the workspace, or a target of it (`target_id`). `workflow` is a workflow name, as a
+  # stack row has one (`Apiary.Stacks.Stack`).
   #
   # Changed only through `Apiary.TimeLimits`.
   @moduledoc false

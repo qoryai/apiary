@@ -347,21 +347,17 @@ provisioner contract, `contracts/provisioner/v1` of `qoryai/integrations`). Qory
 serves revision 1 of that contract alone: a request whose `X-Qory-Contract-Version` names
 any other revision is refused `400` `unsupported_contract_version`, and each claim answer
 has `revision` 1. A claim answer is a request for a machine: `version`, `revision`,
-`dispatch_id`, `pool_id` (the claiming key's node pool), `lease_until`, `machine`,
-`run_code`, `gateway_url` and
-`max_lifetime_minutes`, 90 for a prebuild and 1470 for any other claim, sent with
-`Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its `step`, its
-`access`, its `target` nor its `work_item`. The machines file, a JSON file at the path
-`APIARY_MACHINES_FILE` is set to and read at boot (`Apiary.Dispatches.MachinesFile`), has
-an entry per workspace, by `<organisation slug>/<workspace slug>`: a claim answer has
-`machine`, the machine type of the entry of the run's workspace, for every step. With
-the variable unset, or for a workspace without an entry or without a machine in it, the
-answer leaves `machine` out. An explore run's `run_settings` has `time_limit_minutes`, an
-integer from 15 to 1440, after its other members, when a time limit resolves for the
-entry's workflow: the limit set for that workflow at the run's target, else the one set at
-its workspace (`Apiary.TimeLimits`). With no limit at either place, or no workflow in the
-entry, the member is absent, and the run takes the default of the workflow's stack, which
-the machine applies. The claim registers the run, and the run endpoint refuses,
+`dispatch_id`, `pool_id` (the claiming key's node pool), `lease_until`, `run_code`,
+`gateway_url` and `max_lifetime_minutes`, 90 for a prebuild and 1470 for any other claim,
+sent with `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its
+`step`, its `access`, its `target` nor its `work_item`. The answer has no `machine`, so
+the starter uses its default machine type. An explore run's `run_settings` has
+`time_limit_minutes`, an integer from 15 to 1440, after its other members, when a time
+limit resolves for the run's workflow (`Apiary.Stacks.workflow/2`): the limit set for
+that workflow at the run's target, else the one set at its workspace
+(`Apiary.TimeLimits`). With no limit at either place, or no workflow for the run, the
+member is absent, and the run takes the default of the workflow's stack, which the
+machine applies. The claim registers the run, and the run endpoint refuses,
 under any key, a registration whose `run_id` is that of such a run, waiting, claimed,
 handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager
@@ -433,16 +429,20 @@ item with no target in a domain that requires one (`inputs_invalid`).
 
 **The run's stack.** An explore run's documents have `stack`, `workflow` and
 `harness_hidden` together, or none of them; a prebuild's have none. `workflow` is the
-workflow of the entry of the run's workspace in the machines file. A workspace with no
-entry, or an entry without a stack and a workflow, gives its runs no workflow, so their
-documents have none of the three. `stack` is a stack name, such as `software-standard`,
-or a stack reference, `<url>#<ref>:<path>`, the location of a stack, each as the run
-contract's `stack_name` and `stack_reference` define them (`Apiary.Contract.Stack`). An
+workflow of the one stored stack with a workflow at the run's places: its workspace, and
+its target when it has one (`Apiary.Stacks.workflow/2`). With no such stack, or two or
+more, the run has no workflow, so its documents have none of the three. `stack` is a
+stack name, such as `software-standard`, or a stack reference, `<url>#<ref>:<path>`, the
+location of a stack, each as the run contract's `stack_name` and `stack_reference` define
+them (`Apiary.Contract.Stack`). An
 organisation's stack can be stored at five levels, the most specific first: the target
 and the workflow, the target, the workspace and the workflow, the workspace, and the
 organisation's default. The first level with a stack applies, and a level without one
-passes to the next; after them comes the stack name of the workspace's entry in the
-machines file (`Apiary.Stacks.Resolution`). The owner of a name is the instance. The
+passes to the next (`Apiary.Stacks.Resolution`). A run has a stack only when it has a
+workflow, and the stored stack with that workflow is at the target and the workflow or at
+the workspace and the workflow. Both levels come before the workspace and the
+organisation's default, so a stack stored at either of those two levels is never a run's
+stack (`Apiary.Stacks.for_run/3`). The owner of a name is the instance. The
 owner of a reference is the organisation of the person who saved it, when that person
 saved it as a member acting in that organisation; it is unknown for a reference saved by
 any other way of reaching the organisation, such as an instance admin or an operator's
@@ -452,7 +452,9 @@ organisation is a client of an operator (`Apiary.Edition.operated?/1`, which the
 edition, `Apiary.Edition.Core`, answers `false`), or when the stack's owner is not the
 run's organisation. The instance counts as the run's organisation only when the instance
 has one organisation, as in the core edition, so there a run with a stack name has
-`harness_hidden` `false`. Only tests write a stored stack: no page or endpoint sets one.
+`harness_hidden` `false`. Only tests and the demo (`mix apiary.demo.console`, which
+stores one for the workspace Main with the `factory` feature on) write a stored stack: no
+page or endpoint sets one.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first

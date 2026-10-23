@@ -190,7 +190,7 @@ defmodule Apiary.TimeLimitsTest do
                errors(TimeLimits.put_limit(scope, :workspace, "hello", nil))
     end
 
-    test "for a workflow that breaks the machines file's name rule", %{scope: scope} do
+    test "for a workflow that breaks the name rule of a workflow", %{scope: scope} do
       for workflow <- ["Hello", "1hello", "hello world", String.duplicate("a", 65), ""] do
         assert %{workflow: [_reason]} =
                  errors(TimeLimits.put_limit(scope, :workspace, workflow, 90))

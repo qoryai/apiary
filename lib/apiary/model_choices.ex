@@ -12,10 +12,9 @@ defmodule Apiary.ModelChoices do
   #   * a target of the scope's workspace (`Apiary.Runs.Target`, level 3), or
   #     `{target, workflow}` (level 2).
   #
-  # A workflow is named as the machines file names one (`Apiary.Dispatches.MachinesFile`):
-  # a lower-case letter, then up to 63 lower-case letters, digits and hyphens. A place
-  # with a workflow of another form is not found. A run reads the choices of the workflow
-  # of its workspace's entry in the machines file, the same key as its time limit
+  # A workflow name is a lower-case letter, then up to 63 lower-case letters, digits and
+  # hyphens. A place with a workflow of another form is not found. A run reads the
+  # choices of its workflow (`Apiary.Stacks.workflow/2`), the same key as its time limit
   # (`Apiary.TimeLimits`).
   #
   # ## Who
@@ -83,7 +82,7 @@ defmodule Apiary.ModelChoices do
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Format
 
-  # A workflow's name, as the machines file names one (`Apiary.Dispatches.MachinesFile`).
+  # A workflow's name.
   @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
 
   # The runtime of every run of the queue.

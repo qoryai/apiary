@@ -1,12 +1,11 @@
 defmodule Apiary.Repo.Migrations.KeyAModelChoiceByWorkflow do
   use Ecto.Migration
 
-  # A model choice of levels 2 and 4 is set for a workflow (`model_choices.workflow`), the
-  # name the machines file gives a workspace's workflow, as a time limit is
-  # (`time_limits.workflow`), where it was set for a step of the queue (`run_kind`). The
-  # column is renamed and keeps its values; its check is the machines file's name rule: a
-  # lower-case letter, then up to 63 lower-case letters, digits and hyphens. The unique
-  # index of a place reads the renamed column.
+  # A model choice of levels 2 and 4 is set for a workflow (`model_choices.workflow`), as
+  # a time limit is (`time_limits.workflow`), where it was set for a step of the queue
+  # (`run_kind`). The column is renamed and keeps its values; its check is the name rule
+  # of a workflow: a lower-case letter, then up to 63 lower-case letters, digits and
+  # hyphens. The unique index of a place reads the renamed column.
   def up do
     drop constraint(:model_choices, :model_choices_run_kind_format)
     rename table(:model_choices), :run_kind, to: :workflow
