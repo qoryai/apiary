@@ -13,19 +13,21 @@ defmodule Apiary.Registry.RunAccess do
   # (`Apiary.Registry.Names.target_name/3`): for a run that registered, the target of
   # its registration's labels; for any other run, the target its row has. A build is a
   # run of a workspace's queue for the step `prebuild`
-  # (`Apiary.Policy.ComposedConfiguration.prebuild?/1`) that has a dispatched target: the
-  # target of the collection Qory queued the build for (`dispatched_target_id/1`). A
-  # build has its dispatched target's image name, and the name of the environment image
-  # for its key (`environment_key/4`). No name a build may push comes from its labels: a
-  # prebuild without a dispatched target is no build.
+  # (`Apiary.Policy.ComposedConfiguration.prebuild?/1`) whose target is also its
+  # collection's target when the run's names are read (`dispatched_target_id/1`). The
+  # claim writes the labels of such a run from its collection's target at the claim
+  # (`Apiary.Dispatches.Handover`); a listing of the collection's adapter can change the
+  # collection's target since. A build also has the name of the environment image for
+  # its key (`environment_key/4`). A prebuild whose two targets differ, or that lacks
+  # either, is no build: it has its target's image name, to pull, and no environment
+  # image name. A collection that ended still has its target here, so its build keeps
+  # its push rights.
   #
   # **The rights.** A run that is not a build may pull its target's image name. A build
-  # may push and pull its dispatched target's image name, and push and pull the
-  # environment image's name while that image does not exist (`environment_exists?/2`),
-  # then pull it alone, the image it builds on. Where the target of a build's labels is
-  # another target, the build may pull that target's image name alone. Every run may
-  # also pull what `Apiary.Registry.Grant` grants every run, under `shared/` and
-  # `upstream/`.
+  # may push and pull its target's image name, and push and pull the environment image's
+  # name while that image does not exist (`environment_exists?/2`), then pull it alone,
+  # the image it builds on. Every run may also pull what `Apiary.Registry.Grant` grants
+  # every run, under `shared/` and `upstream/`.
   #
   # **The environment image exists** when an environment record of the run's
   # organisation (`Apiary.Environments.Record`) has an `image` under the name in the
@@ -44,14 +46,12 @@ defmodule Apiary.Registry.RunAccess do
   #     final `*`: `/v2/`, `/v2/shared/*` and `/v2/upstream/*` for every run; for its
   #     target's image name `T`, `/v2/T/manifests/sha256:*`, `/v2/T/blobs/*` and
   #     `/v2/T/referrers/*` for a run that is not a build; for a build, those three and
-  #     `/v2/T/manifests/<run id>` for its dispatched target's image name `T`, the same
-  #     four for its environment image's name `E`, whether it may push there or only
-  #     pull, and then the first three for the image name of the target of its labels
-  #     where that is another target. `<run id>` is the run's id as its node gave it, the
-  #     tag a build pushes; a push of an image index puts its child manifests by digest,
-  #     under `manifests/sha256:`. The token stays the limit: a path rule cannot tell a
-  #     push from a pull, so `E`'s rules stay the same when its image comes to exist, and
-  #     the run configuration with them;
+  #     `/v2/T/manifests/<run id>`, and the same four for its environment image's name
+  #     `E`, whether it may push there or only pull. `<run id>` is the run's id as its
+  #     node gave it, the tag a build pushes; a push of an image index puts its child
+  #     manifests by digest, under `manifests/sha256:`. The token stays the limit: a path
+  #     rule cannot tell a push from a pull, so `E`'s rules stay the same when its image
+  #     comes to exist, and the run configuration with them;
   #   * the instance's host and the registry's host, in `egress.allow` and
   #     `egress.allow_first`, as a model provider's hosts are, and the path rule
   #     `/registry/token` for the instance's host (`instance_host`), unless its document
@@ -122,17 +122,14 @@ defmodule Apiary.Registry.RunAccess do
         %{build?: false, target: target} ->
           %{target => ["pull"]}
 
-        %{build?: true} = names ->
-          environment = if(names.push_environment?, do: ["pull", "push"], else: ["pull"])
+        %{build?: true, target: target, environment: nil} ->
+          %{target => ["pull", "push"]}
 
-          # The dispatched target last, so no other entry replaces its actions.
-          [
-            {names.labelled, ["pull"]},
-            {names.environment, environment},
-            {names.target, ["pull", "push"]}
-          ]
-          |> Enum.reject(fn {name, _actions} -> is_nil(name) end)
-          |> Map.new()
+        %{build?: true, target: target, environment: environment, push_environment?: push?} ->
+          %{
+            target => ["pull", "push"],
+            environment => if(push?, do: ["pull", "push"], else: ["pull"])
+          }
       end
     else
       %{}
@@ -152,34 +149,33 @@ defmodule Apiary.Registry.RunAccess do
   @spec instance_host() :: String.t()
   def instance_host, do: URI.parse(ApiaryWeb.Endpoint.url()).host
 
-  # The run's names: whether it is a build; for a run that is not a build, its target's
-  # image name, nil for a run without a target; for a build, its dispatched target's
-  # image name, the image name of the target of its labels where that is another target,
-  # else nil, its environment image's name and whether it may push there.
+  # The run's names: its target's image name, nil for a run without a target; whether it
+  # is a build; and for a build, its environment image's name and whether it may push
+  # there.
   defp names(run) do
-    labelled = target_name(run, target_id(run))
+    target_id = target_id(run)
+    target = target_name(run, target_id)
+    build? = is_binary(target) and target_id == dispatched_target_id(run)
 
-    with built_id when is_binary(built_id) <- dispatched_target_id(run),
-         built when is_binary(built) <- target_name(run, built_id) do
-      environment = environment_name(run, built_id)
+    if build? do
+      environment = environment_name(run, target_id)
 
       %{
-        target: built,
+        target: target,
         build?: true,
-        labelled: if(labelled != built, do: labelled),
         environment: environment,
         push_environment?: is_binary(environment) and not environment_exists?(run, environment)
       }
     else
-      _not_a_build -> %{target: labelled, build?: false}
+      %{target: target, build?: false}
     end
   end
 
-  # The target Qory dispatched a build for: for a run of a workspace's queue for the step
-  # `prebuild` (`Apiary.Policy.ComposedConfiguration.prebuild?/1`), the target of the
-  # collection it was queued for (`source_collection_id`), as the claim reads it to form
-  # the run (`Apiary.Dispatches.Handover`), while the collection is assigned to the run's
-  # workspace and the workspace has the target's row. Nil for any other run.
+  # The target row of the collection a run of a workspace's queue for the step
+  # `prebuild` was queued for (`source_collection_id`), by the collection's target system
+  # and path when this function runs, while the collection is assigned to the run's
+  # workspace; whether the collection ended is not read. Nil for any other run, for a
+  # collection without a target, and for a target without a row in the workspace.
   defp dispatched_target_id(%Run{dispatch_run_id: id, workspace_id: workspace_id})
        when is_binary(id) and is_binary(workspace_id) do
     Repo.one(
@@ -249,6 +245,8 @@ defmodule Apiary.Registry.RunAccess do
         nil
     end
   end
+
+  defp environment_name(_run, _target_id), do: nil
 
   # `<key>` for `run` (`Apiary.Registry.Names.environment_key/5`): its organisation, the
   # `environment_ref` it builds, its machine kind, and the hosts of the run configuration
@@ -332,23 +330,19 @@ defmodule Apiary.Registry.RunAccess do
           []
 
         %{build?: false, target: target} ->
-          pull_paths(target)
+          [
+            "/v2/#{target}/manifests/sha256:*",
+            "/v2/#{target}/blobs/*",
+            "/v2/#{target}/referrers/*"
+          ]
 
-        %{build?: true, target: target, labelled: labelled, environment: environment} ->
+        %{build?: true, target: target, environment: environment} ->
           build_paths(target, run) ++
-            if(is_binary(environment), do: build_paths(environment, run), else: []) ++
-            if(is_binary(labelled), do: pull_paths(labelled), else: [])
+            if(is_binary(environment), do: build_paths(environment, run), else: [])
       end
 
     base ++ named
   end
-
-  defp pull_paths(name),
-    do: [
-      "/v2/#{name}/manifests/sha256:*",
-      "/v2/#{name}/blobs/*",
-      "/v2/#{name}/referrers/*"
-    ]
 
   defp build_paths(name, run),
     do: [

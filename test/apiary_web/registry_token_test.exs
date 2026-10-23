@@ -15,8 +15,6 @@ defmodule ApiaryWeb.RegistryTokenTest do
   alias Apiary.{InstanceConfig, Policy, Registry, Repo, SealedOpen, SigningKey}
   alias Apiary.Adapters.Collection
   alias Apiary.Environments.Record
-  alias Apiary.Lingo.Domain
-  alias Apiary.Organisations.Workspace
   alias Apiary.Registry.{Credential, Names, RunAccess}
   alias Apiary.Runs.{Attach, RateLimit, Run, Target}
   alias ApiaryWeb.Contract.SignedRequest
@@ -66,18 +64,6 @@ defmodule ApiaryWeb.RegistryTokenTest do
       collection: collection,
       target: target_name(scope, collection.target_system, collection.target_path)
     })
-  end
-
-  # `run` with the registration labels of the target `system` and `path` by its
-  # workspace's domain, stored and read back.
-  defp relabel(run, system, path) do
-    workspace = Repo.get!(Workspace, run.workspace_id)
-    labels = Map.new(Enum.zip(Domain.target_labels(workspace), [system, path]))
-
-    {1, _rows} =
-      Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [registration_labels: labels])
-
-    Repo.get!(Run, run.id)
   end
 
   # A registry credential for `run`, as a seal stores it.
@@ -468,33 +454,54 @@ defmodule ApiaryWeb.RegistryTokenTest do
           do: assert("/v2/#{e}/#{rule}" in paths)
     end
 
-    test "pushes to its dispatched target alone, and pulls the target of its labels",
+    test "pushes to its target and its environment image while its collection keeps the target",
          ctx do
-      :ok = target_row(ctx.scope, "code.example.com", "acme/other")
-      other = target_name(ctx.scope, "code.example.com", "acme/other")
-      run = relabel(ctx.run, "code.example.com", "acme/other")
       e = environment(ctx)
-      id = run.node_run_id
+      query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
 
-      assert RunAccess.rights(run) == %{
+      assert RunAccess.rights(ctx.run) == %{
                ctx.target => ["pull", "push"],
-               e => ["pull", "push"],
-               other => ["pull"]
+               e => ["pull", "push"]
              }
 
-      query = scopes(["repository:#{other}:pull,push", "repository:#{ctx.target}:pull,push"])
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull", "push"]},
+               %{"type" => "repository", "name" => e, "actions" => ["pull", "push"]}
+             ]
+    end
 
-      assert access(token(run.public_id, ctx.secret, query)) == [
-               %{"type" => "repository", "name" => other, "actions" => ["pull"]},
-               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull", "push"]}
+    test "pushes nowhere once a listing changes its collection's target after the claim",
+         ctx do
+      e = environment(ctx)
+      :ok = target_row(ctx.scope, "code.example.com", "acme/other")
+      other = target_name(ctx.scope, "code.example.com", "acme/other")
+
+      {1, _rows} =
+        Repo.update_all(from(c in Collection, where: c.id == ^ctx.collection.id),
+          set: [target_system: "code.example.com", target_path: "acme/other"]
+        )
+
+      run = Repo.get!(Run, ctx.run.id)
+      assert RunAccess.rights(run) == %{ctx.target => ["pull"]}
+
+      query =
+        scopes([
+          "repository:#{ctx.target}:pull,push",
+          "repository:#{other}:pull,push",
+          "repository:#{e}:pull,push"
+        ])
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
              ]
 
-      paths = RunAccess.member(run).paths
-      assert "/v2/#{ctx.target}/manifests/#{id}" in paths
-      refute "/v2/#{other}/manifests/#{id}" in paths
-
-      for rule <- ["manifests/sha256:*", "blobs/*", "referrers/*"],
-          do: assert("/v2/#{other}/#{rule}" in paths)
+      assert RunAccess.member(run).paths ==
+               @base ++
+                 [
+                   "/v2/#{ctx.target}/manifests/sha256:*",
+                   "/v2/#{ctx.target}/blobs/*",
+                   "/v2/#{ctx.target}/referrers/*"
+                 ]
     end
 
     test "pushes nowhere without a dispatched target, whatever its labels are", ctx do
