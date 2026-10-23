@@ -15,13 +15,13 @@
 # starts the session on the node, waits for the denied connection to arrive, allows its
 # host the way the connection's row does, and then watches the run's record for the
 # policy applied event after the allow and the allowed connection. A member of the
-# workspace, invited with a link the owner copies, then asks for observe, which is an owner's or an
-# admin's, and is refused, and it checks that the session is still let through to the host
-# and that the run's record shows no policy applied event after the refusal. Then it puts
-# the workspace in observe, denies the host from the same row, and watches for the
-# policy applied event after the deny and the denied connection, refused by name under observe. It prints
-# the timings and leaves with status 0 only when every assertion held. It never prints the
-# secret: access-key-secret is the one place it goes.
+# workspace, invited with a link the owner copies, then asks for observe, which is an
+# owner's or an admin's, and is refused, and it checks that the session is still let
+# through to the host and that the run's record shows no policy applied event after the
+# refusal. Then it puts the workspace in observe, denies the host from the same row, and
+# watches for the policy applied event after the deny and the denied connection, refused
+# by name under observe. It prints the timings and leaves with status 0 only when every
+# assertion held. It never prints the secret: access-key-secret is the one place it goes.
 #
 # With E2E_MAIL=sink the instance sends its mail over SMTP to the job's sink
 # (compose.yaml's `sink`), and the scenario checks the mailed way in: the set-up through
@@ -153,8 +153,8 @@ defmodule E2E do
       end)
 
     run = Repo.get!(Run, connection.run_id)
-    # Forager writes a policy applied event as the run opens and one as each session joins,
-    # both under the run configuration in force. This run has one session.
+    # Forager writes a policy applied event as the run opens and one as each session
+    # joins, both under the run configuration in force. This run has one session.
     [opened, first] = applied(run)
 
     unless opened.data["run_configuration"] == first.data["run_configuration"],
