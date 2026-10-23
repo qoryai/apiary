@@ -69,12 +69,17 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
    browser (`Apiary.AccessKeys.add_access_key/3`), active as it is added.
    The key's `server` lines, the server's `url` and `apiary_public_key` pin
    (`Apiary.AccessKeys.server_lines/2`) and the key's `access_key_id`
-   (`Apiary.AccessKeys.key_line/1`), under `gateway:`, and the wall section become the
-   node's `forager.yaml`. The key's secret, `qak_` and its seed, goes into `access-key-secret`
-   beside it, mode 0600, in a directory of mode 0700; nothing prints it. `node/prepare.sh` copies the three files into a
-   directory of the node's own, root's, mode 0700, each file mode 0600, since qory
-   reads the secret only from a file its user owns, and keeps its instance id and locks
-   beside it.
+   (`Apiary.AccessKeys.key_line/1`), under `gateway:`, the node's policy,
+   `gateway.egress`, and the wall section become the node's `forager.yaml`. The node's
+   policy is in `observe` and lists `files.e2e.test` by name. Behind a wall, the proxy
+   dials a private network address, as the upstream's on the node's network is, only
+   for a host that the node's policy lists by name and the run's policy allows. In
+   `observe`, the node's policy leaves the run's mode and allow list to the run
+   configuration. The key's secret, `qak_` and its seed, goes into `access-key-secret`
+   beside it, mode 0600, in a directory of mode 0700; nothing prints it.
+   `node/prepare.sh` copies the three files into `/node-config/qory` on the node, which
+   root owns, mode 0700, each file mode 0600, since qory reads the secret only from a
+   file its user owns, and keeps its instance id and locks beside it.
 2. Makes the node ready (`node/prepare.sh`: the checkout with an origin remote, which is
    where the run's `forge` and `repository` come from, and its harness composed) and starts
    the session (`node/session.sh`: `qory run --headless`).
@@ -89,7 +94,8 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
 5. Polls the run's stored events, every 50 ms, for a `dev.qory.run.policy_applied` event
    after the allow whose `run_configuration` is the new digest, then for an
    `dev.qory.run.egress` to the host after it in sequence with `decision: allowed` and
-   `outcome: connected`.
+   `outcome: connected`. If that wait fails, it first prints each egress event after the
+   policy applied event: its sequence, host and port, decision, rule and outcome.
 6. Makes a member of the workspace the way a person joins without mail
    (`Apiary.Organisations.invite_member/3` from the owner's workspace, which hands back
    the invitation's link to copy, then `Apiary.Organisations.sign_up_user/2` with its

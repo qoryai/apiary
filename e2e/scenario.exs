@@ -110,9 +110,15 @@ defmodule E2E do
     # qory reads it.
     server = AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
 
+    # The node's policy lists the upstream by name, in observe, which leaves the run's mode
+    # and allow list to the run configuration. Behind a wall the proxy dials a private
+    # network address, as the upstream's on the node's network is, only for a host
+    # the node's policy lists by name and the run's policy allows.
+    egress = ["egress:", "  mode: observe", "  allow: [#{host}]"]
+
     gateway_section =
       Enum.map_join(
-        ["server:", server.url, AccessKeys.key_line(access_key) | server.public_key],
+        ["server:", server.url, AccessKeys.key_line(access_key) | server.public_key] ++ egress,
         &("  " <> &1 <> "\n")
       )
 
@@ -225,9 +231,13 @@ defmodule E2E do
     t_applied = System.monotonic_time(:millisecond)
 
     allowed =
-      await("an allowed connection to #{host} after it", budget_ms + 30_000, session_task, fn ->
-        allowed_connection(run, host, second.sequence)
-      end)
+      await(
+        "an allowed connection to #{host} after it",
+        budget_ms + 30_000,
+        session_task,
+        fn -> allowed_connection(run, host, second.sequence) end,
+        fn -> print_egress_after(run, second.sequence) end
+      )
 
     t_allowed = System.monotonic_time(:millisecond)
     to_applied = t_applied - t0
@@ -768,14 +778,34 @@ defmodule E2E do
     )
   end
 
-  # Polls until `fun` answers something. A session that has already left cannot bring
-  # what is waited for, so its end is the end of the wait, a second later.
-  defp await(what, timeout_ms, session_task, fun) do
-    deadline = System.monotonic_time(:millisecond) + timeout_ms
-    poll(what, deadline, session_task, fun, nil)
+  # The egress events after `sequence`, printed before a wait for an allowed connection
+  # fails: each one's decision, rule and outcome show why the session was refused.
+  defp print_egress_after(%Run{id: id}, sequence) do
+    events =
+      Repo.all(
+        from e in Event,
+          where: e.run_id == ^id and e.type == @egress and e.sequence > ^sequence,
+          order_by: e.sequence
+      )
+
+    say("egress events after sequence #{sequence}: #{length(events)}")
+
+    Enum.each(events, fn e ->
+      say(
+        "sequence #{e.sequence}: #{e.data["host"]}:#{e.data["port"]}, decision #{e.data["decision"]}, rule #{inspect(e.data["rule"])}, outcome #{e.data["outcome"]}"
+      )
+    end)
   end
 
-  defp poll(what, deadline, session_task, fun, gone_at) do
+  # Polls until `fun` answers something. A session that has already left cannot bring
+  # what is waited for, so its end is the end of the wait, a second later. `explain`
+  # runs before the wait fails, to print what shows the cause.
+  defp await(what, timeout_ms, session_task, fun, explain \\ fn -> :ok end) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    poll(what, deadline, session_task, fun, explain, nil)
+  end
+
+  defp poll(what, deadline, session_task, fun, explain, gone_at) do
     now = System.monotonic_time(:millisecond)
 
     gone_at =
@@ -785,13 +815,16 @@ defmodule E2E do
       nil ->
         cond do
           now > deadline ->
+            explain.()
             fail("timed out waiting for #{what}")
 
           gone_at && now - gone_at > 3_000 ->
+            explain.()
             fail("the session left before #{what} arrived")
 
           true ->
-            Process.sleep(@poll_ms) && poll(what, deadline, session_task, fun, gone_at || nil)
+            Process.sleep(@poll_ms) &&
+              poll(what, deadline, session_task, fun, explain, gone_at || nil)
         end
 
       found ->
