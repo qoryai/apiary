@@ -199,7 +199,7 @@ defmodule Apiary.Environments do
   # `waiting` are whether a prebuild of those collections, held for the pool, is claimed
   # or handed over, and waits unclaimed.
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query, only: [dynamic: 2, from: 2]
 
   alias Apiary.{Access, Audit, Dispatches, Features, Policy, Repo}
   alias Apiary.Accounts.Scope
