@@ -2541,7 +2541,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(
                lv,
                "#run-why",
-               "Ended before it started: its environment image was missing from the registry. A new build has started, and the work is queued again."
+               "Ended before it started: its environment image was missing from the registry. The work is queued again and waits for a new build of the image."
              )
 
       assert has_element?(lv, ~s(#run-why-jump[href="#{path}?seq=2"]), "Jump to it")

@@ -42,8 +42,9 @@ defmodule ApiaryWeb.TargetLive.Show do
   # of the workspace, the image a run of the target on the pool starts in, as
   # Apiary.Environments.image_for/2 gives it, in mono, its digest cut to twelve characters
   # and the whole reference its title, when it was built and from which commit, or that
-  # runs use the pool's default image and why, or, where the policy in force for the
-  # target sets an image, that runs use the image set in the policy; whether a build runs
+  # runs wait until the target's environment image is built, or that runs use the pool's
+  # default image and why, or, where the policy in force for the target sets an image,
+  # that runs use the image set in the policy; whether a build runs
   # or waits; and the last build's failure, never the reason a starter gave. Where no pool
   # serves the workspace, or the target names no environment, one line says so instead.
   # Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for whoever
@@ -840,8 +841,9 @@ defmodule ApiaryWeb.TargetLive.Show do
     """
   end
 
-  # What runs of a pool start in: the image the pool's last build for the target made,
-  # with when it was built, or the pool's default image, and why.
+  # What runs of a pool start in: the image the pool's build of the target's
+  # `environment_ref` made, with when it was built, or that they wait for that build, or
+  # the pool's default image, and why.
   attr :id, :string, required: true
   attr :pool, :map, required: true
 
@@ -866,10 +868,10 @@ defmodule ApiaryWeb.TargetLive.Show do
     """
   end
 
-  defp environment_image(%{pool: %{serves: :other_target}} = assigns) do
+  defp environment_image(%{pool: %{serves: :held}} = assigns) do
     ~H"""
-    <span id={"#{@id}-other-target"}>
-      {gettext("Runs use the pool's default image until this target is built.")}
+    <span id={"#{@id}-held"}>
+      {gettext("Runs wait until this target's environment image is built.")}
     </span>
     """
   end

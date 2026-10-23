@@ -6344,7 +6344,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Ended before it started: its environment image was missing from the registry. A new build has started, and the work is queued again."
+msgid "Ended before it started: its environment image was missing from the registry. The work is queued again and waits for a new build of the image."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -12913,13 +12913,13 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the pool's default image until this target is built."
-msgstr "Runs use the pool's default image until this repository is built."
+msgid "Runs use the pool's default image: this target no longer has an environment set."
+msgstr "Runs use the pool's default image: this repository no longer has an environment set."
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the pool's default image: this target no longer has an environment set."
-msgstr "Runs use the pool's default image: this repository no longer has an environment set."
+msgid "Runs wait until this target's environment image is built."
+msgstr "Runs wait until this repository's environment image is built."
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format

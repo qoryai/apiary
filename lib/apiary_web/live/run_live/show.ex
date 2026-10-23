@@ -1787,7 +1787,7 @@ defmodule ApiaryWeb.RunLive.Show do
           seq: exited.seq,
           text:
             gettext(
-              "Ended before it started: its environment image was missing from the registry. A new build has started, and the work is queued again."
+              "Ended before it started: its environment image was missing from the registry. The work is queued again and waits for a new build of the image."
             )
         }
       )
