@@ -63,13 +63,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `dev.qory.runtime.*` names, and a run's runtime is that of its last session. A run
   recorded before the upgrade keeps its runtime, cost and log, and its Timeline shows no
   prompts, turns or results. Do not run `Apiary.Release.rebuild()` after this upgrade: it
-  clears the runtime and cost of those runs.
+  clears the runtime and cost of those runs, and the command, arguments, folder, image and
+  terminal size.
 - A gateway's address follows the contracts' rule: `https://`, a host name or an IPv6
   address in brackets, an optional port, and nothing after them, at most 300 characters.
   Before, an address could end in a dot and be up to 2,048 characters long. Qory Apiary does
   not start while a gateway's address breaks the rule: the migration stops, lists those
-  gateways' ids and changes nothing. Give each one a new address in its **Settings ›
-  General** on the release before, then start the upgrade again.
+  gateways' ids, deleted gateways included, and changes nothing. Give each gateway that is
+  not deleted a new address in its **Settings › General** on the release before, then
+  start the upgrade again.
 <!-- feature: secrets -->
 - An integration description is refused when it goes past the limits the integration
   contract states (1024 list entries, 1024 members in an object, 4096 values, strings of
