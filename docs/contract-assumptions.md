@@ -448,7 +448,9 @@ organisation is a client of an operator (`Apiary.Edition.operated?/1`, which the
 edition, `Apiary.Edition.Core`, answers `false`), or when the stack's owner is not the
 run's organisation. The instance counts as the run's organisation only when the instance
 has one organisation, as in the core edition, so there a run with a stack name has
-`harness_hidden` `false`. Only tests write a stored stack: no page or endpoint sets one.
+`harness_hidden` `false`. Only tests and the demo (`mix apiary.demo.console`, which
+stores one for the workspace Main with the `factory` feature on) write a stored stack: no
+page or endpoint sets one.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first

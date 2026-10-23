@@ -19,6 +19,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
   alias Apiary.Runs.{Run, Target}
   alias Apiary.Secrets.Secret
   alias Apiary.Sources.Item
+  alias Apiary.Stacks
   alias Apiary.Variables.Variable
   alias Apiary.WorkItems.WorkItem
   alias Mix.Tasks.Apiary.Demo.Console
@@ -302,6 +303,17 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert work_items |> Enum.map(& &1.state) |> Enum.frequencies() ==
              %{exploring: 7, closed: 2, undone: 1}
 
+    # The stack of Main's runs: one row, at the workspace, for the workflow hello.
+    assert [%Stacks.Stack{} = stack] = Repo.all(Stacks.Stack)
+    assert {stack.workspace_id, stack.target_id, stack.workflow} == {main.id, nil, "hello"}
+
+    assert stack.stack ==
+             "https://github.com/qoryai/qory#2e3af09033548e2155b7911b9adae473136e21cf:" <>
+               "examples/hello"
+
+    assert Apiary.Contract.Stack.valid?(stack.stack)
+    assert Stacks.workflow(main, nil) == "hello"
+
     # Spread across members, seven people own the live ones.
     owners = for %{state: :exploring, owner_id: id} <- work_items, uniq: true, do: id
     assert length(owners) == 7
@@ -390,6 +402,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     refute Repo.exists?(Adapters.Collection)
     refute Repo.exists?(Item)
     refute Repo.exists?(WorkItem)
+    refute Repo.exists?(Stacks.Stack)
   end
 
   test "a second run makes nothing more of the fill, and brings a live run" do

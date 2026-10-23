@@ -13,8 +13,9 @@ defmodule Apiary.Stacks do
   # ## Writes
   #
   # `put_stack/3` and `delete_stack/1` set and remove the stack at one place. Only tests
-  # call them: no action, route or page does, and they check no access. The access check
-  # comes with the action. A write records the person who saved the value and, in
+  # call them, and the demo (`mix apiary.demo.console`) calls `put_stack/3`: no action,
+  # route or page does, and they check no access. The access check comes with the
+  # action. A write records the person who saved the value and, in
   # `saved_by_organisation_id`, the scope's organisation when the scope reaches it
   # through a membership there alone (`saved_by/1`). A scope that reaches it any other
   # way, such as an instance admin or an operator's person acting in a client, or the
@@ -172,8 +173,8 @@ defmodule Apiary.Stacks do
   @doc false
   # put_stack/3 sets the stack at `place` to `stack`, replacing what the place had, saved
   # by the scope's person in the scope's organisation. `{:ok, stack}`, or `{:error,
-  # changeset}` with the reason on its field. Only tests call it: no action, route or page
-  # does, and it checks no access (the moduledoc).
+  # changeset}` with the reason on its field. Only tests and the demo call it: no action,
+  # route or page does, and it checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term) :: {:ok, Stack.t()} | {:error, Ecto.Changeset.t()}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, stack) do
     columns = columns(place)
