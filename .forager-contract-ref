@@ -54,7 +54,7 @@
 # any, absent when the run has nowhere to run setup commands; and `runner` `true` on the
 # `line` event of a setup record, written by the runner when it cannot start or wait for
 # the command; and the line `session <n> starts on this machine`, which the session
-# reports on stderr by default, with the host, the working directory on the machine, the
+# reports on stderr by default, with the host, the directories on the machine, the
 # command and the arguments, and the harness sources that a run with a run key leaves
 # out of its events or replaces.
 #
