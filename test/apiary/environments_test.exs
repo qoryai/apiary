@@ -487,7 +487,7 @@ defmodule Apiary.EnvironmentsTest do
 
     test "the claim's builds run only inside the caller's transaction", ctx do
       assert_raise ArgumentError, ~r/caller's transaction/, fn ->
-        Environments.hold_builds(ctx.scope.workspace.id, ctx.pool.id)
+        Environments.hold_builds(ctx.scope.workspace.id, ctx.pool.id, DateTime.utc_now())
       end
 
       assert_raise ArgumentError, ~r/caller's transaction/, fn ->

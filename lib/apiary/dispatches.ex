@@ -89,11 +89,12 @@ defmodule Apiary.Dispatches do
   #      `{:error, :unauthorized}`;
   #   2. `dispatch.claim` asked of the key's workspace (`Apiary.Access`): any refusal is
   #      `{:error, :forbidden}`, one answer whatever its reason;
-  #   3. the connections and then the collections a build for the pool is due for, held
-  #      `FOR SHARE`, by id (`Apiary.Environments.hold_builds/2`): the collections of the
-  #      targets of the runs held for the pool's build (`Apiary.Environments.held/2`) with
-  #      no prebuild of their `environment_ref` for the pool waiting, claimed or handed
-  #      over; then the pool's
+  #   3. the connections and then the collections a build for the pool is due for, with
+  #      the collections of the pool's prebuilds whose dispatch lapsed at `now`, held
+  #      `FOR SHARE`, by id, in one statement (`Apiary.Environments.hold_builds/3`): a
+  #      build is due for the collections of the targets of the runs held for the pool's
+  #      build (`Apiary.Environments.held/2`) with no prebuild of their `environment_ref`
+  #      for the pool waiting, claimed or handed over; then the pool's
   #      row locked `FOR NO KEY UPDATE`, so two claims of one pool, and a claim and a
   #      registration on the pool (`Apiary.Nodes.check_instance_limit/3`, which locks it
   #      `FOR UPDATE`), take turns, while a prebuild's writes, whose foreign keys to the
@@ -671,7 +672,7 @@ defmodule Apiary.Dispatches do
       Repo.transact(fn ->
         with {:ok, key} <- current_key(key_id),
              :ok <- may_claim(key),
-             builds = Environments.hold_builds(key.workspace_id, key.node_id),
+             builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
              {:ok, pool} <- lock_pool(key),
              {:ok, gateway, keys} <- Handover.gateway(pool) do
           freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool.id) end)

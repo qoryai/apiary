@@ -9,7 +9,7 @@ defmodule Apiary.Environments do
   # of `Apiary.Access`, and whoever answers a person with them asks it first. A person's
   # Rebuild (`rebuild/2`) and what a target's page says (`section/2`) ask it themselves.
   #
-  # ## A run held for its build: `holds?/1`, `held/2`, `hold_builds/2`, `queue_builds/2`
+  # ## A run held for its build: `holds?/1`, `held/2`, `hold_builds/3`, `queue_builds/2`
   #
   # A pool builds a collection's `environment_ref` when a run needs it, and never ahead
   # of one: a listing, an assign and a new node pool queue no build. In a workspace whose
@@ -27,12 +27,15 @@ defmodule Apiary.Environments do
   #
   # Whenever a run is held and no prebuild of its collection's `environment_ref` for the
   # pool waits, is claimed or is handed over, the pool's next claim queues one: before it
-  # locks the pool's row, `hold_builds(workspace_id, pool_id)` reads those collections
-  # without a lock, holds their connections `FOR SHARE`, by id, then them `FOR SHARE`, by
-  # id. After the pool's row, its free locks the records of the pool's lapsed prebuilds,
-  # then `make_records(collections, pool_id)` inserts the missing records of those
-  # collections for the pool, by collection, before the free locks any run, as a Rebuild
-  # locks records and then inserts the missing ones. After the free,
+  # locks the pool's row, `hold_builds(workspace_id, pool_id, now)` reads those
+  # collections without a lock, with the collections of the pool's prebuilds whose
+  # dispatch lapsed at `now`, whose prebuilds its free writes, and holds their
+  # connections `FOR SHARE`, by id, then all of them `FOR SHARE`, by id, in one
+  # statement (`Apiary.Dispatches.Slots`). After the pool's row, its free locks the
+  # records of the pool's lapsed prebuilds, then `make_records(collections, pool_id)`
+  # inserts the missing records of those collections for the pool, by collection,
+  # before the free locks any run, as a Rebuild locks records and then inserts the
+  # missing ones. After the free,
   # `queue_builds(collections, pool)` checks again and queues a prebuild of each for the
   # collection's `environment_ref` (`Apiary.Dispatches.queue_prebuild/3`, whose record then
   # exists, so the claim inserts no record after runs). So a key change while runs wait is
@@ -1035,74 +1038,82 @@ defmodule Apiary.Environments do
     end
   end
 
-  # hold_builds/2 holds `FOR SHARE`, by id, inside the caller's transaction, the
-  # collections a build for the node pool `pool_id` of the workspace `workspace_id` is
-  # due for, read without a lock first: each collection of the target of a waiting run
-  # held for the pool, of a work item in Explore, with no prebuild of its
-  # `environment_ref` for the pool waiting, claimed or handed over. It holds their
-  # connections `FOR SHARE`, by id, first, as `hold_named/1` does. A claim calls it before
-  # it locks the pool's row (the moduledoc).
+  # hold_builds/3 holds `FOR SHARE`, by id, inside the caller's transaction, the
+  # collections a claim of the node pool `pool_id` of the workspace `workspace_id` at
+  # `now` writes the prebuilds of, read without a lock first, and answers those a build
+  # for the pool is due for: each collection of the target of a waiting run held for the
+  # pool, of a work item in Explore, with no prebuild of its `environment_ref` for the
+  # pool waiting, claimed or handed over. It holds with them the collections of the
+  # pool's claimed prebuilds whose dispatch lapsed at `now`
+  # (`Apiary.Dispatches.Slots.lapsed_collections/2`), whose prebuilds the claim's free
+  # writes, in the same statement, so every collection lock the claim takes comes first,
+  # in id order. It holds their connections `FOR SHARE`, by id, first, as `hold_named/1`
+  # does. Of the due ones, it answers those still live and assigned to the workspace as
+  # read once held, since an assign may have changed one while the claim waited for it.
+  # A claim calls it before it locks the pool's row (the moduledoc).
   @doc false
-  @spec hold_builds(Ecto.UUID.t(), Ecto.UUID.t()) :: [Collection.t()]
-  def hold_builds(workspace_id, pool_id) when is_binary(workspace_id) and is_binary(pool_id) do
-    in_transaction!("hold_builds/2")
+  @spec hold_builds(Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: [Collection.t()]
+  def hold_builds(workspace_id, pool_id, %DateTime{} = now)
+      when is_binary(workspace_id) and is_binary(pool_id) do
+    in_transaction!("hold_builds/3")
+    lapsed = Apiary.Dispatches.Slots.lapsed_collections(pool_id, now)
 
-    if prebuilt?(workspace_id) do
-      live_build =
-        from b in DispatchRun,
-          where: b.source_collection_id == parent_as(:collection).id,
-          where: b.pool_id == ^pool_id and b.step == ^DispatchRun.prebuild(),
-          where: b.environment_ref == parent_as(:collection).environment_ref,
-          where: b.state in [:waiting, :claimed, :handed_over],
-          select: 1
+    due =
+      if prebuilt?(workspace_id), do: due_builds(workspace_id, pool_id), else: []
 
-      ids =
-        Repo.all(
-          from r in DispatchRun,
-            as: :run,
-            join: w in WorkItem,
-            on: w.id == r.work_item_id,
-            join: c in Collection,
-            as: :collection,
-            on:
-              c.workspace_id == ^workspace_id and is_nil(c.ended_at) and
-                not is_nil(c.environment_ref) and c.target_system == w.target_system and
-                c.target_path == w.target_path,
-            where: r.workspace_id == ^workspace_id and r.step != ^DispatchRun.prebuild(),
-            where: fragment("? = 'waiting'", r.state) and w.state == :exploring,
-            where: exists(held(workspace_id, pool_id)),
-            where: not exists(live_build),
-            distinct: true,
-            select: c.id
-        )
+    all = Enum.uniq(due ++ lapsed)
 
-      connection_ids =
-        Repo.all(from c in Collection, where: c.id in ^ids, select: c.connection_id)
-        |> Enum.uniq()
-        |> Enum.sort()
+    connection_ids =
+      Repo.all(from c in Collection, where: c.id in ^all, select: c.connection_id)
+      |> Enum.uniq()
+      |> Enum.sort()
 
-      held =
-        Repo.all(
-          from k in Connection,
-            where: k.id in ^connection_ids,
-            order_by: k.id,
-            lock: "FOR SHARE",
-            select: k.id
-        )
-
+    _connections =
       Repo.all(
-        from c in Collection,
-          where: c.id in ^ids and c.connection_id in ^held,
-          order_by: c.id,
-          lock: "FOR SHARE"
+        from k in Connection,
+          where: k.id in ^connection_ids,
+          order_by: k.id,
+          lock: "FOR SHARE",
+          select: k.id
       )
-    else
-      []
-    end
+
+    Repo.all(from c in Collection, where: c.id in ^all, order_by: c.id, lock: "FOR SHARE")
+    |> Enum.filter(&(&1.id in due and due?(&1) and &1.workspace_id == workspace_id))
+  end
+
+  # The ids of the collections a build for the node pool `pool_id` of the workspace
+  # `workspace_id` is due for, read without a lock (`hold_builds/3`).
+  defp due_builds(workspace_id, pool_id) do
+    live_build =
+      from b in DispatchRun,
+        where: b.source_collection_id == parent_as(:collection).id,
+        where: b.pool_id == ^pool_id and b.step == ^DispatchRun.prebuild(),
+        where: b.environment_ref == parent_as(:collection).environment_ref,
+        where: b.state in [:waiting, :claimed, :handed_over],
+        select: 1
+
+    Repo.all(
+      from r in DispatchRun,
+        as: :run,
+        join: w in WorkItem,
+        on: w.id == r.work_item_id,
+        join: c in Collection,
+        as: :collection,
+        on:
+          c.workspace_id == ^workspace_id and is_nil(c.ended_at) and
+            not is_nil(c.environment_ref) and c.target_system == w.target_system and
+            c.target_path == w.target_path,
+        where: r.workspace_id == ^workspace_id and r.step != ^DispatchRun.prebuild(),
+        where: fragment("? = 'waiting'", r.state) and w.state == :exploring,
+        where: exists(held(workspace_id, pool_id)),
+        where: not exists(live_build),
+        distinct: true,
+        select: c.id
+    )
   end
 
   # make_records/2 inserts the environment record of each of `collections`, held by
-  # `hold_builds/2`, for the node pool `pool_id`, where there is none, by collection, as
+  # `hold_builds/3`, for the node pool `pool_id`, where there is none, by collection, as
   # `Apiary.Dispatches.queue_prebuild/3` inserts it, inside the caller's transaction. A
   # claim calls it inside its free, once the records of its lapsed prebuilds are locked
   # and before any run is (`Apiary.Dispatches.Slots.free/3`), so the prebuilds
@@ -1140,7 +1151,7 @@ defmodule Apiary.Environments do
   end
 
   # queue_builds/2 queues, inside the caller's transaction, a prebuild of each of
-  # `collections`, held by `hold_builds/2`, for the node pool `pool`, whose row the
+  # `collections`, held by `hold_builds/3`, for the node pool `pool`, whose row the
   # caller locked after them, for the collection's `environment_ref`, where the
   # collection is still live, assigned to the pool's workspace, with that target and an
   # `environment_ref`, and no prebuild of that ref for the pool waits, is claimed or
