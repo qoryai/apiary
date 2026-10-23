@@ -13,7 +13,7 @@ defmodule Apiary.Registry.Grant do
   # The run's rights (`t:rights/0`) are exact names of the instance with their actions.
   # Every run may pull any name under `shared/` and under `upstream/` for one of the 4
   # upstream hosts (`Apiary.Registry.Names`), and push on none of them: no run of a
-  # workspace pushes there, and Qory Apiary starts no build of the instance's operator.
+  # workspace pushes there, and no build that Qory Apiary starts pushes there either.
   # Each requested name gets the actions it asks for that the run has on it, of `pull`
   # and `push` alone: a scope of another type,
   # a name outside the run, another action, and a name that is not of the layout
