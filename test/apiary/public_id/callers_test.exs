@@ -165,7 +165,10 @@ defmodule Apiary.PublicId.CallersTest do
     end
 
     defp register(key, run_id) do
-      bytes = run_id |> registration_body() |> Jason.encode!()
+      register_bytes(key, run_id |> registration_body() |> Jason.encode!())
+    end
+
+    defp register_bytes(key, bytes) do
       {:ok, registration} = Registration.parse(Jason.decode!(bytes))
 
       Registration.register(key, registration, %{
@@ -201,10 +204,10 @@ defmodule Apiary.PublicId.CallersTest do
     end
 
     test "that a registration repeats keeps the run and its id, with no retry", %{key: key} do
-      run_id = Ecto.UUID.generate()
-      assert {:ok, %{run: first}} = register(key, run_id)
+      bytes = Ecto.UUID.generate() |> registration_body() |> Jason.encode!()
+      assert {:ok, %{run: first}} = register_bytes(key, bytes)
 
-      assert {:ok, %{run: again, repeated: true}} = register(key, run_id)
+      assert {:ok, %{run: again, repeated: true}} = register_bytes(key, bytes)
       assert again.public_id == first.public_id
     end
   end
