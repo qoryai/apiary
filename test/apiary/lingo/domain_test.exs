@@ -116,6 +116,7 @@ defmodule Apiary.Lingo.DomainTest do
 
     test "is named general, with no label of a run's paths" do
       assert General.name() == "general"
+      Code.ensure_loaded!(General)
       refute function_exported?(General, :paths_label, 0)
     end
 
