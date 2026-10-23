@@ -438,7 +438,11 @@ them (`Apiary.Contract.Stack`). An
 organisation's stack can be stored at five levels, the most specific first: the target
 and the workflow, the target, the workspace and the workflow, the workspace, and the
 organisation's default. The first level with a stack applies, and a level without one
-passes to the next (`Apiary.Stacks.Resolution`). The owner of a name is the instance. The
+passes to the next (`Apiary.Stacks.Resolution`). A run has a stack only when it has a
+workflow, and the stored stack with that workflow is at the target and the workflow or at
+the workspace and the workflow. Both levels come before the workspace and the
+organisation's default, so a stack stored at either of those two levels is never a run's
+stack (`Apiary.Stacks.for_run/3`). The owner of a name is the instance. The
 owner of a reference is the organisation of the person who saved it, when that person
 saved it as a member acting in that organisation; it is unknown for a reference saved by
 any other way of reaching the organisation, such as an instance admin or an operator's

@@ -66,8 +66,8 @@ defmodule Apiary.Stacks do
   # for_run/3 is the stack of an explore run of `workspace` in `organisation`, at
   # `target`, the work item's `%{system, path}`, nil for none: the resolution's `stack`,
   # the run's workflow (`workflow/2`) and `harness_hidden`, or nil for a run without a
-  # workflow or with no stack at any level. A target no row of the workspace has counts
-  # as none.
+  # workflow. The row the workflow is read from has a stack, so a run with a workflow has
+  # a stack. A target no row of the workspace has counts as none.
   @spec for_run(Organisation.t(), Workspace.t(), %{system: String.t(), path: String.t()} | nil) ::
           run_stack | nil
   def for_run(%Organisation{} = organisation, %Workspace{} = workspace, target) do

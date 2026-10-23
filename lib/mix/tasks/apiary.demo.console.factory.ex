@@ -30,10 +30,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #   * members take tickets in, close and undo (`Apiary.WorkItems`), each under their
   #     scope.
   #
-  # Dana also stores the stack of Main's runs with `Apiary.Stacks.put_stack/3`, which no
-  # request or page calls: the workflow `hello` at the workspace, with the stack
-  # `examples/hello` of qory's repository at one commit, so a run of Main has that
-  # workflow and that stack.
+  # Dana also stores the stack of Main's explore runs with `Apiary.Stacks.put_stack/3`,
+  # which no request or page calls: the workflow `hello` at the workspace, with the stack
+  # `examples/hello` of qory's repository at one commit, so an explore run of Main has
+  # that workflow and that stack. A prebuild's documents have no workflow and no stack.
   #
   # The key pair each adapter enrols is made here and kept in memory only: its secret
   # signs the enrolment's proof and the connect return, and is then dropped.
@@ -63,8 +63,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   # The code host the repositories' runs would clone from.
   @code_host "git.example.com"
 
-  # The workflow of Main's runs, and its stack: `examples/hello` of qory's repository at
-  # one commit.
+  # The workflow of Main's explore runs, and its stack: `examples/hello` of qory's
+  # repository at one commit.
   @workflow "hello"
   @stack "https://github.com/qoryai/qory#2e3af09033548e2155b7911b9adae473136e21cf:" <>
            "examples/hello"
