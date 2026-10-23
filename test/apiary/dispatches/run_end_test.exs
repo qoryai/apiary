@@ -861,7 +861,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       {:ok, _queued} =
         Repo.transact(fn -> Dispatches.queue_prebuild(ctx.collection, second.pool, "env-1") end)
 
-      %{run: other_build, registered: registered} = dispatched!(second.key)
+      %{run: other_build, registered: registered, run_code: code} = dispatched!(second.key)
       assert other_build.pool_id == second.pool.id
 
       assert {:ok, %{run: _run}} = ctx.attach.()
@@ -869,10 +869,29 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_held_ended(held)
       ended = Enum.map(held, &queue_run!/1)
 
-      # The second pool's build is lost: the held runs keep the end they have.
-      after_it = DateTime.add(registered.attach_by, 1, :second)
-      assert Liveness.check(after_it) != []
-      assert %DispatchRun{state: :ended} = queue_run!(other_build)
+      # The second pool's build attaches through the gateway its claim resolved to, and
+      # fails: the held runs keep the end they have.
+      {gateway_key, _seed} =
+        Enum.find_value([ctx.place, second], fn place ->
+          if place.gateway.id == registered.gateway_id, do: place.gateway_key
+        end)
+
+      {:ok, body} = Attach.parse(attach_body(redeemed_run_key!(code)))
+
+      assert {:ok, %{run: _run}} =
+               Attach.attach(gateway_key, other_build.run_id, body, %{instance_id: instance_id()})
+
+      event_fixture(registered, 9, "run.exited", %{"state" => "failed", "exit_code" => 1})
+      assert {:ok, %Run{state: "failed"}} = Projector.project(registered)
+
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(other_build)
+
+      assert %Record{failure_cause: :failed} =
+               Repo.get_by!(Record,
+                 source_collection_id: ctx.collection.id,
+                 pool_id: second.pool.id
+               )
+
       assert Enum.map(held, &queue_run!/1) == ended
     end
 
