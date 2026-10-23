@@ -19,7 +19,7 @@
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
     },
     "external": {
-      "description": "The job at the provider that runs it, when the starter knows it. Absent otherwise.",
+      "description": "The job at the vendor that runs it, when the starter knows it. Absent otherwise.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -37,7 +37,7 @@
           "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/ref"
         },
         "url": {
-          "description": "The job's page at the provider.",
+          "description": "The job's page at the vendor.",
           "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/url"
         }
       }
