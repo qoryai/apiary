@@ -12,7 +12,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
 
-  alias Apiary.{Dispatches, InstanceConfig, Policy, Registry, Repo, SealedOpen, SigningKey}
+  alias Apiary.{InstanceConfig, Policy, Registry, Repo, SealedOpen, SigningKey}
   alias Apiary.Environments.Record
   alias Apiary.Registry.{Credential, Names, RunAccess}
   alias Apiary.Runs.{Attach, RateLimit, Run, Target}
@@ -44,8 +44,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
     collection = Apiary.NodesFixtures.collection_fixture(scope)
     :ok = target_row(scope, collection.target_system, collection.target_path)
 
-    {:ok, _queued} =
-      Repo.transact(fn -> {:ok, Apiary.Environments.trigger([collection], Dispatches.now())} end)
+    [_queued] = queue_builds!(collection)
 
     %{registered: registered, run_code: code} = dispatched!(place.key)
     {:ok, attach} = Attach.parse(attach_body(redeemed_run_key!(code)))
@@ -436,7 +435,8 @@ defmodule ApiaryWeb.RegistryTokenTest do
             size: 1,
             commit: String.duplicate("a", 40),
             built_at: DateTime.utc_now(),
-            reported_ref: "env-1"
+            reported_ref: "env-1",
+            built_ref: "env-1"
           ]
         )
 
