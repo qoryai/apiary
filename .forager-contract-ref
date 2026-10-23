@@ -34,10 +34,10 @@
 # `dev.qory.run.step_exited` numbered from 1, with `step` on each `dev.qory.run.log` of
 # a step; and a run code, `qecr_`, which a machine redeems once at enrolment for its
 # run's run key, answered `$defs/run_answer` of `enrolment.schema.json`, with the run's
-# `documents`; and `machine` and `setup`, optional members of `dev.qory.run.started`; and
-# a run key's `gateway_url` of `https://`, a host and an optional port alone, at most 300
-# characters; and a gateway's relay that signs a run code's enrolment as the gateway,
-# `qory-request-ed25519-v1`, over the raw body, with no timestamp header; and
+# `documents`; and `machine` and `setup`, optional members of `dev.qory.run.started`;
+# and a run key's `gateway_url` of `https://`, a host and an optional port alone, at
+# most 300 characters; and a gateway's relay that signs a run code's enrolment as the
+# gateway, `qory-request-ed25519-v1`, over the raw body, with no timestamp header; and
 # `environment_image` and `base`, optional members of `dev.qory.run.built`, the
 # environment image and the base image by their digests; and `(a name that contains a
 # run code)` and `(a value that contains a run code)`, the phrases in place of a name or
@@ -47,7 +47,16 @@
 # `host`, whose `dev.qory.session.started` has `dir` `/workspace` and no `harness`, and
 # whose `command`, `args`, `cwd` and `prompt` have `<run>`, `<home>` and `<inputs>` in
 # place of the run directory, the harness home and the inputs directory, and whose `cwd`
-# and `prompt` have `/workspace` in place of the working directory.
+# and `prompt` have `/workspace` in place of the working directory; and `qecr_` in the
+# strings for which `(*session.Run).Built` returns an error, in any case, in the image
+# and in `environment_image` and `base` of `dev.qory.run.built`; and `setup` of
+# `dev.qory.run.started`, where the run's setup commands run, or would run if it had
+# any, absent when the run has nowhere to run setup commands; and `runner` `true` on the
+# `line` event of a setup record, written by the runner when it cannot start or wait for
+# the command; and the line `session <n> starts on this machine`, which the session
+# reports on stderr by default, with the host, the working directory on the machine, the
+# command and the arguments, and the harness sources that a run with a run key leaves
+# out of its events or replaces.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
