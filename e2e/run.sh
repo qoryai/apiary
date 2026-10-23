@@ -167,10 +167,13 @@ one_run() {
   # The node's qory configuration: how the runtime is started, and the part of the Forager
   # file that is not the gateway's. The scenario writes the file, the gateway's server
   # section first, and the access key's secret beside it, access-key-secret, in this
-  # directory, mode 0700; node/prepare.sh copies the three into the node.
+  # directory, mode 0700; node/prepare.sh copies the three into the node. The harness is
+  # composed in /var/cache/qory-homes, outside the checkout: Forager refuses a plugin
+  # directory in a place a walled run can write, and the checkout is one.
   cat >"$E2E_WORK/config/qory/qory.yaml" <<YAML
 apiVersion: qory.dev/v1alpha1
 harness:
+  home: /var/cache/qory-homes
   launch:
     claude:
       command: /work/checkout/bin/fake-runtime
