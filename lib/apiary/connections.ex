@@ -945,7 +945,7 @@ defmodule Apiary.Connections do
            ),
          true <- Integrations.intact(release),
          {:ok, description} <- Integrations.description(release) do
-      # Found before the operator's settings changed, it is still not one to add now.
+      # Found before the instance admin's settings changed, it is still not one to add now.
       case Integrations.accepted_source(release) do
         {:ok, _source} -> {:ok, release, description}
         {:error, _reason} -> {:error, :integration_source_refused}
