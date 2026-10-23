@@ -24,8 +24,7 @@ defmodule Apiary.Repo.Migrations.HoldRunsForTheirEnvironmentBuild do
   #   waited for a build that failed, or that was lost twice. Like the causes a handover
   #   ends a run for, it comes with the outcome `error` on a run that is not a prebuild.
   #
-  # The new checks are added NOT VALID, so the change scans no row under a lock that
-  # blocks writes; the next migration validates them.
+  # Adding the checks NOT VALID scans no row; the next migration validates them.
   #
   # Rolled back, the causes are as before, `image_requeue`, `built_ref` and `lost_ref`
   # go, one waiting prebuild per collection and node pool comes back, and the queued
