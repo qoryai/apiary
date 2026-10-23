@@ -18,11 +18,13 @@ defmodule Apiary.Adapters.Wire do
   # `time/1` reads a time as the contract writes it (`$defs/time`): RFC 3339 in UTC with
   # whole seconds, `2026-10-15T12:00:00Z`, never a leap second (`:60`), and nothing else.
   #
-  # `url?/1` holds a URL to the contract's `$defs/url` (`https://`, at most 2,048
-  # characters, an RFC 3986 URI) and to what the instance stores and sends a person to
-  # (`Apiary.Nodes.Node.connect_url_changeset/2`): only RFC 3986's characters, every `%`
-  # followed by two hexadecimal digits, a host, a port from 1 to 65,535 when one is
-  # written, and no user information.
+  # `url?/1` holds a URL to the description of the contract's `$defs/url`: at most 2,048
+  # characters, `https://`, a host, then a port, a path, a query and a fragment, each
+  # optional, as RFC 3986 writes them. The host is a name of letters, digits,
+  # `-._~!$&'()*+,;=`, the percent-encodings `%80` to `%FF` in either case and `%25`, or
+  # an IPv6 address in brackets, followed by nothing else. No user information comes
+  # before the host. A colon after the host stands alone or is followed by a port of 1 to
+  # 5 digits whose value is from 1 to 65,535. Every `%` starts a percent-encoding.
   #
   # `declaration/1` reads the raw body of `POST /v1/adapter` (`adapter.schema.json`),
   # decoded as `decode/1` decodes it: exactly `version` (1), `time`, `connect_url`, `sync`,
@@ -63,13 +65,28 @@ defmodule Apiary.Adapters.Wire do
   # completes.
 
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
-  # RFC 3986's characters: unreserved, reserved, and `%` of a percent-encoding.
-  @uri_characters ~r{\A[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+\z}
-  # A `%` that does not start a percent-encoding.
-  @bare_percent ~r/%(?![0-9A-Fa-f]{2})/
-  # `https://`, an authority with no `@`, then nothing, or a path, a query or a fragment:
-  # as `nodes_connect_url_check` holds a stored address.
-  @no_user_information ~r{\Ahttps://[^/?#@]+(?:[/?#].*)?\z}s
+  # The parts of `$defs/url`, as RFC 3986 writes them: `IPv6address`, a host name of
+  # unreserved and sub-delims characters with the percent-encodings `%80` to `%FF` and
+  # `%25`, and the characters of a path, a query and a fragment (`pchar`).
+  @dec_octet "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
+  @ipv4 "#{@dec_octet}(?:\\.#{@dec_octet}){3}"
+  @h16 "[0-9A-Fa-f]{1,4}"
+  @ls32 "(?:#{@h16}:#{@h16}|#{@ipv4})"
+  @ipv6 "(?:(?:#{@h16}:){6}#{@ls32}" <>
+          "|::(?:#{@h16}:){5}#{@ls32}" <>
+          "|(?:#{@h16})?::(?:#{@h16}:){4}#{@ls32}" <>
+          "|(?:(?:#{@h16}:){0,1}#{@h16})?::(?:#{@h16}:){3}#{@ls32}" <>
+          "|(?:(?:#{@h16}:){0,2}#{@h16})?::(?:#{@h16}:){2}#{@ls32}" <>
+          "|(?:(?:#{@h16}:){0,3}#{@h16})?::#{@h16}:#{@ls32}" <>
+          "|(?:(?:#{@h16}:){0,4}#{@h16})?::#{@ls32}" <>
+          "|(?:(?:#{@h16}:){0,5}#{@h16})?::#{@h16}" <>
+          "|(?:(?:#{@h16}:){0,6}#{@h16})?::)"
+  @host_name "(?:[A-Za-z0-9\\-._~!$&'()*+,;=]|%[89A-Fa-f][0-9A-Fa-f]|%25)+"
+  @pchar "(?:[A-Za-z0-9\\-._~!$&'()*+,;=:@]|%[0-9A-Fa-f]{2})"
+  @url Regex.compile!(
+         "\\Ahttps://(?:#{@host_name}|\\[#{@ipv6}\\])(?::(?<port>[0-9]{0,5}))?" <>
+           "(?:/(?:#{@pchar}|/)*)?(?:\\?(?:#{@pchar}|[/?])*)?(?:#(?:#{@pchar}|[/?])*)?\\z"
+       )
   # A query parameter named `state`, each letter written plainly or percent-encoded: the
   # pattern `adapter.schema.json` refuses in `setup_url`, as written there.
   @state_parameter ~r/\A[^?#]*\?(?:[^&#]*&)*(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)(?:[=&#]|\z)/
@@ -195,9 +212,12 @@ defmodule Apiary.Adapters.Wire do
   @doc false
   @spec url?(term) :: boolean
   def url?(value) when is_binary(value) do
-    byte_size(value) <= @max_url and String.starts_with?(value, "https://") and
-      Regex.match?(@uri_characters, value) and not Regex.match?(@bare_percent, value) and
-      Regex.match?(@no_user_information, value) and parses?(value)
+    with true <- byte_size(value) <= @max_url,
+         %{"port" => port} <- Regex.named_captures(@url, value) do
+      port == "" or String.to_integer(port) in 1..65_535
+    else
+      _ -> false
+    end
   end
 
   def url?(_value), do: false
@@ -212,18 +232,6 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def setup_url?(_value), do: false
-
-  # RFC 3986's parser agrees: https, a host, no user information, and a port in range.
-  defp parses?(value) do
-    case URI.new(value) do
-      {:ok, %URI{scheme: "https", host: host, userinfo: nil, port: port}}
-      when is_binary(host) and host != "" and is_integer(port) and port in 1..65_535 ->
-        true
-
-      _other ->
-        false
-    end
-  end
 
   # The raw body of `POST /v1/adapter`: `{:ok, declaration}` or `:error`. The description
   # is read last, once every other member is as the contract has it.
