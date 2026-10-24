@@ -276,8 +276,9 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   `{:error, :not_set_up}`. The page is `ApiaryWeb.SetupLive`; its line on what is created
   is the edition's (`c:Apiary.Edition.first_sign_up_line/0`).
 - **The preset.** With `QORY_SETUP_CODE_SHA256` set, the install makes the code and
-  prints the link, and `Apiary.Setup.preset!/0` reads the hash at boot; a value that is
-  not 64 hexadecimal characters stops the boot. A start before set-up makes and logs no
+  prints the link, and `Apiary.Setup.preset!/0` reads the hash at boot. An empty or blank
+  value counts as unset. Any other value that is not 64 hexadecimal characters, with
+  whitespace around them ignored, stops the boot. A start before set-up makes and logs no
   code: it sets a stored `setup_code` to NULL under the row's lock and logs a line without
   a link. The one code accepted has 43 base64url characters and a SHA-256 equal to the
   hash, compared in constant time. The set-up, by the link or by the release command,

@@ -747,7 +747,8 @@ with the same hash set, logs:
 Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to get a set-up link in this log. The code it gives has set up this instance before.
 ```
 
-A value of `QORY_SETUP_CODE_SHA256` that is not 64 hexadecimal characters stops the boot:
+An empty or blank value of `QORY_SETUP_CODE_SHA256` counts as unset. Any other value that
+is not 64 hexadecimal characters, with whitespace around them ignored, stops the boot:
 
 ```text
 Set QORY_SETUP_CODE_SHA256 to 64 hexadecimal characters, the SHA-256 of the set-up code, or leave it unset. The value set is not that.
