@@ -159,7 +159,7 @@ defmodule Apiary.Nodes.InstalledTest do
     end
 
     test "makes the pool and the gateway once, and writes their codes to their folders",
-         %{dir: dir} do
+         %{dir: dir, scope: instance} do
       assert Installer.pass() == {:ok, []}
 
       pool = declared_node(:pool)
@@ -169,8 +169,10 @@ defmodule Apiary.Nodes.InstalledTest do
       assert pool.instance_limit == nil
       assert {gateway.installed_as, gateway.url} == {"gateway", "https://gateway.example"}
 
-      for node <- [pool, gateway] do
-        assert [%Entry{actor_kind: :instance, workspace_id: nil}] = entries(:"node.install", node)
+      for node <- [pool, gateway], action <- [:"node.install", :"access_key.create_code"] do
+        assert [%Entry{actor_kind: :instance, workspace_id: nil} = entry] = entries(action, node)
+        assert entry.organisation_id == instance.organisation.id
+        assert entry.subject_id == node.id
       end
 
       fingerprint = Regex.escape(Apiary.SigningKey.fingerprint())
@@ -208,7 +210,8 @@ defmodule Apiary.Nodes.InstalledTest do
       assert CodeFile.exists?("edge")
     end
 
-    test "the file's code enrols the node with one key, and the file goes" do
+    test "the file's code enrols the node with one key, and the file goes",
+         %{scope: instance} do
       assert Installer.pass() == {:ok, []}
       gateway = declared_node(:gateway)
 
@@ -216,6 +219,14 @@ defmodule Apiary.Nodes.InstalledTest do
                enrol(code_in_file("gateway"))
 
       assert key.node_id == gateway.id
+
+      # The enrolment is in the instance's organisation's trail, by the key.
+      assert [%Entry{actor_kind: :access_key, actor_id: actor_id} = entry] =
+               Repo.all(
+                 from e in Entry, where: e.action == "access_key.add" and e.subject_id == ^key.id
+               )
+
+      assert {actor_id, entry.organisation_id} == {key.id, instance.organisation.id}
       refute CodeFile.exists?("gateway")
 
       assert {:ok, %AccessKey{allow_secrets: false}} = enrol(code_in_file("pool"))
@@ -253,7 +264,7 @@ defmodule Apiary.Nodes.InstalledTest do
   end
 
   describe "a node no longer declared" do
-    test "has its codes cancelled and its file deleted, and stays" do
+    test "has its codes cancelled and its file deleted, and stays", %{scope: instance} do
       assert Installer.pass() == {:ok, []}
       pool = declared_node(:pool)
       code = code_in_file("pool")
@@ -264,7 +275,8 @@ defmodule Apiary.Nodes.InstalledTest do
       assert outstanding(pool) == []
       refute CodeFile.exists?("pool")
       assert Repo.reload!(pool).deleted_at == nil
-      assert [%Entry{actor_kind: :instance}] = entries(:"access_key.cancel_code", pool)
+      assert [%Entry{actor_kind: :instance} = entry] = entries(:"access_key.cancel_code", pool)
+      assert entry.organisation_id == instance.organisation.id
 
       # Its code enrols nothing any more.
       assert {:error, :unauthorized} = enrol(code)

@@ -3,7 +3,8 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   # oldest waiting run of any workspace with no pool in use, across organisations, writes
   # the dispatch and the registered run in the run's workspace, counts its limit across
   # them, and leaves a run held for its build waiting until its prebuild, which it queues
-  # in the run's workspace, made the image. Then the claim's query on 200 workspaces. Not async: the instance has one pool and one gateway in use.
+  # in the run's workspace, made the image. Its release is in the trail of the run's
+  # organisation. Then the claim's query on 200 workspaces. Not async: the instance has one pool and one gateway in use.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -13,6 +14,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Nodes}
+  alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
@@ -156,6 +158,26 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       Repo.delete_all(from k in Apiary.AccessKeys.AccessKey, where: k.node_id == ^ctx.gateway.id)
       queued!(ctx.a)
       assert claim(ctx.key) == {:error, :no_gateway}
+    end
+  end
+
+  describe "a release by the instance's pool" do
+    test "is in the trail of the dispatch's organisation, about the pool", ctx do
+      instance = instance_scope()
+      queued!(ctx.a)
+      {:ok, %{dispatch: dispatch}} = claim(ctx.key)
+
+      assert Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No machine started."}) ==
+               :ok
+
+      assert [entry] =
+               Repo.all(from e in Entry, where: e.action == "dispatch.release")
+
+      assert entry.organisation_id == ctx.a.organisation.id
+      assert entry.organisation_id != instance.organisation.id
+      assert {entry.actor_kind, entry.actor_id} == {:access_key, ctx.key.id}
+      assert {entry.subject_kind, entry.subject_id} == {"node", ctx.pool.id}
+      assert entry.details["dispatch_id"] == dispatch.public_id
     end
   end
 
