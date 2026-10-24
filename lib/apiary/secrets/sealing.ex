@@ -6,9 +6,10 @@ defmodule Apiary.Secrets.Sealing do
   nothing here touches the database or writes a log line.
 
   **The suite**, `x25519-sha256-aes256gcm`: DHKEM(X25519, HKDF-SHA256) 0x0020,
-  HKDF-SHA256 0x0001 and AES-256-GCM 0x0002, with `:crypto`. The recipient's X25519 key is
-  the access key's Ed25519 public key converted to its Montgomery u-coordinate
-  (`Apiary.Contract.Ed25519.x25519_public_key/1`), as Forager converts it.
+  HKDF-SHA256 0x0001 and AES-256-GCM 0x0002, with `:crypto` (`Apiary.Secrets.Hpke`). The
+  recipient's X25519 key is the access key's Ed25519 public key converted to its
+  Montgomery u-coordinate (`Apiary.Contract.Ed25519.x25519_public_key/1`), as Forager
+  converts it.
 
   **What is bound.** `info/1` and `aad/4` are built from the values `seal/2` is given,
   never from an envelope:
@@ -44,6 +45,7 @@ defmodule Apiary.Secrets.Sealing do
   import Bitwise, only: [bsr: 2, band: 2]
 
   alias Apiary.Contract.Ed25519
+  alias Apiary.Secrets.Hpke
   alias Apiary.SigningKey
 
   @suite "x25519-sha256-aes256gcm"
@@ -52,10 +54,6 @@ defmodule Apiary.Secrets.Sealing do
   @aead_id 0x0002
   @info_domain "qory secrets v1"
   @envelope_domain "qory envelope v1"
-
-  # The suite ids as RFC 9180 prefixes its labels: the KEM's alone, and the whole suite's.
-  @kem_suite "KEM" <> <<@kem_id::16>>
-  @hpke_suite "HPKE" <> <<@kem_id::16, @kdf_id::16, @aead_id::16>>
 
   # How far after the server's clock exp lies, in seconds.
   @lifetime 600
@@ -146,7 +144,7 @@ defmodule Apiary.Secrets.Sealing do
       info = info(ids.access_key_id)
       aad = aad(ids.run_id, ids.access_key_id, ids.run_configuration, ids.exp)
 
-      with {:ok, enc, ct} <- hpke_seal(ephemeral, pk_r, info, aad, pt) do
+      with {:ok, enc, ct} <- Hpke.seal(ephemeral, pk_r, info, aad, pt) do
         {:ok, envelope(ids, enc, ct, signing_key.())}
       end
     end
@@ -292,59 +290,6 @@ defmodule Apiary.Secrets.Sealing do
   defp escape(<<byte, rest::binary>>, acc), do: escape(rest, [byte | acc])
 
   defp hex(digit), do: Enum.at(~c"0123456789abcdef", digit)
-
-  # RFC 9180, base mode, single shot: `{:ok, enc, ct}`, ct with its 16-byte tag, or
-  # `{:error, :key}`. The ephemeral private key is made inside, from `ephemeral`, a function
-  # of no arguments, so no caller's frame contains it. Any exception of `:crypto` is dropped
-  # here with its stack trace, whose top frame can contain a key among its arguments.
-  defp hpke_seal(ephemeral, pk_r, info, aad, pt) do
-    hpke(ephemeral, pk_r, info, aad, pt)
-  rescue
-    _exception -> {:error, :key}
-  catch
-    _kind, _reason -> {:error, :key}
-  end
-
-  defp hpke(ephemeral, pk_r, info, aad, pt) do
-    {pk_e, sk_e} = :crypto.generate_key(:ecdh, :x25519, ephemeral.())
-    dh = :crypto.compute_key(:ecdh, pk_r, sk_e, :x25519)
-
-    # An all-zero shared secret is refused (RFC 9180, 7.1.4); a key that passes the key
-    # checks never gives one.
-    if dh == <<0::256>> do
-      {:error, :key}
-    else
-      eae_prk = labeled_extract(@kem_suite, "", "eae_prk", dh)
-      shared = labeled_expand(@kem_suite, eae_prk, "shared_secret", pk_e <> pk_r, 32)
-
-      psk_id_hash = labeled_extract(@hpke_suite, "", "psk_id_hash", "")
-      info_hash = labeled_extract(@hpke_suite, "", "info_hash", info)
-      context = <<0>> <> psk_id_hash <> info_hash
-      secret = labeled_extract(@hpke_suite, shared, "secret", "")
-      key = labeled_expand(@hpke_suite, secret, "key", context, 32)
-      nonce = labeled_expand(@hpke_suite, secret, "base_nonce", context, 12)
-
-      {ct, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, nonce, pt, aad, 16, true)
-      {:ok, pk_e, ct <> tag}
-    end
-  end
-
-  defp labeled_extract(suite, salt, label, ikm),
-    do: :crypto.mac(:hmac, :sha256, salt, ["HPKE-v1", suite, label, ikm])
-
-  defp labeled_expand(suite, prk, label, info, length),
-    do: expand(prk, [<<length::16>>, "HPKE-v1", suite, label, info], length)
-
-  # HKDF-Expand (RFC 5869) with SHA-256.
-  defp expand(prk, info, length) do
-    {okm, _last} =
-      Enum.reduce(1..div(length + 31, 32), {"", ""}, fn i, {okm, last} ->
-        block = :crypto.mac(:hmac, :sha256, prk, [last, info, <<i>>])
-        {okm <> block, block}
-      end)
-
-    binary_part(okm, 0, length)
-  end
 
   defp envelope(ids, enc, ct, signing_key) do
     exp = Integer.to_string(ids.exp)
