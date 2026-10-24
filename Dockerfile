@@ -65,6 +65,20 @@ RUN mkdir config
 COPY config/config.exs config/${MIX_ENV}.exs config/
 RUN mix deps.compile
 
+# tailwind's installer also downloads the CLI with httpc and hits the same limit. curl places the
+# CLI 4.3.0 of config/config.exs at the path `tailwind.install --if-missing` checks, and the build
+# stops when the file's SHA-256 differs from the one pinned here for the CPU architecture.
+RUN case "$(uname -m)" in \
+    x86_64) target=linux-x64 sha=73f0e5459054e5cfaa8ab6f3b940f3fbe0f13cc7fd83bc24e7c655033c203400 ;; \
+    aarch64) target=linux-arm64 sha=8f48dcb72be3b351c10563c5329b4638ba8516820dc3b3a1609625a166e87cbd ;; \
+    *) echo "error: build on x86_64 or aarch64; found $(uname -m)" >&2; exit 1 ;; \
+  esac \
+  && mkdir -p _build \
+  && curl -fsSL --retry 3 -o "_build/tailwind-$target-4.3.0" \
+    "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/tailwindcss-$target" \
+  && echo "$sha  _build/tailwind-$target-4.3.0" | sha256sum -c - \
+  && chmod 755 "_build/tailwind-$target-4.3.0"
+
 RUN mix assets.setup
 
 COPY priv priv
