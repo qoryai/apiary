@@ -46,7 +46,7 @@ COPY mix.exs mix.lock ./
 RUN mix deps.get --only $MIX_ENV
 
 # rustler_precompiled downloads mdex's NIF with Erlang's httpc, which fails on github.com's
-# redirect: 10,895 bytes of headers, over its 10,240-byte limit. curl fetches the NIF instead.
+# redirect: more than 10 KiB of headers, over its 10,240-byte limit. curl fetches the NIF instead.
 ENV RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH=/var/cache/rustler_precompiled
 RUN mkdir -p "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH" \
   && files="$(grep -oE "libmdex_native_nif-v[0-9.]+-nif-[0-9.]+-$(uname -m)-unknown-linux-gnu(--legacy_cpu)?\.so\.tar\.gz" \
