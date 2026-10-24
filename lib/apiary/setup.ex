@@ -38,10 +38,10 @@ defmodule Apiary.Setup do
 
   The one code accepted is 43 base64url characters whose SHA-256 is the preset; the
   digests are compared in constant time, and a code of any other form is refused before
-  it is hashed. The set-up writes the preset to `used_setup_code_sha256`, and a code
-  whose SHA-256 is that column's value is refused, so a preset sets an instance up once.
-  After a purge of the instance's organisation, a start with that preset logs, at
-  warning:
+  it is hashed. The set-up, by the link or by the release command, writes the preset to
+  `used_setup_code_sha256`, and a code whose SHA-256 is that column's value is refused,
+  so a preset sets an instance up once. After a purge of the instance's organisation, a
+  start with that preset logs, at warning:
 
       Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to get a set-up link in this log. The code it gives has set up this instance before.
 
@@ -355,39 +355,43 @@ defmodule Apiary.Setup do
   # first-sign-up lock (`Apiary.Organisations.sign_up_user/3`): holds the row, compares
   # `code` with the stored one when one is given (the link's set-up; the release command
   # gives none), and marks the code used. With a preset (`preset!/0`), `code` is compared
-  # with the preset instead, and the preset is written to `used_setup_code_sha256`.
-  # `{:ok, nil}`, or `{:error, :invalid_code}`.
-  @spec use_code(Ecto.Repo.t(), String.t() | nil) :: {:ok, nil} | {:error, :invalid_code}
+  # with the preset instead, and the preset is written to `used_setup_code_sha256`, by
+  # the release command's sign-up too. `{:ok, way}`, the way the instance was set up, for
+  # the entry of its organisation (`details.setup_code`): `"link"` with the stored code,
+  # `"preset"` with the preset code, `"command"` without a code. Or
+  # `{:error, :invalid_code}`.
+  @spec use_code(Ecto.Repo.t(), String.t() | nil) ::
+          {:ok, String.t()} | {:error, :invalid_code}
   def use_code(repo, code) do
     {stored, used} = lock_row(repo)
     preset = preset!()
 
     cond do
       is_nil(code) ->
-        mark_used(repo, nil)
+        mark_used(repo, preset, "command")
 
       is_nil(preset) and is_binary(stored) and same_code?(stored, code) ->
-        mark_used(repo, nil)
+        mark_used(repo, nil, "link")
 
       is_binary(preset) and preset_code?(preset, used, code) ->
-        mark_used(repo, preset)
+        mark_used(repo, preset, "preset")
 
       true ->
         {:error, :invalid_code}
     end
   end
 
-  defp mark_used(repo, nil) do
+  defp mark_used(repo, nil, way) do
     repo.query!(
       "UPDATE instance_settings SET setup_code = NULL, set_up_at = $1 WHERE id",
       [DateTime.utc_now()]
     )
 
-    {:ok, nil}
+    {:ok, way}
   end
 
   # Not in the query log, whose debug lines print a query's parameters.
-  defp mark_used(repo, preset) do
+  defp mark_used(repo, preset, way) do
     repo.query!(
       "UPDATE instance_settings SET setup_code = NULL, set_up_at = $1, " <>
         "used_setup_code_sha256 = $2 WHERE id",
@@ -395,14 +399,14 @@ defmodule Apiary.Setup do
       log: false
     )
 
-    {:ok, nil}
+    {:ok, way}
   end
 
   @doc """
   claim/3 sets up an instance from a shell, for `Apiary.Release.grant_instance_admin/2`:
   the instance's first sign-up with `email` and `organisation_name`, by the instance, from
-  `origin`, which marks any stored code used, then the account's log-in link, sent as the
-  sign-up page sends it. `{:ok, user, :sent}`, or `{:ok, user, :not_sent}` when the mail
+  `origin`, which marks any stored code used, and the preset with one (`preset!/0`), then
+  the account's log-in link, sent as the sign-up page sends it. `{:ok, user, :sent}`, or `{:ok, user, :not_sent}` when the mail
   did not go out; `{:error, :instance_claimed}` once the instance has its organisation, a
   set-up that came first included; or `{:error, changeset}`, the sign-up form's, for an
   address or a name it refuses. A refusal with the instance claimed by then is

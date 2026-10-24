@@ -39,6 +39,16 @@ defmodule Apiary.SetupTest do
     end
   end
 
+  # `details.setup_code` of the entry that begins the trail of the organisation `id`.
+  defp setup_code_detail(id) do
+    [entry] =
+      Repo.all(
+        from e in Entry, where: e.organisation_id == ^id and e.action == "organisation.create"
+      )
+
+    entry.details["setup_code"]
+  end
+
   # A code of the form Qory Apiary makes, as an install makes it.
   defp new_code, do: Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
 
@@ -280,6 +290,7 @@ defmodule Apiary.SetupTest do
       assert {entry.actor_kind, entry.actor_id} == {:instance, nil}
       assert entry.worker == "Apiary.Setup"
       assert entry.details["sign_up"] == true
+      assert entry.details["setup_code"] == "link"
       assert entry.details["user_id"] == user.id
       refute inspect(entry) =~ code
 
@@ -396,6 +407,8 @@ defmodule Apiary.SetupTest do
 
       assert {nil, %NaiveDateTime{}} = stored()
       assert Setup.set_up(code, password_attrs()) == {:error, :already_set_up}
+      assert used() == nil
+      assert setup_code_detail(Apiary.Edition.instance_organisation_id()) == "command"
     end
   end
 
@@ -513,9 +526,31 @@ defmodule Apiary.SetupTest do
       assert Apiary.Edition.instance_organisation_id() == organisation.id
       assert {nil, %NaiveDateTime{}} = stored()
       assert used() == sha256(code)
+      assert setup_code_detail(organisation.id) == "preset"
 
       assert Setup.set_up(code, password_attrs()) == {:error, :already_set_up}
       refute Setup.valid_code?(code)
+    end
+
+    test "the release command's claim sets the instance up and marks the preset used" do
+      code = new_code()
+      put_preset(code)
+
+      assert {:ok, :created} =
+               ExUnit.CaptureIO.with_io(fn ->
+                 Apiary.Release.grant_instance_admin("claim@example.com", "Acme")
+               end)
+               |> elem(0)
+
+      assert {nil, %NaiveDateTime{}} = stored()
+      assert used() == sha256(code)
+      assert setup_code_detail(Apiary.Edition.instance_organisation_id()) == "command"
+      assert Setup.set_up(code, password_attrs()) == {:error, :already_set_up}
+
+      # After a purge of the instance's organisation, the preset is used.
+      Apiary.EditionKit.hide_instance_organisation()
+      refute Setup.valid_code?(code)
+      assert Setup.set_up(code, password_attrs()) == {:error, :invalid_code}
     end
 
     test "a code is hashed only in the form Qory Apiary makes, and the digests are compared in constant time" do

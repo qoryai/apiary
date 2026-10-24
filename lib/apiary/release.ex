@@ -180,7 +180,9 @@ defmodule Apiary.Release do
   place of its set-up link (`Apiary.Setup`): it is the instance's first sign-up, with
   `email` and `organisation_name`, which creates the instance's organisation, its
   workspace Main and the account as its owner, and marks the set-up code used, so the
-  link works no more. With mail (`Apiary.Mail.configured?/0`) it sends the account its
+  link works no more. With `QORY_SETUP_CODE_SHA256` set, it marks the preset used as
+  well, and the preset code sets the instance up no more, a purge of the instance's
+  organisation later included. With mail (`Apiary.Mail.configured?/0`) it sends the account its
   log-in link, as the sign-up page does; `{:ok, :created}`. Should that mail not go out,
   the instance is set up all the same, the output says so, without the address or the
   link, and says to ask for a link at `/users/log-in`: `{:ok, :created_without_mail}`.

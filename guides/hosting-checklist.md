@@ -44,8 +44,9 @@ being one. Every variable named here is described in [Install and configure](ins
   the log can use it first. Its page asks for your email address, a password and your
   organisation's name, and makes your account, the instance's organisation and its admin.
   From a shell, `Apiary.Release.grant_instance_admin/2` with your address and your
-  organisation's name does the same.
-  [Install and configure](install.md#set-up-a-new-instance) has both.
+  organisation's name does the same. An install that makes the code and prints the link
+  sets `QORY_SETUP_CODE_SHA256` to the code's SHA-256, and the log then shows no link.
+  [Install and configure](install.md#set-up-a-new-instance) has all three.
 <!-- feature: secrets -->
 - **Where integrations come from.** An organisation adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
