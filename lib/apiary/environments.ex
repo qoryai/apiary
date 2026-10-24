@@ -43,7 +43,9 @@ defmodule Apiary.Environments do
   # `superseded` when it takes it. A listing's part holds its connection `FOR UPDATE`, then
   # its collections `FOR UPDATE`, to change their `environment_ref`: the part and the claim
   # take turns at the connection, and whichever comes second waits there holding no row the
-  # first needs.
+  # first needs. The instance's pool (`workspace_id` nil) does the same for the runs of
+  # every workspace it serves, those with no pool in use, and its prebuilds and records
+  # are in their collection's workspace.
   # The claim locks no existing record for the build it queues: its check of the live
   # prebuilds and the pool's row, which a free of lapsed leases of the pool also holds,
   # keep it from queuing beside one that waits again; every other path that queues a
@@ -51,7 +53,7 @@ defmodule Apiary.Environments do
   # one per collection, pool and `environment_ref`, takes what is left.
   #
   # `claim_image(pool, work_item)` is what a claim gives an explore run it takes:
-  # `{:ok, image}` for the image `image_for/2` reads, `{:ok, nil}` for the pool's default
+  # `{:ok, image}` for the image `image_for/3` reads in the work item's workspace, `{:ok, nil}` for the pool's default
   # where nothing holds the run, and `:held` where a build that landed or a key that
   # changed after the claim's read holds it again: the claim then leaves it waiting.
   # `Apiary.Dispatches.Handover` writes the image on the registered run
@@ -408,14 +410,20 @@ defmodule Apiary.Environments do
 
   ## A run's image
 
-  # image_for/2 is the image a run of `pool` for `target` starts in, or nil (the
-  # moduledoc).
+  # image_for/2 is the image a run of `pool`, a workspace's pool, for `target` starts in,
+  # or nil (the moduledoc).
   @doc false
   @spec image_for(Node.t(), %{system: String.t(), path: String.t()}) :: String.t() | nil
-  def image_for(%Node{kind: :pool, id: pool_id, workspace_id: workspace_id}, %{
-        system: system,
-        path: path
-      })
+  def image_for(%Node{kind: :pool, workspace_id: workspace_id} = pool, target)
+      when is_binary(workspace_id),
+      do: image_for(pool, workspace_id, target)
+
+  # image_for/3 is the image a run of `pool` in the workspace `workspace_id` for `target`
+  # starts in, or nil: the instance's pool's runs are in many workspaces.
+  @doc false
+  @spec image_for(Node.t(), Ecto.UUID.t(), %{system: String.t(), path: String.t()}) ::
+          String.t() | nil
+  def image_for(%Node{kind: :pool, id: pool_id}, workspace_id, %{system: system, path: path})
       when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
     Repo.one(
       from [r, c] in served(workspace_id, system, path),
@@ -449,15 +457,16 @@ defmodule Apiary.Environments do
   @doc false
   @spec claim_image(Node.t(), WorkItem.t()) :: {:ok, String.t() | nil} | :held
   def claim_image(
-        %Node{kind: :pool, workspace_id: workspace_id} = pool,
-        %WorkItem{target_system: system, target_path: path} = work_item
+        %Node{kind: :pool} = pool,
+        %WorkItem{workspace_id: workspace_id, target_system: system, target_path: path} =
+          work_item
       )
       when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
     target = %{system: system, path: path}
 
     cond do
       not prebuilt?(workspace_id) -> {:ok, nil}
-      image = image_for(pool, target) -> {:ok, image}
+      image = image_for(pool, workspace_id, target) -> {:ok, image}
       named?(workspace_id, target) and unset_by_policy?(workspace_id, work_item) -> :held
       true -> {:ok, nil}
     end
@@ -1082,18 +1091,22 @@ defmodule Apiary.Environments do
   # (`Apiary.Dispatches.Slots.lapsed_collections/2`), whose prebuilds the claim's free
   # writes, in the same statement, so every collection lock the claim takes comes first,
   # in id order. It holds their connections `FOR SHARE`, by id, first, as `hold_named/1`
-  # does. Of the due ones, it answers those still live and assigned to the workspace as
-  # read once held, since an assign may have changed one while the claim waited for it.
-  # A claim calls it before it locks the pool's row (the moduledoc).
+  # does. Of the due ones, it answers those still live and assigned to a workspace the
+  # pool serves as read once held, since an assign may have changed one while the claim
+  # waited for it. A claim calls it before it locks the pool's row (the moduledoc).
+  # `workspace_id` is nil for the instance's pool, which serves every workspace with no
+  # pool in use (`served/2`).
   @doc false
-  @spec hold_builds(Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: [Collection.t()]
+  @spec hold_builds(Ecto.UUID.t() | nil, Ecto.UUID.t(), DateTime.t()) :: [Collection.t()]
   def hold_builds(workspace_id, pool_id, %DateTime{} = now)
-      when is_binary(workspace_id) and is_binary(pool_id) do
+      when (is_binary(workspace_id) or is_nil(workspace_id)) and is_binary(pool_id) do
     in_transaction!("hold_builds/3")
     lapsed = Apiary.Dispatches.Slots.lapsed_collections(pool_id, now)
 
     due =
-      if prebuilt?(workspace_id), do: due_builds(workspace_id, pool_id), else: []
+      if is_nil(workspace_id) or prebuilt?(workspace_id),
+        do: due_builds(workspace_id, pool_id),
+        else: []
 
     all = Enum.uniq(due ++ lapsed)
 
@@ -1111,12 +1124,38 @@ defmodule Apiary.Environments do
           select: k.id
       )
 
-    Repo.all(from c in Collection, where: c.id in ^all, order_by: c.id, lock: "FOR SHARE")
-    |> Enum.filter(&(&1.id in due and due?(&1) and &1.workspace_id == workspace_id))
+    held = Repo.all(from c in Collection, where: c.id in ^all, order_by: c.id, lock: "FOR SHARE")
+    served = served(workspace_id, held)
+    Enum.filter(held, &(&1.id in due and due?(&1) and MapSet.member?(served, &1.workspace_id)))
+  end
+
+  # The workspaces, of those `collections` are assigned to, that a node pool serves: its
+  # workspace `workspace_id`, or, for the instance's pool (nil), each with no pool in use
+  # in a place in use (`Apiary.Dispatches.no_pool_in_use/0`,
+  # `Apiary.Dispatches.in_use_place/0`).
+  defp served(workspace_id, _collections) when is_binary(workspace_id),
+    do: MapSet.new([workspace_id])
+
+  # The conditions read the collection's `workspace_id` and `organisation_id` as a run's,
+  # so it is bound `:run`.
+  defp served(nil, collections) do
+    ids = Enum.map(collections, & &1.id)
+
+    Repo.all(
+      from c in Collection,
+        as: :run,
+        where: c.id in ^ids and not is_nil(c.workspace_id),
+        where: ^Dispatches.no_pool_in_use(),
+        where: ^Dispatches.in_use_place(),
+        distinct: true,
+        select: c.workspace_id
+    )
+    |> MapSet.new()
   end
 
   # The ids of the collections a build for the node pool `pool_id` of the workspace
-  # `workspace_id` is due for, read without a lock (`hold_builds/3`).
+  # `workspace_id`, or for the instance's pool (nil), is due for, read without a lock
+  # (`hold_builds/3`).
   defp due_builds(workspace_id, pool_id) do
     live_build =
       from b in DispatchRun,
@@ -1134,10 +1173,11 @@ defmodule Apiary.Environments do
         join: c in Collection,
         as: :collection,
         on:
-          c.workspace_id == ^workspace_id and is_nil(c.ended_at) and
+          c.workspace_id == r.workspace_id and is_nil(c.ended_at) and
             not is_nil(c.environment_ref) and c.target_system == w.target_system and
             c.target_path == w.target_path,
-        where: r.workspace_id == ^workspace_id and r.step != ^DispatchRun.prebuild(),
+        where: ^runs_served(workspace_id),
+        where: r.step != ^DispatchRun.prebuild(),
         where: fragment("? = 'waiting'", r.state) and w.state == :exploring,
         where: exists(held(pool_id)),
         where: not exists(live_build),
@@ -1145,6 +1185,14 @@ defmodule Apiary.Environments do
         select: c.id
     )
   end
+
+  # The waiting runs, bound `:run`, a node pool takes: of its workspace, or, for the
+  # instance's pool (nil), of every workspace with no pool in use in a place in use.
+  defp runs_served(workspace_id) when is_binary(workspace_id),
+    do: dynamic([run: r], r.workspace_id == ^workspace_id)
+
+  defp runs_served(nil),
+    do: dynamic([run: _r], ^Dispatches.no_pool_in_use() and ^Dispatches.in_use_place())
 
   # make_records/2 inserts the environment record of each of `collections`, held by
   # `hold_builds/3`, that a build is due for on the node pool `pool`, with no live
@@ -1230,9 +1278,11 @@ defmodule Apiary.Environments do
       )
       |> MapSet.new()
 
+    served = served(pool.workspace_id, collections)
+
     Enum.filter(
       collections,
-      &(due?(&1) and &1.workspace_id == pool.workspace_id and not MapSet.member?(live, &1.id))
+      &(due?(&1) and MapSet.member?(served, &1.workspace_id) and not MapSet.member?(live, &1.id))
     )
   end
 

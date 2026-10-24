@@ -376,19 +376,25 @@ defmodule Apiary.Dispatches do
   end
 
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
-  # node pool `pool` of the collection's workspace, for `environment_ref`, unless one
-  # waits for that ref already, which it answers, and the environment record of the
-  # collection and pool where there is none, inside the caller's transaction (the
-  # moduledoc).
+  # node pool `pool` of the collection's workspace, or the instance's pool, for
+  # `environment_ref`, unless one waits for that ref already, which it answers, and the
+  # environment record of the collection and pool where there is none, inside the
+  # caller's transaction (the moduledoc). The run and the record are in the collection's
+  # workspace.
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
   def queue_prebuild(
-        %Collection{
-          id: collection_id,
-          organisation_id: organisation_id,
-          workspace_id: workspace_id
-        },
+        %Collection{workspace_id: workspace_id} = collection,
+        %Node{kind: :pool, id: pool_id, organisation_id: nil, workspace_id: nil},
+        environment_ref
+      )
+      when is_binary(workspace_id) and is_binary(environment_ref),
+      do: insert_prebuild(collection, pool_id, environment_ref)
+
+  def queue_prebuild(
+        %Collection{organisation_id: organisation_id, workspace_id: workspace_id} =
+          collection,
         %Node{
           kind: :pool,
           id: pool_id,
@@ -397,7 +403,18 @@ defmodule Apiary.Dispatches do
         },
         environment_ref
       )
-      when is_binary(workspace_id) and is_binary(environment_ref) do
+      when is_binary(workspace_id) and is_binary(environment_ref),
+      do: insert_prebuild(collection, pool_id, environment_ref)
+
+  defp insert_prebuild(
+         %Collection{
+           id: collection_id,
+           organisation_id: organisation_id,
+           workspace_id: workspace_id
+         },
+         pool_id,
+         environment_ref
+       ) do
     in_transaction!("queue_prebuild/3")
     now = now()
 
@@ -697,7 +714,7 @@ defmodule Apiary.Dispatches do
       Repo.transact(fn ->
         with {:ok, key} <- current_key(key_id),
              :ok <- may_claim(key),
-             builds = hold_builds(key, now),
+             builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
              {:ok, pool} <- lock_pool(key),
              {:ok, gateway, keys} <- Handover.gateway(pool) do
           freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
@@ -725,13 +742,6 @@ defmodule Apiary.Dispatches do
       Logger.error("a claim could not be made: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
   end
-
-  # The collections a claim of the key's pool writes the prebuilds of
-  # (`Apiary.Environments.hold_builds/3`). The instance's pool queues no prebuild.
-  defp hold_builds(%AccessKey{workspace_id: nil}, _now), do: []
-
-  defp hold_builds(%AccessKey{workspace_id: workspace_id, node_id: pool_id}, now),
-    do: Environments.hold_builds(workspace_id, pool_id, now)
 
   defp registered(%{registered: run}), do: run
   defp registered(:none), do: nil
@@ -1038,9 +1048,9 @@ defmodule Apiary.Dispatches do
       lock: "FOR UPDATE SKIP LOCKED"
   end
 
-  # no_pool_in_use/0 is the condition, on a run of the queue bound `:run`, that its
-  # workspace has no node pool in use: none that is not deleted, enrolled or not. The
-  # instance's pool serves such a workspace.
+  # no_pool_in_use/0 is the condition, on a row bound `:run` with a `workspace_id`, a run
+  # of the queue or a collection, that its workspace has no node pool in use: none that
+  # is not deleted, enrolled or not. The instance's pool serves such a workspace.
   @doc false
   @spec no_pool_in_use() :: Ecto.Query.dynamic_expr()
   def no_pool_in_use do
@@ -1053,11 +1063,12 @@ defmodule Apiary.Dispatches do
     dynamic([run: _r], not exists(pool_in_use))
   end
 
-  # in_use_place/0 is the condition, on a run of the queue bound `:run`, that its
-  # workspace and its organisation are in use: neither marked for deletion, nor the
-  # organisation out of use (`Apiary.AccessKeys.place_in_use?/2`). A workspace pool's key
-  # is held to its place when it is verified; the instance's pool's key has no place, so
-  # its claim holds each run to the run's.
+  # in_use_place/0 is the condition, on a row bound `:run` with a `workspace_id` and an
+  # `organisation_id`, a run of the queue or a collection, that its workspace and its
+  # organisation are in use: neither marked for deletion, nor the organisation out of use
+  # (`Apiary.AccessKeys.place_in_use?/2`). A workspace pool's key is held to its place
+  # when it is verified; the instance's pool's key has no place, so its claim holds each
+  # run to the run's.
   @doc false
   @spec in_use_place() :: Ecto.Query.dynamic_expr()
   def in_use_place do

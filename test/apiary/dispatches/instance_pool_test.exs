@@ -2,8 +2,8 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   # The claims of the instance's node pool (`Apiary.Dispatches.claim/2`): it takes the
   # oldest waiting run of any workspace with no pool in use, across organisations, writes
   # the dispatch and the registered run in the run's workspace, counts its limit across
-  # them, and leaves a run held for its build waiting. Then the claim's query on 200
-  # workspaces. Not async: the instance has one pool and one gateway in use.
+  # them, and leaves a run held for its build waiting until its prebuild, which it queues
+  # in the run's workspace, made the image. Then the claim's query on 200 workspaces. Not async: the instance has one pool and one gateway in use.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -156,6 +156,75 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       Repo.delete_all(from k in Apiary.AccessKeys.AccessKey, where: k.node_id == ^ctx.gateway.id)
       queued!(ctx.a)
       assert claim(ctx.key) == {:error, :no_gateway}
+    end
+  end
+
+  describe "a prebuild for the instance's pool" do
+    @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("4c", 32)
+
+    # A waiting run of a work item of `scope` with a target, and a collection of that
+    # target with an `environment_ref`: the run is held for the pool's build.
+    defp held!(scope) do
+      work_item = work_item_fixture(scope)
+
+      collection =
+        collection_fixture(scope,
+          target_system: work_item.target_system,
+          target_path: work_item.target_path
+        )
+
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      {run, collection, %{system: work_item.target_system, path: work_item.target_path}}
+    end
+
+    test "is queued in a served workspace, and its image is the held run's", ctx do
+      {held, collection, target} = held!(ctx.a)
+
+      assert {:ok, %{run: %DispatchRun{step: "prebuild"} = prebuild, collection: %{id: id}}} =
+               claim(ctx.key)
+
+      assert id == collection.id
+      assert prebuild.pool_id == ctx.pool.id
+      assert place(prebuild) == place_of(ctx.a)
+
+      assert [%Apiary.Environments.Record{} = record] =
+               Repo.all(
+                 from r in Apiary.Environments.Record,
+                   where: r.pool_id == ^ctx.pool.id and r.source_collection_id == ^collection.id
+               )
+
+      assert place(record) == place_of(ctx.a)
+
+      {:ok, :ok} =
+        Repo.transact(fn ->
+          {:ok,
+           Apiary.Environments.record_build(
+             Repo.get!(DispatchRun, prebuild.id),
+             %{image: @image, size: 1_048_576, commit: "4b7d0a3f", environment_ref: "env-1"},
+             target,
+             DateTime.utc_now()
+           )}
+        end)
+
+      assert Apiary.Environments.image_for(ctx.pool, ctx.a.workspace.id, target) == @image
+
+      assert {:ok, %{run: %{id: id}, registered: %Run{configured_image: @image}}} =
+               claim(ctx.key)
+
+      assert id == held.id
+    end
+
+    test "is not queued for a workspace with a pool in use", ctx do
+      _theirs = pool_fixture(ctx.c)
+      {held, collection, _target} = held!(ctx.c)
+
+      assert claim(ctx.key) == {:ok, :none}
+      assert Repo.get!(DispatchRun, held.id).state == :waiting
+
+      refute Repo.exists?(
+               from r in DispatchRun,
+                 where: r.source_collection_id == ^collection.id and r.pool_id == ^ctx.pool.id
+             )
     end
   end
 
