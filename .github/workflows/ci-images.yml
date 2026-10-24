@@ -27,9 +27,9 @@ concurrency:
 # the image it named before stays in the package under its digest, and what pins that
 # digest still pulls it.
 #
-# The sources are pulled without a login, Amazon's copy of Docker Hub's official images
-# for those, and Docker Hub itself for the rest. Both refuse pulls now and then, so a copy
-# that fails is tried twice more, after 30 and after 90 seconds.
+# The sources are pulled without a login, from the registry in each line: Amazon's copy of
+# Docker Hub's official images, or Docker Hub itself. Both refuse pulls now and then, so a
+# copy that fails is tried twice more, after 30 and after 90 seconds.
 jobs:
   copy:
     name: Copy the images

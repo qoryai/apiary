@@ -155,6 +155,7 @@ defmodule Apiary.Secrets.SealingTest do
 
   describe "seal/2, the production entry point" do
     test "takes no key of a caller: it has no third argument" do
+      Code.ensure_loaded!(Sealing)
       assert function_exported?(Sealing, :seal, 2)
       refute function_exported?(Sealing, :seal, 3)
     end
