@@ -31,13 +31,13 @@ defmodule Apiary.Nodes.Installed do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, Audit, Features, Repo}
+  alias Apiary.{Access, Adapters, Audit, Features, Nodes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Installed, as: InstalledAdapters
   alias Apiary.Adapters.Installed.CodeFile
   alias Apiary.Contract.GatewayUrl
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.Organisation
+  alias Apiary.Organisations.{Organisation, Workspace}
 
   @kinds [:pool, :gateway]
 
@@ -348,5 +348,108 @@ defmodule Apiary.Nodes.Installed do
     from n in Node,
       where: n.kind == ^kind and is_nil(n.deleted_at),
       where: is_nil(n.organisation_id) and is_nil(n.workspace_id)
+  end
+
+  ## For the instance admin
+
+  @doc false
+  # The instance's pool and gateway in use, the pool first, to an instance admin
+  # (`Apiary.Adapters.authorize_instance/2`); none to anyone else.
+  @spec list(Scope.t()) :: [Node.t()]
+  def list(%Scope{} = scope) do
+    if Adapters.authorize_instance(scope) == :ok,
+      do: for(kind <- @kinds, node = Repo.one(live_query(kind)), do: node),
+      else: []
+  end
+
+  @doc false
+  # Subscribes an instance admin to what the instance's pool and gateway report
+  # (`Apiary.Nodes.topic/1`, `"instance"`): `{:nodes_touched, "instance"}`.
+  @spec subscribe(Scope.t()) :: :ok | {:error, term}
+  def subscribe(%Scope{} = scope) do
+    with :ok <- Adapters.authorize_instance(scope),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, Nodes.topic("instance"))
+  end
+
+  @doc false
+  # The instance's pool or gateway in use by its public id, to an instance admin; nil for
+  # anyone else, and for any other node.
+  @spec get(Scope.t(), term) :: Node.t() | nil
+  def get(%Scope{} = scope, public_id) when is_binary(public_id),
+    do: Enum.find(list(scope), &(&1.public_id == public_id))
+
+  def get(%Scope{}, _public_id), do: nil
+
+  @doc false
+  # What each of `nodes`, the instance's pool and gateway, is doing at `now`, to an
+  # instance admin, as `Apiary.Nodes.activity/3` says it for a workspace's nodes; nothing
+  # to anyone else.
+  @spec activity(Scope.t(), [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => map}
+  def activity(%Scope{} = scope, nodes, now \\ DateTime.utc_now()) do
+    if Adapters.authorize_instance(scope) == :ok,
+      do: Nodes.activity(:instance, nodes, now),
+      else: %{}
+  end
+
+  @doc false
+  # Sets the instance's pool's instance limit from `attrs` (`"instance_limit"`, nil or
+  # blank for none), by an instance admin, in one transaction with the pool's row held
+  # `FOR UPDATE`; the entry `node.set_limit` in the instance's organisation's trail, by
+  # the person, when the limit changed. Lowering it stops none of its instances.
+  # `{:ok, pool}`, `{:error, changeset}`, `{:error, :forbidden}`, or `{:error,
+  # :not_found}` where the feature is off or the pool is no longer in use.
+  @spec set_instance_limit(Scope.t(), Node.t(), map) ::
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
+  def set_instance_limit(%Scope{} = scope, %Node{kind: :pool, id: id}, attrs)
+      when is_map(attrs) do
+    Repo.transact(fn ->
+      with :ok <- Adapters.authorize_instance(scope),
+           {:ok, recorder} <- Adapters.instance_scope(scope),
+           %Node{} = current <-
+             Repo.one(from n in live_query(:pool), where: n.id == ^id, lock: "FOR UPDATE") ||
+               {:error, :not_found},
+           {:ok, updated} <-
+             current |> Node.changeset(Map.take(attrs, ["instance_limit"])) |> Repo.update(),
+           :ok <- record_limit(recorder, current, updated) do
+        {:ok, updated}
+      end
+    end)
+  end
+
+  def set_instance_limit(%Scope{}, %Node{}, _attrs), do: {:error, :not_found}
+
+  @doc false
+  # The changeset of the pool's instance limit, for the form that sets it.
+  @spec change_instance_limit(Node.t(), map) :: Ecto.Changeset.t()
+  def change_instance_limit(%Node{kind: :pool} = pool, attrs \\ %{}),
+    do: Node.changeset(pool, Map.take(attrs, ["instance_limit"]))
+
+  defp record_limit(scope, old, new) do
+    case Audit.changed(old, new, [:instance_limit]) do
+      nil ->
+        :ok
+
+      changes ->
+        with {:ok, _entry} <- Audit.record(Repo, scope, :"node.set_limit", new, changes),
+             do: :ok
+    end
+  end
+
+  @doc false
+  # The instance's pool in use when it takes the runs of `workspace`, which has no pool in
+  # use, and the instance's gateway in use: what a workspace's Nodes page shows beside
+  # its own nodes. Nil for each where there is none.
+  @spec serving(Workspace.t()) :: %{pool: Node.t() | nil, gateway: Node.t() | nil}
+  def serving(%Workspace{id: workspace_id}) do
+    pool_in_use? =
+      Repo.exists?(
+        from n in Node,
+          where: n.workspace_id == ^workspace_id and n.kind == :pool and is_nil(n.deleted_at)
+      )
+
+    %{
+      pool: if(pool_in_use?, do: nil, else: Repo.one(live_query(:pool))),
+      gateway: Repo.one(live_query(:gateway))
+    }
   end
 end

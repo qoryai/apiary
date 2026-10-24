@@ -145,36 +145,37 @@ defmodule ApiaryWeb.NodeComponents do
   node_tabs/1 is a node's tabs: Overview, Access key, and Settings last, set apart. Overview
   and Settings are patches of `ApiaryWeb.NodeLive.Show`, Access key is
   `ApiaryWeb.NodeLive.AccessKey`'s: `view` names the LiveView the tabs are drawn in, so each
-  tab of another is a navigation.
+  tab of another is a navigation. `:all` is a LiveView that draws all three: each tab is a
+  patch.
   """
   attr :node, Node, required: true
   attr :paths, :map, required: true, doc: "`overview`, `access_key` and `settings`"
   attr :current, :atom, required: true, values: [:overview, :access_key, :settings]
-  attr :view, :atom, required: true, values: [:show, :access_key]
+  attr :view, :atom, required: true, values: [:show, :access_key, :all]
 
   def node_tabs(assigns) do
     ~H"""
     <.page_tabs id="node-tabs" label={kind_label(@node.kind)} current={@current}>
       <:tab
         key={:overview}
-        patch={if @view == :show, do: @paths.overview}
-        navigate={if @view != :show, do: @paths.overview}
+        patch={if @view in [:show, :all], do: @paths.overview}
+        navigate={if @view == :access_key, do: @paths.overview}
         icon="hero-book-open"
       >
         {gettext("Overview")}
       </:tab>
       <:tab
         key={:access_key}
-        patch={if @view == :access_key, do: @paths.access_key}
-        navigate={if @view != :access_key, do: @paths.access_key}
+        patch={if @view in [:access_key, :all], do: @paths.access_key}
+        navigate={if @view == :show, do: @paths.access_key}
         icon="hero-key"
       >
         {gettext("Access key")}
       </:tab>
       <:tab
         key={:settings}
-        patch={if @view == :show, do: @paths.settings}
-        navigate={if @view != :show, do: @paths.settings}
+        patch={if @view in [:show, :all], do: @paths.settings}
+        navigate={if @view == :access_key, do: @paths.settings}
         icon="hero-cog-6-tooth"
         settings
       >

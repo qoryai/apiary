@@ -1177,12 +1177,19 @@ defmodule Apiary.Nodes do
   once `prune_instances/1` has taken a pool's last instance. Four reads, whatever the
   number of nodes.
   """
-  @spec activity(Scope.t(), [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => activity}
+  #
+  # `:instance` in place of a scope reads the instance's pool and gateway, which have no
+  # organisation: their instances, their keys, and the runs of the pool in every workspace
+  # it served. Only a caller that checked the person is an instance admin shows all of it
+  # (`Apiary.Nodes.Installed.activity/3`); a workspace's Nodes page takes from it only
+  # when the nodes' keys were last used.
+  @spec activity(Scope.t() | :instance, [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => activity}
   def activity(scope, nodes, now \\ DateTime.utc_now())
 
-  def activity(%Scope{}, [], _now), do: %{}
+  def activity(_scope, [], _now), do: %{}
 
-  def activity(%Scope{} = scope, nodes, %DateTime{} = now) do
+  def activity(scope, nodes, %DateTime{} = now)
+      when is_struct(scope, Scope) or scope == :instance do
     ids = Enum.map(nodes, & &1.id)
     runs = alive_runs(scope, ids, now)
 
@@ -1240,7 +1247,10 @@ defmodule Apiary.Nodes do
   end
 
   # The rows of nodes the scope reads: of its workspace, of its organisation's own
-  # gateways, and of the gateways of the organisations that serve it.
+  # gateways, and of the gateways of the organisations that serve it; for `:instance`,
+  # those of no organisation.
+  defp of_scope(:instance), do: dynamic([r], is_nil(r.organisation_id) and is_nil(r.workspace_id))
+
   defp of_scope(%Scope{organisation: %Organisation{id: organisation_id}, workspace: workspace}) do
     serving = Gateways.serving_organisations(organisation_id)
 
@@ -1274,6 +1284,22 @@ defmodule Apiary.Nodes do
   end
 
   defp alive_runs(%Scope{workspace: nil}, _ids, _now), do: []
+
+  defp alive_runs(:instance, ids, now) do
+    from(r in Run,
+      as: :run,
+      where: r.node_id in ^ids and not is_nil(r.node_instance_id),
+      select: %{
+        node_id: r.node_id,
+        instance_id: r.node_instance_id,
+        public_id: r.public_id,
+        since: coalesce(r.started_at, r.inserted_at),
+        forager_version: r.forager_version
+      }
+    )
+    |> Liveness.alive(now)
+    |> Repo.all()
+  end
 
   defp alive_runs(%Scope{organisation: organisation, workspace: workspace}, ids, now) do
     from(r in Run,

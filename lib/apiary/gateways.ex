@@ -12,7 +12,7 @@ defmodule Apiary.Gateways do
     names (`c:Apiary.Edition.served_organisations/1`). The core's edition names none.
   - at the instance, `:instance`, with no organisation and no workspace: it may serve
     every workspace of every organisation. The instance has one such gateway at most,
-    made with it (`Apiary.Nodes.Installed`).
+    which Qory Apiary makes from its settings.
 
   A workspace's levels, most specific first (`levels/1`), are the workspace's, its
   organisation's, then those of the organisations whose gateways an edition lets serve it
