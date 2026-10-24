@@ -28,7 +28,7 @@ FROM ${BUILDER_IMAGE} AS builder
 
 # install build dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential git \
+  && apt-get install -y --no-install-recommends build-essential git curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 # prepare build dir
@@ -44,6 +44,19 @@ ENV MIX_ENV="prod"
 # install mix dependencies
 COPY mix.exs mix.lock ./
 RUN mix deps.get --only $MIX_ENV
+
+# rustler_precompiled downloads mdex's NIF with Erlang's httpc, which fails on github.com's
+# redirect: 10,895 bytes of headers, over its 10,240-byte limit. curl fetches the NIF instead.
+ENV RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH=/var/cache/rustler_precompiled
+RUN mkdir -p "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH" \
+  && files="$(grep -oE "libmdex_native_nif-v[0-9.]+-nif-[0-9.]+-$(uname -m)-unknown-linux-gnu(--legacy_cpu)?\.so\.tar\.gz" \
+    deps/mdex_native/checksum-Elixir.MDExNative.Native.exs)" \
+  && for f in $files; do \
+    v="${f#libmdex_native_nif-}"; \
+    curl -fsSL --retry 3 -o "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH/$f" \
+      "https://github.com/leandrocp/mdex_native/releases/download/${v%%-nif-*}/$f" || exit 1; \
+  done
+
 RUN mkdir config
 
 # copy compile-time config files before we compile dependencies
