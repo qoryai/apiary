@@ -1,7 +1,7 @@
 defmodule Apiary.Dispatches.Dispatch do
   # One claim of one run of the queue (`Apiary.Dispatches.DispatchRun`) by one node pool
-  # of its workspace, `pool_id`, with the access key the claim was signed with,
-  # `access_key_id`.
+  # of its workspace or by the instance's pool, `pool_id` (the trigger
+  # `pool_place_matches`), with the access key the claim was signed with, `access_key_id`.
   #
   # `public_id` is its name outside the database, the contract's `dispatch_id`: `dp_`,
   # then sixteen lowercase Crockford base32 characters (`Apiary.PublicId`), made once with
@@ -91,6 +91,7 @@ defmodule Apiary.Dispatches.Dispatch do
     |> unique_constraint(:dispatch_run_id, name: :dispatches_live_index)
     |> foreign_key_constraint(:dispatch_run_id, name: :dispatches_dispatch_run_id_fkey)
     |> foreign_key_constraint(:pool_id, name: :dispatches_pool_id_fkey)
+    |> check_constraint(:pool_id, name: :pool_place_matches, message: "does not exist")
     |> foreign_key_constraint(:access_key_id, name: :dispatches_access_key_id_fkey)
   end
 

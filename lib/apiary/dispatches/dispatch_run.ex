@@ -210,6 +210,7 @@ defmodule Apiary.Dispatches.DispatchRun do
       name: :dispatch_runs_source_collection_id_fkey
     )
     |> foreign_key_constraint(:pool_id, name: :dispatch_runs_pool_id_fkey)
+    |> check_constraint(:pool_id, name: :pool_place_matches, message: "does not exist")
   end
 
   # At most `of`, in the words Ecto gives a bound.

@@ -47,7 +47,7 @@ defmodule Apiary.Nodes.InstancesTest do
       other = workspace_scope(scope.user, workspace_fixture(scope.organisation))
       node = node_fixture(other)
 
-      assert_raise Ecto.ConstraintError, ~r/runs_node_id_fkey/, fn ->
+      assert_raise Ecto.ConstraintError, ~r/pool_place_matches/, fn ->
         Apiary.RunEventsFixtures.run_fixture(scope, %{node_id: node.id})
       end
     end
