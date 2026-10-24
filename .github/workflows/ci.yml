@@ -594,6 +594,10 @@ jobs:
           keys_generated
           [ "$(docker compose port apiary 4100)" = 127.0.0.1:4100 ] || {
             echo "port 4100 is not published on 127.0.0.1 alone" >&2; exit 1; }
+          # The GitHub adapter's code folder belongs to the user both run as, mode 0700.
+          folder="$(docker compose exec -T apiary stat -c '%u:%g %a' /run/qory/enrolment/github)"
+          [ "$folder" = "65532:65532 700" ] || {
+            echo "/run/qory/enrolment/github is $folder, not 65532:65532 700" >&2; exit 1; }
 
       - name: Start again
         run: |

@@ -195,7 +195,7 @@ defmodule Apiary.Adapters.Installer do
   def failure_line(name, {:code_file, reason}),
     do:
       "could not write the one-time code of the installed adapter #{name} to " <>
-        "#{CodeFile.folder(name)}: #{:file.format_error(reason)}; trying again"
+        "#{CodeFile.folder(name)}: #{CodeFile.format_error(reason)}; trying again"
 
   def failure_line(name, {:caught, kind}),
     do: "could not install the adapter #{name}: #{inspect(kind)}; trying again"
