@@ -4,11 +4,16 @@ defmodule ApiaryWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  #
+  # A browser accepts a `__Host-` cookie only with Secure, Path=/ and no Domain, so a page
+  # on an adapter's host, `<adapter>.<instance name>`, cannot set this cookie for the
+  # instance's host. Chrome and Firefox also accept a Secure cookie on http://localhost.
   @session_options [
     store: :cookie,
-    key: "_apiary_key",
+    key: "__Host-_apiary_key",
     signing_salt: "pFOPn1LM",
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: true
   ]
 
   # The peer's address, the user agent and, behind a trusted proxy, `X-Forwarded-For` are

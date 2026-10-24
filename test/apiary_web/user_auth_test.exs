@@ -13,7 +13,7 @@ defmodule ApiaryWeb.UserAuthTest do
 
   alias Apiary.Organisations
 
-  @remember_me_cookie "_apiary_web_user_remember_me"
+  @remember_me_cookie "__Host-_apiary_web_user_remember_me"
   @remember_me_cookie_max_age 60 * 60 * 24 * 14
 
   setup %{conn: conn} do
