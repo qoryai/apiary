@@ -32,6 +32,11 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
 
   @path "/v1/adapter/secrets"
   @invalid %{"error" => "invalid_request"}
+  # The contract's refusal fixture, vendored from the commit in `.integration-contract-ref`.
+  @unknown_server_key "../../fixtures/integration-contract/adapter/refusal/unknown-server-key.json"
+                      |> Path.expand(__DIR__)
+                      |> File.read!()
+                      |> Jason.decode!()
   @unauthorized %{"error" => "unauthorized"}
   @signing_key "fixture-signing-key-for-tests-only\nsecond line"
   @event_secret "fixture-event-secret-for-tests-only"
@@ -237,20 +242,46 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
       assert entries(ctx.adapter) == []
     end
 
-    test "an envelope sealed to another key, adapter or access key is 400", ctx do
+    test "an envelope sealed to a server key the instance does not hold is 400 unknown_server_key, signed, and stores nothing",
+         ctx do
       pt = plaintext([{"signing-key", "v"}])
       other = SigningKey.new(:crypto.strong_rand_bytes(32))
 
       for body <- [
             upload(ctx, pt, to: other),
-            upload(ctx, pt, server_key: Ed25519.encode(SigningKey.public_key(other))),
-            upload(ctx, pt, adapter_id: "na_f1xt0re000000000"),
-            upload(ctx, pt, key_id: "ak_f1xt0re000000000")
+            upload(ctx, pt, server_key: Ed25519.encode(SigningKey.public_key(other)))
           ] do
-        assert json_response(send_post(ctx, body), 400) == @invalid
+        conn = send_post(ctx, body)
+        assert json_response(conn, 400) == @unknown_server_key
+        assert signed_answer?(conn)
       end
 
       assert stored(ctx.adapter) == {nil, []}
+      assert entries(ctx.adapter) == []
+    end
+
+    test "an envelope sealed to another adapter or access key, or changed, is 400 invalid_request, signed",
+         ctx do
+      pt = plaintext([{"signing-key", "v"}])
+      body = upload(ctx, pt)
+      {:ok, <<first, rest::binary>>} = Base.url_decode64(body["sealed"]["ct"], padding: false)
+
+      for body <- [
+            upload(ctx, pt, adapter_id: "na_f1xt0re000000000"),
+            upload(ctx, pt, key_id: "ak_f1xt0re000000000"),
+            put_in(
+              body,
+              ["sealed", "ct"],
+              Ed25519.encode(<<Bitwise.bxor(first, 1), rest::binary>>)
+            )
+          ] do
+        conn = send_post(ctx, body)
+        assert json_response(conn, 400) == @invalid
+        assert signed_answer?(conn)
+      end
+
+      assert stored(ctx.adapter) == {nil, []}
+      assert entries(ctx.adapter) == []
     end
 
     test "the contract's invalid uploads are 400", ctx do

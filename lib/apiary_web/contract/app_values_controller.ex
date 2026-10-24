@@ -17,8 +17,9 @@ defmodule ApiaryWeb.Contract.AppValuesController do
   #      (`ApiaryWeb.Contract.AdapterRequest.accept/2`);
   #   3. a key that may not store the adapter's secrets (`adapter.app_values_set`) is `403`
   #      `forbidden`, and `404` `not_found` where its adapter is not found to it;
-  #   4. an envelope sealed to a key the instance does not hold, one that does not open,
-  #      and a plaintext the contract refuses are `400` `invalid_request`
+  #   4. an envelope sealed to a server key the instance does not hold is `400`
+  #      `unknown_server_key`, signed; one that does not open, and a plaintext the
+  #      contract refuses, are `400` `invalid_request`
   #      (`Apiary.Secrets.AdapterSealing.open_upload/4`);
   #   5. with the adapter's row locked (`Apiary.Adapters.store_app_values/3`): an adapter
   #      deleted, or installed with Qory Apiary and no longer listed in
@@ -80,6 +81,7 @@ defmodule ApiaryWeb.Contract.AppValuesController do
       {:error, :forbidden} -> refuse(conn, 403, "forbidden")
       {:error, :not_found} -> refuse(conn, 404, "not_found")
       {:error, :unavailable} -> refuse(conn, 503, "unavailable")
+      {:error, :server_key} -> refuse(conn, 400, "unknown_server_key")
       {:error, _refusal} -> refuse(conn, 400, "invalid_request")
     end
   rescue
