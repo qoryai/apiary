@@ -390,6 +390,13 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     Action.new(
+      :"node.install",
+      "make the instance's node pool or gateway, and give it its one-time codes: the instance, by itself (Apiary.Nodes.Installed.install/2)",
+      feature: :factory,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
+    Action.new(
       :"adapter.setup",
       "start setting an adapter up at the system it reads from, with a new setup pass: an instance admin, which no role takes",
       feature: :factory,

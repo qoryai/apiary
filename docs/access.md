@@ -383,8 +383,9 @@ instance has a separate role in the role table, with only what its jobs need: pr
 the audit trail, deleting the invitations expired for 30 days, purging a workspace or
 an organisation whose deletion's grace period is over, and making the adapters its
 setting lists and giving them their one-time codes (`adapter.install`,
-`Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), in the instance's
-organisation. Any other scope without a person may nothing, whatever it carries.
+`Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), and the same for
+the node pool and the gateway its settings declare (`node.install`,
+`Apiary.Nodes.Installed.install/2`), in the instance's organisation. Any other scope without a person may nothing, whatever it carries.
 
 An action taken on the strength of something other than a role, signing up, accepting an
 invitation with its token, or a release command run on the release's machine, is in the

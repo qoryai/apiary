@@ -119,6 +119,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.set_interval",
       :"adapter.delete",
       :"adapter.install",
+      :"node.install",
       :"adapter.setup",
       :"adapter.connect",
       :"adapter.declare",
@@ -433,6 +434,17 @@ defmodule Apiary.AuditChanges do
     {:ok, adapter} = Adapters.install(instance, "tracker")
 
     %{scope: instance, actor: :instance, subject: {"node", adapter.id}, before: before}
+  end
+
+  # The instance, by itself, makes the node pool its settings declare. The settings are
+  # the node's, and this module is not async.
+  def make(:"node.install", _ctx) do
+    declare_pool()
+    instance = Scope.for_instance(instance_organisation())
+    before = entries()
+    {:ok, pool} = Apiary.Nodes.Installed.install(instance, :pool)
+
+    %{scope: instance, actor: :instance, subject: {"node", pool.id}, before: before}
   end
 
   # An instance admin starts the set-up of an adapter that declares where, in the trail
@@ -890,6 +902,13 @@ defmodule Apiary.AuditChanges do
   def refuse(:"adapter.install", %{scope: scope}) do
     before = entries()
     {before, Adapters.install(scope, "tracker")}
+  end
+
+  # Anyone but the instance, here an owner, installs no node of the instance.
+  def refuse(:"node.install", %{scope: scope}) do
+    declare_pool()
+    before = entries()
+    {before, Apiary.Nodes.Installed.install(scope, :pool)}
   end
 
   # A listing's part of an ended connection names the ref live under the organisation's
@@ -1419,4 +1438,19 @@ defmodule Apiary.AuditChanges do
 
   defp secrets_request(run, digest, credentials, now),
     do: Apiary.SealedRunsFixtures.secrets_request(run, digest, credentials, now)
+
+  # The instance's node pool declared, as QORY_INSTALLED_POOL=pool declares it, until the
+  # test ends.
+  defp declare_pool do
+    saved = Application.fetch_env(:apiary, :installed_nodes)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case saved do
+        {:ok, value} -> Application.put_env(:apiary, :installed_nodes, value)
+        :error -> Application.delete_env(:apiary, :installed_nodes)
+      end
+    end)
+
+    Application.put_env(:apiary, :installed_nodes, %{pool: "pool", gateway: nil, url: nil})
+  end
 end
