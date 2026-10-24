@@ -49,7 +49,7 @@ mv env.example .env
 
 A given release's files are under `releases/download/vX.Y.Z/` in place of
 `releases/latest/download/`. With `compose.yaml` and its `.env` in one directory,
-`docker compose up -d` starts the three services, and `docker compose logs apiary` shows
+`docker compose up -d` starts the four services, and `docker compose logs apiary` shows
 the boot. [From nothing to a first run](quickstart.md) does the same for a trial on one
 machine.
 
@@ -276,7 +276,9 @@ APIARY_SIGNING_SECRET is a value the Forager contract publishes in its fixtures,
 and the server, keeps the instance's keys in the volume `keys`, in the file
 `/var/lib/apiary/keys/apiary.env`: `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`,
 `APIARY_SIGNING_SECRET` and `DATABASE_PASSWORD`, one `NAME=value` line each, mode 0600,
-owned by `nobody`. For each name:
+owned by uid 65532, the user the image runs as. Before it, the service `keys-owner` gives
+the volume `keys` and everything in it to uid 65532, without following a symbolic link,
+since earlier images ran as `nobody` (65534). For each name:
 
 - set in the environment, that is in `.env`: it is not generated, and the file does not
   keep it;
@@ -312,7 +314,7 @@ APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its 
 When it cannot write, it exits non-zero, and nothing that depends on it starts:
 
 ```text
-Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user nobody.
+Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user 65532.
 ```
 
 The release reads the file at boot, from the directory `APIARY_KEYS_DIR` names, which the

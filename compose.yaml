@@ -7,11 +7,34 @@ x-apiary-image: &apiary-image
   ${APIARY_IMAGE:-ghcr.io/qoryai/apiary}:${APIARY_VERSION:?set APIARY_VERSION in .env}
 
 services:
+  # Runs once at every start and exits: gives the volume keys, and each folder and file in
+  # it, to Qory Apiary's user 65532 before keys runs. Earlier images ran as nobody and
+  # left the volume to 65534. Without CAP_DAC_READ_SEARCH, root cannot read a folder that
+  # another user owns with mode 0700, so find first gives each folder to root, parent
+  # before child, and chown then gives everything to 65532. Neither follows a symbolic
+  # link: find tests each entry without following it, and chown -P -h changes a link, not
+  # its target.
+  keys-owner:
+    image: *apiary-image
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-c", 'find /var/lib/apiary/keys -type d -exec chown -h 0:0 {} \; && chown -R -P -h 65532:65532 /var/lib/apiary/keys']
+    network_mode: none
+    volumes:
+      - keys:/var/lib/apiary/keys
+    restart: "no"
+
   # Runs once at every start and exits: generates the keys the volume does not hold yet,
   # and never changes one it holds.
   keys:
     image: *apiary-image
     command: ["/app/bin/keys"]
+    depends_on:
+      keys-owner:
+        condition: service_completed_successfully
     env_file: .env
     volumes:
       - keys:/var/lib/apiary/keys

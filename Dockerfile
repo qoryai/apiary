@@ -140,23 +140,30 @@ RUN mkdir -p /app/certs
 ADD --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b --chmod=0644 \
   https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /app/certs/rds-global-bundle.pem
 
-# The keys generated at first start, in APIARY_KEYS_DIR. The directory belongs to nobody,
+# The release runs as uid and gid 65532, the user the gateway, the node pool and the
+# adapters run as, so a one-time code file the release writes belongs to the user that
+# reads it.
+RUN groupadd --system --gid 65532 apiary \
+  && useradd --system --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent \
+    --shell /usr/sbin/nologin apiary
+
+# The keys generated at first start, in APIARY_KEYS_DIR. The directory belongs to 65532,
 # so a new volume mounted on it takes that owner and the release can write to it.
 RUN mkdir -p /var/lib/apiary/keys \
-  && chown nobody /var/lib/apiary/keys
+  && chown 65532:65532 /var/lib/apiary/keys
 ENV APIARY_KEYS_DIR=/var/lib/apiary/keys
 
 # The one-time codes of the adapters installed with Qory Apiary, in QORY_ENROLMENT_DIR
-# (`Apiary.Adapters.Installed`). The directory belongs to nobody, mode 0755, so the release
+# (`Apiary.Adapters.Installed`). The directory belongs to 65532, mode 0755, so the release
 # makes a folder in it per adapter where it is missing and writes each code there; each
 # adapter mounts only its folder.
 RUN mkdir -p /run/qory/enrolment \
-  && chown nobody /run/qory/enrolment \
+  && chown 65532:65532 /run/qory/enrolment \
   && chmod 0755 /run/qory/enrolment
 ENV QORY_ENROLMENT_DIR=/run/qory/enrolment
 
 WORKDIR "/app"
-RUN chown nobody /app
+RUN chown 65532:65532 /app
 
 # set runner ENV
 ENV MIX_ENV="prod"
@@ -165,7 +172,7 @@ ENV MIX_ENV="prod"
 ENV ERL_CRASH_DUMP_BYTES=0
 
 # Only copy the final release from the build stage
-COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/apiary ./
+COPY --from=builder --chown=65532:root /app/_build/${MIX_ENV}/rel/apiary ./
 
 # The commit the image is built from, written into the release as the file REVISION, which
 # the release reads at boot and GET /health reports as its revision. A file, so no setting
@@ -175,7 +182,7 @@ RUN if [ -n "$APIARY_REVISION" ]; then printf '%s\n' "$APIARY_REVISION" > /app/R
 
 EXPOSE 4100
 
-USER nobody
+USER 65532:65532
 
 # If using an environment that doesn't automatically reap zombie processes, it is
 # advised to add an init process such as tini via `apt-get install`
