@@ -214,8 +214,9 @@ defmodule Apiary.AccessKeys do
   # use: it may serve the workspaces of other organisations, whose runs it keeps carrying.
   # A workspace's gateway serves that workspace alone, and is held to it as any node is. For each run, its own place is checked
   # (`place_in_use?/2`), so it acts for none of its own organisation's while that is out
-  # of use. A key without an organisation, an adapter's, of an adapter without one, is the
-  # instance's: no organisation's state holds it, whatever it is.
+  # of use. A key without an organisation, of an adapter or of the instance's pool or
+  # gateway, none of which has one, is the instance's: no organisation's state holds it,
+  # whatever it is.
   defp verifiable_query do
     in_use =
       from(o in Organisation, as: :organisation, select: o.id)
@@ -229,8 +230,8 @@ defmodule Apiary.AccessKeys do
       where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
       where: is_nil(n.deleted_at),
       where:
-        (n.kind == :adapter and is_nil(k.organisation_id) and is_nil(k.workspace_id) and
-           is_nil(n.organisation_id) and is_nil(n.workspace_id)) or
+        (n.kind in [:adapter, :pool, :gateway] and is_nil(k.organisation_id) and
+           is_nil(k.workspace_id) and is_nil(n.organisation_id) and is_nil(n.workspace_id)) or
           (not is_nil(o.id) and
              ((n.kind == :gateway and is_nil(n.workspace_id)) or o.id in subquery(in_use))),
       preload: [workspace: w, node: n, organisation: o]

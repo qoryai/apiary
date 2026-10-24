@@ -583,6 +583,7 @@ defmodule Apiary.Nodes do
 
   defp level_workspace({:workspace, id}), do: Repo.get(Workspace, id)
   defp level_workspace({:organisation, _id}), do: nil
+  defp level_workspace(:instance), do: nil
 
   # `mutate/4` under the gateways' locks of the node's place, taken first, before the
   # node's row (`Apiary.Gateways.lock_for/2`).

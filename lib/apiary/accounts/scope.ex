@@ -108,6 +108,19 @@ defmodule Apiary.Accounts.Scope do
     %__MODULE__{access_key: access_key, organisation: nil, workspace: nil}
   end
 
+  # The key of the instance's pool or gateway is the instance's too: no organisation and no
+  # workspace. What it may reach is `Apiary.Access`'s answer.
+  defp of_key(
+         %AccessKey{
+           organisation_id: nil,
+           workspace_id: nil,
+           node: %Node{kind: kind, organisation_id: nil, workspace_id: nil}
+         } = access_key
+       )
+       when kind in [:pool, :gateway] do
+    %__MODULE__{access_key: access_key, organisation: nil, workspace: nil}
+  end
+
   defp of_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
     %__MODULE__{access_key: access_key, workspace: workspace}
   end
@@ -152,10 +165,21 @@ defmodule Apiary.Accounts.Scope do
   key_place/1 is what the place of an access key's scope is asked as, a subject of
   `Apiary.Access`: the key's workspace, or, for a key with none, its organisation, which
   the key carries loaded (`Apiary.AccessKeys.fetch_for_verification/1`), or a struct with
-  its id alone; nil for a key with neither, which is at no place of an organisation.
+  its id alone; the node of the instance's pool or gateway for its key, which is at the
+  instance; nil for any other key with neither, which is at no place of an organisation.
   """
-  @spec key_place(t) :: %Workspace{} | %Organisation{} | nil
+  @spec key_place(t) :: %Workspace{} | %Organisation{} | Node.t() | nil
   def key_place(%__MODULE__{workspace: %Workspace{} = workspace}), do: workspace
+
+  def key_place(%__MODULE__{
+        access_key: %AccessKey{
+          organisation_id: nil,
+          workspace_id: nil,
+          node: %Node{kind: kind, organisation_id: nil, workspace_id: nil} = node
+        }
+      })
+      when kind in [:pool, :gateway],
+      do: node
 
   def key_place(%__MODULE__{access_key: %AccessKey{organisation_id: nil}}), do: nil
 
