@@ -94,6 +94,7 @@ defmodule Apiary.Adapters do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
+  alias Apiary.Secrets.Instance
 
   ## Who may
 
@@ -723,7 +724,9 @@ defmodule Apiary.Adapters do
   # closed as a member would close it, by the instance (`Apiary.WorkItems.close_for_adapter/2`,
   # whose moduledoc gives the lock order), and its runs not yet handed over end; once that
   # commits, the workspaces whose queue changed hear of it (`Apiary.Dispatches.broadcast/1`).
-  # The tickets are left as they are. If a close fails, nothing of the deletion is kept.
+  # The tickets are left as they are. The adapter's stored secret and its values are
+  # deleted, and its reference to them cleared (`Apiary.Secrets.Instance`), which the
+  # entry records (`app_values_deleted`). If a close fails, nothing of the deletion is kept.
   # An adapter installed with Qory Apiary whose name `QORY_INSTALLED_ADAPTERS` still lists
   # is `{:error, :installed}`, and nothing changes: the installer would make it again; once
   # the name is off the list, it is deleted as any adapter is, and its file is left as the
@@ -740,9 +743,15 @@ defmodule Apiary.Adapters do
            {:ok, key_ids} <- AccessKeys.revoke_node_keys(recorder, current, :node_deleted),
            connection_ids = Connections.end_for_adapter(current, now),
            {:ok, workspace_ids} <- WorkItems.close_for_adapter(current, now),
+           app_values_deleted = Instance.delete_app_values(Repo, current),
            {:ok, deleted} <-
              current
-             |> Ecto.Changeset.change(deleted_at: now, deleted_by_id: scope.user.id)
+             |> Ecto.Changeset.change(
+               deleted_at: now,
+               deleted_by_id: scope.user.id,
+               secret_store: nil,
+               secret_entry: nil
+             )
              |> Repo.update(),
            {:ok, _entry} <-
              Audit.record(Repo, recorder, :"adapter.delete", deleted, %{
@@ -753,6 +762,7 @@ defmodule Apiary.Adapters do
                  |> Map.take([:name, :kind, :public_id])
                  |> Map.put(:revoked_key_ids, key_ids)
                  |> Map.put(:ended_connection_ids, connection_ids)
+                 |> Map.put(:app_values_deleted, app_values_deleted)
              }) do
         {:ok, {deleted, workspace_ids}}
       end

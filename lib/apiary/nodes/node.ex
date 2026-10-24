@@ -129,6 +129,12 @@ defmodule Apiary.Nodes.Node do
     # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
     # by `Apiary.Adapters.install/2`, and never cast from what a person or an adapter sends.
     field :installed_as, :string
+    # An adapter's alone (`nodes_secret_reference_check`): where its secret is
+    # (`Apiary.Secrets.Reference`), the store and the entry, both nil until the adapter
+    # first stores its secrets (`Apiary.Secrets.Instance`). Never cast from what a person
+    # or an adapter sends.
+    field :secret_store, :string
+    field :secret_entry, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
