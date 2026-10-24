@@ -183,6 +183,16 @@ defmodule Apiary.SigningKey do
     end)
   end
 
+  @doc """
+  x25519_private_key/1 is the X25519 private key of the key given, 32 bytes: the first 32
+  bytes of SHA-512 of its seed, which `:crypto` clamps when it uses them, as an Ed25519
+  key converts. It opens a value an adapter sealed to the instance's key
+  (`Apiary.Secrets.AdapterSealing`), and nothing else.
+  """
+  @spec x25519_private_key(t) :: <<_::256>>
+  def x25519_private_key(%__MODULE__{seed: seed}),
+    do: binary_part(:crypto.hash(:sha512, seed), 0, 32)
+
   defp configured_seed do
     Keyword.get(Application.get_env(:apiary, __MODULE__, []), :seed)
   end
