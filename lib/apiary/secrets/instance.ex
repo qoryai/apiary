@@ -22,7 +22,7 @@ defmodule Apiary.Secrets.Instance do
   ## Writing and reading
 
   - `put_app_values/3` replaces every value of an adapter's secret, in one transaction,
-    with the adapter's row held `FOR NO KEY UPDATE` (the lock order of `Apiary.Adapters`):
+    with the adapter's row held `FOR NO KEY UPDATE`, the lock order of the adapters' code:
     the secret is made at the first write, revision 1, and each later write raises its
     revision by one.
   - `reveal_app_values_for_sealing/1` is the plaintext of an adapter's values, for the
@@ -114,7 +114,7 @@ defmodule Apiary.Secrets.Instance do
   of the adapter as locked, runs first: `:ok` goes on, `{:error, reason}` is the answer.
 
   `{:ok, stored}`; `{:error, :not_found}` for an adapter deleted, or installed with Qory
-  Apiary and no longer listed (`Apiary.Adapters.Installed.listed?/1`);
+  Apiary and no longer listed in `QORY_INSTALLED_ADAPTERS`;
   `{:error, :invalid}` for values that are not valid; `{:error, :unavailable}` when the
   instance's data key cannot be unwrapped, which the log says, without a value.
   """
@@ -301,7 +301,7 @@ defmodule Apiary.Secrets.Instance do
 
   @doc """
   delete_app_values/2 deletes `adapter`'s secret and its values through `repo`, inside the
-  caller's transaction, which holds the adapter's row (`Apiary.Adapters.delete_adapter/2`):
+  caller's transaction, which holds the adapter's row, as the adapter's deletion does:
   true when there was one, false otherwise. The caller clears the adapter's reference.
   """
   @spec delete_app_values(Ecto.Repo.t(), Node.t()) :: boolean
