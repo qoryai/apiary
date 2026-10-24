@@ -712,7 +712,7 @@ gives Qory Apiary the hash of its code, and the link never appears in the log.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `QORY_SETUP_CODE_SHA256` | none | The SHA-256 of the set-up code: 64 hexadecimal characters, in either case. Not set, or empty, is a set-up link in the log. |
+| `QORY_SETUP_CODE_SHA256` | none | The SHA-256 of the set-up code: 64 hexadecimal characters, in either case. When it is not set, or empty, Qory Apiary makes the code and writes the set-up link to its log. |
 
 Make the code from 32 random bytes, in base64url without padding, 43 characters, as Qory
 Apiary makes it, then its hash:
@@ -721,6 +721,8 @@ Apiary makes it, then its hash:
 code=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
 printf %s "$code" | sha256sum | cut -d ' ' -f 1
 ```
+
+On macOS, use `shasum -a 256` in place of `sha256sum`.
 
 Set `QORY_SETUP_CODE_SHA256` to the hash, and give the link
 `https://qory.example.com/setup/<code>`, on your `PUBLIC_URL`, to the person who sets the
@@ -738,7 +740,8 @@ Qory Apiary is not set up yet. Open the set-up link that your install printed; t
 
 The link works once, as a logged link does. Once the instance is set up, by the link or
 by `Apiary.Release.grant_instance_admin/2`, Qory Apiary keeps the code's hash and refuses
-the same code, also after the instance's organisation is purged. A start then logs:
+the same code, also after the instance's organisation is purged. A start after that purge,
+with the same hash set, logs:
 
 ```text
 Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to get a set-up link in this log. The code it gives has set up this instance before.
