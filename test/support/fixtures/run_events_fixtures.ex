@@ -74,27 +74,28 @@ defmodule Apiary.RunEventsFixtures do
          "interval_seconds" => 30
        }},
       {2, "run.started", started_data()},
-      {3, "run.policy_applied",
+      {3, "session.started", session_started_data()},
+      {4, "run.policy_applied",
        %{
          "mode" => "enforce",
          "allow" => ["api.example.com"],
          "source" => "config",
          "digest" => String.duplicate("1a", 32)
        }},
-      {4, "session.started", %{"session_id" => "session-1"}},
-      {5, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("building\n")}},
-      {6, "run.egress", egress_data()},
-      {7, "run.egress",
+      {5, "runtime.started", %{"session_id" => "session-1"}},
+      {6, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("building\n")}},
+      {7, "run.egress", egress_data()},
+      {8, "run.egress",
        egress_data(%{
          "host" => "tracker.example.net",
          "decision" => "denied",
          "outcome" => "refused",
          "rule" => ""
        })},
-      {8, "run.egress", egress_data(%{"outcome" => "dial_failed"}), time: at(6)},
-      {9, "run.log", %{"stream" => "stderr", "bytes" => Base.encode64(<<255, 0, 10>>)}},
-      {10, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30}, time: at(30)},
-      {11, "run.policy_applied",
+      {9, "run.egress", egress_data(%{"outcome" => "dial_failed"}), time: at(7)},
+      {10, "run.log", %{"stream" => "stderr", "bytes" => Base.encode64(<<255, 0, 10>>)}},
+      {11, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30}, time: at(30)},
+      {12, "run.policy_applied",
        %{
          "mode" => "enforce",
          "allow" => ["api.example.com"],
@@ -103,29 +104,74 @@ defmodule Apiary.RunEventsFixtures do
          "digest" => String.duplicate("2b", 32),
          "run_configuration" => "sha256=" <> String.duplicate("3c", 32)
        }, time: at(31)},
-      {12, "run.heartbeat", %{"elapsed_seconds" => 60, "interval_seconds" => 20}, time: at(30)},
-      {13, "something.unheard_of", %{"anything" => true}, time: at(61)},
-      {14, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 61_500},
+      {13, "run.heartbeat", %{"elapsed_seconds" => 60, "interval_seconds" => 20}, time: at(30)},
+      {14, "something.unheard_of", %{"anything" => true}, time: at(61)},
+      {15, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 61_500},
        time: at(61.5)}
     ]
   end
 
+  @doc """
+  A synthetic run with steps: a fetch and a compose of its host work, each with its log
+  lines, the join step of its one session, the session and the run's exit.
+  """
+  def steps_record do
+    [
+      {1, "run.started", started_data()},
+      {2, "run.step_started",
+       %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+      {3, "run.log", step_log_data(1, "Cloning into 'shop'...\n")},
+      {4, "run.step_exited",
+       %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1840}},
+      {5, "run.step_started",
+       %{"step" => 2, "name" => "compose the harness", "kind" => "compose"}},
+      {6, "run.log", step_log_data(2, "composed 3 sources\n")},
+      {7, "run.log", step_log_data(2, "wrote the settings\n")},
+      {8, "run.step_exited",
+       %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 620}},
+      {9, "run.step_started", %{"step" => 3, "name" => "join session 1", "kind" => "join"}},
+      {10, "run.step_exited",
+       %{"step" => 3, "state" => "succeeded", "exit_code" => -1, "duration_ms" => 15}},
+      {11, "session.started", session_started_data()},
+      {12, "run.log",
+       %{"stream" => "stdout", "bytes" => Base.encode64("all tests pass\n"), "session" => 1}},
+      {13, "session.exited",
+       %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 3000}},
+      {14, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 14_000}}
+    ]
+  end
+
+  @doc "The data of a `run.log` line of step `step`, on stderr, as the host work writes it."
+  def step_log_data(step, line),
+    do: %{"stream" => "stderr", "bytes" => Base.encode64(line), "step" => step}
+
+  @doc "The data of a `run.started`: the run's open, with no runtime."
   def started_data(extra \\ %{}) do
     Map.merge(
       %{
-        "opened_by" => "session",
-        "runtime" => "claude",
-        "runtime_version" => "2.1.0",
-        "command" => "claude",
-        "args" => ["-p", "fix the build"],
-        "dir" => "/work",
-        "interactive" => false,
+        "opened_by" => "run",
         "forager_version" => "v0.4.0",
         "host" => "dev-laptop",
         "labels" => %{
           "forge" => "git.example.com",
           "repository" => "acme/shop"
         }
+      },
+      extra
+    )
+  end
+
+  @doc "The data of a `session.started`: session 1, the runtime it starts, on pipes."
+  def session_started_data(extra \\ %{}) do
+    Map.merge(
+      %{
+        "session" => 1,
+        "runtime" => "claude",
+        "runtime_version" => "2.1.0",
+        "command" => "claude",
+        "args" => ["-p", "fix the build"],
+        "dir" => "/work",
+        "interactive" => false
       },
       extra
     )
@@ -171,21 +217,23 @@ defmodule Apiary.RunEventsFixtures do
   end
 
   @doc """
-  A run with a tool: a tunnel to `api.example.com`, two calls to `files` on one path, both
-  answered, and one on a path no rule allows, refused before it reached the tool.
+  A run with one session and a tool: a tunnel to `api.example.com`, two calls to `files` on
+  one path, both answered, and one on a path no rule allows, refused before it reached the
+  tool.
   """
   def tool_record do
     [
       {1, "run.started", started_data()},
-      {2, "run.policy_applied", tool_policy_data()},
-      {3, "run.egress", egress_data()},
-      {4, "run.egress", tool_invocation_data()},
-      {5, "run.egress",
+      {2, "session.started", session_started_data()},
+      {3, "run.policy_applied", tool_policy_data()},
+      {4, "run.egress", egress_data()},
+      {5, "run.egress", tool_invocation_data()},
+      {6, "run.egress",
        tool_invocation_data(%{
          "request_id" => "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
          "status" => 201
        })},
-      {6, "run.egress",
+      {7, "run.egress",
        tool_invocation_data(%{
          "request_method" => "GET",
          "path" => "/media/acme/other/checkout.png",
@@ -195,7 +243,7 @@ defmodule Apiary.RunEventsFixtures do
          "outcome" => "refused"
        })
        |> Map.delete("status")},
-      {7, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 7_000}}
+      {8, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 7_000}}
     ]
   end
 

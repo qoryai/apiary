@@ -34,9 +34,10 @@ defmodule Apiary.Runs.Attach do
        id. A run attached before its instance id was kept has none, and the first
        instance of its gateway that attaches it again is given the answer and becomes its
        attaching instance;
-    5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
-       ended it, its starter ended it without one, it was lost after its attach, or its
-       events were pruned. So is a run whose record is gone;
+    5. a run that has ended is `{:error, :gone}`: its exit arrived, an outcome stored on
+       it ended it (a run of a workspace's queue takes none, and one stored on it before
+       that rule ends it all the same), it was released after its handover, it was lost
+       after its attach, or its events were pruned. So is a run whose record is gone;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -102,10 +103,12 @@ defmodule Apiary.Runs.Attach do
   #
   # - Among the runs that have ended (5. above) is a prebuild whose run of the queue its
   #   starter's `prebuilt` ended, to any attach but a repeat.
-  # - A run a workspace's queue handed over that is not a prebuild is given the image the
-  #   node pool that claimed it recorded for the run's target, the one its registration's
-  #   labels name, on its environment record, fixed at the attach
-  #   (`runs.configured_image`); that is the run given an image at the attach. A prebuild
+  # - A run a workspace's queue handed over that is not a prebuild is given the image its
+  #   claim read for it, the one the node pool that claimed it recorded for the run's
+  #   target on its environment record (`Apiary.Environments.claim_image/2`), kept from
+  #   the claim (`runs.configured_image`); for such a run its claim gave none, the image
+  #   the pool recorded for the target its registration's labels name, read at the attach.
+  #   Either is fixed at the attach; that is the run given an image at the attach. A prebuild
   #   whose workspace's policy names an image is given the policy without it. A run with
   #   no recorded image is given the configuration as stored.
 
@@ -123,6 +126,7 @@ defmodule Apiary.Runs.Attach do
   alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Runs.{Answer, Batch, Registration, Run, RunKey, Sender}
 
+  @prebuild DispatchRun.prebuild()
   @version "version"
   @run_key "run_key"
   @interval_seconds "interval_seconds"
@@ -392,10 +396,11 @@ defmodule Apiary.Runs.Attach do
 
   defp repeat?(_run, _gateway, _instance_id), do: false
 
-  # Its exit arrived, its starter's outcome ended it, its starter released it after a
-  # queue handed it over (cancelled, `released_at`, `Apiary.Dispatches.RunEnd`), or it was
-  # lost after its attach; or retention pruned its events, and the workspace wants nothing
-  # more of it.
+  # Its exit arrived, an outcome stored on it ended it (a run of the queue takes none; one
+  # stored before that rule ends it all the same), its starter released it after a queue
+  # handed it over (cancelled, `released_at`, `Apiary.Dispatches.RunEnd`), or it was lost
+  # after its attach; or retention pruned its events, and the workspace wants nothing more
+  # of it.
   defp ended?(%Run{} = run) do
     run.state in @ended or not is_nil(run.exited_at) or not is_nil(run.outcome_state) or
       not is_nil(run.events_pruned_at) or (run.state == "lost" and not is_nil(run.attached_at))
@@ -489,9 +494,15 @@ defmodule Apiary.Runs.Attach do
   defp prebuild?(nil), do: false
 
   # The image a run starts in: for a run a workspace's queue handed over, not a prebuild,
-  # the image the pool that claimed it recorded for the run's target, the one its
-  # registration's labels name (`Apiary.Environments.image_for/2`); nil for any other run,
-  # which starts in the pool's default.
+  # the image its claim read for it (`runs.configured_image`,
+  # `Apiary.Environments.claim_image/2`); for such a run its claim gave none, the image
+  # the pool that claimed it recorded for the run's target, the one its registration's
+  # labels name (`Apiary.Environments.image_for/2`); nil for any other run, which starts
+  # in the pool's default.
+  defp image(%Run{configured_image: image}, _workspace, %{step: step, pool_id: pool_id})
+       when is_binary(image) and is_binary(pool_id) and step != @prebuild,
+       do: image
+
   defp image(%Run{} = run, workspace, %{step: step, pool_id: pool_id})
        when is_binary(pool_id) do
     with false <- step == DispatchRun.prebuild(),
@@ -505,8 +516,9 @@ defmodule Apiary.Runs.Attach do
 
   defp image(_run, _workspace, _dispatched), do: nil
 
-  # A run a workspace's queue handed over is lost should it have neither an outcome nor an
-  # exit by its step's limit after its attach (`Apiary.Dispatches.RunEnd`); any other run
+  # A run a workspace's queue handed over is lost should it have no exit by its step's
+  # limit after its attach, nor, for a run that is not a prebuild, an outcome stored on it
+  # before a run of the queue was refused one (`Apiary.Dispatches.RunEnd`). Any other run
   # has no such deadline.
   defp backstop_at(nil, _now), do: nil
 

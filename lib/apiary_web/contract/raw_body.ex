@@ -40,11 +40,10 @@ defmodule ApiaryWeb.Contract.RawBody do
   @adapter_three_paths [["v1", "sources", "disconnect"], ["v1", "source-items", "comments"]]
   # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
-  # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/handover`, `/release` and
-  # `/prebuilt`. Read the same way where `served?/1` holds, as below.
+  # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/release` and `/machine-log`. Read the same way where `served?/1` holds, as below.
   @pool_max_bytes 1024 * 1024
   @pool_claim_path ["v1", "pools", "claim"]
-  @dispatch_actions ["dispatched", "handover", "release", "prebuilt"]
+  @dispatch_actions ["dispatched", "release", "machine-log"]
   # The integration contract's paths and the provisioner contract's belong to one feature.
   # Their bodies are read here only where the instance has it, or where the request
   # carries a signature, which `ApiaryWeb.Features.Routes` lets through to be verified: an

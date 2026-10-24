@@ -18,6 +18,8 @@ defmodule Apiary.DataCase do
 
   using do
     quote do
+      @before_compile Apiary.TestSetup
+
       alias Apiary.Repo
 
       import Ecto
@@ -146,7 +148,8 @@ defmodule Apiary.DataCase do
 
   The other tag, `@tag needs: :security` (or `@moduletag`), marks a test that exercises a
   feature; `Apiary.TestSetup.start!/1` leaves it out when the suite runs without that
-  feature.
+  feature. `@tag needs: [:security, :secrets]` marks a test that exercises both, and the
+  suite leaves it out when either is off.
   """
   def setup_features(%{with_features: features} = tags) when is_list(features) do
     if features == [] do
@@ -165,6 +168,25 @@ defmodule Apiary.DataCase do
   end
 
   def setup_features(_tags), do: :ok
+
+  @doc """
+  Turns the `registry` feature off for one test, whatever the suite runs under, and puts
+  back the features afterwards: `setup {Apiary.DataCase, :without_registry}`. For a test
+  of a run configuration or a secrets request as it is without the registry's run
+  credential, under every leg of the suite. The features are the whole node's, so the
+  test must not be async.
+  """
+  def without_registry(tags) do
+    if tags[:async] do
+      raise ArgumentError,
+            "without_registry changes the whole node, so the test must not be async"
+    end
+
+    previous = Application.get_env(:apiary, :features)
+    Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:registry])
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    :ok
+  end
 
   @doc """
   A helper that transforms changeset errors into a map of messages.

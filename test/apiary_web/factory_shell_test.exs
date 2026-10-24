@@ -5,7 +5,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
   # Adapters; and the Activity filter's words for the work item comments, the handover,
-  # the release, the prebuilt, a build asked for, an adapter installed and a set-up
+  # the release, a build asked for, an adapter installed and a set-up
   # started.
   #
   # Not async: the tests without the feature switch the instance's features, which are the
@@ -83,8 +83,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.Contract.SourceItemsController,
     ApiaryWeb.Contract.SourceItemCommentsController,
     ApiaryWeb.Contract.PoolClaimController,
-    ApiaryWeb.Contract.DispatchController,
-    ApiaryWeb.Contract.HandoverController
+    ApiaryWeb.Contract.DispatchController
   ]
 
   defp factory_routes(scope, adapter) do
@@ -388,9 +387,7 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"collection.set_backlog", "Taking tickets into the Backlog turned on or off"} in options
 
-      assert {"dispatch.handover", "Runs handed over"} in options
       assert {"dispatch.release", "Runs given back"} in options
-      assert {"dispatch.prebuilt", "Images recorded"} in options
 
       assert {"target.set_further_repositories", "Also read"} in options
       assert {"target.rebuild_environment", "Builds asked for"} in options
@@ -398,6 +395,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"adapter.install", "Adapter installed"} in options
       assert {"adapter.setup", "Adapter set-up started"} in options
       assert {"model_choice.write", "Model choice changed"} in options
+      assert {"time_limit.edit", "Time limit changed"} in options
 
       offered = for {value, _words} <- options, do: String.to_existing_atom(value)
 
@@ -415,14 +413,13 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"work_item.comment_delete",
             :"collection.assign",
             :"collection.set_backlog",
-            :"dispatch.handover",
             :"dispatch.release",
-            :"dispatch.prebuilt",
             :"target.set_further_repositories",
             :"target.rebuild_environment",
             :"adapter.install",
             :"adapter.setup",
-            :"model_choice.write"
+            :"model_choice.write",
+            :"time_limit.edit"
           ],
           do: refute(action in offered, "#{action}")
     end

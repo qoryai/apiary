@@ -1,6 +1,5 @@
 {
   "version": 1,
   "time": "2026-10-15T12:02:00Z",
-  "reason": "The job could not start:\u0000 no runner was free.",
-  "retry": true
+  "reason": "The machine could not be created:\u0000 the vendor had no capacity."
 }

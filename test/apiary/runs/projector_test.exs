@@ -108,10 +108,10 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projected.heartbeat_interval_seconds == 20
       assert projected.policy_digest == String.duplicate("2b", 32)
       assert projected.run_configuration_digest == "sha256=" <> String.duplicate("3c", 32)
-      assert projected.projected_sequence == 14
+      assert projected.projected_sequence == 15
 
       assert %{unprojected: 0, log_chunks: chunks, connections: connections} = projection(run)
-      assert chunks == [{5, "stdout", "building\n"}, {9, "stderr", <<255, 0, 10>>}]
+      assert chunks == [{6, "stdout", "building\n"}, {10, "stderr", <<255, 0, 10>>}]
 
       assert [
                %{
@@ -126,9 +126,9 @@ defmodule Apiary.Runs.ProjectorTest do
                %{host: "tracker.example.net", attempts: 1, allowed: 0, denied: 1}
              ] = connections
 
-      assert api.first_seen_at == at(6)
-      assert api.last_seen_at == at(6)
-      assert api.last_sequence == 8
+      assert api.first_seen_at == at(7)
+      assert api.last_seen_at == at(7)
+      assert api.last_sequence == 9
       assert api.workspace_id == run.workspace_id
       assert api.organisation_id == run.organisation_id
     end
@@ -498,23 +498,23 @@ defmodule Apiary.Runs.ProjectorTest do
     end
 
     test "a late lower sequence is projected and never regresses the run", %{run: run} do
-      [ping, started | rest] = record()
+      [ping, started, session_started | rest] = record()
       events_fixture(run, rest)
       {:ok, run} = Projector.project(run)
 
       assert run.state == "completed"
       assert run.projected_sequence == 0
 
-      events_fixture(run, [started])
+      events_fixture(run, [started, session_started])
       {:ok, run} = Projector.project(run)
 
       assert run.state == "completed"
-      assert run.runtime == "claude"
+      assert {run.host, run.runtime} == {"dev-laptop", "claude"}
       assert run.projected_sequence == 0
 
       events_fixture(run, [ping])
       {:ok, run} = Projector.project(run)
-      assert run.projected_sequence == 14
+      assert run.projected_sequence == 15
     end
 
     test "projected_sequence stops before a gap and moves on when it fills", %{run: run} do
@@ -557,7 +557,7 @@ defmodule Apiary.Runs.ProjectorTest do
 
     test "session events and unknown types are marked projected and fold nothing", %{run: run} do
       events_fixture(run, [
-        {1, "session.started", %{"session_id" => "session-1"}},
+        {1, "runtime.started", %{"session_id" => "session-1"}},
         {2, "something.unheard_of", %{"anything" => true}}
       ])
 
@@ -636,7 +636,7 @@ defmodule Apiary.Runs.ProjectorTest do
             run_id: run.id,
             sequence: sequence,
             node_event_id: Ecto.UUID.generate(),
-            type: "dev.qory.session.started",
+            type: "dev.qory.runtime.started",
             time: now,
             data: %{},
             received_at: now

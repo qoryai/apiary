@@ -50,6 +50,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   alias Apiary.Policy
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Ingest, Projector, Registration, Target, Run}
+  alias Mix.Tasks.Apiary.Demo.Shell
 
   @batch_size 20
   @source_prefix "urn:qory:run:"
@@ -370,7 +371,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   # node: `--key`'s, or the newest key, neither revoked nor of a deleted node, of
   # the first workspace that has one. Public for the tests.
   def access_key!(nil) do
-    if not Repo.exists?(Workspace), do: Mix.raise("there is no workspace yet: sign up first")
+    if not Repo.exists?(Workspace), do: Shell.raise!("there is no workspace yet: sign up first")
 
     key_id =
       Repo.one(
@@ -381,7 +382,7 @@ defmodule Mix.Tasks.Apiary.Demo do
           order_by: [asc: w.inserted_at, asc: w.id, desc: k.inserted_at, desc: k.id],
           limit: 1,
           select: k.key_id
-      ) || Mix.raise("no workspace has an access key: add one to a node")
+      ) || Shell.raise!("no workspace has an access key: add one to a node")
 
     access_key!(key_id)
   end
@@ -389,7 +390,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   def access_key!(key_id) do
     case AccessKeys.fetch_for_verification(key_id) do
       {:ok, %AccessKey{} = access_key} -> access_key
-      _ -> Mix.raise("no access key #{key_id} that is not revoked")
+      _ -> Shell.raise!("no access key #{key_id} that is not revoked")
     end
   end
 end

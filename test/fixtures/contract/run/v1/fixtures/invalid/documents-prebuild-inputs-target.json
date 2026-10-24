@@ -1,0 +1,19 @@
+{
+  "step": "prebuild",
+  "domain": "software",
+  "access": "read",
+  "target": {
+    "system": "code.example.com",
+    "path": "acme/shop"
+  },
+  "image_destination": "registry.example.com/targets/0123456789abcdef",
+  "environment_destination": "registry.example.com/environments/0123456789abcdef",
+  "inputs": {
+    "version": 1,
+    "environment_ref": "env-3f2a91c4",
+    "target": {
+      "system": "code.example.com",
+      "path": "acme/shop"
+    }
+  }
+}

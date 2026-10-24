@@ -1069,19 +1069,22 @@ defmodule ApiaryWeb.OverviewComponents do
   defp lost_words(_run), do: gettext("Lost, end not recorded")
 
   # A run lost with no exit, by the rule the lost-run check applied (`Apiary.Runs.Liveness`),
-  # told from the stored run alone: past the deadline its attach set for its end
-  # (`backstop_at`), however recently it beat; never attached by its `attach_by`; or
-  # silent for three heartbeat intervals.
+  # told from the stored run alone: ended for a silence of 600 s, which frees its slot
+  # (`silenced_at`, `Apiary.Dispatches.RunEnd`), whether three heartbeat intervals marked
+  # it lost before; past the deadline its attach set for its end (`backstop_at`), however
+  # recently it beat; never attached by its `attach_by`; or silent for three heartbeat
+  # intervals.
   defp lost_tip(%{exited_at: nil} = run) do
     cond do
-      lost_past_backstop?(run) ->
-        minutes = backstop_minutes(run)
+      silenced?(run) ->
+        gettext(
+          "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
+        )
 
-        ngettext(
-          "No exit or outcome came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now.",
-          "No exit or outcome came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now.",
-          minutes,
-          number: Format.number(minutes)
+      lost_past_backstop?(run) ->
+        gettext(
+          "Qory Apiary received no exit within %{duration} after the gateway took the run, so it marked the run lost. The run may still be running; only its exit changes this record now.",
+          duration: backstop_words(run)
         )
 
       lost_unattached?(run) ->
@@ -1103,10 +1106,41 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp lost_past_backstop?(_run), do: false
 
-  # The minutes its attach gave the run for its end, whole: what the step's backstop was
-  # then, whatever it is now.
-  defp backstop_minutes(%{backstop_at: backstop_at, attached_at: attached_at}),
-    do: div(DateTime.diff(backstop_at, attached_at, :second), 60)
+  defp silenced?(run), do: match?(%DateTime{}, Map.get(run, :silenced_at))
+
+  # The time its attach gave the run for its end: what the step's backstop was then,
+  # whatever it is now.
+  defp backstop_words(%{backstop_at: backstop_at, attached_at: attached_at}),
+    do: duration_words(DateTime.diff(backstop_at, attached_at, :second))
+
+  @doc """
+  A duration of `seconds`, in whole minutes, in hours and minutes from 60 minutes on:
+  87,300 s reads "24 hours and 15 minutes", 4,500 s "1 hour and 15 minutes", 2,100 s
+  "35 minutes".
+  """
+  @spec duration_words(integer) :: String.t()
+  def duration_words(seconds) when is_integer(seconds) do
+    minutes = div(seconds, 60)
+    hours = div(minutes, 60)
+    rest = rem(minutes, 60)
+
+    cond do
+      hours == 0 ->
+        minute_words(rest)
+
+      rest == 0 ->
+        hour_words(hours)
+
+      true ->
+        gettext("%{hours} and %{minutes}", hours: hour_words(hours), minutes: minute_words(rest))
+    end
+  end
+
+  defp hour_words(hours),
+    do: ngettext("%{number} hour", "%{number} hours", hours, number: Format.number(hours))
+
+  defp minute_words(minutes),
+    do: ngettext("%{number} minute", "%{number} minutes", minutes, number: Format.number(minutes))
 
   defp lost_unattached?(%{
          run_key_issued_at: %DateTime{},

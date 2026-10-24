@@ -263,12 +263,12 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "29a8d70f778570dbf13e3a6d3735b04b697415c9"
+  @integrations_ref "f5bc79a410348ce50d42979166f456adcf93b798"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
       "016283cff012f7becd936d642e730149ac24787ec6a5fa9c2c82782ca2cd0b8e",
     "priv/contract/integration/definitions.schema.json" =>
-      "dccf00468dc180a63a116b6fa823e04358b94d3b0b79678843f8f49ae9056e0b",
+      "27d6ff3ef7ff529bb18e511c3d1c89fb5baede519e1aef38f65eabb9e6a8b3de",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "04f85c67a8f04e06c925ce61b5210c7141aec7453b3e645a298f075b06491c1b",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -282,7 +282,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
       "20213633b1e66629e11b7406b386f0c85603196ae84677186d049329d16c8bf3",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "dccf00468dc180a63a116b6fa823e04358b94d3b0b79678843f8f49ae9056e0b",
+      "27d6ff3ef7ff529bb18e511c3d1c89fb5baede519e1aef38f65eabb9e6a8b3de",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
       "3290b901ceb26b3d52a08aa869e4bdb301d43ad73e383e991404ae060d9955b0"
   }

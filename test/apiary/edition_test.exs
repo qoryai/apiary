@@ -42,4 +42,16 @@ defmodule Apiary.EditionTest do
       assert Apiary.Edition.model_choice_chain(scope.organisation.id) == "operator"
     end
   end
+
+  describe "operated?/1" do
+    test "the core answers false", %{scope: scope} do
+      refute Apiary.Edition.Core.operated?(scope.organisation)
+      refute Apiary.Edition.operated?(scope.organisation)
+    end
+
+    test "a test's stub answers true", %{scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.Operated)
+      assert Apiary.Edition.operated?(scope.organisation)
+    end
+  end
 end

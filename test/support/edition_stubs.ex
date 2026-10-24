@@ -55,6 +55,14 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule Operated do
+    @moduledoc """
+    Every organisation is a client that an operator runs work for
+    (`c:Apiary.Edition.operated?/1`).
+    """
+    def operated?(%Organisation{}), do: true
+  end
+
   @doc """
   rendezvous/0 pauses a change where a stub calls it, while the test that started it asks
   so (`Process.put(:level_refusal_rendezvous, true)` in the test's process): it says
@@ -684,6 +692,27 @@ defmodule Apiary.EditionStubs do
   defmodule NoLimit do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoConnectionWrite do
+    @moduledoc """
+    Nobody changes integrations and services (`connection.write`), whoever asks; the
+    changes of runtimes and model providers are asked as before.
+    """
+    def check(_scope, :"connection.write", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoRuntimeWrite do
+    @moduledoc "Nobody changes runtimes (`runtime.write`), whoever asks."
+    def check(_scope, :"runtime.write", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoProviderWrite do
+    @moduledoc "Nobody changes model providers (`provider.write`), whoever asks."
+    def check(_scope, :"provider.write", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 

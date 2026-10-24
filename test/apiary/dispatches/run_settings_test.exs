@@ -1,7 +1,7 @@
 defmodule Apiary.Dispatches.RunSettingsTest do
-  # The run settings of an explore run's handover (`Apiary.Dispatches.RunSettings`): what
-  # the model choices resolve to, the API of the provider the run uses, the causes that
-  # end the run, and what the run keeps. The races with a provider's change are
+  # The run settings of an explore run a claim registers (`Apiary.Dispatches.RunSettings`):
+  # what the model choices resolve to, the API of the provider the run uses, the causes
+  # that end the run, and what the run keeps. The races with a provider's change are
   # `run_settings_races_test.exs`; the answer's 1 MiB limit and the features off are
   # `run_settings_budget_test.exs`.
   use Apiary.DataCase, async: true
@@ -44,13 +44,23 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     |> Map.merge(%{scope: scope, provider: provider})
   end
 
-  # A fresh work item's explore run, queued, claimed, said started and handed over: the
-  # handover's answer, and the run of the queue.
+  # A fresh work item's explore run, queued and claimed: `{:ok, documents}`, what the run's
+  # documents are made from with the registered run as `run`, or `{:error, :gone}` when the
+  # claim ended the run, or the claim's error; the run of the queue; and the dispatch the
+  # claim wrote, nil for none.
   defp handover!(ctx, attrs \\ %{}) do
     work_item = work_item_fixture(ctx.scope, attrs)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    %{dispatch: dispatch} = dispatched!(ctx.key)
-    {Dispatches.handover(ctx.key, dispatch.public_id, %{body: @body}), queued, dispatch}
+
+    answer =
+      case Dispatches.claim(ctx.key, Dispatches.now(), @body) do
+        {:ok, %{registered: run, documents: documents}} -> {:ok, Map.put(documents, :run, run)}
+        {:ok, :none} -> {:error, :gone}
+        {:error, _reason} = error -> error
+      end
+
+    dispatch = Repo.one(from d in Dispatch, where: d.dispatch_run_id == ^queued.id)
+    {answer, queued, dispatch}
   end
 
   # The provider's row with `changes`, written past the save's checks, and coded again as
@@ -85,8 +95,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0
   end
 
-  describe "a handover with no choice at any level" do
-    test "hands over through a gateway key without the stored-secrets flag", ctx do
+  describe "a claim with no choice at any level" do
+    test "registers the run through a gateway key without the stored-secrets flag", ctx do
       Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
@@ -109,7 +119,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     end
   end
 
-  describe "a handover with a choice" do
+  describe "a claim with a choice" do
     test "of a run with no target reads the workspace and organisation levels alone", ctx do
       scope = with_domain(ctx.scope, "general")
       target = Repo.insert!(target(scope, "acme/shop"))
@@ -153,7 +163,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, model: "claude-opus-5-5"})
 
-      choose!(ctx.scope, {target, "explore"}, %{
+      choose!(ctx.scope, target, %{
         provider: ctx.provider.public_id,
         key: "spare",
         model: "claude-sonnet-5-5"
@@ -198,21 +208,11 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       {result, log} = with_log(fn -> handover!(ctx) end)
       {{:ok, handed}, _queued, _dispatch} = result
-
-      entries =
-        Repo.all(
-          from e in Apiary.Audit.Entry,
-            where:
-              e.action == "dispatch.handover" and e.organisation_id == ^provider.organisation_id
-        )
-
-      assert [_entry] = entries
       refute log =~ "sk-ant"
 
       for encoded <- [
             Jason.encode!(handed.run_settings),
-            Jason.encode!(Repo.get!(Run, handed.run.id).run_settings),
-            Jason.encode!(Enum.map(entries, &Map.take(&1, [:details, :before, :after])))
+            Jason.encode!(Repo.get!(Run, handed.run.id).run_settings)
           ] do
         refute encoded =~ "endpoint"
         refute encoded =~ "anthropic.com"
@@ -244,7 +244,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     end
   end
 
-  describe "a handover ends the run" do
+  describe "a claim ends the run" do
     test "secrets_not_allowed for a provider and a gateway key without the stored-secrets flag",
          ctx do
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
@@ -343,7 +343,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       choose!(ctx.scope, :workspace, %{provider: litellm.public_id, model: "team-large"})
 
       # An address the endpoint rule takes, written without a new code: the run must not
-      # be handed over with it.
+      # be registered with it.
       {1, _rows} =
         Repo.update_all(from(c in Connection, where: c.id == ^litellm.id),
           set: [settings: ~s({"address":"https://elsewhere.example.com"})]
@@ -442,7 +442,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                  {:error, {:provider_in_use, %{places: [], runs: [run.public_id]}}}
       end
 
-      # Once the run ended, the provider goes; the run keeps what it was handed over
+      # Once the run ended, the provider goes; the run keeps what it was registered
       # with, and its links to the deleted rows are cleared.
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [state: "completed"])

@@ -2,108 +2,62 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/provisioner/v1/claim-answer.schema.json",
   "title": "Claim answer",
-  "description": "The body of the signed 200 answer to a claim, application/json: the run the starter claimed, the dispatch that holds it, and what the job is for. The dispatch is the starter's until lease_until, the deadline for its handover: the starter starts the job, says so with dispatched, dispatched.schema.json, and has the handover answered with the signed 200 before then, or its run goes back to the queue with the same run_id, except a run of the step prebuild whose collection and node pool have another prebuild run waiting: that run ends instead, so a request naming its dispatch is then refused 410 gone; either way the dispatch is stale, handover.schema.json. The answer carries no credential: the job's run key comes only from the handover, handover-answer.schema.json. A dispatch of the step prebuild is for a target, not a work item, so the end of a dispatch when its work item is closed or undone never applies to it. It ends only at a prebuilt, prebuilt.schema.json; at a release, release.schema.json; with its run, at the run's outcome or when the control plane finds the run lost, once handed over, and once stale, as for any step, since a stale dispatch, one whose lease lapsed before its handover, answers 409 lease_expired until its run ends, and 410 gone only then; or at the disconnection or end of the collection whose target it is for, which ends the dispatch and its run with no new run, after which any request naming the dispatch answers 410 gone. The answer names the contract revision it was built for in revision, inside the signed body: the starter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes for the integration contract. It is signed under the control plane's server key, and the starter checks it under a server key it pinned at enrolment before using it, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes. The starter refuses a member this schema does not define.",
+  "description": "The body of the signed 200 answer to a claim, application/json: a request for one machine. It contains the dispatch that holds the request, the type of machine to create, the run code the machine redeems and the gateway the code is bound to. The dispatch is the starter's until lease_until without dispatched or the redemption of run_code: the starter creates the machine, passes it run_code, gateway_url and max_lifetime_minutes, and sends the first dispatched, dispatched.schema.json, before lease_until. The lease ends when the first dispatched is accepted or when the machine redeems run_code, whichever comes first. From then on the dispatch never goes stale, and its work is never given to another claim while the dispatch lives. The lease lapses only when neither dispatched nor the redemption came before lease_until: the dispatch is then stale, and the control plane may give the work to another claim. A first dispatched at or after lease_until is refused 409 lease_expired when the dispatch is stale, and accepted when the code was redeemed before lease_until, because that dispatch is not stale. A first redemption at or after lease_until, with neither dispatched nor an earlier redemption before lease_until, is refused, because the lease has lapsed, with the same answer as for an unknown code, so the refusal shows nothing about the code. Of one dispatch, a release, a redemption, the first accepted dispatched, the lapse of the lease, and the end of the dispatch 15 minutes after the claim when the code is not redeemed take effect one at a time, never two of them together. A release that takes effect first makes the code unusable. After a redemption that takes effect first, the lease does not lapse, and a release is refused 409 machine_exists. After a lapse that takes effect first, a redemption is refused. The run code stops working the moment the lease lapses, and when the dispatch ends for any reason, a release among them. After dispatched, the code can be redeemed until 15 minutes from the claim. Once the code is redeemed, a machine exists, and a release is refused 409 machine_exists, even before dispatched. After the redemption, the 15 minutes from the claim no longer end the dispatch. The code is used once: a repeated redemption by the same machine, as the run_answer of https://qory.dev/contracts/forager/v1/enrolment.schema.json describes, gets the same answer. A first dispatched or a release naming a stale dispatch is refused 409 lease_expired until the control plane ends the dispatch, and 410 gone after that; a machine log is refused neither, machine-log.schema.json. A dispatch also ends at its release, release.schema.json, when the machine has not redeemed the run code within 15 minutes of the claim, as run_code describes, or when the control plane ends the work it is for. A request naming an ended dispatch answers 410 gone, as refusal.schema.json describes, except a machine log: the control plane accepts a machine log before or after the dispatch ends, and never refuses it 409 lease_expired, machine-log.schema.json. The answer contains no run key: the machine gets the run key and the run's documents by redeeming run_code, as run_code describes. The control plane sends the answer with Cache-Control: no-store and gives it once. The starter keeps run_code and gateway_url no longer than it takes to pass them to the machine it creates, and writes no line that contains qecr_ to a log. The answer names the contract revision it was built for in revision, inside the signed body: the starter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes for the integration contract. It is signed under the control plane's server key, and the starter checks it under a server key it pinned at enrolment before using it, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes. The starter refuses a member this schema does not define.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "version",
     "revision",
     "dispatch_id",
-    "run_id",
     "pool_id",
     "lease_until",
-    "step"
+    "run_code",
+    "gateway_url",
+    "max_lifetime_minutes"
   ],
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "step": {
-            "const": "explore"
-          }
-        },
-        "required": [
-          "step"
-        ]
-      },
-      "then": {
-        "required": [
-          "work_item"
-        ]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "step": {
-            "const": "prebuild"
-          }
-        },
-        "required": [
-          "step"
-        ]
-      },
-      "then": {
-        "not": {
-          "required": [
-            "work_item"
-          ]
-        },
-        "required": [
-          "access",
-          "target"
-        ]
-      }
-    }
-  ],
-  "dependentRequired": {
-    "target": [
-      "access"
-    ],
-    "access": [
-      "target"
-    ]
-  },
   "properties": {
     "version": {
       "description": "The document format. The starter refuses a version it does not read.",
       "const": 1
     },
     "revision": {
-      "description": "The revision of this contract the control plane built the answer for: 3, the one revision the control plane serves and the one the request's X-Qory-Contract-Version named. The answer's signature covers it, with the rest of the body. The starter refuses an answer whose revision is not the revision it implements.",
-      "const": 3
+      "description": "The revision of this contract the control plane built the answer for: 1, the one revision the control plane serves and the one the request's X-Qory-Contract-Version named. Additions made before revision 1 is released are part of revision 1. The answer's signature covers it, with the rest of the body. The starter refuses an answer whose revision is not the revision it implements.",
+      "const": 1
     },
     "dispatch_id": {
       "description": "The dispatch: the id the starter's later requests name in their path.",
       "$ref": "definitions.schema.json#/$defs/dispatch_id"
     },
-    "run_id": {
-      "description": "The run claimed.",
-      "$ref": "definitions.schema.json#/$defs/run_id"
-    },
     "pool_id": {
-      "description": "The node pool whose key claimed the run.",
+      "description": "The node pool whose key made the claim.",
       "$ref": "definitions.schema.json#/$defs/pool_id"
     },
     "lease_until": {
-      "description": "Until when the dispatch is the starter's, RFC 3339 in UTC with whole seconds: the starter has the handover answered with the signed 200 before then, and dispatched does not change it.",
+      "description": "Until when the dispatch is the starter's without dispatched or the redemption of run_code, RFC 3339 in UTC with whole seconds. The starter sends the first dispatched before then. The lease lapses only when neither dispatched nor the redemption of run_code came before lease_until: the dispatch is then stale, the run code stops working, and the control plane may give the work to another claim. Once the code is redeemed, the dispatch never goes stale, as after an accepted dispatched, and its work is never given to another claim while the dispatch lives. A first dispatched at or after lease_until is refused 409 lease_expired when the dispatch is stale, and accepted when the code was redeemed before lease_until. A first redemption at or after lease_until, with neither dispatched nor an earlier redemption before lease_until, is refused, with the same answer as for an unknown code. After dispatched, the code can be redeemed until 15 minutes from the claim.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
     },
-    "step": {
-      "description": "The step the run is for.",
-      "$ref": "definitions.schema.json#/$defs/step"
+    "machine": {
+      "description": "The type of machine the job runs on: a name from the control plane's list of machine types, such as small. The starter maps the name to the machine it creates, and releases the dispatch when it does not know the name. Absent when the control plane names no type: the starter uses its default.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
-    "access": {
-      "description": "What the run may do on its target. Present exactly when target is present.",
-      "$ref": "definitions.schema.json#/$defs/access"
+    "run_code": {
+      "description": "The run code of the dispatch: qecr_, 26 upper-case Crockford base32 characters, then the fingerprints of one or two of the control plane's server keys, each a dot and 22 base64url characters. The control plane makes the code at the claim. The code works until the first of these: 15 minutes from the claim; the moment the lease lapses, when neither dispatched nor the redemption came before lease_until; or the end of the dispatch, for any reason, a release among them. So after dispatched, the code can be redeemed until 15 minutes from the claim, unless the dispatch ends first. When the machine has not redeemed the code within 15 minutes of the claim, the control plane ends the dispatch, so the next dispatched is refused 410 gone, and the starter deletes the machine, dispatched.schema.json. The starter passes the code to the machine it creates for the dispatch alone, and does not read it. It keeps the code no longer than it takes to pass it to the machine, and writes no line that contains qecr_ to a log. The machine redeems the code once, at POST /.well-known/qory-enrolment of the control plane, as https://qory.dev/contracts/forager/v1/enrolment.schema.json describes. The redemption returns the run key and the run's documents, https://qory.dev/contracts/run/v1/documents.schema.json, in its signed 201. Once the code is redeemed, the dispatch never goes stale, as after an accepted dispatched, and its work is never given to another claim while the dispatch lives. A first redemption at or after lease_until, with neither dispatched nor an earlier redemption before lease_until, is refused, with the same answer as for an unknown code. After the redemption, the 15 minutes from the claim no longer end the dispatch. The code is used once: a repeated redemption by the same machine, as the run_answer of https://qory.dev/contracts/forager/v1/enrolment.schema.json describes, gets the same answer. Once the code is redeemed, a release is refused 409 machine_exists, even before dispatched, because a machine exists. A release, a redemption, the first accepted dispatched, the lapse of the lease, and the end of the dispatch 15 minutes after the claim when the code is not redeemed take effect one at a time, never two of them together. A release that takes effect first makes the code unusable. After a redemption that takes effect first, the lease does not lapse, and a release is refused 409 machine_exists.",
+      "type": "string",
+      "pattern": "^qecr_[0-9A-HJKMNP-TV-Z]{26}(\\.[A-Za-z0-9_-]{22}){1,2}$"
     },
-    "target": {
-      "description": "Where the run's change would go, and absent when the run has no place where a change would go. The step explore may have none. The step prebuild always has one: the place whose environment the job builds.",
-      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+    "gateway_url": {
+      "description": "The gateway that the node pool's choice resolved to at the claim: https://, then a host, then an optional port, and nothing after them, at most 300 characters. The host is DNS labels joined by dots, such as gateway.example, or a single label with no dot, such as gateway; a label is 1 to 63 letters, digits and hyphens that starts and ends with a letter or a digit. A dotted IPv4 address, such as 10.0.0.5, fits the label rule. The host can instead be an IPv6 address in brackets as RFC 3986 writes one, such as [::1]. User information, percent-encodings, a trailing dot and an underscore are refused. A port is a colon and a number from 1 to 65535 with no leading zero, such as :8443; a colon with no port is refused. The starter passes it to the machine with the run code. The control plane binds the code to this gateway, and refuses a redemption that another gateway relays with the same answer as for an unknown code.",
+      "type": "string",
+      "format": "uri",
+      "maxLength": 300,
+      "pattern": "^https://(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*|\\[(?:(?:[0-9A-Fa-f]{1,4}:){6}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|::(?:[0-9A-Fa-f]{1,4}:){5}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){4}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,1}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){3}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,2}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){2}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,3}[0-9A-Fa-f]{1,4})?::[0-9A-Fa-f]{1,4}:(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,4}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,5}[0-9A-Fa-f]{1,4})?::[0-9A-Fa-f]{1,4}|(?:(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})?::)\\])(?::(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$"
     },
-    "work_item": {
-      "description": "The work item the run is for, for the step explore; absent for the step prebuild. A step other than explore or prebuild carries work_item, or leaves it out, as that step's schema says, and the job refuses a step it does not know.",
-      "$ref": "definitions.schema.json#/$defs/work_item"
+    "max_lifetime_minutes": {
+      "description": "The minutes after which the machine powers itself off, counted from when it starts, whatever it runs: an integer from 15 to 1470. The starter passes the value to the machine with the run code. The starter deletes a machine of its node pool that has run longer than this value plus 15 minutes, counted from the vendor's launch time.",
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 1470
     }
   }
 }

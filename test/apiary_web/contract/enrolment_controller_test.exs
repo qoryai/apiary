@@ -207,6 +207,30 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert AccessKeys.active_key?(gateway)
     end
 
+    test "reads no relay headers: sent twice, under a key no node holds, with a signature that does not verify, the code enrols",
+         %{scope: scope, node: node} do
+      %{code: code} = code(scope, node)
+      pair = ed25519_key_pair()
+      body = body(code, pair)
+
+      relay = [
+        {"x-qory-access-key-id", "ak_0000000000000000"},
+        {"x-qory-access-key-id", "ak_0000000000000001"},
+        {"x-qory-instance-id", "i_a"},
+        {"x-qory-signature-ed25519", "AAAA"}
+      ]
+
+      conn =
+        build_conn()
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("x-qory-contract-version", "1")
+        |> then(&%{&1 | req_headers: &1.req_headers ++ relay})
+        |> post(@path, body)
+
+      assert conn.status == 201
+      assert assert_signed(conn, body)["node_id"] == node.public_id
+    end
+
     test "a label a key of the node in use has already gets -2, -3 and on", %{
       scope: scope,
       node: node

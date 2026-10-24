@@ -5,23 +5,26 @@ defmodule Apiary.ModelChoices do
   #
   # ## Places
   #
-  # A choice is set at a place, given to the functions here as a holder and a run kind:
+  # A choice is set at a place, given to the functions here as a holder and a workflow:
   #
-  #   * `:organisation`, the organisation's default (level 6), with no run kind;
-  #   * `:workspace`, the scope's workspace (level 5), or `{:workspace, run_kind}` (level 4);
+  #   * `:organisation`, the organisation's default (level 6), with no workflow;
+  #   * `:workspace`, the scope's workspace (level 5), or `{:workspace, workflow}` (level 4);
   #   * a target of the scope's workspace (`Apiary.Runs.Target`, level 3), or
-  #     `{target, run_kind}` (level 2).
+  #     `{target, workflow}` (level 2).
   #
-  # A run kind is a step of the queue that runs a model: `run_kinds/0`.
+  # A workflow name is a lower-case letter, then up to 63 lower-case letters, digits and
+  # hyphens. A place with a workflow of another form is not found. A run reads the
+  # choices of its workflow (`Apiary.Stacks.workflow/2`), the same key as its time limit
+  # (`Apiary.TimeLimits`).
   #
   # ## Who
   #
   # Levels 2 to 5 are written under `model_choice.write`, asked of the workspace or the
-  # target; level 6 under `connection.write`, asked of the organisation. Reading is
+  # target; level 6 under `provider.write`, asked of the organisation. Reading is
   # `connection.read`.
   # Every write leaves one entry in its transaction, about the choice, of the action it was
   # asked under: `details.change` is `choice_set`, `choice_changed`, `choice_locked`,
-  # `choice_unlocked` or `choice_removed`, with the `level`, the `run_kind`, the target's
+  # `choice_unlocked` or `choice_removed`, with the `level`, the `workflow`, the target's
   # `target_id`, and `name`, the place's name.
   #
   # Everything here needs the features `factory` and `secrets`, shown to the scope: with
@@ -47,7 +50,7 @@ defmodule Apiary.ModelChoices do
   # resolution reads only these.
   #
   # The organisation's default has no workspace, so the workspace is not asked of it: a
-  # run whose workspace the default's provider does not reach is ended at its handover.
+  # run whose workspace the default's provider does not reach is ended at its claim.
   #
   # Only the organisation's chain is written here; an edition writes the operator's chain
   # (`c:Apiary.Edition.model_choice_chain/1`).
@@ -79,8 +82,8 @@ defmodule Apiary.ModelChoices do
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Format
 
-  # The steps of the queue whose runs use a model.
-  @run_kinds ["explore"]
+  # A workflow's name.
+  @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
 
   # The runtime of every run of the queue.
   @runtime "claude"
@@ -94,18 +97,18 @@ defmodule Apiary.ModelChoices do
   @typedoc "Whose choice: the organisation's default, the scope's workspace, or a target of it."
   @type holder :: :organisation | :workspace | Target.t()
 
-  @typedoc "A place of a choice: a holder, alone or with a run kind."
+  @typedoc "A place of a choice: a holder, alone or with a workflow."
   @type place :: holder | {:workspace | Target.t(), String.t()}
 
   @typedoc """
   A place as a refusal names it: its `level`, the `workspace`'s name, the `target`'s name,
-  the `run_kind`, and the `value_id` of the key it chose.
+  the `workflow`, and the `value_id` of the key it chose.
   """
   @type named_place :: %{
           level: ModelChoice.level(),
           workspace: String.t() | nil,
           target: String.t() | nil,
-          run_kind: String.t() | nil,
+          workflow: String.t() | nil,
           value_id: String.t() | nil
         }
 
@@ -113,11 +116,6 @@ defmodule Apiary.ModelChoices do
   # runtime_name/0 is the name of the runtime of every run of the queue.
   @spec runtime_name() :: String.t()
   def runtime_name, do: @runtime
-
-  @doc false
-  # run_kinds/0 is the run kinds a choice may be set for.
-  @spec run_kinds() :: [String.t()]
-  def run_kinds, do: @run_kinds
 
   ## Reading
 
@@ -133,7 +131,7 @@ defmodule Apiary.ModelChoices do
       query =
         from c in ModelChoice,
           where: c.organisation_id == ^organisation.id and c.chain == "organisation",
-          order_by: [asc: c.workspace_id, asc: c.target_id, asc: c.run_kind, asc: c.id],
+          order_by: [asc: c.workspace_id, asc: c.target_id, asc: c.workflow, asc: c.id],
           preload: [:connection, :target]
 
       query =
@@ -147,7 +145,7 @@ defmodule Apiary.ModelChoices do
   end
 
   @doc false
-  # resolve/3 is what the choices come to for the runs of `run_kind` at `holder`, the
+  # resolve/3 is what the choices come to for the runs of `workflow` at `holder`, the
   # scope's workspace or a target of it, as `Apiary.ModelChoices.Resolution.resolve/1`
   # answers: `{:ok, {:ok, resolution}}`, `{:ok, :none}` or
   # `{:ok, {:error, :provider_removed}}`, for a reader who may `connection.read`; else
@@ -155,25 +153,25 @@ defmodule Apiary.ModelChoices do
   @spec resolve(Scope.t(), :workspace | Target.t(), String.t()) ::
           {:ok, {:ok, Resolution.t()} | :none | {:error, :provider_removed}}
           | {:error, Access.reason()}
-  def resolve(%Scope{workspace: %Workspace{} = workspace} = scope, holder, run_kind) do
+  def resolve(%Scope{workspace: %Workspace{} = workspace} = scope, holder, workflow) do
     with :ok <- shown(scope),
          {:ok, _organisation} <- may_read(scope),
-         true <- run_kind in @run_kinds,
+         true <- workflow?(workflow),
          {:ok, target} <- target(scope, holder) do
-      {:ok, Resolution.resolve(input(workspace, target, run_kind))}
+      {:ok, Resolution.resolve(input(workspace, target, workflow))}
     else
       false -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  def resolve(%Scope{}, _holder, _run_kind), do: {:error, :not_found}
+  def resolve(%Scope{}, _holder, _workflow), do: {:error, :not_found}
 
-  # What a resolution reads for the runs of `run_kind` of `workspace` at `target`, nil for
+  # What a resolution reads for the runs of `workflow` of `workspace` at `target`, nil for
   # none: the choices of the organisation's chain that may reach them, and the providers
   # those name. Read without a lock.
-  defp input(%Workspace{} = workspace, target, run_kind) do
-    input = choices_for(workspace, target, run_kind)
+  defp input(%Workspace{} = workspace, target, workflow) do
+    input = choices_for(workspace, target, workflow)
     ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
 
     providers =
@@ -190,13 +188,14 @@ defmodule Apiary.ModelChoices do
   end
 
   @doc false
-  # choices_for/3 is what a resolution reads of the choices for the runs of `run_kind` of
+  # choices_for/3 is what a resolution reads of the choices for the runs of `workflow` of
   # `workspace` at `target`, nil for none, without the providers: the choices of the
   # organisation's chain that may reach them, read without a lock, as
-  # `Apiary.ModelChoices.Resolution.resolve/1` takes them. `Apiary.Dispatches.RunSettings`
-  # reads the providers itself, once it holds their rows.
-  @spec choices_for(Workspace.t(), Target.t() | nil, String.t()) :: map
-  def choices_for(%Workspace{} = workspace, target, run_kind) do
+  # `Apiary.ModelChoices.Resolution.resolve/1` takes them. A `workflow` of nil, for a run
+  # with none, reaches no choice of levels 2 and 4. `Apiary.Dispatches.RunSettings` reads
+  # the providers itself, once it holds their rows.
+  @spec choices_for(Workspace.t(), Target.t() | nil, String.t() | nil) :: map
+  def choices_for(%Workspace{} = workspace, target, workflow) do
     chain = Edition.model_choice_chain(workspace.organisation_id)
     target_id = target && target.id
 
@@ -222,7 +221,7 @@ defmodule Apiary.ModelChoices do
             )
       )
 
-    %{choices: choices, workspace_id: workspace.id, target_id: target_id, run_kind: run_kind}
+    %{choices: choices, workspace_id: workspace.id, target_id: target_id, workflow: workflow}
   end
 
   @doc false
@@ -248,7 +247,7 @@ defmodule Apiary.ModelChoices do
   ## Writing
 
   @doc false
-  # put_choice/3 sets the choice at `place` (`model_choice.write`; `connection.write` for
+  # put_choice/3 sets the choice at `place` (`model_choice.write`; `provider.write` for
   # the organisation's default), replacing what the place had: `attrs` has `provider`, the
   # public id of a model provider of the organisation, `key`, the value id of one of its
   # keys, `model`, a model id of its list, `effort`, one of that model's effort values,
@@ -271,7 +270,7 @@ defmodule Apiary.ModelChoices do
 
   @doc false
   # lock_choice/2 locks the workspace's choice at `place`, `:workspace` or
-  # `{:workspace, run_kind}`, against the levels below it (`model_choice.write`):
+  # `{:workspace, workflow}`, against the levels below it (`model_choice.write`):
   # `{:ok, choice}`, or `{:error, reason}`, `:not_found` for a place with no choice.
   @spec lock_choice(Scope.t(), place) :: {:ok, ModelChoice.t()} | {:error, Access.reason()}
   def lock_choice(%Scope{} = scope, place), do: set_locked(scope, place, true)
@@ -308,7 +307,7 @@ defmodule Apiary.ModelChoices do
   end
 
   @doc false
-  # delete_choice/2 removes the choice at `place` (`model_choice.write`; `connection.write`
+  # delete_choice/2 removes the choice at `place` (`model_choice.write`; `provider.write`
   # for the organisation's default): `{:ok, choice}`, as it was, or `{:error, reason}`,
   # `:not_found` for a place with no choice.
   @spec delete_choice(Scope.t(), place) :: {:ok, ModelChoice.t()} | {:error, Access.reason()}
@@ -331,22 +330,25 @@ defmodule Apiary.ModelChoices do
   # the scope, read again, and the place, `at`, once the scope may write there.
   defp write(scope, place, fun) do
     with :ok <- shown(scope),
-         {:ok, holder, run_kind} <- place(place) do
+         {:ok, holder, workflow} <- place(place) do
       Repo.transact(fn ->
         :ok = Access.lock_places(scope)
 
-        with {:ok, scope, at} <- hold_place(scope, holder, run_kind) do
+        with {:ok, scope, at} <- hold_place(scope, holder, workflow) do
           fun.(scope, at)
         end
       end)
     end
   end
 
-  defp place({holder, run_kind}) when holder != :organisation and run_kind in @run_kinds,
-    do: {:ok, holder, run_kind}
+  defp place({holder, workflow}) when holder != :organisation and is_binary(workflow) do
+    if workflow?(workflow), do: {:ok, holder, workflow}, else: {:error, :not_found}
+  end
 
-  defp place({_holder, _run_kind}), do: {:error, :not_found}
+  defp place({_holder, _workflow}), do: {:error, :not_found}
   defp place(holder), do: {:ok, holder, nil}
+
+  defp workflow?(name), do: is_binary(name) and Regex.match?(@workflow, name)
 
   defp hold_place(
          %Scope{organisation: %Organisation{} = organisation} = scope,
@@ -355,7 +357,7 @@ defmodule Apiary.ModelChoices do
        ) do
     scope = Access.reload(scope, lock: :share)
 
-    with :ok <- Access.check(scope, :"connection.write", organisation) do
+    with :ok <- Access.check(scope, :"provider.write", organisation) do
       :ok = Connections.lock(organisation.id)
 
       {:ok, scope,
@@ -364,13 +366,13 @@ defmodule Apiary.ModelChoices do
          organisation: organisation,
          workspace: nil,
          target: nil,
-         run_kind: nil,
-         action: :"connection.write"
+         workflow: nil,
+         action: :"provider.write"
        }}
     end
   end
 
-  defp hold_place(%Scope{workspace: %Workspace{id: id}} = scope, holder, run_kind)
+  defp hold_place(%Scope{workspace: %Workspace{id: id}} = scope, holder, workflow)
        when holder != :organisation do
     case Repo.one(
            from w in Workspace,
@@ -384,11 +386,11 @@ defmodule Apiary.ModelChoices do
              :ok <- Access.check(scope, :"model_choice.write", target || workspace) do
           {:ok, scope,
            %{
-             level: level(target, run_kind),
+             level: level(target, workflow),
              organisation: scope.organisation,
              workspace: workspace,
              target: target,
-             run_kind: run_kind,
+             workflow: workflow,
              action: :"model_choice.write"
            }}
         end
@@ -398,12 +400,12 @@ defmodule Apiary.ModelChoices do
     end
   end
 
-  defp hold_place(_scope, _holder, _run_kind), do: {:error, :not_found}
+  defp hold_place(_scope, _holder, _workflow), do: {:error, :not_found}
 
   defp level(nil, nil), do: 5
-  defp level(nil, _run_kind), do: 4
+  defp level(nil, _workflow), do: 4
   defp level(%Target{}, nil), do: 3
-  defp level(%Target{}, _run_kind), do: 2
+  defp level(%Target{}, _workflow), do: 2
 
   # The choice at the place, held `FOR UPDATE`, or nil.
   defp lock_choice_row(at) do
@@ -427,9 +429,9 @@ defmodule Apiary.ModelChoices do
         %Target{id: id} -> where(query, [c], c.target_id == ^id)
       end
 
-    case at.run_kind do
-      nil -> where(query, [c], is_nil(c.run_kind))
-      kind -> where(query, [c], c.run_kind == ^kind)
+    case at.workflow do
+      nil -> where(query, [c], is_nil(c.workflow))
+      workflow -> where(query, [c], c.workflow == ^workflow)
     end
   end
 
@@ -448,7 +450,7 @@ defmodule Apiary.ModelChoices do
         organisation_id: at.organisation.id,
         workspace_id: at.workspace && at.workspace.id,
         target_id: at.target && at.target.id,
-        run_kind: at.run_kind,
+        workflow: at.workflow,
         chain: "organisation",
         connection_id: provider && provider.id,
         updated_by_id: scope.user && scope.user.id
@@ -501,7 +503,7 @@ defmodule Apiary.ModelChoices do
   defp record(scope, at, choice, change, data) do
     details =
       %{change: change, level: at.level, name: place_name(at)}
-      |> put_present(:run_kind, at.run_kind)
+      |> put_present(:workflow, at.workflow)
       |> put_present(:target_id, at.target && at.target.id)
 
     Audit.record(Repo, scope, at.action, choice, Map.put(data, :details, details))
@@ -854,7 +856,7 @@ defmodule Apiary.ModelChoices do
   # places_using/2 is the places of the choices, at levels 2 to 6, that use the model
   # provider `provider`, or, given `model_id`, that use that model of it, by their model
   # or a tier: each a `t:named_place/0`, the organisation's default first, then by
-  # workspace, target and run kind. Read without a lock: the caller holds the provider's
+  # workspace, target and workflow. Read without a lock: the caller holds the provider's
   # row `FOR UPDATE`, so no save of a choice of it runs meanwhile.
   @spec places_using(Connection.t(), String.t() | nil) :: [named_place]
   def places_using(%Connection{id: id}, model_id \\ nil) do
@@ -910,21 +912,21 @@ defmodule Apiary.ModelChoices do
         level: ModelChoice.level(choice),
         workspace: row.workspace,
         target: row.target,
-        run_kind: choice.run_kind,
+        workflow: choice.workflow,
         value_id: choice.value_id
       }
     end)
-    |> Enum.sort_by(&{&1.level != 6, &1.workspace || "", &1.target || "", &1.run_kind || ""})
+    |> Enum.sort_by(&{&1.level != 6, &1.workspace || "", &1.target || "", &1.workflow || ""})
   end
 
   @doc false
   # place_words/1 is how a refusal names a place (`t:named_place/0`): the organisation's
-  # default, a workspace or a target by its name, and a run kind beside it.
+  # default, a workspace or a target by its name, and a workflow beside it.
   @spec place_words(named_place) :: String.t()
   def place_words(%{level: 6}), do: gettext("the organisation's default")
 
   def place_words(%{level: level} = place) when level in [2, 4],
-    do: gettext("%{name}, %{kind} runs", name: place_name_of(place), kind: place.run_kind)
+    do: gettext("%{name}, %{kind} runs", name: place_name_of(place), kind: place.workflow)
 
   def place_words(place), do: place_name_of(place)
 

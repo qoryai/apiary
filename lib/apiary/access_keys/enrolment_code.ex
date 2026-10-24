@@ -3,6 +3,9 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   # the check at enrolment that a code is its node's kind's, the log filter and the tests
   # read them from here. The moduledoc names a node's, a node pool's and a gateway's alone.
   @prefixes %{node: "qecn_", pool: "qecp_", gateway: "qecg_", adapter: "qeci_"}
+  # The prefix of a run code (`Apiary.Runs.RunCode`), which enrols no key and belongs to no
+  # node: a claim answers with it, and enrolment redeems it for the run's run key.
+  @run_prefix "qecr_"
 
   @moduledoc """
   An enrolment code of a node: what an owner or an admin gives a machine so that it
@@ -92,14 +95,29 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   def prefixed?(code) when is_binary(code),
     do: Enum.any?(Map.keys(@prefixes), &of_kind?(code, &1))
 
+  # run_prefix/0 is the prefix of a run code (`Apiary.Runs.RunCode`). `prefixed?/1`,
+  # `normalise/1` and the node kinds' prefixes leave it out.
+  @doc false
+  @spec run_prefix() :: String.t()
+  def run_prefix, do: @run_prefix
+
+  # run_code?/1 says whether `code` has the prefix of a run code, compared as written.
+  @doc false
+  @spec run_code?(String.t()) :: boolean
+  def run_code?(code) when is_binary(code), do: String.starts_with?(code, @run_prefix)
+
   @doc """
   generate/1 is a fresh code of a node of `kind`: the kind's prefix (`prefix/1`) and 26
   upper-case Crockford base32 characters, 130 random bits.
   """
-  @spec generate(Apiary.Nodes.Node.kind()) :: String.t()
-  def generate(kind) do
+  # `generate(:run)` is a fresh run code, with the prefix `run_prefix/0`.
+  @spec generate(Apiary.Nodes.Node.kind() | :run) :: String.t()
+  def generate(:run), do: @run_prefix <> random_body()
+  def generate(kind), do: prefix(kind) <> random_body()
+
+  defp random_body do
     <<random::bitstring-size(130), _rest::bitstring>> = :crypto.strong_rand_bytes(17)
-    prefix(kind) <> for(<<chunk::5 <- random>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
+    for(<<chunk::5 <- random>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
   end
 
   @doc """

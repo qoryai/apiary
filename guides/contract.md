@@ -355,7 +355,7 @@ the server signed, with these members in this order:
 | `workspace` | the run's workspace, `ws_…` |
 | `node_id` | the node or node pool that registered the run, `nd_…` or `np_…` |
 | `gateway` | the gateway the node's choice resolved to, `ng_…` |
-| `gateway_url` | the gateway's address, `https://`, a host (a DNS name, an IPv4 address or an IPv6 address in brackets) and an optional port |
+| `gateway_url` | the gateway's address, `https://`, a host (DNS labels or an IPv6 address in brackets) and an optional port from 1 to 65535, at most 300 characters, with no user information, percent-encoding, underscore or trailing dot |
 | `gateway_public_key` | the gateway's active keys, one or two, oldest first, each `{"alg":"ed25519","public_key":"…"}` |
 | `instance_id` | the instance id the registration was signed from |
 | `issued`, `attach_by` | when the run key was made, and the end of its attach window: UTC, whole seconds |
@@ -518,7 +518,7 @@ this order, and the first refusal that applies is the answer:
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a batch, is over a limit, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
+| `400` | the body is not a batch, is over a limit, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is absent or not `run`, or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | the run is another node's: the whole batch is refused, and nothing of it is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the instance is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |

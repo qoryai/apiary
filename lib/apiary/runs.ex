@@ -22,6 +22,7 @@ defmodule Apiary.Runs do
 
   import Ecto.Query, warn: false
   import Apiary.Days, only: [sql_day: 2]
+  import Apiary.Runs.Place, only: [shown_host: 1]
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
@@ -603,32 +604,32 @@ defmodule Apiary.Runs do
 
   defp text_facet(scope, filters, now, field, narrow, limit) do
     chosen = Map.fetch!(filters, field)
-    base = filtered(scope, Map.put(filters, field, nil), now)
+    values = scope |> filtered(Map.put(filters, field, nil), now) |> facet_values(field)
     pattern = like(narrow)
 
-    grouped = from r in base, where: not is_nil(field(r, ^field)), group_by: field(r, ^field)
+    grouped = from v in subquery(values), where: not is_nil(v.value), group_by: v.value
 
     grouped =
-      if pattern, do: where(grouped, [r], ilike(field(r, ^field), ^pattern)), else: grouped
+      if pattern, do: where(grouped, [v], ilike(v.value, ^pattern)), else: grouped
 
     rows =
       Repo.all(
-        from r in grouped,
-          order_by: [desc: count(r.id), asc: field(r, ^field)],
+        from v in grouped,
+          order_by: [desc: count(v.id), asc: v.value],
           limit: ^(limit + 1),
-          select: {field(r, ^field), count(r.id)}
+          select: {v.value, count(v.id)}
       )
 
     total =
       if length(rows) > limit,
-        do: Repo.one(from g in subquery(select(grouped, [r], field(r, ^field))), select: count()),
+        do: Repo.one(from g in subquery(select(grouped, [v], v.value)), select: count()),
         else: length(rows)
 
     options = for {value, n} <- Enum.take(rows, limit), do: {value, value, n}
 
     options =
       if is_binary(chosen) and not Enum.any?(options, &(elem(&1, 1) == chosen)) do
-        n = Repo.aggregate(from(r in base, where: field(r, ^field) == ^chosen), :count)
+        n = Repo.one(from v in subquery(values), where: v.value == ^chosen, select: count())
         [{chosen, chosen, n} | options]
       else
         options
@@ -636,6 +637,11 @@ defmodule Apiary.Runs do
 
     %{options: options, total: total}
   end
+
+  # Each run's value of a text facet: a host as the pages show it, a pool's name for a
+  # pool's run (`Apiary.Runs.Place`); the field's value for any other facet.
+  defp facet_values(base, :host), do: select(base, [r], %{id: r.id, value: shown_host(r)})
+  defp facet_values(base, field), do: select(base, [r], %{id: r.id, value: field(r, ^field)})
 
   # The nodes the runs ran on, a pool for its instances' runs, deleted ones included. A node
   # in use is offered by its name, as one types it; a deleted one by its public id, since its
@@ -730,7 +736,7 @@ defmodule Apiary.Runs do
     |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
     |> where_target(scope, f.target)
     |> where_text(:runtime, f.runtime)
-    |> where_text(:host, f.host)
+    |> where_host(f.host)
     |> where_node(scope, f.node)
     |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
@@ -760,6 +766,11 @@ defmodule Apiary.Runs do
 
   defp where_text(query, _field, nil), do: query
   defp where_text(query, field, value), do: where(query, [r], field(r, ^field) == ^value)
+
+  # A host as the pages show it: a pool's name finds the pool's runs, and the host a
+  # pool's run reported finds none of them (`Apiary.Runs.Place`).
+  defp where_host(query, nil), do: query
+  defp where_host(query, host), do: where(query, [r], shown_host(r) == ^host)
 
   # A node by its public id, or by the name of a node in use: a deleted node's runs are
   # found by its id, since its name may be another's now.
@@ -1681,9 +1692,10 @@ defmodule Apiary.Runs do
   @doc """
   The hosts each of these access keys' runs came from since `since`, by the key's row id:
   `%{key_id => %{count: n, host: name}}`, `host` being the one host when there is only one
-  and nil otherwise; a key with no run in the window is absent. A key is not a machine (a
-  pool of ephemeral instances shares one), so a page counts the hosts. One grouped read of
-  the index `runs (workspace_id, access_key_id, started)`; at most #{@max_limit} keys.
+  and nil otherwise; a key with no run in the window is absent. Each host is as the pages
+  show it: a pool's run counts under its pool's name (`Apiary.Runs.Place`). A key is not a
+  machine, so a page counts the hosts. One grouped read of the index
+  `runs (workspace_id, access_key_id, started)`; at most #{@max_limit} keys.
   """
   @spec hosts_by_key(Scope.t(), [Ecto.UUID.t()], DateTime.t()) :: %{
           optional(Ecto.UUID.t()) => %{count: pos_integer, host: String.t() | nil}
@@ -1693,12 +1705,17 @@ defmodule Apiary.Runs do
   def hosts_by_key(%Scope{} = scope, key_ids, %DateTime{} = since) when is_list(key_ids) do
     ids = Enum.take(key_ids, @max_limit)
 
-    Repo.all(
+    hosts =
       from r in in_scope(scope),
-        where: r.access_key_id in ^ids and not is_nil(r.host),
+        where: r.access_key_id in ^ids,
         where: coalesce(r.started_at, r.inserted_at) >= ^since,
-        group_by: r.access_key_id,
-        select: {r.access_key_id, count(r.host, :distinct), min(r.host), max(r.host)}
+        select: %{key_id: r.access_key_id, host: shown_host(r)}
+
+    Repo.all(
+      from h in subquery(hosts),
+        where: not is_nil(h.host),
+        group_by: h.key_id,
+        select: {h.key_id, count(h.host, :distinct), min(h.host), max(h.host)}
     )
     |> Map.new(fn {key_id, count, first, last} ->
       {key_id, %{count: count, host: if(first == last, do: first)}}

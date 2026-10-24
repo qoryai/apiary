@@ -284,7 +284,7 @@ defmodule Apiary.Access do
       feature: :secrets,
       roles: @admins
     ),
-    # What a run is connected to: runtimes, integrations and services.
+    # What a run is connected to: runtimes, integrations, services and model providers.
     Action.new(
       :"connection.read",
       "read the runtimes, integrations and services of the organisation, where each applies, the releases fetched and the organisation's service definitions",
@@ -295,7 +295,21 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"connection.write",
-      "add, change and remove a runtime, an integration, a model provider or a service, and where and how it applies; edit a model provider's models; set the organisation's default model choice; fetch an integration's release; write the organisation's service definitions",
+      "add, change and remove an integration or a service, and where and how it applies; fetch an integration's release; write the organisation's service definitions",
+      feature: :secrets,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"provider.write",
+      "add, change and remove a model provider, its keys and its models, and where and how it applies; set the organisation's default model choice",
+      feature: :secrets,
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"runtime.write",
+      "add, change and remove a runtime, and where and how it applies",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation
@@ -305,6 +319,14 @@ defmodule Apiary.Access do
     Action.new(
       :"model_choice.write",
       "set, change, lock and remove the model choices of the workspace and its targets",
+      feature: :factory,
+      roles: @admins
+    ),
+    # How long a run of a workflow may take: the limits of the workspace and its targets
+    # (`Apiary.TimeLimits`).
+    Action.new(
+      :"time_limit.edit",
+      "set, change and remove the time limits of the workspace and its targets",
       feature: :factory,
       roles: @admins
     ),
@@ -486,11 +508,7 @@ defmodule Apiary.Access do
         {:not,
          "the start of a claimed run's machine is kept on its dispatch, not in the audit trail"}
     ),
-    Action.new(:"dispatch.handover", "hand a claimed run over to the machine that runs it",
-      feature: :factory,
-      roles: [:pool_key]
-    ),
-    Action.new(:"dispatch.release", "give a claimed run back, to wait again or to end",
+    Action.new(:"dispatch.release", "give a claimed run back before its machine exists",
       feature: :factory,
       roles: [:pool_key]
     ),
@@ -501,9 +519,12 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @admins
     ),
-    Action.new(:"dispatch.prebuilt", "record the image a prebuild built",
+    Action.new(:"dispatch.machine_log", "upload the log of a claimed run's machine",
       feature: :factory,
-      roles: [:pool_key]
+      roles: [:pool_key],
+      audited:
+        {:not,
+         "a machine log is kept as a file with its record, which has its size and when it was uploaded, not in the audit trail"}
     ),
     # A member asks for a build of a target's environment, for each node pool of its
     # workspace (`Apiary.Environments.rebuild/2`).
@@ -517,9 +538,8 @@ defmodule Apiary.Access do
   @dispatch_actions [
     :"dispatch.claim",
     :"dispatch.dispatched",
-    :"dispatch.handover",
     :"dispatch.release",
-    :"dispatch.prebuilt"
+    :"dispatch.machine_log"
   ]
 
   # The features whose actions the tables of this documentation leave out: those the

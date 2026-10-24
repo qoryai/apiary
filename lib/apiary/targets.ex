@@ -41,6 +41,7 @@ defmodule Apiary.Targets do
 
   import Ecto.Query, warn: false
   import Apiary.Days, only: [sql_day: 2]
+  import Apiary.Runs.Place, only: [shown_host: 1]
 
   alias Apiary.{Access, Audit, Edition, PublicId}
   alias Apiary.Accounts.{Scope, User}
@@ -514,14 +515,17 @@ defmodule Apiary.Targets do
 
   @doc """
   recent_runs/3 is the target's runs, newest first by when they started, at most
-  `limit`: one range of the index of a target's runs.
+  `limit`, each with its node, read in the same query: one range of the index of a
+  target's runs.
   """
   @spec recent_runs(Scope.t(), Target.t(), pos_integer) :: [Run.t()]
   def recent_runs(%Scope{} = scope, %Target{} = target, limit \\ 5) do
     Repo.all(
       from r in target_runs(scope, target),
+        left_join: n in assoc(r, :node),
         order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
-        limit: ^min(max(limit, 1), 200)
+        limit: ^min(max(limit, 1), 200),
+        preload: [node: n]
     )
   end
 
@@ -598,17 +602,20 @@ defmodule Apiary.Targets do
 
   @doc """
   machines/2 is the hosts the target's runs ran on, with how many runs each, the most
-  first, at most 8; runtimes/2 the same of the runtimes, with their versions.
+  first, at most 8, a pool's runs under the pool's name (`Apiary.Runs.Place`); runtimes/2
+  the same of the runtimes, with their versions.
   """
   @spec machines(Scope.t(), Target.t()) :: [{String.t(), pos_integer}]
   def machines(%Scope{} = scope, %Target{} = target) do
+    hosts = from r in target_runs(scope, target), select: %{id: r.id, host: shown_host(r)}
+
     Repo.all(
-      from r in target_runs(scope, target),
-        where: not is_nil(r.host),
-        group_by: r.host,
-        order_by: [desc: count(r.id), asc: r.host],
+      from h in subquery(hosts),
+        where: not is_nil(h.host),
+        group_by: h.host,
+        order_by: [desc: count(h.id), asc: h.host],
         limit: 8,
-        select: {r.host, count(r.id)}
+        select: {h.host, count(h.id)}
     )
   end
 

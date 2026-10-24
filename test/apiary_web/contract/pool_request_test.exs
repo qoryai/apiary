@@ -1,18 +1,19 @@
 defmodule ApiaryWeb.Contract.PoolRequestTest do
-  # A node pool's starter's signed requests to the provisioner contract's five routes,
+  # A node pool's starter's signed requests to the provisioner contract's routes,
   # through `ApiaryWeb.Contract.AdapterRequest` with `kind: :pool`: the signature under the
   # pool's access key, the refusals in their order, the time's window, the replay rule,
   # every other kind of key refused as an unknown key is, the answers signed but a 401, and
   # the routes where the feature is off. A claim accepted, with an empty queue and no
-  # wait, is answered `204`, signed; a `dispatched`, a handover, a release or a prebuilt
-  # accepted, of a dispatch no pool has, `403` `forbidden`, signed. Every request names
-  # revision 3 of the provisioner contract, the one served, unless a test says otherwise.
+  # wait, is answered `204`, signed; a `dispatched` or a release accepted, of a dispatch no
+  # pool has, `403` `forbidden`, signed; a handover, a route no longer served, `404`. Every request names
+  # revision 1 of the provisioner contract, the one served, unless a test says otherwise.
   # Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import ExUnit.CaptureLog
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -28,9 +29,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   @targets [
     @claim,
     @dispatch <> "/dispatched",
-    @dispatch <> "/handover",
-    @dispatch <> "/release",
-    @dispatch <> "/prebuilt"
+    @dispatch <> "/release"
   ]
   @unauthorized %{"error" => "unauthorized"}
   @not_found %{"error" => "not_found"}
@@ -43,6 +42,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   setup do
     %{scope: scope} = sign_up_fixture()
     pool = pool_fixture(scope)
+    gateway_for!(scope, pool)
     %{access_key: key, pair: pair} = enrolled_key_fixture(scope, pool)
     %{scope: scope, pool: pool, key: key, seed: pair.secret}
   end
@@ -64,16 +64,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
     cond do
       String.ends_with?(target, "/release") ->
-        Map.merge(base, %{"reason" => "The job could not start.", "retry" => true})
-
-      String.ends_with?(target, "/prebuilt") ->
-        Map.merge(base, %{
-          "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
-          "image" => "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16),
-          "size" => 734_003_200,
-          "environment_ref" => "env-1",
-          "commit" => "9c1e4a7b"
-        })
+        Map.merge(base, %{"reason" => "The job could not start."})
 
       true ->
         base
@@ -85,7 +76,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       target: target,
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     ]
 
     signed_post(
@@ -102,8 +93,8 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   defp used_at(key), do: Repo.get!(AccessKey, key.id).last_used_at
 
   # An accepted request's answer: a claim of an empty queue with no wait, `204` with no
-  # body; a `dispatched`, a handover, a release or a prebuilt of `@dispatch`, which no pool
-  # has, `403` `forbidden`.
+  # body; a `dispatched`, a handover or a release of `@dispatch`, which no pool has, `403`
+  # `forbidden`.
   defp accepted?(conn, @claim), do: conn.status == 204 and conn.resp_body == ""
   defp accepted?(conn, _target), do: json_response(conn, 403) == @forbidden
 
@@ -128,7 +119,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
   end
 
   describe "a verified request" do
-    test "on each route is accepted: a claim of an empty queue 204, a dispatched, a handover, a release or a prebuilt of a dispatch no pool has 403 forbidden, signed",
+    test "on each route is accepted: a claim of an empty queue 204, a dispatched, a handover or a release of a dispatch no pool has 403 forbidden, signed",
          ctx do
       for target <- @targets do
         conn = signed(ctx, target, body(target))
@@ -137,7 +128,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       end
 
       # Each was accepted: its signature recorded, and the key's use.
-      assert seen_count() == 5
+      assert seen_count() == length(@targets)
       assert %DateTime{} = used_at(ctx.key)
     end
 
@@ -148,20 +139,21 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
     test "takes a pool's key enrolled in a browser as one enrolled with a code", ctx do
       pool = pool_fixture(ctx.scope)
+      gateway_for!(ctx.scope, pool)
       %{access_key: key, pair: pair} = browser_key_fixture(ctx.scope, pool)
       conn = claim(ctx, body(@claim), key_id: key.key_id, seed: pair.secret)
       assert accepted?(conn, @claim)
     end
 
-    test "is served the provisioner contract's revision 3 alone, and refused 1 and 2", ctx do
-      assert AdapterRequest.revisions(:pool) == [3]
+    test "is served the provisioner contract's revision 1 alone, and refused 2 and 3", ctx do
+      assert AdapterRequest.revisions(:pool) == [1]
 
       for target <- @targets do
         conn = signed(ctx, target, body(target))
         assert accepted?(conn, target), target
         assert signed_answer?(conn), target
 
-        for version <- ["1", "2"] do
+        for version <- ["2", "3"] do
           conn = signed(ctx, target, body(target, 1), contract_version: version)
           assert json_response(conn, 400) == @unsupported, "#{target} #{version}"
           assert signed_answer?(conn), target
@@ -210,6 +202,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     test "a replay is keyed on the key: the same body under another pool's key is not one",
          ctx do
       pool = pool_fixture(ctx.scope)
+      gateway_for!(ctx.scope, pool)
       %{access_key: other, pair: pair} = enrolled_key_fixture(ctx.scope, pool)
       raw = Jason.encode!(body(@claim))
 
@@ -384,14 +377,14 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
     test "400 bad_request for an instance id absent or malformed, signed, before the revision",
          ctx do
       for instance_id <- [nil, "-starts-with-a-dash", String.duplicate("a", 65)] do
-        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "4")
+        conn = claim(ctx, body(@claim), instance_id: instance_id, contract_version: "2")
         assert json_response(conn, 400) == @bad_request, inspect(instance_id)
         assert signed_answer?(conn)
       end
     end
 
     test "400 unsupported_contract_version, signed, before the body", ctx do
-      for version <- [nil, "1", "2", "4", "03", "3.0", "three"] do
+      for version <- [nil, "2", "3", "01", "1.0", "one"] do
         conn = claim(ctx, %{"version" => 2}, contract_version: version)
         assert json_response(conn, 400) == @unsupported, inspect(version)
         assert signed_answer?(conn)
@@ -420,11 +413,10 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
       assert seen_count() == 0
     end
 
-    test "a handover carrying labels is 400 invalid_request", ctx do
+    test "a handover, a route no longer served, is 404 not_found", ctx do
       target = @dispatch <> "/handover"
-      conn = signed(ctx, target, Map.put(body(target), "labels", ["linux"]))
-      assert json_response(conn, 400) == @invalid
-      assert signed_answer?(conn)
+      conn = signed(ctx, target, body(target))
+      assert conn.status == 404
     end
 
     test "a U+0000 in a dispatched's external or a release's reason is 400 invalid_request, signed, and records nothing; the same text without it is accepted",
@@ -591,7 +583,7 @@ defmodule ApiaryWeb.Contract.PoolRequestTest do
 
   # A request that reached the plug, signed under `seed` with its raw body kept, naming
   # the contract's `revision`.
-  defp request(target, key_id, seed, raw, revision \\ "3") do
+  defp request(target, key_id, seed, raw, revision \\ "1") do
     instance_id = Apiary.ContractFixtures.instance_id()
 
     build_conn(:post, target, raw)

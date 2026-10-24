@@ -111,10 +111,10 @@ left out, and a line says so.
 
 CI (`.github/workflows/ci.yml`) runs five jobs side by side. **Checks**, the checks that
 do not depend on the features, runs once: the formatting check, the compile with warnings
-as errors, the Gettext check, the browser scripts' tests, the documentation build,
-`MIX_ENV=prod mix assets.deploy` to prove the assets still build, and the AWS template's
-checks. **The tests** run under each of three sets of features: every feature, the
-default features, and the record alone. **The image** is built on each platform,
+as errors, the Gettext check, the browser scripts' tests, the documentation build, and
+`MIX_ENV=prod mix assets.deploy` to prove the assets still build. **The tests** run under
+each of three sets of features: every feature, the default features, and the record
+alone. **The image** is built on each platform,
 `linux/amd64` and `linux/arm64`. **Database over TLS** runs the tests tagged
 `database_tls` against a Postgres 18 that serves TLS. **Compose install and upgrade**
 runs `compose.yaml` as a person does: the install, a restart, the path from a checkout,
@@ -142,9 +142,9 @@ what they describe changes them in the same pull request.
 
 How a release is made is in [docs/releases.md](docs/releases.md). A tag `vX.Y.Z` runs
 `.github/workflows/release.yml`, which publishes the image `ghcr.io/qoryai/apiary` as
-`X.Y.Z`, `X.Y` and `latest`, and the GitHub release with `compose.yaml`, `env.example` and
-`apiary.yaml` attached; the README's Run it downloads the first two. Pre-release images go
-to `ghcr.io/qoryai/apiary-prerelease`, a private package and not a place to install from:
+`X.Y.Z`, `X.Y` and `latest`, and the GitHub release with `compose.yaml` and `env.example`
+attached, which the README's Run it downloads. Pre-release images go to
+`ghcr.io/qoryai/apiary-prerelease`, a private package and not a place to install from:
 only releases are installed.
 
 ## Pull requests

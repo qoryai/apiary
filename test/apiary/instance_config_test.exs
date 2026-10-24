@@ -16,13 +16,14 @@ defmodule Apiary.InstanceConfigTest do
   alias Apiary.{Audit, Deletion, Instance, InstanceConfig, Organisations, ProductName}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
+  alias Apiary.Dispatches.MachineLogs
   alias Apiary.InstanceConfig.{Cache, Row}
 
   @days "must be between %{min} and %{max} days, or empty for the default"
   @invitations "must be a whole number from 1 to 1,000,000, or empty for the default"
 
   @env_keys ~w(audit_retention_days audit_address_retention_days deletion_grace_days
-               invitations_per_day)a
+               invitations_per_day machine_log_retention_days)a
 
   # Puts the application's setting `key` for the test, and back after it.
   defp put_env(key, value) do
@@ -80,12 +81,13 @@ defmodule Apiary.InstanceConfigTest do
   end
 
   describe "value/1 and source/1" do
-    test "with nothing set, the default: 90, 90, 30 days and 20" do
+    test "with nothing set, the default: 90, 90, 30 days, 20 and 30 days" do
       assert InstanceConfig.values(InstanceConfig.load()) == %{
                audit_retention_days: 90,
                audit_address_retention_days: 90,
                deletion_grace_days: 30,
-               invitations_per_day: 20
+               invitations_per_day: 20,
+               machine_log_retention_days: 30
              }
 
       for key <- InstanceConfig.keys() do
@@ -97,6 +99,7 @@ defmodule Apiary.InstanceConfigTest do
       assert Audit.address_retention_days() == 90
       assert Deletion.grace_days() == 30
       assert Instance.invitations_per_day() == 20
+      assert MachineLogs.retention_days() == 30
     end
 
     test "the saved value, where the environment sets none" do
@@ -104,13 +107,15 @@ defmodule Apiary.InstanceConfigTest do
         audit_retention_days: 60,
         audit_address_retention_days: 14,
         deletion_grace_days: 7,
-        invitations_per_day: 50
+        invitations_per_day: 50,
+        machine_log_retention_days: 21
       })
 
       assert Audit.retention_days() == 60
       assert Audit.address_retention_days() == 14
       assert Deletion.grace_days() == 7
       assert Instance.invitations_per_day() == 50
+      assert MachineLogs.retention_days() == 21
       for key <- InstanceConfig.keys(), do: assert(InstanceConfig.source(key) == :saved)
     end
 
@@ -119,25 +124,28 @@ defmodule Apiary.InstanceConfigTest do
         audit_retention_days: 60,
         audit_address_retention_days: 14,
         deletion_grace_days: 7,
-        invitations_per_day: 50
+        invitations_per_day: 50,
+        machine_log_retention_days: 21
       })
 
       put_env(:audit_retention_days, 45)
       put_env(:audit_address_retention_days, 10)
       put_env(:deletion_grace_days, 3)
       put_env(:invitations_per_day, 5)
+      put_env(:machine_log_retention_days, 14)
 
       assert Audit.retention_days() == 45
       assert Audit.address_retention_days() == 10
       assert Deletion.grace_days() == 3
       assert Instance.invitations_per_day() == 5
+      assert MachineLogs.retention_days() == 14
       for key <- InstanceConfig.keys(), do: assert(InstanceConfig.source(key) == :env)
     end
 
     test "a blank variable is kept as none, so the saved value applies; a set one is kept" do
       settings =
         ~w(audit_retention_setting audit_address_retention_setting deletion_grace_setting
-           invitations_per_day_setting)a
+           invitations_per_day_setting machine_log_retention_setting)a
 
       for key <- settings, do: put_env(key, " ")
 
@@ -145,13 +153,15 @@ defmodule Apiary.InstanceConfigTest do
         audit_retention_days: 60,
         audit_address_retention_days: 14,
         deletion_grace_days: 7,
-        invitations_per_day: 50
+        invitations_per_day: 50,
+        machine_log_retention_days: 21
       })
 
       # Each boot answers what the variable gives, the default for a blank one.
       assert Audit.boot!() == 90
       assert Deletion.boot!() == 30
       assert Instance.boot!() == 20
+      assert MachineLogs.boot!() == 30
 
       for key <- @env_keys, do: assert(Application.fetch_env!(:apiary, key) == nil)
 
@@ -164,16 +174,19 @@ defmodule Apiary.InstanceConfigTest do
       put_env(:audit_address_retention_setting, " 10 ")
       put_env(:deletion_grace_setting, "3")
       put_env(:invitations_per_day_setting, "5")
+      put_env(:machine_log_retention_setting, "14")
 
       assert Audit.boot!() == 45
       assert Deletion.boot!() == 3
       assert Instance.boot!() == 5
+      assert MachineLogs.boot!() == 14
 
       assert Map.new(@env_keys, &{&1, Application.fetch_env!(:apiary, &1)}) == %{
                audit_retention_days: 45,
                audit_address_retention_days: 10,
                deletion_grace_days: 3,
-               invitations_per_day: 5
+               invitations_per_day: 5,
+               machine_log_retention_days: 14
              }
 
       assert Audit.retention_days() == 45
@@ -244,14 +257,16 @@ defmodule Apiary.InstanceConfigTest do
                audit_retention_days: 60,
                audit_address_retention_days: 14,
                deletion_grace_days: 30,
-               invitations_per_day: 20
+               invitations_per_day: 20,
+               machine_log_retention_days: 30
              }
 
       assert InstanceConfig.load() == %{
                audit_retention_days: 60,
                audit_address_retention_days: 14,
                deletion_grace_days: nil,
-               invitations_per_day: nil
+               invitations_per_day: nil,
+               machine_log_retention_days: nil
              }
 
       assert {:ok, _values} =
@@ -263,11 +278,15 @@ defmodule Apiary.InstanceConfigTest do
       assert {:ok, _values} =
                InstanceConfig.save(scope, :invitations, %{"invitations_per_day" => "50"})
 
+      assert {:ok, _values} =
+               InstanceConfig.save(scope, :machine_logs, %{"machine_log_retention_days" => "21"})
+
       assert InstanceConfig.load() == %{
                audit_retention_days: 60,
                audit_address_retention_days: 14,
                deletion_grace_days: 7,
-               invitations_per_day: 50
+               invitations_per_day: 50,
+               machine_log_retention_days: 21
              }
     end
 
@@ -553,7 +572,9 @@ defmodule Apiary.InstanceConfigTest do
             audit_address_retention_days: 0,
             deletion_grace_days: 91,
             deletion_grace_days: 0,
-            invitations_per_day: 0
+            invitations_per_day: 0,
+            machine_log_retention_days: 0,
+            machine_log_retention_days: 366
           ] do
         assert_raise Postgrex.Error, ~r/instance_settings_#{field}_check/, fn ->
           Repo.transaction(fn -> Repo.update_all(Row, set: [{field, value}]) end)

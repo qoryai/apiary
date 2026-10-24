@@ -1,14 +1,15 @@
 defmodule Apiary.Environments.RebuildTest do
   # A member's Rebuild of a target's environment (`Apiary.Environments.rebuild/2`): a
   # prebuild queued for each node pool of the target's workspace, changed or not, held for
-  # the pool, with the record's queued ref and target written; nothing for a pool whose
-  # prebuild waits unclaimed; one audit entry about the target with how many it queued,
+  # the pool, with its record made; nothing for a pool whose prebuild of the collection's
+  # ref waits unclaimed; one audit entry about the target with how many it queued,
   # none when it queued none; every member may, and a target that names no environment
   # there, a workspace without a pool, and a target of another workspace are not found.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -27,6 +28,7 @@ defmodule Apiary.Environments.RebuildTest do
   # and the `environment_ref` `env-1`, made after the pools, so nothing is queued yet.
   setup do
     %{scope: scope} = sign_up_fixture()
+    _gateway = workspace_gateway!(scope)
     mac = pool_fixture(scope, name: "mac-pool")
     linux = pool_fixture(scope, name: "linux-pool")
     shop = shop_collection(scope)
@@ -89,19 +91,14 @@ defmodule Apiary.Environments.RebuildTest do
 
   defp sorted(pools), do: pools |> Enum.map(& &1.id) |> Enum.sort()
 
-  test "queues a prebuild for each node pool, held for it, and writes each record's queued ref and target",
+  test "queues a prebuild for each node pool, held for it, and makes each record",
        %{scope: scope, mac: mac, linux: linux, shop: shop, target: target} do
     assert Environments.rebuild(scope, target) == {:ok, 2}
 
     assert waiting(shop) == Enum.map(sorted([mac, linux]), &{&1, "env-1"})
 
     for pool <- [mac, linux] do
-      assert %Record{
-               queued_ref: "env-1",
-               queued_target_system: @system,
-               queued_target_path: @path,
-               image: nil
-             } = Environments.fetch(pool.id, shop.id)
+      assert %Record{image: nil, built_ref: nil} = Environments.fetch(pool.id, shop.id)
     end
   end
 
@@ -120,8 +117,7 @@ defmodule Apiary.Environments.RebuildTest do
 
   test "changed or not: a record queued for the same ref and target, its prebuild claimed, is queued again",
        %{scope: scope, mac: mac, linux: linux, shop: shop, target: target} do
-    {:ok, _queued} =
-      Repo.transact(fn -> {:ok, Environments.trigger([shop], Dispatches.now())} end)
+    _queued = Apiary.DispatchedRunsFixtures.queue_builds!(shop)
 
     %{access_key: key} = enrolled_key_fixture(scope, mac)
     {:ok, %{run: claimed}} = Dispatches.claim(key, Dispatches.now())

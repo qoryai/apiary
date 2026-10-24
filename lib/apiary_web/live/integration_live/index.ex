@@ -23,9 +23,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   (`ApiaryWeb.IntegrationLive.Release`), Set up an agent (`…/new-runtime`) and Set up an
   API (`…/new-service`), each opened by a card with its item chosen (`?runtime=`,
   `?definition=builtin:…` or `own:…`; one that is not there opens the form as it starts).
-  Every member reads the section; owners and admins change it (`connection.write`), and
-  a reader who may not sees the list, no card, and one line saying who does. The context
-  functions ask again.
+  Every member reads the section; owners and admins change it, integrations and services
+  under `connection.write` and runtimes under `runtime.write`, and a reader who may do
+  neither sees the list, no card, and one line saying who does. A reader who may do one
+  sees the cards for that. The context functions ask again.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :secrets
@@ -91,7 +92,11 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         </:subtitle>
 
         <Common.not_on_runs />
-        <p :if={!@may_write} id="integrations-readonly" class="text-[13px]/5 text-muted">
+        <p
+          :if={!@may_write && !@may_runtimes}
+          id="integrations-readonly"
+          class="text-[13px]/5 text-muted"
+        >
           {Common.only_admins(@current_scope)}
         </p>
 
@@ -134,10 +139,12 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         </SettingsComponents.part>
 
         <.add_cards
-          :if={@may_write}
+          :if={@may_write || @may_runtimes}
           scope={@current_scope}
           definitions={@definitions}
           url_sources={@url_sources}
+          may_write={@may_write}
+          may_runtimes={@may_runtimes}
         />
       </.settings_page>
     </Layouts.app>
@@ -159,9 +166,13 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       (`ApiaryWeb.IntegrationLive.Named`), then From a release….
 
   A card's act opens the form with its item chosen; an agent or an API may be set up more
-  than once, so a card stays as it is once it is set up.
+  than once, so a card stays as it is once it is set up. The Agent group is for a reader
+  who may set up a runtime (`may_runtimes`, `runtime.write`), the other two for one who
+  may change integrations and services (`may_write`, `connection.write`).
   """
   attr :scope, :any, required: true
+  attr :may_write, :boolean, default: true
+  attr :may_runtimes, :boolean, default: true
   attr :definitions, :list, required: true, doc: "the workspace's service definitions"
   attr :url_sources, :boolean, required: true
 
@@ -175,7 +186,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     ~H"""
     <SettingsComponents.part id="add-part" title={gettext("Add an integration")}>
       <div id="add-cards" class="grid gap-6">
-        <.add_group id="add-group-agent" title={gettext("Agent")}>
+        <.add_group :if={@may_runtimes} id="add-group-agent" title={gettext("Agent")}>
           <.add_card
             :for={runtime <- Runtimes.list()}
             id={"add-card-runtime-#{runtime.name}"}
@@ -186,7 +197,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             navigate={Common.new_runtime_path(@scope, runtime.name)}
           />
         </.add_group>
-        <.add_group id="add-group-apis" title={gettext("Outside APIs")}>
+        <.add_group :if={@may_write} id="add-group-apis" title={gettext("Outside APIs")}>
           <.add_card
             :for={definition <- Services.list()}
             id={"add-card-api-#{definition["key"]}"}
@@ -216,6 +227,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           />
         </.add_group>
         <.add_group
+          :if={@may_write}
           id="add-group-programs"
           title={gettext("Programs")}
           about={gettext("Programs added from a release.")}
@@ -590,6 +602,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
      |> assign(
        sections: SettingsComponents.sections(scope, :workspace),
        may_write: Common.may_write?(scope),
+       may_runtimes: Common.may_write_runtimes?(scope),
        url_sources: Source.url_sources?(),
        form: nil
      )
@@ -618,7 +631,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       action == :index ->
         {:noreply, assign(socket, form: nil, page_title: title(socket, gettext("Integrations")))}
 
-      socket.assigns.may_write ->
+      may_open?(action, socket.assigns) ->
         {:noreply,
          assign(socket,
            form: fresh_form(action, params, socket.assigns),
@@ -628,10 +641,21 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       true ->
         {:noreply,
          socket
-         |> put_flash(:error, Common.only_admins(socket.assigns.current_scope))
+         |> put_flash(
+           :error,
+           Common.only_admins(socket.assigns.current_scope, write_action(action))
+         )
          |> push_patch(to: Common.index_path(socket.assigns.current_scope))}
     end
   end
+
+  # A form is opened by who may write what it sets up: a runtime is `runtime.write`, an
+  # integration or a service `connection.write`.
+  defp may_open?(:new_runtime, %{may_runtimes: may}), do: may
+  defp may_open?(_action, %{may_write: may}), do: may
+
+  defp write_action(:new_runtime), do: :"runtime.write"
+  defp write_action(_action), do: :"connection.write"
 
   defp title(socket, words),
     do: SettingsComponents.page_title(socket.assigns.current_scope, :workspace, [words])
@@ -785,7 +809,11 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
       {:error, reason} ->
         {:noreply,
-         put_flash(socket, :error, Common.refusal(scope, reason, socket.assigns.connections))}
+         put_flash(
+           socket,
+           :error,
+           Common.refusal(scope, reason, socket.assigns.connections, write_action(action))
+         )}
     end
   end
 

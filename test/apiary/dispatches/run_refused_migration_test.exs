@@ -10,6 +10,7 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
   @moduletag :capture_log
 
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -73,10 +74,11 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
     ])
   end
 
-  # A run of the queue, claimed under a key, with its dispatch.
+  # A run of the queue, claimed under a key through a gateway, with its dispatch.
   setup do
     %{scope: scope} = sign_up_fixture()
     pool = pool_fixture(scope)
+    _gateway = gateway_for!(scope, pool)
     %{access_key: key} = access_key_fixture(scope, node: pool)
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(scope), 1) end)
     {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
@@ -147,8 +149,9 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
       update!("dispatches", dispatch.id, "end_cause = 'run_refused'")
     end)
 
-    # Every cause before the migration stays, `secrets_not_allowed` among them.
-    before = DispatchRun.end_causes() -- [:run_refused]
+    # Every cause before the migration stays, `secrets_not_allowed` among them;
+    # `build_failed` came after it.
+    before = DispatchRun.end_causes() -- [:run_refused, :build_failed]
 
     for table <- ~w(dispatch_runs dispatches) do
       assert causes("#{table}_end_cause_check") == Enum.sort(Enum.map(before, &to_string/1))

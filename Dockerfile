@@ -28,7 +28,7 @@ FROM ${BUILDER_IMAGE} AS builder
 
 # install build dependencies
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential git \
+  && apt-get install -y --no-install-recommends build-essential git curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 # prepare build dir
@@ -44,6 +44,19 @@ ENV MIX_ENV="prod"
 # install mix dependencies
 COPY mix.exs mix.lock ./
 RUN mix deps.get --only $MIX_ENV
+
+# rustler_precompiled downloads mdex's NIF with Erlang's httpc, which fails on github.com's
+# redirect: more than 10 KiB of headers, over its 10,240-byte limit. curl fetches the NIF instead.
+ENV RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH=/var/cache/rustler_precompiled
+RUN mkdir -p "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH" \
+  && files="$(grep -oE "libmdex_native_nif-v[0-9.]+-nif-[0-9.]+-$(uname -m)-unknown-linux-gnu(--legacy_cpu)?\.so\.tar\.gz" \
+    deps/mdex_native/checksum-Elixir.MDExNative.Native.exs)" \
+  && for f in $files; do \
+    v="${f#libmdex_native_nif-}"; \
+    curl -fsSL --retry 3 -o "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH/$f" \
+      "https://github.com/leandrocp/mdex_native/releases/download/${v%%-nif-*}/$f" || exit 1; \
+  done
+
 RUN mkdir config
 
 # copy compile-time config files before we compile dependencies
@@ -51,6 +64,20 @@ RUN mkdir config
 # to be re-compiled.
 COPY config/config.exs config/${MIX_ENV}.exs config/
 RUN mix deps.compile
+
+# tailwind's installer also downloads the CLI with httpc and hits the same limit. curl places the
+# CLI 4.3.0 of config/config.exs at the path `tailwind.install --if-missing` checks, and the build
+# stops when the file's SHA-256 differs from the one pinned here for the CPU architecture.
+RUN case "$(uname -m)" in \
+    x86_64) target=linux-x64 sha=73f0e5459054e5cfaa8ab6f3b940f3fbe0f13cc7fd83bc24e7c655033c203400 ;; \
+    aarch64) target=linux-arm64 sha=8f48dcb72be3b351c10563c5329b4638ba8516820dc3b3a1609625a166e87cbd ;; \
+    *) echo "error: build on x86_64 or aarch64; found $(uname -m)" >&2; exit 1 ;; \
+  esac \
+  && mkdir -p _build \
+  && curl -fsSL --retry 3 -o "_build/tailwind-$target-4.3.0" \
+    "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.0/tailwindcss-$target" \
+  && echo "$sha  _build/tailwind-$target-4.3.0" | sha256sum -c - \
+  && chmod 755 "_build/tailwind-$target-4.3.0"
 
 RUN mix assets.setup
 
@@ -88,9 +115,13 @@ RUN mix release
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE} AS final
 
+# Debian's advisory DSA-6572-1 (2026-10-20) removes two root certificates after eMudhra
+# intermediate certificates were compromised. The build stops on an older ca-certificates.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && { dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1 \
+    || { echo "error: install ca-certificates 20250419+deb13u1 or later from trixie-security; found $(dpkg-query -W -f='${Version}' ca-certificates)" >&2; exit 1; }; }
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ActivityDispatchHandoverTest do
-  # The Activity line of `dispatch.handover`: its label in the filter, offered there, its
-  # sentence, and its subject, the run registered, by its short `rn_` id and a link to its
-  # page.
+  # The Activity line of `dispatch.handover`, an action Qory Apiary no longer takes, for
+  # the entries written while it did: its label, its sentence, and its subject, the run
+  # registered, by its short `rn_` id and a link to its page.
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -23,12 +23,11 @@ defmodule ApiaryWeb.ActivityDispatchHandoverTest do
   defp shown(entry),
     do: Enum.find_value(Describer.describers(), & &1.sentence(:"dispatch.handover", entry, %{}))
 
-  test "the label, offered in the filter" do
+  test "the label" do
     %{scope: scope} = sign_up_fixture()
 
     assert Core.label(:"dispatch.handover") == "Runs handed over"
     assert Core.label(:"dispatch.handover", scope) == "Runs handed over"
-    assert Core.offered?(scope, :"dispatch.handover")
   end
 
   test "the sentence, and the run as its subject" do

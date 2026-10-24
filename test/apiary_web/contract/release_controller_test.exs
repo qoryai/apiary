@@ -2,8 +2,9 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
   # `POST /v1/dispatches/<dispatch_id>/release` (`ApiaryWeb.Contract.DispatchController`),
   # as a node pool's starter sends it: the body held to the vendored
   # `release.schema.json`, the `204` signed, with no body and `Cache-Control: no-store`,
-  # before the handover and after it, past its lease too, and each refusal's status and
-  # code, its body held to the vendored `refusal.schema.json`, signed but a `401`. The
+  # before `dispatched`, and each refusal's status and code, `409` `machine_exists` after
+  # `dispatched` among them, its body held to the vendored `refusal.schema.json`, signed
+  # but a `401`. The
   # order of the refusals and what each release writes is `Apiary.Dispatches.ReleaseTest`'s;
   # where the feature is off, `ApiaryWeb.Contract.PoolRequestTest`'s. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
@@ -81,37 +82,30 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       target: "/v1/dispatches/#{id(dispatch)}/#{action}",
       content_type: "application/json",
       delivery: nil,
-      contract_version: "3"
+      contract_version: "1"
     )
   end
 
-  defp body(retry),
-    do: %{
-      "version" => 1,
-      "time" => now_time(),
-      "reason" => "The job could not start.",
-      "retry" => retry
-    }
+  defp body, do: %{"version" => 1, "time" => now_time(), "reason" => "The job could not start."}
 
-  defp release(ctx, dispatch, retry, opts \\ []) do
-    body = Keyword.get(opts, :body, body(retry))
+  defp release(ctx, dispatch, opts \\ []) do
+    body = Keyword.get(opts, :body, body())
     assert {:ok, _} = JSV.validate(body, validator("provisioner/v1/release.schema.json"))
     post(ctx, dispatch, "release", body, opts)
   end
 
-  defp started!(ctx) do
+  # A run claimed: its dispatch, before `dispatched`.
+  defp claimed!(ctx) do
     {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
-    conn = post(ctx, dispatch, "dispatched", %{"version" => 1, "time" => now_time()})
-
-    assert conn.status == 204
     dispatch
   end
 
-  defp handed_over!(ctx) do
-    dispatch = started!(ctx)
-    conn = post(ctx, dispatch, "handover", %{"version" => 1, "time" => now_time()})
+  # A run claimed and its `dispatched` sent, which hands the dispatch over.
+  defp dispatched!(ctx) do
+    dispatch = claimed!(ctx)
+    conn = post(ctx, dispatch, "dispatched", %{"version" => 1, "time" => now_time()})
 
-    assert conn.status == 200
+    assert conn.status == 204
     dispatch
   end
 
@@ -131,9 +125,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       organisation_id: ctx.scope.organisation.id,
       workspace_id: ctx.scope.workspace.id,
       pool_id: ctx.pool.id,
-      source_collection_id: collection.id,
-      queued_ref: "env-1",
-      queued_at: DateTime.utc_now()
+      source_collection_id: collection.id
     })
 
     {:ok, run} =
@@ -179,116 +171,91 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
   end
 
   describe "a release" do
-    test "before the handover, with retry, is 204, signed, with no body: the run waits again",
-         ctx do
+    test "before dispatched is 204, signed, with no body: the run waits again", ctx do
       queued = queued!(ctx)
-      dispatch = started!(ctx)
+      dispatch = claimed!(ctx)
 
-      assert given_back?(release(ctx, dispatch, true))
+      assert given_back?(release(ctx, dispatch))
       assert Repo.get!(DispatchRun, queued.id).state == :waiting
       assert %Dispatch{end_cause: :released} = Repo.get!(Dispatch, dispatch.id)
     end
 
-    test "before the handover, without retry, is 204: the run ends released", ctx do
-      queued = queued!(ctx)
-      dispatch = started!(ctx)
+    test "of a prebuild before dispatched is 204: the run waits again", ctx do
+      queued = prebuild!(ctx)
+      dispatch = claimed!(ctx)
 
-      assert given_back?(release(ctx, dispatch, false))
-      assert %DispatchRun{state: :ended, end_cause: :released} = Repo.get!(DispatchRun, queued.id)
+      assert given_back?(release(ctx, dispatch))
+      assert Repo.get!(DispatchRun, queued.id).state == :waiting
     end
 
-    test "after the handover, with retry, is 204: the run ends and the next one is queued",
+    test "after dispatched is 409 machine_exists, past its lease too, and writes nothing",
          ctx do
       queued = queued!(ctx)
-      dispatch = handed_over!(ctx)
+      dispatch = dispatched!(ctx)
 
-      assert given_back?(release(ctx, dispatch, true))
-      assert %DispatchRun{state: :ended, end_cause: :released} = Repo.get!(DispatchRun, queued.id)
-
-      assert [%DispatchRun{attempt: 2, state: :waiting}] =
-               Repo.all(
-                 from r in DispatchRun,
-                   where: r.work_item_id == ^queued.work_item_id and r.id != ^queued.id
-               )
-    end
-
-    test "after the handover, past its lease, is 204, never 409", ctx do
-      queued = queued!(ctx)
-      dispatch = handed_over!(ctx)
+      assert refused?(release(ctx, dispatch), 409, "machine_exists")
       lapse!(dispatch, [:dispatched_at, :handed_over_at])
+      assert refused?(release(ctx, dispatch), 409, "machine_exists")
 
-      assert given_back?(release(ctx, dispatch, false))
-      assert %DispatchRun{state: :ended, end_cause: :released} = Repo.get!(DispatchRun, queued.id)
-    end
-
-    test "of a prebuild is 204, before the handover and after it", ctx do
-      first = prebuild!(ctx)
-      dispatch = started!(ctx)
-      assert given_back?(release(ctx, dispatch, false))
-      assert Repo.get!(DispatchRun, first.id).end_cause == :released
-
-      second = prebuild!(ctx)
-      dispatch = handed_over!(ctx)
-      assert given_back?(release(ctx, dispatch, true))
-      assert Repo.get!(DispatchRun, second.id).end_cause == :released
+      assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, queued.id)
+      assert %Dispatch{ended_at: nil} = Repo.get!(Dispatch, dispatch.id)
     end
 
     test "is refused with each status and code, signed", ctx do
       queued!(ctx)
-      dispatch = started!(ctx)
+      dispatch = claimed!(ctx)
 
       # A body the contract refuses.
-      invalid = Map.delete(body(true), "retry")
+      invalid = Map.delete(body(), "reason")
       conn = post(ctx, dispatch, "release", invalid)
       assert refused?(conn, 400, "invalid_request")
 
       # Unknown, of another pool, or of no dispatch's shape: one answer.
-      assert refused?(release(ctx, "dp_0000000000000000", true), 403, "forbidden")
-      assert refused?(release(ctx, "not-a-dispatch", true), 403, "forbidden")
+      assert refused?(release(ctx, "dp_0000000000000000"), 403, "forbidden")
+      assert refused?(release(ctx, "not-a-dispatch"), 403, "forbidden")
 
       %{access_key: other_key, pair: other_pair} =
         Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, pool_fixture(ctx.scope))
 
       assert refused?(
-               release(ctx, dispatch, true, key_id: other_key.key_id, seed: other_pair.secret),
+               release(ctx, dispatch, key_id: other_key.key_id, seed: other_pair.secret),
                403,
                "forbidden"
              )
 
       prebuild!(ctx)
-      prebuild = started!(ctx)
+      prebuild = claimed!(ctx)
 
-      # Lapsed before its handover.
+      # Lapsed before dispatched.
       lapse!(dispatch)
-      assert refused?(release(ctx, dispatch, true), 409, "lease_expired")
+      assert refused?(release(ctx, dispatch), 409, "lease_expired")
 
       # Ended.
-      assert given_back?(release(ctx, prebuild, false))
-      assert refused?(release(ctx, prebuild, false), 410, "gone")
+      assert given_back?(release(ctx, prebuild))
+      assert refused?(release(ctx, prebuild), 410, "gone")
     end
 
     test "under a bad signature is 401, unsigned", ctx do
       queued!(ctx)
-      dispatch = started!(ctx)
-      conn = release(ctx, dispatch, true, seed: :crypto.strong_rand_bytes(32))
+      dispatch = claimed!(ctx)
+      conn = release(ctx, dispatch, seed: :crypto.strong_rand_bytes(32))
       assert json_response(conn, 401) == %{"error" => "unauthorized"}
       assert unsigned_answer?(conn)
       assert %Dispatch{ended_at: nil} = Repo.get!(Dispatch, dispatch.id)
     end
 
     test "that cannot be written is 503 unavailable, signed, and writes nothing", ctx do
-      queued = prebuild!(ctx)
-      dispatch = started!(ctx)
+      queued = queued!(ctx)
+      dispatch = claimed!(ctx)
 
-      # A rule the record's failure breaks, in this test's transaction alone: the write
-      # of the release fails.
+      # A rule the release's audit entry breaks, in this test's transaction alone: the
+      # write of the release fails.
       Repo.query!(
-        "ALTER TABLE environments ADD CONSTRAINT release_test_no_failure " <>
-          "CHECK (failure_reason IS NULL) NOT VALID"
+        "ALTER TABLE audit_entries ADD CONSTRAINT release_test_no_entry " <>
+          "CHECK (action <> 'dispatch.release') NOT VALID"
       )
 
-      {conn, log} =
-        ExUnit.CaptureLog.with_log(fn -> release(ctx, dispatch, false) end)
+      {conn, log} = ExUnit.CaptureLog.with_log(fn -> release(ctx, dispatch) end)
 
       assert refused?(conn, 503, "unavailable")
       assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]

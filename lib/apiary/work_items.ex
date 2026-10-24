@@ -224,7 +224,7 @@ defmodule Apiary.WorkItems do
   # (`Apiary.Dispatches.Inputs.max_bytes/0`, 768 KiB), which leaves out only comments to
   # fit. Two runs' answers, each question and answer at the most the contract allows,
   # with a ticket's body at the most it holds, can pass that bound with every comment left
-  # out; the handover then ends the run, `inputs_invalid`, and Explore reads it as a run
+  # out; the claim then ends the run, `inputs_invalid`, and Explore reads it as a run
   # without a result.
   @spec take_in_answers(WorkItem.t(), pos_integer) :: [Jason.OrderedObject.t()]
   def take_in_answers(%WorkItem{id: id}, take_in)
@@ -800,12 +800,13 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # stable_url/1 is the address of `work_item` that Qory gives another system: the
-  # instance's public URL, then `/work-items/` and the work item's public id. It names no
-  # organisation and no workspace, so it stays the same when the work item moves to
-  # another workspace. No route of the instance serves it yet.
+  # instance's public URL (`Apiary.Setup.public_url/0`, the configured one where no
+  # endpoint runs, as under `bin/apiary eval`), then `/work-items/` and the work item's
+  # public id. It names no organisation and no workspace, so it stays the same when the
+  # work item moves to another workspace. No route of the instance serves it yet.
   @spec stable_url(WorkItem.t()) :: String.t()
   def stable_url(%WorkItem{public_id: public_id}) when is_binary(public_id),
-    do: ApiaryWeb.Endpoint.url() <> "/work-items/" <> public_id
+    do: Apiary.Setup.public_url() <> "/work-items/" <> public_id
 
   ## Closing
 

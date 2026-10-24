@@ -47,7 +47,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
   # session's events, in the order the lanes first appear.
   defp lanes(events) do
     events
-    |> Enum.filter(&String.starts_with?(&1.type, "dev.qory.session."))
+    |> Enum.filter(&String.starts_with?(&1.type, "dev.qory.runtime."))
     |> Enum.map(&{&1.data["agent_id"], &1.data["agent_type"]})
     |> Enum.uniq()
   end
@@ -60,15 +60,15 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, %Run{} = run} = Demo.replay(access_key, file("session-with-subagents"), now)
 
       # Through the receiver's own function: the run is the workspace's, under the key,
-      # and the deliveries are recorded: the registration, then 100 events in batches of 20,
+      # and the deliveries are recorded: the registration, then 102 events in batches of 20,
       # from sequence 2.
       assert run.id == Runs.get_run!(scope, run.id).id
       assert run.access_key_id == access_key.id
       assert %DateTime{} = run.registered_at
-      assert run.event_count == 100
-      assert run.projected_sequence == 101
+      assert run.event_count == 102
+      assert run.projected_sequence == 103
 
-      assert [20, 20, 20, 20, 20] ==
+      assert [20, 20, 20, 20, 20, 2] ==
                Repo.all(
                  from d in Delivery,
                    where: d.node_run_id == ^run.node_run_id,
@@ -126,7 +126,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       for host <- ["registry.example", "metrics.example"] do
         index = Enum.find_index(events, &(&1.data["host"] == host))
 
-        assert %{type: "dev.qory.session.tool_started", data: %{"tool" => "Bash"} = data} =
+        assert %{type: "dev.qory.runtime.tool_started", data: %{"tool" => "Bash"} = data} =
                  Enum.at(events, index - 1)
 
         assert data["input"]["command"] =~ host

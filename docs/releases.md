@@ -21,20 +21,10 @@ version `mix.exs` does not carry.
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for
 `linux/amd64` and `linux/arm64`, and publishes it as `ghcr.io/qoryai/apiary`, tagged
-`X.Y.Z`, `X.Y` and `latest`. It publishes the GitHub release with three files attached:
-`compose.yaml`; `env.example`, a copy of `.env.example` that names `X.Y.Z` in
-`APIARY_VERSION`; and `apiary.yaml`, the release copy of the AWS template
-`deploy/aws/apiary.yaml`, with the template's test parts left out and the release's version
-written in as the template's version
-(`scripts/aws-template-release.py --copy release --version X.Y.Z`; release is the default
-copy). No edition's version is written in: a stack finds the version to install when it is
-created or updated, the newest release of its edition or the one typed under Version, and
-runs that image by its digest.
-`deploy/aws/stack-policy.json` is not attached: the template job uploads it to the S3
-bucket beside the template, and only when the repository variables
-`AWS_TEMPLATE_BUCKET` and `AWS_TEMPLATE_ROLE_ARN` are set. Without them, nothing goes to
-S3. `scripts/changelog-section.sh 0.1.0` prints the section the workflow would take, and
-fails when there is none, which is what stops a tag from publishing without one. Check
+`X.Y.Z`, `X.Y` and `latest`. It publishes the GitHub release with two files attached:
+`compose.yaml`, and `env.example`, a copy of `.env.example` with `APIARY_VERSION` set to
+`X.Y.Z`. `scripts/changelog-section.sh 0.1.0` prints the section the workflow would take,
+and fails when there is none, which is what stops a tag from publishing without one. Check
 both before tagging:
 
 ```sh
@@ -42,15 +32,8 @@ scripts/changelog-section.sh X.Y.Z
 grep 'version: "X.Y.Z"' mix.exs
 ```
 
-A released version is never deleted: a stack pins the image's digest and pulls it again
-each time its task is replaced. Pushing a released tag again does not change a running
-stack, but deleting the version from `ghcr.io/qoryai/apiary` stops that stack at its next
-task replacement.
-
-A stack refuses a release of a newer minor than its template, the version the release
-wrote in, so a patch release installs with any template of the same minor. A template
-change that a release's image needs comes only with a new minor; a patch may still fix the
-template.
+A released version is never deleted or published again: a Compose install pulls
+`ghcr.io/qoryai/apiary` by the version in `APIARY_VERSION`.
 
 Before a release, `.github/workflows/prerelease.yml` publishes pre-release images. It runs
 only by hand: from the Actions tab, for the branch it is run on or the ref it is given,
@@ -61,16 +44,4 @@ push to any other branch or on a schedule. It builds the image as `release.yml` 
 pushes it to `ghcr.io/qoryai/apiary-prerelease` alone, as `sha-` and the commit's first
 seven characters, and as `next` when the ref is `next`. That package stays private: GHCR
 sets visibility per package, so pre-release tags never sit beside a release's. Its old
-`sha-` tags are deleted by hand. A test stack names one under Test image, in the For
-testing only group of the AWS template's test copy, with a download key whose account can
-read the package. The test copy is the repository's template, written with `--copy test`
-and no version; with no template's version, the stack makes no check of a release's minor
-against it:
-
-```sh
-cp deploy/aws/apiary.yaml apiary-test.yaml
-python3 scripts/aws-template-release.py apiary-test.yaml --copy test
-```
-
-The test copy is never published: no release attaches it, no workflow uploads it, and it
-is no Actions artifact. CI writes it only to check it.
+`sha-` tags are deleted by hand.

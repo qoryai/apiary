@@ -24,8 +24,8 @@ defmodule Apiary.InstanceConfig do
   trail's, and its default is 90 days, or the trail's period when that is shorter.
   `source/1` says where a value comes from.
 
-  **Where they are kept.** Four columns of the instance's row of `instance_settings`
-  (`Apiary.InstanceConfig.Row`), NULL for none saved. Each node keeps a copy
+  **Where they are kept.** One column per setting in the instance's row of
+  `instance_settings` (`Apiary.InstanceConfig.Row`), NULL for none saved. Each node keeps a copy
   (`Apiary.InstanceConfig.Cache`), read again over `Apiary.PubSub` after each save;
   without it, as in the tests, `stored/0` reads the row each time. A node whose migration
   of these columns has not run yet, with `MIGRATE_ON_BOOT=false`, reads them as none saved.
@@ -43,21 +43,30 @@ defmodule Apiary.InstanceConfig do
 
   alias Apiary.{Access, Accounts, Audit, Deletion, Instance, Repo}
   alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Dispatches.MachineLogs
   alias Apiary.InstanceConfig.{Cache, Row}
   alias Apiary.Organisations.Organisation
   alias ApiaryWeb.Format
 
+  # A fifth setting, which the documentation and the page leave out, as they leave out the
+  # `factory` feature: `:machine_log_retention_days`, how many days a dispatch's machine
+  # log is kept, `MACHINE_LOG_RETENTION_DAYS` checked by
+  # `Apiary.Dispatches.MachineLogs.boot!/0`, saved in the column of the same name, 30 days
+  # by default, from `Apiary.Dispatches.MachineLogs.retention_min_days/0` to
+  # `Apiary.Dispatches.MachineLogs.retention_max_days/0` days, its part `:machine_logs`.
   @keys [
     :audit_retention_days,
     :audit_address_retention_days,
     :deletion_grace_days,
-    :invitations_per_day
+    :invitations_per_day,
+    :machine_log_retention_days
   ]
 
   @parts %{
     retention: [:audit_retention_days, :audit_address_retention_days],
     deletion: [:deletion_grace_days],
-    invitations: [:invitations_per_day]
+    invitations: [:invitations_per_day],
+    machine_logs: [:machine_log_retention_days]
   }
 
   # The most invitations a day a save takes: the column is a 32-bit integer.
@@ -88,9 +97,10 @@ defmodule Apiary.InstanceConfig do
           | :audit_address_retention_days
           | :deletion_grace_days
           | :invitations_per_day
+          | :machine_log_retention_days
 
   @typedoc "A part of Instance settings › Configuration, which is saved at once."
-  @type part :: :retention | :deletion | :invitations
+  @type part :: :retention | :deletion | :invitations | :machine_logs
 
   @typedoc "Where a value comes from."
   @type source :: :env | :saved | :default
@@ -174,6 +184,7 @@ defmodule Apiary.InstanceConfig do
 
   defp boot(:deletion_grace_days), do: Deletion.boot!()
   defp boot(:invitations_per_day), do: Instance.boot!()
+  defp boot(:machine_log_retention_days), do: MachineLogs.boot!()
 
   @doc """
   stored/0 is the saved settings, as this node's `Apiary.InstanceConfig.Cache` holds them,
@@ -205,6 +216,52 @@ defmodule Apiary.InstanceConfig do
       end
   end
 
+  # The instance's registry name, with the `registry` feature: 16 random lower-case hex
+  # digits, the first segment of the instance's image names (`Apiary.Registry.Names`).
+  # Made once, by the first call on an instance whose row has none, in one statement that
+  # keeps a name the row holds, so two nodes at once record one name. Never derived from
+  # `PUBLIC_URL`, so a change of address keeps the names. A boot with the feature on makes
+  # it and keeps it for the life of the node (`Apiary.Registry.InstanceName`).
+  @registry_instance """
+  INSERT INTO instance_settings (id, registry_instance, updated_at)
+  VALUES (true, $1, $2)
+  ON CONFLICT (id) DO UPDATE SET
+    registry_instance = COALESCE(instance_settings.registry_instance, EXCLUDED.registry_instance)
+  RETURNING registry_instance
+  """
+
+  @doc false
+  # registry_instance/0 is the instance's registry name: the node's copy, else the row's,
+  # made now where the row has none; nil on a schema whose migration of the name has not
+  # run yet.
+  @spec registry_instance() :: String.t() | nil
+  def registry_instance do
+    case Application.fetch_env(:apiary, :registry_instance) do
+      {:ok, name} when is_binary(name) -> name
+      _none -> record_registry_instance()
+    end
+  end
+
+  @doc false
+  # record_registry_instance/0 makes the instance's registry name where the row has none,
+  # and returns the row's; nil on a schema whose migration of the name has not run yet,
+  # as `load/0` reads such a schema.
+  @spec record_registry_instance() :: String.t() | nil
+  def record_registry_instance do
+    name = Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+
+    %{rows: [[recorded]]} =
+      Repo.query!(@registry_instance, [name, DateTime.utc_now()])
+
+    recorded
+  rescue
+    error in Postgrex.Error ->
+      case error.postgres do
+        %{code: code} when code in [:undefined_column, :undefined_table] -> nil
+        _other -> reraise error, __STACKTRACE__
+      end
+  end
+
   defp to_stored(nil), do: Map.new(@keys, &{&1, nil})
   defp to_stored(%Row{} = row), do: Map.take(row, @keys)
 
@@ -231,6 +288,9 @@ defmodule Apiary.InstanceConfig do
   defp default(:audit_retention_days), do: ok!(Audit.parse_retention_days(nil))
   defp default(:deletion_grace_days), do: ok!(Deletion.parse_grace_days(nil))
   defp default(:invitations_per_day), do: ok!(Instance.parse_invitations_per_day(nil))
+
+  defp default(:machine_log_retention_days),
+    do: ok!(MachineLogs.parse_retention_days(nil))
 
   defp ok!({:ok, value}), do: value
 
@@ -379,6 +439,9 @@ defmodule Apiary.InstanceConfig do
     |> Ecto.Changeset.check_constraint(:invitations_per_day,
       name: :instance_settings_invitations_per_day_check
     )
+    |> Ecto.Changeset.check_constraint(:machine_log_retention_days,
+      name: :instance_settings_machine_log_retention_days_check
+    )
   end
 
   defp trim(attrs),
@@ -425,6 +488,15 @@ defmodule Apiary.InstanceConfig do
       1,
       @invitations_max,
       max: Format.number(@invitations_max)
+    )
+  end
+
+  defp validate(changeset, :machine_logs, fields, _current) do
+    {min, max} = {MachineLogs.retention_min_days(), MachineLogs.retention_max_days()}
+
+    validate_range(changeset, fields, :machine_log_retention_days, @days_message, min, max,
+      min: Format.number(min),
+      max: Format.number(max)
     )
   end
 

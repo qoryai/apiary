@@ -144,6 +144,14 @@ defmodule Apiary.Edition do
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 
+  # With the `factory` feature, which the documentation leaves out: whether `organisation`
+  # is a client that an operator runs work for. A run of such an organisation hides the
+  # text of its stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`).
+  # Asked without a lock, once per claim of an explore run. The core has no operator and
+  # answers false.
+  @doc false
+  @callback operated?(%Organisation{}) :: boolean
+
   # With the `factory` feature, which the documentation leaves out: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
   # the edition, so that a client of an operator is not shown the operator's model
@@ -577,6 +585,7 @@ defmodule Apiary.Edition do
     first_sign_up_line: 0,
     above_workspace: 1,
     model_choice_chain: 1,
+    operated?: 1,
     client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,

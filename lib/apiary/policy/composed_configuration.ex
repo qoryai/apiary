@@ -56,7 +56,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #
   # - `variables`, the run variables Qory set for the run (`runs.registration_variables`,
   #   `Apiary.Runs.RunVariables.document/1`);
-  # - with the `secrets` feature too, for a run the handover set a model provider for:
+  # - with the `secrets` feature too, for a run its claim set a model provider for:
   #   `credentials`, the provider's API credential, and `model_credential`, its name
   #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
@@ -66,6 +66,21 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   exact or `*.`, blocks such a host. More than 64 entries, the most `allow_first`
   #   takes, compose no document: the run is given no run configuration (`serve/7`), as
   #   when its provider cannot be read.
+  #
+  # With the `registry` feature, for a run through a gateway, whatever the other features:
+  # the run's registry credential, after the model key in `credentials`; the instance's
+  # host and the registry's in `egress.allow` and `egress.allow_first`, as the provider's
+  # hosts are; the registry host's path rules in `egress.paths`, in place of any the
+  # document has for that host (`Apiary.Registry.RunAccess`); and for the instance's
+  # host, the path rule `/registry/token`, after the rules the document has for that host
+  # where it has some, else alone, unless the document allowed that host before: in
+  # `egress.allow_first`, or in `egress.allow` and not in `egress.deny`
+  # (`Apiary.Policy.Grammar.matches?/2`). Under enforce, a gateway already denies each
+  # path of that host that matches neither the credential's path nor the document's
+  # rules for the host. As for a provider's hosts, an entry of `egress.deny` that
+  # matches the instance's host or the registry's host does not block either host.
+  # Under observe, a run reaches every path of the instance's host; the gateway sends
+  # the registry credential only with requests to `/registry/token`.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`. A document composed with them is
@@ -80,6 +95,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
   alias Apiary.Repo
+  alias Apiary.Registry.RunAccess
   alias Apiary.Runs.{ProviderCredential, Run, RunVariables}
 
   @type t :: %__MODULE__{}
@@ -438,31 +454,43 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   def members(run) do
     with {:ok, credential} <- ProviderCredential.for_run(run) do
-      members = %{variables: Map.get(run, :registration_variables), credential: credential}
+      members = %{
+        variables: Map.get(run, :registration_variables),
+        credential: credential,
+        registry: RunAccess.member(run)
+      }
+
       {:ok, if(members?(members), do: members)}
     end
   end
 
-  defp members?(%{variables: variables, credential: credential}),
-    do: (is_map(variables) and map_size(variables) > 0) or not is_nil(credential)
+  defp members?(%{variables: variables, credential: credential} = members),
+    do:
+      (is_map(variables) and map_size(variables) > 0) or not is_nil(credential) or
+        not is_nil(Map.get(members, :registry))
 
   defp members?(nil), do: false
 
   # `document`, or the document of no policy for nil, with the run's members after its
   # last member and the provider's hosts in its `egress`: `{:ok, bytes}`, canonical, or
   # `{:error, {:allow_first_too_long, count}}`.
-  defp with_members(document, %{variables: variables, credential: credential}) do
-    hosts = if credential, do: credential.hosts, else: []
+  defp with_members(document, %{variables: variables, credential: credential} = run_members) do
+    registry = Map.get(run_members, :registry)
+
+    hosts =
+      if(credential, do: credential.hosts, else: []) ++ if(registry, do: registry.hosts, else: [])
+
+    entries =
+      if(credential, do: [credential.entry], else: []) ++
+        if registry, do: [registry.entry], else: []
 
     added =
       if(is_map(variables) and map_size(variables) > 0,
         do: [{"variables", RunVariables.document(variables)}],
         else: []
       ) ++
-        if(credential,
-          do: [{"credentials", [credential.entry]}, {"model_credential", credential.name}],
-          else: []
-        )
+        if(entries != [], do: [{"credentials", entries}], else: []) ++
+        if credential, do: [{"model_credential", credential.name}], else: []
 
     names = Enum.map(added, &elem(&1, 0))
 
@@ -471,8 +499,91 @@ defmodule Apiary.Policy.ComposedConfiguration do
       |> decode()
       |> Enum.reject(fn {name, _value} -> name in names end)
 
+    open? = is_map(registry) and host_open?(members, registry.instance_host)
+
     with {:ok, members} <- policy_with_hosts(members, hosts),
-         do: {:ok, encode(members ++ added)}
+         do: {:ok, encode(policy_with_paths(members, registry, open?) ++ added)}
+  end
+
+  # Whether the document's `egress` allows `host` before any host is added: in
+  # `allow_first`, or in `allow` and not in `deny`.
+  defp host_open?(members, host) do
+    with {@security_policy, %Jason.OrderedObject{values: policy}} <-
+           List.keyfind(members, @security_policy, 0),
+         {"egress", %Jason.OrderedObject{values: egress}} <- List.keyfind(policy, "egress", 0) do
+      list = fn name ->
+        case List.keyfind(egress, name, 0) do
+          {^name, entries} when is_list(entries) -> Enum.filter(entries, &is_binary/1)
+          _none -> []
+        end
+      end
+
+      Grammar.matches?(list.("allow_first"), host) or
+        (Grammar.matches?(list.("allow"), host) and not Grammar.matches?(list.("deny"), host))
+    else
+      _none -> false
+    end
+  end
+
+  # The members with the registry's path rules for its host in the `security_policy`'s
+  # `egress.paths`, where there is an `egress`: in place of the host's entry where it has
+  # one, else after the entries there (`Apiary.Registry.RunAccess`). Then the instance's
+  # host's: `/registry/token` after the rules of its entry where it has one, else, unless
+  # `open?`, an entry of that one rule after the entries there.
+  defp policy_with_paths(members, nil, _open?), do: members
+
+  defp policy_with_paths(
+         members,
+         %{registry_host: host, paths: paths, instance_host: instance},
+         open?
+       ) do
+    with {@security_policy, %Jason.OrderedObject{values: policy}} <-
+           List.keyfind(members, @security_policy, 0),
+         {"egress", %Jason.OrderedObject{values: egress}} <- List.keyfind(policy, "egress", 0) do
+      entries =
+        case List.keyfind(egress, "paths", 0) do
+          {"paths", %Jason.OrderedObject{values: entries}} -> entries
+          _none -> []
+        end
+
+      entries =
+        if List.keymember?(entries, host, 0),
+          do: List.keyreplace(entries, host, 0, {host, paths}),
+          else: entries ++ [{host, paths}]
+
+      entries =
+        case List.keyfind(entries, instance, 0) do
+          {^instance, rules} when is_list(rules) ->
+            List.keyreplace(
+              entries,
+              instance,
+              0,
+              {instance, Enum.uniq(rules ++ [RunAccess.token_path()])}
+            )
+
+          nil when not open? ->
+            entries ++ [{instance, [RunAccess.token_path()]}]
+
+          _open ->
+            entries
+        end
+
+      egress =
+        if List.keymember?(egress, "paths", 0),
+          do: List.keyreplace(egress, "paths", 0, {"paths", Jason.OrderedObject.new(entries)}),
+          else: egress ++ [{"paths", Jason.OrderedObject.new(entries)}]
+
+      policy = List.keyreplace(policy, "egress", 0, {"egress", Jason.OrderedObject.new(egress)})
+
+      List.keyreplace(
+        members,
+        @security_policy,
+        0,
+        {@security_policy, Jason.OrderedObject.new(policy)}
+      )
+    else
+      _none -> members
+    end
   end
 
   # The members with the provider's `hosts` in the `security_policy`'s `egress`, where

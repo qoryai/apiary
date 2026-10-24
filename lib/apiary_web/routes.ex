@@ -185,6 +185,15 @@ defmodule ApiaryWeb.Routes do
         get "/health", HealthController, :show
       end
 
+      # The private image registry's token route, with the opt-in feature `registry`: a
+      # run's gateway sets the run's credential on the request, and no pipeline reads more
+      # than the controller does (`ApiaryWeb.RegistryTokenController`). Every method but
+      # GET is told 405.
+      scope "/", ApiaryWeb do
+        get "/registry/token", RegistryTokenController, :show
+        match :*, "/registry/token", RegistryTokenController, :method_not_allowed
+      end
+
       # The server contract: signed requests, discovery, events, a run's registration,
       # reload, attach and outcome.
       scope "/.well-known", ApiaryWeb.Contract do
@@ -234,16 +243,15 @@ defmodule ApiaryWeb.Routes do
       end
 
       # A node pool's starter's requests, with the `factory` feature: its claim of a run
-      # waiting for the pool, and, for the dispatch that claim made, that the job started,
-      # the job's handover, the run given back and the image a prebuild built.
+      # waiting for the pool, and, for the dispatch that claim made, that the machine
+      # started, the run given back and the log of the machine the starter created.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_pool
 
         post "/pools/claim", PoolClaimController, :create
         post "/dispatches/:dispatch_id/dispatched", DispatchController, :dispatched
-        post "/dispatches/:dispatch_id/handover", HandoverController, :create
         post "/dispatches/:dispatch_id/release", DispatchController, :release
-        post "/dispatches/:dispatch_id/prebuilt", DispatchController, :prebuilt
+        post "/dispatches/:dispatch_id/machine-log", DispatchController, :machine_log
       end
 
       # An adapter's collections: a part of its listing, and one it no longer reaches.

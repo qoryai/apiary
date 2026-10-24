@@ -1,8 +1,8 @@
 defmodule Apiary.DispatchedRunsFixtures do
   @moduledoc """
   Test helpers for the runs a workspace's queue hands over: a run of the queue, claimed by
-  a node pool and handed over, with the run registered for it, written as the handover
-  leaves them, and an outcome given for it as its starter gives one.
+  a node pool, with the run its claim registered, handed over, and an outcome given for it
+  as its starter gives one.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -15,11 +15,13 @@ defmodule Apiary.DispatchedRunsFixtures do
 
   @doc """
   A run of a fresh work item of the scope's workspace, queued, claimed under the pool's
-  `key` and handed over, with its registered run: through a gateway, of the pool's node and
-  key, running, registered and its run key issued a minute ago, attached 30 seconds ago,
-  last heard 5 seconds ago, with the backstop its attach sets for `explore`. `run_attrs`
-  change the registered run; `unattached/0` are the ones of a run never attached. Returns `%{dispatch_run: run_of_queue, dispatch: dispatch, run: run}`,
-  each as stored.
+  `key` and handed over, with the run its claim registered: through the gateway the pool's
+  choice resolves to, or, when it resolves to none, a fresh gateway the pool is pointed at
+  (`gateway_for!/2`); of the pool's node and key, running, registered and its run key
+  issued a minute ago, attached 30 seconds ago, last heard 5 seconds ago, with the
+  backstop its attach sets for `explore`. `run_attrs` change the registered run;
+  `unattached/0` are the ones of a run never attached. Returns `%{dispatch_run:
+  run_of_queue, dispatch: dispatch, run: run}`, each as stored.
   """
   def handed_over_fixture(%Scope{} = scope, %AccessKey{} = key, run_attrs \\ %{}) do
     work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
@@ -32,8 +34,8 @@ defmodule Apiary.DispatchedRunsFixtures do
   `key`, and hands it over as `handed_over_fixture/3` does.
   """
   def handed_over(%Scope{} = scope, %AccessKey{} = key, %DispatchRun{} = queued, run_attrs) do
-    {:ok, %{dispatch: dispatch, run: %DispatchRun{id: id}}} =
-      Dispatches.claim(key, Dispatches.now())
+    %{dispatch: dispatch, run: %DispatchRun{id: id}, registered: registered} =
+      claim_through_gateway!(scope, key)
 
     ^id = queued.id
     at = dispatch.claimed_at
@@ -48,23 +50,18 @@ defmodule Apiary.DispatchedRunsFixtures do
 
     attrs = gateway_run_attrs(DateTime.utc_now())
 
+    # Its code redeemed: a run with a code has a run key payload with the public key that
+    # redeemed it.
     run =
-      %Run{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        node_run_id: queued.run_id,
-        node_id: key.node_id,
-        access_key_id: key.id,
-        node_instance_id: queued.run_id,
-        dispatch_run_id: id
-      }
+      registered
       |> Ecto.Changeset.change(attrs)
+      |> Ecto.Changeset.change(run_code_public_key: :binary.copy(<<1>>, 32))
       |> Ecto.Changeset.change(
         backstop_at:
           DateTime.add(attrs.attached_at, Dispatches.backstop_seconds("explore"), :second)
       )
       |> Ecto.Changeset.change(Map.new(run_attrs))
-      |> Repo.insert!()
+      |> Repo.update!()
 
     %{
       dispatch_run: Repo.get!(DispatchRun, id),
@@ -73,8 +70,22 @@ defmodule Apiary.DispatchedRunsFixtures do
     }
   end
 
+  # A claim under `key` that took a run. A pool whose choice resolves to no gateway is
+  # pointed at a fresh gateway of the scope's workspace first (`gateway_for!/2`).
+  defp claim_through_gateway!(scope, key) do
+    case Dispatches.claim(key, Dispatches.now()) do
+      {:ok, %{dispatch: %Dispatch{}} = claimed} ->
+        claimed
+
+      {:error, :no_gateway} ->
+        _gateway = gateway_for!(scope, Repo.get!(Apiary.Nodes.Node, key.node_id))
+        {:ok, %{dispatch: %Dispatch{}} = claimed} = Dispatches.claim(key, Dispatches.now())
+        claimed
+    end
+  end
+
   @doc """
-  What a handover needs of the scope's workspace: a gateway of the workspace, at
+  What a claim needs of the scope's workspace: a gateway of the workspace, at
   `https://gateway.example`, its default, with an active key, and a node pool made after
   it, whose choice is the default and so leads to it, with a key enrolled on it. Returns
   `%{gateway: gateway, gateway_key: {key, seed}, pool: pool, key: key, seed: seed}`, each
@@ -99,6 +110,34 @@ defmodule Apiary.DispatchedRunsFixtures do
     }
   end
 
+  @doc """
+  A gateway of the scope's workspace, at `https://gateway.example`, with an active key:
+  the workspace's default when it is its first gateway, so a node pool made after it,
+  whose choice is the default, claims through it. Returns the gateway.
+  """
+  def workspace_gateway!(%Scope{} = scope) do
+    gateway = Apiary.NodesFixtures.gateway_fixture(scope)
+    _key = gateway_key(scope, gateway, false)
+    gateway
+  end
+
+  @doc """
+  Points `pool`'s choice at a fresh gateway of the scope's workspace, at
+  `https://gateway.example`, with an active key, so a claim of the pool resolves to it.
+  Returns the gateway.
+  """
+  def gateway_for!(%Scope{} = scope, %Apiary.Nodes.Node{kind: :pool, id: id}) do
+    gateway = Apiary.NodesFixtures.gateway_fixture(scope)
+    _key = gateway_key(scope, gateway, false)
+
+    {1, _rows} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^id),
+        set: [gateway_choice: :named, gateway_id: gateway.id]
+      )
+
+    gateway
+  end
+
   defp gateway_key(scope, gateway, false) do
     %{access_key: key, secret: seed} =
       Apiary.ContractFixtures.contract_key_fixture(scope, node: gateway)
@@ -116,99 +155,146 @@ defmodule Apiary.DispatchedRunsFixtures do
 
   @doc """
   Claims the oldest waiting run the pool of `key` may take, and says the starter started
-  its job (`Apiary.Dispatches.dispatched/3`), with no external job:
-  `%{dispatch: dispatch, run: run_of_queue}`, as stored then.
+  its machine (`Apiary.Dispatches.dispatched/3`), with no external job, which hands the
+  dispatch over: `%{dispatch: dispatch, run: run_of_queue, registered: registered_run}`,
+  as stored then.
   """
   def dispatched!(%AccessKey{} = key) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
+    {:ok, %{dispatch: dispatch, registered: registered, run_code: code}} =
+      Dispatches.claim(key, Dispatches.now())
+
     :ok = Dispatches.dispatched(key, dispatch.public_id, %{external: nil})
 
     dispatch = Repo.get!(Dispatch, dispatch.id)
-    %{dispatch: dispatch, run: Repo.get!(DispatchRun, dispatch.dispatch_run_id)}
+
+    %{
+      dispatch: dispatch,
+      run: Repo.get!(DispatchRun, dispatch.dispatch_run_id),
+      registered: Repo.get!(Run, registered.id),
+      run_code: code
+    }
+  end
+
+  @doc """
+  Queues a prebuild of `collection` for its `environment_ref` for every live node pool
+  of its workspace (`Apiary.Dispatches.queue_prebuild/3`), with its environment record:
+  the prebuilds queued.
+  """
+  def queue_builds!(%Apiary.Adapters.Collection{workspace_id: workspace_id} = collection) do
+    {:ok, queued} =
+      Repo.transact(fn ->
+        pools =
+          Repo.all(
+            from n in Apiary.Nodes.Node,
+              where: n.workspace_id == ^workspace_id and n.kind == :pool,
+              where: is_nil(n.deleted_at),
+              order_by: n.id
+          )
+
+        {:ok,
+         for pool <- pools do
+           {:ok, run} = Dispatches.queue_prebuild(collection, pool, collection.environment_ref)
+           run
+         end}
+      end)
+
+    queued
   end
 
   @doc """
   A prebuild of a fresh collection of the scope's workspace, with a target and the
-  `environment_ref` `env-1` unless `collection_attrs` say otherwise, queued by the trigger
-  (`Apiary.Environments.trigger/2`) for every pool of the workspace, with its environment
-  record, then claimed under `key`, its job started and handed over
-  (`Apiary.Dispatches.handover/3`). The workspace has no other waiting run the pool may
-  take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
+  `environment_ref` `env-1` unless `collection_attrs` say otherwise, queued for every
+  pool of the workspace (`queue_builds!/1`), with its environment record, then claimed under `key`, which registers its run, and its machine started,
+  which hands it over (`dispatched!/1`). The workspace has no other waiting run the pool
+  may take. Returns `%{collection: collection, dispatch: dispatch, dispatch_run:
   run_of_queue, run: registered_run}`, each as stored then.
   """
   def prebuild_handed_over!(%Scope{} = scope, %AccessKey{} = key, collection_attrs \\ %{}) do
     collection = Apiary.NodesFixtures.collection_fixture(scope, collection_attrs)
+    _queued = queue_builds!(collection)
 
-    {:ok, _queued} =
-      Repo.transact(fn ->
-        {:ok, Apiary.Environments.trigger([collection], Dispatches.now())}
-      end)
+    %{dispatch: dispatch, run: dispatch_run, registered: run} = dispatched!(key)
 
-    %{dispatch: dispatch} = dispatched!(key)
-
-    {:ok, %{run: run}} =
-      Dispatches.handover(key, dispatch.public_id, %{
-        body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-      })
-
-    %{
-      collection: collection,
-      dispatch: Repo.get!(Dispatch, dispatch.id),
-      dispatch_run: Repo.get!(DispatchRun, dispatch.dispatch_run_id),
-      run: Repo.get!(Run, run.id)
-    }
+    %{collection: collection, dispatch: dispatch, dispatch_run: dispatch_run, run: run}
   end
 
   @doc """
   A second prebuild of the collection of `older`, a prebuild `prebuild_handed_over!/3`
   made and that has not ended: the collection's `environment_ref` set to `env-2` and
-  triggered, so it is queued after `older`'s, then claimed under `key`, its job started
-  and handed over. Returns as `prebuild_handed_over!/3` does.
+  queued (`queue_builds!/1`), so it is queued after `older`'s, then claimed under `key` and its machine
+  started. Returns as `prebuild_handed_over!/3` does.
   """
   def newer_prebuild_handed_over!(%AccessKey{} = key, %{collection: %{id: id}}) do
-    {:ok, [queued]} =
-      Repo.transact(fn ->
-        {1, _rows} =
-          Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^id),
-            set: [environment_ref: "env-2"]
-          )
+    {1, _rows} =
+      Repo.update_all(from(c in Apiary.Adapters.Collection, where: c.id == ^id),
+        set: [environment_ref: "env-2"]
+      )
 
-        collection = Repo.get!(Apiary.Adapters.Collection, id)
-        {:ok, Apiary.Environments.trigger([collection], Dispatches.now())}
-      end)
+    [queued] = queue_builds!(Repo.get!(Apiary.Adapters.Collection, id))
 
-    %{dispatch: dispatch} = dispatched!(key)
+    %{dispatch: dispatch, run: dispatch_run, registered: run} = dispatched!(key)
     true = dispatch.dispatch_run_id == queued.id
-
-    {:ok, %{run: run}} =
-      Dispatches.handover(key, dispatch.public_id, %{
-        body: ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-      })
 
     %{
       collection: Repo.get!(Apiary.Adapters.Collection, id),
-      dispatch: Repo.get!(Dispatch, dispatch.id),
-      dispatch_run: Repo.get!(DispatchRun, dispatch.dispatch_run_id),
-      run: Repo.get!(Run, run.id)
+      dispatch: dispatch,
+      dispatch_run: dispatch_run,
+      run: run
     }
   end
 
   @doc """
-  What a prebuilt of `dispatch_run` reports, as `Apiary.Dispatches.prebuilt/3` takes it:
-  its `run_id`, the `environment_ref` it was queued for, an image pinned
-  by its digest, its size and a commit; `attrs` change any of them.
+  The enrolment request a machine sends to redeem the run code `code`, its proof under
+  the key pair `pair` (`Apiary.AccessKeysFixtures.ed25519_key_pair/0`), at `at`, named
+  `run-01`.
   """
-  def prebuilt_meta(%DispatchRun{} = dispatch_run, attrs \\ %{}) do
-    Map.merge(
-      %{
-        run_id: dispatch_run.run_id,
-        image: "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16),
-        size: 734_003_200,
-        environment_ref: dispatch_run.environment_ref,
-        commit: "9c1e4a7b2d5f8e0a3c6b9d2f5a8c1e4b7d0a3f6c"
-      },
-      Map.new(attrs)
-    )
+  def run_code_request(code, pair, %DateTime{} = at) do
+    timestamp = DateTime.to_unix(at)
+    message = Apiary.Contract.SignedMessage.enrolment(code, pair.encoded, "run-01", timestamp)
+
+    proof =
+      :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
+      |> Apiary.Contract.Ed25519.encode()
+
+    {:ok, request} =
+      Apiary.Contract.Enrolment.decode(
+        Jason.encode!(%{
+          version: 1,
+          code: code,
+          name: "run-01",
+          public_key: pair.encoded,
+          timestamp: timestamp,
+          proof: proof
+        })
+      )
+
+    request
+  end
+
+  @doc """
+  Redeems the run code `code` now, under a fresh key pair, as a machine does through the
+  gateway the claim bound the code to: the run key (`Apiary.Runs.RunCode.redeem/2`).
+  """
+  def redeemed_run_key!(code) do
+    pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
+
+    {:ok, %{run_key: run_key}} =
+      Apiary.Runs.RunCode.redeem(run_code_request(code, pair, DateTime.utc_now()),
+        relayed_by: bound_gateway(code)
+      )
+
+    run_key
+  end
+
+  @doc """
+  The id of the gateway the claim bound the run code `code` to (`runs.gateway_id`), the
+  node whose relay `Apiary.Runs.RunCode.redeem/2` takes it from (`relayed_by`); nil for a
+  code no run has.
+  """
+  def bound_gateway(code) do
+    [head | _fingerprints] = String.split(code, ".")
+    hash = Apiary.AccessKeys.EnrolmentCode.hash(head)
+    Repo.one(from r in Run, where: r.run_code_sha256 == ^hash, select: r.gateway_id)
   end
 
   @doc """

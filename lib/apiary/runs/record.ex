@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.Record do
   @moduledoc """
   The record of one run, as the run page reads it: its events in windows by sequence, the
-  timeline laid out from them, its log chunks and its connections.
+  timeline laid out from them, its log chunks, its connections and its steps.
 
   Every function takes the caller's scope first and the run second, and reads only rows
   that carry the scope's organisation, the scope's workspace and the run's row id. A run
@@ -23,15 +23,15 @@ defmodule Apiary.Runs.Record do
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, LogChunk, Run}
+  alias Apiary.Runs.{Connection, Event, LogChunk, Run, Step}
   alias Apiary.Runs.Record.Timeline
 
   @policy_applied "dev.qory.run.policy_applied"
+  @runtime_started "dev.qory.runtime.started"
   @session_started "dev.qory.session.started"
-  @started "dev.qory.run.started"
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
-  @list_types ["dev.qory.session.turn_finished", "dev.qory.session.subagent_finished"]
+  @list_types ["dev.qory.runtime.turn_finished", "dev.qory.runtime.subagent_finished"]
 
   @log_page 200
   @default_log_limit 2_000
@@ -41,6 +41,8 @@ defmodule Apiary.Runs.Record do
   @max_cells 65_535
   @resizes_read 100
   @connections_page 50
+  # The highest step number a step's column holds.
+  @max_step 2_147_483_647
 
   ## SQL that bounds what an array of an event gives. Macros, because a fragment's text is
   ## fixed at compile time.
@@ -216,11 +218,11 @@ defmodule Apiary.Runs.Record do
     Edition.client_reads(scope, :run_policy, run, policy)
   end
 
-  @doc "The runtime's session id, from the run's last `session.started`; nil without one."
+  @doc "The runtime's session id, from the run's last `runtime.started`; nil without one."
   def session_id(%Scope{} = scope, %Run{} = run) do
     Repo.one(
       from e in events(scope, run),
-        where: e.type == ^@session_started,
+        where: e.type == ^@runtime_started,
         order_by: [desc: e.sequence],
         limit: 1,
         select: fragment("left(? ->> 'session_id', 120)", e.data)
@@ -423,8 +425,8 @@ defmodule Apiary.Runs.Record do
            WHEN jsonb_typeof(x.r #> '{file,content}') = 'string' THEN x.r #>> '{file,content}' END AS plain,
       CASE WHEN jsonb_typeof(x.r -> 'stdout') = 'string' THEN x.r ->> 'stdout' END AS out,
       CASE WHEN jsonb_typeof(x.r -> 'stderr') = 'string' THEN x.r ->> 'stderr' END AS err,
-      CASE e.type WHEN 'dev.qory.session.prompt_submitted' THEN e.data -> 'prompt'
-                  WHEN 'dev.qory.session.result' THEN e.data -> 'result'
+      CASE e.type WHEN 'dev.qory.runtime.prompt_submitted' THEN e.data -> 'prompt'
+                  WHEN 'dev.qory.runtime.result' THEN e.data -> 'result'
                   ELSE e.data -> 'message' END AS body) w
   CROSS JOIN LATERAL (SELECT
       CASE WHEN jsonb_typeof(w.body) = 'string' THEN w.body #>> '{}' END AS text,
@@ -602,6 +604,49 @@ defmodule Apiary.Runs.Record do
     Edition.client_reads(scope, :run_connections, run, query)
   end
 
+  ## The steps
+
+  @doc """
+  The run's steps (`Apiary.Runs.Step`), by number: each a step of its host work or of a
+  session's join, with its name, kind, state, exit code, duration and the sequences and
+  times of its start and its exit. `[]` for a run with none.
+  """
+  @spec steps(Scope.t(), Run.t()) :: [Step.t()]
+  def steps(%Scope{} = scope, %Run{} = run) do
+    Repo.all(from s in steps_of(scope, run), order_by: s.step)
+  end
+
+  @doc """
+  The log lines of the run's step `step`: its `dev.qory.run.log` chunks with that `step`,
+  `%{sequence, stream, bytes}` each, in sequence order. At most `limit:` chunks
+  (#{@default_log_limit} by default, #{@max_log_limit} at most) after the sequence
+  `after:` (0 by default), so a long step is read a page at a time from the last
+  sequence of the page before. `[]` for a step without lines, for a number the run has
+  no step of and for a number outside 1 to #{@max_step}.
+  """
+  @spec step_log(Scope.t(), Run.t(), integer, keyword) :: [map]
+  def step_log(scope, run, step, opts \\ [])
+
+  def step_log(%Scope{}, %Run{}, step, _opts) when step not in 1..@max_step, do: []
+
+  def step_log(%Scope{} = scope, %Run{} = run, step, opts) when is_integer(step) do
+    after_sequence = Keyword.get(opts, :after, 0)
+
+    limit =
+      case log_limit(opts[:limit]) do
+        :all -> @max_log_limit
+        limit -> limit
+      end
+
+    Repo.all(
+      from l in log_chunks(scope, run),
+        where: l.step == ^step and l.sequence > ^after_sequence,
+        order_by: l.sequence,
+        limit: ^limit,
+        select: %{sequence: l.sequence, stream: l.stream, bytes: l.bytes}
+    )
+  end
+
   ## The log
 
   @doc """
@@ -681,53 +726,79 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The size of the terminal the chunks right after `after_sequence` were written to:
-  `{cols, rows}`, the last `dev.qory.run.resized` at or below it, else `terminal` of
-  `dev.qory.run.started`; nil when the record says none, a run on pipes or one recorded
-  before Forager reported the size. A size is read like the fold reads it.
+  `{cols, rows}`, of the later by sequence of the last `dev.qory.run.resized` and the last
+  `dev.qory.session.started` at or below it, a session's start giving its `terminal`;
+  with neither, the `terminal` of the first `dev.qory.session.started`. Each session's
+  start sets the size its chunks are written to. Nil when the record says none, a run on
+  pipes or one recorded before Forager reported the size. A size is read like the fold
+  reads it.
   """
   def terminal_size(%Scope{} = scope, %Run{} = run, after_sequence) do
-    resized =
+    last =
       Repo.one(
         from e in events(scope, run),
-          where: e.type == @resized and e.sequence <= ^after_sequence,
+          where: e.type in [@resized, @session_started] and e.sequence <= ^after_sequence,
           order_by: [desc: e.sequence],
           limit: 1,
-          select: e.data
+          select: {e.type, e.data}
       )
 
-    started =
-      resized ||
+    case last do
+      {type, data} ->
+        size(sizing(type, data))
+
+      nil ->
         Repo.one(
           from e in events(scope, run),
-            where: e.type == @started,
-            order_by: [desc: e.sequence],
+            where: e.type == @session_started,
+            order_by: e.sequence,
             limit: 1,
             select: fragment("? -> 'terminal'", e.data)
         )
-
-    size(started)
+        |> size()
+    end
   end
 
   @doc """
-  The first `dev.qory.run.resized` after `after_sequence` that is a size, `%{sequence,
-  cols, rows}`, or nil: where a read of the log has to stop, since the chunks after it
-  were written to a terminal of another size.
+  The first event after `after_sequence` that sets a size, `%{sequence, cols, rows}`, or
+  nil: a `dev.qory.run.resized` that is a size, or any `dev.qory.session.started` other
+  than the run's first, whose `cols` and `rows` are nil when it is on pipes. It is where a
+  read of the log has to stop, since the chunks after it were written to a terminal of
+  another size, or to none. The run's first session's start is the size from the log's
+  beginning (`terminal_size/3`), so a read does not stop there.
   """
   def next_resize(%Scope{} = scope, %Run{} = run, after_sequence) do
+    first_start =
+      Repo.one(
+        from e in events(scope, run),
+          where: e.type == @session_started,
+          order_by: e.sequence,
+          limit: 1,
+          select: e.sequence
+      ) || 0
+
     Repo.all(
       from e in events(scope, run),
-        where: e.type == @resized and e.sequence > ^after_sequence,
+        where:
+          e.sequence > ^after_sequence and
+            (e.type == @resized or (e.type == @session_started and e.sequence > ^first_start)),
         order_by: e.sequence,
         limit: @resizes_read,
-        select: {e.sequence, e.data}
+        select: {e.sequence, e.type, e.data}
     )
-    |> Enum.find_value(fn {sequence, data} ->
-      case size(data) do
-        {cols, rows} -> %{sequence: sequence, cols: cols, rows: rows}
-        nil -> nil
+    |> Enum.find_value(fn {sequence, type, data} ->
+      case {type, size(sizing(type, data))} do
+        {_type, {cols, rows}} -> %{sequence: sequence, cols: cols, rows: rows}
+        {@session_started, nil} -> %{sequence: sequence, cols: nil, rows: nil}
+        {_resized, nil} -> nil
       end
     end)
   end
+
+  # The size of each: a resize's data, a session's start's `terminal`.
+  defp sizing(@session_started, %{"terminal" => terminal}), do: terminal
+  defp sizing(@session_started, _data), do: nil
+  defp sizing(_resized, data), do: data
 
   defp size(%{"cols" => cols, "rows" => rows})
        when is_integer(cols) and cols in 1..@max_cells and is_integer(rows) and
@@ -885,6 +956,13 @@ defmodule Apiary.Runs.Record do
       where:
         l.organisation_id == ^organisation_id(scope) and l.workspace_id == ^workspace_id(scope),
       where: l.run_id == ^id
+  end
+
+  defp steps_of(%Scope{} = scope, %Run{id: id}) do
+    from s in Step,
+      where:
+        s.organisation_id == ^organisation_id(scope) and s.workspace_id == ^workspace_id(scope),
+      where: s.run_id == ^id
   end
 
   defp organisation_id(%Scope{organisation: %Organisation{id: id}}), do: id

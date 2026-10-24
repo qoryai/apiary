@@ -334,7 +334,7 @@ defmodule Apiary.Runs.LivenessTest do
             run_id: run.id,
             sequence: 1,
             node_event_id: Ecto.UUID.generate(),
-            type: "dev.qory.session.started",
+            type: "dev.qory.runtime.started",
             time: now,
             data: %{},
             received_at: DateTime.add(now, -(20 + n), :second)

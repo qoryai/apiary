@@ -54,9 +54,13 @@ defmodule Apiary.Application do
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
+    Apiary.Dispatches.MachineLogs.boot!()
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Source.boot!()
     ApiaryWeb.Features.boot!()
+    # With the `registry` feature: a missing or malformed QORY_REGISTRY, and a registry
+    # signing key that is missing or not a P-256 key, stop the boot too.
+    Apiary.Registry.boot!()
     # The commit the release was built from, for GET /health.
     Apiary.Revision.boot!()
     # Then the edition's own settings, once the core's are known to be right.
@@ -105,6 +109,7 @@ defmodule Apiary.Application do
     ] ++
       migrator() ++
       key_check() ++
+      Apiary.Registry.InstanceName.children() ++
       mail_cache() ++
       instance_config_cache() ++
       product_name_cache() ++

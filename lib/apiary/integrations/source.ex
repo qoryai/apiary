@@ -30,7 +30,7 @@ defmodule Apiary.Integrations.Source do
       it, not a redirect, where the API's route redirects;
     * a URL source: the URL's directory, `<dir>/<file>`, whatever the version.
 
-  ## The operator's setting
+  ## The instance admin's setting
 
   `INTEGRATION_URL_SOURCES` says whether a URL source is accepted: `true`, `1` or `yes`,
   the default, or `false`, `0` or `no` (`parse_url_sources/1`). It is read at boot
@@ -172,7 +172,7 @@ defmodule Apiary.Integrations.Source do
   # unreserved but for `/`, so only the slashes change.
   defp project_id(path), do: URI.encode(path, &URI.char_unreserved?/1)
 
-  ## The operator's setting
+  ## The instance admin's setting
 
   @doc """
   url_sources?/0 says whether a URL source is accepted (`INTEGRATION_URL_SOURCES`), as

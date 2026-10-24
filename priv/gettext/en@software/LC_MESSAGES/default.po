@@ -635,6 +635,11 @@ msgstr ""
 msgid "%{host}, locked"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{hours} and %{minutes}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{hours} h %{minutes} m"
@@ -1236,6 +1241,11 @@ msgstr ""
 msgid "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s rules may only narrow them. A deny holds in either mode."
 msgstr "%{name}'s rules come first and hold in every workspace and repository; %{workspace}'s rules may only narrow them. A deny holds in either mode."
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s time limit"
+msgstr ""
+
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "%{name}, %{kind} runs"
@@ -1569,6 +1579,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} hour"
 msgid_plural "%{number} hours"
@@ -1647,6 +1658,14 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} min"
 msgid_plural "%{number} min"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} minute"
+msgid_plural "%{number} minutes"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4699,6 +4718,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed a time limit"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed a variable"
 msgstr ""
 
@@ -4816,6 +4840,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Check the fields below."
 msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Check why the build failed on the target's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
+msgstr "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."
 
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
@@ -6312,6 +6341,11 @@ msgid "Ended badly, %{number} day"
 msgid_plural "Ended badly, %{number} days"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Ended before it started: its environment image was missing from the registry. The work is queued again and waits for a new build of the image."
+msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -8181,11 +8215,6 @@ msgstr ""
 msgid "It stays on the Access key tab."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "It stopped reporting before it ended. There is nothing for Qory to show or for a member to confirm."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It stops working at once. A machine that runs it after this is refused."
@@ -9661,12 +9690,10 @@ msgstr ""
 msgid "No entries yet"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "No exit or outcome came within %{number} minute of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
-msgid_plural "No exit or outcome came within %{number} minutes of its gateway picking it up, so it was marked lost. It may still be going; only its exit or its outcome changes the record now."
-msgstr[0] ""
-msgstr[1] ""
+msgid "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."
+msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -11701,6 +11728,16 @@ msgstr ""
 msgid "Qory Apiary prunes each workspace's runs as that workspace's retention says (Workspace settings › Runs)."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary received no exit within %{duration} after the gateway took the run, so it marked the run lost. The run may still be running; only its exit changes this record now."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
@@ -12225,6 +12262,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Removed a policy rule"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Removed a time limit"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -12871,13 +12913,13 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the pool's default image until this target is built."
-msgstr "Runs use the pool's default image until this repository is built."
+msgid "Runs use the pool's default image: this target no longer has an environment set."
+msgstr "Runs use the pool's default image: this repository no longer has an environment set."
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use the pool's default image: this target no longer has an environment set."
-msgstr "Runs use the pool's default image: this repository no longer has an environment set."
+msgid "Runs wait until this target's environment image is built."
+msgstr "Runs wait until this repository's environment image is built."
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -13241,6 +13283,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Set a model choice"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Set a time limit"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -14613,7 +14660,12 @@ msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "The last build failed: it ran past 35 minutes."
+msgid "The last build failed."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The last build failed: it ran past %{duration}."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -15720,6 +15772,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Tickets come into the Backlog from another system, such as an issue tracker, a support desk or a forge, through an integration that %{organisation} installs."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Time limit changed"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex

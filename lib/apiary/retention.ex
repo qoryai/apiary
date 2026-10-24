@@ -14,8 +14,9 @@ defmodule Apiary.Retention do
 
     * Past the log cut-off, the run's `log_chunks` and its `dev.qory.run.log` events are
       deleted and `runs.log_pruned_at` is set. The timeline stays whole.
-    * Past the events cut-off, all the run's `events`, its `log_chunks` and its
-      `deliveries` are deleted and `runs.events_pruned_at` (and `log_pruned_at`) is set.
+    * Past the events cut-off, all the run's `events`, its `log_chunks`, its `run_steps`
+      and its `deliveries` are deleted and `runs.events_pruned_at` (and `log_pruned_at`) is
+      set. The job counts no steps.
 
   A `lost` run is not due in either phase until #{Apiary.Runs.Run.lost_days()} days after it
   was lost (`Apiary.Runs.Run.lost_days/0`, the days the Overview lists it): a gateway
@@ -25,7 +26,7 @@ defmodule Apiary.Retention do
 
   The tables of each phase are deleted in the order the purge of a deleted workspace or
   organisation deletes them too (`Apiary.Deletion.Tables`): a run's log chunks, then its
-  events, then its deliveries.
+  events, then its steps, then its deliveries.
 
   A pruned run takes nothing more: `Apiary.Runs.Ingest` answers `410` for a run whose
   events are pruned, since what a replay would be deduplicated against is gone, and drops
@@ -72,7 +73,7 @@ defmodule Apiary.Retention do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
-  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run}
+  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, Step}
   alias Apiary.WorkItems.{Answer, Confirmation, WorkItem}
 
   @log_type "dev.qory.run.log"
@@ -84,10 +85,10 @@ defmodule Apiary.Retention do
   @quiet_hours 12
 
   # What a phase deletes of a run, table by table in delete order: in `:events` the run's
-  # log chunks, its events and its deliveries; in `:log` its log chunks and its log events.
-  # Each with its schema, the column that names the run and the field of the run it holds,
-  # the count its rows go into, the phase in which only the run's log events go, and
-  # whether the rows' bytes are measured.
+  # log chunks, its events, its steps and its deliveries; in `:log` its log chunks and its
+  # log events. Each with its schema, the column that names the run and the field of the
+  # run it holds, the count its rows go into (nil for none), the phase in which only the
+  # run's log events go, and whether the rows' bytes are measured.
   @tables [
     %{
       schema: LogChunk,
@@ -105,6 +106,15 @@ defmodule Apiary.Retention do
       run_field: :id,
       count: :events_deleted,
       log_only_in: :log,
+      bytes: false
+    },
+    %{
+      schema: Step,
+      phases: [:events],
+      run_column: :run_id,
+      run_field: :id,
+      count: nil,
+      log_only_in: nil,
       bytes: false
     },
     %{
@@ -196,6 +206,7 @@ defmodule Apiary.Retention do
           try do
             results = opts |> workspaces() |> Enum.map(&prune_workspace(&1, opts))
             prune_instances(opts)
+            prune_machine_logs(opts)
             {:ok, results}
           after
             unlock()
@@ -427,11 +438,8 @@ defmodule Apiary.Retention do
           |> Map.update!(table.count, &(&1 + rows))
           |> Map.update!(:log_bytes_deleted, &(&1 + bytes))
         else
-          Map.update!(
-            counts,
-            table.count,
-            &(&1 + delete_batches(run, rows_of(run, table), batch, 0))
-          )
+          deleted = delete_batches(run, rows_of(run, table), batch, 0)
+          if table.count, do: Map.update!(counts, table.count, &(&1 + deleted)), else: counts
         end
       end)
 
@@ -451,6 +459,9 @@ defmodule Apiary.Retention do
         counts
         |> Map.update!(table.count, &(&1 + rows))
         |> Map.update!(:log_bytes_deleted, &(&1 + to_integer(bytes)))
+
+      %{count: nil}, counts ->
+        counts
 
       table, counts ->
         Map.update!(counts, table.count, &(&1 + Repo.aggregate(rows_of(run, table), :count)))
@@ -684,6 +695,23 @@ defmodule Apiary.Retention do
     unless Keyword.get(opts, :dry_run, false) do
       pruned = Apiary.Nodes.prune_instances(Keyword.get(opts, :now) || DateTime.utc_now())
       if pruned > 0, do: Logger.info("retention pruned node instances=#{pruned}")
+    end
+
+    :ok
+  end
+
+  # Under the job's lock, after the workspaces, the dispatches' machine logs older than
+  # the instance's setting, and the files of no record
+  # (`Apiary.Dispatches.MachineLogs.prune/1`), with one log line,
+  # `retention pruned machine logs=… files=…`, when it deleted any; a dry run deletes
+  # none. The documentation leaves it out, as it leaves out the `factory` feature.
+  defp prune_machine_logs(opts) do
+    unless Keyword.get(opts, :dry_run, false) do
+      %{machine_logs_deleted: logs, files_deleted: files} =
+        Apiary.Dispatches.MachineLogs.prune(now: Keyword.get(opts, :now))
+
+      if logs + files > 0,
+        do: Logger.info("retention pruned machine logs=#{logs} files=#{files}")
     end
 
     :ok

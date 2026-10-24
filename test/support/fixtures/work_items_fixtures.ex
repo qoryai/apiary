@@ -231,7 +231,7 @@ defmodule Apiary.WorkItemsFixtures do
   `:run_ended` unless given. A run handed over, and one ended `run_ended`, `lost` or
   `released`, has a registered run (`registered: false` leaves it out): completed, its exit
   folded and its outcome a minute old unless `run:` changes it. `result:` gives it a
-  `dev.qory.session.result` event: a map is the result document, given as its JSON with
+  `dev.qory.runtime.result` event: a map is the result document, given as its JSON with
   `is_error` false; `{:data, data}` is the event's data as given; nil, the default, is no
   event. A run ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
   `inputs_invalid`) has the outcome `:error`, as the handover writes it; any other has none
@@ -321,12 +321,13 @@ defmodule Apiary.WorkItemsFixtures do
   end
 
   # A run its handover could not form ended with an error, as the handover writes it.
-  defp unformed_outcome(cause) when cause in [:variables_invalid, :ticket_gone, :inputs_invalid],
-    do: :error
+  defp unformed_outcome(cause)
+       when cause in [:variables_invalid, :ticket_gone, :inputs_invalid, :build_failed],
+       do: :error
 
   defp unformed_outcome(_cause), do: nil
 
-  @doc "Stores a `dev.qory.session.result` event of `run` at `sequence`, with `data`."
+  @doc "Stores a `dev.qory.runtime.result` event of `run` at `sequence`, with `data`."
   def result_event!(%Run{} = run, sequence, data) do
     Repo.insert!(%Event{
       organisation_id: run.organisation_id,
@@ -334,7 +335,7 @@ defmodule Apiary.WorkItemsFixtures do
       run_id: run.id,
       sequence: sequence,
       node_event_id: Ecto.UUID.generate(),
-      type: "dev.qory.session.result",
+      type: "dev.qory.runtime.result",
       time: DateTime.utc_now(),
       data: data,
       received_at: DateTime.utc_now()

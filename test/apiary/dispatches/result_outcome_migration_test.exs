@@ -16,7 +16,7 @@ defmodule Apiary.Dispatches.ResultOutcomeMigrationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Environments}
+  alias Apiary.Dispatches
 
   @moduletag needs: :factory
 
@@ -93,7 +93,7 @@ defmodule Apiary.Dispatches.ResultOutcomeMigrationTest do
     collection = collection_fixture(scope)
 
     {:ok, [prebuild]} =
-      Repo.transact(fn -> {:ok, Environments.trigger([collection], Dispatches.now())} end)
+      {:ok, Apiary.DispatchedRunsFixtures.queue_builds!(collection)}
 
     queued = fn ->
       {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(scope), 1) end)

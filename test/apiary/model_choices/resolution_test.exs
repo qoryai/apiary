@@ -31,7 +31,7 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       choices: choices,
       workspace_id: @workspace,
       target_id: Keyword.get(opts, :target_id, @target),
-      run_kind: "explore",
+      workflow: Keyword.get(opts, :workflow, "hello"),
       providers: @providers
     }
   end
@@ -42,9 +42,9 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       case level do
         6 -> %{}
         5 -> %{workspace_id: @workspace}
-        4 -> %{workspace_id: @workspace, run_kind: "explore"}
+        4 -> %{workspace_id: @workspace, workflow: "hello"}
         3 -> %{workspace_id: @workspace, target_id: @target}
-        2 -> %{workspace_id: @workspace, target_id: @target, run_kind: "explore"}
+        2 -> %{workspace_id: @workspace, target_id: @target, workflow: "hello"}
       end
 
     struct!(ModelChoice, Map.merge(%{connection_id: @alpha}, Map.merge(place, Map.new(attrs))))
@@ -92,17 +92,25 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       assert %{level: 2, effort: "high"} = resolved(input(choices))
     end
 
-    test "ignore a choice of another workspace, target or run kind" do
+    test "ignore a choice of another workspace, target or workflow" do
       others = [
         %{at(5, model_id: "no") | workspace_id: @other_workspace},
-        %{at(4, model_id: "no") | run_kind: "plan"},
+        %{at(4, model_id: "no") | workflow: "review"},
         %{at(3, model_id: "no") | target_id: @other_target},
         %{at(2, model_id: "no") | target_id: @other_target},
-        %{at(2, model_id: "no") | run_kind: "plan"},
+        %{at(2, model_id: "no") | workflow: "review"},
         %{at(2, model_id: "no") | workspace_id: @other_workspace}
       ]
 
       assert %{level: 6, model_id: "small"} = resolved(input([at(6, model_id: "small") | others]))
+    end
+
+    test "resolve a run with no workflow from levels 3, 5 and 6" do
+      choices = for level <- 2..6, do: at(level, model_id: "level#{level}")
+      assert %{level: 3, model_id: "level3"} = resolved(input(choices, workflow: nil))
+
+      rest = Enum.filter(choices, &(ModelChoice.level(&1) in [2, 4, 5, 6]))
+      assert %{level: 5, model_id: "level5"} = resolved(input(rest, workflow: nil))
     end
 
     test "resolve a run with no target from levels 4 to 6" do

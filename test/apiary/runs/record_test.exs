@@ -109,31 +109,31 @@ defmodule Apiary.Runs.RecordTest do
                  type: "Explore",
                  rail: 1,
                  color: :a,
-                 started_seq: 21,
-                 finished_seq: 36
+                 started_seq: 22,
+                 finished_seq: 37
                },
                %{
                  id: "agent-demo-a2",
                  type: "general-purpose",
                  rail: 2,
                  color: :b,
-                 started_seq: 22,
-                 finished_seq: 49
+                 started_seq: 23,
+                 finished_seq: 50
                }
              ] = index.lanes
 
       assert index.rails == 3
       assert index.background == %{tasks: [], count: 0}
-      assert index.through == 101
+      assert index.through == 103
       assert index.hook_events > 0
     end
 
     test "a denied connection sits inside the one call that was open", %{scope: scope, run: run} do
       index = Record.timeline(scope, run)
-      assert index.by_seq[59] == 58
-      assert index.by_seq[85] == 84
+      assert index.by_seq[60] == 59
+      assert index.by_seq[86] == 85
 
-      [npm] = Record.items(scope, run, Enum.filter(index.items, &(&1.seq == 58)))
+      [npm] = Record.items(scope, run, Enum.filter(index.items, &(&1.seq == 59)))
 
       assert %{
                kind: :tool,
@@ -147,7 +147,7 @@ defmodule Apiary.Runs.RecordTest do
              } = npm
 
       # While the two Task calls were open, a connection stands between items.
-      assert %{kind: kind, open_calls: 2} = Enum.find(index.items, &(23 in &1.seqs))
+      assert %{kind: kind, open_calls: 2} = Enum.find(index.items, &(24 in &1.seqs))
       assert kind in [:connection, :connection_group]
     end
 
@@ -160,7 +160,9 @@ defmodule Apiary.Runs.RecordTest do
 
       assert length(items) == length(index.items)
       assert Enum.map(items, & &1.sequence) == Enum.sort(Enum.map(items, & &1.sequence))
-      assert %{kind: :run_started} = hd(items)
+      # The run's start shows the runtime of the session's start, sequence 3.
+      assert %{kind: :run_started, runtime: "claude", runtime_version: "2.1.273"} = hd(items)
+      assert %{seq: 2, session_seq: 3} = hd(index.items)
       assert %{kind: :run_exited, exit_code: 0} = List.last(items)
 
       assert %{kind: :result, cost_usd: 0.8412, turns: 14} =
@@ -488,7 +490,7 @@ defmodule Apiary.Runs.RecordTest do
     test "the query cuts what Timeline.slim/2 cuts, on a run with tools", %{scope: scope} do
       run =
         projected(scope, [
-          {8, "run.policy_applied",
+          {9, "run.policy_applied",
            tool_policy_data(%{
              "tools" => [
                %{"name" => String.duplicate("n", 200), "hosts" => ["a", 7, "b"]},
@@ -501,7 +503,7 @@ defmodule Apiary.Runs.RecordTest do
                "junk"
              ]
            })},
-          {9, "run.egress", tool_invocation_data(%{"status" => "200", "request_id" => 5})}
+          {10, "run.egress", tool_invocation_data(%{"status" => "200", "request_id" => 5})}
           | tool_record()
         ])
 
@@ -520,7 +522,7 @@ defmodule Apiary.Runs.RecordTest do
 
       # The timeline cuts an argument at 256 code points, "…" after; the run's Details does not.
       arguments =
-        for %{kind: :policy_applied, seq: 8, tools: tools} <- items,
+        for %{kind: :policy_applied, seq: 9, tools: tools} <- items,
             tool <- tools,
             into: %{},
             do: {tool.name, tool.argument}
@@ -533,7 +535,7 @@ defmodule Apiary.Runs.RecordTest do
 
       # Its summary line shows 64 code points of it, "…" after.
       shown =
-        for %{kind: :policy_applied, seq: 8, tools: tools} <- items,
+        for %{kind: :policy_applied, seq: 9, tools: tools} <- items,
             tool <- tools,
             into: %{},
             do: {tool.name, tool.argument_shown}
@@ -550,33 +552,33 @@ defmodule Apiary.Runs.RecordTest do
     test "summary, through and pages", %{scope: scope} do
       run = projected(scope)
 
-      assert %{chunks: 2, bytes: 12, through: 9, streams: ["stderr", "stdout"]} =
+      assert %{chunks: 2, bytes: 12, through: 10, streams: ["stderr", "stdout"]} =
                Record.log_summary(scope, run)
 
-      assert Record.log_through(scope, run, 0) == {9, true}
-      assert Record.log_through(scope, run, 0, limit: 1) == {5, false}
-      assert Record.log_through(scope, run, 5) == {9, true}
-      assert Record.log_through(scope, run, 9) == {9, true}
-      assert Record.log_through(scope, run, 0, stream: "stdout") == {5, true}
-      assert Record.log_through(scope, run, 0, limit: :all) == {9, true}
+      assert Record.log_through(scope, run, 0) == {10, true}
+      assert Record.log_through(scope, run, 0, limit: 1) == {6, false}
+      assert Record.log_through(scope, run, 6) == {10, true}
+      assert Record.log_through(scope, run, 10) == {10, true}
+      assert Record.log_through(scope, run, 0, stream: "stdout") == {6, true}
+      assert Record.log_through(scope, run, 0, limit: :all) == {10, true}
       # Short of a sequence: the chunks below it, and whether they were all of them.
-      assert Record.log_through(scope, run, 0, before: 9) == {5, true}
-      assert Record.log_through(scope, run, 0, before: 5) == {0, true}
-      assert Record.log_through(scope, run, 0, before: 9, limit: 1) == {5, false}
+      assert Record.log_through(scope, run, 0, before: 10) == {6, true}
+      assert Record.log_through(scope, run, 0, before: 6) == {0, true}
+      assert Record.log_through(scope, run, 0, before: 10, limit: 1) == {6, false}
 
       collect = fn bytes, acc -> {:cont, [acc, bytes]} end
 
-      assert scope |> Record.log_pages(run, 0, 9, [], collect) |> IO.iodata_to_binary() ==
+      assert scope |> Record.log_pages(run, 0, 10, [], collect) |> IO.iodata_to_binary() ==
                "building\n" <> <<255, 0, 10>>
 
-      assert scope |> Record.log_pages(run, 5, 9, [], collect) |> IO.iodata_to_binary() ==
+      assert scope |> Record.log_pages(run, 6, 10, [], collect) |> IO.iodata_to_binary() ==
                <<255, 0, 10>>
 
-      assert scope |> Record.log_pages(run, 0, 5, [], collect) |> IO.iodata_to_binary() ==
+      assert scope |> Record.log_pages(run, 0, 6, [], collect) |> IO.iodata_to_binary() ==
                "building\n"
 
       assert scope
-             |> Record.log_pages(run, 0, 9, [], collect, stream: "stderr")
+             |> Record.log_pages(run, 0, 10, [], collect, stream: "stderr")
              |> IO.iodata_to_binary() ==
                <<255, 0, 10>>
     end
@@ -607,7 +609,7 @@ defmodule Apiary.Runs.RecordTest do
       run = projected(scope)
 
       assert %{
-               sequence: 11,
+               sequence: 12,
                source: "fetched",
                mode: "enforce",
                allow: ["api.example.com"],
@@ -695,16 +697,16 @@ defmodule Apiary.Runs.RecordTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.tool_started",
+          {2, "runtime.tool_started",
            %{"tool" => 7, "tool_use_id" => "t", "input" => "not a map"}},
-          {3, "session.tool_finished",
+          {3, "runtime.tool_finished",
            %{
              "tool_use_id" => "t",
              "response" => 12,
              "duration_ms" => "soon",
              "interrupted" => "yes"
            }},
-          {4, "session.result",
+          {4, "runtime.result",
            %{"turns" => 1.5, "cost_usd" => "free", "result" => %{}, "duration_ms" => 1.0e300}},
           {5, "run.egress", %{"host" => 5, "port" => "https", "decision" => []}}
         ])
@@ -795,9 +797,9 @@ defmodule Apiary.Runs.RecordTest do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
-          {2, "session.tool_started",
+          {2, "runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "x"}}},
-          {3, "session.tool_finished",
+          {3, "runtime.tool_finished",
            %{"tool" => "Bash", "tool_use_id" => "t", "response" => huge}}
         ])
 
@@ -822,7 +824,7 @@ defmodule Apiary.Runs.RecordTest do
 
       rows =
         [
-          {1, "dev.qory.session.tool_started",
+          {1, "dev.qory.runtime.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "fetch"}}}
         ] ++
           for(

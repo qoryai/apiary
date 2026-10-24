@@ -37,10 +37,11 @@ defmodule Apiary.Dispatches.EndCauseChecksTest do
     end
   end
 
-  test "the outcome checks list run_ended and the causes of a handover that cannot form a run" do
+  test "the outcome checks list run_ended, build_failed and the causes of a handover that cannot form a run" do
     assert causes("dispatch_runs_result_outcome_check") ==
-             names([:run_ended | Handover.unformed()])
+             names([:run_ended, :build_failed | Handover.unformed()])
 
-    assert causes("dispatch_runs_result_outcome_error_check") == names(Handover.unformed())
+    assert causes("dispatch_runs_result_outcome_error_check") ==
+             names([:build_failed | Handover.unformed()])
   end
 end

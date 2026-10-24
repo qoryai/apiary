@@ -57,11 +57,11 @@ defmodule Apiary.ModelChoicesTest do
       %{scope: scope, provider: provider, target: target} = ctx
 
       places = [
-        {:organisation, 6, :"connection.write"},
+        {:organisation, 6, :"provider.write"},
         {:workspace, 5, :"model_choice.write"},
-        {{:workspace, "explore"}, 4, :"model_choice.write"},
+        {{:workspace, "hello"}, 4, :"model_choice.write"},
         {target, 3, :"model_choice.write"},
-        {{target, "explore"}, 2, :"model_choice.write"}
+        {{target, "hello"}, 2, :"model_choice.write"}
       ]
 
       for {place, level, action} <- places do
@@ -92,15 +92,15 @@ defmodule Apiary.ModelChoicesTest do
 
     test "names the place in the entry", %{scope: scope, provider: provider, target: target} do
       {:ok, workspace_choice} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
-      {:ok, kind_choice} = ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider))
+      {:ok, workflow_choice} = ModelChoices.put_choice(scope, {target, "hello"}, attrs(provider))
       {:ok, default} = ModelChoices.put_choice(scope, :organisation, attrs(provider))
 
       assert [%{details: %{"name" => name}}] = trail(workspace_choice.id)
       assert name == scope.workspace.name
 
-      assert [%{details: details}] = trail(kind_choice.id)
+      assert [%{details: details}] = trail(workflow_choice.id)
       assert details["name"] == "github.example/acme/shop"
-      assert details["run_kind"] == "explore"
+      assert details["workflow"] == "hello"
       assert details["target_id"] == target.id
 
       assert [%{details: %{"name" => org_name}}] = trail(default.id)
@@ -188,13 +188,15 @@ defmodule Apiary.ModelChoicesTest do
       assert entry.before["model"] == @model
     end
 
-    test "refuses a run kind that runs no model, and a run kind at the default", ctx do
+    test "refuses a workflow that is no workflow name, and a workflow at the default", ctx do
       %{scope: scope, provider: provider} = ctx
 
-      assert ModelChoices.put_choice(scope, {:workspace, "prebuild"}, attrs(provider)) ==
-               {:error, :not_found}
+      for name <- ["Hello", "hello_world", "-hello", "", "a" <> String.duplicate("b", 64)] do
+        assert ModelChoices.put_choice(scope, {:workspace, name}, attrs(provider)) ==
+                 {:error, :not_found}
+      end
 
-      assert ModelChoices.put_choice(scope, {:organisation, "explore"}, attrs(provider)) ==
+      assert ModelChoices.put_choice(scope, {:organisation, "hello"}, attrs(provider)) ==
                {:error, :not_found}
 
       assert Repo.aggregate(ModelChoice, :count) == 0
@@ -205,7 +207,7 @@ defmodule Apiary.ModelChoicesTest do
     test "is set with the save at levels 4 and 5, kept by a later save, and removed", ctx do
       %{scope: scope, provider: provider} = ctx
 
-      for place <- [:workspace, {:workspace, "explore"}] do
+      for place <- [:workspace, {:workspace, "hello"}] do
         assert {:ok, %{locked: true} = locked} =
                  ModelChoices.put_choice(scope, place, attrs(provider, %{locked: true}))
 
@@ -221,7 +223,7 @@ defmodule Apiary.ModelChoicesTest do
     end
 
     test "is not for the other levels", %{scope: scope, provider: provider, target: target} do
-      for place <- [:organisation, target, {target, "explore"}] do
+      for place <- [:organisation, target, {target, "hello"}] do
         assert {:ok, %{locked: false}} =
                  ModelChoices.put_choice(scope, place, attrs(provider, %{locked: true}))
 
@@ -239,7 +241,7 @@ defmodule Apiary.ModelChoicesTest do
       %{scope: scope, provider: provider, target: target} = ctx
       %{scope: admin} = member_fixture(scope, :admin)
       %{scope: member} = member_fixture(scope)
-      places = [:organisation, :workspace, {:workspace, "explore"}, target, {target, "explore"}]
+      places = [:organisation, :workspace, {:workspace, "hello"}, target, {target, "hello"}]
 
       for place <- places do
         assert {:error, :forbidden} = ModelChoices.put_choice(member, place, attrs(provider))
@@ -258,7 +260,7 @@ defmodule Apiary.ModelChoicesTest do
       {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
 
       assert {:ok, [%ModelChoice{}]} = ModelChoices.list_choices(member)
-      assert {:ok, {:ok, %Resolution{}}} = ModelChoices.resolve(member, target, "explore")
+      assert {:ok, {:ok, %Resolution{}}} = ModelChoices.resolve(member, target, "hello")
     end
 
     test "a target of another workspace is not found", ctx do
@@ -275,7 +277,7 @@ defmodule Apiary.ModelChoicesTest do
         })
 
       assert ModelChoices.put_choice(scope, stranger, attrs(provider)) == {:error, :not_found}
-      assert ModelChoices.resolve(scope, stranger, "explore") == {:error, :not_found}
+      assert ModelChoices.resolve(scope, stranger, "hello") == {:error, :not_found}
     end
 
     test "a provider of another organisation is invalid", ctx do
@@ -529,7 +531,7 @@ defmodule Apiary.ModelChoicesTest do
                Policy.deny(scope, target, %{host: "api.anthropic.com"})
 
       assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
-      assert {:ok, _} = ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider))
+      assert {:ok, _} = ModelChoices.put_choice(scope, {target, "hello"}, attrs(provider))
       assert {:ok, _} = ModelChoices.put_choice(scope, target, attrs(provider))
       assert {:ok, _} = ModelChoices.put_choice(scope, :organisation, attrs(provider))
     end
@@ -554,7 +556,7 @@ defmodule Apiary.ModelChoicesTest do
 
       assert {:ok,
               {:ok, %Resolution{tiers: %{"fast" => %{"model" => "tiny", "effort" => "low"}}}}} =
-               ModelChoices.resolve(scope, :workspace, "explore")
+               ModelChoices.resolve(scope, :workspace, "hello")
 
       # A row saved when the runtime accepted "turbo"; a save refuses it.
       choice
@@ -562,7 +564,7 @@ defmodule Apiary.ModelChoicesTest do
       |> Repo.update!()
 
       assert {:ok, {:ok, %Resolution{tiers: tiers}}} =
-               ModelChoices.resolve(scope, :workspace, "explore")
+               ModelChoices.resolve(scope, :workspace, "hello")
 
       assert tiers == %{}
     end
@@ -580,24 +582,24 @@ defmodule Apiary.ModelChoicesTest do
       {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
 
       assert {:ok, {:ok, %Resolution{level: 5, model_id: @model, effort: "high"}}} =
-               ModelChoices.resolve(scope, target, "explore")
+               ModelChoices.resolve(scope, target, "hello")
 
       {:ok, _} =
         ModelChoices.put_choice(
           scope,
-          {target, "explore"},
+          {target, "hello"},
           attrs(provider, %{model: "claude-opus-5-5", effort: "max"})
         )
 
       assert {:ok, {:ok, %Resolution{level: 2, model_id: "claude-opus-5-5", effort: "max"}}} =
-               ModelChoices.resolve(scope, target, "explore")
+               ModelChoices.resolve(scope, target, "hello")
     end
 
     test "resolves a run with no target from the workspace and the organisation, and refuses nothing",
          ctx do
       %{scope: scope, provider: provider} = ctx
 
-      assert ModelChoices.resolve(scope, :workspace, "explore") == {:ok, :none}
+      assert ModelChoices.resolve(scope, :workspace, "hello") == {:ok, :none}
 
       {:ok, _} =
         ModelChoices.put_choice(
@@ -607,12 +609,12 @@ defmodule Apiary.ModelChoicesTest do
         )
 
       assert {:ok, {:ok, %Resolution{level: 6, model_id: "claude-haiku-5-5"}}} =
-               ModelChoices.resolve(scope, :workspace, "explore")
+               ModelChoices.resolve(scope, :workspace, "hello")
 
-      {:ok, _} = ModelChoices.put_choice(scope, {:workspace, "explore"}, attrs(provider))
+      {:ok, _} = ModelChoices.put_choice(scope, {:workspace, "hello"}, attrs(provider))
 
       assert {:ok, {:ok, %Resolution{level: 4, model_id: @model}}} =
-               ModelChoices.resolve(scope, :workspace, "explore")
+               ModelChoices.resolve(scope, :workspace, "hello")
     end
 
     test "a workspace lock holds over a target's choice", ctx do
@@ -625,10 +627,10 @@ defmodule Apiary.ModelChoicesTest do
           attrs(provider, %{model: "claude-haiku-5-5", locked: true})
         )
 
-      {:ok, _} = ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider))
+      {:ok, _} = ModelChoices.put_choice(scope, {target, "hello"}, attrs(provider))
 
       assert {:ok, {:ok, %Resolution{level: 5, model_id: "claude-haiku-5-5"}}} =
-               ModelChoices.resolve(scope, target, "explore")
+               ModelChoices.resolve(scope, target, "hello")
     end
 
     test "leaves out the choices of another workspace", ctx do
@@ -636,7 +638,7 @@ defmodule Apiary.ModelChoicesTest do
       other = second_workspace(scope)
       {:ok, _} = ModelChoices.put_choice(second_scope(scope, other), :workspace, attrs(provider))
 
-      assert ModelChoices.resolve(scope, target, "explore") == {:ok, :none}
+      assert ModelChoices.resolve(scope, target, "hello") == {:ok, :none}
     end
 
     test "reads the chain the edition answers for the organisation", ctx do
@@ -663,16 +665,16 @@ defmodule Apiary.ModelChoicesTest do
       assert operator.chain == "operator"
 
       assert {:ok, {:ok, %Resolution{model_id: @model}}} =
-               ModelChoices.resolve(scope, :workspace, "explore")
+               ModelChoices.resolve(scope, :workspace, "hello")
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OperatorChain)
 
       assert {:ok, {:ok, %Resolution{model_id: "claude-haiku-5-5"}}} =
-               ModelChoices.resolve(scope, :workspace, "explore")
+               ModelChoices.resolve(scope, :workspace, "hello")
     end
 
-    test "refuses a run kind that runs no model", %{scope: scope} do
-      assert ModelChoices.resolve(scope, :workspace, "prebuild") == {:error, :not_found}
+    test "refuses a workflow that is no workflow name", %{scope: scope} do
+      assert ModelChoices.resolve(scope, :workspace, "Hello") == {:error, :not_found}
     end
   end
 
@@ -680,10 +682,10 @@ defmodule Apiary.ModelChoicesTest do
     test "the levels of a target hold, and no text of the module names a repository", ctx do
       %{scope: scope, provider: provider, target: target} = ctx
       scope = with_domain(scope, "example")
-      {:ok, choice} = ModelChoices.put_choice(scope, {target, "explore"}, attrs(provider))
+      {:ok, choice} = ModelChoices.put_choice(scope, {target, "hello"}, attrs(provider))
       {:ok, _} = ModelChoices.put_choice(scope, target, attrs(provider, %{effort: "low"}))
 
-      assert {:ok, {:ok, %Resolution{level: 2}}} = ModelChoices.resolve(scope, target, "explore")
+      assert {:ok, {:ok, %Resolution{level: 2}}} = ModelChoices.resolve(scope, target, "hello")
 
       [entry] = trail(choice.id)
       assert entry.details["name"] == "github.example/acme/shop"

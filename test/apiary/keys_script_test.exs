@@ -297,4 +297,139 @@ defmodule Apiary.KeysScriptTest do
                "Cannot write #{read_only}: Permission denied. The volume keys has to be writable by the user nobody.\n"
     end
   end
+
+  describe "the registry certificate" do
+    # Runs bin/keys with QORY_REGISTRY set, the keys in `keys` and the certificate in
+    # `cert_dir`, with `path` before PATH.
+    defp registry_run(keys, cert_dir, path \\ nil) do
+      run(keys, [{"QORY_REGISTRY", "1"}, {"APIARY_REGISTRY_CERT_DIR", cert_dir}], path)
+    end
+
+    defp keys_dir(dir) do
+      keys = Path.join(dir, "keys")
+      File.mkdir_p!(keys)
+      keys
+    end
+
+    defp registry_generated(keys),
+      do: generated(keys) <> "Generated registry-token.key in #{keys}.\n"
+
+    defp outside_keys(keys) do
+      "Set APIARY_REGISTRY_CERT_DIR to a directory other than #{keys}. Zot reads that " <>
+        "directory, and #{keys} contains the private keys.\n"
+    end
+
+    defp write_failed(cert_dir) do
+      "Make #{cert_dir} writable by the user nobody, or set APIARY_REGISTRY_CERT_DIR to a " <>
+        "directory that the user nobody can write. Writing failed: "
+    end
+
+    defp public_key(args) do
+      {key, 0} = System.cmd("openssl", args, stderr_to_stdout: true)
+      key
+    end
+
+    @tag :tmp_dir
+    test "is written 0644 with the signing key's public key, once", %{tmp_dir: dir} do
+      keys = keys_dir(dir)
+      cert_dir = Path.join(dir, "cert")
+      File.mkdir_p!(cert_dir)
+      cert = Path.join(cert_dir, "registry-token.crt")
+
+      assert {output, 0} = registry_run(keys, cert_dir)
+
+      assert output ==
+               registry_generated(keys) <> "Generated registry-token.crt in #{cert_dir}.\n"
+
+      assert mode(cert) == 0o644
+      assert mode(Path.join(keys, "registry-token.key")) == 0o600
+
+      assert public_key(["x509", "-in", cert, "-noout", "-pubkey"]) ==
+               public_key(["pkey", "-in", Path.join(keys, "registry-token.key"), "-pubout"])
+
+      before = file_state(cert)
+      assert {output, 0} = registry_run(keys, cert_dir)
+      assert output == "The keys in #{keys_path(keys)} are kept; none was generated.\n"
+      assert file_state(cert) == before, "a second run rewrote the certificate"
+      assert File.ls!(cert_dir) == ["registry-token.crt"]
+    end
+
+    @tag :tmp_dir
+    test "is written once the link a crash left at the temporary name is removed, and the link's target is unchanged",
+         %{tmp_dir: dir} do
+      keys = keys_dir(dir)
+      cert_dir = Path.join(dir, "cert")
+      File.mkdir_p!(cert_dir)
+      target = Path.join(dir, "target")
+      File.write!(target, "unchanged\n")
+      File.ln_s!(target, Path.join(cert_dir, "registry-token.crt.tmp"))
+
+      assert {_output, 0} = registry_run(keys, cert_dir)
+      assert File.read!(target) == "unchanged\n"
+      assert File.ls!(cert_dir) == ["registry-token.crt"]
+      assert File.read!(Path.join(cert_dir, "registry-token.crt")) =~ "BEGIN CERTIFICATE"
+    end
+
+    @tag :tmp_dir
+    test "is refused in the keys directory, inside it, through a link to it, or in a parent of it",
+         %{tmp_dir: dir} do
+      keys = keys_dir(dir)
+      inside = Path.join(keys, "cert")
+      File.mkdir_p!(inside)
+      link = Path.join(dir, "link")
+      File.ln_s!(keys, link)
+
+      assert {output, 1} = registry_run(keys, keys)
+      assert output == registry_generated(keys) <> outside_keys(keys)
+
+      for cert_dir <- [inside, link, dir] do
+        assert {output, 1} = registry_run(keys, cert_dir)
+
+        assert output ==
+                 "The keys in #{keys_path(keys)} are kept; none was generated.\n" <>
+                   outside_keys(keys)
+      end
+
+      assert File.ls!(keys) |> Enum.sort() ==
+               ["apiary.env", "cert", "postgres-password", "registry-token.key"]
+
+      assert File.ls!(inside) == []
+    end
+
+    @tag :tmp_dir
+    test "a failed write names the certificate directory and the reason", %{tmp_dir: dir} do
+      keys = keys_dir(dir)
+      cert_dir = Path.join(dir, "cert")
+      File.mkdir_p!(cert_dir)
+      kept = "The keys in #{keys_path(keys)} are kept; none was generated.\n"
+
+      missing = Path.join(dir, "missing")
+      assert {output, 1} = registry_run(keys, missing)
+
+      # The shell's words for a missing directory differ between shells.
+      assert output =~
+               ~r/\A#{Regex.escape(registry_generated(keys) <> write_failed(missing))}[^\n]+\.\n\z/
+
+      # sync fails without a word, after the certificate is written to its temporary file.
+      bin = Path.join(dir, "silent-bin")
+      File.mkdir_p!(bin)
+      File.write!(Path.join(bin, "sync"), "#!/bin/sh\nexit 1\n")
+      File.chmod!(Path.join(bin, "sync"), 0o755)
+
+      assert {output, 1} = registry_run(keys, cert_dir, bin)
+      assert output == kept <> write_failed(cert_dir) <> "the write did not complete.\n"
+      assert File.ls!(cert_dir) == []
+
+      # Under root every directory is writable.
+      if System.cmd("id", ["-u"]) != {"0\n", 0} do
+        File.chmod!(cert_dir, 0o500)
+        on_exit(fn -> File.chmod(cert_dir, 0o700) end)
+
+        assert {output, 1} = registry_run(keys, cert_dir)
+        assert output == kept <> write_failed(cert_dir) <> "Permission denied.\n"
+        File.chmod!(cert_dir, 0o700)
+        assert File.ls!(cert_dir) == []
+      end
+    end
+  end
 end

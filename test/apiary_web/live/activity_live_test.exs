@@ -231,6 +231,29 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert has_element?(view, "#entry-#{renamed.id}")
     end
 
+    @tag needs: :secrets
+    test "Integration changed finds the entries of connection.write, provider.write and runtime.write",
+         %{conn: conn, scope: scope} do
+      {:ok, _runtime} = Apiary.Connections.create_runtime(scope, %{runtime: "claude"})
+      {:ok, _service} = Apiary.Connections.create_service(scope, %{service: "sentry"})
+      [runtime_entry] = entries(scope, %{action: "runtime.write"})
+      service_entry = Enum.find(entries(scope), &(&1.action == "connection.write"))
+
+      # The split actions have no option: the one option is as it was before the split.
+      view = open(conn, scope)
+      options = action_options(view)
+      assert {"connection.write", "Integration changed"} in options
+      assert Enum.count(options, &(elem(&1, 1) == "Integration changed")) == 1
+      refute Enum.any?(options, &(elem(&1, 0) in ["provider.write", "runtime.write"]))
+
+      view = open(conn, scope, "?action=connection.write")
+
+      assert Enum.sort(row_ids(view)) ==
+               Enum.sort(["entry-#{runtime_entry.id}", "entry-#{service_entry.id}"])
+
+      assert text(view, "#entry-#{runtime_entry.id}-action") == "Added an integration"
+    end
+
     test "no action in the filter is shown by its code name", %{conn: conn, scope: scope} do
       options =
         conn

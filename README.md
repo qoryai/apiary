@@ -67,9 +67,6 @@ To upgrade, set the new release's version in `APIARY_VERSION` in `.env`, then ru
 `docker compose pull` and `docker compose up -d`. Back up first, and read
 [Upgrading](https://github.com/qoryai/apiary/blob/main/guides/upgrading.md).
 
-On AWS, no command is needed: the release attaches `apiary.yaml`, a CloudFormation
-template; create a stack from it in the AWS console.
-
 ## Guides
 
 - [Quickstart](https://github.com/qoryai/apiary/blob/main/guides/quickstart.md): a trial

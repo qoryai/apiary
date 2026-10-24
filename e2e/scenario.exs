@@ -14,14 +14,14 @@
 # server lines the key's page shows, and the key's secret in access-key-secret beside it,
 # starts the session on the node, waits for the denied connection to arrive, allows its
 # host the way the connection's row does, and then watches the run's record for the
-# second policy applied event and the allowed connection. A member of the workspace,
-# invited with a link the owner copies, then asks for observe, which is an owner's or an
-# admin's, and is refused, and it checks that the session is still let through to the host
-# and that the run's record shows no policy applied event after the refusal. Then it puts
-# the workspace in observe, denies the host from the same row, and watches for the third
-# policy applied event and the denied connection, refused by name under observe. It prints
-# the timings and leaves with status 0 only when every assertion held. It never prints the
-# secret: access-key-secret is the one place it goes.
+# policy applied event after the allow and the allowed connection. A member of the
+# workspace, invited with a link the owner copies, then asks for observe, which is an
+# owner's or an admin's, and is refused, and it checks that the session is still let
+# through to the host and that the run's record shows no policy applied event after the
+# refusal. Then it puts the workspace in observe, denies the host from the same row, and
+# watches for the policy applied event after the deny and the denied connection, refused
+# by name under observe. It prints the timings and leaves with status 0 only when every
+# assertion held. It never prints the secret: access-key-secret is the one place it goes.
 #
 # With E2E_MAIL=sink the instance sends its mail over SMTP to the job's sink
 # (compose.yaml's `sink`), and the scenario checks the mailed way in: the set-up through
@@ -110,9 +110,15 @@ defmodule E2E do
     # qory reads it.
     server = AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
 
+    # The node's policy lists the upstream by name, in observe, which leaves the run's mode
+    # and allow list to the run configuration. Behind a wall the proxy dials a private
+    # network address, as the upstream's on the node's network is, only for a host
+    # the node's policy lists by name and the run's policy allows.
+    egress = ["egress:", "  mode: observe", "  allow: [#{host}]"]
+
     gateway_section =
       Enum.map_join(
-        ["server:", server.url, AccessKeys.key_line(access_key) | server.public_key],
+        ["server:", server.url, AccessKeys.key_line(access_key) | server.public_key] ++ egress,
         &("  " <> &1 <> "\n")
       )
 
@@ -153,14 +159,31 @@ defmodule E2E do
       end)
 
     run = Repo.get!(Run, connection.run_id)
-    [first] = applied(run)
+    # Forager writes a policy applied event as the run opens and one as each session
+    # joins, both under the run configuration in force. This run has one session, and its
+    # join's event can be stored after the denied connection.
+    [opened, first] =
+      await(
+        "the policy applied events of the run's open and its session's join",
+        budget_ms + 30_000,
+        session_task,
+        fn ->
+          case applied(run) do
+            [_, _] = events -> events
+            _ -> nil
+          end
+        end
+      )
+
+    unless opened.data["run_configuration"] == first.data["run_configuration"],
+      do: fail("the run's open and its session's join applied different run configurations")
 
     say(
       "run #{run.node_run_id}, wall #{inspect(run.wall)}, target #{run.target_system}/#{run.target_path}"
     )
 
     say(
-      "first policy applied: sequence #{first.sequence}, run configuration #{short(first.data["run_configuration"])}"
+      "policy applied as the run opened: sequence #{opened.sequence}; as the session joined: sequence #{first.sequence}; run configuration #{short(first.data["run_configuration"])}"
     )
 
     say(
@@ -194,7 +217,7 @@ defmodule E2E do
 
     second =
       await(
-        "a second policy applied event with the new digest",
+        "a policy applied event after the allow, with the new digest",
         budget_ms + 30_000,
         session_task,
         fn ->
@@ -208,9 +231,13 @@ defmodule E2E do
     t_applied = System.monotonic_time(:millisecond)
 
     allowed =
-      await("an allowed connection to #{host} after it", budget_ms + 30_000, session_task, fn ->
-        allowed_connection(run, host, second.sequence)
-      end)
+      await(
+        "an allowed connection to #{host} after it",
+        budget_ms + 30_000,
+        session_task,
+        fn -> allowed_connection(run, host, second.sequence) end,
+        fn -> print_egress_after(run, second.sequence) end
+      )
 
     t_allowed = System.monotonic_time(:millisecond)
     to_applied = t_applied - t0
@@ -282,7 +309,7 @@ defmodule E2E do
 
     third =
       await(
-        "a third policy applied event with the deny digest",
+        "a policy applied event after the deny, with the deny digest",
         budget_ms + 30_000,
         session_task,
         fn ->
@@ -345,27 +372,28 @@ defmodule E2E do
     IO.puts("""
 
     == result
-    allow -> second policy applied, seen stored here   #{seconds(to_applied)}
-    allow -> allowed connection, seen stored here      #{seconds(to_allowed)}   (budget #{div(budget_ms, 1000)} s)
+    allow -> policy applied after the allow, seen stored here   #{seconds(to_applied)}
+    allow -> allowed connection, seen stored here               #{seconds(to_allowed)}   (budget #{div(budget_ms, 1000)} s)
     by the node's clock, for comparison:
-      allow -> second policy applied                   #{seconds(DateTime.diff(second.time, allow_wall, :millisecond))}
-      allow -> allowed connection                      #{seconds(DateTime.diff(allowed.time, allow_wall, :millisecond))}
-    second policy applied: sequence #{second.sequence}, source #{second.data["source"]}, allow #{inspect(second.data["allow"])}
-    allowed connection:    sequence #{allowed.sequence}, #{allowed.data["method"]} #{allowed.data["host"]}:#{allowed.data["port"]}, rule #{inspect(allowed.data["rule"])}
-    deny  -> third policy applied, seen stored here    #{seconds(deny_to_applied)}
-    deny  -> denied connection, seen stored here       #{seconds(deny_to_denied)}   (budget #{div(budget_ms, 1000)} s)
+      allow -> policy applied after the allow                   #{seconds(DateTime.diff(second.time, allow_wall, :millisecond))}
+      allow -> allowed connection                               #{seconds(DateTime.diff(allowed.time, allow_wall, :millisecond))}
+    policy applied after the allow: sequence #{second.sequence}, source #{second.data["source"]}, allow #{inspect(second.data["allow"])}
+    allowed connection:             sequence #{allowed.sequence}, #{allowed.data["method"]} #{allowed.data["host"]}:#{allowed.data["port"]}, rule #{inspect(allowed.data["rule"])}
+    deny  -> policy applied after the deny, seen stored here    #{seconds(deny_to_applied)}
+    deny  -> denied connection, seen stored here                #{seconds(deny_to_denied)}   (budget #{div(budget_ms, 1000)} s)
     by the node's clock, for comparison:
-      deny -> third policy applied                     #{seconds(DateTime.diff(third.time, deny_wall, :millisecond))}
-      deny -> denied connection                        #{seconds(DateTime.diff(denied.time, deny_wall, :millisecond))}
-    third policy applied:  sequence #{third.sequence}, mode #{inspect(third.data["mode"])}, allow #{inspect(third.data["allow"])}, deny #{inspect(third.data["deny"])}
-    denied connection:     sequence #{denied.sequence}, #{denied.data["method"]} #{denied.data["host"]}:#{denied.data["port"]}, mode #{inspect(denied.data["mode"])}, rule #{inspect(denied.data["rule"])}
+      deny -> policy applied after the deny                     #{seconds(DateTime.diff(third.time, deny_wall, :millisecond))}
+      deny -> denied connection                                 #{seconds(DateTime.diff(denied.time, deny_wall, :millisecond))}
+    policy applied after the deny:  sequence #{third.sequence}, mode #{inspect(third.data["mode"])}, allow #{inspect(third.data["allow"])}, deny #{inspect(third.data["deny"])}
+    denied connection:              sequence #{denied.sequence}, #{denied.data["method"]} #{denied.data["host"]}:#{denied.data["port"]}, mode #{inspect(denied.data["mode"])}, rule #{inspect(denied.data["rule"])}
     """)
 
     failures =
       [
         {second.data["run_configuration"] == new_digest,
-         "the second policy applied names the new digest"},
-        {host in (second.data["allow"] || []), "the second policy applied allows #{host}"},
+         "the policy applied after the allow names the new digest"},
+        {host in (second.data["allow"] || []),
+         "the policy applied after the allow allows #{host}"},
         {to_allowed < budget_ms, "allow to allowed connection under #{div(budget_ms, 1000)} s"},
         {match?({:error, %Policy.Error{reason: :forbidden}}, refused),
          "the member's observe was refused as forbidden"},
@@ -377,10 +405,10 @@ defmodule E2E do
         {run.wall == "docker", "the run was behind the docker wall"},
         {denied_between == 0,
          "no connection to #{host} was denied between the allow reload and the deny"},
-        {third.data["mode"] == "observe", "the third policy applied is under observe"},
-        {host in (third.data["deny"] || []), "the third policy applied denies #{host}"},
+        {third.data["mode"] == "observe", "the policy applied after the deny is under observe"},
+        {host in (third.data["deny"] || []), "the policy applied after the deny denies #{host}"},
         {host not in (third.data["allow"] || []),
-         "the third policy applied no longer allows #{host}"},
+         "the policy applied after the deny no longer allows #{host}"},
         {denied.data["mode"] == "observe" and denied.data["rule"] == host,
          "the denied connection was refused under observe by the rule #{host}"},
         {deny_to_denied < budget_ms, "deny to denied connection under #{div(budget_ms, 1000)} s"},
@@ -750,14 +778,34 @@ defmodule E2E do
     )
   end
 
-  # Polls until `fun` answers something. A session that has already left cannot bring
-  # what is waited for, so its end is the end of the wait, a second later.
-  defp await(what, timeout_ms, session_task, fun) do
-    deadline = System.monotonic_time(:millisecond) + timeout_ms
-    poll(what, deadline, session_task, fun, nil)
+  # The egress events after `sequence`, printed before a wait for an allowed connection
+  # fails: each one's decision, rule and outcome show why the session was refused.
+  defp print_egress_after(%Run{id: id}, sequence) do
+    events =
+      Repo.all(
+        from e in Event,
+          where: e.run_id == ^id and e.type == @egress and e.sequence > ^sequence,
+          order_by: e.sequence
+      )
+
+    say("egress events after sequence #{sequence}: #{length(events)}")
+
+    Enum.each(events, fn e ->
+      say(
+        "sequence #{e.sequence}: #{e.data["host"]}:#{e.data["port"]}, decision #{e.data["decision"]}, rule #{inspect(e.data["rule"])}, outcome #{e.data["outcome"]}"
+      )
+    end)
   end
 
-  defp poll(what, deadline, session_task, fun, gone_at) do
+  # Polls until `fun` answers something. A session that has already left cannot bring
+  # what is waited for, so its end is the end of the wait, a second later. `explain`
+  # runs before the wait fails, to print what shows the cause.
+  defp await(what, timeout_ms, session_task, fun, explain \\ fn -> :ok end) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    poll(what, deadline, session_task, fun, explain, nil)
+  end
+
+  defp poll(what, deadline, session_task, fun, explain, gone_at) do
     now = System.monotonic_time(:millisecond)
 
     gone_at =
@@ -767,13 +815,16 @@ defmodule E2E do
       nil ->
         cond do
           now > deadline ->
+            explain.()
             fail("timed out waiting for #{what}")
 
           gone_at && now - gone_at > 3_000 ->
+            explain.()
             fail("the session left before #{what} arrived")
 
           true ->
-            Process.sleep(@poll_ms) && poll(what, deadline, session_task, fun, gone_at || nil)
+            Process.sleep(@poll_ms) &&
+              poll(what, deadline, session_task, fun, explain, gone_at || nil)
         end
 
       found ->

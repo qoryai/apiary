@@ -37,12 +37,23 @@ defmodule Apiary.Dispatches.SchemaTest do
   # The later migration that queues prebuilds: down first, up last.
   @prebuilds_version 20_261_017_160_000
   @prebuilds Apiary.Repo.Migrations.QueuePrebuilds
+  # The later migration that keeps a dispatch's machine log, whose table has a key to the
+  # dispatches: down first, up last.
+  @machine_log_version 20_261_022_160_000
+  @machine_log Apiary.Repo.Migrations.KeepADispatchSMachineLog
+  # The later migration that holds runs for their environment build, whose index replaces
+  # the prebuilds': down first, and left down, as the migrations between it and the
+  # prebuilds' that it changes do not run again.
+  @hold_version 20_261_023_090_000
+  @hold Apiary.Repo.Migrations.HoldRunsForTheirEnvironmentBuild
 
   setup_all do
     for {version, migration, name} <- [
           {@version, @migration, "keep_dispatches"},
           {@again_version, @again, "take_work_items_in_again"},
-          {@prebuilds_version, @prebuilds, "queue_prebuilds"}
+          {@prebuilds_version, @prebuilds, "queue_prebuilds"},
+          {@machine_log_version, @machine_log, "keep_a_dispatch_s_machine_log"},
+          {@hold_version, @hold, "hold_runs_for_their_environment_build"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -210,7 +221,8 @@ defmodule Apiary.Dispatches.SchemaTest do
         assert %{num_rows: 1} = update!("dispatch_runs", run.id, "state = $2", [state])
       end
 
-      # A cause its handover gives comes with the outcome error (`result_outcome`).
+      # A cause its handover gives, and `build_failed`, come with the outcome error
+      # (`result_outcome`).
       for cause <- DispatchRun.end_causes() do
         assert %{num_rows: 1} =
                  update!(
@@ -218,7 +230,8 @@ defmodule Apiary.Dispatches.SchemaTest do
                    run.id,
                    "state = 'ended', end_cause = $2, result_outcome = CASE WHEN $2 IN " <>
                      "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
-                     "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed') " <>
+                     "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed', " <>
+                     "'build_failed') " <>
                      "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
@@ -664,14 +677,14 @@ defmodule Apiary.Dispatches.SchemaTest do
       end
     end
 
-    test "is handed over once dispatched, before its lease, and never once stale",
+    test "is handed over before its lease, dispatched or not, and never once stale",
          %{scope: scope} do
       dispatch = claimed!(scope, queued!(scope), pool!(scope))
 
-      refused("dispatches_handed_over_check", fn ->
-        update!("dispatches", dispatch.id, "handed_over_at = claimed_at")
-      end)
-
+      # The first redemption of the run's code hands a dispatch over before its
+      # `dispatched`.
+      assert %{num_rows: 1} = update!("dispatches", dispatch.id, "handed_over_at = claimed_at")
+      assert %{num_rows: 1} = update!("dispatches", dispatch.id, "handed_over_at = NULL")
       assert %{num_rows: 1} = update!("dispatches", dispatch.id, "dispatched_at = claimed_at")
 
       refused("dispatches_handed_over_check", fn ->
@@ -961,6 +974,8 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @hold_version, @hold, @options)
+    assert :ok = Ecto.Migrator.down(Repo, @machine_log_version, @machine_log, @options)
     assert :ok = Ecto.Migrator.down(Repo, @prebuilds_version, @prebuilds, @options)
     assert :ok = Ecto.Migrator.down(Repo, @again_version, @again, @options)
     assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
@@ -970,6 +985,12 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
     assert :ok = Ecto.Migrator.up(Repo, @again_version, @again, @options)
     assert :ok = Ecto.Migrator.up(Repo, @prebuilds_version, @prebuilds, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @machine_log_version, @machine_log, @options)
+
+    # `DispatchRun` writes `image_requeue`, of the migration left down, on every insert.
+    Repo.query!(
+      "ALTER TABLE dispatch_runs ADD COLUMN image_requeue boolean NOT NULL DEFAULT false"
+    )
   end
 
   defp exists?(sql) do

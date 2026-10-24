@@ -19,10 +19,28 @@ defmodule Apiary.Runs.Fold do
   revive (Times, below): `latest` carries,
   per rank, the highest sequence already projected. A rank is a type where one event wins
   (`ranks/0`); `run.started` and `ping` also share the rank of the `forager_version`, which
-  the later of the two decides, and `run.started` and `run.resized` share the rank of the
-  terminal's size, which the later of them decides: `terminal_cols` and `terminal_rows`
-  are the size the record last said, `terminal` of the start on a pseudo-terminal, then
-  each resize. A start on pipes reports no size and leaves both null.
+  the later of the two decides, and `session.started` and `run.resized` share the rank of
+  the terminal's size, which the later of them decides: `terminal_cols` and
+  `terminal_rows` are the size the record last said, `terminal` of a session's start on a
+  pseudo-terminal, then each resize. A session's start on pipes reports no size and
+  leaves both null.
+
+  A run is opened once, `run.started` (`opened_by` `run`, which `Apiary.Runs.Batch`
+  requires), and each session that joins it has a `session.started` and a
+  `session.exited`. What the run runs, `runtime`, `runtime_version`, `command`, `args`,
+  `dir`, `interactive` and `image`, is the `session.started` with the highest sequence.
+  `session.exited` is folded into nothing: how the run ended is its `run.exited`.
+
+  The steps of the run's host work and joins (`Apiary.Runs.Step`) are folded by `step`,
+  their number, an integer from 1: `steps` has one delta per number, the start's `name`,
+  `kind` and sequence from its `run.step_started`, and the exit's `state`, `exit_code`,
+  `duration_ms` and sequence from its `run.step_exited`. Of two starts, or two exits, with
+  one number, which the contract forbids, the lower sequence decides, in this pass
+  and against what is stored (`Apiary.Runs.Projector`). A `kind` outside the contract's
+  six is absent. An exit's `state` other than `succeeded`, `failed` and `cancelled`, or
+  none, is `failed`, the rule of a run's exit without a state (`exit_state/2`). A step
+  event whose `step` is not such an integer is folded into nothing. A log chunk keeps its
+  event's `step`, read the same way.
 
   An egress event names a `tool` when the proxy decided the request by its path for a host
   the tool serves. It is folded into the destination's connection like any other, and the
@@ -46,8 +64,6 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
-  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start).
-
   How the run ended is its exit's `state` and `reason` (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
   any other value is absent; the reason is a code, a lower-case letter then up to 63
   lower-case letters, digits and `_`, and anything else is absent. An exit that maps to
@@ -59,10 +75,12 @@ defmodule Apiary.Runs.Fold do
 
   The run's starter's outcome (`Apiary.Runs.Outcome`), stored on the run and not folded,
   decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
-  applies it, so its state and reason are the run's, and the exit's stay beside them. A run
-  whose end Qory recorded without an outcome (`released_at`, not folded either) is
-  cancelled with the reason `released`, whatever its exit said, until its starter's
-  outcome decides; that step comes just before the outcome's.
+  applies it, so its state and reason are the run's, and the exit's stay beside them. A
+  run of a workspace's queue takes no outcome; one stored on it before that rule is
+  applied as any other. A run whose end Qory recorded without an outcome (`released_at`,
+  not folded either) is cancelled with the reason `released`, whatever its exit said;
+  that step comes just before the outcome's, so an outcome stored before decides over
+  it.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's,
   the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
@@ -79,11 +97,13 @@ defmodule Apiary.Runs.Fold do
   order of arrival and after a rebuild. A heartbeat a pass folds revives a lost or pending
   run only when it counts as heard within three intervals of its arrival, and, for a run
   whose attach set a deadline for its end (`backstop_at`, `Apiary.Runs.Liveness`), only
-  when it arrived by then, as does a start; a lower offset
-  alone revives nothing and undoes no revive. So the one order that can show is a revive
-  by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
-  an earlier heartbeat delivered after it across a clock set back between the two. The
-  next lost-run check settles it.
+  when it arrived by then, as does a start. Neither revives a run the lost-run check ended
+  for its silence (`silenced_at`), whenever it arrived: that end freed the run's slot, and
+  only its exit changes the run then, as a run of the queue takes no outcome. A lower
+  offset alone revives nothing and undoes no revive. So the one order that can show is a
+  revive by a heartbeat that a lower offset, folded after it, would have kept from
+  reviving: from an earlier heartbeat delivered after it across a clock set back between
+  the two. The next lost-run check settles it.
 
   A run through a gateway counts the starts and heartbeats of the instance that attached
   it alone (`liveness_instance/1`), by the instance id each event was delivered with
@@ -101,6 +121,8 @@ defmodule Apiary.Runs.Fold do
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
+  @session_started "dev.qory.session.started"
+  @session_exited "dev.qory.session.exited"
   @policy_applied "dev.qory.run.policy_applied"
   @heartbeat "dev.qory.run.heartbeat"
   @log "dev.qory.run.log"
@@ -108,7 +130,9 @@ defmodule Apiary.Runs.Fold do
   @egress "dev.qory.run.egress"
   @exited "dev.qory.run.exited"
   @refused "dev.qory.run.refused"
-  @result "dev.qory.session.result"
+  @result "dev.qory.runtime.result"
+  @step_started "dev.qory.run.step_started"
+  @step_exited "dev.qory.run.step_exited"
 
   # The most bytes of a connection's host, and what ends one cut to fit (`host/1`).
   @host_max 255
@@ -126,14 +150,15 @@ defmodule Apiary.Runs.Fold do
   for a type that is folded without ranking.
   """
   def ranks(@ping), do: [@ping, @forager_version]
-  def ranks(@started), do: [@started, @forager_version, @terminal_rank]
+  def ranks(@started), do: [@started, @forager_version]
+  def ranks(@session_started), do: [@session_started, @terminal_rank]
   def ranks(@resized), do: [@terminal_rank]
   def ranks(type) when type in [@policy_applied, @heartbeat, @exited, @refused], do: [type]
   def ranks(_type), do: []
 
   @doc "The types whose highest projected sequence seeds a rank."
   def rank_types(@forager_version), do: [@ping, @started]
-  def rank_types(@terminal_rank), do: [@started, @resized]
+  def rank_types(@terminal_rank), do: [@session_started, @resized]
   def rank_types(type), do: [type]
 
   @int4 2_147_483_647
@@ -156,6 +181,9 @@ defmodule Apiary.Runs.Fold do
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
+  # The states a step's exit says, and the kinds of step the contract lists.
+  @step_states ~w(succeeded failed cancelled)
+  @step_kinds ~w(fetch compose image setup join wall)
 
   defstruct run: %{},
             latest: %{},
@@ -163,6 +191,7 @@ defmodule Apiary.Runs.Fold do
             recount: false,
             beaten: false,
             connections: %{},
+            steps: %{},
             log_chunks: [],
             skipped_log_chunks: 0
 
@@ -173,6 +202,7 @@ defmodule Apiary.Runs.Fold do
           recount: boolean(),
           beaten: boolean(),
           connections: %{optional({String.t(), integer(), String.t()}) => map()},
+          steps: %{optional(pos_integer()) => map()},
           log_chunks: [map()],
           skipped_log_chunks: non_neg_integer()
         }
@@ -186,8 +216,8 @@ defmodule Apiary.Runs.Fold do
   or nil when there is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
-  (host, port, path), `log_chunks` in sequence order and the count of log events skipped
-  because their bytes were not base64.
+  (host, port, path), `steps` as one delta per step number, `log_chunks` in sequence order
+  and the count of log events skipped because their bytes were not base64.
   """
   @spec fold(map(), Enumerable.t(), map(), map()) :: t()
   def fold(run, events, latest \\ %{}, projected \\ %{}) do
@@ -209,9 +239,10 @@ defmodule Apiary.Runs.Fold do
   # settle/1 is the last step of every fold, and what a rebuild's reset and an end Qory
   # records apply: a run its starter released after a queue handed it over
   # (`released_at`, `Apiary.Dispatches.RunEnd`) is cancelled with the reason `released`,
-  # whatever its exit said, and not lost; then its starter's outcome, should it have one,
-  # decides over that as over all the rest (`outcome/1`). No outcome is recorded for a
-  # release. Every other run is `outcome/1` alone.
+  # whatever its exit said, and not lost; then its outcome, should one have been stored
+  # before a run of the queue was refused one, decides over that as over all the rest
+  # (`outcome/1`). No outcome is recorded for a release. Every other run is `outcome/1`
+  # alone.
   @doc false
   @spec settle(map()) :: map()
   def settle(run), do: run |> released() |> outcome()
@@ -260,22 +291,14 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, %{type: @started, data: data} = event) do
     acc
     |> forager_version(event)
-    |> terminal_size(event, terminal(data))
     |> ranked(event, fn run ->
       labels = labels(data)
       target = target(run, data)
 
       run
       |> Map.merge(%{
-        runtime: string(data, "runtime"),
-        runtime_version: string(data, "runtime_version"),
-        command: string(data, "command", @long_text),
-        args: strings(data, "args"),
-        dir: string(data, "dir", @long_text),
-        interactive: boolean(data, "interactive"),
         host: string(data, "host"),
         wall: string(data, "wall"),
-        image: string(data, "image"),
         labels: labels,
         target_system: target && target.system,
         target_path: target && target.path,
@@ -285,6 +308,28 @@ defmodule Apiary.Runs.Fold do
       |> started_state(event)
     end)
   end
+
+  # What the run runs is its last session's: the `session.started` with the highest
+  # sequence decides every member, one the event leaves out included.
+  defp event(acc, %{type: @session_started, data: data} = event) do
+    acc
+    |> terminal_size(event, terminal(data))
+    |> ranked(event, fn run ->
+      Map.merge(run, %{
+        runtime: string(data, "runtime"),
+        runtime_version: string(data, "runtime_version"),
+        command: string(data, "command", @long_text),
+        args: strings(data, "args"),
+        dir: string(data, "dir", @long_text),
+        interactive: boolean(data, "interactive"),
+        image: string(data, "image")
+      })
+    end)
+  end
+
+  # How one session ended is folded into nothing; a refused join has no `session.started`
+  # and changes nothing either.
+  defp event(acc, %{type: @session_exited}), do: acc
 
   defp event(acc, %{type: @policy_applied, data: data} = event) do
     ranked(acc, event, fn run ->
@@ -316,7 +361,7 @@ defmodule Apiary.Runs.Fold do
     with stream when stream in @streams <- string(data, "stream"),
          encoded when is_binary(encoded) <- string(data, "bytes", :infinity),
          {:ok, bytes} <- Base.decode64(encoded) do
-      chunk = %{sequence: sequence, stream: stream, bytes: bytes}
+      chunk = %{sequence: sequence, stream: stream, bytes: bytes, step: step_number(data)}
       %{acc | log_chunks: [chunk | acc.log_chunks]}
     else
       _ -> %{acc | skipped_log_chunks: acc.skipped_log_chunks + 1}
@@ -414,6 +459,44 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
+  # A step's start: the lowest sequence of its number decides, so the first by sequence
+  # in this pass is kept (events come in sequence order).
+  defp event(acc, %{type: @step_started, data: data, time: time, sequence: sequence}) do
+    case step_number(data) do
+      nil ->
+        acc
+
+      step ->
+        start = %{
+          name: string(data, "name"),
+          kind: step_kind(data),
+          started_sequence: sequence,
+          started_at: time
+        }
+
+        put_step(acc, step, :started_sequence, start)
+    end
+  end
+
+  # A step's exit, the same way: the lowest sequence of its number decides.
+  defp event(acc, %{type: @step_exited, data: data, time: time, sequence: sequence}) do
+    case step_number(data) do
+      nil ->
+        acc
+
+      step ->
+        exit = %{
+          state: step_state(data),
+          exit_code: integer(data, "exit_code", -@int4..@int4),
+          duration_ms: integer(data, "duration_ms", 0..@int8),
+          exited_sequence: sequence,
+          exited_at: time
+        }
+
+        put_step(acc, step, :exited_sequence, exit)
+    end
+  end
+
   # The cost a non-interactive session reported is the runtime's own total for the
   # session, its subagents included (`docs/contract-assumptions.md`): every result of the
   # run adds its `cost_usd` to the run's, once, so the run's cost is a sum of totals and
@@ -429,6 +512,48 @@ defmodule Apiary.Runs.Fold do
   # Session events and types this revision does not know: kept in `events`, marked
   # projected by the projector, nothing folded.
   defp event(acc, _event), do: acc
+
+  # The fields of a step's delta. A delta has every one, nil where its events said
+  # nothing, so that the projector writes all its rows alike.
+  @step_delta %{
+    name: nil,
+    kind: nil,
+    started_sequence: nil,
+    started_at: nil,
+    state: nil,
+    exit_code: nil,
+    duration_ms: nil,
+    exited_sequence: nil,
+    exited_at: nil
+  }
+
+  # Merges a start or an exit into the step's delta unless the delta has one already,
+  # which then has the lower sequence.
+  defp put_step(acc, step, sequence_key, fields) do
+    delta = Map.get(acc.steps, step, @step_delta)
+
+    if delta[sequence_key],
+      do: acc,
+      else: %{acc | steps: Map.put(acc.steps, step, Map.merge(delta, fields))}
+  end
+
+  # A step's number: an integer from 1 that the column holds, else absent.
+  defp step_number(data), do: integer(data, "step", 1..@int4)
+
+  defp step_kind(data) do
+    case string(data, "kind") do
+      kind when kind in @step_kinds -> kind
+      _ -> nil
+    end
+  end
+
+  # An exit that says no state of the three ended badly, as a run's does (`exit_state/2`).
+  defp step_state(data) do
+    case string(data, "state") do
+      state when state in @step_states -> state
+      _ -> "failed"
+    end
+  end
 
   # The destination's host, at most 255 bytes. A longer one is kept, so the attempt is
   # counted and shown: its first 252 bytes, cut on a character boundary, then "…" (3
@@ -491,11 +616,11 @@ defmodule Apiary.Runs.Fold do
   def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 
-  # A start revives the run as a heartbeat does, from the attaching instance alone, and
-  # not past the run's backstop.
+  # A start revives the run as a heartbeat does, from the attaching instance alone, not
+  # past the run's backstop, and not once its silence ended it.
   defp started_state(run, event) do
     if ended?(run) or not attaching_instance?(run, event) or
-         Liveness.past_backstop?(run, received_at(event)),
+         Liveness.past_backstop?(run, received_at(event)) or silenced?(run),
        do: run,
        else: %{run | state: "running", lost_at: nil}
   end
@@ -546,8 +671,8 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # `run.started` and `run.resized` both say the terminal's size: the later decides. A
-  # start says none on pipes, which is `{nil, nil}`.
+  # `session.started` and `run.resized` both say the terminal's size: the later decides. A
+  # session's start says none on pipes, which is `{nil, nil}`.
   defp terminal_size(acc, %{sequence: sequence}, {cols, rows}) do
     if sequence > Map.get(acc.latest, @terminal_rank, 0) do
       %{
@@ -560,7 +685,7 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The size a start reports: `terminal`, or none on pipes.
+  # The size a session's start reports: `terminal`, or none on pipes.
   defp terminal(%{"terminal" => %{} = terminal}), do: size(terminal) || {nil, nil}
   defp terminal(_data), do: {nil, nil}
 
@@ -603,7 +728,8 @@ defmodule Apiary.Runs.Fold do
   # is that heartbeat's by the smallest offset, whatever the order the events were folded
   # in. A heartbeat this pass folded and heard within three intervals of its arrival says
   # the run is alive: a lost run runs again, and so does a run whose `run.started` has not
-  # arrived yet. An exit is not undone. A lower offset alone revives nothing.
+  # arrived yet, but not past its backstop or once its silence ended it. An exit is not
+  # undone. A lower offset alone revives nothing.
   defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
     heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
     run = Map.put(acc.run, :last_heartbeat_at, heard_at)
@@ -614,12 +740,15 @@ defmodule Apiary.Runs.Fold do
         Map.get(run, :heartbeat_interval_seconds)
 
     if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at) and
-         not Liveness.past_backstop?(run, received_at),
+         not Liveness.past_backstop?(run, received_at) and not silenced?(run),
        do: %{acc | run: revive(run)},
        else: %{acc | run: run}
   end
 
   defp count_beat(acc), do: acc
+
+  # A run the lost-run check ended for its silence (`Apiary.Dispatches.RunEnd`).
+  defp silenced?(run), do: match?(%DateTime{}, Map.get(run, :silenced_at))
 
   defp revive(%{state: state} = run) when state in ["lost", "pending"] do
     if exited?(run), do: run, else: %{run | state: "running", lost_at: nil}

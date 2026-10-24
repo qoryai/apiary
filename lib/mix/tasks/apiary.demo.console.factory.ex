@@ -27,37 +27,47 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #     Support where the edition allows it (`Apiary.Organisations.create_workspace/2`),
   #     assigns the collections (`Apiary.Adapters.Collections.assign_collections/4`) and
   #     turns one repository's Backlog off (`set_collection_backlog/4`);
-  #   * members take tickets in, decline, close and undo (`Apiary.WorkItems`), each under
-  #     their scope; the pool spot-runners claims and gives back the first run of some of
-  #     them, without a retry (`Apiary.Dispatches.claim/2`, `release/3`), so that run
-  #     ends cancelled.
+  #   * members take tickets in, close and undo (`Apiary.WorkItems`), each under their
+  #     scope.
+  #
+  # Dana also stores the stack of Main's explore runs with `Apiary.Stacks.put_stack/3`,
+  # which no request or page calls: the workflow `hello` at the workspace, with the stack
+  # `examples/hello` of qory's repository at one commit, so an explore run of Main has
+  # that workflow and that stack. A prebuild's documents have no workflow and no stack.
   #
   # The key pair each adapter enrols is made here and kept in memory only: its secret
   # signs the enrolment's proof and the connect return, and is then dropped.
   #
-  # Left out: a run handed over (`Apiary.Dispatches.handover/3`) needs a gateway with a
-  # key, which the demo has none of, so no run gives a result, and no work item waits
-  # for an answer, waits at Confirm or is confirmed.
+  # Left out: a claim of a run (`Apiary.Dispatches.claim/3`) needs a gateway with a key,
+  # which the demo has none of, so no run is claimed, ends or gives a result, and no work item
+  # waits for an answer, waits at Confirm, is confirmed, is declined or is sent to Explore
+  # again: each of those needs a run that ended.
 
   import Ecto.Query
 
-  alias Apiary.{AccessKeys, Adapters, Dispatches, Nodes, Organisations, Repo, Sources}
+  alias Apiary.{AccessKeys, Adapters, Organisations, Repo, Sources, Stacks}
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connections}
   alias Apiary.Adapters.Wire, as: AdapterWire
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
-  alias Apiary.Dispatches.Wire, as: DispatchWire
   alias Apiary.Sources.Backlog
   alias Apiary.Sources.Item
   alias Apiary.Sources.Wire, as: SourceWire
   alias Apiary.WorkItems
   alias Apiary.WorkItems.WorkItem
+  alias Mix.Tasks.Apiary.Demo.Shell
 
   @host "https://tracker.example.com"
   @helpdesk_host "https://helpdesk.example.com"
   # The code host the repositories' runs would clone from.
   @code_host "git.example.com"
+
+  # The workflow of Main's explore runs, and its stack: `examples/hello` of qory's
+  # repository at one commit.
+  @workflow "hello"
+  @stack "https://github.com/qoryai/qory#2e3af09033548e2155b7911b9adae473136e21cf:" <>
+           "examples/hello"
 
   # The repositories, by path: where each is assigned. `:second` is Shop ops where the
   # edition allows it, and Main where it does not.
@@ -241,18 +251,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   # its repository and number, what then happens to it, and its first instruction.
   #
   #   * `:queued`, taken in, its first run waiting;
-  #   * `:cancelled`, its first run claimed and given back, so Explore waits to run again;
-  #   * `:again`, as `:cancelled`, then run again: its second run waits;
-  #   * `:declined`, as `:cancelled`, then declined;
   #   * `:closed`, taken in and closed;
   #   * `:undone`, taken in and undone, back in the Backlog.
-  #
-  # Those whose first run is claimed come first: a claim takes the oldest waiting run.
   @work_items [
-    {"priya", "acme/api", 201, :cancelled, "Measure the endpoint with 1,000 lines first."},
-    {"jonas", "acme/web", 403, :again, ""},
-    {"mirek", "acme/shop", 106, :declined, ""},
-    {"amara", "acme/api", 205, :declined, "Link the page from the webhook settings."},
+    {"priya", "acme/api", 201, :queued, "Measure the endpoint with 1,000 lines first."},
+    {"jonas", "acme/web", 403, :queued, ""},
+    {"mirek", "acme/shop", 106, :queued, ""},
+    {"amara", "acme/api", 205, :queued, "Link the page from the webhook settings."},
     {"lea", "acme/shop", 101, :queued, "Keep the voucher in the session, not the form."},
     {"sam", "acme/api", 203, :queued, ""},
     {"dana", "acme/mobile", 301, :queued, "Ask for the permission again on the next tap."},
@@ -264,8 +269,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   # Comments people write on work items, by the ticket.
   @thread [
     {"acme/shop", 101, "dana", "The voucher fix should land before the weekend sale."},
-    {"acme/shop", 106, "mirek", "Declined: the banner goes with the theme rework."},
-    {"acme/api", 201, "priya", "The pool was busy; I will run Explore again tomorrow."}
+    {"acme/shop", 106, "mirek", "The banner may go with the theme rework instead."},
+    {"acme/api", 201, "priya", "The pool was busy; the run waits for the next machine."}
   ]
 
   @doc false
@@ -290,6 +295,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
       )
 
     work_items!(main)
+    stack!(main)
 
     {helpdesk, desk_key} = adapter!(admin, "Helpdesk", helpdesk_source())
     desk = connect!(main, helpdesk, desk_key)
@@ -528,7 +534,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
         workspace
 
       {:error, :limit} ->
-        Mix.shell().info(
+        Shell.info(
           "The edition allows acme no more workspaces: support is not made; its queues go to main"
         )
 
@@ -696,8 +702,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   ## The work items
 
   defp work_items!(main) do
-    pool_key = pool_key!(main)
-
     made =
       for {person, path, number, what, instruction} <- @work_items, into: %{} do
         scope = person_scope!(main, person)
@@ -710,7 +714,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
         {:ok, work_item} =
           WorkItems.take_in(scope, ticket_id, %{"first_instruction" => instruction})
 
-        if what in [:cancelled, :again, :declined], do: give_back!(pool_key, work_item)
         {{path, number}, {scope, work_item, what}}
       end
 
@@ -722,13 +725,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     end
   end
 
-  defp move!(_scope, _work_item, what) when what in [:queued, :cancelled], do: :ok
-
-  defp move!(scope, work_item, :again),
-    do: {:ok, _work_item} = WorkItems.explore_again(scope, current(scope, work_item), 1)
-
-  defp move!(scope, work_item, :declined),
-    do: {:ok, _work_item} = WorkItems.decline(scope, current(scope, work_item))
+  defp move!(_scope, _work_item, :queued), do: :ok
 
   defp move!(scope, work_item, :closed),
     do: {:ok, _work_item} = WorkItems.close(scope, current(scope, work_item))
@@ -737,35 +734,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     do: {:ok, _work_item} = WorkItems.undo(scope, current(scope, work_item))
 
   defp current(scope, %WorkItem{public_id: id}), do: WorkItems.get_by_public_id(scope, id)
-
-  # The pool spot-runners claims the work item's first run, the only one waiting, and
-  # gives it back without a retry, as a starter that could not start a job would.
-  defp give_back!(pool_key, %WorkItem{id: id}) do
-    :ok = AccessKeys.touch_delivery(pool_key, %{})
-
-    {:ok, %{dispatch: dispatch, work_item: %WorkItem{id: ^id}}} =
-      Dispatches.claim(pool_key, Dispatches.now())
-
-    body = %{
-      "version" => 1,
-      "time" => time(DateTime.utc_now()),
-      "reason" => "no machine of the pool could start",
-      "retry" => false
-    }
-
-    {:ok, release} = DispatchWire.release(body)
-    :ok = AccessKeys.touch_delivery(pool_key, %{})
-    :ok = Dispatches.release(pool_key, dispatch.public_id, release)
-  end
-
-  defp pool_key!(main) do
-    pool = Enum.find(Nodes.list_nodes(main), &(&1.name == "spot-runners"))
-
-    main
-    |> AccessKeys.list_for_node(pool)
-    |> Enum.find(&is_nil(&1.revoked_at)) ||
-      Mix.raise("the pool spot-runners has no key in use")
-  end
 
   defp title_of(path, number) do
     Enum.find_value(@tickets, fn
@@ -780,8 +748,15 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
     case Organisations.resolve_scope(Scope.for_user(user), "acme", workspace.slug) do
       {:ok, scope} -> Scope.put_origin(scope, %{worker: "demo"})
-      :error -> Mix.raise("#{name}@example.com does not reach acme/#{workspace.slug}")
+      :error -> Shell.raise!("#{name}@example.com does not reach acme/#{workspace.slug}")
     end
+  end
+
+  ## The stack
+
+  defp stack!(%Scope{workspace: workspace} = main) do
+    {:ok, _stack} = Stacks.put_stack(main, {:workspace, workspace, @workflow}, @stack)
+    :ok
   end
 
   ## The summary
@@ -820,7 +795,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
     %{other: collections_word} = Adapters.collection_noun(adapter)
     %{other: items_word} = Adapters.item_noun(adapter)
 
-    Mix.shell().info("""
+    Shell.info("""
     Factory: #{adapter.name}, #{total(collections)} #{collections_word}, \
     #{total(tickets)} #{items_word}, #{total(work_items)} work items
       #{collections_word}: #{format(collections)}

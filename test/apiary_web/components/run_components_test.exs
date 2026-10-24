@@ -17,7 +17,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
   # Forager's own end reasons, reserved in the contract's run.exited, and the three names
   # three of them had before; and the codes of its run.refused.
-  @reserved ~w(timeout quiet credential_expired stopped interrupted session_lost gateway_lost
+  @reserved ~w(timeout quiet credential_expired stopped interrupted no_session session_lost gateway_lost
                batch_refused credential_check_unreachable credential_check_invalid run_closed)
   @earlier ~w(run_ended_at_issuer issuer_unreachable issuer_answer_invalid)
   @refusals ~w(bad_request unsupported_contract_version invalid_request rate_limited unavailable

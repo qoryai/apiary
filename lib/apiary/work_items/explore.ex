@@ -11,17 +11,18 @@ defmodule Apiary.WorkItems.Explore do
   # `step/4` is where one run of a take in stands:
   #
   #   * waiting or claimed: `:queued`; handed over: `:running`;
-  #   * ended lost: `:lost`; ended released, by its starter after its handover or before
-  #     it without a retry: `:cancelled`; ended with its work item closed or undone, before
-  #     its handover: `:cancelled`;
-  #   * ended before its handover because the handover could not form what the run is
-  #     made from (`variables_invalid`, `ticket_gone`, `inputs_invalid`): `:no_result`
+  #   * ended lost: `:lost`; ended released: `:cancelled`; ended with its work item closed
+  #     or undone, before its handover: `:cancelled`;
+  #   * ended at its claim because the claim could not form what the run is made from
+  #     (`variables_invalid`, `ticket_gone`, `inputs_invalid`), or while it waited for
+  #     its environment image's build, which failed (`build_failed`): `:no_result`
   #     with the outcome `:error`, and no registered run;
-  #   * ended by its outcome or its exit (`run_ended`): what the run gave decides. Once
+  #   * ended by its exit, or by an outcome stored on it before a run of the queue was
+  #     refused one (`run_ended`): what the run gave decides. Once
   #     Qory reads it as decided it is kept on the run of the queue
   #     (`Apiary.Dispatches.Settle`: `result_outcome`, and the run's result for a proposal
   #     or questions), and read from there; until then it is read from the run's
-  #     `dev.qory.session.result` with the highest sequence (`Apiary.Explore.Result.given/3`).
+  #     `dev.qory.runtime.result` with the highest sequence (`Apiary.Explore.Result.given/3`).
   #     A result whose verdict is `understood` is `:proposal`, one whose verdict is
   #     `not_understood` is `:questions`. Without a result the run is `:cancelled` when the
   #     registered run reads as cancelled, `:lost` when it reads as lost, and otherwise
@@ -32,10 +33,11 @@ defmodule Apiary.WorkItems.Explore do
   #     cleared (`Apiary.Retention`) reads as a run whose events were pruned: no result
   #     event.
   #
-  # **A stated limit: the window before a run's result.** A run's starter may give its
-  # outcome, which ends the run, before the gateway has delivered the run's events, its
-  # result among them. So a run ended by its outcome, with no result yet, reads as
-  # `:running` until it is settled (`Apiary.Explore.Result.settled?/2`): its exit is
+  # **A stated limit: the window before a run's result.** A run of the queue takes no
+  # outcome (`Apiary.Runs.Outcome`). An outcome stored on one before that rule ended the
+  # run, possibly before the gateway had delivered the run's events, its result among
+  # them. So a run ended by such an outcome, with no result yet, reads as `:running`
+  # until it is settled (`Apiary.Explore.Result.settled?/2`): its exit is
   # folded (every event before the exit is then stored, as the projector folds them in
   # order), it is lost, its events are pruned, or 10 minutes have passed since its
   # outcome arrived; only then does it read as a run without a result, which a member
@@ -107,8 +109,9 @@ defmodule Apiary.WorkItems.Explore do
   @type outcome :: Result.outcome() | nil
 
   @typedoc """
-  One run of a take in: the run of the queue, the run registered for it (nil before its
-  handover, or when it was never handed over), its place, what it gave and its result.
+  One run of a take in: the run of the queue, the run its claim registered (nil while it
+  has none: waiting, or ended before its handover), its place, what it gave and its
+  result.
   """
   @type step :: %{
           dispatch_run: DispatchRun.t(),
@@ -188,7 +191,8 @@ defmodule Apiary.WorkItems.Explore do
 
   defp place(%DispatchRun{state: :ended}, _run, _event, _now), do: {:no_result, :error, nil}
 
-  # What a run ended by its outcome or its exit gave: what the run of the queue keeps once
+  # What a run ended by its exit, or by an outcome stored before a run of the queue was
+  # refused one, gave: what the run of the queue keeps once
   # stored, a proposal or questions whose result was cleared as no result event, else
   # what its result event gives (`Apiary.Explore.Result.given/3`).
   defp given(%DispatchRun{result_outcome: nil}, run, event, now),
@@ -243,7 +247,8 @@ defmodule Apiary.WorkItems.Explore do
   # LATERAL` per work item: the latest run of the queue of its current take in, its
   # highest `attempt`, read backwards through the unique index on (`work_item_id`,
   # `take_in`, `attempt`), with its registered run, and whether that take in is confirmed.
-  # A run ended by its outcome or its exit reads from what the run of the queue keeps
+  # A run ended by its exit, or by an outcome stored before a run of the queue was refused
+  # one, reads from what the run of the queue keeps
   # (`Apiary.Dispatches.Settle`): one whose outcome is not stored yet reads as running
   # until it is, where `status/2`, which reads its result event, reads a result that
   # came, or a run settled since, at once. The status of an ended work item is that of
@@ -424,7 +429,7 @@ defmodule Apiary.WorkItems.Explore do
   end
 
   # run_state/1 is the state of a step's run as the run pages name it: the registered
-  # run's, nil for a run waiting for its handover, and for a run that ended before it,
+  # run's, nil for a run waiting for its claim, and for a run that ended before its handover,
   # `:cancelled` when it was released, closed or undone and `:failed` otherwise.
   @doc false
   @spec run_state(step) :: atom | nil

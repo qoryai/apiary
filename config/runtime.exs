@@ -139,9 +139,9 @@ config :apiary, :trusted_proxies_setting, System.get_env("TRUSTED_PROXIES")
 #
 # INTEGRATION_URL_SOURCES says whether an integration may be added from an https address
 # of its description.json, which may be on any host: true (1, yes), the default, or false
-# (0, no). An instance open to people the operator does not know, such as a cloud one,
-# turns it off, so that integrations are added from forges' releases alone; the server
-# still follows a release's download links, which its author chooses on GitLab and
+# (0, no). An instance open to people the instance admin does not know, such as a cloud
+# one, turns it off, so that integrations are added from forges' releases alone; the
+# server still follows a release's download links, which its author chooses on GitLab and
 # Codeberg, to any public https host. Off, a release already asked for from an address is
 # not fetched.
 #
@@ -150,6 +150,41 @@ config :apiary, :trusted_proxies_setting, System.get_env("TRUSTED_PROXIES")
 # set.
 if config_env() != :test do
   config :apiary, :integration_url_sources_setting, System.get_env("INTEGRATION_URL_SOURCES")
+end
+
+# MACHINE_LOG_RETENTION_DAYS is how long a dispatch's machine log is kept after its upload:
+# a number of days from 1 to 365, 30 by default. Read in every environment;
+# `Apiary.Dispatches.MachineLogs.boot!/0` checks it at boot and stops a boot it refuses.
+# Set and not blank, it wins over the value an instance admin saves (`Apiary.InstanceConfig`);
+# unset or blank, that value applies, else the default.
+config :apiary, :machine_log_retention_setting, System.get_env("MACHINE_LOG_RETENTION_DAYS")
+
+# APIARY_MACHINE_LOGS_DIR is the folder where each dispatch's machine log is kept, one file
+# per dispatch, named by its dispatch id (`Apiary.Dispatches.MachineLogStore`). Unset or
+# blank, an upload is refused 503 unavailable and nothing is kept, so the node pool's
+# starter can send it again once the folder is set. Not read under test: the tests set it.
+if config_env() != :test do
+  config :apiary, :machine_logs_dir, System.get_env("APIARY_MACHINE_LOGS_DIR")
+end
+
+# QORY_REGISTRY is the private image registry's address, with the opt-in feature
+# registry: a host and an optional port, with no scheme or path, for example
+# registry.qory.example. Its signing key is registry-token.key in APIARY_KEYS_DIR
+# (/var/lib/apiary/keys unset), which bin/keys writes when QORY_REGISTRY is set.
+# `Apiary.Registry.boot!/0` checks both at boot where the feature is on, and stops a boot
+# without them. Not read under test: config/test.exs sets them.
+if config_env() != :test do
+  config :apiary, :registry_setting, System.get_env("QORY_REGISTRY")
+
+  config :apiary, Apiary.Registry,
+    key_file:
+      Path.join(
+        case System.get_env("APIARY_KEYS_DIR") do
+          blank when blank in [nil, ""] -> "/var/lib/apiary/keys"
+          dir -> dir
+        end,
+        "registry-token.key"
+      )
 end
 
 if config_env() == :dev do

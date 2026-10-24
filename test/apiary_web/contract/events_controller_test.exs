@@ -67,6 +67,68 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert started.time == ~U[2026-09-16 12:00:00.000000Z]
     end
 
+    test "a run opened by the run, its sessions' starts and exits and a refused join: all stored",
+         %{scope: scope, key: key, secret: secret} do
+      {subject, [started]} = first_events()
+      assert started["data"]["opened_by"] == "run"
+
+      session = fn sequence, type, data -> wire_event(subject, sequence, type, data) end
+
+      batch = [
+        started,
+        session.(3, "session.started", %{
+          "session" => 1,
+          "runtime" => "claude",
+          "command" => "claude",
+          "args" => ["-p", "fix the build"],
+          "dir" => "/work/shop",
+          "interactive" => false
+        }),
+        session.(4, "session.exited", %{
+          "session" => 1,
+          "state" => "succeeded",
+          "exit_code" => 0,
+          "duration_ms" => 900
+        }),
+        # A join the session refused: an exit with no start.
+        session.(5, "session.exited", %{
+          "session" => 2,
+          "state" => "failed",
+          "exit_code" => -1,
+          "reason" => "image_unknown",
+          "duration_ms" => 0
+        }),
+        session.(6, "session.started", %{
+          "session" => 3,
+          "runtime" => "codex",
+          "command" => "codex",
+          "args" => ["exec", "fix the build"],
+          "dir" => "/work/shop",
+          "interactive" => false
+        })
+      ]
+
+      assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
+
+      run = run!(scope, subject)
+      assert run.event_count == 5
+
+      assert Enum.map(events(run), &{&1.sequence, &1.type}) == [
+               {2, "dev.qory.run.started"},
+               {3, "dev.qory.session.started"},
+               {4, "dev.qory.session.exited"},
+               {5, "dev.qory.session.exited"},
+               {6, "dev.qory.session.started"}
+             ]
+
+      assert Enum.map(events(run), & &1.data) == Enum.map(batch, & &1["data"])
+
+      {:ok, run} = Apiary.Runs.Projector.project(run)
+      assert {run.state, run.host} == {"running", "dev-laptop"}
+      assert {run.runtime, run.command, run.args} == {"codex", "codex", ["exec", "fix the build"]}
+      assert {run.exited_at, run.exit_code, run.reason} == {nil, nil, nil}
+    end
+
     test "a batch is answered 202 and the versions are recorded on the key",
          %{conn: conn, key: key, secret: secret} do
       {_subject, batch} = first_events()
@@ -322,7 +384,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "a NUL in the data, which Postgres cannot hold, is replaced and not a 500",
          %{scope: scope, key: key, secret: secret} do
       subject = Ecto.UUID.generate()
-      event = wire_event(subject, 1, "session.prompt_submitted", %{"prompt" => "a\u0000b"})
+      event = wire_event(subject, 1, "runtime.prompt_submitted", %{"prompt" => "a\u0000b"})
       assert build_conn() |> signed_post(key.key_id, secret, [event]) |> response(202)
       assert [%Event{data: %{"prompt" => "a�b"}}] = scope |> run!(subject) |> events()
     end
@@ -514,8 +576,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       subject = Ecto.UUID.generate()
       good = wire_event(subject, 1, "run.heartbeat")
 
-      session = %{"opened_by" => "session", "forager_version" => "0.4.0", "command" => "claude"}
-      started = &wire_event(subject, 1, "run.started", Map.merge(session, &1))
+      open = %{"opened_by" => "run", "forager_version" => "0.4.0"}
+      started = &wire_event(subject, 1, "run.started", Map.merge(open, &1))
 
       bodies = [
         "",
@@ -552,9 +614,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         Jason.encode!([%{good | "type" => "dev.qory.ping"}]),
         Jason.encode!([good, wire_event(subject, 2, "ping", %{"interval_seconds" => 30})]),
         Jason.encode!([%{good | "type" => "dev.qory.run.registered"}]),
-        # A start that a session did not open, or that names a credential.
+        # A start that the run did not open, that does not say what opened it, or that
+        # names a credential. A session opens no run: it joins one.
+        Jason.encode!([started.(%{"opened_by" => "session", "command" => "claude"})]),
         Jason.encode!([started.(%{"opened_by" => "gateway"})]),
         Jason.encode!([started.(%{"opened_by" => "relay"})]),
+        Jason.encode!([Map.update!(started.(%{}), "data", &Map.delete(&1, "opened_by"))]),
         Jason.encode!([started.(%{"credential" => "none"})])
       ]
 
@@ -573,14 +638,14 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       events =
         [
-          wire_event(subject, 1, "session.tool_started", nested(64),
+          wire_event(subject, 1, "runtime.tool_started", nested(64),
             time: "1970-01-01T00:00:00Z"
           ),
-          wire_event(subject, 2, "session.ended", %{}, time: "9999-12-31T23:59:59.999999Z")
+          wire_event(subject, 2, "runtime.ended", %{}, time: "9999-12-31T23:59:59.999999Z")
         ] ++
           for(
             n <- 3..1000,
-            do: wire_event(subject, n, "session.notification", %{"kind" => "idle"})
+            do: wire_event(subject, n, "runtime.notification", %{"kind" => "idle"})
           )
 
       # Out of order on the wire; stored in one go all the same.

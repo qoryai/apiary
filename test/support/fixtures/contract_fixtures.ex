@@ -139,13 +139,7 @@ defmodule Apiary.ContractFixtures do
     {subject,
      [
        wire_event(subject, 2, "run.started", %{
-         "opened_by" => "session",
-         "runtime" => "claude",
-         "runtime_version" => "2.1.0",
-         "command" => "claude",
-         "args" => ["--print", "hello"],
-         "dir" => "/work/shop",
-         "interactive" => false,
+         "opened_by" => "run",
          "forager_version" => "0.4.0",
          "host" => "dev-laptop",
          "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"}

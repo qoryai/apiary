@@ -457,6 +457,209 @@ defmodule Apiary.Adapters.WireTest do
     end
   end
 
+  # One test per rule in the description of `$defs/url` (`definitions.schema.json`).
+  describe "url?/1" do
+    test "a URL is at most 2048 characters" do
+      assert Wire.url?("https://a.example/" <> String.duplicate("a", 2048 - 18))
+      refute Wire.url?("https://a.example/" <> String.duplicate("a", 2048 - 17))
+    end
+
+    test "a URL starts with https:// and a host" do
+      assert Wire.url?("https://a.example")
+
+      for url <- [
+            "http://a.example/",
+            "HTTPS://a.example/",
+            "https:a.example/",
+            "https://",
+            "https:///x"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "a host name is letters, digits and the characters -._~!$&'()*+,;=" do
+      assert Wire.url?("https://Az09-._~!$&'()*+,;=/x")
+
+      for url <- [
+            "https://a\"b/",
+            "https://a<b/",
+            "https://a{b/",
+            "https://a[b/",
+            "https://a]b/",
+            "https://a|b/"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "a host name takes the percent-encodings %80 to %FF in either case, and %25" do
+      for url <- [
+            "https://ex%c3%a9mple.com/",
+            "https://ex%C3%A9mple.com/",
+            "https://ex%80mple.com/",
+            "https://ex%FFmple.com/",
+            "https://ex%ffmple.com/",
+            "https://ex%25mple.com/"
+          ] do
+        assert Wire.url?(url), url
+      end
+
+      for url <- [
+            "https://ex%41mple.com/x",
+            "https://ex%7Fmple.com/",
+            "https://ex%00mple.com/",
+            "https://ex%2fmple.com/",
+            "https://ex%2Fmple.com/"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "a host is an IPv6 address in brackets as RFC 3986 writes one" do
+      for url <- [
+            "https://[::1]",
+            "https://[::]/x",
+            "https://[2001:db8::1]/x",
+            "https://[1:2:3:4:5:6:7:8]/x",
+            "https://[::ffff:192.0.2.1]/x",
+            "https://[1::2:3:4:5:6:7]/x"
+          ] do
+        assert Wire.url?(url), url
+      end
+
+      for url <- [
+            "https://[1:2:3:4:5:6:7:8:9]/x",
+            "https://[1:2:3:4:5:6:7]/x",
+            "https://[1::2::3]/x",
+            "https://[12345::1]/x",
+            "https://[::ffff:192.0.2.256]/x",
+            "https://[v1.x]/x",
+            "https://[fe80::1%25eth0]/x",
+            "https://[a.example]/x",
+            "https://[]/x"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "only a port, a path, a query or a fragment follows an IPv6 address's closing bracket" do
+      for url <- [
+            "https://[::1]:8080/x",
+            "https://[::1]:/x",
+            "https://[::1]/x",
+            "https://[::1]?x",
+            "https://[::1]#x"
+          ] do
+        assert Wire.url?(url), url
+      end
+
+      for url <- [
+            "https://[::1]ab/x",
+            "https://[::1].x/",
+            "https://[::1]]/x",
+            "https://[::1]a.example/"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "no user information comes before the host" do
+      for url <- [
+            "https://user@a.example/",
+            "https://user:pass@a.example/",
+            "https://@a.example/",
+            "https://a@[::1]/"
+          ] do
+        refute Wire.url?(url), url
+      end
+
+      assert Wire.url?("https://a.example/@x")
+    end
+
+    test "a colon after the host stands alone or is followed by a port of at most 5 digits from 1 to 65535" do
+      for url <- [
+            "https://a.example:",
+            "https://a.example:/x",
+            "https://a.example:1/x",
+            "https://a.example:65535/x",
+            "https://a.example:00080/x",
+            "https://a.example:00001"
+          ] do
+        assert Wire.url?(url), url
+      end
+
+      for url <- [
+            "https://a.example:0/x",
+            "https://a.example:00000/x",
+            "https://a.example:65536/x",
+            "https://a.example:000080/x",
+            "https://a.example:44x/x",
+            "https://a.example::80/x",
+            "https://a.example:-1/x"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "a path, a query and a fragment are each optional, in that order, with RFC 3986's characters" do
+      for url <- [
+            "https://a.example/a/b;c=d/:@!$&'()*+,~-._",
+            "https://a.example?q=1&r=/?",
+            "https://a.example/x?q=1#f/?:@",
+            "https://a.example#f",
+            "https://a.example//x"
+          ] do
+        assert Wire.url?(url), url
+      end
+
+      for url <- [
+            "https://a.example/a[b]",
+            "https://a.example/?a[b]=1",
+            "https://a.example/#a[b]",
+            "https://a.example/x#a#b"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "every % starts a percent-encoding, % and two hexadecimal digits" do
+      assert Wire.url?("https://a.example/%41%7e?%2F#%fF")
+
+      for url <- [
+            "https://a.example/%zz",
+            "https://a.example/%4",
+            "https://a.example/?%",
+            "https://a.example/#%g0",
+            "https://a%.example/"
+          ] do
+        refute Wire.url?(url), url
+      end
+    end
+
+    test "a URL has no character outside RFC 3986's" do
+      for url <- [
+            "https://a.example/con nect",
+            "https://a.example/x\n",
+            "https://a.example/\\x",
+            "https://a.example/<x>",
+            "https://a.example/\"x\"",
+            "https://a.example/x^y",
+            "https://a.example/x`y",
+            "https://bücher.example/",
+            "https://a.example/\u0000"
+          ] do
+        refute Wire.url?(url), inspect(url)
+      end
+    end
+
+    test "anything other than a string is refused" do
+      for value <- [nil, 42, :"https://a.example", ~c"https://a.example"] do
+        refute Wire.url?(value), inspect(value)
+      end
+    end
+  end
+
   describe "setup_url" do
     # Each of the contract's invalid setup_url fixtures, its setup_url as written, and the
     # same address with its fault taken out.

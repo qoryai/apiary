@@ -14,6 +14,7 @@ defmodule Apiary.Runs.ServedWhateverShownTest do
 
   alias Apiary.{Policy, Repo}
   alias Apiary.Nodes.Node
+  alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Runs.{Event, Run}
   alias ApiaryWeb.Contract.Configuration
 
@@ -144,7 +145,12 @@ defmodule Apiary.Runs.ServedWhateverShownTest do
 
     assert %{"security_policy" => _} = json_response(conn, 200)
     assert signed_answer?(conn)
-    assert in_force(conn) == [ctx.baseline]
+    # With the `registry` feature, the document composed for the run from the baseline.
+    workspace_id = ctx.scope.workspace.id
+
+    assert Enum.map(in_force(conn), &ComposedConfiguration.policy_digest(workspace_id, &1)) ==
+             [ctx.baseline]
+
     assert run(run_id).attached_at
   end
 

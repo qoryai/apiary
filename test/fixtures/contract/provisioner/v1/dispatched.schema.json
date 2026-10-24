@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/provisioner/v1/dispatched.schema.json",
   "title": "Dispatched",
-  "description": "The body of the signed POST /v1/dispatches/<dispatch_id>/dispatched, application/json: the starter started the job for the dispatch. The control plane records external when the body carries it, and refuses a handover before dispatched, 409 not_dispatched, handover.schema.json. A dispatch_id that is unknown, or of another node pool than the key's, is refused 403 forbidden, with the same signed body either way, so nobody learns whether an id exists; the control plane decides this before any 409 or 410. The signature with the pool's access key and that check authorise the request, not the id. It is refused after the dispatch ended, 410 gone, as refusal.schema.json describes; otherwise when the dispatch is stale, its lease lapsed before its handover, 409 lease_expired, as handover.schema.json describes, and the starter then stops the job it started for that dispatch. On success the control plane answers a signed 204 with no body. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
+  "description": "The body of the signed POST /v1/dispatches/<dispatch_id>/dispatched, application/json: the starter created the machine for the dispatch and passed it the run code and the gateway URL. The starter sends the first dispatched of a dispatch before the dispatch's lease_until, claim-answer.schema.json. The lease lapses only when neither the first dispatched nor the redemption of the run code came before lease_until: the dispatch is then stale, and the control plane may give the work to another claim. Once the run code is redeemed, the dispatch never goes stale, as after an accepted dispatched, and its work is never given to another claim while the dispatch lives. The run code stops working the moment the lease lapses, and when the dispatch ends for any reason. After dispatched, the code can be redeemed until 15 minutes from the claim. When the machine has not redeemed the run code within 15 minutes of the claim, the control plane ends the dispatch. The starter sends dispatched again every 60 seconds for each machine it has, with the same external. Each send is built anew, with a later time and a new signature, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes for a request sent again, so the replay rule does not refuse it. Only the first dispatched of a dispatch is recorded, with its external when the body contains it, and nothing of a later dispatched is recorded. A dispatch_id that is unknown, or of another node pool than the key's, is refused 403 forbidden, with the same signed body either way, so nobody learns whether an id exists; the control plane decides this before any 409 or 410. The signature with the pool's access key and that check authorise the request, not the id. Once the dispatch has ended, a dispatched is refused 410 gone, whether the run code was redeemed or not, as refusal.schema.json describes, and the starter then sends the machine log, machine-log.schema.json, and deletes the machine. A first dispatched at or after lease_until on a stale dispatch is refused 409 lease_expired, and the starter then stops the machine it created for that dispatch. A first dispatched at or after lease_until on a dispatch whose run code was redeemed before lease_until is accepted, because that dispatch is not stale. After dispatched, a release is refused 409 machine_exists, release.schema.json. Once the code is redeemed, a release is refused 409 machine_exists even before dispatched, because a machine exists. While the dispatch lives, the answer to the first dispatched and to each later one is a signed 204 with no body, whether the run code was redeemed or not. It is signed with the pool's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401. A member this schema does not define is refused, invalid_request.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,7 @@
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
     },
     "external": {
-      "description": "The job at the provider that runs it, when the starter knows it. Absent otherwise.",
+      "description": "The job at the vendor that runs it, when the starter knows it. Absent otherwise.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -37,7 +37,7 @@
           "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/ref"
         },
         "url": {
-          "description": "The job's page at the provider.",
+          "description": "The job's page at the vendor.",
           "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/url"
         }
       }

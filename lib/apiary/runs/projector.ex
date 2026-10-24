@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.Projector do
   @moduledoc """
   Folds a run's events into what the console reads: the `runs` row, its `connections`,
-  its `log_chunks` and the workspace's `targets`.
+  its `run_steps`, its `log_chunks` and the workspace's `targets`.
 
   The receiver stores events and answers; it calls `project_async/1` after its
   transaction has committed. `project/1` is the same work done synchronously: the tests
@@ -25,6 +25,15 @@ defmodule Apiary.Runs.Projector do
   `projected_sequence` is the highest sequence up to which every event has been
   projected: it stops before the first gap and moves on when the gap fills.
 
+  A step's row (`Apiary.Runs.Step`) takes the start and the exit with the lowest sequence
+  of its number, whichever pass folds them. Once the run's `dev.qory.run.exited` is
+  folded, a pass that folds a step event or the exit sets every step of the run without
+  an exit to `cancelled`, the contract's state of a step stopped before it ended, and
+  leaves its exit columns null: the gateway that ends a run during a step writes no
+  `dev.qory.run.step_exited` for it, and the step's outcome stays in the session's record,
+  which this server never receives. A step exit folded later sets the step's state
+  as the exit says.
+
   Once its passes have committed, a projection records the run's `last_heartbeat_at` as
   its access key's last heartbeat when it is later than the key's
   (`Apiary.AccessKeys.touch_heartbeat/2`), so the key's is the latest of its runs'.
@@ -42,7 +51,7 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Target}
+  alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Step, Target}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -62,22 +71,28 @@ defmodule Apiary.Runs.Projector do
 
   @pass_size 1000
   @heartbeat "dev.qory.run.heartbeat"
+  # The events whose pass ends the open steps of a run that exited (`end_open_steps/1`).
+  @ending ["dev.qory.run.exited", "dev.qory.run.step_started", "dev.qory.run.step_exited"]
   # The events whose fold may decide what a run of a workspace's queue gave: its exit and
   # its result.
-  @settling ["dev.qory.run.exited", "dev.qory.session.result"]
+  @settling ["dev.qory.run.exited", "dev.qory.runtime.result"]
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,
   whether or not there was anything to project.
   """
   @spec project(struct()) :: {:ok, struct()} | {:error, :not_found}
-  def project(%Run{id: id}) do
+  def project(%Run{} = run), do: project(run, :store_built)
+
+  # A rebuild projects with `:keep_built`: it stores no build (`record_built/3`).
+  defp project(%Run{id: id}, built) do
     case passes(id, nil) do
       {:ok, run, nil} ->
         {:ok, run}
 
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
+        if built == :store_built, do: record_built(run, first, last)
         end_handed_over(run)
         end_refused(run)
         settle_dispatched(run, first, last)
@@ -130,7 +145,8 @@ defmodule Apiary.Runs.Projector do
   is returned as it is: its projection is all that is left of it, and nothing here deletes
   it. A run that lost only its log events is rebuilt from the rest; its log chunks were
   deleted with them, and `projected_sequence` does not fall back to the first of the gaps
-  they left.
+  they left. A rebuild stores no image a prebuild reported (`dev.qory.run.built`): only
+  the projection that first folded the report stores it.
   """
   @spec rebuild(struct()) :: {:ok, struct()} | {:error, :not_found}
   def rebuild(%Run{id: id} = run) do
@@ -152,10 +168,10 @@ defmodule Apiary.Runs.Projector do
         {:ok, current}
 
       {:ok, %Run{log_pruned_at: %DateTime{}} = before} ->
-        run |> project() |> past_the_gaps(before)
+        run |> project(:keep_built) |> past_the_gaps(before)
 
       {:ok, _run} ->
-        project(run)
+        project(run, :keep_built)
 
       {:error, reason} ->
         {:error, reason}
@@ -165,6 +181,7 @@ defmodule Apiary.Runs.Projector do
   # The run as it was before the reset, so the caller knows where it stood.
   defp reset(%Run{id: id} = current) do
     Repo.delete_all(from c in Connection, where: c.run_id == ^id)
+    Repo.delete_all(from s in Step, where: s.run_id == ^id)
     Repo.delete_all(from l in LogChunk, where: l.run_id == ^id)
     Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
 
@@ -319,6 +336,8 @@ defmodule Apiary.Runs.Projector do
 
       insert_log_chunks(run, fold.log_chunks)
       upsert_connections(run, fold.connections)
+      upsert_steps(run, fold.steps)
+      if Enum.any?(events, &(&1.type in @ending)), do: end_open_steps(run)
       mark_projected(Enum.map(events, & &1.id))
 
       run =
@@ -437,10 +456,39 @@ defmodule Apiary.Runs.Projector do
 
   defp touch_heartbeat(_run), do: :ok
 
+  # A run of a workspace's queue whose passes folded the `dev.qory.run.built` that counts,
+  # its lowest sequence, has the image it reports stored, once its passes have committed
+  # and before its end, in a separate transaction that holds the environment record of a
+  # prebuild (`Apiary.Dispatches.Built.record/1`), which stores nothing for a run that is
+  # not a prebuild. Only that pass stores it: a later pass, with a second report or
+  # without one, and a rebuild of the projection (`rebuild/1`) store nothing, so an image
+  # cleared since because the registry lost it (`Apiary.Environments.forget_image/3`) is
+  # not stored again. A failure is logged by run and the kind of the error, and the image
+  # is not stored.
+  defp record_built(%Run{id: id, dispatch_run_id: dispatch_run_id} = run, first, last)
+       when is_binary(dispatch_run_id) do
+    counted =
+      Repo.one(
+        from e in Event,
+          where: e.run_id == ^id and e.type == ^Apiary.Dispatches.Built.type(),
+          select: min(e.sequence)
+      )
+
+    if is_integer(counted) and counted >= first and counted <= last,
+      do: Apiary.Dispatches.Built.record(run)
+
+    :ok
+  rescue
+    error -> log_failure(run, {:built, error.__struct__})
+  end
+
+  defp record_built(_run, _first, _last), do: :ok
+
   # A run a workspace's queue handed over whose pass folded its exit ends the queue's run
   # with it, once its passes have committed, in a separate transaction that locks the
-  # queue's run first (`Apiary.Dispatches.RunEnd.run_ended/1`); the workspaces whose slots
-  # changed are told. A failure is logged and the lost-run check ends it at its next
+  # queue's run before the registered run, after its work item or, for a prebuild, its
+  # environment record (`Apiary.Dispatches.RunEnd.run_ended/1`); the workspaces whose
+  # slots changed are told. A failure is logged and the lost-run check ends it at its next
   # tick (`Apiary.Dispatches.RunEnd.lose/1`).
   defp end_handed_over(%Run{dispatch_run_id: id, exited_at: %DateTime{}} = run)
        when is_binary(id) do
@@ -663,6 +711,79 @@ defmodule Apiary.Runs.Projector do
       log: false
     )
   end
+
+  # The incoming row's `column` when the incoming row has a `sequence` and the stored row
+  # has none or a higher one; else the stored row's. A macro, because a fragment's text is
+  # fixed at compile time.
+  defmacrop lower_wins(row, sequence, column) do
+    sql =
+      "CASE WHEN EXCLUDED.#{sequence} IS NOT NULL AND (? IS NULL OR EXCLUDED.#{sequence} < ?) " <>
+        "THEN EXCLUDED.#{column} ELSE ? END"
+
+    quote do
+      fragment(
+        unquote(sql),
+        field(unquote(row), unquote(sequence)),
+        field(unquote(row), unquote(sequence)),
+        field(unquote(row), unquote(column))
+      )
+    end
+  end
+
+  defp upsert_steps(_run, steps) when map_size(steps) == 0, do: :ok
+
+  defp upsert_steps(run, steps) do
+    rows =
+      for {step, delta} <- steps do
+        Map.merge(delta, %{
+          id: Ecto.UUID.generate(),
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          run_id: run.id,
+          step: step,
+          state: delta.state || "running"
+        })
+      end
+
+    # Every right-hand side reads the row as it was before the update: the start's columns
+    # follow the start with the lower sequence, the exit's the exit with the lower sequence,
+    # and the state changes with an exit alone.
+    on_conflict =
+      from s in Step,
+        update: [
+          set: [
+            name: lower_wins(s, :started_sequence, :name),
+            kind: lower_wins(s, :started_sequence, :kind),
+            started_at: lower_wins(s, :started_sequence, :started_at),
+            started_sequence: lower_wins(s, :started_sequence, :started_sequence),
+            state: lower_wins(s, :exited_sequence, :state),
+            exit_code: lower_wins(s, :exited_sequence, :exit_code),
+            duration_ms: lower_wins(s, :exited_sequence, :duration_ms),
+            exited_at: lower_wins(s, :exited_sequence, :exited_at),
+            exited_sequence: lower_wins(s, :exited_sequence, :exited_sequence)
+          ]
+        ]
+
+    Repo.insert_all(Step, rows,
+      on_conflict: on_conflict,
+      conflict_target: [:run_id, :step],
+      log: false
+    )
+  end
+
+  # The steps of a run that exited and that have no exit of their own are cancelled.
+  defp end_open_steps(%Run{exited_at: %DateTime{}, id: id}) do
+    Repo.update_all(
+      from(s in Step,
+        where: s.run_id == ^id and is_nil(s.exited_sequence) and s.state == "running"
+      ),
+      set: [state: "cancelled"]
+    )
+
+    :ok
+  end
+
+  defp end_open_steps(_run), do: :ok
 
   defp mark_projected(ids) do
     Repo.update_all(from(e in Event, where: e.id in ^ids),

@@ -7,6 +7,16 @@
 # the environment's or the file's, is also written to $APIARY_KEYS_DIR/postgres-password
 # (mode 0644), for the postgres image's POSTGRES_PASSWORD_FILE.
 #
+# With QORY_REGISTRY set and not blank, for the opt-in feature registry: the registry
+# signing key, an ECDSA P-256 key in PEM, in $APIARY_KEYS_DIR/registry-token.key (mode
+# 0600), generated once and never changed; and, with APIARY_REGISTRY_CERT_DIR set and not
+# blank, a self-signed certificate of that key in $APIARY_REGISTRY_CERT_DIR/
+# registry-token.crt (mode 0644), on a volume the registry mounts read-only, written again
+# whenever its public key is not the key's. That directory is refused when it is
+# $APIARY_KEYS_DIR or inside it. The registry reads the certificate only when
+# it starts and holds one, so a rotation is: delete registry-token.key, run this again,
+# restart Qory Apiary, then restart the registry.
+#
 # POSIX sh and openssl, no BEAM: config/runtime.exs refuses to start without these keys.
 # Each file is written to a temporary file beside it and renamed once whole, so a crash
 # leaves no half file. Prints names and paths, never a value; exits non-zero when it
@@ -17,13 +27,14 @@ umask 077
 dir=${APIARY_KEYS_DIR:?}
 file=$dir/apiary.env
 password_file=$dir/postgres-password
+registry_key=$dir/registry-token.key
 newline='
 '
 
 # fail OUTPUT: stops, with the reason the failed command gave (what follows its last ": "),
 # or a reason of its own when that command printed none.
 fail() {
-  rm -f "$file.tmp" "$password_file.tmp" 2>/dev/null || true
+  rm -f "$file.tmp" "$password_file.tmp" "$registry_key.tmp" 2>/dev/null || true
   reason=${1##*: }
   printf 'Cannot write %s: %s. The volume keys has to be writable by the user nobody.\n' \
     "$dir" "${reason:-the write did not complete}" >&2
@@ -61,7 +72,7 @@ write() {
 }
 
 # A temporary file left by a run that crashed is never read, only removed.
-rm -f "$file.tmp" "$password_file.tmp" 2>/dev/null || true
+rm -f "$file.tmp" "$password_file.tmp" "$registry_key.tmp" 2>/dev/null || true
 
 content=
 generated=
@@ -126,4 +137,58 @@ fi
 # written here, since it is the password Qory connects with.
 if [ ! -f "$password_file" ] || [ "$(cat "$password_file")" != "$database_password" ]; then
   write "$password_file" 644 "$database_password$newline"
+fi
+
+# The registry signing key, where QORY_REGISTRY is set: generated once, never changed.
+if [ -n "${QORY_REGISTRY:-}" ]; then
+  if [ ! -f "$registry_key" ]; then
+    output=$(openssl ecparam -name prime256v1 -genkey -noout 2>&1) || fail "$output"
+    write "$registry_key" 600 "$output$newline"
+    printf 'Generated %s in %s.\n' registry-token.key "$dir"
+  fi
+
+  # Its certificate, where APIARY_REGISTRY_CERT_DIR is set, written through a temporary
+  # file and a rename when its public key is not the key's. The directory is never the
+  # keys directory, inside it or a parent of it, both resolved, since the registry reads
+  # it. A failure says which directory, without the keys volume's sentence.
+  cert_dir=${APIARY_REGISTRY_CERT_DIR:-}
+  if [ -n "$cert_dir" ]; then
+    # cert_fail REASON: stops, with the reason after the last ": " of REASON.
+    cert_fail() {
+      rm -f "$cert_dir/registry-token.crt.tmp" 2>/dev/null || true
+      reason=${1##*: }
+      printf 'Make %s writable by the user nobody, or set APIARY_REGISTRY_CERT_DIR to a directory that the user nobody can write. Writing failed: %s.\n' \
+        "$cert_dir" "${reason:-the write did not complete}" >&2
+      exit 1
+    }
+
+    keys_real=$(cd "$dir" 2>&1 && pwd -P) || fail "$keys_real"
+    cert_real=$(cd "$cert_dir" 2>&1 && pwd -P) || cert_fail "$cert_real"
+    keys_prefix=${keys_real%/}/
+    cert_prefix=${cert_real%/}/
+    case "$cert_prefix" in "$keys_prefix"*) cert_inside=1 ;; *) cert_inside= ;; esac
+    case "$keys_prefix" in "$cert_prefix"*) cert_parent=1 ;; *) cert_parent= ;; esac
+    if [ -n "$cert_inside" ] || [ -n "$cert_parent" ]; then
+      printf 'Set APIARY_REGISTRY_CERT_DIR to a directory other than %s. Zot reads that directory, and %s contains the private keys.\n' \
+        "$dir" "$dir" >&2
+      exit 1
+    fi
+
+    cert=$cert_dir/registry-token.crt
+    rm -f "$cert.tmp" 2>/dev/null || true
+    public=$(openssl pkey -in "$registry_key" -pubout 2>&1) || fail "$public"
+    held_public=
+    if [ -f "$cert" ]; then
+      held_public=$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null) || held_public=
+    fi
+    if [ "$public" != "$held_public" ]; then
+      # openssl writes the certificate to stdout. The shell creates the temporary file
+      # with mode 0644 from the umask; set -C makes that create fail where a file, or a
+      # link to a file or to no file, has the name. The rm -f after the directory check
+      # removes the temporary file a crash left.
+      pem=$(openssl req -new -x509 -key "$registry_key" -sha256 -days 3650 -subj "/CN=Qory Apiary registry tokens" 2>&1) || cert_fail "$pem"
+      output=$({ (umask 022 && set -C && printf '%s\n' "$pem" >"$cert.tmp") && sync && mv -f "$cert.tmp" "$cert" && sync; } 2>&1) || cert_fail "$output"
+      printf 'Generated %s in %s.\n' registry-token.crt "$cert_dir"
+    fi
+  fi
 fi

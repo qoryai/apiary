@@ -1,62 +1,48 @@
 defmodule ApiaryWeb.Contract.DispatchAnswer do
   @moduledoc false
 
-  # The parts the answers of the provisioner contract share, the claim's
-  # (`ApiaryWeb.Contract.PoolClaimController`) and the handover's
-  # (`ApiaryWeb.Contract.HandoverController`): a run's target and its work item, as
-  # `definitions.schema.json` has them, what a run of a step may do on its target, present
-  # together with the target or left out with it, and a time in UTC to the whole second.
+  # The parts of the answers of the provisioner contract: a run's documents, with its
+  # target and its work item, as `definitions.schema.json` has them, what a run of a step
+  # may do on its target, present together with the target or left out with it, and the
+  # run's stack (`Apiary.Stacks.for_run/3`); and a time in UTC to the whole second.
 
-  alias Apiary.WorkItems
+  alias Apiary.{Stacks, WorkItems}
 
-  # what_for/1 is the access, the target and the work item of an explore run, the access
-  # and the target of a prebuild's collection with no work item: `{name, value}` members,
-  # in order. An explore run whose work item has no target has neither access nor target.
+  # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
+  # this order: the run's `step`, the
+  # workspace's `domain`, the run's `access` and `target` (none for a run without a
+  # target), its `work_item` (none for a prebuild), its `run_settings` (none for none, a
+  # `Jason.OrderedObject`), its `stack`, `workflow` and `harness_hidden` (none for none
+  # and for a prebuild, `Apiary.Stacks.for_run/3`) and its `inputs`. The claim measures
+  # them (`Apiary.Dispatches.Handover`).
   @doc false
-  @spec what_for(map) :: [{String.t(), String.t() | Jason.OrderedObject.t()}]
-  def what_for(%{work_item: nil, collection: collection, run: run}),
-    do: reach(run.step, target_of(collection))
+  @spec documents(%{
+          required(:step) => String.t(),
+          required(:domain) => String.t(),
+          required(:target) => %{system: String.t(), path: String.t()} | nil,
+          required(:work_item) => Apiary.WorkItems.WorkItem.t() | nil,
+          required(:run_settings) => Jason.OrderedObject.t() | nil,
+          required(:stack) => Stacks.run_stack() | nil,
+          required(:inputs) => Jason.OrderedObject.t(),
+          optional(atom) => term
+        }) :: Jason.OrderedObject.t()
+  def documents(%{step: step} = run) do
+    work_item = if run.work_item, do: [{"work_item", work_item(run.work_item)}], else: []
+    run_settings = if run.run_settings, do: [{"run_settings", run.run_settings}], else: []
 
-  def what_for(%{work_item: work_item, run: run}),
-    do: reach(run.step, target_of(work_item)) ++ [{"work_item", work_item(work_item)}]
-
-  # handover_body/1 is the handover answer's JSON (`handover-answer.schema.json`), its
-  # members in the schema's order: `revision`, the run's `run_id`, its `run_key`, its
-  # `step`, the workspace's `domain`, the run's `target` (nil for none), its `work_item`
-  # (nil for a prebuild), its `run_settings` (nil for none, a `Jason.OrderedObject`) and
-  # its `inputs`. The controller sends it, and the handover measures it
-  # (`Apiary.Dispatches.Handover`), so both read one encoding.
-  @doc false
-  @spec handover_body(%{
-          revision: pos_integer,
-          run_id: String.t(),
-          run_key: String.t(),
-          step: String.t(),
-          domain: String.t(),
-          target: %{system: String.t(), path: String.t()} | nil,
-          work_item: Apiary.WorkItems.WorkItem.t() | nil,
-          run_settings: Jason.OrderedObject.t() | nil,
-          inputs: Jason.OrderedObject.t()
-        }) :: binary
-  def handover_body(%{} = answer) do
-    work_item = if answer.work_item, do: [{"work_item", work_item(answer.work_item)}], else: []
-    run_settings = if answer.run_settings, do: [{"run_settings", answer.run_settings}], else: []
-
-    Jason.encode!(
-      Jason.OrderedObject.new(
-        [
-          {"version", 1},
-          {"revision", answer.revision},
-          {"run_id", answer.run_id},
-          {"run_key", answer.run_key},
-          {"step", answer.step},
-          {"domain", answer.domain}
-        ] ++
-          reach(answer.step, answer.target) ++
-          work_item ++ run_settings ++ [{"inputs", answer.inputs}]
-      )
+    Jason.OrderedObject.new(
+      [{"step", step}, {"domain", run.domain}] ++
+        reach(step, run.target) ++
+        work_item ++ run_settings ++ stack(run.stack) ++ [{"inputs", run.inputs}]
     )
   end
+
+  # The `stack`, the `workflow` and `harness_hidden` of a run's documents, all three or
+  # none.
+  defp stack(nil), do: []
+
+  defp stack(%{stack: stack, workflow: workflow, harness_hidden: hidden}),
+    do: [{"stack", stack}, {"workflow", workflow}, {"harness_hidden", hidden}]
 
   # reach/2 is the `access` of a run of `step` and its `target`, both present for a run
   # with a target and both left out for one without, as the contract requires them
@@ -68,9 +54,6 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
 
   def reach(step, %{system: system, path: path}),
     do: [{"access", access(step)}, {"target", target(system, path)}]
-
-  defp target_of(%{target_system: nil}), do: nil
-  defp target_of(%{target_system: system, target_path: path}), do: %{system: system, path: path}
 
   # target/2 is a target of `system` and `path`.
   @doc false

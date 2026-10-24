@@ -35,7 +35,7 @@ defmodule Apiary.WorkItems.ExploreTest do
     )
   end
 
-  defp event(data), do: %Event{type: "dev.qory.session.result", sequence: 9, data: data}
+  defp event(data), do: %Event{type: "dev.qory.runtime.result", sequence: 9, data: data}
 
   defp result_event(document),
     do: event(%{"is_error" => false, "result" => Jason.encode!(document)})
