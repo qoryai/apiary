@@ -3405,17 +3405,17 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Adapter app values sent"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Adapter app values stored"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
 msgid "Adapter installed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Adapter secrets sent"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Adapter secrets stored"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -13237,7 +13237,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Sent the adapter its app values, sealed to its key, revision %{revision}"
+msgid "Sent an adapter its secrets, sealed to its access key, revision %{revision}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -13809,6 +13809,11 @@ msgstr ""
 msgid "Store the secret."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Stored an adapter's secrets, revision %{revision}"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Stored encrypted. Nobody sees it again once it is saved."
@@ -13827,11 +13832,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Stored secrets, variables and integrations, in each workspace's settings."
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Stored the adapter's app values, revision %{revision}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

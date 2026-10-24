@@ -11,11 +11,11 @@ defmodule ApiaryWeb.ActivityAdapterAppValuesTest do
   alias ApiaryWeb.Activity.Describer
   alias ApiaryWeb.Activity.Describer.Core
 
-  test "the label of the app values stored, offered in the filter" do
+  test "the label of the secrets stored, offered in the filter" do
     %{scope: scope} = sign_up_fixture()
 
-    assert Core.label(:"adapter.app_values_set") == "Adapter app values stored"
-    assert Core.label(:"adapter.app_values_set", scope) == "Adapter app values stored"
+    assert Core.label(:"adapter.app_values_set") == "Adapter secrets stored"
+    assert Core.label(:"adapter.app_values_set", scope) == "Adapter secrets stored"
     assert Core.offered?(scope, :"adapter.app_values_set")
   end
 
@@ -34,13 +34,13 @@ defmodule ApiaryWeb.ActivityAdapterAppValuesTest do
     assert Enum.find_value(
              Describer.describers(),
              & &1.sentence(:"adapter.app_values_set", entry, %{})
-           ) == "Stored the adapter's app values, revision 2"
+           ) == "Stored an adapter's secrets, revision 2"
   end
 
-  test "the label of the app values sent, offered in the filter, and its sentence" do
+  test "the label of the secrets sent, offered in the filter, and its sentence" do
     %{scope: scope} = sign_up_fixture()
 
-    assert Core.label(:"adapter.app_values_seal") == "Adapter app values sent"
+    assert Core.label(:"adapter.app_values_seal") == "Adapter secrets sent"
     assert Core.offered?(scope, :"adapter.app_values_seal")
 
     entry = %Entry{
@@ -52,7 +52,7 @@ defmodule ApiaryWeb.ActivityAdapterAppValuesTest do
     assert Enum.find_value(
              Describer.describers(),
              & &1.sentence(:"adapter.app_values_seal", entry, %{})
-           ) == "Sent the adapter its app values, sealed to its key, revision 3"
+           ) == "Sent an adapter its secrets, sealed to its access key, revision 3"
 
     # A read with no secret stored has no revision, and no sentence.
     assert Enum.find_value(

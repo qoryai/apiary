@@ -89,8 +89,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"target.rebuild_environment"), do: gettext("Builds asked for")
   def label(:"adapter.install"), do: gettext("Adapter installed")
   def label(:"adapter.setup"), do: gettext("Adapter set-up started")
-  def label(:"adapter.app_values_set"), do: gettext("Adapter app values stored")
-  def label(:"adapter.app_values_seal"), do: gettext("Adapter app values sent")
+  def label(:"adapter.app_values_set"), do: gettext("Adapter secrets stored")
+  def label(:"adapter.app_values_seal"), do: gettext("Adapter secrets sent")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -129,7 +129,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # run, the choosing of what a target's runs also read, the setting of a model choice or
   # a time limit of a workspace or a target, a build of a target's environment asked for,
   # the installing of an adapter, the start of its set-up and the storing and sending of
-  # its app values have labels yet, so the filter offers those alone, where the reader is
+  # its secrets have labels yet, so the filter offers those alone, where the reader is
   # shown the feature (the page asks it); the others' entries show as any change. The
   # filter offers `connection.write` alone of the three actions that split it
   # (`@connection_writes`), and its entries are those of the three
@@ -421,13 +421,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"adapter.setup", _details, _actor), do: gettext("Started setting up an adapter")
 
   defp said(:"adapter.app_values_set", %{"revision" => revision}, _actor),
-    do: gettext("Stored the adapter's app values, revision %{revision}", revision: revision)
+    do: gettext("Stored an adapter's secrets, revision %{revision}", revision: revision)
 
   # A read with no secret stored has no revision, and no sentence.
   defp said(:"adapter.app_values_seal", %{"revision" => revision}, _actor)
        when is_integer(revision),
        do:
-         gettext("Sent the adapter its app values, sealed to its key, revision %{revision}",
+         gettext("Sent an adapter its secrets, sealed to its access key, revision %{revision}",
            revision: revision
          )
 

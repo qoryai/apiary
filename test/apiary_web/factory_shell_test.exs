@@ -396,8 +396,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"adapter.install", "Adapter installed"} in options
       assert {"adapter.setup", "Adapter set-up started"} in options
-      assert {"adapter.app_values_set", "Adapter app values stored"} in options
-      assert {"adapter.app_values_seal", "Adapter app values sent"} in options
+      assert {"adapter.app_values_set", "Adapter secrets stored"} in options
+      assert {"adapter.app_values_seal", "Adapter secrets sent"} in options
       assert {"model_choice.write", "Model choice changed"} in options
       assert {"time_limit.edit", "Time limit changed"} in options
 
