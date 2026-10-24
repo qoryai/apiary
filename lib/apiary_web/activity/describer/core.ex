@@ -421,13 +421,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"adapter.setup", _details, _actor), do: gettext("Started setting up an adapter")
 
   defp said(:"adapter.app_values_set", %{"revision" => revision}, _actor),
-    do: gettext("Stored the adapter's app values, revision %{revision}.", revision: revision)
+    do: gettext("Stored the adapter's app values, revision %{revision}", revision: revision)
 
   # A read with no secret stored has no revision, and no sentence.
   defp said(:"adapter.app_values_seal", %{"revision" => revision}, _actor)
        when is_integer(revision),
        do:
-         gettext("Sent the adapter its app values, sealed to its key, revision %{revision}.",
+         gettext("Sent the adapter its app values, sealed to its key, revision %{revision}",
            revision: revision
          )
 

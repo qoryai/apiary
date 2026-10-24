@@ -13237,7 +13237,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Sent the adapter its app values, sealed to its key, revision %{revision}."
+msgid "Sent the adapter its app values, sealed to its key, revision %{revision}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -13831,7 +13831,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Stored the adapter's app values, revision %{revision}."
+msgid "Stored the adapter's app values, revision %{revision}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

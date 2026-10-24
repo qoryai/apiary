@@ -34,7 +34,7 @@ defmodule ApiaryWeb.ActivityAdapterAppValuesTest do
     assert Enum.find_value(
              Describer.describers(),
              & &1.sentence(:"adapter.app_values_set", entry, %{})
-           ) == "Stored the adapter's app values, revision 2."
+           ) == "Stored the adapter's app values, revision 2"
   end
 
   test "the label of the app values sent, offered in the filter, and its sentence" do
@@ -52,7 +52,7 @@ defmodule ApiaryWeb.ActivityAdapterAppValuesTest do
     assert Enum.find_value(
              Describer.describers(),
              & &1.sentence(:"adapter.app_values_seal", entry, %{})
-           ) == "Sent the adapter its app values, sealed to its key, revision 3."
+           ) == "Sent the adapter its app values, sealed to its key, revision 3"
 
     # A read with no secret stored has no revision, and no sentence.
     assert Enum.find_value(
