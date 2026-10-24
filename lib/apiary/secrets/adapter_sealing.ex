@@ -10,7 +10,7 @@ defmodule Apiary.Secrets.AdapterSealing do
 
   **The upload**, `POST /v1/adapter/secrets`: the adapter seals its secrets to the
   instance's signing key, whose X25519 key is the Ed25519 key converted
-  (`Apiary.SigningKey.x25519_private_key/1`). `open_upload/3` opens it.
+  (`Apiary.SigningKey.x25519_private_key/1`). `open_upload/4` opens it.
 
   **The delivery**, the answer to `GET /v1/adapter/secrets`: the secrets sealed to the
   access key the request verified under, with a fresh ephemeral key for each answer.

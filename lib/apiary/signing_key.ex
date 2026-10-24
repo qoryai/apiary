@@ -40,6 +40,8 @@ defmodule Apiary.SigningKey do
       `[%{"alg" => "ed25519", "public_key" => <base64url>}]`: the current key alone, as
       long as the key does not rotate. `apiary_public_key/1` gives the list of any keys,
       in order, which is how a rotation lists the current key, then the next.
+    * `x25519_private_key/1`, the X25519 private key of a key, 32 bytes, which opens
+      what an adapter seals to the instance's key (`Apiary.Secrets.AdapterSealing`).
 
   Building the answer string a signature covers is the caller's.
 
@@ -186,8 +188,8 @@ defmodule Apiary.SigningKey do
   @doc """
   x25519_private_key/1 is the X25519 private key of the key given, 32 bytes: the first 32
   bytes of SHA-512 of its seed, which `:crypto` clamps when it uses them, as an Ed25519
-  key converts. It opens a value an adapter sealed to the instance's key
-  (`Apiary.Secrets.AdapterSealing`), and nothing else.
+  key converts. `Apiary.Secrets.AdapterSealing.open_upload/4` is its one caller in the
+  code, to open what an adapter sealed to the instance's key.
   """
   @spec x25519_private_key(t) :: <<_::256>>
   def x25519_private_key(%__MODULE__{seed: seed}),

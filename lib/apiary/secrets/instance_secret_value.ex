@@ -4,7 +4,9 @@ defmodule Apiary.Secrets.InstanceSecretValue do
   unique in its secret, and the value encrypted under the instance's data key
   (`Apiary.Secrets.InstanceDataKey`) with the v3 associated data
   (`Apiary.Secrets.Cipher`), as a nonce and a ciphertext with its tag. `value`, virtual,
-  is set only while a value is being written. `nonce`, `ciphertext` and `value` are left
+  is the plaintext: set by the caller of a write, and by
+  `Apiary.Secrets.Instance.reveal_app_values_for_sealing/1`, whose values a delivery
+  seals (`Apiary.Secrets.AdapterSealing.delivery/3`). `nonce`, `ciphertext` and `value` are left
   out of `inspect`.
   """
   use Ecto.Schema

@@ -8,20 +8,29 @@ defmodule ApiaryWeb.Contract.AppValuesController do
   # body, and signs the answer. The body is read raw, up to 1 MiB
   # (`ApiaryWeb.Contract.RawBody`).
   #
-  # Then, in order: a body the contract refuses is `400` `invalid_request`
-  # (`Apiary.Adapters.Wire.secrets_upload/1`); a `time` more than 300 seconds from the
-  # clock, either way, or a request whose signature was accepted before, is `401`,
-  # unsigned (`ApiaryWeb.Contract.AdapterRequest.accept/2`); a key that may not store the
-  # adapter's secrets (`adapter.app_values_set`) is `403` `forbidden`, and `404`
-  # `not_found` where its adapter is not found to it; an envelope sealed to a key the
-  # instance does not hold, one that does not open, a plaintext the contract refuses, and
-  # a secret whose name the source role of the adapter's latest description does not list
-  # (`secrets`, `Apiary.Nodes.Node`'s `secret_names`) are `400` `invalid_request`
-  # (`Apiary.Secrets.AdapterSealing.open_upload/4`); an adapter installed with Qory Apiary
-  # that `QORY_INSTALLED_ADAPTERS` no longer lists is `404` `not_found`; else the secrets
-  # replace every secret the adapter stored before (`Apiary.Adapters.store_app_values/3`),
-  # with an entry of `adapter.app_values_set` in the same transaction, and the answer is `204`,
-  # signed, with no body. When they cannot be stored, the answer is `503` `unavailable`.
+  # Then, in order:
+  #
+  #   1. a body the contract refuses is `400` `invalid_request`
+  #      (`Apiary.Adapters.Wire.secrets_upload/1`);
+  #   2. a `time` more than 300 seconds from the clock, either way, or a request whose
+  #      signature was accepted before, is `401`, unsigned
+  #      (`ApiaryWeb.Contract.AdapterRequest.accept/2`);
+  #   3. a key that may not store the adapter's secrets (`adapter.app_values_set`) is `403`
+  #      `forbidden`, and `404` `not_found` where its adapter is not found to it;
+  #   4. an envelope sealed to a key the instance does not hold, one that does not open,
+  #      and a plaintext the contract refuses are `400` `invalid_request`
+  #      (`Apiary.Secrets.AdapterSealing.open_upload/4`);
+  #   5. with the adapter's row locked (`Apiary.Adapters.store_app_values/3`): an adapter
+  #      deleted, or installed with Qory Apiary and no longer listed in
+  #      `QORY_INSTALLED_ADAPTERS`, is `404` `not_found`; then a secret whose name the
+  #      source role of the adapter's latest description does not list (`secrets`, the
+  #      node's `secret_names`) is `400` `invalid_request`;
+  #   6. else the secrets replace every secret the adapter stored before, with an entry
+  #      of `adapter.app_values_set` in the same transaction, and the answer is `204`,
+  #      signed, with no body.
+  #
+  # When the secrets cannot be stored, or anything raises, the answer is `503`
+  # `unavailable`.
   #
   # `GET /v1/adapter/secrets`, the adapter reading those secrets back
   # (`adapter-secrets-answer.schema.json`), sealed to the access key the request verified

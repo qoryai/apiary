@@ -184,7 +184,7 @@ defmodule Apiary.Secrets.InstanceTest do
       assert reveal(ctx.adapter) == {nil, []}
     end
 
-    test "finds only the adapter's own secret, never another adapter's", ctx do
+    test "finds the secret of this adapter, never another adapter's", ctx do
       {:ok, mine} = put(ctx.adapter, [{"signing-key", @private_key}])
 
       # The other adapter's reference set to this adapter's secret.

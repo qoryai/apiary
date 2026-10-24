@@ -25,10 +25,10 @@ defmodule Apiary.Secrets.Hpke do
   def suite_ids, do: <<@kem_id::16, @kdf_id::16, @aead_id::16>>
 
   @doc """
-  seal/5 seals `pt` to the X25519 public key `pk_r` under `info` and `aad`, with the
-  ephemeral private key `ephemeral`, a function of no arguments, gives: `{:ok, enc, ct}`,
-  `enc` the ephemeral public key and `ct` the ciphertext with its 16-byte tag, or
-  `{:error, :key}`.
+  seal/5 seals `pt` to the X25519 public key `pk_r` under `info` and `aad`. `ephemeral`
+  is a function of no arguments that returns the ephemeral private key. The answer is
+  `{:ok, enc, ct}`, `enc` the ephemeral public key and `ct` the ciphertext with its
+  16-byte tag, or `{:error, :key}`.
   """
   @spec seal((-> <<_::256>>), <<_::256>>, binary, binary, binary) ::
           {:ok, <<_::256>>, binary} | {:error, :key}

@@ -7,7 +7,7 @@ defmodule Apiary.Repo.Migrations.KeepTheSecretNamesAnAdapterDeclares do
   # underscores and hyphens, 1 to 64 characters, starting with a letter or a digit. NULL
   # while the description lists none, and on every other node
   # (`nodes_secret_names_check`). An upload of a secret whose name is not there is refused
-  # (`Apiary.Secrets.Instance`).
+  # (`Apiary.Adapters.store_app_values/3`).
   #
   # NULL for every row there already, and adding a column with no default rewrites no row.
   def up do

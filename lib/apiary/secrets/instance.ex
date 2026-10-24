@@ -29,9 +29,10 @@ defmodule Apiary.Secrets.Instance do
     adapter's request that delivers them sealed to its key, and for nothing else.
   - `delete_app_values/2` deletes an adapter's secret, when the adapter is deleted.
 
-  Nothing here logs a value, a nonce, a ciphertext or a key: a log line names the adapter
-  and the value id at most. A value is held in an `Apiary.Secrets.InstanceSecretValue`,
-  which `inspect` shows without it.
+  Nothing here logs a value, a nonce, a ciphertext or a key. A line about a value that
+  does not decrypt contains the adapter's public id and the value id; a line about a data
+  key that does not unwrap contains the id of the key it was wrapped under. A value is in
+  an `Apiary.Secrets.InstanceSecretValue`, which `inspect` shows without it.
   """
 
   import Ecto.Query, warn: false
@@ -229,11 +230,18 @@ defmodule Apiary.Secrets.Instance do
   the adapter has stored none. The reference on the adapter's row is resolved in the
   built-in store, to a secret of that adapter alone.
 
-  `{:error, :unavailable}` when a value cannot be decrypted: the instance's data key was
-  wrapped under a key the instance does not hold, or a row is not the one that was written
-  (moved to another adapter, secret or value id, or changed), or the reference finds no
-  secret of the adapter. The log says so in one line that names the adapter and the value
-  id, never the value.
+  `{:error, :unavailable}` when a value cannot be decrypted, with one log line and never
+  the value:
+
+    * a row is not the one that was written (moved to another adapter, secret or value
+      id, or changed), or the reference finds no secret of the adapter: the line contains
+      the adapter's public id and the value id, `(none)` for a missing secret;
+    * the instance's data key was wrapped under a key the instance does not hold: the
+      line contains that key's id, `key_id=`, and no adapter.
+
+  A reference with no data key row also answers `{:error, :unavailable}`, and logs
+  nothing: the first write makes that row, so a reference without one does not occur
+  unless the row was deleted.
 
   It asks nothing of `Apiary.Access`: the caller has verified the adapter's signed request
   and its key's right to it. The plaintext goes into the seal and nowhere else.
