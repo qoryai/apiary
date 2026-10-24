@@ -330,7 +330,7 @@ defmodule Apiary.Audit do
     end
 
     {actor_kind, actor_id} = actor(scope)
-    {subject_kind, subject_id, organisation_id, workspace_id} = subject(subject)
+    {subject_kind, subject_id, organisation_id, workspace_id} = subject(subject, scope)
 
     unless organisation_id == organisation_id(scope) do
       raise ArgumentError, "an audit entry's subject must be of the scope's organisation"
@@ -401,8 +401,16 @@ defmodule Apiary.Audit do
   defp actor(_scope),
     do: raise(ArgumentError, "an audit entry needs a person, an access key or the instance")
 
-  # A key without an organisation is an adapter's, which is the instance's: it acts in the
-  # trail of the instance's organisation, as its adapter's entries are.
+  # A key acting in another organisation than its own records there
+  # (`Apiary.Accounts.Scope.key_in_organisation/2`). Any other key without an organisation,
+  # an adapter's or the instance's pool's or gateway's, is the instance's: it acts in the
+  # trail of the instance's organisation, as its node's entries are.
+  defp organisation_id(%Scope{
+         access_key: %AccessKey{},
+         key_organisation: %Organisation{id: id}
+       }),
+       do: id
+
   defp organisation_id(%Scope{access_key: %AccessKey{organisation_id: nil}}),
     do: Apiary.Edition.instance_organisation_id()
 
@@ -410,7 +418,22 @@ defmodule Apiary.Audit do
   defp organisation_id(%Scope{organisation: %Organisation{id: id}}), do: id
   defp organisation_id(_scope), do: nil
 
-  defp subject(%module{} = subject) do
+  # The node of a key acting in another organisation (`organisation_id/1`), when the node
+  # has no organisation, is the subject of an entry in that organisation's trail: the
+  # instance's gateway, about a seal for a run of an operator's chain.
+  defp subject(
+         %Node{id: id, organisation_id: nil, workspace_id: nil} = subject,
+         %Scope{
+           access_key: %AccessKey{node_id: id},
+           key_organisation: %Organisation{id: organisation_id}
+         }
+       )
+       when is_binary(id) do
+    {kind, _id, _organisation_id, _workspace_id} = subject(subject, nil)
+    {kind, id, organisation_id, nil}
+  end
+
+  defp subject(%module{} = subject, _scope) do
     case Map.fetch(subject_kinds(), module) do
       {:ok, kind} ->
         {organisation_id, workspace_id} = place(subject)

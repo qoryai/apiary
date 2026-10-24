@@ -24,7 +24,8 @@ defmodule Apiary.Accounts.Scope do
   membership reaches, which `Apiary.Access` asks it about. What each allows is
   `Apiary.Access`'s answer.
   At the server contract the scope is an access key's instead (`for_access_key/1`): no
-  user, the key's workspace. A job that no person enqueued acts as the instance
+  user, the key's workspace; `key_organisation`, set by `key_in_organisation/2`, is the
+  organisation whose audit trail records the key's act, nil for the key's. A job that no person enqueued acts as the instance
   (`for_instance/2`): no user, and `instance: true`, the one mark `Apiary.Access` gives
   the instance's role by; a scope without a person that does not carry it may nothing.
   What a scope may do is `Apiary.Access`'s answer.
@@ -72,7 +73,8 @@ defmodule Apiary.Accounts.Scope do
             instance: false,
             origin: nil,
             hidden: nil,
-            edition: %{}
+            edition: %{},
+            key_organisation: nil
 
   @doc """
   Creates a scope for the given user.
@@ -220,6 +222,22 @@ defmodule Apiary.Accounts.Scope do
         hidden: nil
     }
   end
+
+  @doc false
+  # key_in_organisation/2 is an access key's scope acting in `organisation`, for the audit
+  # entry of an act whose trail is that organisation's rather than the key's: a seal for a
+  # run of another organisation (`Apiary.Runs.SecretsRequest`), or an act of the
+  # instance's pool on a dispatch of any organisation. The entry is in `organisation`'s
+  # trail, by the key; the key's node, when it has no organisation, may be its subject
+  # there (`Apiary.Audit`). Nothing else of the scope changes, and no answer of
+  # `Apiary.Access` reads it.
+  @spec key_in_organisation(t, %Organisation{}) :: t
+  def key_in_organisation(
+        %__MODULE__{access_key: %AccessKey{}} = scope,
+        %Organisation{id: id} = organisation
+      )
+      when is_binary(id),
+      do: %{scope | key_organisation: organisation}
 
   @doc """
   The scope with `origin`, from where its caller acts; nil stays nil.

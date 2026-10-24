@@ -64,15 +64,27 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   defp operator_gateway(ctx), do: keyed(ctx.operator, organisation_gateway_fixture(ctx.operator))
   defp client_gateway(ctx), do: keyed(ctx.client, gateway_fixture(ctx.client))
 
+  # The instance's gateway, the default of every workspace that has no other default, with
+  # one key allowed stored secrets.
+  defp instance_gateway do
+    %{access_key: key, pair: pair} =
+      installed_key_fixture(instance_gateway_fixture(), allow_secrets: true)
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    {key, pair.secret}
+  end
+
   # A pool of the client's workspace, made after its gateway, whose choice is the default,
   # and an explore run of a fresh work item claimed by its key: `{:ok, %{run: run,
   # run_key: run_key}}`, the registered run and the run key its code was redeemed for, or
   # `{:error, :gone}` for a run the claim ended; and the run of the queue.
-  defp hand_over(ctx) do
-    pool = pool_fixture(ctx.client)
+  defp hand_over(%{client: client}), do: hand_over(client)
+
+  defp hand_over(scope) do
+    pool = pool_fixture(scope)
     :default = pool.gateway_choice
-    %{access_key: pool_key} = enrolled_key_fixture(ctx.client, pool)
-    work_item = work_item_fixture(ctx.client)
+    %{access_key: pool_key} = enrolled_key_fixture(scope, pool)
+    work_item = work_item_fixture(scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     case Dispatches.claim(pool_key, Dispatches.now()) do
@@ -161,6 +173,9 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   defp code(conn), do: Jason.decode!(conn.resp_body)["error"]
 
   defp seals, do: Repo.all(from e in Entry, where: e.action == "secret.seal")
+
+  defp seals_of(scope),
+    do: Enum.filter(seals(), &(&1.organisation_id == scope.organisation.id))
 
   defp ended!(queued) do
     assert %DispatchRun{state: :ended, end_cause: :secrets_not_allowed, result_outcome: :error} =
@@ -272,6 +287,103 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
       assert log =~ "#{provider.public_id} may not be sealed for its gateway (gateway)"
+      assert seals() == []
+    end
+  end
+
+  describe "the instance's gateway" do
+    test "is sealed a key of each organisation's chain, in each run's organisation's trail",
+         ctx do
+      gateway_key = instance_gateway()
+
+      {:ok, theirs} =
+        Connections.create_provider(ctx.operator, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: model_key()}]
+        })
+
+      for {scope, provider} <- [{ctx.client, ctx.provider}, {ctx.operator, theirs}] do
+        {:ok, _choice} =
+          ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+        {{:ok, handed}, _queued} = hand_over(scope)
+        run = attach!(gateway_key, handed)
+        assert run.organisation_id == scope.organisation.id
+        assert run.provider_chain == "organisation"
+
+        conn = post_secrets(gateway_key, run, digest(gateway_key, run), provider)
+        assert conn.status == 200
+        assert signed_answer?(conn)
+
+        # In the run's organisation's trail, about the run, by the gateway's key.
+        {key, _seed} = gateway_key
+        assert [%Entry{} = entry] = seals_of(scope)
+        assert {entry.subject_kind, entry.subject_id} == {"run", run.id}
+        assert entry.workspace_id == scope.workspace.id
+        assert {entry.actor_kind, entry.actor_id} == {:access_key, key.id}
+        assert entry.details["provider_id"] == provider.public_id
+      end
+
+      assert length(seals()) == 2
+    end
+
+    test "is sealed a key of an operator's chain, in the operator's trail only", ctx do
+      gateway_key = instance_gateway()
+      provider = operator_chain!(ctx)
+
+      {{:ok, handed}, _queued} = hand_over(ctx)
+      run = attach!(gateway_key, handed)
+      assert run.provider_chain == "operator"
+
+      conn = post_secrets(gateway_key, run, digest(gateway_key, run), provider)
+      assert conn.status == 200
+      assert signed_answer?(conn)
+
+      # The client's people read nothing of the operator's provider: the entry is in the
+      # operator's trail, about the instance's gateway, with the run's id.
+      {key, _seed} = gateway_key
+      assert seals_of(ctx.client) == []
+      assert [%Entry{} = entry] = seals_of(ctx.operator)
+      assert {entry.subject_kind, entry.subject_id} == {"node", key.node_id}
+      assert entry.workspace_id == nil
+      assert entry.details["run_id"] == run.node_run_id
+      assert entry.details["provider_id"] == provider.public_id
+    end
+
+    test "is refused a key of an operator's chain when the edition names no operator", ctx do
+      gateway_key = instance_gateway()
+      provider = operator_chain!(ctx)
+      {{:ok, handed}, _queued} = hand_over(ctx)
+      run = attach!(gateway_key, handed)
+      digest = digest(gateway_key, run)
+
+      EditionStubs.ServesAcrossWithChain.operator(nil)
+
+      {conn, log} = with_log(fn -> post_secrets(gateway_key, run, digest, provider) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "may not be sealed for its gateway (gateway)"
+      assert seals() == []
+    end
+
+    test "a pool's key is never sealed the run's key", ctx do
+      gateway_key = instance_gateway()
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(ctx.client, :workspace, %{provider: ctx.provider.public_id})
+
+      {{:ok, handed}, _queued} = hand_over(ctx)
+      run = attach!(gateway_key, handed)
+      digest = digest(gateway_key, run)
+
+      %{access_key: pool_key, pair: pair} =
+        installed_key_fixture(instance_pool_fixture(), allow_secrets: true)
+
+      {:ok, pool_key} = AccessKeys.fetch_for_verification(pool_key.key_id)
+
+      conn = post_secrets({pool_key, pair.secret}, run, digest, ctx.provider)
+      assert conn.status == 404
+      assert code(conn) == "not_found"
       assert seals() == []
     end
   end

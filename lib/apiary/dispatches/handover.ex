@@ -553,17 +553,17 @@ defmodule Apiary.Dispatches.Handover do
   # credential (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed`
   # when one of `keys`, the gateway's keys its run key lists, was made without
   # `allow_secrets`, as either key may attach the run; or when the provider's key may not
-  # be sealed for the gateway's organisation.
+  # be sealed for the gateway (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
   defp sealable(
          {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
-         %Node{organisation_id: gateway_organisation_id},
+         %Node{} = gateway,
          %Workspace{organisation_id: organisation_id},
          keys
        ) do
     cond do
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
-      ProviderCredential.sealable_to?(chain, gateway_organisation_id, organisation_id) -> ok
+      ProviderCredential.sealable_to?(chain, gateway, organisation_id) -> ok
       true -> {:end, :secrets_not_allowed}
     end
   end
