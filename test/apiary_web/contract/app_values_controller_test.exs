@@ -517,4 +517,174 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
     body = upload(ctx, plaintext([]))
     update_in(body, ["sealed"], &Map.delete(&1, "server_key"))
   end
+
+  describe "a key that fails a key check" do
+    # A key of the adapter whose public key is one of the contract's published fixture
+    # keys (seed bytes 161 to 192), which `Apiary.Contract.Ed25519.check_public_key/1`
+    # refuses. Enrolment refuses such a key, so the row is written here directly, as
+    # `Apiary.AccessKeysFixtures.installed_key_fixture/2` writes one.
+    defp fixture_key(adapter) do
+      seed = :binary.list_to_bin(Enum.to_list(161..192))
+      {public, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+      assert {:error, :fixture} = Ed25519.check_public_key(public)
+      now = DateTime.utc_now()
+      key_id = Apiary.AccessKeys.AccessKey.generate_key_id()
+      code = Apiary.AccessKeys.EnrolmentCode.generate(:adapter)
+
+      code_row =
+        %Apiary.AccessKeys.EnrolmentCode{
+          id: Ecto.UUID.generate(),
+          node_id: adapter.id,
+          code_sha256: Apiary.AccessKeys.EnrolmentCode.hash(code),
+          expires_at: DateTime.add(now, 15, :minute),
+          used_at: now,
+          used_by_key_id: key_id,
+          public_key: public
+        }
+        |> Ecto.Changeset.change()
+        |> Apiary.AccessKeys.EnrolmentCode.put_integrity()
+        |> Repo.insert!()
+
+      key =
+        %Apiary.AccessKeys.AccessKey{
+          id: Ecto.UUID.generate(),
+          node_id: adapter.id,
+          key_id: key_id,
+          public_key: public,
+          arrived_by: :code,
+          enrolment_code_id: code_row.id,
+          received_at: now
+        }
+        |> Apiary.AccessKeys.AccessKey.insert_changeset(%{allow_secrets: false, label: "fixture"})
+        |> Apiary.AccessKeys.AccessKey.put_integrity()
+        |> Repo.insert!()
+
+      Repo.insert!(%Apiary.AccessKeys.PublicKey{
+        public_key: public,
+        key_id: key_id,
+        state: :current,
+        received_at: now
+      })
+
+      {key, seed}
+    end
+
+    test "is a signed 503 for a delivery, with no entry", ctx do
+      assert send_post(ctx, upload(ctx, plaintext([{"signing-key", "v"}]))).status == 204
+      {key, seed} = fixture_key(ctx.adapter)
+
+      conn = send_get(%{ctx | key: key, seed: seed})
+      assert json_response(conn, 503) == %{"error" => "unavailable"}
+      assert signed_answer?(conn)
+      assert seal_entries(ctx.adapter) == []
+    end
+  end
+
+  describe "a crypto failure along the whole path" do
+    # The instance's log level is `info` (`config/prod.exs`); the test's process logs at
+    # that level, whatever the suite's level is.
+    defp capture_info(fun) do
+      capture_log(fn ->
+        Logger.put_process_level(self(), :info)
+
+        try do
+          fun.()
+        after
+          Logger.delete_process_level(self())
+        end
+      end)
+    end
+
+    # Every form of a byte string a log line could contain.
+    defp forms(bytes) do
+      [
+        bytes,
+        Base.encode16(bytes, case: :lower),
+        Base.encode16(bytes),
+        Base.encode64(bytes),
+        Base.url_encode64(bytes, padding: false),
+        inspect(bytes)
+      ]
+    end
+
+    defp refute_in_log(log, secrets) do
+      for secret <- secrets, form <- forms(secret), byte_size(form) >= 8 do
+        refute String.contains?(log, form)
+      end
+    end
+
+    test "logs no value, nonce or ciphertext, and each step answers as the code says", ctx do
+      pt = plaintext([{"signing-key", @signing_key}, {"event-secret", @event_secret}])
+      body = upload(ctx, pt)
+
+      log =
+        capture_info(fn ->
+          # The upload opens and is stored.
+          assert send_post(ctx, body).status == 204
+
+          # An envelope whose ciphertext does not open: 400.
+          broken =
+            update_in(upload(ctx, pt), ["sealed", "ct"], &("AAAA" <> String.slice(&1, 4..-1//1)))
+
+          assert json_response(send_post(ctx, broken), 400) == @invalid
+
+          # The delivery seals the values.
+          assert send_get(ctx).status == 200
+        end)
+
+      rows = Repo.all(InstanceSecretValue)
+      assert length(rows) == 2
+
+      envelope =
+        for key <- ["enc", "ct"],
+            do: Base.url_decode64!(body["sealed"][key], padding: false)
+
+      secrets =
+        [@signing_key, @event_secret] ++
+          Enum.flat_map(rows, &[&1.nonce, &1.ciphertext]) ++ envelope
+
+      refute_in_log(log, secrets)
+
+      # The data key no longer unwraps: the upload and the delivery are 503, each with
+      # the one line that contains the key's id.
+      {1, _} =
+        Repo.update_all(InstanceDataKey, set: [wrapped_key: :crypto.strong_rand_bytes(60)])
+
+      log =
+        capture_info(fn ->
+          assert json_response(send_post(ctx, upload(ctx, pt)), 503) ==
+                   %{"error" => "unavailable"}
+
+          assert json_response(send_get(ctx, timestamp: SignedRequest.now() + 1), 503) ==
+                   %{"error" => "unavailable"}
+        end)
+
+      assert log =~ "the instance's data key cannot be unwrapped key_id="
+      refute_in_log(log, secrets)
+    end
+
+    test "a raise in the store or the read is a 503 whose log line has the exception's module alone",
+         ctx do
+      pt = plaintext([{"signing-key", @signing_key}])
+      assert send_post(ctx, upload(ctx, pt)).status == 204
+      [row] = Repo.all(InstanceSecretValue)
+
+      # The values' table is renamed inside the test's transaction, which the sandbox
+      # rolls back: every query of it raises `Postgrex.Error`.
+      Repo.query!("ALTER TABLE instance_secret_values RENAME TO instance_secret_values_away")
+
+      log =
+        capture_info(fn ->
+          conn = send_post(ctx, upload(ctx, plaintext([{"signing-key", "other"}])))
+          assert json_response(conn, 503) == %{"error" => "unavailable"}
+
+          conn = send_get(ctx)
+          assert json_response(conn, 503) == %{"error" => "unavailable"}
+        end)
+
+      assert log =~ "an adapter's secrets could not be stored: Postgrex.Error"
+      assert log =~ "an adapter's secrets could not be sealed: Postgrex.Error"
+      refute_in_log(log, [@signing_key, "other", row.nonce, row.ciphertext])
+    end
+  end
 end
