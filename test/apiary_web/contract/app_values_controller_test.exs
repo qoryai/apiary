@@ -13,6 +13,8 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
   import Apiary.AccessKeysFixtures,
     only: [enrolled_key_fixture: 2, installed_key_fixture: 1, node_key_fixture: 2]
 
+  import Apiary.DescriptionFixtures, only: [contract_description: 0]
+
   import Apiary.ContractFixtures,
     only: [signed_get: 5, signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
 
@@ -163,6 +165,53 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
 
       assert [%{details: %{"replaced" => false}}, %{details: %{"replaced" => true}}, _third] =
                entries(ctx.adapter)
+    end
+  end
+
+  describe "a description that lists secrets" do
+    test "is accepted at start-up; an upload of its names is stored, and of another refused" do
+      %{adapter: adapter, access_key: key, pair: pair} = connectable_adapter_fixture()
+      ctx = %{adapter: adapter, key: key, seed: pair.secret}
+
+      description =
+        put_in(contract_description(), ["roles", "source", "secrets"], [
+          "signing-key",
+          "event-secret"
+        ])
+
+      start = %{
+        "version" => 1,
+        "time" => now_time(),
+        "connect_url" => "https://tracker-adapter.acme.example/connect",
+        "sync" => %{
+          "default_interval" => 900,
+          "minimum_interval" => 300,
+          "sends_changes" => false
+        },
+        "description" => description
+      }
+
+      conn =
+        signed_post(build_conn(), key.key_id, pair.secret, start,
+          target: "/v1/adapter",
+          content_type: "application/json",
+          delivery: nil
+        )
+
+      assert conn.status == 204
+      assert Repo.reload!(adapter).secret_names == ["event-secret", "signing-key"]
+
+      pt = plaintext([{"signing-key", @signing_key}, {"event-secret", @event_secret}])
+      assert send_post(ctx, upload(ctx, pt)).status == 204
+
+      assert stored(adapter) ==
+               {1, [{"event-secret", @event_secret}, {"signing-key", @signing_key}]}
+
+      conn = send_post(ctx, upload(ctx, plaintext([{"webhook-secret", "v"}])))
+      assert json_response(conn, 400) == @invalid
+
+      assert stored(adapter) ==
+               {1, [{"event-secret", @event_secret}, {"signing-key", @signing_key}]}
     end
   end
 
@@ -457,8 +506,8 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
   end
 
   # The contract's invalid uploads of the same names, `contracts/integration/v1/fixtures/
-  # adapter/invalid/` at qoryai/integrations d011b70, which the vendored fixtures do not
-  # have yet, made fresh for this adapter.
+  # adapter/invalid/` at the commit in `.integration-contract-ref`, which Core does not
+  # vendor, made fresh for this adapter.
   defp invalid_upload(ctx, "adapter-secrets-value-in-clear") do
     body = upload(ctx, plaintext([]))
     put_in(body, ["sealed", "values"], [%{"name" => "signing-key", "value" => "in clear"}])

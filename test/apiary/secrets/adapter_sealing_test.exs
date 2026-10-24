@@ -2,8 +2,8 @@ defmodule Apiary.Secrets.AdapterSealingTest do
   # `Apiary.Secrets.AdapterSealing`: the integration contract's known answer of an adapter's
   # secrets, both ways, and what an envelope of another kind, key or adapter does.
   #
-  # The known answer is copied from qoryai/integrations at d011b70bb4362ce0f67dc9b77157628c6567d7f4,
-  # `contracts/integration/v1/fixtures/adapter/`: `signed/adapter-secrets.json` (the
+  # The known answer is copied from qoryai/integrations at the commit in
+  # `.integration-contract-ref`, `contracts/integration/v1/fixtures/adapter/`: `signed/adapter-secrets.json` (the
   # identifiers, the plaintext and the hex of both infos and the aad),
   # `adapter-secrets/upload.json` (sealed to the fixture server key) and
   # `adapter-secrets-answer/delivery.json` (sealed to the fixture access key), under the keys

@@ -56,7 +56,7 @@
           }
         },
         "source": {
-          "description": "The source adapter: the program that reads a source of work, such as a tracker, and speaks the integration contract to the control plane (adapter.schema.json). Every value here other than items is the integration's words, which the control plane shows verbatim as plain text, never as Markdown or HTML. Each value other than items is one line with no control characters, none of the format characters listed for a prose line ($defs.line) and no bidirectional controls, so no control character in a value overrides the order it is shown in, and each value other than items, item_noun and collection_noun names the system itself, with no placeholder. The source role is not one a reader starts: it is not started as <program> <role> --settings <json>, and it does not end by printing one document as those roles do: start runs the program as a server, and the enrol command prints only the settings to add, as program says. A person runs setup.command, then the enrol command under program, then start, and the program runs as a server. The rules for how a role is started and how it ends apply to describe and to the roles a reader starts, not to this one. A prose line is 1 to 300 characters, and a command 1 to 200 characters of printable ASCII.",
+          "description": "The source adapter: the program that reads a source of work, such as a tracker, and speaks the integration contract to the control plane (adapter.schema.json). Every value here other than items and credential_scope is the integration's words, which the control plane shows verbatim as plain text, never as Markdown or HTML. Each value other than items is one line with no control characters, none of the format characters listed for a prose line ($defs.line) and no bidirectional controls, so no control character in a value overrides the order it is shown in, and each value other than items, item_noun, collection_noun, secrets and credential_scope names the system itself, with no placeholder. The source role is not one a reader starts: it is not started as <program> <role> --settings <json>, and it does not end by printing one document as those roles do: start runs the program as a server, and the enrol command prints only the settings to add, as program says. A person runs setup.command, then the enrol command under program, then start, and the program runs as a server. The rules for how a role is started and how it ends apply to describe and to the roles a reader starts, not to this one. A prose line is 1 to 300 characters, and a command 1 to 200 characters of printable ASCII.",
           "type": "object",
           "additionalProperties": false,
           "required": ["description", "program", "setup", "start", "connect", "access", "disconnect"],
@@ -104,6 +104,19 @@
             "items": {
               "description": "false: the source reports collections and no items. The adapter sends no POST /v1/source-items and no POST /v1/source-items/comments; the control plane never links the source's collections, so the change feed carries no linked entry for them (changes.schema.json), and a POST /v1/source-items for one of them, or a POST /v1/source-items/comments for an item of one of them, is refused, 409 collection_not_linked (refusal.schema.json). Absent, the source reports items.",
               "const": false
+            },
+            "secrets": {
+              "description": "The names of the secrets the adapter stores in the control plane, 1 to 16, each once: it uploads their values with POST /v1/adapter/secrets and reads them back when it starts (adapter-secrets.schema.json). The control plane shows the names, never a value, and refuses an upload of a secret whose name this list does not have. Absent, the adapter stores no secret in the control plane.",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {"$ref": "definitions.schema.json#/$defs/secret_name"}
+            },
+            "credential_scope": {
+              "description": "How far one credential that the adapter answers to the call with the path run-credential reaches (run-credential.schema.json): resource, it covers only the resources the call names; grant, it covers every resource of the grant, so the control plane may use one credential for every resource of that grant. Absent, the control plane takes resource.",
+              "type": "string",
+              "enum": ["resource", "grant"]
             }
           },
           "if": {"required": ["items"]},

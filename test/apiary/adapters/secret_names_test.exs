@@ -14,12 +14,12 @@ defmodule Apiary.Adapters.SecretNamesTest do
 
   @moduletag needs: :factory
 
-  # example-tracker.json with `secrets` in its source role, put on the description as
-  # read: the description schema Core has vendored lists no `secrets` yet, so a document
-  # with them does not parse.
+  # example-tracker.json with `secrets` in its source role, `names`.
   defp with_secrets(names) do
-    description = read_description("example-tracker.json")
-    %{description | document: put_in(description.document, ["roles", "source", "secrets"], names)}
+    "example-tracker.json"
+    |> contract_description()
+    |> put_in(["roles", "source", "secrets"], names)
+    |> read_description()
   end
 
   test "a description's names are kept sorted, and a later one without them clears them" do
@@ -31,7 +31,6 @@ defmodule Apiary.Adapters.SecretNamesTest do
       |> Repo.update!()
 
     assert adapter.secret_names == ["event-secret", "signing-key"]
-    assert Description.source_secrets(with_secrets([])) == nil
 
     adapter =
       adapter
@@ -41,13 +40,21 @@ defmodule Apiary.Adapters.SecretNamesTest do
     assert adapter.secret_names == nil
   end
 
-  test "the vendored description schema refuses a source role with secrets" do
-    document =
-      "example-tracker.json"
-      |> contract_description()
-      |> put_in(["roles", "source", "secrets"], ["signing-key"])
+  test "the description schema takes 1 to 16 names, each once, in their form" do
+    for names <- [
+          [],
+          ["Signing-Key"],
+          ["signing-key", "signing-key"],
+          for(n <- 0..16, do: "s-#{n}")
+        ] do
+      document =
+        "example-tracker.json"
+        |> contract_description()
+        |> put_in(["roles", "source", "secrets"], names)
 
-    assert {:error, _reason} = document |> Jason.encode!() |> Description.parse()
+      assert {:error, _reason} = document |> Jason.encode!() |> Description.parse(),
+             inspect(names)
+    end
   end
 
   test "the database keeps names only on an adapter, and only in their form" do
