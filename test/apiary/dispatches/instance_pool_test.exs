@@ -96,6 +96,29 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       assert claim(their_key) == {:ok, :none}
     end
 
+    test "takes no run of a workspace or an organisation marked for deletion", ctx do
+      a1 = queued!(ctx.a)
+      b1 = queued!(ctx.b)
+      c1 = queued!(ctx.c)
+      now = DateTime.utc_now(:second)
+
+      Repo.update_all(
+        from(o in Apiary.Organisations.Organisation, where: o.id == ^ctx.a.organisation.id),
+        set: [deletion_marked_at: now, purge_after: now, purge_trigger: "grace_period"]
+      )
+
+      Repo.update_all(
+        from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.b.workspace.id),
+        set: [deletion_marked_at: now, purge_after: now, purge_trigger: "grace_period"]
+      )
+
+      assert {:ok, %{run: %{id: id}}} = claim(ctx.key)
+      assert id == c1.id
+      assert claim(ctx.key) == {:ok, :none}
+      assert Repo.get!(DispatchRun, a1.id).state == :waiting
+      assert Repo.get!(DispatchRun, b1.id).state == :waiting
+    end
+
     test "counts its limit across workspaces", ctx do
       Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id), set: [instance_limit: 1])
       _a1 = queued!(ctx.a)

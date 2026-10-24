@@ -115,7 +115,8 @@ defmodule Apiary.Dispatches do
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
   #      take, or, for the instance's pool, of any workspace with no pool in use: no pool
-  #      that is not deleted, enrolled or not (`waiting_query/1`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
+  #      that is not deleted, enrolled or not, in a workspace and an organisation in use
+  #      (`waiting_query/1`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
   #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by
   #      the pool it is held for. A run held for the pool's build of its target is not
   #      taken (`Apiary.Environments.held/1`), nor one that a key change or a cleared
@@ -223,6 +224,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.WorkItems.WorkItem
 
   # The step every run of a take in is queued for: the contract's `explore`.
@@ -1014,25 +1016,64 @@ defmodule Apiary.Dispatches do
   end
 
   # The instance's pool takes the oldest waiting run of any workspace with no pool in use,
-  # across organisations, and the prebuilds held for it. A workspace whose pool never
-  # enrolled has a pool in use: its runs wait for that pool.
+  # across organisations, and the prebuilds held for it, each in a place in use
+  # (`in_use_place/0`). A workspace whose pool never enrolled has a pool in use: its runs
+  # wait for that pool.
   def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}) do
+    takes =
+      dynamic(
+        [run: r],
+        (r.step == ^@prebuild and r.pool_id == ^pool_id) or
+          (r.step != ^@prebuild and ^no_pool_in_use() and
+             not exists(Environments.held(pool_id)))
+      )
+
+    from r in DispatchRun,
+      as: :run,
+      where: fragment("? = 'waiting'", r.state),
+      where: ^takes,
+      where: ^in_use_place(),
+      order_by: [asc: r.queued_at, asc: r.id],
+      limit: 1,
+      lock: "FOR UPDATE SKIP LOCKED"
+  end
+
+  # no_pool_in_use/0 is the condition, on a run of the queue bound `:run`, that its
+  # workspace has no node pool in use: none that is not deleted, enrolled or not. The
+  # instance's pool serves such a workspace.
+  @doc false
+  @spec no_pool_in_use() :: Ecto.Query.dynamic_expr()
+  def no_pool_in_use do
     pool_in_use =
       from n in Node,
         where: n.workspace_id == parent_as(:run).workspace_id,
         where: n.kind == :pool and is_nil(n.deleted_at),
         select: 1
 
-    from r in DispatchRun,
-      as: :run,
-      where: fragment("? = 'waiting'", r.state),
-      where:
-        (r.step == ^@prebuild and r.pool_id == ^pool_id) or
-          (r.step != ^@prebuild and not exists(pool_in_use) and
-             not exists(Environments.held(pool_id))),
-      order_by: [asc: r.queued_at, asc: r.id],
-      limit: 1,
-      lock: "FOR UPDATE SKIP LOCKED"
+    dynamic([run: _r], not exists(pool_in_use))
+  end
+
+  # in_use_place/0 is the condition, on a run of the queue bound `:run`, that its
+  # workspace and its organisation are in use: neither marked for deletion, nor the
+  # organisation out of use (`Apiary.AccessKeys.place_in_use?/2`). A workspace pool's key
+  # is held to its place when it is verified; the instance's pool's key has no place, so
+  # its claim holds each run to the run's.
+  @doc false
+  @spec in_use_place() :: Ecto.Query.dynamic_expr()
+  def in_use_place do
+    in_use =
+      from(w in Workspace,
+        join: o in Organisation,
+        as: :organisation,
+        on: o.id == w.organisation_id,
+        where: w.id == parent_as(:run).workspace_id,
+        where: o.id == parent_as(:run).organisation_id,
+        where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
+        select: 1
+      )
+      |> Apiary.Edition.active_organisations(:organisation)
+
+    dynamic([run: _r], exists(in_use))
   end
 
   ## The starter on a dispatch
