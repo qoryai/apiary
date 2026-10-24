@@ -135,6 +135,10 @@ defmodule Apiary.Nodes.Node do
     # or an adapter sends.
     field :secret_store, :string
     field :secret_entry, :string
+    # An adapter's alone (`nodes_secret_names_check`): the names of the secrets it stores
+    # in Qory Apiary, as its latest start-up's description lists them, sorted; nil for
+    # none (`source_role_changeset/2`).
+    field :secret_names, {:array, :string}
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -349,10 +353,12 @@ defmodule Apiary.Nodes.Node do
   # `collection_noun/1` and `access/1`, which the description's schema has checked): its
   # words for one item and for many, or none, whether it reports items, its words for one
   # collection and for many, or none, and its line on how to change, at the source, which
-  # collections it reaches. A description with no source role gives the defaults: no
-  # words, items, and no line. The database holds the words and items to the same
-  # (`nodes_items_check`, `nodes_collection_noun_check`), and the line to adapters
-  # (`nodes_source_access_check`). `Apiary.Adapters.declare/2` calls it at each start, on
+  # collections it reaches, and the names of the secrets it stores in Qory Apiary
+  # (`Apiary.Integrations.Description.source_secrets/1`, nil for none). A description with
+  # no source role gives the defaults: no words, items, no line and no names. The database
+  # holds the words and items to the same (`nodes_items_check`,
+  # `nodes_collection_noun_check`), and the line and the names to adapters
+  # (`nodes_source_access_check`, `nodes_secret_names_check`). `Apiary.Adapters.declare/2` calls it at each start, on
   # the changeset of the declaration, so the latest start's description replaces what an
   # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
   # `items` changes whether the adapter's collections are linked, and whoever writes it
@@ -377,9 +383,11 @@ defmodule Apiary.Nodes.Node do
       items: Description.items?(description),
       collection_noun_one: collection_noun && collection_noun.one,
       collection_noun_other: collection_noun && collection_noun.other,
-      source_access: Description.access(description)
+      source_access: Description.access(description),
+      secret_names: Description.source_secrets(description)
     )
     |> check_constraint(:items, name: :nodes_items_check)
+    |> check_constraint(:secret_names, name: :nodes_secret_names_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)
   end

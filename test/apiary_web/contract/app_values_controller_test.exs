@@ -1,0 +1,309 @@
+defmodule ApiaryWeb.Contract.AppValuesControllerTest do
+  # `POST /v1/adapter/secrets`, an adapter storing the secrets it keeps in Qory Apiary,
+  # sealed to the instance's signing key, through `ApiaryWeb.Contract.AdapterRequest`: the
+  # signed 204 and what it stores, the replacement, the refusals in their order, the
+  # contract's invalid fixtures, and no value in an entry or a log line.
+  #
+  # Not async: a test changes the adapters `QORY_INSTALLED_ADAPTERS` lists.
+  use ApiaryWeb.ConnCase, async: false
+
+  import Ecto.Query
+  import ExUnit.CaptureLog
+  import Apiary.AccessKeysFixtures, only: [installed_key_fixture: 1, node_key_fixture: 2]
+  import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
+  import Apiary.NodesFixtures
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.{Repo, SigningKey}
+  alias Apiary.Audit.Entry
+  alias Apiary.Contract.Ed25519
+  alias Apiary.Nodes.Node
+  alias Apiary.Secrets.{AdapterSealing, Hpke, Instance, InstanceDataKey, InstanceSecretValue}
+  alias ApiaryWeb.Contract.SignedRequest
+
+  @moduletag needs: :factory
+
+  @path "/v1/adapter/secrets"
+  @invalid %{"error" => "invalid_request"}
+  @unauthorized %{"error" => "unauthorized"}
+  @signing_key "fixture-signing-key-for-tests-only\nsecond line"
+  @event_secret "fixture-event-secret-for-tests-only"
+
+  setup do
+    saved_list = Application.fetch_env(:apiary, :installed_adapters)
+
+    on_exit(fn ->
+      case saved_list do
+        {:ok, names} -> Application.put_env(:apiary, :installed_adapters, names)
+        :error -> Application.delete_env(:apiary, :installed_adapters)
+      end
+    end)
+
+    adapter_ctx(connectable_adapter_fixture())
+  end
+
+  # An adapter whose description lists the secrets `event-secret` and `signing-key`.
+  defp adapter_ctx(%{adapter: adapter, access_key: key, pair: pair}) do
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+        set: [secret_names: ["event-secret", "signing-key"]]
+      )
+
+    %{adapter: Repo.reload!(adapter), key: key, seed: pair.secret}
+  end
+
+  defp now_time(offset \\ 0),
+    do: (SignedRequest.now() + offset) |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+  defp plaintext(pairs) do
+    Jason.encode!(%{
+      "version" => 1,
+      "secrets" => for({name, value} <- pairs, do: %{"name" => name, "value" => value})
+    })
+  end
+
+  # An upload of `pt`, sealed to the instance's signing key, or to `opts[:to]`, a signing
+  # key, under the adapter id and access key id of `ctx`, or of `opts`.
+  defp upload(ctx, pt, opts \\ []) do
+    to = Keyword.get(opts, :to, SigningKey.current())
+    server_key = Ed25519.encode(SigningKey.public_key(to))
+    {:ok, pk} = Ed25519.x25519_public_key(SigningKey.public_key(to))
+    adapter_id = Keyword.get(opts, :adapter_id, ctx.adapter.public_id)
+    key_id = Keyword.get(opts, :key_id, ctx.key.key_id)
+
+    {:ok, enc, ct} =
+      Hpke.seal(
+        fn -> :crypto.strong_rand_bytes(32) end,
+        pk,
+        AdapterSealing.upload_info(server_key),
+        AdapterSealing.aad(adapter_id, key_id),
+        pt
+      )
+
+    %{
+      "version" => 1,
+      "time" => Keyword.get(opts, :time, now_time()),
+      "sealed" => %{
+        "suite" => "x25519-sha256-aes256gcm",
+        "server_key" => Keyword.get(opts, :server_key, server_key),
+        "enc" => Ed25519.encode(enc),
+        "ct" => Ed25519.encode(ct)
+      }
+    }
+  end
+
+  defp send_post(ctx, body, opts \\ []) do
+    signed_post(
+      build_conn(),
+      Keyword.get(opts, :key_id, ctx.key.key_id),
+      Keyword.get(opts, :seed, ctx.seed),
+      body,
+      target: @path,
+      content_type: "application/json",
+      delivery: nil
+    )
+  end
+
+  defp stored(adapter) do
+    {:ok, %{revision: revision, values: values}} =
+      Instance.reveal_app_values_for_sealing(Repo.reload!(adapter))
+
+    {revision, for(%InstanceSecretValue{value_id: id, value: value} <- values, do: {id, value})}
+  end
+
+  defp entries(adapter) do
+    Repo.all(
+      from e in Entry,
+        where: e.action == "adapter.app_values_set" and e.subject_id == ^adapter.id,
+        order_by: e.inserted_at
+    )
+  end
+
+  describe "an upload" do
+    test "is stored, signed 204, with one entry that has no value", ctx do
+      pt = plaintext([{"signing-key", @signing_key}, {"event-secret", @event_secret}])
+      conn = send_post(ctx, upload(ctx, pt))
+
+      assert conn.status == 204
+      assert conn.resp_body == ""
+      assert signed_answer?(conn)
+
+      assert stored(ctx.adapter) ==
+               {1, [{"event-secret", @event_secret}, {"signing-key", @signing_key}]}
+
+      assert [entry] = entries(ctx.adapter)
+      assert {entry.actor_kind, entry.actor_id} == {:access_key, ctx.key.id}
+
+      assert %{
+               "names" => ["event-secret", "signing-key"],
+               "revision" => 1,
+               "replaced" => false,
+               "reference" => "builtin:sec_" <> _
+             } = entry.details
+
+      refute inspect(entry) =~ "fixture-"
+    end
+
+    test "replaces every secret stored before, and an empty list leaves none", ctx do
+      conn = send_post(ctx, upload(ctx, plaintext([{"signing-key", "one"}])))
+      assert conn.status == 204
+
+      conn = send_post(ctx, upload(ctx, plaintext([{"event-secret", "two"}])))
+      assert conn.status == 204
+      assert stored(ctx.adapter) == {2, [{"event-secret", "two"}]}
+
+      conn = send_post(ctx, upload(ctx, plaintext([])))
+      assert conn.status == 204
+      assert stored(ctx.adapter) == {3, []}
+
+      assert [%{details: %{"replaced" => false}}, %{details: %{"replaced" => true}}, _third] =
+               entries(ctx.adapter)
+    end
+  end
+
+  describe "the refusals" do
+    test "a plaintext outside the contract, or a name the description does not list, is 400",
+         ctx do
+      seventeen = for n <- 0..16, do: {"secret-#{n}", "v"}
+
+      for pt <- [
+            plaintext(seventeen),
+            plaintext([{"signing-key", "a" <> <<0>> <> "b"}]),
+            plaintext([{"signing-key", ""}]),
+            plaintext([{"Signing-Key", "v"}]),
+            plaintext([{"undeclared", "v"}]),
+            "not json"
+          ] do
+        conn = send_post(ctx, upload(ctx, pt))
+        assert json_response(conn, 400) == @invalid
+        assert signed_answer?(conn)
+      end
+
+      assert stored(ctx.adapter) == {nil, []}
+      assert entries(ctx.adapter) == []
+    end
+
+    test "an envelope sealed to another key, adapter or access key is 400", ctx do
+      pt = plaintext([{"signing-key", "v"}])
+      other = SigningKey.new(:crypto.strong_rand_bytes(32))
+
+      for body <- [
+            upload(ctx, pt, to: other),
+            upload(ctx, pt, server_key: Ed25519.encode(SigningKey.public_key(other))),
+            upload(ctx, pt, adapter_id: "na_f1xt0re000000000"),
+            upload(ctx, pt, key_id: "ak_f1xt0re000000000")
+          ] do
+        assert json_response(send_post(ctx, body), 400) == @invalid
+      end
+
+      assert stored(ctx.adapter) == {nil, []}
+    end
+
+    test "the contract's invalid uploads are 400", ctx do
+      for name <- ["adapter-secrets-value-in-clear", "adapter-secrets-without-server-key"] do
+        assert json_response(send_post(ctx, invalid_upload(ctx, name)), 400) == @invalid, name
+      end
+
+      body = upload(ctx, plaintext([]))
+
+      for broken <- [
+            Map.delete(body, "sealed"),
+            Map.put(body, "version", 2),
+            Map.put(body, "more", true),
+            put_in(body, ["sealed", "suite"], "x25519-sha256-chacha20poly1305")
+          ] do
+        assert json_response(send_post(ctx, broken), 400) == @invalid
+      end
+    end
+
+    test "a time out of the window, or a replay, is 401, unsigned, and stores nothing", ctx do
+      pt = plaintext([{"signing-key", "v"}])
+
+      for offset <- [-310, 310] do
+        conn = send_post(ctx, upload(ctx, pt, time: now_time(offset)))
+        assert json_response(conn, 401) == @unauthorized
+        assert unsigned_answer?(conn)
+      end
+
+      body = upload(ctx, pt) |> Jason.encode!()
+      assert send_post(ctx, body).status == 204
+      replayed = send_post(ctx, body)
+      assert json_response(replayed, 401) == @unauthorized
+      assert unsigned_answer?(replayed)
+      assert stored(ctx.adapter) == {1, [{"signing-key", "v"}]}
+    end
+
+    test "a key that is not an adapter's is refused, and stores nothing", ctx do
+      %{scope: scope} = sign_up_fixture()
+      %{access_key: key, pair: pair} = node_key_fixture(scope, node_fixture(scope))
+      gateway = %{ctx | key: key, seed: pair.secret}
+
+      conn = send_post(gateway, upload(gateway, plaintext([{"signing-key", "v"}])))
+      assert json_response(conn, 401) == @unauthorized
+      assert stored(ctx.adapter) == {nil, []}
+    end
+
+    test "an installed adapter no longer listed is 404", ctx do
+      name = "tracker-#{System.unique_integer([:positive])}"
+      Application.put_env(:apiary, :installed_adapters, [name])
+      installed = installed_adapter_fixture(name)
+
+      made =
+        installed_key_fixture(installed)
+        |> Map.put(:adapter, installed)
+        |> adapter_ctx()
+
+      Application.put_env(:apiary, :installed_adapters, [])
+      conn = send_post(made, upload(made, plaintext([{"signing-key", "v"}])))
+      assert json_response(conn, 404) == %{"error" => "not_found"}
+      assert stored(made.adapter) == {nil, []}
+      assert ctx.adapter.id != made.adapter.id
+    end
+  end
+
+  describe "the log" do
+    test "has no value, also when the values cannot be stored", ctx do
+      pt = plaintext([{"signing-key", @signing_key}])
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert send_post(ctx, upload(ctx, pt)).status == 204
+          assert json_response(send_post(ctx, upload(ctx, "not json")), 400) == @invalid
+        end)
+
+      refute log =~ "fixture-signing-key"
+
+      # The instance's data key, as stored, no longer unwraps.
+      {1, _} =
+        Repo.update_all(InstanceDataKey, set: [wrapped_key: :crypto.strong_rand_bytes(60)])
+
+      log =
+        capture_log([level: :debug], fn ->
+          conn = send_post(ctx, upload(ctx, plaintext([{"signing-key", @event_secret}])))
+          assert json_response(conn, 503) == %{"error" => "unavailable"}
+        end)
+
+      assert log =~ "the instance's data key cannot be unwrapped"
+      refute log =~ "fixture-"
+
+      assert Repo.one!(
+               from s in Apiary.Secrets.InstanceSecret,
+                 where: s.adapter_id == ^ctx.adapter.id,
+                 select: s.revision
+             ) == 1
+    end
+  end
+
+  # The contract's invalid uploads of the same names, `contracts/integration/v1/fixtures/
+  # adapter/invalid/` at qoryai/integrations d011b70, which the vendored fixtures do not
+  # have yet, made fresh for this adapter.
+  defp invalid_upload(ctx, "adapter-secrets-value-in-clear") do
+    body = upload(ctx, plaintext([]))
+    put_in(body, ["sealed", "values"], [%{"name" => "signing-key", "value" => "in clear"}])
+  end
+
+  defp invalid_upload(ctx, "adapter-secrets-without-server-key") do
+    body = upload(ctx, plaintext([]))
+    update_in(body, ["sealed"], &Map.delete(&1, "server_key"))
+  end
+end

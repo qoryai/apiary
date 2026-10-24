@@ -342,6 +342,19 @@ defmodule Apiary.Integrations.Description do
   @spec access(t) :: String.t() | nil
   def access(%__MODULE__{access: access}), do: access
 
+  @doc """
+  source_secrets/1 is the source role's `secrets`, the names of the secrets the adapter
+  stores in Qory Apiary, sorted, or nil for a description whose source role lists none,
+  or that has no source role.
+  """
+  @spec source_secrets(t) :: [String.t()] | nil
+  def source_secrets(%__MODULE__{document: document}) do
+    case get_in(document, ["roles", "source", "secrets"]) do
+      [_ | _] = names -> Enum.sort(names)
+      _none -> nil
+    end
+  end
+
   defp title(%{"title" => title}, name) when is_binary(title),
     do: if(String.trim(title) == "", do: name, else: title)
 

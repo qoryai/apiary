@@ -3405,6 +3405,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Adapter app values stored"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Adapter installed"
 msgstr ""
 
@@ -13812,6 +13817,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Stored secrets, variables and integrations, in each workspace's settings."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Stored the adapter's app values, revision %{revision}."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

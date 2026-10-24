@@ -94,7 +94,7 @@ defmodule Apiary.Adapters do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
-  alias Apiary.Secrets.Instance
+  alias Apiary.Secrets.{Instance, InstanceSecretValue, Reference}
 
   ## Who may
 
@@ -1191,4 +1191,42 @@ defmodule Apiary.Adapters do
   end
 
   def for_key(%Scope{}, _action), do: {:error, :not_found}
+
+  @doc false
+  # Stores `values`, the secrets `adapter` keeps in Qory Apiary, opened from its upload,
+  # for the adapter's key's `scope` (`adapter.app_values_set`): they replace every secret
+  # it stored before (`Apiary.Secrets.Instance.put_app_values/3`). In the same
+  # transaction, with the adapter's row held, each name must be one the source role of its
+  # latest description lists (`secret_names`), and the entry is in the trail the key
+  # records in, about the adapter, with the reference, the names, the revision and
+  # whether the upload replaced secrets: never a value.
+  #
+  # `{:ok, stored}`; `{:error, :undeclared}` for a name the description does not list;
+  # else what `Apiary.Secrets.Instance.put_app_values/3` answers. None of the refusals
+  # changes anything or leaves an entry.
+  @spec store_app_values(Scope.t(), Node.t(), [InstanceSecretValue.t()]) ::
+          {:ok, Instance.stored()} | {:error, term}
+  def store_app_values(%Scope{} = scope, %Node{kind: :adapter} = adapter, values) do
+    Instance.put_app_values(adapter, values,
+      allowed: &declared_names(&1, values),
+      record: fn locked, stored ->
+        Audit.record(Repo, scope, :"adapter.app_values_set", locked, %{
+          details: %{
+            reference: Reference.to_string(stored.reference),
+            names: stored.names,
+            revision: stored.revision,
+            replaced: stored.replaced
+          }
+        })
+      end
+    )
+  end
+
+  defp declared_names(%Node{secret_names: names}, values) do
+    names = names || []
+
+    if Enum.all?(values, fn %InstanceSecretValue{value_id: id} -> id in names end),
+      do: :ok,
+      else: {:error, :undeclared}
+  end
 end

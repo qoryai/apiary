@@ -122,6 +122,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.setup",
       :"adapter.connect",
       :"adapter.declare",
+      :"adapter.app_values_set",
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
@@ -565,6 +566,23 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # An adapter's key stores the secrets the adapter keeps in Qory Apiary, in the trail of
+  # the instance's organisation, about the adapter; the entry's actor is the key, and the
+  # entry keeps nothing of a value.
+  def make(:"adapter.app_values_set", _ctx) do
+    {adapter, key_scope, key} = app_values_adapter()
+    before = entries()
+    {:ok, _stored} = Adapters.store_app_values(key_scope, adapter, app_values())
+
+    %{
+      scope: key_scope,
+      subject: {"node", adapter.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: "fixture-signing-key-for-tests-only"
+    }
+  end
+
   # A gateway's secrets request seals a run's model key to its access key, in the trail of
   # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
   # the entry keeps nothing of the key's value.
@@ -911,6 +929,17 @@ defmodule Apiary.AuditChanges do
     {before, Adapters.declare(Scope.for_access_key(key), declaration())}
   end
 
+  # A name the adapter's description does not list is refused, and stores nothing.
+  def refuse(:"adapter.app_values_set", _ctx) do
+    {adapter, key_scope, _key} = app_values_adapter()
+    before = entries()
+
+    {before,
+     Adapters.store_app_values(key_scope, adapter, [
+       %Apiary.Secrets.InstanceSecretValue{value_id: "undeclared", value: "v"}
+     ])}
+  end
+
   # A request with a credential the run does not have seals nothing.
   def refuse(:"secret.seal", %{scope: scope}) do
     {ctx, key, now} = sealed_run(scope)
@@ -974,6 +1003,27 @@ defmodule Apiary.AuditChanges do
       description: Apiary.DescriptionFixtures.read_description()
     }
   end
+
+  # An adapter whose description lists the secret `signing-key`, and its key's scope.
+  defp app_values_adapter do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {1, _} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+        set: [secret_names: ["signing-key"]]
+      )
+
+    {Repo.reload!(adapter), Scope.for_access_key(key), key}
+  end
+
+  defp app_values,
+    do: [
+      %Apiary.Secrets.InstanceSecretValue{
+        value_id: "signing-key",
+        value: "fixture-signing-key-for-tests-only"
+      }
+    ]
 
   # An adapter that has declared how it pulls.
   defp declared_adapter do
