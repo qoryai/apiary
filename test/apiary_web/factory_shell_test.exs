@@ -70,8 +70,9 @@ defmodule ApiaryWeb.FactoryShellTest do
   # starter are no page of the shell: `ApiaryWeb.Contract.AdapterRequestTest`,
   # `ApiaryWeb.Contract.ChangesControllerTest`,
   # `ApiaryWeb.Contract.SourceCollectionsControllerTest`,
-  # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest` and
-  # their fixtures' tests, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them. A
+  # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest`,
+  # `ApiaryWeb.Contract.AppValuesControllerTest` and their fixtures' tests, and
+  # `ApiaryWeb.Contract.PoolRequestTest`, answer for them. A
   # gateway's secrets request is no page either: `ApiaryWeb.Contract.SecretsControllerTest`
   # and `ApiaryWeb.Contract.SecretsDiscoveryTest` answer for it.
   @signed_routes [
@@ -82,6 +83,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.Contract.SourcesDisconnectController,
     ApiaryWeb.Contract.SourceItemsController,
     ApiaryWeb.Contract.SourceItemCommentsController,
+    ApiaryWeb.Contract.AppValuesController,
     ApiaryWeb.Contract.PoolClaimController,
     ApiaryWeb.Contract.DispatchController
   ]
@@ -394,6 +396,8 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"adapter.install", "Adapter installed"} in options
       assert {"adapter.setup", "Adapter set-up started"} in options
+      assert {"adapter.app_values_set", "Adapter app values stored"} in options
+      assert {"adapter.app_values_seal", "Adapter app values sent"} in options
       assert {"model_choice.write", "Model choice changed"} in options
       assert {"time_limit.edit", "Time limit changed"} in options
 
@@ -418,6 +422,8 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"target.rebuild_environment",
             :"adapter.install",
             :"adapter.setup",
+            :"adapter.app_values_set",
+            :"adapter.app_values_seal",
             :"model_choice.write",
             :"time_limit.edit"
           ],
