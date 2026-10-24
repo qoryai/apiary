@@ -4,7 +4,9 @@ defmodule Apiary.Dispatches do
   # The runs a workspace's node pools claim and start, as the provisioner contract has
   # them (qoryai/integrations, `contracts/provisioner/v1`): one queue per workspace, which
   # any node pool of the workspace claims from with its pool's access key
-  # (`Apiary.Dispatches.DispatchRun`, `Apiary.Dispatches.Dispatch`).
+  # (`Apiary.Dispatches.DispatchRun`, `Apiary.Dispatches.Dispatch`). The instance's pool,
+  # with no organisation and no workspace, claims from the queue of every workspace with
+  # no pool in use.
   #
   # ## Queueing: `queue/2`, `queue_next/2`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
@@ -87,13 +89,14 @@ defmodule Apiary.Dispatches do
   #      (`Apiary.AccessKeys.fetch_for_verification/1`): revoked, of a pool deleted, or of a
   #      workspace or an organisation marked for deletion or out of use since, it is
   #      `{:error, :unauthorized}`;
-  #   2. `dispatch.claim` asked of the key's workspace (`Apiary.Access`): any refusal is
+  #   2. `dispatch.claim` asked of the key's workspace, or of the instance's pool for its
+  #      key (`Apiary.Access`): any refusal is
   #      `{:error, :forbidden}`, one answer whatever its reason;
   #   3. the connections and then the collections a build for the pool is due for, with
   #      the collections of the pool's prebuilds whose dispatch lapsed at `now`, held
   #      `FOR SHARE`, by id, in one statement (`Apiary.Environments.hold_builds/3`): a
   #      build is due for the collections of the targets of the runs held for the pool's
-  #      build (`Apiary.Environments.held/2`) with no prebuild of their `environment_ref`
+  #      build (`Apiary.Environments.held/1`) with no prebuild of their `environment_ref`
   #      for the pool waiting, claimed or handed over; then the pool's
   #      row locked `FOR NO KEY UPDATE`, so two claims of one pool, and a claim and a
   #      registration on the pool (`Apiary.Nodes.check_instance_limit/3`, which locks it
@@ -111,10 +114,11 @@ defmodule Apiary.Dispatches do
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
-  #      take, locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
+  #      take, or, for the instance's pool, of any workspace with no pool in use: no pool
+  #      that is not deleted, enrolled or not (`waiting_query/1`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
   #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by
   #      the pool it is held for. A run held for the pool's build of its target is not
-  #      taken (`Apiary.Environments.held/2`), nor one that a key change or a cleared
+  #      taken (`Apiary.Environments.held/1`), nor one that a key change or a cleared
   #      image held again after that read (`Apiary.Environments.claim_image/2`): it
   #      waits. An explore run is given the image its target's build made for the pool,
   #      nil for the pool's default. A run whose work item has no target is taken as any
@@ -127,7 +131,7 @@ defmodule Apiary.Dispatches do
   #      longer has: it ends, `superseded`. A stale dispatch of a run ended so ends with
   #      it (`run_ended`), and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
-  #      organisation and its workspace from the key alone, `claimed_at` `now` and
+  #      organisation and its workspace from the run, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`;
   #   8. the run registered through that gateway, with a run code bound to it
   #      (`Apiary.Dispatches.Handover.register/2`). A run the claim cannot form ends, with
@@ -206,7 +210,7 @@ defmodule Apiary.Dispatches do
   # slots freed, the sweep and the end of a run its projection ended all read it, never the
   # database's.
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query, only: [dynamic: 2, from: 2]
 
   require Logger
 
@@ -691,7 +695,7 @@ defmodule Apiary.Dispatches do
       Repo.transact(fn ->
         with {:ok, key} <- current_key(key_id),
              :ok <- may_claim(key),
-             builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
+             builds = hold_builds(key, now),
              {:ok, pool} <- lock_pool(key),
              {:ok, gateway, keys} <- Handover.gateway(pool) do
           freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
@@ -720,6 +724,13 @@ defmodule Apiary.Dispatches do
       {:error, :unavailable}
   end
 
+  # The collections a claim of the key's pool writes the prebuilds of
+  # (`Apiary.Environments.hold_builds/3`). The instance's pool queues no prebuild.
+  defp hold_builds(%AccessKey{workspace_id: nil}, _now), do: []
+
+  defp hold_builds(%AccessKey{workspace_id: workspace_id, node_id: pool_id}, now),
+    do: Environments.hold_builds(workspace_id, pool_id, now)
+
   defp registered(%{registered: run}), do: run
   defp registered(:none), do: nil
 
@@ -728,7 +739,8 @@ defmodule Apiary.Dispatches do
 
   # current_key/1 is the key `key_id` as a request's verification reads it now: of the
   # same pool, workspace and organisation as when the request verified, or
-  # `{:error, :unauthorized}`.
+  # `{:error, :unauthorized}`. The key of the instance's pool has neither, as its pool has
+  # none.
   @doc false
   @spec current_key(String.t()) :: {:ok, AccessKey.t()} | {:error, :unauthorized}
   def current_key(key_id) do
@@ -743,32 +755,50 @@ defmodule Apiary.Dispatches do
       when is_binary(workspace_id) and is_binary(organisation_id) ->
         {:ok, key}
 
+      {:ok,
+       %AccessKey{
+         node: %Node{kind: :pool, id: pool_id, workspace_id: nil, organisation_id: nil},
+         node_id: pool_id,
+         workspace_id: nil,
+         organisation_id: nil
+       } = key} ->
+        {:ok, key}
+
       _other ->
         {:error, :unauthorized}
     end
   end
 
-  # Asked of the key's workspace, the queue, as the key's scope holds it.
+  # Asked of the key's place (`Apiary.Accounts.Scope.key_place/1`): the key's workspace,
+  # the queue, or the instance's pool, which claims in every workspace with no pool in use.
   defp may_claim(key) do
     scope = Scope.for_access_key(key)
 
-    case Access.authorize(scope, :"dispatch.claim", scope.workspace) do
+    case Access.authorize(scope, :"dispatch.claim", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :forbidden}
     end
   end
 
-  defp lock_pool(%AccessKey{node_id: pool_id, workspace_id: workspace_id}) do
+  defp lock_pool(%AccessKey{node_id: pool_id} = key) do
     pool =
       Repo.one(
         from n in Node,
-          where: n.id == ^pool_id and n.workspace_id == ^workspace_id and n.kind == :pool,
-          where: is_nil(n.deleted_at),
+          where: n.id == ^pool_id and n.kind == :pool and is_nil(n.deleted_at),
+          where: ^pool_place(key),
           lock: "FOR NO KEY UPDATE"
       )
 
     if pool, do: {:ok, pool}, else: {:error, :unauthorized}
   end
+
+  # The pool of the key's workspace, or the instance's pool, with no organisation and no
+  # workspace.
+  defp pool_place(%AccessKey{workspace_id: nil}),
+    do: dynamic([n], is_nil(n.organisation_id) and is_nil(n.workspace_id))
+
+  defp pool_place(%AccessKey{workspace_id: workspace_id}),
+    do: dynamic([n], n.workspace_id == ^workspace_id)
 
   # The oldest waiting run the pool may take, claimed and registered through the gateway
   # `through` has, with the workspaces whose queue it ended runs of; `:none` at the limit
@@ -787,7 +817,7 @@ defmodule Apiary.Dispatches do
   defp pick(_key, _pool, _through, _now, 0, ended), do: {:none, ended}
 
   defp pick(key, pool, through, now, max, ended) do
-    case oldest_waiting(key) do
+    case key |> waiting_query() |> Repo.one() do
       nil ->
         {:none, ended}
 
@@ -837,7 +867,7 @@ defmodule Apiary.Dispatches do
   end
 
   # What the run is for: its work item, with the image `pool` keeps for its target, or a
-  # prebuild's collection. A run whose image went since `oldest_waiting/2` read it is
+  # prebuild's collection. A run whose image went since `waiting_query/1` read it is
   # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits.
   defp for_run(%DispatchRun{step: @prebuild} = run, _pool) do
     with {:ok, collection} <- collection_of(run), do: {:ok, %{collection: collection}}
@@ -929,7 +959,7 @@ defmodule Apiary.Dispatches do
       )
 
     dispatch =
-      %Dispatch{organisation_id: key.organisation_id, workspace_id: key.workspace_id}
+      %Dispatch{organisation_id: run.organisation_id, workspace_id: run.workspace_id}
       |> Dispatch.claim_changeset(%{
         dispatch_run_id: run.id,
         pool_id: key.node_id,
@@ -953,13 +983,18 @@ defmodule Apiary.Dispatches do
     if Nodes.instances_in_use(pool, now) < limit, do: :ok, else: :at_limit
   end
 
-  # A prebuild goes only to the pool it is held for; a run held for the pool's build of
-  # its target (`Apiary.Environments.held/2`) is left waiting.
-  defp oldest_waiting(%AccessKey{
-         organisation_id: organisation_id,
-         workspace_id: workspace_id,
-         node_id: pool_id
-       }) do
+  # waiting_query/1 is the query of the oldest waiting run the pool of `key` may take,
+  # locked `FOR UPDATE SKIP LOCKED`. A prebuild goes only to the pool it is held for; a
+  # run held for the pool's build of its target (`Apiary.Environments.held/1`) is left
+  # waiting.
+  @doc false
+  @spec waiting_query(AccessKey.t()) :: Ecto.Query.t()
+  def waiting_query(%AccessKey{
+        organisation_id: organisation_id,
+        workspace_id: workspace_id,
+        node_id: pool_id
+      })
+      when is_binary(workspace_id) do
     query =
       from r in DispatchRun,
         as: :run,
@@ -970,15 +1005,34 @@ defmodule Apiary.Dispatches do
         limit: 1,
         lock: "FOR UPDATE SKIP LOCKED"
 
-    query =
-      if Environments.holds?(workspace_id),
-        do:
-          from(r in query,
-            where: r.step == ^@prebuild or not exists(Environments.held(workspace_id, pool_id))
-          ),
-        else: query
+    if Environments.holds?(workspace_id),
+      do:
+        from(r in query,
+          where: r.step == ^@prebuild or not exists(Environments.held(pool_id))
+        ),
+      else: query
+  end
 
-    Repo.one(query)
+  # The instance's pool takes the oldest waiting run of any workspace with no pool in use,
+  # across organisations, and the prebuilds held for it. A workspace whose pool never
+  # enrolled has a pool in use: its runs wait for that pool.
+  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}) do
+    pool_in_use =
+      from n in Node,
+        where: n.workspace_id == parent_as(:run).workspace_id,
+        where: n.kind == :pool and is_nil(n.deleted_at),
+        select: 1
+
+    from r in DispatchRun,
+      as: :run,
+      where: fragment("? = 'waiting'", r.state),
+      where:
+        (r.step == ^@prebuild and r.pool_id == ^pool_id) or
+          (r.step != ^@prebuild and not exists(pool_in_use) and
+             not exists(Environments.held(pool_id))),
+      order_by: [asc: r.queued_at, asc: r.id],
+      limit: 1,
+      lock: "FOR UPDATE SKIP LOCKED"
   end
 
   ## The starter on a dispatch

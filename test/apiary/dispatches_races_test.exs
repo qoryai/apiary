@@ -14,7 +14,7 @@ defmodule Apiary.DispatchesRacesTest do
   # One prebuild waits per collection, node pool and `environment_ref`: two queues at once
   # take turns on the index of the waiting ones, and a lapse that would make a claimed
   # prebuild wait again waits for a build queued under the record. A run held for its
-  # pool's build of its target (`Apiary.Environments.held/2`) is never taken while it is
+  # pool's build of its target (`Apiary.Environments.held/1`) is never taken while it is
   # held, and the claim that queues its build holds the target's collections first, with
   # the collections of the pool's lapsed prebuilds, so a key change, an assign or a
   # Backlog switch waits for it. Every path takes its locks in the one order
@@ -30,7 +30,7 @@ defmodule Apiary.DispatchesRacesTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo}
-  alias Apiary.AccessKeys.{AccessKey, PublicKey}
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Adapters.{Collection, Collections, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
   alias Apiary.Environments.Record
@@ -61,6 +61,8 @@ defmodule Apiary.DispatchesRacesTest do
       %{public_keys: public_keys, adapters: adapters} = Agent.get(made, & &1)
       Agent.stop(made)
       Repo.delete_all(from o in Organisation, where: o.id == ^scope.organisation.id)
+      Repo.delete_all(from k in AccessKey, where: k.node_id in ^adapters)
+      Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^adapters)
       Repo.delete_all(from n in Node, where: n.id in ^adapters)
       Repo.delete_all(from p in PublicKey, where: p.public_key in ^public_keys)
       Ecto.Adapters.SQL.Sandbox.checkin(Repo)
@@ -350,6 +352,30 @@ defmodule Apiary.DispatchesRacesTest do
 
     assert Enum.sort(taken) == Enum.sort(Enum.map(runs, & &1.id))
     assert Repo.aggregate(from(d in Dispatch, select: d.dispatch_run_id), :count) == 3
+  end
+
+  test "of many claims of the instance's pool, by two of its keys, no run is taken twice",
+       ctx do
+    # The instance's pool and gateway outlive the organisation: they go with the adapters.
+    gateway = instance_gateway_fixture()
+    pool = instance_pool_fixture()
+    Agent.update(ctx.made, &%{&1 | adapters: [gateway.id, pool.id | &1.adapters]})
+
+    keys =
+      for {node, secrets} <- [{gateway, true}, {pool, false}, {pool, false}] do
+        %{access_key: key, pair: pair} = installed_key_fixture(node, allow_secrets: secrets)
+        Agent.update(ctx.made, &%{&1 | public_keys: [pair.public_key | &1.public_keys]})
+        key
+      end
+      |> tl()
+
+    runs = queued!(ctx, 3)
+
+    taken = taken(claims(Enum.take(Stream.cycle(keys), sides(6))))
+
+    assert Enum.sort(taken) == Enum.sort(Enum.map(runs, & &1.id))
+
+    assert Repo.aggregate(from(d in Dispatch, where: d.pool_id == ^pool.id), :count) == 3
   end
 
   test "parallel claims of one pool never take more slots than its limit", ctx do

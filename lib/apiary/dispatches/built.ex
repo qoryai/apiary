@@ -36,7 +36,7 @@ defmodule Apiary.Dispatches.Built do
   # prebuild was queued for (`built_ref`), and when it was queued for it. The last failure
   # and `lost_ref` are cleared, and nothing is queued. Once the transaction commits, the
   # workspace's queue is told (`Apiary.Dispatches.broadcast/1`): a claim that listens
-  # there takes a run that waited for that image (`Apiary.Environments.held/2`).
+  # there takes a run that waited for that image (`Apiary.Environments.held/1`).
   #
   # A build whose prebuild took its `environment_ref` before the prebuild that made the
   # record's image took its (`Apiary.Environments.newer_build?/2`) leaves the record as it

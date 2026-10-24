@@ -755,8 +755,9 @@ defmodule Apiary.Nodes do
   def subscribe(%Scope{organisation: %Organisation{id: organisation_id}}, :organisation),
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(organisation_id))
 
-  # Where a node's instances are announced: its workspace, or an organisation-level
-  # gateway's organisation.
+  # Where a node's instances are announced: its workspace, an organisation-level
+  # gateway's organisation, or `instance` for the instance's pool and gateway.
+  defp place_id(%Node{workspace_id: nil, organisation_id: nil}), do: "instance"
   defp place_id(%Node{workspace_id: nil, organisation_id: organisation_id}), do: organisation_id
   defp place_id(%Node{workspace_id: workspace_id}), do: workspace_id
 
@@ -951,11 +952,13 @@ defmodule Apiary.Nodes do
 
   # The distinct instance ids of the node's runs alive at `now` that were not dispatched,
   # read from the partial index on the runs alive by node and instance. A dispatched run
-  # counts by the slot its dispatch holds, not here.
-  defp running_instance_ids(%Node{id: id, workspace_id: workspace_id}, now) do
+  # counts by the slot its dispatch holds, not here. The instance's pool runs in every
+  # workspace it serves, so its runs are counted in all of them.
+  defp running_instance_ids(%Node{id: id} = node, now) do
     from(r in Run,
       as: :run,
-      where: r.node_id == ^id and r.workspace_id == ^workspace_id,
+      where: r.node_id == ^id,
+      where: ^in_node_workspace(node),
       where: not is_nil(r.node_instance_id) and is_nil(r.dispatch_run_id),
       distinct: true,
       select: r.node_instance_id
@@ -1058,11 +1061,20 @@ defmodule Apiary.Nodes do
     result
   end
 
-  defp open_runs(%Node{id: id, workspace_id: workspace_id}, instance_id) do
+  defp open_runs(%Node{id: id} = node, instance_id) do
     from r in Run,
-      where: r.node_id == ^id and r.workspace_id == ^workspace_id,
+      as: :run,
+      where: r.node_id == ^id,
+      where: ^in_node_workspace(node),
       where: r.node_instance_id == ^instance_id and r.state in ["pending", "running"]
   end
+
+  # The runs, bound `:run`, of the node's workspace; of any workspace for a node with none,
+  # the instance's pool.
+  defp in_node_workspace(%Node{workspace_id: nil}), do: dynamic(true)
+
+  defp in_node_workspace(%Node{workspace_id: workspace_id}),
+    do: dynamic([run: r], r.workspace_id == ^workspace_id)
 
   ## Reading instances
 
