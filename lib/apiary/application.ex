@@ -54,6 +54,8 @@ defmodule Apiary.Application do
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
+    # A malformed QORY_SETUP_CODE_SHA256 stops the boot too.
+    Apiary.Setup.preset!()
     Apiary.Dispatches.MachineLogs.boot!()
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Source.boot!()

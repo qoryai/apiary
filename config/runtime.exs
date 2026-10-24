@@ -79,6 +79,14 @@ config :apiary, :installed_adapters_setting, System.get_env("QORY_INSTALLED_ADAP
 # and writes there; each installed adapter mounts only its folder.
 config :apiary, :enrolment_dir_setting, System.get_env("QORY_ENROLMENT_DIR")
 
+# QORY_SETUP_CODE_SHA256 is the SHA-256 of the instance's set-up code, 64 hexadecimal
+# characters, for an install that makes the code and prints its set-up link. Set, Qory
+# Apiary accepts that one code, once, and makes, stores and logs no code; unset or blank,
+# every start before set-up logs a set-up link. Read in every environment, as
+# QORY_FEATURES is; `Apiary.Setup.preset!/0` checks it at boot and stops a boot it
+# refuses.
+config :apiary, Apiary.Setup, preset_code_sha256_setting: System.get_env("QORY_SETUP_CODE_SHA256")
+
 # AUDIT_RETENTION_DAYS is how long the audit trail keeps an entry: a number of days from
 # 30 to the edition's ceiling (Apiary.Edition.audit_retention_max_days/0, 90 in the core),
 # 90 by default. Read in every environment, as QORY_FEATURES is; `Apiary.Audit.boot!/0`

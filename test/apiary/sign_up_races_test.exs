@@ -19,7 +19,10 @@ defmodule Apiary.SignUpRacesTest do
     suite_organisation = ensure_instance_organisation!()
     {:ok, created} = Agent.start(fn -> %{organisations: [], users: []} end)
     Process.put(:created, created)
-    %{rows: rows} = Repo.query!("SELECT setup_code, set_up_at FROM instance_settings")
+
+    %{rows: rows} =
+      Repo.query!("SELECT setup_code, set_up_at, used_setup_code_sha256 FROM instance_settings")
+
     on_exit(fn -> clean_up(created, suite_organisation, rows) end)
     %{suite_organisation: suite_organisation}
   end
@@ -89,6 +92,59 @@ defmodule Apiary.SignUpRacesTest do
 
       assert %{rows: [[nil, %NaiveDateTime{}]]} =
                Repo.query!("SELECT setup_code, set_up_at FROM instance_settings")
+
+      # This round's organisation goes, and the suite's is the instance's again.
+      Repo.delete_all(from o in Organisation, where: o.id == ^first)
+      Apiary.EditionKit.show_instance_organisation(ctx.suite_organisation.id)
+    end
+  end
+
+  test "of two set-ups at once with the preset code, exactly one sets the instance up", ctx do
+    previous = Application.get_env(:apiary, Apiary.Setup, [])
+    on_exit(fn -> Application.put_env(:apiary, Apiary.Setup, previous) end)
+
+    for round <- 1..4 do
+      Apiary.EditionKit.hide_instance_organisation()
+      code = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+      preset = :crypto.hash(:sha256, code)
+
+      Application.put_env(
+        :apiary,
+        Apiary.Setup,
+        Keyword.put(previous, :preset_code_sha256_setting, Base.encode16(preset))
+      )
+
+      results =
+        1..2
+        |> Enum.map(fn _ ->
+          Task.async(fn ->
+            :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+
+            Apiary.Setup.set_up(code, %{
+              email: unique_user_email(),
+              organisation_name: "Preset #{round}",
+              password: "hello world!",
+              password_confirmation: "hello world!"
+            })
+          end)
+        end)
+        |> Task.await_many(10_000)
+
+      for {:ok, signed_up} <- results, do: created(signed_up)
+
+      first = Apiary.Edition.instance_organisation_id()
+      assert [{:ok, %{organisation: %{id: ^first}}}] = Enum.filter(results, &match?({:ok, _}, &1))
+      assert [{:error, :already_set_up}] = Enum.filter(results, &match?({:error, _}, &1))
+
+      assert Repo.aggregate(
+               from(o in Organisation, where: o.name == ^"Preset #{round}"),
+               :count
+             ) == 1
+
+      assert %{rows: [[nil, %NaiveDateTime{}, ^preset]]} =
+               Repo.query!(
+                 "SELECT setup_code, set_up_at, used_setup_code_sha256 FROM instance_settings"
+               )
 
       # This round's organisation goes, and the suite's is the instance's again.
       Repo.delete_all(from o in Organisation, where: o.id == ^first)
@@ -223,11 +279,12 @@ defmodule Apiary.SignUpRacesTest do
       [] ->
         Repo.query!("DELETE FROM instance_settings")
 
-      [[setup_code, set_up_at]] ->
-        Repo.query!("UPDATE instance_settings SET setup_code = $1, set_up_at = $2", [
-          setup_code,
-          set_up_at
-        ])
+      [[setup_code, set_up_at, used]] ->
+        Repo.query!(
+          "UPDATE instance_settings SET setup_code = $1, set_up_at = $2, " <>
+            "used_setup_code_sha256 = $3",
+          [setup_code, set_up_at, used]
+        )
     end
 
     %{organisations: organisations, users: users} = Agent.get(created, & &1)
