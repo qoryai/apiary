@@ -707,6 +707,53 @@ link before you do, so open it as soon as the instance is up. On an instance tha
 up, a restored one included, a start writes no such line. The address in the link is the
 instance's address (`PUBLIC_URL`).
 
+**A set-up code that your install makes.** An install that prints the set-up link itself
+gives Qory Apiary the hash of its code, and the link never appears in the log.
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `QORY_SETUP_CODE_SHA256` | none | The SHA-256 of the set-up code: 64 hexadecimal characters, in either case. When it is not set, or empty, Qory Apiary makes the code and writes the set-up link to its log. |
+
+Make the code from 32 random bytes, in base64url without padding, 43 characters, as Qory
+Apiary makes it, then its hash:
+
+```sh
+code=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+printf %s "$code" | sha256sum | cut -d ' ' -f 1
+```
+
+On macOS, use `shasum -a 256` in place of `sha256sum`.
+
+Set `QORY_SETUP_CODE_SHA256` to the hash, and give the link
+`https://qory.example.com/setup/<code>`, on your `PUBLIC_URL`, to the person who sets the
+instance up. Qory Apiary cannot check how the code was made: take its 32 bytes from a
+random source, as `openssl rand` does. Qory Apiary accepts only a code of 43 base64url
+characters.
+
+With the variable set, a start makes, stores and logs no code. It also removes a code that
+an earlier start stored, so a link already in the log works no more. Until the instance is
+set up, every start logs:
+
+```text
+Qory Apiary is not set up yet. Open the set-up link that your install printed; this log does not show it.
+```
+
+The link works once, as a logged link does. Once the instance is set up, by the link or
+by `Apiary.Release.grant_instance_admin/2`, Qory Apiary keeps the code's hash and refuses
+the same code, also after the instance's organisation is purged. A start after that purge,
+with the same hash set, logs:
+
+```text
+Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to get a set-up link in this log. The code it gives has set up this instance before.
+```
+
+An empty or blank value of `QORY_SETUP_CODE_SHA256` counts as unset. Any other value that
+is not 64 hexadecimal characters, with whitespace around them ignored, stops the boot:
+
+```text
+Set QORY_SETUP_CODE_SHA256 to 64 hexadecimal characters, the SHA-256 of the set-up code, or leave it unset. The value set is not that.
+```
+
 ### The instance admins
 
 The instance admins are the owners of the instance's organisation, the one its set-up

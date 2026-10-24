@@ -263,12 +263,12 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "f5bc79a410348ce50d42979166f456adcf93b798"
+  @integrations_ref "ea3b595ffb54b035a56ff3b975056599a015d49c"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "016283cff012f7becd936d642e730149ac24787ec6a5fa9c2c82782ca2cd0b8e",
+      "0f9c1b00667341e97deadf08077cf3f0e8a7a293f819e5eea3bf47f3552eeb4a",
     "priv/contract/integration/definitions.schema.json" =>
-      "27d6ff3ef7ff529bb18e511c3d1c89fb5baede519e1aef38f65eabb9e6a8b3de",
+      "c9607225effb2b67fa03a5eb1f28fe93d41a3f338f7db3e100237ecae5d8d245",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "04f85c67a8f04e06c925ce61b5210c7141aec7453b3e645a298f075b06491c1b",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -280,11 +280,11 @@ defmodule Apiary.Integrations.DescriptionTest do
     "priv/contract/integration/descriptions/openrouter.json" =>
       "f77a4df6d8115eb3030a2053e8c97f87aef2a8e0566b629673d618cefb28d7bb",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "20213633b1e66629e11b7406b386f0c85603196ae84677186d049329d16c8bf3",
+      "18ee81afd8c2f3609ffb1c5ee5e317af39382c909cf6b3ec28a6743e8593ead7",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "27d6ff3ef7ff529bb18e511c3d1c89fb5baede519e1aef38f65eabb9e6a8b3de",
+      "c9607225effb2b67fa03a5eb1f28fe93d41a3f338f7db3e100237ecae5d8d245",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "3290b901ceb26b3d52a08aa869e4bdb301d43ad73e383e991404ae060d9955b0"
+      "a2a73efbc1103cd47142260f18abed0d0710ccd5232933273bb685334088d252"
   }
 
   @root Path.expand("../../..", __DIR__)

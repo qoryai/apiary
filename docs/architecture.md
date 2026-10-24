@@ -69,8 +69,10 @@ beside it:
 - `Apiary.Release` and `Apiary.Release.Migrator`: what the release runs at boot, and the
   commands for whoever runs the instance (`bin/apiary eval "Apiary.Release.…"`).
 - `Apiary.Setup`: the set-up link of a new instance, its code found or made and logged
-  at a start before set-up, just before the endpoint starts, and the set-up that uses it;
-  and the release command's claim of a new instance.
+  at a start before set-up, just before the endpoint starts, or, with
+  `QORY_SETUP_CODE_SHA256` set, the hash of a code the install made, with no code made or
+  logged; the set-up that uses the code; and the release command's claim of a new
+  instance.
 
 The web side is under `lib/apiary_web/`:
 
@@ -262,7 +264,8 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   grants as it would on any instance.
 - **The set-up link.** `Apiary.Setup`, a child of the application's supervisor after
   the edition's processes and just before `ApiaryWeb.Endpoint`, logs "Set up Qory Apiary
-  at <url>/setup/<code>." at every start while the instance has no organisation. The code
+  at <url>/setup/<code>." at every start while the instance has no organisation, unless
+  `QORY_SETUP_CODE_SHA256` is set (the preset, below). The code
   is 32 random bytes in base64url, kept as it is in `instance_settings.setup_code`: found
   or made by `code!/0` under the row's lock (`FOR UPDATE`), so two starts at once agree on
   one. `set_up/3` is `sign_up_user/3` with `first_only: true` and `actor: :instance`,
@@ -272,6 +275,16 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   sign-up marks it used the same way. Before set-up, every other sign-up is
   `{:error, :not_set_up}`. The page is `ApiaryWeb.SetupLive`; its line on what is created
   is the edition's (`c:Apiary.Edition.first_sign_up_line/0`).
+- **The preset.** With `QORY_SETUP_CODE_SHA256` set, the install makes the code and
+  prints the link, and `Apiary.Setup.preset!/0` reads the hash at boot. An empty or blank
+  value counts as unset. Any other value that is not 64 hexadecimal characters, with
+  whitespace around them ignored, stops the boot. A start before set-up makes and logs no
+  code: it sets a stored `setup_code` to NULL under the row's lock and logs a line without
+  a link. The one code accepted has 43 base64url characters and a SHA-256 equal to the
+  hash, compared in constant time. The set-up, by the link or by the release command,
+  writes the hash to `instance_settings.used_setup_code_sha256`, and a code whose hash is
+  that value is refused, so the hash sets an instance up once. The first sign-up's entry
+  has `details.setup_code`: `link`, `preset` or `command`.
 
 ## Suspending a member
 

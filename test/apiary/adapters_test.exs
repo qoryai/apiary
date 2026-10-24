@@ -26,6 +26,8 @@ defmodule Apiary.AdaptersTest do
     :"adapter.declare",
     :"source_item.post",
     :"work_item.read_changes",
+    :"adapter.app_values_set",
+    :"adapter.app_values_seal",
     :"adapter.disconnect"
   ]
 

@@ -4,8 +4,9 @@ defmodule Apiary.Secrets.Cipher do
   AES-256-GCM with `:crypto`, a random 96-bit nonce for each encryption, and a 128-bit
   tag stored after the ciphertext.
 
-  A value and a data key are bound to the level their secret is at: a workspace (v1) or
-  an organisation (v2). Both bindings are in use, each for its level.
+  A value and a data key are bound to the level their secret is at: a workspace (v1), an
+  organisation (v2) or the instance (v3). The three bindings are in use, each for its
+  level.
 
   **A value of a workspace's secret** is encrypted under its workspace's data key, with
   associated data that binds it to where it belongs:
@@ -17,13 +18,20 @@ defmodule Apiary.Secrets.Cipher do
 
       lp("qory-secret-v2") ‖ lp(organisation id) ‖ lp(secret id) ‖ lp(value id, or "")
 
-  The workspace id and the organisation id are UUIDs in their canonical string form, the
-  secret id the secret's public `sec_` id, and the value id the value's, or the empty
-  string for a secret's one value without one. A value copied to another workspace or
-  organisation, another secret, another value id or the other level does not decrypt
-  there, so the database alone cannot move a value.
+  **A value of an instance's secret** belongs to one adapter, and is encrypted under the
+  instance's data key, with the associated data
 
-  **A data key**, 32 random bytes per workspace or per organisation, is encrypted
+      lp("qory-secret-v3") ‖ lp(adapter id) ‖ lp(secret id) ‖ lp(value id)
+
+  The workspace id and the organisation id are UUIDs in their canonical string form, the
+  adapter id the adapter's public `na_` id, the secret id the secret's public `sec_` id,
+  and the value id the value's, or the empty string for a secret's one value without one;
+  an instance's secret's every value has one. A value copied to another workspace,
+  organisation or adapter, another secret, another value id or another level does not
+  decrypt there, so the database alone cannot move a value.
+
+  **A data key**, 32 random bytes per workspace, per organisation and one for the
+  instance, is encrypted
   (wrapped) under the instance's values key (`Apiary.KeyDerivation`, purpose `:values`),
   with the associated data
 
@@ -33,8 +41,12 @@ defmodule Apiary.Secrets.Cipher do
 
       lp("apiary-data-key-v2") ‖ lp(organisation id)
 
-  for an organisation's, so a wrapped key copied to another workspace, another
-  organisation or the other level does not unwrap there.
+  for an organisation's, and
+
+      lp("apiary-data-key-v3") ‖ lp("instance")
+
+  for the instance's, so a wrapped key copied to another workspace, another organisation
+  or another level does not unwrap there.
 
   `lp(x)` is `x`'s byte length as an unsigned 16-bit big-endian integer, then `x`.
 
@@ -48,6 +60,8 @@ defmodule Apiary.Secrets.Cipher do
   @data_key_label "apiary-data-key-v1"
   @organisation_value_label "qory-secret-v2"
   @organisation_data_key_label "apiary-data-key-v2"
+  @instance_value_label "qory-secret-v3"
+  @instance_data_key_label "apiary-data-key-v3"
 
   @typedoc "A 32-byte AES-256 key."
   @type key :: <<_::256>>
@@ -91,6 +105,26 @@ defmodule Apiary.Secrets.Cipher do
   def organisation_data_key_aad(organisation_id) when is_binary(organisation_id) do
     IO.iodata_to_binary([lp(@organisation_data_key_label), lp(organisation_id)])
   end
+
+  @doc """
+  instance_value_aad/3 is the associated data of a value of an instance's secret: see the
+  module's documentation. `adapter_id` is the adapter's public `na_` id.
+  """
+  @spec instance_value_aad(String.t(), String.t(), String.t()) :: binary
+  def instance_value_aad(adapter_id, secret_id, value_id)
+      when is_binary(adapter_id) and is_binary(secret_id) and is_binary(value_id) do
+    IO.iodata_to_binary([
+      lp(@instance_value_label),
+      lp(adapter_id),
+      lp(secret_id),
+      lp(value_id)
+    ])
+  end
+
+  @doc "instance_data_key_aad/0 is the associated data of the instance's wrapped data key."
+  @spec instance_data_key_aad() :: binary
+  def instance_data_key_aad,
+    do: IO.iodata_to_binary([lp(@instance_data_key_label), lp("instance")])
 
   @doc """
   encrypt/3 encrypts `plaintext` under `key` with `aad`: `{nonce, ciphertext}`, the

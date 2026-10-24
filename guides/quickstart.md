@@ -64,7 +64,8 @@ Keep a copy of the keys if you mean to keep this installation:
 ## 4. Set it up
 
 Until it is set up, Qory Apiary writes its set-up link to its log at every start, the
-same link each time. Find it:
+same link each time. An install that sets `QORY_SETUP_CODE_SHA256` prints the link itself,
+and the log does not show it ([Install](install.md)). Find it:
 
 ```sh
 docker compose logs apiary | grep 'Set up Qory Apiary'

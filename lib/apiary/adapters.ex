@@ -94,6 +94,7 @@ defmodule Apiary.Adapters do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
+  alias Apiary.Secrets.{AdapterSealing, Instance, InstanceSecretValue, Reference}
 
   ## Who may
 
@@ -723,7 +724,9 @@ defmodule Apiary.Adapters do
   # closed as a member would close it, by the instance (`Apiary.WorkItems.close_for_adapter/2`,
   # whose moduledoc gives the lock order), and its runs not yet handed over end; once that
   # commits, the workspaces whose queue changed hear of it (`Apiary.Dispatches.broadcast/1`).
-  # The tickets are left as they are. If a close fails, nothing of the deletion is kept.
+  # The tickets are left as they are. The adapter's stored secret and its values are
+  # deleted, and its reference to them cleared (`Apiary.Secrets.Instance`), which the
+  # entry records (`app_values_deleted`). If a close fails, nothing of the deletion is kept.
   # An adapter installed with Qory Apiary whose name `QORY_INSTALLED_ADAPTERS` still lists
   # is `{:error, :installed}`, and nothing changes: the installer would make it again; once
   # the name is off the list, it is deleted as any adapter is, and its file is left as the
@@ -740,9 +743,15 @@ defmodule Apiary.Adapters do
            {:ok, key_ids} <- AccessKeys.revoke_node_keys(recorder, current, :node_deleted),
            connection_ids = Connections.end_for_adapter(current, now),
            {:ok, workspace_ids} <- WorkItems.close_for_adapter(current, now),
+           app_values_deleted = Instance.delete_app_values(Repo, current),
            {:ok, deleted} <-
              current
-             |> Ecto.Changeset.change(deleted_at: now, deleted_by_id: scope.user.id)
+             |> Ecto.Changeset.change(
+               deleted_at: now,
+               deleted_by_id: scope.user.id,
+               secret_store: nil,
+               secret_entry: nil
+             )
              |> Repo.update(),
            {:ok, _entry} <-
              Audit.record(Repo, recorder, :"adapter.delete", deleted, %{
@@ -753,6 +762,7 @@ defmodule Apiary.Adapters do
                  |> Map.take([:name, :kind, :public_id])
                  |> Map.put(:revoked_key_ids, key_ids)
                  |> Map.put(:ended_connection_ids, connection_ids)
+                 |> Map.put(:app_values_deleted, app_values_deleted)
              }) do
         {:ok, {deleted, workspace_ids}}
       end
@@ -1181,4 +1191,104 @@ defmodule Apiary.Adapters do
   end
 
   def for_key(%Scope{}, _action), do: {:error, :not_found}
+
+  @doc false
+  # Stores `values`, the secrets `adapter` keeps in Qory Apiary, opened from its upload,
+  # for the adapter's key's `scope` (`adapter.app_values_set`): they replace every secret
+  # it stored before (`Apiary.Secrets.Instance.put_app_values/3`). In the same
+  # transaction, with the adapter's row held, each name must be one the source role of its
+  # latest description lists (`secret_names`), and the entry is in the trail the key
+  # records in, about the adapter, with the reference, the names, the revision and
+  # whether the upload replaced secrets: never a value.
+  #
+  # `{:ok, stored}`; `{:error, :undeclared}` for a name the description does not list;
+  # else what `Apiary.Secrets.Instance.put_app_values/3` answers. None of the refusals
+  # changes anything or leaves an entry.
+  @spec store_app_values(Scope.t(), Node.t(), [InstanceSecretValue.t()]) ::
+          {:ok, Instance.stored()} | {:error, term}
+  def store_app_values(%Scope{} = scope, %Node{kind: :adapter} = adapter, values) do
+    Instance.put_app_values(adapter, values,
+      allowed: &declared_names(&1, values),
+      record: fn locked, stored ->
+        Audit.record(Repo, scope, :"adapter.app_values_set", locked, %{
+          details: %{
+            reference: Reference.to_string(stored.reference),
+            names: stored.names,
+            revision: stored.revision,
+            replaced: stored.replaced
+          }
+        })
+      end
+    )
+  end
+
+  @doc false
+  # The answer to `adapter`'s key's read of the secrets the adapter keeps in Qory Apiary
+  # (`adapter.app_values_seal`), for the key's `scope`: every secret it stored, sealed to
+  # `key`, the access key the request verified under, with a fresh ephemeral key, for the
+  # contract revision `revision` (`Apiary.Secrets.AdapterSealing.delivery/3`). With no
+  # secret stored, the answer seals an empty list. In one transaction, with the adapter's
+  # row held `FOR SHARE`, each read leaves an entry in the trail the key records in, about
+  # the adapter, with the access key's id, the secrets' revision and their names: never a
+  # value.
+  #
+  # `{:ok, body}`, the answer's bytes; `{:error, :not_found}` for an adapter deleted, or
+  # installed with Qory Apiary and no longer listed; `{:error, :key}` for an access key
+  # that fails a key check (`Apiary.Contract.Ed25519.check_public_key/1`) or a seal that
+  # fails; `{:error, :unavailable}` when a secret cannot be decrypted, which the log says,
+  # without a value. None of the refusals leaves an entry.
+  @spec seal_app_values(Scope.t(), Node.t(), AccessKey.t(), pos_integer) ::
+          {:ok, binary} | {:error, :not_found | :key | :unavailable | term}
+  def seal_app_values(
+        %Scope{} = scope,
+        %Node{kind: :adapter, id: id},
+        %AccessKey{} = key,
+        revision
+      ) do
+    Repo.transact(fn ->
+      with %Node{} = adapter <-
+             live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
+               {:error, :not_found},
+           :ok <-
+             if(installed?(adapter) and not listed?(adapter), do: {:error, :not_found}, else: :ok),
+           :ok <- recipient_key(key),
+           {:ok, %{revision: secrets_revision, values: values}} <-
+             Instance.reveal_app_values_for_sealing(adapter),
+           {:ok, body} <-
+             AdapterSealing.delivery(
+               values,
+               %{
+                 adapter_id: adapter.public_id,
+                 access_key_id: key.key_id,
+                 public_key: key.public_key
+               },
+               revision
+             ),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, :"adapter.app_values_seal", adapter, %{
+               details: %{
+                 access_key_id: key.key_id,
+                 revision: secrets_revision,
+                 names: Enum.map(values, & &1.value_id)
+               }
+             }) do
+        {:ok, body}
+      end
+    end)
+  end
+
+  defp recipient_key(%AccessKey{public_key: public_key}) do
+    case Ed25519.check_public_key(public_key) do
+      :ok -> :ok
+      {:error, _refusal} -> {:error, :key}
+    end
+  end
+
+  defp declared_names(%Node{secret_names: names}, values) do
+    names = names || []
+
+    if Enum.all?(values, fn %InstanceSecretValue{value_id: id} -> id in names end),
+      do: :ok,
+      else: {:error, :undeclared}
+  end
 end

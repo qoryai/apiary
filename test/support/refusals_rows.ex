@@ -470,6 +470,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"run_configuration.fetch",
         :"secret.seal",
         :"adapter.declare",
+        :"adapter.app_values_set",
+        :"adapter.app_values_seal",
         :"source_item.post",
         :"work_item.read_changes",
         :"adapter.disconnect",

@@ -3410,6 +3410,16 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Adapter secrets sent"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Adapter secrets stored"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Adapter set-up started"
 msgstr ""
 
@@ -13225,6 +13235,11 @@ msgstr ""
 msgid "Sent"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sent an adapter its secrets, sealed to its access key, revision %{revision}"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Sentry's web API on sentry.io."
@@ -13792,6 +13807,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Store the secret."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Stored an adapter's secrets, revision %{revision}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex

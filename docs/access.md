@@ -205,13 +205,16 @@ Starting an adapter's set-up at the system it reads from (`adapter.setup`,
 `Apiary.Adapters.setup/2`) is an instance admin's too, asked by
 `Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
 Revoking the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a
-new instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its
-log shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
+new instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only the
+instance's log shows, or, with `QORY_SETUP_CODE_SHA256` set, only the install that made the
+code, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
 instance that has its organisation.
 
 The instance's organisation is never deleted nor purged: an instance without it is
 one that is not set up, where nobody signs up, and its next start would log a new set-up
-link (`Apiary.Setup`) that gives whoever opens it the instance. `Apiary.Deletion` refuses to mark or purge it,
+link (`Apiary.Setup`) that gives whoever opens it the instance; with
+`QORY_SETUP_CODE_SHA256` set, the start logs no link, and the code that set the instance up
+is refused. `Apiary.Deletion` refuses to mark or purge it,
 `:instance_organisation`, the core edition's answer to
 `c:Apiary.Edition.deletion_refusal/2`. An edition may also refuse `organisation.delete` on
 it for every role (`c:Apiary.Edition.check/3`), which its settings page asks through

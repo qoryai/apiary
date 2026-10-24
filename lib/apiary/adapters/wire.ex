@@ -55,6 +55,10 @@ defmodule Apiary.Adapters.Wire do
   # `started_at` and `complete`. A ref named twice in one part is taken as the last time
   # it is named.
   #
+  # `secrets_upload/1` reads the body of `POST /v1/adapter/secrets`
+  # (`adapter-secrets.schema.json`): exactly `version` (1), `time` and `sealed`, an object;
+  # `Apiary.Secrets.AdapterSealing` reads what `sealed` holds.
+  #
   # `source_disconnect/1` reads the body of `POST /v1/sources/disconnect`
   # (`sources-disconnect.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters, as a listing names it) and `collection_ref`.
@@ -100,6 +104,7 @@ defmodule Apiary.Adapters.Wire do
   @collection_keys ~w(ref title url)
   @target_keys ~w(path system)
   @disconnect_keys ~w(collection_ref connection_id time version)
+  @secrets_upload_keys ~w(sealed time version)
   @max_collections 100
   @max_part 10_000
   @max_title 1024
@@ -554,6 +559,26 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def source_disconnect(_body), do: :error
+
+  # The raw body of `POST /v1/adapter/secrets` (`adapter-secrets.schema.json`), decoded as
+  # `decode/1` decodes it: exactly `version` (1), `time` and `sealed`, an object, whose
+  # members `Apiary.Secrets.AdapterSealing.open_upload/4` reads. `{:ok, upload}` or
+  # `:error`.
+  @doc false
+  @spec secrets_upload(term) :: {:ok, %{time: DateTime.t(), sealed: map}} | :error
+  def secrets_upload(raw) when is_binary(raw) do
+    with {:ok, body} <- decode(raw),
+         true <- Enum.sort(Map.keys(body)) == @secrets_upload_keys,
+         true <- body["version"] === 1,
+         {:ok, time} <- time(body["time"]),
+         %{} = sealed <- body["sealed"] do
+      {:ok, %{time: time, sealed: sealed}}
+    else
+      _ -> :error
+    end
+  end
+
+  def secrets_upload(_raw), do: :error
 
   # Whether `value` is a string of `min` to `max` code points, with no U+0000.
   @doc false

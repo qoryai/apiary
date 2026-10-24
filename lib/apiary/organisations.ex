@@ -912,6 +912,9 @@ defmodule Apiary.Organisations do
   The audit trail has the sign-up, by the new user: `organisation.create` for a new
   organisation, with `details.sign_up` true, `invitation.accept` for an invitation, from
   `origin:` (see `Apiary.Accounts.Scope.put_origin/2`), the request's address and client.
+  The instance's first sign-up's entry has `details.setup_code` too, the way the instance
+  was set up: `"link"` with the stored code, `"preset"` with the preset code, `"command"`
+  by a release command (`Apiary.Setup`).
 
   **The password.** `password`, with `password_confirmation`, is the account's password,
   checked as `change_sign_up/2` checks it and hashed into the account. A person's sign-up
@@ -1096,7 +1099,8 @@ defmodule Apiary.Organisations do
     Ecto.Multi.new()
     |> Ecto.Multi.run(:how, fn _repo, _changes -> sign_up_how(extra, opts) end)
     # The instance's first sign-up uses its set-up code: the link's, which it checks, or
-    # whatever code is stored, for a release command's (`Apiary.Setup.use_code/2`).
+    # whatever code is stored, for a release command's (`Apiary.Setup.use_code/2`). Its
+    # answer is the way the instance was set up, nil for a later sign-up.
     |> Ecto.Multi.run(:set_up, fn repo, %{how: how} ->
       if how == :first_sign_up,
         do: Apiary.Setup.use_code(repo, Keyword.get(opts, :setup_code)),
@@ -1108,10 +1112,15 @@ defmodule Apiary.Organisations do
       domain: domain,
       how: & &1.how,
       scope: &sign_up_scope(&1, origin, actor),
-      details: %{sign_up: true},
+      details: &sign_up_details(&1.set_up),
       pick_slug: Keyword.get(opts, :pick_slug)
     )
   end
+
+  # The details of a sign-up's entry; the instance's first has `setup_code`, the way it
+  # was set up: "link", "preset" or "command".
+  defp sign_up_details(nil), do: %{sign_up: true}
+  defp sign_up_details(way), do: %{sign_up: true, setup_code: way}
 
   # What the sign-up is, decided inside its transaction: the instance's first while the
   # instance has no organisation of its own, read again under the first-sign-up lock, so
@@ -1254,7 +1263,8 @@ defmodule Apiary.Organisations do
   - the entry that begins the organisation's trail, of `action:`, `organisation.create`
     unless it names one of the edition's, by the scope `scope:` gives, a function of the
     changes, the caller's among them: it names the workspace, and the membership and its
-    person by id, with `details:` beside;
+    person by id, with `details:` beside, a map or a function of the caller's changes
+    that gives it;
   - `:created`, a map of the organisation as the database has it once the edition's steps
     are done, its workspace and its membership.
 
@@ -1275,6 +1285,7 @@ defmodule Apiary.Organisations do
     # organisation's own.
     Ecto.Multi.merge(multi, fn outer ->
       how = if is_function(how, 1), do: how.(outer), else: how
+      details = if is_function(details, 1), do: details.(outer), else: details
       user = owner && Map.fetch!(outer, owner)
 
       Ecto.Multi.new()

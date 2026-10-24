@@ -483,6 +483,20 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited: {:not, @read}
     ),
+    # The secrets an adapter stores in Qory Apiary (`Apiary.Secrets.Instance`): its upload
+    # replaces them, in the trail of the instance's organisation.
+    Action.new(:"adapter.app_values_set", "store the secrets the adapter keeps in Qory",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
+    # The adapter's read of those secrets, sealed to the key that asks: each read is an
+    # entry, in the same trail.
+    Action.new(:"adapter.app_values_seal", "read the secrets the adapter keeps in Qory",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
     Action.new(:"adapter.disconnect", "end a connection of the adapter",
       feature: :factory,
       roles: [:adapter_key],
