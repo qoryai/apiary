@@ -123,6 +123,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.connect",
       :"adapter.declare",
       :"adapter.app_values_set",
+      :"adapter.app_values_seal",
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
@@ -583,6 +584,23 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # An adapter's key reads those secrets back, sealed to it, in the same trail; the entry
+  # keeps nothing of a value.
+  def make(:"adapter.app_values_seal", _ctx) do
+    {adapter, key_scope, key} = app_values_adapter()
+    {:ok, _stored} = Adapters.store_app_values(key_scope, adapter, app_values())
+    before = entries()
+    {:ok, _body} = Adapters.seal_app_values(key_scope, adapter, key, 1)
+
+    %{
+      scope: key_scope,
+      subject: {"node", adapter.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: "fixture-signing-key-for-tests-only"
+    }
+  end
+
   # A gateway's secrets request seals a run's model key to its access key, in the trail of
   # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
   # the entry keeps nothing of the key's value.
@@ -938,6 +956,19 @@ defmodule Apiary.AuditChanges do
      Adapters.store_app_values(key_scope, adapter, [
        %Apiary.Secrets.InstanceSecretValue{value_id: "undeclared", value: "v"}
      ])}
+  end
+
+  # An installed adapter no longer listed reads nothing.
+  def refuse(:"adapter.app_values_seal", _ctx) do
+    {adapter, key_scope, key} = app_values_adapter()
+
+    {1, _} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+        set: [installed_as: "tracker-unlisted-#{System.unique_integer([:positive])}"]
+      )
+
+    before = entries()
+    {before, Adapters.seal_app_values(key_scope, adapter, key, 1)}
   end
 
   # A request with a credential the run does not have seals nothing.

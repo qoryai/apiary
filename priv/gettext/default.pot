@@ -3405,6 +3405,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Adapter app values sent"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Adapter app values stored"
 msgstr ""
 
@@ -13228,6 +13233,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Sent"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sent the adapter its app values, sealed to its key, revision %{revision}."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex

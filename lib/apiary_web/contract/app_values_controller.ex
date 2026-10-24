@@ -23,8 +23,22 @@ defmodule ApiaryWeb.Contract.AppValuesController do
   # with an entry of `adapter.app_values_set` in the same transaction, and the answer is `204`,
   # signed, with no body. When they cannot be stored, the answer is `503` `unavailable`.
   #
+  # `GET /v1/adapter/secrets`, the adapter reading those secrets back
+  # (`adapter-secrets-answer.schema.json`), sealed to the access key the request verified
+  # under, with its `X-Qory-Timestamp` (`ApiaryWeb.Contract.AdapterRequest`, which also
+  # refuses a stale timestamp or a replay, `401`). Then, in order: a query is `400`
+  # `invalid_request`; a key that may not read the adapter's secrets
+  # (`adapter.app_values_seal`) is `403` `forbidden`, and `404` `not_found` where its
+  # adapter is not found to it, or is installed with Qory Apiary and no longer listed;
+  # else the answer is `200`, signed, `{version: 1, revision, sealed: {suite,
+  # access_key_id, enc, ct}}`, `revision` the request's contract revision
+  # (`X-Qory-Contract-Version`), with an entry of `adapter.app_values_seal` for each answer
+  # (`Apiary.Adapters.seal_app_values/4`). An adapter with no secret stored gets an empty
+  # list, sealed. A secret that cannot be decrypted, or a key that cannot be sealed to, is
+  # `503` `unavailable`.
+  #
   # The `info` and the associated data are built from the adapter and the access key the
-  # request verified under, never from the body. Nothing here logs the body, a value, a
+  # request verified under, never from the body or the query. Nothing here logs the body, a value, a
   # header, a key or a signature: a failure is logged by the exception's module alone.
 
   use ApiaryWeb, :controller
@@ -62,6 +76,30 @@ defmodule ApiaryWeb.Contract.AppValuesController do
   rescue
     exception ->
       Logger.error("an adapter's secrets could not be stored: " <> inspect(exception.__struct__))
+
+      refuse(conn, 503, "unavailable")
+  end
+
+  @doc false
+  def show(conn, _params) do
+    with "" <- conn.query_string,
+         key = conn.assigns.access_key,
+         scope = Scope.for_access_key(key),
+         {:ok, adapter} <- Adapters.for_key(scope, :"adapter.app_values_seal"),
+         {:ok, body} <-
+           Adapters.seal_app_values(scope, adapter, key, conn.assigns.contract_version) do
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, body)
+    else
+      query when is_binary(query) -> refuse(conn, 400, "invalid_request")
+      {:error, :forbidden} -> refuse(conn, 403, "forbidden")
+      {:error, :not_found} -> refuse(conn, 404, "not_found")
+      {:error, _refusal} -> refuse(conn, 503, "unavailable")
+    end
+  rescue
+    exception ->
+      Logger.error("an adapter's secrets could not be sealed: " <> inspect(exception.__struct__))
 
       refuse(conn, 503, "unavailable")
   end

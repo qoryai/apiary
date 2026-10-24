@@ -9,8 +9,13 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
 
   import Ecto.Query
   import ExUnit.CaptureLog
-  import Apiary.AccessKeysFixtures, only: [installed_key_fixture: 1, node_key_fixture: 2]
-  import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
+
+  import Apiary.AccessKeysFixtures,
+    only: [enrolled_key_fixture: 2, installed_key_fixture: 1, node_key_fixture: 2]
+
+  import Apiary.ContractFixtures,
+    only: [signed_get: 5, signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
+
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
@@ -261,6 +266,143 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
     end
   end
 
+  defp send_get(ctx, opts \\ []) do
+    signed_get(
+      build_conn(),
+      Keyword.get(opts, :key_id, ctx.key.key_id),
+      Keyword.get(opts, :seed, ctx.seed),
+      Keyword.get(opts, :target, @path),
+      opts
+    )
+  end
+
+  # Opens a delivery with the access key whose Ed25519 seed is `seed`, under `ctx`'s
+  # adapter and `key_id`.
+  defp open(body, ctx, seed, key_id) do
+    %{"sealed" => %{"enc" => enc, "ct" => ct}} = body
+    sk = binary_part(:crypto.hash(:sha512, seed), 0, 32)
+
+    Hpke.open(
+      sk,
+      Base.url_decode64!(enc, padding: false),
+      AdapterSealing.delivery_info(key_id),
+      AdapterSealing.aad(ctx.adapter.public_id, key_id),
+      Base.url_decode64!(ct, padding: false)
+    )
+  end
+
+  defp seal_entries(adapter) do
+    Repo.all(
+      from e in Entry,
+        where: e.action == "adapter.app_values_seal" and e.subject_id == ^adapter.id,
+        order_by: e.inserted_at
+    )
+  end
+
+  describe "a delivery" do
+    test "is the secrets stored, sealed to the asking key, signed 200, with an entry each",
+         ctx do
+      pt = plaintext([{"signing-key", @signing_key}, {"event-secret", @event_secret}])
+      assert send_post(ctx, upload(ctx, pt)).status == 204
+
+      conn = send_get(ctx)
+      assert conn.status == 200
+      assert signed_answer?(conn)
+      body = Jason.decode!(conn.resp_body)
+      assert Map.keys(body) |> Enum.sort() == ~w(revision sealed version)
+      assert %{"version" => 1, "revision" => 1} = body
+
+      assert %{"suite" => "x25519-sha256-aes256gcm", "access_key_id" => key_id} =
+               body["sealed"]
+
+      assert key_id == ctx.key.key_id
+      assert Map.keys(body["sealed"]) |> Enum.sort() == ~w(access_key_id ct enc suite)
+
+      assert {:ok, opened} = open(body, ctx, ctx.seed, ctx.key.key_id)
+
+      assert Jason.decode!(opened) == %{
+               "version" => 1,
+               "secrets" => [
+                 %{"name" => "event-secret", "value" => @event_secret},
+                 %{"name" => "signing-key", "value" => @signing_key}
+               ]
+             }
+
+      refute conn.resp_body =~ "fixture-"
+
+      second = send_get(ctx, timestamp: SignedRequest.now() + 1)
+      assert second.status == 200
+      refute Jason.decode!(second.resp_body)["sealed"]["enc"] == body["sealed"]["enc"]
+
+      assert [entry, _second] = seal_entries(ctx.adapter)
+      assert {entry.actor_kind, entry.actor_id} == {:access_key, ctx.key.id}
+
+      assert entry.details == %{
+               "access_key_id" => ctx.key.key_id,
+               "revision" => 1,
+               "names" => ["event-secret", "signing-key"]
+             }
+    end
+
+    test "with no secret stored is an empty list, sealed", ctx do
+      conn = send_get(ctx)
+      assert conn.status == 200
+
+      assert open(Jason.decode!(conn.resp_body), ctx, ctx.seed, ctx.key.key_id) ==
+               {:ok, ~s({"version":1,"secrets":[]})}
+    end
+
+    test "to another key of the adapter is sealed to that key alone", ctx do
+      assert send_post(ctx, upload(ctx, plaintext([{"signing-key", "v"}]))).status == 204
+
+      %{access_key: key_b, pair: pair_b} =
+        enrolled_key_fixture(instance_admin_scope(), ctx.adapter)
+
+      ctx_b = %{ctx | key: key_b, seed: pair_b.secret}
+
+      body = ctx_b |> send_get() |> Map.fetch!(:resp_body) |> Jason.decode!()
+      assert body["sealed"]["access_key_id"] == key_b.key_id
+      assert {:ok, _opened} = open(body, ctx, pair_b.secret, key_b.key_id)
+      assert open(body, ctx, ctx.seed, key_b.key_id) == :error
+      assert open(body, ctx, ctx.seed, ctx.key.key_id) == :error
+    end
+
+    test "with a query is 400; a key that is not an adapter's, a replay or a deleted adapter's key is 401",
+         ctx do
+      assert json_response(send_get(ctx, target: @path <> "?all=1"), 400) == @invalid
+
+      %{scope: scope} = sign_up_fixture()
+      %{access_key: key, pair: pair} = node_key_fixture(scope, node_fixture(scope))
+      gateway = %{ctx | key: key, seed: pair.secret}
+      assert json_response(send_get(gateway), 401) == @unauthorized
+
+      now = SignedRequest.now()
+      assert send_get(ctx, timestamp: now).status == 200
+      replayed = send_get(ctx, timestamp: now)
+      assert json_response(replayed, 401) == @unauthorized
+      assert unsigned_answer?(replayed)
+
+      {:ok, _} = Apiary.Adapters.delete_adapter(instance_admin_scope(), ctx.adapter)
+      assert json_response(send_get(ctx), 401) == @unauthorized
+      assert length(seal_entries(ctx.adapter)) == 1
+    end
+
+    test "to an installed adapter no longer listed is 404, with no entry" do
+      name = "tracker-#{System.unique_integer([:positive])}"
+      Application.put_env(:apiary, :installed_adapters, [name])
+      installed = installed_adapter_fixture(name)
+
+      made =
+        installed_key_fixture(installed)
+        |> Map.put(:adapter, installed)
+        |> adapter_ctx()
+
+      Application.put_env(:apiary, :installed_adapters, [])
+      assert json_response(send_get(made), 404) == %{"error" => "not_found"}
+      assert seal_entries(made.adapter) == []
+    end
+  end
+
   describe "the log" do
     test "has no value, also when the values cannot be stored", ctx do
       pt = plaintext([{"signing-key", @signing_key}])
@@ -291,6 +433,26 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
                  where: s.adapter_id == ^ctx.adapter.id,
                  select: s.revision
              ) == 1
+    end
+
+    test "has no value when a stored secret cannot be decrypted, and the delivery is 503", ctx do
+      pt = plaintext([{"signing-key", @signing_key}])
+      assert send_post(ctx, upload(ctx, pt)).status == 204
+
+      # The value's row, changed: it no longer decrypts.
+      {1, _} =
+        Repo.update_all(Apiary.Secrets.InstanceSecretValue,
+          set: [nonce: :crypto.strong_rand_bytes(12)]
+        )
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert json_response(send_get(ctx), 503) == %{"error" => "unavailable"}
+        end)
+
+      assert log =~ "cannot be decrypted adapter_id=#{ctx.adapter.public_id}"
+      refute log =~ "fixture-"
+      assert seal_entries(ctx.adapter) == []
     end
   end
 

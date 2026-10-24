@@ -94,7 +94,7 @@ defmodule Apiary.Adapters do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
-  alias Apiary.Secrets.{Instance, InstanceSecretValue, Reference}
+  alias Apiary.Secrets.{AdapterSealing, Instance, InstanceSecretValue, Reference}
 
   ## Who may
 
@@ -1220,6 +1220,68 @@ defmodule Apiary.Adapters do
         })
       end
     )
+  end
+
+  @doc false
+  # The answer to `adapter`'s key's read of the secrets the adapter keeps in Qory Apiary
+  # (`adapter.app_values_seal`), for the key's `scope`: every secret it stored, sealed to
+  # `key`, the access key the request verified under, with a fresh ephemeral key, for the
+  # contract revision `revision` (`Apiary.Secrets.AdapterSealing.delivery/3`). With no
+  # secret stored, the answer seals an empty list. In one transaction, with the adapter's
+  # row held `FOR SHARE`, each read leaves an entry in the trail the key records in, about
+  # the adapter, with the access key's id, the secrets' revision and their names: never a
+  # value.
+  #
+  # `{:ok, body}`, the answer's bytes; `{:error, :not_found}` for an adapter deleted, or
+  # installed with Qory Apiary and no longer listed; `{:error, :key}` for an access key
+  # that fails a key check (`Apiary.Contract.Ed25519.check_public_key/1`) or a seal that
+  # fails; `{:error, :unavailable}` when a secret cannot be decrypted, which the log says,
+  # without a value. None of the refusals leaves an entry.
+  @spec seal_app_values(Scope.t(), Node.t(), AccessKey.t(), pos_integer) ::
+          {:ok, binary} | {:error, :not_found | :key | :unavailable | term}
+  def seal_app_values(
+        %Scope{} = scope,
+        %Node{kind: :adapter, id: id},
+        %AccessKey{} = key,
+        revision
+      ) do
+    Repo.transact(fn ->
+      with %Node{} = adapter <-
+             live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
+               {:error, :not_found},
+           :ok <-
+             if(installed?(adapter) and not listed?(adapter), do: {:error, :not_found}, else: :ok),
+           :ok <- recipient_key(key),
+           {:ok, %{revision: secrets_revision, values: values}} <-
+             Instance.reveal_app_values_for_sealing(adapter),
+           {:ok, body} <-
+             AdapterSealing.delivery(
+               values,
+               %{
+                 adapter_id: adapter.public_id,
+                 access_key_id: key.key_id,
+                 public_key: key.public_key
+               },
+               revision
+             ),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, :"adapter.app_values_seal", adapter, %{
+               details: %{
+                 access_key_id: key.key_id,
+                 revision: secrets_revision,
+                 names: Enum.map(values, & &1.value_id)
+               }
+             }) do
+        {:ok, body}
+      end
+    end)
+  end
+
+  defp recipient_key(%AccessKey{public_key: public_key}) do
+    case Ed25519.check_public_key(public_key) do
+      :ok -> :ok
+      {:error, _refusal} -> {:error, :key}
+    end
   end
 
   defp declared_names(%Node{secret_names: names}, values) do

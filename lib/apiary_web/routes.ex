@@ -236,12 +236,13 @@ defmodule ApiaryWeb.Routes do
       end
 
       # An adapter's requests: its declaration as it starts, and the secrets it stores in
-      # Qory Apiary.
+      # Qory Apiary and reads back.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_adapter
 
         post "/adapter", AdapterController, :create
         post "/adapter/secrets", AppValuesController, :create
+        get "/adapter/secrets", AppValuesController, :show
       end
 
       # A node pool's starter's requests, with the `factory` feature: its claim of a run

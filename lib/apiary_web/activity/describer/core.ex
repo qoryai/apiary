@@ -90,6 +90,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"adapter.install"), do: gettext("Adapter installed")
   def label(:"adapter.setup"), do: gettext("Adapter set-up started")
   def label(:"adapter.app_values_set"), do: gettext("Adapter app values stored")
+  def label(:"adapter.app_values_seal"), do: gettext("Adapter app values sent")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -127,11 +128,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # of collections, the turning of a target's Backlog on or off, the release of a claimed
   # run, the choosing of what a target's runs also read, the setting of a model choice or
   # a time limit of a workspace or a target, a build of a target's environment asked for,
-  # the installing of an adapter, the start of its set-up and the storing of its app values
-  # have labels yet, so the filter offers those alone, where the reader is shown the
-  # feature (the page asks it); the others' entries show as any change. The filter offers
-  # `connection.write` alone of the three actions that split it (`@connection_writes`),
-  # and its entries are those of the three (`Apiary.Audit.list_entries/3`). Nothing writes `dispatch.handover` or
+  # the installing of an adapter, the start of its set-up and the storing and sending of
+  # its app values have labels yet, so the filter offers those alone, where the reader is
+  # shown the feature (the page asks it); the others' entries show as any change. The
+  # filter offers `connection.write` alone of the three actions that split it
+  # (`@connection_writes`), and its entries are those of the three
+  # (`Apiary.Audit.list_entries/3`). Nothing writes `dispatch.handover` or
   # `dispatch.prebuilt` any more: the filter offers neither, and their labels and words
   # stay for the entries stored before.
   @impl true
@@ -160,7 +162,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"target.rebuild_environment",
           :"adapter.install",
           :"adapter.setup",
-          :"adapter.app_values_set"
+          :"adapter.app_values_set",
+          :"adapter.app_values_seal"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -419,6 +422,14 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"adapter.app_values_set", %{"revision" => revision}, _actor),
     do: gettext("Stored the adapter's app values, revision %{revision}.", revision: revision)
+
+  # A read with no secret stored has no revision, and no sentence.
+  defp said(:"adapter.app_values_seal", %{"revision" => revision}, _actor)
+       when is_integer(revision),
+       do:
+         gettext("Sent the adapter its app values, sealed to its key, revision %{revision}.",
+           revision: revision
+         )
 
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
 

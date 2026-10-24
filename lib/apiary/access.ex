@@ -490,6 +490,13 @@ defmodule Apiary.Access do
       roles: [:adapter_key],
       asked_of: :organisation
     ),
+    # The adapter's read of those secrets, sealed to the key that asks: each read is an
+    # entry, in the same trail.
+    Action.new(:"adapter.app_values_seal", "read the secrets the adapter keeps in Qory",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
     Action.new(:"adapter.disconnect", "end a connection of the adapter",
       feature: :factory,
       roles: [:adapter_key],
