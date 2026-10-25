@@ -329,14 +329,24 @@ defmodule ApiaryWeb.InstanceLive.Node do
 
   # What Qory Apiary does with the node's code, then its keys. Each card's Revoke… leads
   # to `…/keys/:key_id/revoke`, which the card writes from `access_key`; its confirmation
-  # is this tab's, under the card, and goes back to the tab.
+  # is this tab's, under the card, and goes back to the tab. The installer writes a code
+  # only for a node a setting declares (`Apiary.Nodes.Installed.declared?/1`), and
+  # cancels the codes of any other.
   defp keys(assigns) do
+    assigns = assign(assigns, :declared, Installed.declared?(assigns.node))
+
     ~H"""
     <div id="node-access-key" class="grid max-w-[60rem] gap-8">
       <p id="node-access-key-intro" class="max-w-[80ch] text-[13px]/5 text-muted">
-        {gettext(
-          "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
-        )}
+        <%= if @declared do %>
+          {gettext(
+            "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
+          )}
+        <% else %>
+          {gettext(
+            "No setting of this instance declares this node, so Qory Apiary writes no new code after a revoke."
+          )}
+        <% end %>
       </p>
 
       <SettingsComponents.part

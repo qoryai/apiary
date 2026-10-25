@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.InstanceLive.NodesTest do
   # Instance settings › Nodes (`ApiaryWeb.InstanceLive.Nodes`, `ApiaryWeb.InstanceLive.Node`),
   # for an instance admin: the instance's pool and gateway, each with its Overview, its
-  # Access key tab, where Revoke is the one act, refused for a person no longer an
-  # instance admin and for a node deleted meanwhile, and its Settings, the pool's instance
-  # limit; a path that does not exist for anyone else. Then a workspace's Nodes page, which
+  # Access key tab, which says a new code comes after a revoke only for a node a setting
+  # declares, and where Revoke is the one act, refused for a person no longer an instance
+  # admin and for a node deleted meanwhile, and its Settings, the pool's instance limit;
+  # a path that does not exist for anyone else. Then a workspace's Nodes page, which
   # lists the instance's gateway, and the instance's pool while the workspace has no pool
   # in use, with links only for an instance admin, under a kind or a search; and a
   # workspace's node pages, where the default is the instance's gateway. Not async: the
@@ -35,6 +36,19 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       gateway: gateway,
       conn: log_in_user(build_conn(), admin.user)
     }
+  end
+
+  # Declares the instance's nodes as the settings would, for this test alone.
+  defp declare(declared) do
+    previous = Application.fetch_env(:apiary, :installed_nodes)
+    Application.put_env(:apiary, :installed_nodes, declared)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:apiary, :installed_nodes, value)
+        :error -> Application.delete_env(:apiary, :installed_nodes)
+      end
+    end)
   end
 
   defp words(lv, selector) do
@@ -116,12 +130,15 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
     test "the Access key tab revokes a key, and the installer is nudged for a new code",
          %{conn: conn, pool: pool} do
+      declare(%{pool: "shared-pool", gateway: nil, url: nil})
       %{access_key: key} = installed_key_fixture(pool)
       :ok = Phoenix.PubSub.subscribe(Apiary.PubSub, InstalledAdapters.topic())
 
       {:ok, lv, html} = live(conn, ~p"/instance/nodes/#{pool.public_id}/keys")
 
       assert html =~ "Qory Apiary writes this node&#39;s one-time code to its folder."
+      assert html =~ "When you revoke the key, Qory Apiary writes a new code"
+      refute html =~ "No setting of this instance declares this node"
       assert words(lv, "#key-#{key.key_id}-secret") == "Stays on shared-pool; it is never shown"
       refute has_element?(lv, "#key-#{key.key_id}-forager-file")
       refute html =~ "command"
@@ -134,6 +151,19 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       assert render(lv) =~ "#{key.label} is revoked."
       assert %AccessKey{revoked_at: %DateTime{}} = Repo.get!(AccessKey, key.id)
       assert_receive :nudge
+    end
+
+    test "the Access key tab of a node no setting declares says no new code comes",
+         %{conn: conn, pool: pool, gateway: gateway} do
+      # The gateway is declared under another name, the pool not at all.
+      declare(%{pool: nil, gateway: "edge", url: "https://gateway.example"})
+
+      for node <- [pool, gateway] do
+        {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{node.public_id}/keys")
+
+        assert words(lv, "#node-access-key-intro") ==
+                 "No setting of this instance declares this node, so Qory Apiary writes no new code after a revoke."
+      end
     end
 
     test "the Settings tab sets the pool's limit, with an entry in the instance's trail",
