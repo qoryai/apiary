@@ -341,6 +341,8 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
             {:inputs_invalid,
              "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."},
             # A software workspace's word for the target.
+            {:target_access_gone,
+             "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its repository, because the integration no longer reaches it or the repository's path has a character that Qory Apiary does not put in an access rule."},
             {:build_failed,
              "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."}
           ] do

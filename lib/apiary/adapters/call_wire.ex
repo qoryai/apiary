@@ -5,8 +5,11 @@ defmodule Apiary.Adapters.CallWire do
   # reads an answer, `version` 1 and `revision` 1, to its schema. A member a schema does
   # not define is refused.
   #
-  #   * `run-credential` (`run-credential.schema.json`): `grant_ref`, `resources`, 1 to 64
-  #     refs, each once, `access` (`read` or `write`) and `purpose` (`harness` or `work`).
+  #   * `run-credential` (`run-credential.schema.json`): `resources`, refs, each once,
+  #     `access` (`read` or `write`) and `purpose`: for `harness`, 1 to 64 resources,
+  #     `grant_ref` and the access `read`; for `work`, exactly one resource, the ref of
+  #     the target's collection, and `connection_id`, that collection's connection, with
+  #     no `grant_ref`.
   #     Its answer is `credential`, the Forager contract's credential document as the
   #     integration contract narrows it (`run-credential-answer.schema.json`): `version` 1,
   #     `token`, 1 to 16,384 bytes with no NUL, carriage return or line feed and no space
@@ -40,6 +43,7 @@ defmodule Apiary.Adapters.CallWire do
   @header ~r/\A[A-Za-z0-9-]+\z/
   @apply_path ~r/\A\/[^*?#\s]*\*?\z/u
   @rfc3339 ~r/\A\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})\z/
+  @connection_id ~r/\Aac_[0-9a-hjkmnp-tv-z]{16}\z/
   @address ~r/\A[!-~]{1,2048}\z/
   @version_ref ~r/\A[A-Za-z0-9._\/-]{1,255}\z/
   @part "(?:[^/\\x00.][^/\\x00]*|\\.[^/\\x00.][^/\\x00]*|\\.\\.[^/\\x00]+)"
@@ -55,10 +59,18 @@ defmodule Apiary.Adapters.CallWire do
 
   def call?(_path, _body), do: false
 
-  defp call_members?("run-credential", body) do
+  # A harness credential is read only, under the grant `grant_ref`; a work credential,
+  # for the run's target alone, names one resource and the connection of the target's
+  # collection.
+  defp call_members?("run-credential", %{"purpose" => "harness"} = body) do
     keys?(body, ~w(access grant_ref purpose resources)) and ref?(body["grant_ref"]) and
-      refs?(body["resources"]) and body["access"] in ["read", "write"] and
-      body["purpose"] in ["harness", "work"]
+      run_credential?(body) and body["access"] == "read"
+  end
+
+  defp call_members?("run-credential", %{"purpose" => "work"} = body) do
+    keys?(body, ~w(access connection_id purpose resources)) and
+      connection_id?(body["connection_id"]) and run_credential?(body) and
+      length(body["resources"]) == 1
   end
 
   defp call_members?("resolve", body) do
@@ -72,6 +84,11 @@ defmodule Apiary.Adapters.CallWire do
   end
 
   defp call_members?(_path, _body), do: false
+
+  defp run_credential?(body),
+    do: refs?(body["resources"]) and body["access"] in ["read", "write"]
+
+  defp connection_id?(value), do: is_binary(value) and Regex.match?(@connection_id, value)
 
   defp time?(value), do: match?({:ok, _time}, Apiary.Adapters.Wire.time(value))
 

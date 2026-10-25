@@ -95,7 +95,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   # could not form what the run is made from (`Apiary.Dispatches.Handover`), while it
   # waited for its environment image's build, which failed (`Apiary.Environments`), or
   # because its harness walk failed (`Apiary.Harnesses.WalkJob`).
-  @unstarted [:variables_invalid, :ticket_gone, :inputs_invalid, :build_failed]
+  @unstarted [
+    :variables_invalid,
+    :ticket_gone,
+    :inputs_invalid,
+    :target_access_gone,
+    :build_failed
+  ]
   # The values a save check's message has (`Apiary.Stacks.Document`), by their name in a
   # failed walk's rule.
   @rule_values %{
@@ -1768,7 +1774,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       the last run;
     * no result, lost or cancelled: what happened, and the run's page; for a run that
       ended at its claim, before it started (`:end_cause` `:variables_invalid`,
-      `:ticket_gone` or `:inputs_invalid`), while it waited for its environment
+      `:ticket_gone`, `:inputs_invalid` or `:target_access_gone`), while it waited for its environment
       image's build, which failed (`:build_failed`), or because its harness walk failed
       (`:harness_unresolved`, with `:harness_failure`), what a member fixes and why;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
@@ -2929,6 +2935,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       gettext(
         "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."
+      )
+
+  defp unstarted_words(:target_access_gone),
+    do:
+      gettext(
+        "Check the integration that brings in this target on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its target, because the integration no longer reaches it or the target's path has a character that Qory Apiary does not put in an access rule."
       )
 
   defp unstarted_words(:build_failed),

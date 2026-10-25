@@ -878,6 +878,87 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
+  describe "the apply items of its work credential, at each start" do
+    # A declaration as `Apiary.Adapters.Wire.declaration/1` reads one, with `document` as
+    # its description.
+    defp declare_with(adapter_key, document) do
+      {:ok, description} = document |> Jason.encode!() |> Apiary.Integrations.Description.parse()
+
+      Adapters.declare(Scope.for_access_key(adapter_key), %{
+        time: ~U[2026-10-25 12:00:00Z],
+        connect_url: "https://tracker-adapter.acme.example/connect",
+        default_interval: 3600,
+        minimum_interval: 900,
+        sends_changes: true,
+        description: description
+      })
+    end
+
+    setup %{admin: admin} do
+      adapter = adapter_fixture()
+      %{key: key} = keyed(admin, adapter)
+      %{adapter: adapter, key: key}
+    end
+
+    test "are kept with the description's exact egress_hosts, and a start without them clears them",
+         %{adapter: adapter, key: key} do
+      document =
+        "example-source-apply-bearer.json"
+        |> Apiary.DescriptionFixtures.contract_description()
+        |> Map.put("egress_hosts", ["api.example.com", "cdn.example.com"])
+
+      assert {:ok, _declared} = declare_with(key, document)
+
+      assert %Node{
+               source_apply: [
+                 %{
+                   "hosts" => ["api.example.com"],
+                   "scheme" => "bearer",
+                   "paths" => ["/projects/{target.path}", "/projects/{target.path}/*", "/user"]
+                 }
+               ],
+               egress_hosts: ["api.example.com", "cdn.example.com"]
+             } = reload(adapter)
+
+      assert {:ok, _declared} =
+               declare_with(key, Apiary.DescriptionFixtures.contract_description())
+
+      assert %Node{source_apply: nil, egress_hosts: nil} = reload(adapter)
+    end
+
+    test "the database keeps them only on an adapter, 1 to 16 objects", %{
+      adapter: adapter,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      item = %{"hosts" => ["api.example.com"], "scheme" => "bearer"}
+
+      for {id, changes} <- [
+            {node.id, [source_apply: [item]]},
+            {node.id, [egress_hosts: ["api.example.com"]]},
+            {adapter.id, [source_apply: []]},
+            {adapter.id, [source_apply: List.duplicate(item, 17)]},
+            {adapter.id, [egress_hosts: []]},
+            {adapter.id, [egress_hosts: [nil]]}
+          ] do
+        assert refused(fn ->
+                 Repo.update_all(from(n in Node, where: n.id == ^id), set: changes)
+               end) == "nodes_source_apply_check",
+               inspect(changes)
+      end
+
+      assert {:error, %Postgrex.Error{postgres: %{constraint: "nodes_source_apply_check"}}} =
+               Repo.query("UPDATE nodes SET source_apply = '[1]'::jsonb WHERE id = $1", [
+                 Ecto.UUID.dump!(adapter.id)
+               ])
+
+      assert {1, _rows} =
+               Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+                 set: [source_apply: List.duplicate(item, 16), egress_hosts: ["api.example.com"]]
+               )
+    end
+  end
+
   describe "the schema" do
     test "a node has no organisation only when it is an adapter, or the instance's pool or gateway, which have no workspace either",
          %{scope: scope} do

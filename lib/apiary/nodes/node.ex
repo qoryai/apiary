@@ -144,6 +144,15 @@ defmodule Apiary.Nodes.Node do
     # in Qory Apiary, as its latest start-up's description lists them, sorted; nil for
     # none (`source_role_changeset/2`).
     field :secret_names, {:array, :string}
+    # An adapter's alone (`nodes_source_apply_check`): the `apply` items of its latest
+    # start's source role, the templates of each run's work credential from it, as the
+    # description has them (`Apiary.Integrations.ApplyTemplates`), 1 to 16; nil where it
+    # has none, and before its first start. `egress_hosts` is the entries of that
+    # description's `egress_hosts` that are hosts, each exact, nil for none; each apply
+    # host has an equal entry there. Set at each start (`source_role_changeset/2`) and
+    # never cast.
+    field :source_apply, {:array, :map}
+    field :egress_hosts, {:array, :string}
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -392,11 +401,15 @@ defmodule Apiary.Nodes.Node do
   # words for one item and for many, or none, whether it reports items, its words for one
   # collection and for many, or none, and its line on how to change, at the source, which
   # collections it reaches, and the names of the secrets it stores in Qory Apiary
-  # (`Apiary.Integrations.Description.source_secrets/1`, nil for none). A description with
-  # no source role gives the defaults: no words, items, no line and no names. The database
-  # holds the words and items to the same (`nodes_items_check`,
-  # `nodes_collection_noun_check`), and the line and the names to adapters
-  # (`nodes_source_access_check`, `nodes_secret_names_check`). `Apiary.Adapters.declare/2` calls it at each start, on
+  # (`Apiary.Integrations.Description.source_secrets/1`, nil for none), and the apply
+  # items of its work credential with the description's exact `egress_hosts`
+  # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
+  # none). A description with no source role gives the defaults: no words, items, no
+  # line, no names and no apply items. The database holds the words and items to the
+  # same (`nodes_items_check`, `nodes_collection_noun_check`), and the line, the names
+  # and the apply items to adapters (`nodes_source_access_check`,
+  # `nodes_secret_names_check`, `nodes_source_apply_check`).
+  # `Apiary.Adapters.declare/2` calls it at each start, on
   # the changeset of the declaration, so the latest start's description replaces what an
   # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
   # `items` changes whether the adapter's collections are linked, and whoever writes it
@@ -422,12 +435,15 @@ defmodule Apiary.Nodes.Node do
       collection_noun_one: collection_noun && collection_noun.one,
       collection_noun_other: collection_noun && collection_noun.other,
       source_access: Description.access(description),
-      secret_names: Description.source_secrets(description)
+      secret_names: Description.source_secrets(description),
+      source_apply: Description.source_apply(description),
+      egress_hosts: Description.exact_egress_hosts(description)
     )
     |> check_constraint(:items, name: :nodes_items_check)
     |> check_constraint(:secret_names, name: :nodes_secret_names_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)
+    |> check_constraint(:source_apply, name: :nodes_source_apply_check)
   end
 
   @doc false

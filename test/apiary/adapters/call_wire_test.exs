@@ -91,7 +91,7 @@ defmodule Apiary.Adapters.CallWireTest do
       |> Path.wildcard()
       |> Enum.map(&Path.basename/1)
 
-    assert length(names) == 33
+    assert length(names) == 39
 
     for name <- names do
       body = fixture("invalid/" <> name)
