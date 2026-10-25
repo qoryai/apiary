@@ -31,11 +31,12 @@ defmodule Apiary.Harnesses do
   # (`Apiary.Accounts.sudo_mode?/2`), on an instance with the feature `factory`, creates
   # one (`assign/3`, `harness.assigned`) and deletes one (`unassign/2`,
   # `harness.unassigned`), whatever organisation the scope carries; no role takes either
-  # action. Both ask `Apiary.Adapters.authorize_instance/2` with `sudo: true`. Where the
+  # action. Both call `Apiary.Adapters.authorize_instance/2` with `sudo: true`. Where the
   # feature is off, both are `{:error, :not_found}`; for an instance admin who did not
-  # sign in recently, `{:error, :sudo}`; for anyone else, `{:error, :forbidden}`. Each change writes its entry, in its transaction, in the trail
-  # of the instance's organisation, with the source and the organisation it covers. No
-  # route or page calls either.
+  # sign in recently, `{:error, :sudo}`; for anyone else, `{:error, :forbidden}`. Each
+  # change writes its entry, in its transaction, in the trail of the instance's
+  # organisation, with the source and the organisation it covers. No route or page calls
+  # either.
   #
   # ## Refused on save
   #

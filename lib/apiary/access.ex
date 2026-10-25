@@ -541,13 +541,13 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"harness.assigned",
-      "let the runs of one organisation, or of every organisation, use the instance's links for a harness source: an instance admin, which no role takes (Apiary.Harnesses.assign/3)",
+      "let the runs of one organisation, or of every organisation, use the instance's links for a harness source: an instance admin after a recent sign-in, which no role takes (Apiary.Harnesses.assign/3)",
       feature: :factory,
       asked_of: :organisation
     ),
     Action.new(
       :"harness.unassigned",
-      "delete an instance assignment of a harness source: an instance admin, which no role takes (Apiary.Harnesses.unassign/2)",
+      "delete an instance assignment of a harness source: an instance admin after a recent sign-in, which no role takes (Apiary.Harnesses.unassign/2)",
       feature: :factory,
       asked_of: :organisation
     ),

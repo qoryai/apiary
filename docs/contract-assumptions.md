@@ -427,34 +427,35 @@ target (`variables_invalid`), a work item whose ticket is no longer kept
 (`ticket_gone`), or an input that breaks the explore contract's rules for it, or a work
 item with no target in a domain that requires one (`inputs_invalid`).
 
-**The run's stack.** An explore run's documents have `stack`, `workflow` and
-`harness_hidden` together, or none of them; a prebuild's have none. `workflow` is the
-workflow of the one stored stack with a workflow at the run's places: its workspace, and
-its target when it has one (`Apiary.Stacks.workflow/2`). With no such stack, or two or
-more, the run has no workflow, so its documents have none of the three. `stack` is a
-stack name, such as `software-standard`, or a stack reference, `<url>#<ref>:<path>`, the
-location of a stack, each as the run contract's `stack_name` and `stack_reference` define
-them (`Apiary.Contract.Stack`). An
-organisation's stack can be stored at five levels, the most specific first: the target
-and the workflow, the target, the workspace and the workflow, the workspace, and the
-organisation's default. The first level with a stack applies, and a level without one
-passes to the next (`Apiary.Stacks.Resolution`). A run has a stack only when it has a
-workflow, and the stored stack with that workflow is at the target and the workflow or at
-the workspace and the workflow. Both levels come before the workspace and the
-organisation's default, so a stack stored at either of those two levels is never a run's
-stack (`Apiary.Stacks.for_run/3`). The owner of a name is the instance. The
-owner of a reference is the organisation of the person who saved it, when that person
-saved it as a member acting in that organisation; it is unknown for a reference saved by
-any other way of reaching the organisation, such as an instance admin or an operator's
-person acting in a client, and once the saver's organisation is deleted. An unknown
-owner is never the run's organisation. `harness_hidden` is `true` when the run's
-organisation is a client of an operator (`Apiary.Edition.operated?/1`, which the core
-edition, `Apiary.Edition.Core`, answers `false`), or when the stack's owner is not the
-run's organisation. The instance counts as the run's organisation only when the instance
-has one organisation, as in the core edition, so there a run with a stack name has
-`harness_hidden` `false`. Only tests and the demo (`mix apiary.demo.console`, which
-stores one for the workspace Main with the `factory` feature on) write a stored stack: no
-page or endpoint sets one.
+**The run's harness.** An explore run's documents have `workflow` and `harness_hidden`
+together, or neither; a prebuild's have neither, and none of `target_version` and
+`harness`. `workflow` is the workflow of the one stored stack with a workflow at the
+run's places: its workspace, and its target when it has one
+(`Apiary.Stacks.workflow/2`). With no such stack, or two or more, the run has no
+workflow, so its documents have none of the four members. A run with a workflow waits
+until a job has walked its harness (`Apiary.Harnesses.Walk`); a claim takes no run whose
+walk has not resolved, and a walk that fails ends the run before it starts, with the end
+cause `harness_unresolved` and the failure's code. The walk reads the target's harness
+file at the target's head, in a workspace whose domain has harness files and for a target
+that a live collection of the workspace has; the version that read returned is the run's
+`target_version`. A file whose harness section has `extends` applies, and the documents
+have no `harness`: the machine composes the file at `target_version`. Otherwise the stored
+stacks' document applies and is the documents' `harness`, as `{"harness": <section>}`. An
+organisation's harness document can be stored at five levels, the most specific first:
+the target and the workflow, the target, the workspace and the workflow, the workspace,
+and the organisation's default. The first level with a document applies, and a level
+without one passes to the next (`Apiary.Stacks.Resolution`). The owner of a stored
+document is the organisation of the person who saved it, when that person saved it as a
+member acting in that organisation; for an instance admin who saved it with no such
+membership, it is the instance's organisation; it is unknown once the owner organisation
+is deleted. `harness_hidden` is `true` when the run's organisation is a client of an
+operator (`Apiary.Edition.operated?/1`, which the core edition, `Apiary.Edition.Core`,
+answers `false`), or when the stacks' document applies and its owner is not the run's
+organisation. A document the instance's organisation owns is hidden from the runs of
+every other organisation, whether the instance has one organisation or several, and an
+unknown owner is never the run's organisation. Only tests and the demo
+(`mix apiary.demo.console`, which stores one for the workspace Main) write a stored
+stack: no page or endpoint sets one.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
