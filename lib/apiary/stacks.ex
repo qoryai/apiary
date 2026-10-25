@@ -29,8 +29,8 @@ defmodule Apiary.Stacks do
   #
   # `harness`: a harness document under the save rules of `Apiary.Stacks.Document`, or
   # nil at a place with a workflow. `workflow`: a lower-case letter, then up to 63
-  # lower-case letters, digits and hyphens. Each refusal is a changeset error on its
-  # field.
+  # lower-case letters, digits and hyphens. `access`: `:read` or `:write` at a place with
+  # a workflow, nil at any place. Each refusal is a changeset error on its field.
   #
   # ## Locks
   #
@@ -49,6 +49,7 @@ defmodule Apiary.Stacks do
   alias Apiary.Stacks.{Document, Resolution, Stack}
 
   @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  @access_without_workflow "is recorded only at a place with a workflow"
 
   @typedoc """
   A place a stack is set at: the organisation's default, the workspace, or a target,
@@ -171,15 +172,17 @@ defmodule Apiary.Stacks do
   ## Writing
 
   @doc false
-  # put_stack/3 sets the harness document at `place` to `harness`, nil for none at a
+  # put_stack/4 sets the harness document at `place` to `harness`, nil for none at a
   # place with a workflow, replacing what the place had, saved by the scope's person and
   # owned by the organisation the edition gives for the scope
-  # (`Apiary.Edition.harness_owner/1`). `{:ok, stack}`; `{:error, :forbidden}` when the
-  # edition gives none; or `{:error, changeset}` with the reason on its field. Only tests
-  # and the demo call it: no route or page does, and it checks no access (the moduledoc).
-  @spec put_stack(Scope.t(), place, term) ::
+  # (`Apiary.Edition.harness_owner/1`). `opts`: `access`, the access level recorded for
+  # the runs of the place's workflow, `:read` or `:write`, nil for none (the default).
+  # `{:ok, stack}`; `{:error, :forbidden}` when the edition gives none; or `{:error,
+  # changeset}` with the reason on its field. Only tests and the demo call it: no route
+  # or page does, and it checks no access (the moduledoc).
+  @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
-  def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness) do
+  def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness, opts \\ []) do
     columns = columns(place)
     user_id = scope.user && scope.user.id
 
@@ -191,6 +194,7 @@ defmodule Apiary.Stacks do
           changes =
             Map.merge(columns, %{
               harness: harness,
+              access: Keyword.get(opts, :access),
               owner_organisation_id: owner,
               updated_by_id: user_id
             })
@@ -286,15 +290,17 @@ defmodule Apiary.Stacks do
   # The changes, checked against the rules of the moduledoc.
   defp changeset(%Stack{} = row, changes) do
     row
-    |> change(Map.drop(changes, [:harness, :workflow]))
-    |> cast(changes, [:harness, :workflow])
+    |> change(Map.drop(changes, [:harness, :workflow, :access]))
+    |> cast(changes, [:harness, :workflow, :access])
     |> validate_harness_or_workflow()
+    |> validate_access()
     |> validate_change(:harness, fn :harness, value ->
       for error <- Document.errors(value), do: {:harness, error}
     end)
     |> validate_format(:workflow, @workflow)
     |> check_constraint(:harness, name: :stacks_harness_or_workflow, message: "can't be blank")
     |> check_constraint(:harness, name: :stacks_harness_size, message: "is too long")
+    |> check_constraint(:access, name: :stacks_access_check, message: @access_without_workflow)
     |> unique_constraint(:harness, name: :stacks_place_index)
   end
 
@@ -305,5 +311,12 @@ defmodule Apiary.Stacks do
          not Keyword.has_key?(changeset.errors, :harness),
        do: add_error(changeset, :harness, "can't be blank", validation: :required),
        else: changeset
+  end
+
+  # An access level only at a place with a workflow.
+  defp validate_access(changeset) do
+    if get_field(changeset, :access) && is_nil(get_field(changeset, :workflow)),
+      do: add_error(changeset, :access, @access_without_workflow),
+      else: changeset
   end
 end
