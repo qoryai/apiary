@@ -568,6 +568,34 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
+    test "a setting without extends: its own workflows, lowered by the recorded one", ctx do
+      document = fn workflows ->
+        "modules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n" <> workflows
+      end
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      for {workflows, recorded, expected} <- [
+            {"workflows:\n  explore: {access: write}\n", nil, :write},
+            {"workflows:\n  explore: {access: write}\n", :write, :write},
+            {"workflows:\n  explore: {access: write}\n", :read, :read},
+            {"workflows:\n  explore: {access: read}\n", :write, :read},
+            {"workflows:\n  review: {access: write}\n", nil, :read},
+            {"", nil, :read}
+          ] do
+        {:ok, _stack} =
+          Stacks.put_stack(
+            ctx.scope,
+            {:workspace, ctx.scope.workspace, "explore"},
+            document.(workflows),
+            access: recorded
+          )
+
+        assert {:ok, %{origin: :setting, access_level: ^expected}} = Walk.run(ctx.input),
+               inspect({workflows, recorded})
+      end
+    end
+
     test "a run whose workflow no row has any longer gets read", ctx do
       {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting)
 

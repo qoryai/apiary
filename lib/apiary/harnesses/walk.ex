@@ -61,8 +61,8 @@ defmodule Apiary.Harnesses.Walk do
   # Then the base is read through its link, at its `ref`: `<path>/qory-stack.yaml` for a
   # `path`; the root's harness file's `exports` and the export's `qory-stack.yaml` for a
   # `stack`; and for the root, its `qory-stack.yaml`. As qory reads a base, a folder
-  # without `qory-stack.yaml` fails `invalid`: its harness file's harness section is no
-  # stack. A base of the target's file with `path` and no `git` is read the same way
+  # without `qory-stack.yaml` fails `invalid`: the harness section of the root's harness
+  # file is no stack. A base of the target's file with `path` and no `git` is read the same way
   # in the target, at `target_version`. Every other remote source's repository has its
   # root `harness.yaml` read once, at its `ref`, for its version. Each later read of a
   # repository is at the version the first returned, its pin.
@@ -749,8 +749,8 @@ defmodule Apiary.Harnesses.Walk do
         is_binary(base["path"]) and is_map_key(base, "git") ->
           stack_at(location, inside!(base["path"], nil), at)
 
-        # A base of the target's file by `path`, read from the target's folder, or the
-        # root of a remote source.
+        # A base of the target's file by `path`, read from its `path` in the target, or
+        # the root of a remote source.
         true ->
           stack_at(location, [], at)
       end
