@@ -578,9 +578,10 @@ defmodule Apiary.Adapters do
   @doc false
   # Starts the connection of `adapter` to the scope's organisation (`adapter.connect`,
   # owners and admins, asked of the organisation), with `adapter` as it is now, in use and
-  # held `FOR SHARE`: the organisation's pending connection to it, made or taken
-  # (`Apiary.Adapters.Connections.start/3`, which ends a connected one no listing has
-  # named yet and makes a new one in its place), with a new connect pass for it
+  # held `FOR SHARE`: the organisation's connection to it that has not ended, made or
+  # taken, pending or connected (`Apiary.Adapters.Connections.start/3`: a connected one
+  # takes the pass for an external account the person adds to it), with a new connect
+  # pass for it
   # (`Apiary.Adapters.ConnectPass`), made under the connection's row lock, whose nonce and
   # expiry the connection keeps as its latest pass's; each new pass of a connection
   # expires strictly later than the one before it, and when that would take it more than
@@ -596,15 +597,15 @@ defmodule Apiary.Adapters do
   # the connection changed (`Apiary.Adapters.Collections.broadcast_connection/1`), and,
   # first, that the one it replaced ended, when it replaced one.
   #
-  # `{:error, :connected}` while the organisation is connected to it and a listing named
-  # the connection;
+  # `{:error, :too_soon}` when the organisation's connected connection would need a pass
+  # that expires too far ahead, as for a second press in the same second;
   # `{:error, :no_connect_url}` while the adapter declared no address; `{:error, :no_key}`
   # while it holds no access key in use; `{:error, :forbidden}`; `{:error, :not_found}`;
   # none of them changes anything or leaves an entry.
   @spec connect(Scope.t(), Node.t()) ::
           {:ok, String.t(), {String.t(), String.t()}}
           | {:error,
-             :connected | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
+             :too_soon | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
   def connect(%Scope{} = scope, %Node{id: id}) do
     result =
       Repo.transact(fn ->

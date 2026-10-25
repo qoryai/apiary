@@ -201,7 +201,12 @@ defmodule Apiary.NodesFixtures do
     connection = Repo.get_by!(Connection, public_id: public_id)
     now = DateTime.utc_now()
 
-    connected = [state: :connected, connected_at: now, pass_nonce_used_at: now]
+    connected = [
+      state: :connected,
+      connected_at: now,
+      pass_nonce_used_at: now,
+      linked_nonce: connection.pass_nonce
+    ]
 
     connection =
       case state do
