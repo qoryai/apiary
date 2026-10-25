@@ -610,6 +610,23 @@ defmodule Apiary.SecretLogFilterTest do
         refute filtered =~ @code_body
       end
     end
+
+    test "or a URL-encoded `_` after a query's token that no code's prefix ends: " <>
+           "the token is replaced" do
+      t = @plain_token
+
+      for {text, redacted} <- [
+            {"GET /users/register?invitation=#{t}%5Fabc",
+             "GET /users/register?invitation=:token%5Fabc"},
+            {"GET /users/register?invitation=#{t}%5Fqak_x",
+             "GET /users/register?invitation=:token%5F[FILTERED]"},
+            {"GET /x%3Finvitation%3D#{t}%5F", "GET /x%3Finvitation%3D:token%5F"}
+          ] do
+        filtered = filtered_text(text)
+        assert filtered == redacted
+        refute_token_in(filtered, t)
+      end
+    end
   end
 
   describe "a crash of a LiveView's process, a channel's or the socket's" do

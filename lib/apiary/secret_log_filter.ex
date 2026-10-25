@@ -71,7 +71,8 @@ defmodule Apiary.SecretLogFilter do
   token that contains `qak_` or a code's prefix, as a random one now and then does, so
   becomes `:token` whole, and a secret or a code in a route's token segment becomes
   `:token` too. When a secret's prefix is replaced, the tokens are looked for again, so a
-  token whose path or value a secret is glued to becomes `:token` as well.
+  token in a path, or a query's token without a prefix in it, becomes `:token` as well
+  when a secret is glued to it.
 
   **A page's lines at debug.** The lines a LiveView logs as it mounts, as it handles the
   parameters of its URL and as it handles an event (`MOUNT`, `HANDLE PARAMS` and
@@ -170,7 +171,10 @@ defmodule Apiary.SecretLogFilter do
   another parameter of a query, or alone as a parameter's value, which
   `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one
   of those paths after another segment (`/acme/users/password/…`,
-  `https://…/docs/setup/…`) is another route's, and is left whole.
+  `https://…/docs/setup/…`) is another route's, and is left whole. A query's token that
+  contains `qak_` or a code's prefix, with a secret glued after it, keeps its characters
+  before that prefix: the prefix's regex replaces the prefix, the rest of the token and the
+  secret with one `[FILTERED]`, and what is left of the token is under 43 characters.
   """
 
   alias Apiary.AccessKeys.EnrolmentCode
@@ -243,10 +247,12 @@ defmodule Apiary.SecretLogFilter do
 
   # An invitation's token as a query parameter's value, bare or URL-encoded: what
   # `:binary.match/2` looks for, and the regex that keeps the parameter's name and
-  # replaces a token's 43 base64url characters. A `%5F` after them is a `_`, a token's
-  # character, so the value is longer than a token.
+  # replaces a token's 43 base64url characters. When they end in `qec`, or `qec` and a
+  # letter, and `%5F` follows, they end in a code's prefix, URL-encoded: the regex does not
+  # match, and the prefix's regex replaces the prefix and the code's body.
   @query_marks ["invitation=", "invitation%3D", "invitation%3d"]
-  @query_source "((?:^|[?&;]|%3[Ff]|%26)invitation(?:=|%3[Dd]))[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-]|%5[Ff])"
+  @query_source "((?:^|[?&;]|%3[Ff]|%26)invitation(?:=|%3[Dd]))[A-Za-z0-9_-]{43}" <>
+                  "(?![A-Za-z0-9_-])(?!(?<=(?i:qec|qec[a-z]))%5[Ff])"
 
   @doc """
   token_routes/0 is the routes that carry a bearer token, or the instance's set-up code,
