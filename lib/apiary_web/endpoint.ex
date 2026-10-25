@@ -1,6 +1,8 @@
 defmodule ApiaryWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :apiary
 
+  require Logger
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
@@ -140,5 +142,46 @@ defmodule ApiaryWeb.Endpoint do
     else
       _absent -> config
     end
+  end
+
+  # The hosts where Chrome and Firefox keep a Secure cookie over plain http, besides the
+  # names under `.localhost`. Safari keeps one only over https.
+  @local_hosts ["localhost", "127.0.0.1", "::1"]
+
+  @doc false
+  # Logs one warning when the endpoint serves requests and `sign_in_cookies_dropped?/1`
+  # is true for its `url:`, which config/runtime.exs derives from PUBLIC_URL. Called at
+  # boot (`Apiary.Application`); it never stops the boot.
+  def warn_plain_http do
+    if Phoenix.Endpoint.server?(:apiary, __MODULE__) do
+      warn_plain_http(Application.get_env(:apiary, __MODULE__, [])[:url] || [])
+    end
+
+    :ok
+  end
+
+  @doc false
+  def warn_plain_http(url) do
+    if sign_in_cookies_dropped?(url) do
+      public_url = URI.to_string(%URI{scheme: url[:scheme], host: url[:host], port: url[:port]})
+
+      Logger.warning("""
+      Set PUBLIC_URL to an https:// address, or nobody can sign in.
+      Browsers keep the sign-in cookies over plain http only on localhost; PUBLIC_URL is #{public_url}.\
+      """)
+    end
+
+    :ok
+  end
+
+  @doc false
+  # True when the endpoint's `url:` is plain http on a host other than localhost, a name
+  # under `.localhost`, 127.0.0.1 or ::1. The sign-in cookies are `__Host-` cookies, so
+  # Secure, and browsers drop them over plain http on any other host.
+  def sign_in_cookies_dropped?(url) do
+    host = String.downcase(url[:host] || "")
+
+    url[:scheme] == "http" and host not in @local_hosts and
+      not String.ends_with?(host, ".localhost")
   end
 end
