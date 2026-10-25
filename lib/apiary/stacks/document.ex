@@ -11,9 +11,10 @@ defmodule Apiary.Stacks.Document do
   #      YAML document, a mapping at the top, and the reader's budget of work and heap
   #      for the read. A run's harness walk (`Apiary.Harnesses.Walk`) reads the document
   #      again with `check/1`, under the same budget, and takes the check and the
-  #      section from that one read. A document within about 2 % of the budget, or one
-  #      whose read runs past the reader's backstop of 10 seconds, may get a different
-  #      answer there than at the save.
+  #      section from that one read. A document whose read does within about 5 million
+  #      reductions of the budget, the work of one 50 ms interval between two reads of
+  #      the reductions, or whose read runs past the reader's backstop of 10 seconds,
+  #      may get a different answer there than at the save.
   #   2. A key the run contract's harness section does not take, such as a machine key
   #      (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
   #   3. The kind of document: one with `extends` has no `workflows`, and one without
