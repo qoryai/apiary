@@ -69,7 +69,10 @@ defmodule Apiary.Dispatches.Handover do
   #      may not be sealed for the gateway
   #      (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as such
   #      a gateway never receives the run's model key, and the run never starts on a model
-  #      nobody chose;
+  #      nobody chose. Before that check, a run whose target came from a collection of an
+  #      adapter that declares apply items, while the collection ended, its connection is
+  #      not connected, or the target path is one the apply items refuse, ends
+  #      `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/3`);
   #   2. the run key cannot be made for the gateway's address
   #      (`Apiary.Runs.Registration.issue_grant/3`), the run settings take more than 64
   #      KiB, the input does not fit 1 MiB with every comment left out, the run's model
@@ -90,8 +93,9 @@ defmodule Apiary.Dispatches.Handover do
   # from at the code's redemption, `run_key_issued_at` the claim and `attach_by` the
   # code's expiry. A run key of the grant is made all the same, and given to nobody, so a
   # grant no run key can be made for refuses the claim as step 2 says. The run key's
-  # instance id is the run's id. The dispatch stays claimed, and so does the run of the
-  # queue.
+  # instance id is the run's id. A run with a work credential entry has it stored with
+  # the run (`Apiary.Runs.RunCredentials.insert!/2`). The dispatch stays claimed, and so
+  # does the run of the queue.
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
@@ -165,7 +169,18 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunCode, RunVariables, Target}
+
+  alias Apiary.Runs.{
+    About,
+    ProviderCredential,
+    Registration,
+    Run,
+    RunCode,
+    RunCredentials,
+    RunVariables,
+    Target
+  }
+
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
 
@@ -278,7 +293,7 @@ defmodule Apiary.Dispatches.Handover do
     issued = Registration.issue_grant(grant, locked.now, @attach_seconds)
     locked = Map.put(locked, :documents_limit, documents_limit(locked.run, issued))
 
-    case locked |> formed(workspace) |> sealable(gateway, workspace, keys) do
+    case locked |> formed(workspace) |> with_work() |> sealable(gateway, workspace, keys) do
       {:end, cause} ->
         {:ended, end_claimed(locked.run, cause, locked.now)}
 
@@ -306,6 +321,8 @@ defmodule Apiary.Dispatches.Handover do
               formed,
               through |> Map.put(:gateway_id, gateway.id) |> Map.put(:run_documents, documents)
             )
+
+          if formed.work, do: RunCredentials.insert!(formed.work, run)
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
@@ -585,6 +602,18 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   defp sealable(formed, _gateway, _workspace, _keys), do: formed
+
+  # The run's work credential entry, formed from what the run is formed from
+  # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the
+  # queue ends for.
+  defp with_work({:ok, %{answer: answer} = formed}) do
+    case RunCredentials.form_work(answer.dispatch_run, answer.work_item, answer.target) do
+      {:ok, work} -> {:ok, Map.put(formed, :work, work)}
+      {:end, _cause} = ended -> ended
+    end
+  end
+
+  defp with_work(not_formed), do: not_formed
 
   # What the run is formed from, or the cause its run of the queue ends for.
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
