@@ -288,8 +288,13 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     # each table once, or probes `dispatch_runs_waiting_index` once per workspace; both
     # are plans it may choose, and each reads every run of the queue at most once. The
     # test gives Postgres the statistics, then holds what the claim costs: each run of the
-    # queue read at most once, at most 5 rows read over the whole plan for each run and
-    # each workspace, and one query for the queue, whatever the number of workspaces.
+    # queue read at most once, at most 5 rows read over the whole plan for each run, each
+    # run's harness walk and each workspace, and one query for the queue, whatever the
+    # number of workspaces. The walks count because the query skips a run whose walk has
+    # not resolved, which reads each walk once. The plans seen read 1,404 to 1,920 rows
+    # locally and 2,119 on CI, under the bound of 3,015. With index scans, hash joins,
+    # materialize and memoize turned off, the plan scans tables once per run and reads
+    # 112,304.
     test "reads each run of the queue of 200 workspaces at most once, in one query", ctx do
       queued!(ctx.b)
       few = claim_queries(ctx.key)
@@ -304,6 +309,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
 
       runs = Repo.aggregate(DispatchRun, :count)
       workspaces = Repo.aggregate(Apiary.Organisations.Workspace, :count)
+      walks = Repo.aggregate(Apiary.Harnesses.RunHarness, :count)
 
       Repo.query!(
         "ANALYZE dispatch_runs, workspaces, organisations, nodes, source_collections, " <>
@@ -316,7 +322,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       scans = scans(plan, "dispatch_runs")
       assert scans != []
       assert rows_read(scans) <= runs, inspect(scans)
-      assert rows_read(nodes(plan)) <= 5 * (runs + workspaces)
+      assert rows_read(nodes(plan)) <= 5 * (runs + walks + workspaces)
 
       many = claim_queries(ctx.key)
       queue = Enum.filter(many, &(&1 =~ "SKIP LOCKED" and &1 =~ ~s|FROM "dispatch_runs"|))
