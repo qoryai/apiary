@@ -6,6 +6,7 @@ defmodule Apiary.StacksTest do
 
   import Apiary.OrganisationsFixtures
 
+  alias Apiary.Edition
   alias Apiary.Runs.Target
   alias Apiary.Stacks
   alias Apiary.Stacks.{Resolution, Stack}
@@ -88,11 +89,11 @@ defmodule Apiary.StacksTest do
       assert Repo.aggregate(Stack, :count) == 5
     end
 
-    test "records the person who saved it and that person's organisation", ctx do
+    test "records the person who saved it and the organisation that owns it", ctx do
       place = {:workspace, ctx.scope.workspace}
       first = put!(ctx, place, doc("core"))
 
-      assert first.saved_by_organisation_id == ctx.scope.organisation.id
+      assert first.owner_organisation_id == ctx.scope.organisation.id
       assert first.created_by_id == ctx.scope.user.id
       assert first.updated_by_id == ctx.scope.user.id
 
@@ -102,25 +103,29 @@ defmodule Apiary.StacksTest do
       assert second.id == first.id
       assert second.harness == doc("general")
       assert second.organisation_id == ctx.scope.organisation.id
-      assert second.saved_by_organisation_id == other.organisation.id
+      assert second.owner_organisation_id == other.organisation.id
       assert second.created_by_id == ctx.scope.user.id
       assert second.updated_by_id == other.user.id
     end
 
-    test "records a member's organisation, whose document is shown to its runs", ctx do
+    test "a member's organisation owns what they save, and its runs are shown it", ctx do
       assert Stacks.saved_by(ctx.scope) == ctx.scope.organisation.id
+      assert Edition.harness_owner(ctx.scope) == ctx.scope.organisation.id
 
       stack = workflow!(ctx, doc("core"))
 
-      assert stack.saved_by_organisation_id == ctx.scope.organisation.id
+      assert stack.owner_organisation_id == ctx.scope.organisation.id
       assert Resolution.owner(stack) == ctx.scope.organisation.id
       assert %{stack: reference, harness_hidden: false} = run_stack(ctx)
       assert reference == ref("core")
     end
 
-    test "records no organisation for an instance admin who is not a member", ctx do
+    test "the instance's organisation owns what an instance admin saves there as no member",
+         ctx do
       admin = instance_admin_scope()
-      refute admin.organisation.id == ctx.scope.organisation.id
+      instance = Edition.instance_organisation_id()
+      assert admin.organisation.id == instance
+      refute instance == ctx.scope.organisation.id
 
       # The admin acting in the run's organisation by a reach an edition gives, with no
       # membership there; and with the admin's membership of the instance's organisation.
@@ -140,25 +145,47 @@ defmodule Apiary.StacksTest do
 
       for scope <- [without_membership, with_other_membership] do
         assert Stacks.saved_by(scope) == nil
+        assert Edition.harness_owner(scope) == instance
 
         {:ok, stack} =
           Stacks.put_stack(scope, {:workspace, ctx.scope.workspace, "explore"}, doc("core"))
 
-        assert stack.saved_by_organisation_id == nil
-        assert Resolution.owner(stack) == nil
+        assert stack.owner_organisation_id == instance
+        assert Resolution.owner(stack) == instance
         assert %{stack: reference, harness_hidden: true} = run_stack(ctx)
         assert reference == ref("core")
       end
     end
 
-    test "records no organisation for a member who reaches it another way", ctx do
+    test "refuses the save of a member who reaches it another way", ctx do
       scope = %{ctx.scope | reach: {:operator, ctx.scope.organisation.id}}
       assert Stacks.saved_by(scope) == nil
+      assert Edition.harness_owner(scope) == nil
+
+      assert Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, doc("core")) ==
+               {:error, :forbidden}
+
+      refute Repo.exists?(Stack)
     end
 
-    test "records no organisation for the instance acting by itself", ctx do
+    test "refuses the save of the instance acting by itself", ctx do
       scope = Apiary.Accounts.Scope.for_instance(ctx.scope.organisation, ctx.scope.workspace)
       assert Stacks.saved_by(scope) == nil
+      assert Edition.harness_owner(scope) == nil
+
+      assert Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, doc("core")) ==
+               {:error, :forbidden}
+
+      refute Repo.exists?(Stack)
+    end
+
+    test "refuses a save the edition gives no owner for, and keeps the row as it was", ctx do
+      place = {:workspace, ctx.scope.workspace}
+      before = put!(ctx, place, doc("core"))
+      :ok = Edition.put_test_stub(Apiary.EditionStubs.NoHarnessOwner)
+
+      assert Stacks.put_stack(ctx.scope, place, doc("other")) == {:error, :forbidden}
+      assert Repo.all(Stack) == [before]
     end
 
     test "keeps one row per place", ctx do
@@ -724,7 +751,7 @@ defmodule Apiary.StacksTest do
 
     test "is true when the run's organisation is operated", ctx do
       workflow!(ctx)
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.Operated)
+      :ok = Edition.put_test_stub(Apiary.EditionStubs.Operated)
       assert %{harness_hidden: true} = run_stack(ctx)
     end
   end

@@ -525,6 +525,32 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited: {:not, @read}
     ),
+    # The harness a run uses: the harness documents of an organisation's levels
+    # (`Apiary.Stacks`), and the instance's assignments of harness sources
+    # (`Apiary.Harnesses`), which an instance admin creates and deletes, which no role
+    # takes: the context function asks `instance_admin?/1`.
+    Action.new(
+      :"harness.save",
+      "save a harness document at a level of the organisation: its default, a workspace or a target, with or without a workflow",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation,
+      audited:
+        {:not,
+         "no route or page saves a harness document: Apiary.Stacks.put_stack/3, which only tests and the demo call, checks no access and writes no entry"}
+    ),
+    Action.new(
+      :"harness.assigned",
+      "let the runs of one organisation, or of every organisation, use the instance's links for a harness source: an instance admin, which no role takes (Apiary.Harnesses.assign/3)",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"harness.unassigned",
+      "delete an instance assignment of a harness source: an instance admin, which no role takes (Apiary.Harnesses.unassign/2)",
+      feature: :factory,
+      asked_of: :organisation
+    ),
     # A node pool's key at the server contract, on the runs dispatched to its workspace:
     # one queue per workspace, which any pool of the workspace claims from. Asked of the
     # workspace, its queue, or of a dispatch of it the key's pool claimed (`key_subject/4`).

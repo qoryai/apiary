@@ -76,6 +76,27 @@ defmodule Apiary.EditionStubs do
     def operated?(%Organisation{}), do: true
   end
 
+  defmodule NoHarnessOwner do
+    @moduledoc """
+    No organisation owns a harness document anyone saves
+    (`c:Apiary.Edition.harness_owner/1`), so every save is refused.
+    """
+    def harness_owner(_scope), do: nil
+  end
+
+  defmodule HarnessSourceAllowed do
+    @moduledoc """
+    A run may use any organisation's links for any harness source
+    (`c:Apiary.Edition.harness_source_allowed?/3`). Each call sends
+    `{:harness_source_allowed?, run_organisation_id, owner_organisation_id, source}` to the
+    process that asks.
+    """
+    def harness_source_allowed?(run_organisation_id, owner_organisation_id, source) do
+      send(self(), {:harness_source_allowed?, run_organisation_id, owner_organisation_id, source})
+      true
+    end
+  end
+
   @doc """
   rendezvous/0 pauses a change where a stub calls it, while the test that started it asks
   so (`Process.put(:level_refusal_rendezvous, true)` in the test's process): it says

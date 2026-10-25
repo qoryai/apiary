@@ -436,8 +436,10 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`),
-  # or an adapter's changes (`test/apiary/adapters_test.exs`), or yet the changes of the
-  # work items and of what an adapter reports, whose pages are not built.
+  # or an adapter's changes (`test/apiary/adapters_test.exs`), or the harness documents
+  # and the instance's assignments of harness sources (`test/apiary/stacks_test.exs`,
+  # `test/apiary/harnesses_test.exs`), or yet the changes of the work items and of what an
+  # adapter reports, whose pages are not built.
   # Turning the instance's mail on is following the test link a save sent, a controller's
   # redirect, not a page's event: the link's tests refuse it to anyone but the instance
   # admin it was sent to (`test/apiary/mail_settings_test.exs`,
@@ -503,6 +505,9 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.connect",
         :"adapter.setup",
         :"collection.assign",
+        :"harness.save",
+        :"harness.assigned",
+        :"harness.unassigned",
         :"work_item.take_in",
         :"work_item.undo",
         :"work_item.decline",

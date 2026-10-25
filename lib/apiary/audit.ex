@@ -105,6 +105,7 @@ defmodule Apiary.Audit do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Adapters.Collection
   alias Apiary.Audit.Entry
+  alias Apiary.Harnesses.Assignment
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Policy.Rule
@@ -135,7 +136,8 @@ defmodule Apiary.Audit do
     ServiceDefinition => "service_definition",
     Release => "integration_release",
     WorkItem => "work_item",
-    Collection => "collection"
+    Collection => "collection",
+    Assignment => "harness_assignment"
   }
 
   @default_retention_days 90
@@ -452,6 +454,10 @@ defmodule Apiary.Audit do
   # entry is written (`c:Apiary.Edition.instance_organisation_id/0`), and stay there.
   defp place(%module{organisation_id: nil, workspace_id: nil}) when module in [Node, AccessKey],
     do: {Apiary.Edition.instance_organisation_id(), nil}
+
+  # An instance assignment of a harness source is the instance's too, whichever
+  # organisation it covers.
+  defp place(%Assignment{}), do: {Apiary.Edition.instance_organisation_id(), nil}
 
   defp place(%{organisation_id: organisation_id, workspace_id: workspace_id}),
     do: {organisation_id, workspace_id}

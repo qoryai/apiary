@@ -24,6 +24,7 @@ defmodule Apiary.AuditChanges do
     Adapters,
     Audit,
     Deletion,
+    Harnesses,
     Nodes,
     Organisations,
     Policy,
@@ -37,6 +38,9 @@ defmodule Apiary.AuditChanges do
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
+
+  # A harness source at the root of a remote source.
+  @harness_source %{"git" => "https://code.example.com/team/stacks", "ref" => "v1"}
 
   @mail_attrs %{
     "smtp_relay" => "smtp.example.com",
@@ -126,6 +130,8 @@ defmodule Apiary.AuditChanges do
       :"adapter.app_values_set",
       :"adapter.app_values_seal",
       :"adapter.report_grant",
+      :"harness.assigned",
+      :"harness.unassigned",
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
@@ -463,6 +469,33 @@ defmodule Apiary.AuditChanges do
       scope: in_instance(admin),
       subject: {"node", adapter.id},
       secret: pass,
+      before: before
+    }
+  end
+
+  # An instance admin assigns a harness source to every organisation, and deletes an
+  # assignment, in the trail of the instance's organisation, about the assignment.
+  def make(:"harness.assigned", _ctx) do
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, assignment} = Harnesses.assign(admin, @harness_source, :every)
+
+    %{
+      scope: in_instance(admin),
+      subject: {"harness_assignment", assignment.id},
+      before: before
+    }
+  end
+
+  def make(:"harness.unassigned", %{scope: scope}) do
+    admin = instance_admin_scope()
+    {:ok, assignment} = Harnesses.assign(admin, @harness_source, scope.organisation)
+    before = entries()
+    {:ok, _} = Harnesses.unassign(admin, assignment)
+
+    %{
+      scope: in_instance(admin),
+      subject: {"harness_assignment", assignment.id},
       before: before
     }
   end
@@ -1153,6 +1186,15 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
+  defp prepare(:"harness.assigned", _ctx), do: nil
+
+  defp prepare(:"harness.unassigned", %{scope: scope}) do
+    {:ok, assignment} =
+      Harnesses.assign(instance_admin_scope(), @harness_source, scope.organisation)
+
+    assignment
+  end
+
   defp prepare(:"adapter.edit", _ctx), do: adapter_fixture()
   defp prepare(:"adapter.set_interval", _ctx), do: declared_adapter()
   defp prepare(:"adapter.delete", _ctx), do: adapter_fixture()
@@ -1381,6 +1423,12 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"adapter.create", scope, _),
     do: Adapters.create_adapter(scope, %{name: "Acme tracker"})
+
+  defp attempt(:"harness.assigned", scope, _),
+    do: Harnesses.assign(scope, @harness_source, scope.organisation)
+
+  defp attempt(:"harness.unassigned", scope, assignment),
+    do: Harnesses.unassign(scope, assignment)
 
   defp attempt(:"adapter.edit", scope, adapter),
     do: Adapters.rename_adapter(scope, adapter, %{name: "Acme tracker"})
