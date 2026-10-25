@@ -329,11 +329,12 @@ defmodule ApiaryWeb.InstanceLive.Node do
 
   # What Qory Apiary does with the node's code, then its keys. Each card's Revoke… leads
   # to `…/keys/:key_id/revoke`, which the card writes from `access_key`; its confirmation
-  # is this tab's, under the card, and goes back to the tab. The installer writes a code
-  # only for a node a setting declares (`Apiary.Nodes.Installed.declared?/1`), and
-  # cancels the codes of any other.
+  # is this tab's, under the card, and goes back to the tab. The installer acts by kind:
+  # it writes a code for the node of a kind a setting declares, renaming it to the
+  # declared name if it has another (`Apiary.Nodes.Installed.install/2`), and cancels
+  # the codes of a kind no setting declares (`Apiary.Nodes.Installed.undeclared/0`).
   defp keys(assigns) do
-    assigns = assign(assigns, :declared, Installed.declared?(assigns.node))
+    assigns = assign(assigns, :declared, Installed.name(assigns.node.kind) != nil)
 
     ~H"""
     <div id="node-access-key" class="grid max-w-[60rem] gap-8">

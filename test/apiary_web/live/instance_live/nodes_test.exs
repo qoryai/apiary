@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.NodesTest do
   # Instance settings › Nodes (`ApiaryWeb.InstanceLive.Nodes`, `ApiaryWeb.InstanceLive.Node`),
   # for an instance admin: the instance's pool and gateway, each with its Overview, its
-  # Access key tab, which says a new code comes after a revoke only for a node a setting
-  # declares, and where Revoke is the one act, refused for a person no longer an instance
+  # Access key tab, which says a new code comes after a revoke only for a node of a kind
+  # a setting declares, under any name, and where Revoke is the one act, refused for a person no longer an instance
   # admin and for a node deleted meanwhile, and its Settings, the pool's instance limit;
   # a path that does not exist for anyone else. Then a workspace's Nodes page, which
   # lists the instance's gateway, and the instance's pool while the workspace has no pool
@@ -155,14 +155,26 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
     test "the Access key tab of a node no setting declares says no new code comes",
          %{conn: conn, pool: pool, gateway: gateway} do
-      # The gateway is declared under another name, the pool not at all.
-      declare(%{pool: nil, gateway: "edge", url: "https://gateway.example"})
+      declare(%{pool: nil, gateway: nil, url: nil})
 
       for node <- [pool, gateway] do
         {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{node.public_id}/keys")
 
         assert words(lv, "#node-access-key-intro") ==
                  "No setting of this instance declares this node, so Qory Apiary writes no new code after a revoke."
+      end
+    end
+
+    test "the Access key tab of a node declared under another name says a new code comes",
+         %{conn: conn, pool: pool, gateway: gateway} do
+      # The installer renames each node to the declared name and writes it a new code.
+      declare(%{pool: "other-pool", gateway: "edge", url: "https://gateway.example"})
+
+      for node <- [pool, gateway] do
+        {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{node.public_id}/keys")
+
+        assert words(lv, "#node-access-key-intro") ==
+                 "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
       end
     end
 
