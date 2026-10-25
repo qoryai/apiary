@@ -134,6 +134,10 @@ config :apiary, Apiary.Integrations.Fetch,
   resolver: Apiary.FetchStub,
   req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]
 
+# Qory Apiary's calls to an adapter resolve its host by the test resolver's rule too
+# (`Apiary.FetchStub`), which a test may override with its own.
+config :apiary, Apiary.Adapters.Calls, resolver: Apiary.FetchStub
+
 # An adapter's read of its change feed answers at once when the feed holds nothing new;
 # the test of the hold sets the hold it needs.
 config :apiary, ApiaryWeb.Contract.ChangesController, hold: 0

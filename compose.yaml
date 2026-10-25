@@ -55,6 +55,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://apiary@postgres/apiary}
       # The adapters installed with Qory Apiary, from .env; none unless .env names them.
       QORY_INSTALLED_ADAPTERS: ${QORY_INSTALLED_ADAPTERS:-}
+    # Qory Apiary calls an adapter at <adapter name>.<host of PUBLIC_URL>, through the
+    # reverse proxy on this machine. Set PUBLIC_HOST in .env to the host of PUBLIC_URL.
+    extra_hosts:
+      - "${PUBLIC_HOST:-public-host.invalid}:host-gateway"
+      - "github.${PUBLIC_HOST:-public-host.invalid}:host-gateway"
     volumes:
       - keys:/var/lib/apiary/keys:ro
       # The one-time code Qory Apiary writes for the GitHub adapter, in memory. Besides
