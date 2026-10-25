@@ -995,8 +995,9 @@ defmodule Apiary.EditionStubs do
     @moduledoc """
     A reader is shown a run's policy (`c:Apiary.Edition.client_reads/4`, `:run_policy`)
     without the hosts of the credential named `"model-provider"`: its entry in
-    `credentials`, and its hosts in `allow` and `allow_first`, with the counts recounted.
-    Every other read is left as it is.
+    `credentials`, its hosts in `allow`, `allow_first` and `terminated`, and its hosts in the
+    `hosts` of each tool, with the counts recounted. The tools stay. Every other read is left
+    as it is.
     """
 
     @provider "model-provider"
@@ -1008,10 +1009,19 @@ defmodule Apiary.EditionStubs do
       allow = Enum.reject(policy.allow, &(&1 in hidden))
       allow_first = Enum.reject(policy.allow_first, &(&1 in hidden))
       kept = Enum.reject(credentials, &(&1["name"] == @provider))
+      terminated = Enum.reject(policy.terminated, &(&1 in hidden))
+
+      tools =
+        for tool <- policy.tools,
+            do: Map.update(tool, "hosts", [], &Enum.reject(&1, fn host -> host in hidden end))
 
       %{
         policy
-        | allow: allow,
+        | terminated: terminated,
+          terminated_count:
+            policy.terminated_count - (length(policy.terminated) - length(terminated)),
+          tools: tools,
+          allow: allow,
           allow_count: length(allow),
           allow_first: allow_first,
           allow_first_count: length(allow_first),

@@ -42,7 +42,7 @@ defmodule Apiary.Connections do
   decides which provider a run uses, never the host. A provider with `chain` `operator`
   belongs to an operator's chain, and every function refuses a change to it,
   `{:error, :forbidden}`, unless the edition says that the scope writes the operator's
-  chain (`c:Apiary.Edition.operator_chain_writer?/1`): then the scope's organisation is
+  chain (`operator_chain_writer?/1`): then the scope's organisation is
   the operator's, and it creates, reads and changes the providers of that chain as it does
   those of the organisation's chain: `create_provider/2` with `chain` `operator`, and
   `list_providers/2` and `get_provider/3` given the chain. The core answers false.
@@ -1117,7 +1117,7 @@ defmodule Apiary.Connections do
 
   `chain` is the chain whose providers are listed, `"organisation"` by default. The
   providers of the chain `"operator"` are listed only where the edition says that the scope
-  writes it (`c:Apiary.Edition.operator_chain_writer?/1`); else `{:error, :not_found}`.
+  writes it (`operator_chain_writer?/1`); else `{:error, :not_found}`.
   """
   @spec list_providers(Scope.t(), String.t()) ::
           {:ok, [Connection.t()]} | {:error, Access.reason()}
@@ -1194,7 +1194,7 @@ defmodule Apiary.Connections do
     * `default_key`, the value id of its default key, the first key's by default;
     * `chain`, `"organisation"` by default, or `"operator"` for a provider of the operator's
       chain, which is refused with `:forbidden` unless the edition says that the scope
-      writes that chain (`c:Apiary.Edition.operator_chain_writer?/1`).
+      writes that chain (`operator_chain_writer?/1`).
 
   The keys are stored as an organisation's secret that the provider links; the models
   are the description's, in its order, the first the default. `{:ok, provider}`, loaded as

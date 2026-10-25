@@ -716,7 +716,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   `scope:` and `run:`, given together, are the reader and the run: the policy of each
   `policy.applied` line, and the previous one the delta is taken from, is first read
-  through `Apiary.Edition.client_reads/4`, so the counts and the delta are of what the
+  through `client_reads/4`, so the counts and the delta are of what the
   edition leaves the reader. Without them, no policy is narrowed.
   """
   def build(light, events, opts \\ []) when is_list(light) do
@@ -742,8 +742,8 @@ defmodule Apiary.Runs.Record.Timeline do
 
   # A `policy.applied` line shows counts and a delta of its lists. They are taken from the
   # policy as the edition leaves it to the reader, for the event and for the previous event
-  # the delta is taken from: the lists and the counts of both are replaced by the narrowed
-  # ones, and `body/4` reads them as it reads any event's.
+  # the delta is taken from: the host lists, the hosts of the tools and the counts of both are
+  # replaced by the narrowed ones, and `body/4` reads them as it reads any event's.
   defp narrowed(%{kind: :policy_applied} = item, event, events, %{} = scope, run) do
     previous = item[:previous_seq]
 
@@ -764,7 +764,10 @@ defmodule Apiary.Runs.Record.Timeline do
       allow: narrowed[:allow] || [],
       allow_count: narrowed[:allow_count] || 0,
       deny: narrowed[:deny] || [],
-      deny_count: narrowed[:deny_count] || 0
+      deny_count: narrowed[:deny_count] || 0,
+      terminated: narrowed[:terminated] || [],
+      terminated_count: narrowed[:terminated_count] || 0,
+      tools: narrowed[:tools] || []
     })
   end
 
