@@ -8,26 +8,45 @@ defmodule Apiary.Harnesses.Reader do
 
   ## Limits
 
-  Every file is untrusted input, so each read applies three limits before it builds a
-  value:
+  Every file is untrusted input, so each read applies these limits:
 
     * at most 64 KiB (65,536 bytes) per file, `:too_large`;
+    * no control character but tab, line feed and carriage return, neither in the bytes
+      nor in a text the file escapes, `:control_character`;
     * at most 16 nested mappings and sequences, `:too_deep`;
-    * no anchor and no alias, `:alias`.
+    * no anchor and no alias, `:alias`;
+    * at most 2 seconds and 32 MiB of heap for the parse, `:too_complex`.
+
+  The parser, yamerl, holds back its tokens while a flow collection could still turn out
+  to be a key, and reverses that queue for each token it adds, so a long flow collection
+  at the top level or in a block sequence costs time that grows with the square of its
+  length. Both passes therefore run in a separate process with a heap limit, which
+  is killed when either limit is reached.
 
   The first pass reads the parser's tokens only, and stops at the first anchor, alias or
   collection that nests too deep. No node is built in that pass, so an alias never
-  expands. The second pass builds the value with the YAML 1.2 core schema. It also
-  refuses a file of more than one document (`:several_documents`), a key that is not
-  text (`:key_not_text`), a key repeated in one mapping (`{:repeated_key, key}`), an
-  infinite or not-a-number float (`:not_a_number`), and anything else the parser refuses
-  (`:invalid_yaml`), unknown tags included.
+  expands. The second pass builds the value with the YAML 1.2 core schema. It takes
+  text, integers, floats, booleans and null, and refuses any other type, such as
+  `!!binary` (`:unsupported_type`). It also refuses a file of more than one document
+  (`:several_documents`), a key that is not text (`:key_not_text`), a key repeated in
+  one mapping (`{:repeated_key, key}`), an infinite or not-a-number float
+  (`:not_a_number`), and anything else the parser refuses or fails on (`:invalid_yaml`),
+  unknown tags included.
 
   An empty file is a file with no value: `harness/1` and `exports/1` read it as `:none`.
   """
 
   @max_bytes 65_536
   @max_depth 16
+
+  # The parse's limits, far above what a harness document takes: a 64 KiB document of
+  # ordinary YAML parses in well under 100 ms and a few MiB of heap.
+  @time_limit_ms 2_000
+  @max_heap_words div(32 * 1024 * 1024, :erlang.system_info(:wordsize))
+
+  # The control characters a file and its texts may not contain: C0 but tab, line feed
+  # and carriage return, DEL, and C1.
+  @control ~r/[\x{00}-\x{08}\x{0B}\x{0C}\x{0E}-\x{1F}\x{7F}-\x{9F}]/u
 
   # The machine's keys of a harness section (qory contracts/harness/v1/config.schema.json):
   # a section with these alone is not a document.
@@ -45,6 +64,9 @@ defmodule Apiary.Harnesses.Reader do
   @type reason ::
           :too_large
           | :too_deep
+          | :control_character
+          | :too_complex
+          | :unsupported_type
           | :alias
           | :several_documents
           | :key_not_text
@@ -195,8 +217,38 @@ defmodule Apiary.Harnesses.Reader do
     cond do
       byte_size(bytes) > @max_bytes -> {:error, :too_large}
       not String.valid?(bytes) -> {:error, :invalid_yaml}
-      true -> with :ok <- scan(bytes), do: build(bytes)
+      Regex.match?(@control, bytes) -> {:error, :control_character}
+      true -> isolated(bytes)
     end
+  end
+
+  # Both passes in a process with a heap limit, killed at the time limit. The result
+  # comes back as the process's exit reason.
+  defp isolated(bytes) do
+    {pid, ref} =
+      :erlang.spawn_opt(fn -> exit({__MODULE__, read(bytes)}) end, [
+        :monitor,
+        {:max_heap_size, %{size: @max_heap_words, kill: true, error_logger: false}}
+      ])
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, {__MODULE__, result}} -> result
+      {:DOWN, ^ref, :process, ^pid, :killed} -> {:error, :too_complex}
+      {:DOWN, ^ref, :process, ^pid, _crash} -> {:error, :invalid_yaml}
+    after
+      @time_limit_ms ->
+        Process.exit(pid, :kill)
+        receive do: ({:DOWN, ^ref, :process, ^pid, _reason} -> :ok)
+        {:error, :too_complex}
+    end
+  end
+
+  # Any exception yamerl raises, such as on a character it has no clause for, is a
+  # refusal, never a crash of the caller.
+  defp read(bytes) do
+    with :ok <- scan(bytes), do: build(bytes)
+  rescue
+    _exception -> {:error, :invalid_yaml}
   end
 
   # The first pass: the parser's tokens alone, with no node built. A throw of this
@@ -228,7 +280,7 @@ defmodule Apiary.Harnesses.Reader do
   defp build(bytes) do
     case :yamerl_constr.string(bytes, @constr_options) do
       [] -> {:ok, nil}
-      [{:yamerl_doc, root}] -> {:ok, value(root)}
+      [{:yamerl_doc, root}] -> {:ok, value(root, 0)}
       _several -> {:error, :several_documents}
     end
   catch
@@ -236,27 +288,59 @@ defmodule Apiary.Harnesses.Reader do
     {:yamerl_exception, _errors} -> {:error, :invalid_yaml}
   end
 
-  defp value({:yamerl_map, _module, _tag, _place, pairs}), do: mapping(pairs, %{})
-  defp value({:yamerl_seq, _module, _tag, _place, items, _count}), do: Enum.map(items, &value/1)
-  defp value({:yamerl_null, _module, _tag, _place}), do: nil
-  defp value({:yamerl_float, _module, _tag, _place, float}) when is_float(float), do: float
+  # The value of a node at `depth` collections down. The parse's first pass counts the
+  # collections it sees as tokens; a mapping of one pair inside a flow sequence, `[a: x]`,
+  # has none, so the depth is counted again here.
+  defp value({:yamerl_map, _module, _tag, _place, _pairs}, depth) when depth >= @max_depth,
+    do: throw({__MODULE__, :too_deep})
 
-  defp value({:yamerl_float, _module, _tag, _place, _infinite}),
+  defp value({:yamerl_seq, _module, _tag, _place, _items, _count}, depth)
+       when depth >= @max_depth,
+       do: throw({__MODULE__, :too_deep})
+
+  defp value({:yamerl_map, _module, _tag, _place, pairs}, depth),
+    do: mapping(pairs, %{}, depth + 1)
+
+  defp value({:yamerl_seq, _module, _tag, _place, items, _count}, depth),
+    do: Enum.map(items, &value(&1, depth + 1))
+
+  defp value({:yamerl_null, _module, _tag, _place}, _depth), do: nil
+
+  defp value({:yamerl_float, _module, _tag, _place, float}, _depth) when is_float(float),
+    do: float
+
+  defp value({:yamerl_float, _module, _tag, _place, _infinite}, _depth),
     do: throw({__MODULE__, :not_a_number})
 
-  defp value({_kind, _module, _tag, _place, value})
-       when is_binary(value) or is_integer(value) or is_boolean(value),
-       do: value
+  defp value({:yamerl_str, _module, _tag, _place, text}, _depth) when is_binary(text),
+    do: text!(text)
 
-  defp value(_node), do: throw({__MODULE__, :invalid_yaml})
+  defp value({:yamerl_int, _module, _tag, _place, integer}, _depth) when is_integer(integer),
+    do: integer
 
-  defp mapping([], map), do: map
+  defp value({:yamerl_bool, _module, _tag, _place, boolean}, _depth) when is_boolean(boolean),
+    do: boolean
 
-  defp mapping([{{:yamerl_str, _module, _tag, _place, key}, node} | pairs], map)
-       when is_binary(key) do
-    if Map.has_key?(map, key), do: throw({__MODULE__, {:repeated_key, key}})
-    mapping(pairs, Map.put(map, key, value(node)))
+  defp value(_node, _depth), do: throw({__MODULE__, :unsupported_type})
+
+  # A text of the file, which a double-quoted scalar may write with escapes, such as
+  # `"\0"`: valid UTF-8 with no control character the bytes may not have.
+  defp text!(text) do
+    cond do
+      not String.valid?(text) -> throw({__MODULE__, :invalid_yaml})
+      Regex.match?(@control, text) -> throw({__MODULE__, :control_character})
+      true -> text
+    end
   end
 
-  defp mapping([_pair | _pairs], _map), do: throw({__MODULE__, :key_not_text})
+  defp mapping([], map, _depth), do: map
+
+  defp mapping([{{:yamerl_str, _module, _tag, _place, key}, node} | pairs], map, depth)
+       when is_binary(key) do
+    key = text!(key)
+    if Map.has_key?(map, key), do: throw({__MODULE__, {:repeated_key, key}})
+    mapping(pairs, Map.put(map, key, value(node, depth)), depth)
+  end
+
+  defp mapping([_pair | _pairs], _map, _depth), do: throw({__MODULE__, :key_not_text})
 end

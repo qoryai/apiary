@@ -264,8 +264,10 @@ defmodule Apiary.StacksTest do
     test "refuse a source in scp form, in the base and in a module", ctx do
       scp = "git@code.example.com:team/stacks"
 
+      # The address is shown without what comes before its last `@`.
       expected = [
-        "write #{scp} as an https address: Qory Apiary fetches harness sources over https only"
+        "write code.example.com:team/stacks as an https address: " <>
+          "Qory Apiary fetches harness sources over https only"
       ]
 
       assert refused(ctx, "extends: {git: '#{scp}', ref: v2, stack: web}\n") == expected
@@ -310,6 +312,163 @@ defmodule Apiary.StacksTest do
 
       assert [error] = refused(ctx, module)
       refute error =~ "secret-value"
+    end
+
+    test "never show a user name or password, whatever the address's shape", ctx do
+      for address <- [
+            "https://user:SECRET@host.example.com/r",
+            " https://user:SECRET@host.example.com/r",
+            "\thttps://user:SECRET@host.example.com/r",
+            "https:/user:SECRET@host.example.com/r",
+            "https:user:SECRET@host.example.com/r",
+            "https:\\\\\\\\user:SECRET@host.example.com",
+            "user:SECRET@host.example.com:org/r",
+            "ssh://user:SECRET@host.example.com/r",
+            "https://user:SECRET#x@host.example.com/r",
+            "https://user:SECRET?x@host.example.com/r"
+          ],
+          document <- [
+            "extends: {git: #{inspect(address)}, ref: v2}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nmodules:\n  - source: {git: #{inspect(address)}, ref: v1}\n"
+          ] do
+        assert {:error, changeset} =
+                 Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+
+        assert [{:harness, {message, values}}] = changeset.errors, document
+        refute message =~ "SECRET"
+        assert values[:source] =~ "host.example.com", document
+        refute Enum.any?(values, fn {_key, value} -> inspect(value) =~ "SECRET" end), document
+        refute Enum.any?(values, fn {_key, value} -> inspect(value) =~ "user" end), document
+      end
+    end
+
+    test "refuse an address that is not https, a host, a port and a path", ctx do
+      text =
+        " as https://, a host, an optional port and an optional path: " <>
+          "Qory Apiary fetches harness sources over https only"
+
+      for address <- [
+            "https://",
+            "https:///r",
+            "https://:443/r",
+            "https://code.example.com:99999/r",
+            "https://code.example.com/team/%zz",
+            "https://code.example.com/team/stacks\\x",
+            "https://[::1/r",
+            "https://code.example.com/" <> String.duplicate("a", 2_560)
+          ] do
+        assert refused(ctx, "extends: {git: '#{address}', ref: v2}\n") == [
+                 "write " <> address <> text
+               ],
+               address
+      end
+
+      for address <- [
+            "https://code.example.com",
+            "https://code.example.com:8443/team/stacks.git",
+            "https://[2001:db8::1]/team/stacks",
+            "https://192.0.2.1/team/stacks"
+          ] do
+        assert {:ok, _stack} =
+                 Stacks.put_stack(
+                   ctx.scope,
+                   {:workspace, ctx.scope.workspace},
+                   "extends: {git: '#{address}', ref: v2}\n"
+                 ),
+               address
+      end
+    end
+
+    test "refuse a query or a fragment, and never show the query", ctx do
+      text =
+        " with no query (?) and no fragment (#): a harness source address is " <>
+          "https://, a host, an optional port and an optional path"
+
+      for {address, shown} <- [
+            {"https://code.example.com/team/stacks?private_token=SECRET",
+             "https://code.example.com/team/stacks"},
+            {"https://code.example.com/team/stacks#SECRET",
+             "https://code.example.com/team/stacks"},
+            {"https://code.example.com?SECRET", "https://code.example.com"},
+            {"https://?SECRET", "https://"}
+          ],
+          document <- [
+            "extends: {git: '#{address}', ref: v2}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nmodules:\n  - source: {git: '#{address}', ref: v1}\n"
+          ] do
+        assert refused(ctx, document) == ["write " <> shown <> text], document
+
+        assert {:error, changeset} =
+                 Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+
+        assert [{:harness, {_message, values}}] = changeset.errors, document
+        refute Enum.any?(values, fn {_key, value} -> inspect(value) =~ "SECRET" end), document
+      end
+    end
+
+    test "refuse whitespace or a control character in an address", ctx do
+      text =
+        " as an https address with no space or control character: " <>
+          "Qory Apiary fetches harness sources over https only"
+
+      assert refused(ctx, ~s(extends: {git: "https://host.example.com r", ref: v2}\n)) ==
+               ["write https://host.example.com r" <> text]
+
+      assert refused(
+               ctx,
+               ~s(extends: {git: "https://host.example.com/r\\n--upload-pack=x", ref: v2}\n)
+             ) == ["write https://host.example.com/r\uFFFD--upload-pack=x" <> text]
+
+      assert refused(ctx, ~s(extends: {git: "https://host.example.com/r\\t", ref: v2}\n)) ==
+               ["write https://host.example.com/r\uFFFD" <> text]
+
+      assert refused(ctx, ~s(extends: {git: "https:// spaced host", ref: v2}\n)) ==
+               ["write https:// spaced host" <> text]
+
+      assert refused(ctx, ~s(extends: {git: "https://host.example.com/r\\n", ref: v2}\n)) ==
+               ["write https://host.example.com/r\uFFFD" <> text]
+    end
+
+    test "refuse !!binary in any place, with no crash", ctx do
+      for document <- [
+            "extends: {git: #{@stacks}, ref: v2}\nbind: {agents/x: !!binary //79}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nname: !!binary //79\n",
+            "extends: {git: #{@stacks}, ref: !!binary //79}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nextensions: {a: !!binary //79}\n"
+          ] do
+        assert refused(ctx, document) == [
+                 "uses a YAML type a harness document does not take, such as !!binary: " <>
+                   "write each value as text, a number, true, false or null"
+               ],
+               document
+      end
+    end
+
+    test "refuse a control character, written or escaped, with no crash", ctx do
+      expected = ["contains a control character, which a harness document may not"]
+
+      for character <- [<<0>>, <<1>>, <<0x1B>>] do
+        document = "extends: {git: #{@stacks}, ref: v2}\nname: a" <> character <> "b\n"
+        assert refused(ctx, document) == expected
+      end
+
+      assert refused(ctx, "extends: {git: #{@stacks}, ref: v2}\nname: \"a\\0b\"\n") == expected
+    end
+
+    test "refuse what the YAML parser fails on, with no crash", ctx do
+      for document <- [
+            "extends: {git: #{@stacks}, ref: v2}\nname: !!bool maybe\n",
+            "\t a: 1\n"
+          ] do
+        assert refused(ctx, document) == ["is not valid YAML"], document
+      end
+    end
+
+    test "refuse a document that takes too long to read", ctx do
+      assert refused(ctx, "- [" <> String.duplicate("a,", 16_000) <> "a]") == [
+               "takes longer to read than a harness document may: " <>
+                 "write long lists as block lists, with one - item per line"
+             ]
     end
 
     test "refuse what the run contract's harness section refuses", ctx do

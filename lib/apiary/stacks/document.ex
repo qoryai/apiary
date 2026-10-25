@@ -13,9 +13,14 @@ defmodule Apiary.Stacks.Document do
   #      (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
   #   3. A base given by name alone, `extends: {stack: <name>}` with neither `git` nor
   #      `path`.
-  #   4. Each `git` address of the base and of the modules' sources: user information
-  #      (the error shows the address without it), the scp form `<user>@<host>:<path>`,
-  #      and any address that does not start with `https://`.
+  #   4. Each `git` address of the base and of the modules' sources: a whitespace or
+  #      control character, user information, any address that does not start with
+  #      `https://`, the scp form `<user>@<host>:<path>` included, a query or a
+  #      fragment, and any other address that is not `https://`, a host, an optional
+  #      port and an optional path, at most 2,560 characters, as a stack reference's
+  #      address was before harness documents. An error shows an address without
+  #      anything before its last `@` and without anything from its first `?` or `#`,
+  #      whatever the address's shape, so it shows no user name, password or query.
   #   5. The run contract's `harness_section` (`documents.schema.json` beside this file,
   #      vendored from the integrations contract at the commit in `.contract-ref`),
   #      validated with JSV: git sources and exports only, no `{path}` source, no module
@@ -65,6 +70,19 @@ defmodule Apiary.Stacks.Document do
   catch
     {__MODULE__, error} -> [error]
   end
+
+  defp unreadable(:control_character),
+    do: {"contains a control character, which a harness document may not", []}
+
+  defp unreadable(:too_complex),
+    do:
+      {"takes longer to read than a harness document may: " <>
+         "write long lists as block lists, with one - item per line", []}
+
+  defp unreadable(:unsupported_type),
+    do:
+      {"uses a YAML type a harness document does not take, such as !!binary: " <>
+         "write each value as text, a number, true, false or null", []}
 
   defp unreadable(:too_large), do: {"is larger than %{limit} bytes", limit: Reader.max_bytes()}
 
@@ -135,20 +153,82 @@ defmodule Apiary.Stacks.Document do
     base ++ modules
   end
 
+  # Any whitespace or control character: a git address has none.
+  @space_or_control ~r/[\s\x{00}-\x{1F}\x{7F}-\x{9F}]/u
+
+  # An address with a scheme whose authority has `@`: user information.
+  @user_information ~r{\A[A-Za-z][A-Za-z0-9+.-]*://[^/?#]*@}
+
+  # The https address a stack reference had before harness documents
+  # (`Apiary.Contract.Stack`): `https://`, a host, an optional port and an optional path,
+  # with no user information, no query and no fragment. The host is a name, which may
+  # contain the percent-encodings `%80` to `%FF` and `%25`, or an IPv6 address in
+  # brackets.
+  @max_address 2560
+  @dec_octet "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
+  @ipv4 "#{@dec_octet}\\.#{@dec_octet}\\.#{@dec_octet}\\.#{@dec_octet}"
+  @h16 "[0-9A-Fa-f]{1,4}"
+  @ls32 "(?:#{@h16}:#{@h16}|#{@ipv4})"
+  # RFC 3986's IPv6address, its nine forms in its order.
+  @ipv6 Enum.join(
+          [
+            "(?:#{@h16}:){6}#{@ls32}",
+            "::(?:#{@h16}:){5}#{@ls32}",
+            "(?:#{@h16})?::(?:#{@h16}:){4}#{@ls32}",
+            "(?:(?:#{@h16}:){0,1}#{@h16})?::(?:#{@h16}:){3}#{@ls32}",
+            "(?:(?:#{@h16}:){0,2}#{@h16})?::(?:#{@h16}:){2}#{@ls32}",
+            "(?:(?:#{@h16}:){0,3}#{@h16})?::#{@h16}:#{@ls32}",
+            "(?:(?:#{@h16}:){0,4}#{@h16})?::#{@ls32}",
+            "(?:(?:#{@h16}:){0,5}#{@h16})?::#{@h16}",
+            "(?:(?:#{@h16}:){0,6}#{@h16})?::"
+          ],
+          "|"
+        )
+  @host_name "(?:[A-Za-z0-9._~!$&'()*+,;=-]|%(?:[89A-Fa-f][0-9A-Fa-f]|25))+"
+  @port "(?::(?:0{0,4}[1-9]|0{0,3}[1-9][0-9]|0{0,2}[1-9][0-9]{2}|0?[1-9][0-9]{3}|" <>
+          "[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])?)?"
+  @url_path "(?:/(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%[0-9A-Fa-f]{2})*)?"
+  # `:dollar_endonly` makes `$` match only at the end, not before a final newline.
+  @https_address Regex.compile!(
+                   "^https://(?:#{@host_name}|\\[(?:#{@ipv6})\\])#{@port}#{@url_path}$",
+                   [:dollar_endonly]
+                 )
+
   defp address(git) do
     cond do
-      user_information?(git) ->
+      Regex.match?(@space_or_control, git) ->
+        refuse(
+          "write %{source} as an https address with no space or control character: " <>
+            "Qory Apiary fetches harness sources over https only",
+          source: shown(git)
+        )
+
+      Regex.match?(@user_information, git) ->
         refuse(
           "remove the user name and password from %{source}: " <>
             "a harness source address may not contain a credential",
-          source: without_user_information(git)
+          source: shown(git)
         )
 
       not String.starts_with?(git, "https://") ->
         refuse(
           "write %{source} as an https address: " <>
             "Qory Apiary fetches harness sources over https only",
-          source: git
+          source: shown(git)
+        )
+
+      String.contains?(git, ["?", "#"]) ->
+        refuse(
+          "write %{source} with no query (?) and no fragment (#): a harness source " <>
+            "address is https://, a host, an optional port and an optional path",
+          source: shown(git)
+        )
+
+      String.length(git) > @max_address or not Regex.match?(@https_address, git) ->
+        refuse(
+          "write %{source} as https://, a host, an optional port and an optional path: " <>
+            "Qory Apiary fetches harness sources over https only",
+          source: shown(git)
         )
 
       true ->
@@ -156,11 +236,30 @@ defmodule Apiary.Stacks.Document do
     end
   end
 
-  # An address with a scheme whose authority has `@`: user information.
-  @user_information ~r{\A([A-Za-z][A-Za-z0-9+.-]*://)[^/?#]*@}
+  # An address as an error shows it, whatever its shape: everything before its last `@`
+  # is left out, but a scheme at its start, so no user name or password is shown; then
+  # everything from its first `?` or `#` is left out, so no query is shown, as a query
+  # may contain a credential; and each control character and each whitespace but a
+  # space becomes U+FFFD.
+  defp shown(git) do
+    shown =
+      case String.split(git, "@") do
+        [_no_at] ->
+          git
 
-  defp user_information?(git), do: Regex.match?(@user_information, git)
-  defp without_user_information(git), do: Regex.replace(@user_information, git, "\\1")
+        parts ->
+          scheme =
+            case Regex.run(~r{\A[A-Za-z][A-Za-z0-9+.-]*://}, git) do
+              [scheme] -> scheme
+              nil -> ""
+            end
+
+          scheme <> List.last(parts)
+      end
+
+    [shown | _query] = String.split(shown, ["?", "#"], parts: 2)
+    Regex.replace(~r/[^\S ]|[\x{00}-\x{1F}\x{7F}-\x{9F}]/u, shown, "\u{FFFD}")
+  end
 
   defp schema(section) do
     case JSV.validate(section, root(), cast: false) do

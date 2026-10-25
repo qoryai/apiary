@@ -214,12 +214,91 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.parse("a: .nan\n") == {:error, :not_a_number}
       assert Reader.parse("a: !custom x\n") == {:error, :invalid_yaml}
       assert Reader.parse("a: [b\n") == {:error, :invalid_yaml}
+      assert Reader.parse("name: !!bool maybe\n") == {:error, :invalid_yaml}
+      assert Reader.parse("\t a: 1\n") == {:error, :invalid_yaml}
       assert Reader.parse(<<0xFF, 0xFE, 0>>) == {:error, :invalid_yaml}
     end
 
     test "reads the core schema's scalars" do
       assert Reader.parse("a: 1\nb: 1.5\nc: true\nd: null\ne: yes\nf: '1'\n") ==
                {:ok, %{"a" => 1, "b" => 1.5, "c" => true, "d" => nil, "e" => "yes", "f" => "1"}}
+    end
+  end
+
+  describe "the parse's time and heap limits" do
+    # Each input took seconds to minutes in yamerl before the limits, and each is under
+    # 64 KiB. The parse is killed at 2 s or 32 MiB of heap, whichever comes first.
+    defp timed(input) do
+      {time, result} = :timer.tc(fn -> Reader.parse(input) end)
+      assert time < 5_000_000, "took #{div(time, 1000)} ms"
+      result
+    end
+
+    test "refuse 65,000 open brackets" do
+      assert timed(String.duplicate("[", 65_000)) == {:error, :too_complex}
+    end
+
+    test "refuse a flow sequence of 32,000 items at the top level" do
+      assert timed("[" <> String.duplicate("a,", 32_000) <> "a]") == {:error, :too_complex}
+    end
+
+    test "refuse a flow sequence of 16,000 items in a block sequence" do
+      assert timed("- [" <> String.duplicate("a,", 16_000) <> "a]") == {:error, :too_complex}
+    end
+
+    test "take 64 KiB of ordinary YAML well within the limits" do
+      assert {:ok, list} = timed(String.duplicate("- a\n", 16_000))
+      assert length(list) == 16_000
+
+      assert {:ok, %{"k" => items}} = timed("k: [" <> String.duplicate("a,", 32_000) <> "a]")
+      assert length(items) == 32_001
+
+      keys = Enum.map_join(1..4_000, fn i -> "key-#{i}: value\n" end)
+      assert byte_size(keys) < Reader.max_bytes()
+      assert {:ok, map} = timed(keys)
+      assert map_size(map) == 4_000
+    end
+  end
+
+  describe "characters and types" do
+    @controls [0x00, 0x01, 0x07, 0x08, 0x0B, 0x0C, 0x1B, 0x7F, 0x85, 0x9F]
+
+    test "refuse a control character in any place, and never raise" do
+      for code <- @controls,
+          template <- ["a: x~y\n", "x~: 1\n", "[x~]", "a: \"x~\"\n", "a: 1 # ~\n", "a: |\n  x~\n"] do
+        input = String.replace(template, "~", <<code::utf8>>)
+        assert Reader.parse(input) == {:error, :control_character}, inspect(input)
+      end
+    end
+
+    test "refuse a control character a double-quoted text escapes" do
+      for escape <- ["\\0", "\\x01", "\\x1b", "\\x7f", "\\u0085", "\\e"] do
+        assert Reader.parse(~s(a: "x#{escape}y"\n)) == {:error, :control_character}, escape
+      end
+    end
+
+    test "take tab, line feed and carriage return" do
+      assert Reader.parse("a:\t1\r\nb: \"x\\ty\"\n") == {:ok, %{"a" => 1, "b" => "x\ty"}}
+    end
+
+    test "turn any other failure of the parser into a refusal" do
+      for code <- 0..0x2030, code not in 0xD800..0xDFFF do
+        result = Reader.parse("a: x" <> <<code::utf8>> <> "y\n[x" <> <<code::utf8>> <> "]")
+        assert match?({:error, _reason}, result) or match?({:ok, _value}, result)
+      end
+    end
+
+    test "refuse !!binary and every other type but text, numbers, booleans and null" do
+      assert Reader.parse("a: !!binary //79\n") == {:error, :unsupported_type}
+      assert Reader.parse("bind: {agents/x: !!binary //79}\n") == {:error, :unsupported_type}
+      assert Reader.parse("a: !!binary aHR0cHM6Ly91OnBAaC9y\n") == {:error, :unsupported_type}
+      assert Reader.parse("a: !!timestamp 2001-12-14\n") == {:error, :invalid_yaml}
+    end
+
+    test "count the depth of one-pair mappings in a flow sequence" do
+      nested = fn n -> String.duplicate("[a: ", n) <> "x" <> String.duplicate("]", n) end
+      assert {:ok, _value} = Reader.parse(nested.(8))
+      assert Reader.parse(nested.(9)) == {:error, :too_deep}
     end
   end
 end
