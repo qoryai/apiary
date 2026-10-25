@@ -122,9 +122,9 @@ defmodule Apiary.Lingo.Domain do
 
   @doc """
   Whether a target of the domain may have a harness file, a `qory.yaml` or `harness.yaml`
-  of qory's format at its root: only a target of a domain that answers true is read for
-  one. A run of any other domain takes its harness document from the workspace's
-  settings.
+  of qory's format at its root. False means that a target of the domain has no harness
+  file, so a run of the domain takes its harness document from the workspace's settings
+  alone.
   """
   @callback harness_file?() :: boolean
 

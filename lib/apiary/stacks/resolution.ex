@@ -14,9 +14,9 @@ defmodule Apiary.Stacks.Resolution do
   # **The owner.** A document's owner is the organisation of the person who saved it, when
   # that person saved it as a member acting in that organisation
   # (`Apiary.Stacks.saved_by/1`). It is nil, unknown, for a document saved by any other
-  # reach, such as an instance admin or an operator's person acting in a client, and once
-  # the saver's organisation is deleted; an unknown owner is never the run's
-  # organisation, so the run hides the harness.
+  # reach, such as an instance admin or a person acting in a client through another
+  # organisation, and once the saver's organisation is deleted; an unknown owner is never
+  # the run's organisation, so the run hides the harness.
   #
   # **Hidden.** `harness_hidden` is true when the run's organisation is operated
   # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation.
