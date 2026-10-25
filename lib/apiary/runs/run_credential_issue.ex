@@ -40,10 +40,15 @@ defmodule Apiary.Runs.RunCredentialIssue do
        entry item matches the scheme, the cause is `:scheme_outside_entry`; when some
        match it and none contains the hosts, `:host_outside_entry`; otherwise
        `:path_outside_entry`.
-    7. `expires_at`, when present, is an RFC 3339 time with `T` and an offset
-       (`:expires_at_invalid`), more than 6 minutes after `now`
-       (`:expires_at_too_soon`) and at most 24 hours after `now` (`:expires_at_too_late`).
-       Absent means that the credential does not expire.
+    7. `expires_at`, when present, is an RFC 3339 date-time (`:expires_at_invalid`):
+       `YYYY-MM-DD`, then `T` or `t`, then `hh:mm:ss`, then an optional fraction of
+       one or more digits, then `Z`, `z` or an offset `+hh:mm` or `-hh:mm`, where
+       `-00:00` means UTC. A space in place of `T` is refused. The fraction is cut to
+       microseconds, which can only make the expiry earlier. A leap second (second
+       60) is refused, because an Elixir `DateTime` has no value for second 60. The
+       time is more than 6 minutes after `now` (`:expires_at_too_soon`) and at most
+       24 hours after `now` (`:expires_at_too_late`). Absent means that the
+       credential does not expire.
 
   The entry is a map with string keys: `"apply"`, a list of 1 to 16 apply items, each
   with `"hosts"` (a list of strings), `"scheme"` (`"bearer"`, `"basic"` or `"header"`)
@@ -137,7 +142,8 @@ defmodule Apiary.Runs.RunCredentialIssue do
   @max_lifetime 24 * 60 * 60
 
   @path ~r/\A\/[^*?#\s]*\*?\z/u
-  @rfc3339 ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})\z/
+  # The date, the time, the fraction digits and the offset of an RFC 3339 date-time.
+  @rfc3339 ~r/\A(\d{4}-\d{2}-\d{2})[Tt](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})\z/
 
   @doc "The causes of a refusal, in the order of the checks."
   @spec causes() :: [cause()]
@@ -333,8 +339,7 @@ defmodule Apiary.Runs.RunCredentialIssue do
   # The expiry
 
   defp check_expires_at(%{"expires_at" => expires_at}, now) do
-    with true <- is_binary(expires_at) and Regex.match?(@rfc3339, expires_at),
-         {:ok, time, _offset} <- DateTime.from_iso8601(expires_at) do
+    with {:ok, time} <- parse_time(expires_at) do
       cond do
         DateTime.compare(time, DateTime.add(now, @min_lifetime, :second)) != :gt ->
           {:error, :expires_at_too_soon}
@@ -345,12 +350,31 @@ defmodule Apiary.Runs.RunCredentialIssue do
         true ->
           {:ok, time}
       end
+    end
+  end
+
+  defp check_expires_at(_credential, _now), do: {:ok, nil}
+
+  # Rebuilds the time with an upper-case `T`, at most 6 fraction digits and `Z` for
+  # `z` or `-00:00`, the forms `DateTime.from_iso8601/1` reads.
+  defp parse_time(value) when is_binary(value) do
+    with [date, time, fraction, offset] <-
+           Regex.run(@rfc3339, value, capture: :all_but_first),
+         {:ok, parsed, _offset} <-
+           DateTime.from_iso8601(date <> "T" <> time <> cut(fraction) <> utc(offset)) do
+      {:ok, parsed}
     else
       _invalid -> {:error, :expires_at_invalid}
     end
   end
 
-  defp check_expires_at(_credential, _now), do: {:ok, nil}
+  defp parse_time(_value), do: {:error, :expires_at_invalid}
+
+  defp cut(""), do: ""
+  defp cut(digits), do: "." <> binary_part(digits, 0, min(byte_size(digits), 6))
+
+  defp utc(offset) when offset in ["Z", "z", "-00:00"], do: "Z"
+  defp utc(offset), do: offset
 
   # Helpers
 

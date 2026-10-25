@@ -10,7 +10,7 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
     "hosts" => ["code.example.com"],
     "scheme" => "basic",
     "username" => "token-user",
-    "paths" => ["/team/app.git/*", "/team/app/*"]
+    "paths" => ["/team/docs/*", "/team/app/*"]
   }
   @api %{
     "hosts" => ["api.example.com", "uploads.example.com"],
@@ -86,9 +86,14 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
     end
 
     test "with paths under a path that ends in *" do
-      for paths <- [["/team/app/src/*"], ["/team/app/"], ["/team/app/a", "/team/app.git/info/*"]] do
+      for paths <- [["/team/app/src/*"], ["/team/app/"], ["/team/app/a", "/team/docs/info/*"]] do
         assert {:ok, _issue} = check(items([%{@code | "paths" => paths}])), inspect(paths)
       end
+    end
+
+    test "with a .. path under a * entry path, since paths are compared without normalisation" do
+      item = %{@code | "paths" => ["/team/app/../other/*"]}
+      assert {:ok, %{apply: [^item]}} = check(items([item]))
     end
 
     test "with paths where the entry item has none" do
@@ -131,6 +136,17 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
     test "a host of another entry item with the same scheme is refused" do
       item = %{@code | "hosts" => ["api.example.com"]}
       assert refused(items([item])) == :host_outside_entry
+    end
+
+    test "hosts spread across two entry items with the same scheme are refused" do
+      first = %{"hosts" => ["one.example.com"], "scheme" => "bearer", "paths" => ["/a/*"]}
+      second = %{"hosts" => ["two.example.com"], "scheme" => "bearer", "paths" => ["/a/*"]}
+      item = %{first | "hosts" => ["one.example.com", "two.example.com"]}
+
+      assert refused_with(entry([first, second]), items([item]), @now) == :host_outside_entry
+
+      assert {:ok, _issue} =
+               RunCredentialIssue.check(entry([first, second]), items([first, second]), @now)
     end
 
     test "a percent-encoded path is refused" do
@@ -327,7 +343,30 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
           do: assert(refused(answer(%{"expires_at" => value})) == :expires_at_too_late)
     end
 
-    test "a value that is not an RFC 3339 time is refused" do
+    test "a lower-case t and z, -00:00 and any number of fraction digits are accepted" do
+      for {value, expected} <- [
+            {"2026-10-25t13:00:00z", ~U[2026-10-25 13:00:00Z]},
+            {"2026-10-25t15:00:00+02:00", ~U[2026-10-25 13:00:00Z]},
+            {"2026-10-25T13:00:00-00:00", ~U[2026-10-25 13:00:00Z]},
+            {"2026-10-25T13:00:00.5Z", ~U[2026-10-25 13:00:00.5Z]},
+            {"2026-10-25T13:00:00.1234567891Z", ~U[2026-10-25 13:00:00.123456Z]}
+          ] do
+        assert {:ok, issue} = check(answer(%{"expires_at" => value})), value
+        assert DateTime.compare(issue.expires_at, expected) == :eq, value
+      end
+    end
+
+    test "24 hours and 0.0000009 seconds after now is cut to 24 hours and accepted" do
+      assert {:ok, issue} = check(answer(%{"expires_at" => "2026-10-26T12:00:00.0000009Z"}))
+      assert DateTime.compare(issue.expires_at, ~U[2026-10-26 12:00:00Z]) == :eq
+    end
+
+    test "a leap second is refused, because a DateTime has no value for second 60" do
+      for value <- ["2026-10-25T23:59:60Z", "2026-12-31T23:59:60.5z"],
+          do: assert(refused(answer(%{"expires_at" => value})) == :expires_at_invalid)
+    end
+
+    test "a value that is not an RFC 3339 date-time is refused" do
       for value <- [
             nil,
             1_793_000_000,
@@ -336,7 +375,8 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
             "2026-10-25",
             "2026-10-25T13:00:00",
             "2026-10-25 13:00:00Z",
-            "2026-10-25t13:00:00z",
+            "2026-10-25T13:00:00.Z",
+            "2026-10-25T13:00:00+0100",
             "2026-10-25T13:00Z",
             "2026-02-30T13:00:00Z",
             "2026-10-25T25:00:00Z",
