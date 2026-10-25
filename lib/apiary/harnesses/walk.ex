@@ -38,8 +38,9 @@ defmodule Apiary.Harnesses.Walk do
   # absolute, leads out of its source with `..`, or has a `\` or a `%`, which could
   # spell `..` another way. Every other `path` the walk reads is checked the same way: a
   # local path of the target's file, an export's stack file, and a local module of a
-  # level-2 base's `qory-stack.yaml`. A file's base given by name alone, `{stack: <name>}`,
-  # fails `invalid` with the save rule's words.
+  # level-2 base's `qory-stack.yaml`, which is read from the stack file's folder, so only
+  # a path that leaves the base's repository from there fails. A file's base given by
+  # name alone, `{stack: <name>}`, fails `invalid` with the save rule's words.
   #
   # Each level's addresses are resolved at every adapter with a `call_url`, in the order
   # of their names. A result counts under a live grant of a connected connection: its
@@ -353,7 +354,7 @@ defmodule Apiary.Harnesses.Walk do
     remote = remote(base, :base, target) ++ Enum.flat_map(modules, &remote(&1, :module, target))
     allowed = authorise(remote, organisation)
 
-    {listed, listed_by} =
+    {{listed, folder}, listed_by} =
       case {base, allowed} do
         {%{"git" => _git}, [{_source, base_location} | _]} ->
           {base_modules(base, base_location, base["ref"]), base_location.source}
@@ -363,13 +364,15 @@ defmodule Apiary.Harnesses.Walk do
           {base_modules(base, location, target_version(target)), location.source}
 
         _none ->
-          {[], nil}
+          {{[], []}, nil}
       end
 
     for {source, location} <- tl_or_all(base, allowed), do: pin(source, location)
 
+    # A local module of the base's stack is read from the stack file's folder, so only a
+    # path that leaves the base's repository from there is refused.
     for %{"path" => path} = module <- listed, is_binary(path), not is_map_key(module, "git") do
-      if refusal = path_refusal(path), do: fail(:invalid, listed_by, refusal)
+      if refusal = path_refusal(path, folder), do: fail(:invalid, listed_by, refusal)
     end
 
     second = Enum.flat_map(listed, &remote(&1, :module, nil))
@@ -512,9 +515,22 @@ defmodule Apiary.Harnesses.Walk do
     end
   end
 
-  # The rule `path` breaks, nil for a path that stays inside its source.
-  defp path_refusal(path) do
-    case parts(path) do
+  # The rule `path` breaks, read from the folder `folder` of its source, nil for a path
+  # that stays inside its source.
+  defp path_refusal(path, folder \\ []) do
+    refused =
+      case parts(path) do
+        # `..` that leaves the folder may stay in the repository; an absolute path never.
+        :leaves when folder != [] ->
+          if String.starts_with?(path, "/"),
+            do: :leaves,
+            else: inside(Enum.join(folder ++ [path], "/"))
+
+        parts ->
+          parts
+      end
+
+    case refused do
       :form -> rule("path_form", path: path)
       :leaves -> rule("path", path: path)
       _parts -> nil
@@ -643,9 +659,11 @@ defmodule Apiary.Harnesses.Walk do
   defp put_pin(git, ref, version),
     do: modify(:pins, &Map.put_new(&1, {git, ref}, version))
 
-  # The modules the base lists, read at `location` from `at`, its source's version.
+  # The modules the base lists, read at `location` from `at`, its source's version, and
+  # the folder of the file that lists them, as parts of the path from the repository's
+  # root.
   defp base_modules(base, location, at) do
-    {version, modules} =
+    {version, modules, folder} =
       cond do
         is_binary(base["stack"]) ->
           exported(location, base["stack"], at)
@@ -662,7 +680,7 @@ defmodule Apiary.Harnesses.Walk do
 
     if is_binary(base["git"]), do: put_pin(base["git"], base["ref"], version)
 
-    for %{"source" => %{} = source} <- modules, do: source
+    {for(%{"source" => %{} = source} <- modules, do: source), folder}
   end
 
   # The modules of the stack `name` the source at `location` exports.
@@ -689,15 +707,16 @@ defmodule Apiary.Harnesses.Walk do
 
     case parts(path) do
       parts when is_list(parts) ->
-        {_version, modules} = stack_at(location, Enum.drop(parts, -1), version)
-        {version, modules}
+        {_version, modules, folder} = stack_at(location, Enum.drop(parts, -1), version)
+        {version, modules, folder}
 
       _refused ->
         fail(:invalid, location.source, path_refusal(path))
     end
   end
 
-  # The modules of the `qory-stack.yaml` in the folder `parts` at `location`.
+  # The modules of the `qory-stack.yaml` in the folder `parts` at `location`, and that
+  # folder from the repository's root.
   defp stack_at(location, parts, at) do
     case read(location, parts ++ [@stack_file], at) do
       {nil, _version} ->
@@ -705,7 +724,7 @@ defmodule Apiary.Harnesses.Walk do
         fail(:invalid, location.source, rule("no_stack_file", path: path))
 
       {content, version} ->
-        {version, stack_modules(location, content)}
+        {version, stack_modules(location, content), location.prefix ++ parts}
     end
   end
 
@@ -719,7 +738,8 @@ defmodule Apiary.Harnesses.Walk do
             case Reader.harness(content) do
               {:ok, section} ->
                 modules = Map.get(section, "modules")
-                {version, if(is_list(modules), do: Enum.filter(modules, &is_map/1), else: [])}
+                modules = if is_list(modules), do: Enum.filter(modules, &is_map/1), else: []
+                {version, modules, location.prefix}
 
               :none ->
                 fail(:invalid, location.source, rule("no_stack"))
@@ -733,7 +753,7 @@ defmodule Apiary.Harnesses.Walk do
         end
 
       {content, version} ->
-        {version, stack_modules(location, content)}
+        {version, stack_modules(location, content), location.prefix}
     end
   end
 

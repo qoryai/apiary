@@ -695,6 +695,33 @@ defmodule Apiary.Harnesses.WalkTest do
 
       assert {:ok, _walked} = Walk.run(ctx.input)
     end
+
+    test "a local module of a level-2 stack is read from the stack file's folder", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@harness}\", ref: v1, path: stacks/web}\n")
+
+      for {path, result} <- [{"../../modules/lint", :ok}, {"../../../x", :leaves}] do
+        stack = "modules:\n  - source: {path: '#{path}'}\n"
+
+        serve([ctx.run],
+          covered: covering(ctx),
+          files: %{{"R_harness", "stacks/web/qory-stack.yaml"} => stack}
+        )
+
+        case result do
+          :ok ->
+            assert {:ok, _walked} = Walk.run(ctx.input), path
+
+          :leaves ->
+            assert {:failed,
+                    %{
+                      failure: :invalid,
+                      source: @harness,
+                      rule: %{"rule" => "path", "values" => %{"path" => ^path}}
+                    }} = Walk.run(ctx.input),
+                   path
+        end
+      end
+    end
   end
 
   ## Calls and limits
