@@ -114,9 +114,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   intermediate CA certificates were compromised (Debian DSA-6572-1).
 - plug_crypto is updated to 2.2.1, which fixes CVE-2026-105963: a call to `Plug.Crypto` with
   an argument of the wrong type could write the secret key base to the logs.
-- A logged invitation token that contains `qak_` or an enrolment code's prefix is filtered
-  whole, unless a secret follows it in a query with nothing between them. Before, the
-  characters of the token before that prefix stayed in the log line.
+- The log filter replaces an invitation link's token before it looks for `qak_` and an
+  enrolment code's prefix. Before, a token that contained one of them could leave up to
+  39 of its 43 characters in the log line.
 
 ### Migrations
 
@@ -133,8 +133,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `connections`: a column with a constant default, which rewrites no row, and a check. Its
   unique index is dropped and built again with that column inside the migration, so writes
   to `connections` wait until the build ends.
-- `nodes`: nullable columns, checks, two indexes and a trigger. The checks on the new
-  columns scan `nodes` under a lock that blocks writes.
+- `nodes`: nullable columns, checks, two indexes and a trigger. Three of the checks on
+  the new columns scan `nodes` under a lock that blocks writes.
 - The foreign keys from `dispatches`, `environments`, `dispatch_runs` and `runs` to `nodes`
   are replaced, with a trigger on each table. They are added `NOT VALID` and validated by a
   scan that blocks no write.
