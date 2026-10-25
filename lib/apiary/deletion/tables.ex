@@ -46,8 +46,9 @@ defmodule Apiary.Deletion.Tables do
   # the keys, the codes, the runs, the instances and the organisation's connections to
   # adapters before the nodes they name; the work items before the tickets they name, a
   # ticket's comments before the ticket, and the tickets and the bookkeeping of their
-  # listings before the collections they belong to; an adapter's collections and the
-  # bookkeeping of their listings before the connections they name; a work item's events,
+  # listings before the collections they belong to; an adapter's collections, the
+  # bookkeeping of their listings and the grants before the connections they name; a work
+  # item's events,
   # answers, confirmations and comments before the work item; a connection's workspaces
   # and a provider's models before the connection, and the connections before the
   # releases, the service definitions and the secrets they name; everything of a
@@ -103,6 +104,7 @@ defmodule Apiary.Deletion.Tables do
     {"source_item_listings", :organisation},
     {"source_collection_listings", :organisation},
     {"source_collections", :organisation},
+    {"adapter_grants", :organisation},
     {"adapter_connections", :organisation},
     {"nodes", :workspace},
     {"invitations", :workspace},
