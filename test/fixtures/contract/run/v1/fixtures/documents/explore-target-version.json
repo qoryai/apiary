@@ -6,14 +6,12 @@
     "system": "code.example.com",
     "path": "acme/shop"
   },
+  "target_version": "0123456789abcdef0123456789abcdef01234567",
   "work_item": {
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "Checkout fails on an empty cart"
   },
-  "stack": "https://code.example.com/team/stacks#rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr:core",
-  "workflow": "hello",
-  "harness_hidden": true,
   "inputs": {
     "version": 1,
     "work_item": {

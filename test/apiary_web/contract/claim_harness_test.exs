@@ -1,21 +1,21 @@
-defmodule ApiaryWeb.Contract.ClaimStackTest do
+defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   # The claim answer as a node pool's starter receives it, with no `machine`, and the
-  # run's documents: for an explore run, the workflow of the one stack row with a
-  # workflow at the run's places, the stack reference of the harness document that
-  # resolves (`Apiary.Stacks`) and `harness_hidden`; none of the three with no such row,
-  # with two, and for a prebuild.
-  # Each answer is valid under the vendored `claim-answer.schema.json`, so the module is
-  # tagged `:contract`. Not async: the features are the whole node's.
+  # harness members of the run's documents, from the run's harness walk
+  # (`Apiary.Harnesses.WalkJob`): `target_version`, `workflow`, `harness_hidden` and,
+  # for a walk whose document came from the stacks, `harness`. None of the four for a
+  # run with no workflow and for a prebuild. Each answer and each documents object is
+  # valid under the vendored schemas, so the module is tagged `:contract`. Not async: the
+  # features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
-  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, walk_resolved!: 1]
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, walk_resolved!: 2]
   import Apiary.NodesFixtures, only: [collection_fixture: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo, Stacks}
-  alias Apiary.Runs.Target
+  alias Apiary.Harnesses.Reader
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
@@ -51,8 +51,7 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
   end
 
   @document "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
-  @reference "https://code.example.com/team/stacks#main:core"
-  @other_document "extends: {git: https://code.example.com/team/stacks, ref: v2, path: x}\n"
+  @version "0123456789abcdef0123456789abcdef01234567"
 
   setup do
     Process.put(:now_time, {SignedRequest.now(), 0})
@@ -63,7 +62,8 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
     |> Map.put(:scope, scope)
   end
 
-  # Stores the workspace's stack row for the workflow `hello`, with `harness`.
+  # Stores the workspace's stack row for the workflow `hello`, with `harness`: the run's
+  # one row with a workflow, so the run's walk is queued.
   defp workflow!(ctx, harness \\ @document) do
     {:ok, _stack} =
       Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "hello"}, harness)
@@ -114,32 +114,33 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
     claim.resp_body
   end
 
-  # The documents the claim stored on the run it registered, decoded.
-  defp documents(claim) do
+  # The documents the claim stored on the run it registered, as stored.
+  defp stored(claim) do
     code = Jason.decode!(claim)["run_code"]
     [head, _fingerprint] = String.split(code, ".")
     hash = Apiary.AccessKeys.EnrolmentCode.hash(head)
-    run = Repo.get_by!(Apiary.Runs.Run, run_code_sha256: hash)
-    Jason.decode!(run.run_documents)
+    Repo.get_by!(Apiary.Runs.Run, run_code_sha256: hash).run_documents
   end
 
-  # The target row of the work items `explore!/1` queues: tickets.example.com, acme/shop.
-  defp target!(ctx) do
-    Repo.insert!(%Target{
-      organisation_id: ctx.scope.organisation.id,
-      workspace_id: ctx.scope.workspace.id,
-      system: "tickets.example.com",
-      path: "acme/shop",
-      first_seen_at: DateTime.utc_now()
-    })
-  end
+  defp documents(claim), do: claim |> stored() |> Jason.decode!()
 
-  defp explore!(ctx) do
-    work_item = work_item_fixture(ctx.scope, %{target_system: "tickets.example.com"})
+  # A work item's explore run, queued, its harness walk resolved with `walk`.
+  defp explore!(ctx, walk, attrs \\ %{}) do
+    work_item =
+      work_item_fixture(ctx.scope, Map.merge(%{target_system: "tickets.example.com"}, attrs))
+
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    walk_resolved!(run)
+    walk_resolved!(run, walk)
     work_item
   end
+
+  defp section do
+    {:ok, section} = Reader.document(@document)
+    section
+  end
+
+  defp valid!(documents),
+    do: assert({:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json")))
 
   # The members of a JSON object, in their order.
   defp members(json),
@@ -152,78 +153,90 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
   @claim ~w(version revision dispatch_id pool_id lease_until)
   @code ~w(run_code gateway_url max_lifetime_minutes)
 
+  @harness ~w(target_version workflow harness_hidden harness)
+
   describe "an explore run" do
-    test "with one stack row with a workflow has that workflow and its stack, and no machine",
-         ctx do
+    test "whose target's harness file applies has its version and no harness", ctx do
       workflow!(ctx)
-      explore!(ctx)
+      explore!(ctx, origin: :file, target_version: @version)
       claim = claim(ctx)
       assert members(claim) == @claim ++ @code
       documents = documents(claim)
 
-      assert %{"stack" => @reference, "workflow" => "hello", "harness_hidden" => false} =
-               documents
+      assert Map.take(documents, @harness) == %{
+               "target_version" => @version,
+               "workflow" => "hello",
+               "harness_hidden" => false
+             }
 
-      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
+      valid!(documents)
     end
 
-    test "has the stack its target's level sets, shown to the organisation that saved it",
+    test "whose stacks' document applies has it as harness, after its target's version",
          ctx do
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "hello"}, @document)
+      workflow!(ctx)
+      explore!(ctx, origin: :setting, document: section(), target_version: @version)
+      stored = stored(claim(ctx))
+      documents = Jason.decode!(stored)
 
-      explore!(ctx)
+      assert Map.take(documents, @harness) == %{
+               "target_version" => @version,
+               "workflow" => "hello",
+               "harness_hidden" => false,
+               "harness" => %{"harness" => section()}
+             }
+
+      assert stored |> members() |> Enum.filter(&(&1 in @harness)) == @harness
+
+      valid!(documents)
+    end
+
+    test "with no target has the stacks' document and no target version", ctx do
+      ctx = %{ctx | scope: with_domain(ctx.scope, "general")}
+      workflow!(ctx)
+
+      explore!(ctx, [origin: :setting, document: section()], %{
+        target_system: nil,
+        target_path: nil
+      })
+
       documents = documents(claim(ctx))
 
-      assert %{"stack" => @reference, "workflow" => "hello", "harness_hidden" => false} =
-               documents
+      assert Map.take(documents, @harness) == %{
+               "workflow" => "hello",
+               "harness_hidden" => false,
+               "harness" => %{"harness" => section()}
+             }
 
-      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
+      valid!(documents)
     end
 
-    test "hides the harness of a document another organisation saved", ctx do
+    test "with a hidden harness has harness_hidden true", ctx do
       %{scope: other} = sign_up_fixture()
 
       {:ok, _stack} =
         Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "hello"}, @document)
 
-      explore!(ctx)
+      explore!(ctx, origin: :setting, document: section(), harness_hidden: true)
       documents = documents(claim(ctx))
-
-      assert %{"stack" => @reference, "workflow" => "hello", "harness_hidden" => true} =
-               documents
-
-      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
+      assert %{"workflow" => "hello", "harness_hidden" => true} = documents
+      valid!(documents)
     end
 
-    test "with no stack row with a workflow has no stack, whatever its levels set, and no machine",
-         ctx do
+    test "with no workflow has none of the harness members, and no machine", ctx do
       {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @document)
 
-      {:ok, _stack} =
-        Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, @other_document)
-
-      explore!(ctx)
+      explore!(ctx, [])
       claim = claim(ctx)
       assert members(claim) == @claim ++ @code
       documents = documents(claim)
-      refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
-      assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
-    end
-
-    test "with two stack rows with a workflow has no stack", ctx do
-      workflow!(ctx)
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "review"}, @document)
-
-      explore!(ctx)
-      claim = claim(ctx)
-      assert members(claim) == @claim ++ @code
-      documents = documents(claim)
-      refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
+      assert Map.take(documents, @harness) == %{}
+      valid!(documents)
     end
   end
 
   describe "a prebuild" do
-    test "of a workspace with a stack row with a workflow has no machine and no stack", ctx do
+    test "of a workspace with a stack row with a workflow has no harness members", ctx do
       workflow!(ctx)
       collection = collection_fixture(ctx.scope)
 
@@ -233,7 +246,7 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
       claim = claim(ctx)
       assert members(claim) == @claim ++ @code
       documents = documents(claim)
-      refute Enum.any?(~w(stack workflow harness_hidden), &Map.has_key?(documents, &1))
+      assert Map.take(documents, @harness) == %{}
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end
   end

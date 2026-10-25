@@ -1,19 +1,40 @@
 {
   "step": "explore",
-  "domain": "software",
+  "domain": "marketing",
   "access": "read",
   "target": {
-    "system": "code.example.com",
-    "path": "acme/shop"
+    "system": "ads.example.com",
+    "path": "accounts/1234"
   },
   "work_item": {
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
-    "title": "Checkout fails on an empty cart"
+    "title": "The spring campaign spends past its daily budget"
   },
-  "stack": "http://code.example.com/team/stacks#main:core",
   "workflow": "hello",
   "harness_hidden": true,
+  "harness": {
+    "harness": {
+      "name": "campaigns",
+      "extends": {
+        "git": "https://code.example.com/team/harness",
+        "ref": "v2.4.0",
+        "stack": "marketing"
+      },
+      "modules": [
+        {
+          "source": {
+            "git": "https://code.example.com/team/harness",
+            "ref": "v2.4.0",
+            "module": "budgets"
+          }
+        }
+      ]
+    },
+    "git": {
+      "timeout": "30s"
+    }
+  },
   "inputs": {
     "version": 1,
     "work_item": {
@@ -28,17 +49,17 @@
     "ticket": {
       "external_ref": "TRK-1",
       "url": "https://tracker.example.com/items/TRK-1",
-      "title": "Checkout fails on an empty cart",
-      "body": "Pressing Checkout with an empty cart shows an error page.\nA cart with one item works.",
+      "title": "The spring campaign spends past its daily budget",
+      "body": "The spring campaign spent 140 of its 100 daily budget on 2026-10-16.\nThe other campaigns stay within their budgets.",
       "filed_by": {
         "name": "Alex Example",
         "kind": "person"
       },
       "filed_at": "2026-10-17T09:12:00Z",
-      "collection": "Shop"
+      "collection": "Campaigns"
     },
     "instruction": {
-      "text": "Look at the cart page first.",
+      "text": "Look at the budget settings first.",
       "by": {
         "name": "Sam Example"
       },
@@ -51,23 +72,15 @@
           "kind": "person"
         },
         "at": "2026-10-17T09:15:00Z",
-        "body": "It started after the last cart change."
-      },
-      {
-        "by": {
-          "name": "Example triage",
-          "kind": "automation"
-        },
-        "at": "2026-10-17T09:16:00Z",
-        "body": "Labelled as a bug."
+        "body": "It started after the bid change on 2026-10-15."
       }
     ],
     "comments_omitted": 0,
     "answers": [],
     "target": {
-      "system": "code.example.com",
-      "path": "acme/shop"
+      "system": "ads.example.com",
+      "path": "accounts/1234"
     },
-    "domain": "software"
+    "domain": "marketing"
   }
 }

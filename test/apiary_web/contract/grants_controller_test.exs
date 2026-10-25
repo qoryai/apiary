@@ -201,9 +201,10 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
         %{"error" => "pass_unknown"}
       )
 
-      # A ref live under another organisation's connection.
+      # A ref live under another organisation's connection, refused as the contract's
+      # fixture is.
       assert report(ctx, body(theirs)).status == 204
-      refused.(body(connection), 409, %{"error" => "grant_taken"})
+      refused.(body(connection), 409, fixture("refusal/grant-taken.json"))
 
       # The nonce is spent once its report is accepted: the same report again, built anew.
       assert report(ctx, body(connection, %{"grant_ref" => "G_2"})).status == 204

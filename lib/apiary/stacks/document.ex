@@ -29,18 +29,10 @@ defmodule Apiary.Stacks.Document do
   #      validated with JSV: git sources and exports only, no `{path}` source, no module
   #      by name alone, no `link`. A bare `{git, ref}` source, the root of a remote
   #      source, is allowed.
-  #
-  # ## The run's stack
-  #
-  # The run contract pinned at test/fixtures/contract/run/v1 still takes a run's `stack`,
-  # a stack reference `<url>#<ref>:<path>`, and not the document. `reference/1` is the
-  # reference of a document that is a base and nothing else, `extends: {git, ref}` with
-  # an optional `path`, and nil for any other document.
   @moduledoc false
 
   @behaviour JSV.Resolver
 
-  alias Apiary.Contract
   alias Apiary.Harnesses.Reader
 
   @schema_path Path.join(__DIR__, "documents.schema.json")
@@ -56,7 +48,7 @@ defmodule Apiary.Stacks.Document do
 
   # The save check's wall-clock limit for reading a document, a tenth of the reader's
   # limit of 2 seconds: a saved document reads well inside the reader's limit when a
-  # handover reads it again for the run's stack (`reference/1`).
+  # run's harness walk reads it again (`Apiary.Harnesses.Walk`).
   @save_time_limit_ms 200
 
   @doc false
@@ -171,11 +163,10 @@ defmodule Apiary.Stacks.Document do
   # An address with a scheme whose authority has `@`: user information.
   @user_information ~r{\A[A-Za-z][A-Za-z0-9+.-]*://[^/?#]*@}
 
-  # The https address a stack reference had before harness documents
-  # (`Apiary.Contract.Stack`): `https://`, a host, an optional port and an optional path,
-  # with no user information, no query and no fragment. The host is a name, which may
-  # contain the percent-encodings `%80` to `%FF` and `%25`, or an IPv6 address in
-  # brackets.
+  # The https address a stack reference had before harness documents: `https://`, a
+  # host, an optional port and an optional path, with no user information, no query and
+  # no fragment. The host is a name, which may contain the percent-encodings `%80` to
+  # `%FF` and `%25`, or an IPv6 address in brackets.
   @max_address 2560
   @dec_octet "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
   @ipv4 "#{@dec_octet}\\.#{@dec_octet}\\.#{@dec_octet}\\.#{@dec_octet}"
@@ -353,25 +344,4 @@ defmodule Apiary.Stacks.Document do
   @impl JSV.Resolver
   def resolve(@schema_id, _opts), do: {:ok, @schema}
   def resolve(url, _opts), do: {:error, {:not_vendored, url}}
-
-  @doc false
-  # reference/1 is the stack reference of `text` for a run's `stack`: the document's
-  # base, `<git>#<ref>:<path>` with `.` for the root, when the document is that base
-  # and nothing else and the reference is valid under the run contract; nil otherwise.
-  @spec reference(String.t() | nil) :: String.t() | nil
-  def reference(text) when is_binary(text) do
-    with {:ok, %{"extends" => %{"git" => git, "ref" => ref} = base} = section}
-         when map_size(section) == 1 and is_binary(git) and is_binary(ref) <-
-           Reader.document(text),
-         [] <- Map.keys(base) -- ["git", "ref", "path"],
-         path when is_binary(path) <- Map.get(base, "path", "."),
-         reference = "#{git}##{ref}:#{path}",
-         true <- Contract.Stack.reference?(reference) do
-      reference
-    else
-      _other -> nil
-    end
-  end
-
-  def reference(nil), do: nil
 end

@@ -94,7 +94,6 @@ defmodule Apiary.Stacks.HarnessMigrationTest do
                "  path: \"examples/hello\"\n"
 
     assert Stacks.Document.errors(value("harness", demo)) == []
-    assert Stacks.Document.reference(value("harness", demo)) == @demo
 
     assert {:ok, %{"extends" => %{"git" => "https://code.example.com:8443/team/stacks"}}} =
              Apiary.Harnesses.Reader.document(value("harness", port))
