@@ -288,6 +288,66 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
     end
   end
 
+  # A provider made in `scope`'s organisation, on `chain`; the edition lets any scope write
+  # the operator's chain.
+  defp provider_in(scope, chain) do
+    EditionStubs.ServesAcrossWithChain.writer(true)
+
+    {:ok, provider} =
+      Connections.create_provider(scope, %{
+        provider: "anthropic",
+        chain: chain,
+        keys: [%{value_id: "main", value: model_key()}]
+      })
+
+    provider
+  end
+
+  # The secrets request of a run that kept `provider` on `chain`, through the operator's
+  # gateway: the answer and the log.
+  defp refused_organisation(ctx, provider, chain) do
+    gateway_key = operator_gateway(ctx)
+    operator_chain!(ctx, false)
+    {{:ok, handed}, _queued} = hand_over(ctx)
+    run = gateway_key |> attach!(handed) |> set_provider!(provider, chain)
+
+    with_log(fn -> post_secrets(gateway_key, run, digest(gateway_key, run), provider) end)
+  end
+
+  describe "a provider that is not a row of the organisation its chain is made of" do
+    test "of an operator's chain, in an organisation other than the operator's", ctx do
+      %{scope: stranger} = sign_up_fixture()
+      provider = provider_in(stranger, "operator")
+
+      {conn, log} = refused_organisation(ctx, provider, "operator")
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "#{provider.public_id} may not be sealed for its gateway (organisation)"
+      refute log =~ model_key()
+      assert seals() == []
+    end
+
+    test "of an operator's chain, in the client's organisation", ctx do
+      provider = provider_in(ctx.client, "operator")
+
+      {conn, log} = refused_organisation(ctx, provider, "operator")
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "#{provider.public_id} may not be sealed for its gateway (organisation)"
+      assert seals() == []
+    end
+
+    test "of the organisation's chain, in the operator's organisation", ctx do
+      provider = provider_in(ctx.operator, "organisation")
+
+      {conn, log} = refused_organisation(ctx, provider, "organisation")
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "#{provider.public_id} may not be sealed for its gateway (organisation)"
+      assert seals() == []
+    end
+  end
+
   describe "the instance's gateway" do
     test "is sealed a key of each organisation's chain, in each run's organisation's trail",
          ctx do
