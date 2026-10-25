@@ -1,8 +1,14 @@
 defmodule Apiary.Runs.Connection do
   @moduledoc """
   The egress of a run to one destination (host, port, path; the path is `""`
-  when the events carry none), counted over the run's `dev.qory.run.egress`
-  events. A projection: rebuilt from `events`.
+  when the events carry none) on one channel, counted over the run's
+  `dev.qory.run.egress` events. A projection: rebuilt from `events`.
+
+  `channel` is `"session"` for the run's proxy, which the run's sessions, host work and
+  setup go through, and `"stack"` for the stack proxy, which the fetch of the run's
+  harness definition goes through before its first session joins. The stack proxy
+  decides by the run configuration's `stack_hosts`, never by the workspace's rules. A
+  hidden harness's stack records have no path and no path rule.
 
   The `last_*` columns are those of the attempt with the highest sequence. `last_tool` is
   the name of the tool whose host the last attempt was for, when the proxy decided it by
@@ -18,6 +24,7 @@ defmodule Apiary.Runs.Connection do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "connections" do
+    field :channel, :string, default: "session"
     field :host, :string
     field :port, :integer
     field :path, :string, default: ""

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_00000052",
+  "changes": [
+    {
+      "kind": "grant",
+      "connection_id": "ac_f1xt0re000000000",
+      "grant_ref": "G_1",
+      "status": "linked"
+    },
+    {
+      "kind": "grant",
+      "connection_id": "ac_f1xt0re000000000",
+      "grant_ref": "G_2",
+      "status": "linked"
+    },
+    {
+      "kind": "grant",
+      "connection_id": "ac_f1xt0re000000000",
+      "grant_ref": "G_1",
+      "status": "unlinked"
+    }
+  ]
+}

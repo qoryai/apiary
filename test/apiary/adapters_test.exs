@@ -26,7 +26,12 @@ defmodule Apiary.AdaptersTest do
     :"adapter.declare",
     :"source_item.post",
     :"work_item.read_changes",
-    :"adapter.disconnect"
+    :"adapter.app_values_set",
+    :"adapter.app_values_seal",
+    :"adapter.disconnect",
+    :"adapter.report_grant",
+    :"adapter.end_grant",
+    :"adapter.read_grants"
   ]
 
   # The edition holds the organisations a test names refused, as an edition that refuses
@@ -874,8 +879,89 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
+  describe "the apply items of its work credential, at each start" do
+    # A declaration as `Apiary.Adapters.Wire.declaration/1` reads one, with `document` as
+    # its description.
+    defp declare_with(adapter_key, document) do
+      {:ok, description} = document |> Jason.encode!() |> Apiary.Integrations.Description.parse()
+
+      Adapters.declare(Scope.for_access_key(adapter_key), %{
+        time: ~U[2026-10-25 12:00:00Z],
+        connect_url: "https://tracker-adapter.acme.example/connect",
+        default_interval: 3600,
+        minimum_interval: 900,
+        sends_changes: true,
+        description: description
+      })
+    end
+
+    setup %{admin: admin} do
+      adapter = adapter_fixture()
+      %{key: key} = keyed(admin, adapter)
+      %{adapter: adapter, key: key}
+    end
+
+    test "are kept with the description's exact egress_hosts, and a start without them clears them",
+         %{adapter: adapter, key: key} do
+      document =
+        "example-source-apply-bearer.json"
+        |> Apiary.DescriptionFixtures.contract_description()
+        |> Map.put("egress_hosts", ["api.example.com", "cdn.example.com"])
+
+      assert {:ok, _declared} = declare_with(key, document)
+
+      assert %Node{
+               source_apply: [
+                 %{
+                   "hosts" => ["api.example.com"],
+                   "scheme" => "bearer",
+                   "paths" => ["/projects/{target.path}", "/projects/{target.path}/*", "/user"]
+                 }
+               ],
+               egress_hosts: ["api.example.com", "cdn.example.com"]
+             } = reload(adapter)
+
+      assert {:ok, _declared} =
+               declare_with(key, Apiary.DescriptionFixtures.contract_description())
+
+      assert %Node{source_apply: nil, egress_hosts: nil} = reload(adapter)
+    end
+
+    test "the database keeps them only on an adapter, 1 to 16 objects", %{
+      adapter: adapter,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      item = %{"hosts" => ["api.example.com"], "scheme" => "bearer"}
+
+      for {id, changes} <- [
+            {node.id, [source_apply: [item]]},
+            {node.id, [egress_hosts: ["api.example.com"]]},
+            {adapter.id, [source_apply: []]},
+            {adapter.id, [source_apply: List.duplicate(item, 17)]},
+            {adapter.id, [egress_hosts: []]},
+            {adapter.id, [egress_hosts: [nil]]}
+          ] do
+        assert refused(fn ->
+                 Repo.update_all(from(n in Node, where: n.id == ^id), set: changes)
+               end) == "nodes_source_apply_check",
+               inspect(changes)
+      end
+
+      assert {:error, %Postgrex.Error{postgres: %{constraint: "nodes_source_apply_check"}}} =
+               Repo.query("UPDATE nodes SET source_apply = '[1]'::jsonb WHERE id = $1", [
+                 Ecto.UUID.dump!(adapter.id)
+               ])
+
+      assert {1, _rows} =
+               Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+                 set: [source_apply: List.duplicate(item, 16), egress_hosts: ["api.example.com"]]
+               )
+    end
+  end
+
   describe "the schema" do
-    test "a node has no organisation exactly when it is an adapter, which has no workspace either",
+    test "a node has no organisation only when it is an adapter, or the instance's pool or gateway, which have no workspace either",
          %{scope: scope} do
       adapter = adapter_fixture()
       gateway = organisation_gateway_fixture(scope)
@@ -893,30 +979,41 @@ defmodule Apiary.AdaptersTest do
                  "nodes_place_check"
       end
 
-      for {other, prefix} <- [{gateway, "ng"}, {node, "nd"}] do
-        assert refused(fn ->
-                 Repo.insert_all(Node, [
-                   row(other, %{
-                     public_id: Apiary.PublicId.generate(prefix),
-                     organisation_id: nil,
-                     workspace_id: nil
-                   })
-                 ])
-               end) == "nodes_place_check"
-      end
+      assert refused(fn ->
+               Repo.insert_all(Node, [
+                 row(node, %{
+                   public_id: Apiary.PublicId.generate("nd"),
+                   organisation_id: nil,
+                   workspace_id: nil
+                 })
+               ])
+             end) == "nodes_place_check"
+
+      # A gateway, or a pool, with no organisation is the instance's: this module is async,
+      # and the instance has one of each, so `Apiary.Nodes.InstanceNodeMigrationTest`, which
+      # is not, makes them. Neither has a workspace without an organisation.
+      assert refused(fn ->
+               Repo.insert_all(Node, [
+                 row(gateway, %{
+                   public_id: Apiary.PublicId.generate("ng"),
+                   organisation_id: nil,
+                   workspace_id: scope.workspace.id
+                 })
+               ])
+             end) == "nodes_place_check"
 
       # None moves: an adapter takes no organisation, and a gateway keeps its own.
       assert refused(fn ->
                Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
                  set: [organisation_id: scope.organisation.id]
                )
-             end) == "nodes_place_check"
+             end) == "nodes_place_fixed"
 
       assert refused(fn ->
                Repo.update_all(from(n in Node, where: n.id == ^gateway.id),
                  set: [organisation_id: nil]
                )
-             end) == "nodes_place_check"
+             end) == "nodes_place_fixed"
 
       assert refused(fn ->
                Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
@@ -1089,7 +1186,9 @@ defmodule Apiary.AdaptersTest do
                end) == "node_place_matches"
       end
 
-      # An adapter has no instances: none without an organisation, none of an organisation.
+      # An adapter has no instances of an organisation. A row without one is the shape of the
+      # instance's pool's and gateway's rows, which the schema accepts for any node with no
+      # organisation; only those two write one (`Apiary.Nodes.seen/3`).
       now = DateTime.utc_now()
 
       instance = fn organisation_id ->
@@ -1108,10 +1207,6 @@ defmodule Apiary.AdaptersTest do
       end
 
       assert refused(fn -> instance.(scope.organisation.id) end) == "node_place_matches"
-
-      assert_raise Postgrex.Error, ~r/null value in column "organisation_id"/, fn ->
-        instance.(nil)
-      end
 
       # The other way: a key of a workspace's node or of an organisation's gateway, out of
       # its organisation.

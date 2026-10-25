@@ -102,10 +102,11 @@ defmodule Apiary.Runs.Record do
 
   # The first twenty objects of the array under `key` that have a string `name`, each as
   # `{"name", "argument", "hosts"}`: the name cut at 120 characters, the argument as
-  # `@argument_sql` reads it, the first ten string hosts cut at 255. What a credential and
-  # a tool of `run.policy_applied` are read as, by `policy/2`, whose arguments are cut at
-  # `@argument_read`, and by the statement of the timeline's items, whose arguments are
-  # cut at `Timeline.max_argument/0`. `%DATA%` is the event's data.
+  # `@argument_sql` reads it, the first ten string hosts cut at 255, `[]` for none. What a
+  # credential and a tool of `run.policy_applied` are read as, by `policy/2`, whose
+  # arguments are cut at `@argument_read`, and by the statement of the timeline's items,
+  # whose arguments are cut at `Timeline.max_argument/0`. `%DATA%` is the event's data.
+  # A credential also has `"purpose"` (`%PURPOSE%`, `@purpose_sql`).
   @named_hosts """
   (SELECT coalesce(jsonb_agg(jsonb_build_object(
       'name', left(c ->> 'name', 120),
@@ -114,18 +115,37 @@ defmodule Apiary.Runs.Record do
                 FROM (SELECT h FROM jsonb_array_elements(
                         CASE WHEN jsonb_typeof(c -> 'hosts') = 'array' THEN c -> 'hosts' ELSE '[]'::jsonb END
                       ) WITH ORDINALITY hs(h, n)
-                      WHERE jsonb_typeof(h) = 'string' ORDER BY n LIMIT 10) hq)) ORDER BY n), '[]'::jsonb)
+                      WHERE jsonb_typeof(h) = 'string' ORDER BY n LIMIT 10) hq)%PURPOSE%)
+      ORDER BY n), '[]'::jsonb)
    FROM (SELECT c, n FROM jsonb_array_elements(
            CASE WHEN jsonb_typeof(%DATA% -> '%KEY%') = 'array' THEN %DATA% -> '%KEY%' ELSE '[]'::jsonb END
          ) WITH ORDINALITY cs(c, n)
          WHERE jsonb_typeof(c -> 'name') = 'string' ORDER BY n LIMIT 20) cq)
   """
 
+  # A credential's purpose: `harness` where its entry says so, else `work`, which is what
+  # an entry without one means. Under a hidden harness, Forager lists a harness credential
+  # by its name and purpose alone, with no hosts.
+  @purpose_sql """
+  ,
+      'purpose', CASE WHEN c ->> 'purpose' = 'harness' THEN 'harness' ELSE 'work' END\
+  """
+
+  # `@named_hosts` for the array under each key, a credential's with its purpose.
+  @named_hosts_of %{
+    "tools" =>
+      @named_hosts |> String.replace("%KEY%", "tools") |> String.replace("%PURPOSE%", ""),
+    "credentials" =>
+      @named_hosts
+      |> String.replace("%KEY%", "credentials")
+      |> String.replace("%PURPOSE%", @purpose_sql)
+  }
+
   defmacrop named_hosts(data, key) do
     sql =
-      @named_hosts
+      @named_hosts_of
+      |> Map.fetch!(key)
       |> String.replace("%DATA%", "?")
-      |> String.replace("%KEY%", key)
       |> String.replace("%ARGUMENT%", Integer.to_string(@argument_read))
 
     quote do: fragment(unquote(sql), unquote(data), unquote(data))
@@ -382,7 +402,7 @@ defmodule Apiary.Runs.Record do
         slim(scope, run, Timeline.needed(whole), Timeline.full_limit())
       )
 
-    Timeline.build(light, events, full: MapSet.to_list(full))
+    Timeline.build(light, events, full: MapSet.to_list(full), scope: scope, run: run)
   end
 
   # The columns of the statement below, by name: its own names, never an event's.
@@ -401,7 +421,7 @@ defmodule Apiary.Runs.Record do
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
-    #{Enum.map_join(~w(allow deny), ",\n  ", fn list -> """
+    #{Enum.map_join(~w(allow allow_first deny), ",\n  ", fn list -> """
     CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN jsonb_array_length(e.data -> '#{list}') ELSE 0 END AS #{list}_count,
     CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN
       (SELECT coalesce(jsonb_agg(left(v #>> '{}', 255)), '[]'::jsonb)
@@ -412,7 +432,8 @@ defmodule Apiary.Runs.Record do
        FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN e.data -> 'terminated' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
              WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT 5) q) AS terminated,
     CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN jsonb_array_length(e.data -> 'terminated') ELSE 0 END AS terminated_count,
-    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts |> String.replace("%DATA%", "e.data") |> String.replace("%KEY%", "tools") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS tools,
+    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts_of["tools"] |> String.replace("%DATA%", "e.data") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS tools,
+    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts_of["credentials"] |> String.replace("%DATA%", "e.data") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS credentials,
     #{Enum.map_join(~w(command file_path pattern path url description), ",\n  ", &"CASE WHEN jsonb_typeof(x.i -> '#{&1}') = 'string' THEN left(x.i ->> '#{&1}', 400) END AS input_#{&1}")},
     (SELECT left(value #>> '{}', 400) FROM jsonb_each(CASE WHEN jsonb_typeof(x.i) = 'object' THEN x.i ELSE '{}'::jsonb END)
        WHERE jsonb_typeof(value) = 'string' AND value #>> '{}' <> '' ORDER BY key COLLATE "C" LIMIT 1) AS input_first,
@@ -472,8 +493,10 @@ defmodule Apiary.Runs.Record do
     |> Map.update!(:time, &utc/1)
     |> Map.update!(:terminated, &(&1 || []))
     |> Map.update!(:allow, &(&1 || []))
+    |> Map.update!(:allow_first, &(&1 || []))
     |> Map.update!(:deny, &(&1 || []))
     |> Map.update!(:tools, &(&1 || []))
+    |> Map.update!(:credentials, &(&1 || []))
     |> Map.put(:summary, Timeline.tool_summary(row.tool, input, row.input_first))
     |> Map.take(Timeline.slim_keys())
     |> Map.new(fn
@@ -513,7 +536,8 @@ defmodule Apiary.Runs.Record do
   end
 
   @doc """
-  A page of the run's connections, one per host, port and path, denied destinations first
+  A page of the run's connections, one per host, port, path and channel (`channel`,
+  `"session"` or `"stack"`, `Apiary.Runs.Connection`), denied destinations first
   and then the most recently seen, #{@connections_page} to a page. `decision:` keeps the
   destinations ever `"allowed"` or ever `"denied"`. The reason a row gives is the last
   attempt's, as the projection keeps it: `tool` is the tool whose host the last attempt
@@ -550,6 +574,7 @@ defmodule Apiary.Runs.Record do
           offset: ^((page - 1) * @connections_page),
           select: %{
             id: c.id,
+            channel: c.channel,
             host: fragment("left(?, 255)", c.host),
             port: c.port,
             path: fragment("left(?, 2000)", c.path),

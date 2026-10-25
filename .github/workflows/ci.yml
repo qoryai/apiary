@@ -254,19 +254,23 @@ jobs:
           cache-from: type=gha,scope=image-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
 
-      # The keys directory belongs to nobody, the release carries the commit it was built
-      # from, RDS's certificate bundle is the one the Dockerfile pins, and the VM writes no
-      # crash dump.
+      # The image runs as uid 65532, the keys directory belongs to it, the release carries
+      # the commit it was built from, RDS's certificate bundle is the one the Dockerfile
+      # pins, and the VM writes no crash dump.
       - name: Check the image
         run: |
           docker image inspect apiary:ci --format '{{range .Config.Env}}{{println .}}{{end}}' |
             grep -qx 'ERL_CRASH_DUMP_BYTES=0' || {
             echo "the image does not set ERL_CRASH_DUMP_BYTES=0" >&2; exit 1; }
 
+          user="$(docker run --rm apiary:ci id -u):$(docker run --rm apiary:ci id -g)"
+          [ "$user" = 65532:65532 ] || {
+            echo "the image runs as $user, not 65532:65532" >&2; exit 1; }
+
           docker run --rm apiary:ci ls -ld /var/lib/apiary/keys
-          owner="$(docker run --rm apiary:ci stat -c %U /var/lib/apiary/keys)"
-          [ "$owner" = nobody ] || {
-            echo "/var/lib/apiary/keys belongs to $owner, not nobody" >&2; exit 1; }
+          owner="$(docker run --rm apiary:ci stat -c %u:%g /var/lib/apiary/keys)"
+          [ "$owner" = 65532:65532 ] || {
+            echo "/var/lib/apiary/keys belongs to $owner, not 65532:65532" >&2; exit 1; }
 
           revision="$(docker run --rm apiary:ci cat /app/REVISION)"
           [ "$revision" = "$GITHUB_SHA" ] || {
@@ -458,14 +462,15 @@ jobs:
           docker tag ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 postgres:18
 
       # A base commit from before bin/keys has no compose.yaml to upgrade from, and the
-      # upgrade from it is skipped.
+      # upgrade from it is skipped. The upgrade starts the base commit's compose.yaml, as a
+      # person has it before the upgrade.
       - name: Check out the base commit
         id: base
         run: |
           base="$(git rev-parse HEAD^1)"
           git worktree add --detach "$RUNNER_TEMP/base" "$base"
           echo "BASE_SHA=$base" >> "$GITHUB_ENV"
-          if [ -f "$RUNNER_TEMP/base/rel/overlays/bin/keys" ]; then
+          if [ -f "$RUNNER_TEMP/base/rel/overlays/bin/keys" ] && [ -f "$RUNNER_TEMP/base/compose.yaml" ]; then
             echo "keys=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::The base commit $base has no bin/keys: the upgrade from it is skipped."
@@ -491,9 +496,12 @@ jobs:
           cat > "$RUNNER_TEMP/compose-checks.sh" <<'SH'
           keys_file=/var/lib/apiary/keys/apiary.env
 
+          # The checks read the volume keys as root, since an older image left it to nobody
+          # (65534), mode 0600, which the user 65532 cannot read.
+
           # mask_keys: every value in the volume keys, masked in the log from here on.
           mask_keys() {
-            docker run --rm -v qory_keys:/keys:ro apiary:ci cat /keys/apiary.env /keys/postgres-password |
+            docker run --rm --user 0 -v qory_keys:/keys:ro apiary:ci cat /keys/apiary.env /keys/postgres-password |
               while IFS= read -r line; do
                 [ -z "$line" ] || echo "::add-mask::${line#*=}"
               done
@@ -517,18 +525,33 @@ jobs:
             exit 1
           }
 
-          # keys_state FILE: the names, modes, owner and checksums of the keys files in FILE,
-          # never a value; the modes are 0600 and 0644, the owner nobody.
+          # keys_state FILE [OWNER]: the names, modes, owner and checksums of the keys files in
+          # FILE, never a value; the modes are 0600 and 0644, the owner uid 65532. With OWNER
+          # "any", for the image of the base commit or of the latest release, which may have
+          # run as nobody, the owner is not checked.
           keys_state() {
-            docker run --rm -v qory_keys:/keys:ro apiary:ci sh -c '
+            owner="${2:-65532}"
+            docker run --rm --user 0 -v qory_keys:/keys:ro apiary:ci sh -c '
               cd /keys &&
-                stat -c "%a %U %n" apiary.env postgres-password &&
+                stat -c "%a %u %n" apiary.env postgres-password &&
                 cut -d= -f1 apiary.env &&
                 sha256sum apiary.env postgres-password' > "$1"
-            printf '%s\n' "600 nobody apiary.env" "644 nobody postgres-password" \
+            state="$(head -n 6 "$1")"
+            [ "$owner" != any ] || state="$(sed -E '1,2s/^([0-7]+) [0-9]+ /\1 any /' <<<"$state")"
+            printf '%s\n' "600 $owner apiary.env" "644 $owner postgres-password" \
               SECRET_KEY_BASE APIARY_ENCRYPTION_SECRET APIARY_SIGNING_SECRET DATABASE_PASSWORD |
-              cmp -s - <(head -n 6 "$1") || {
+              cmp -s - <(printf '%s\n' "$state") || {
                 echo "The keys files are not as bin/keys writes them:" >&2; head -n 6 "$1" >&2; exit 1; }
+          }
+
+          # keys_owned: the volume keys, and each folder, file and link in it, belong to
+          # 65532:65532.
+          keys_owned() {
+            others="$(docker run --rm --user 0 -v qory_keys:/keys:ro apiary:ci \
+              find /keys \( ! -user 65532 -o ! -group 65532 \) -printf '%u:%g %p\n')"
+            [ -z "$others" ] || {
+              echo "Not everything in the volume keys belongs to 65532:65532:" >&2
+              echo "$others" >&2; exit 1; }
           }
 
           # said LINE: the service keys printed LINE, in its log since its container was made.
@@ -545,10 +568,12 @@ jobs:
             keys_state "$RUNNER_TEMP/keys-first"
           }
 
-          # keys_kept: the keys are the first start's, and the service keys said it kept them.
+          # keys_kept: the keys are the first start's, by name and checksum, the files belong to
+          # 65532, and the service keys said it kept them.
           keys_kept() {
             keys_state "$RUNNER_TEMP/keys-now"
-            cmp -s "$RUNNER_TEMP/keys-first" "$RUNNER_TEMP/keys-now" || {
+            keys_owned
+            cmp -s <(tail -n +3 "$RUNNER_TEMP/keys-first") <(tail -n +3 "$RUNNER_TEMP/keys-now") || {
               echo "The keys are not the ones of the first start" >&2; exit 1; }
             said "The keys in $keys_file are kept; none was generated."
             echo "The keys are the ones of the first start."
@@ -569,6 +594,10 @@ jobs:
           keys_generated
           [ "$(docker compose port apiary 4100)" = 127.0.0.1:4100 ] || {
             echo "port 4100 is not published on 127.0.0.1 alone" >&2; exit 1; }
+          # The GitHub adapter's code folder belongs to the user both run as, mode 0700.
+          folder="$(docker compose exec -T apiary stat -c '%u:%g %a' /run/qory/enrolment/github)"
+          [ "$folder" = "65532:65532 700" ] || {
+            echo "/run/qory/enrolment/github is $folder, not 65532:65532 700" >&2; exit 1; }
 
       - name: Start again
         run: |
@@ -584,6 +613,32 @@ jobs:
           docker compose up -d
           healthy "$GITHUB_SHA"
           keys_kept
+          docker compose down -v
+
+      # A symbolic link planted in the volume keys, to /etc/hosts, a file that Docker bind
+      # mounts into each container from the host. keys-owner changes the link and never its
+      # target: the service completes, the link belongs to 65532, and the host's file for
+      # keys-owner's container still belongs to root with mode 0644.
+      - name: Keep a symbolic link's target in the volume keys
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          docker compose up -d
+          mask_keys
+          healthy "$GITHUB_SHA"
+          docker compose down
+          docker run --rm --user 0 -v qory_keys:/keys apiary:ci ln -s /etc/hosts /keys/planted
+          docker compose up -d
+          healthy "$GITHUB_SHA"
+          state="$(docker inspect -f '{{.State.ExitCode}}' qory-keys-owner-1)"
+          [ "$state" = 0 ] || { echo "keys-owner exited $state" >&2; exit 1; }
+          link="$(docker run --rm --user 0 -v qory_keys:/keys:ro apiary:ci stat -c %u:%g /keys/planted)"
+          [ "$link" = 65532:65532 ] || { echo "the planted link belongs to $link" >&2; exit 1; }
+          hosts="$(docker inspect -f '{{.HostsPath}}' qory-keys-owner-1)"
+          [ -n "$hosts" ] || { echo "keys-owner's container has no hosts file" >&2; exit 1; }
+          target="$(sudo stat -c '%u:%g %a' "$hosts")"
+          [ "$target" = "0:0 644" ] || {
+            echo "the link's target $hosts is $target, not 0:0 644" >&2; exit 1; }
+          keys_owned
           docker compose down -v
 
       # CONTRIBUTING.md's "Run it from a checkout", as written but for the base images,
@@ -603,29 +658,36 @@ jobs:
           keys_generated
           docker compose down -v
 
-      # The upgrade a person makes: APIARY_VERSION set in .env, then up -d, here without
-      # pull, as the new image is the local one. The new release migrates before it serves.
+      # The upgrade a person makes: the base commit's compose.yaml and .env.example first,
+      # then this commit's, with APIARY_VERSION set in .env, then up -d, here without pull,
+      # as the new image is the local one. The new release migrates before it serves. The
+      # project's name is qory in both, so both use the same volumes.
       - name: Upgrade from the base commit
         if: steps.base.outputs.keys == 'true'
         run: |
           . "$RUNNER_TEMP/compose-checks.sh"
-          cp .env.example .env
-          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=base/' .env
+          old="$RUNNER_TEMP/base"
+          cp "$old/.env.example" "$old/.env"
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=base/' "$old/.env"
           # An image from before mail was optional does not start without MAIL_TO_LOG=true
           # or a relay; the image built here ignores it.
-          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
-          docker compose up -d
+          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> "$old/.env"
+          (cd "$old" && docker compose up -d)
           mask_keys
           healthy "$BASE_SHA"
-          keys_state "$RUNNER_TEMP/keys-first"
-          sed -i 's/^APIARY_VERSION=base$/APIARY_VERSION=ci/' .env
+          keys_state "$RUNNER_TEMP/keys-first" any
+          (cd "$old" && docker compose down)
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' .env
+          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
           docker compose up -d --pull never
           healthy "$GITHUB_SHA"
           keys_kept
           docker compose down -v
 
       # Until the joint release no ghcr.io/qoryai/apiary:latest can be read, and this is
-      # skipped.
+      # skipped. As from the base commit, the release's compose.yaml and .env.example
+      # first, from the commit its image was built from, then this commit's.
       - name: Upgrade from the latest release
         run: |
           . "$RUNNER_TEMP/compose-checks.sh"
@@ -633,17 +695,24 @@ jobs:
             echo "::notice::ghcr.io/qoryai/apiary:latest cannot be read: the upgrade from it is skipped."
             exit 0
           fi
-          cp .env.example .env
-          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=latest/' .env
+          docker pull --quiet ghcr.io/qoryai/apiary:latest
+          revision="$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/qoryai/apiary:latest)"
+          old="$RUNNER_TEMP/latest"
+          git fetch --depth 1 origin "$revision"
+          git worktree add --detach "$old" "$revision"
+          cp "$old/.env.example" "$old/.env"
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=latest/' "$old/.env"
           # As from the base commit: MAIL_TO_LOG=true for an image from before mail was
           # optional.
-          echo MAIL_TO_LOG=true >> .env
-          docker compose up -d
+          echo MAIL_TO_LOG=true >> "$old/.env"
+          (cd "$old" && docker compose up -d)
           mask_keys
-          healthy "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/qoryai/apiary:latest)"
-          keys_state "$RUNNER_TEMP/keys-first"
-          sed -i 's/^APIARY_VERSION=latest$/APIARY_VERSION=ci/' .env
-          echo APIARY_IMAGE=apiary >> .env
+          healthy "$revision"
+          keys_state "$RUNNER_TEMP/keys-first" any
+          (cd "$old" && docker compose down)
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' .env
+          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
           docker compose up -d --pull never
           healthy "$GITHUB_SHA"
           keys_kept

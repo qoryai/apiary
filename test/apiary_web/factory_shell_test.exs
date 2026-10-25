@@ -4,7 +4,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # is not found until it is built; the link that names a connection to an integration
   # (`ApiaryWeb.AdapterRedirectControllerTest` has the rest of it); the
   # sidebar's Work group; Organisation settings' Integrations; Instance settings'
-  # Adapters; and the Activity filter's words for the work item comments, the handover,
+  # Adapters and Nodes; and the Activity filter's words for the work item comments, the handover,
   # the release, a build asked for, an adapter installed and a set-up
   # started.
   #
@@ -30,6 +30,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.AdapterLive.AccessKey,
     ApiaryWeb.InstanceLive.Adapters,
     ApiaryWeb.InstanceLive.Adapter,
+    ApiaryWeb.InstanceLive.Nodes,
+    ApiaryWeb.InstanceLive.Node,
     ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
@@ -54,7 +56,9 @@ defmodule ApiaryWeb.FactoryShellTest do
   @instance_modules [
     ApiaryWeb.InstanceLive.Adapters,
     ApiaryWeb.InstanceLive.Adapter,
-    ApiaryWeb.AdapterLive.AccessKey
+    ApiaryWeb.AdapterLive.AccessKey,
+    ApiaryWeb.InstanceLive.Nodes,
+    ApiaryWeb.InstanceLive.Node
   ]
 
   setup :register_and_log_in_user
@@ -70,8 +74,11 @@ defmodule ApiaryWeb.FactoryShellTest do
   # starter are no page of the shell: `ApiaryWeb.Contract.AdapterRequestTest`,
   # `ApiaryWeb.Contract.ChangesControllerTest`,
   # `ApiaryWeb.Contract.SourceCollectionsControllerTest`,
-  # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest` and
-  # their fixtures' tests, and `ApiaryWeb.Contract.PoolRequestTest`, answer for them. A
+  # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest`,
+  # `ApiaryWeb.Contract.AppValuesControllerTest`,
+  # `ApiaryWeb.Contract.GrantsControllerTest`,
+  # `ApiaryWeb.Contract.GrantEndControllerTest` and their fixtures' tests, and
+  # `ApiaryWeb.Contract.PoolRequestTest`, answer for them. A
   # gateway's secrets request is no page either: `ApiaryWeb.Contract.SecretsControllerTest`
   # and `ApiaryWeb.Contract.SecretsDiscoveryTest` answer for it.
   @signed_routes [
@@ -82,6 +89,9 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.Contract.SourcesDisconnectController,
     ApiaryWeb.Contract.SourceItemsController,
     ApiaryWeb.Contract.SourceItemCommentsController,
+    ApiaryWeb.Contract.AppValuesController,
+    ApiaryWeb.Contract.GrantsController,
+    ApiaryWeb.Contract.GrantEndController,
     ApiaryWeb.Contract.PoolClaimController,
     ApiaryWeb.Contract.DispatchController
   ]
@@ -177,7 +187,14 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, managed <> "/settings/rename"},
                  {:get, managed <> "/settings/remove"},
                  # Set up, which starts an adapter's set-up at the system it reads from.
-                 {:post, managed <> "/setup"}
+                 {:post, managed <> "/setup"},
+                 # The instance's pool and gateway: the list, and a node's Overview, its
+                 # keys and its settings.
+                 {:get, "/instance/nodes"},
+                 {:get, "/instance/nodes/x1"},
+                 {:get, "/instance/nodes/x1/keys"},
+                 {:get, "/instance/nodes/x1/keys/x1/revoke"},
+                 {:get, "/instance/nodes/x1/settings"}
                ] ++
                  for(
                    rest <-
@@ -394,6 +411,10 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"adapter.install", "Adapter installed"} in options
       assert {"adapter.setup", "Adapter set-up started"} in options
+      assert {"adapter.app_values_set", "Adapter secrets stored"} in options
+      assert {"adapter.app_values_seal", "Adapter secrets sent"} in options
+      assert {"adapter.end_grant", "Ended a grant"} in options
+      assert {"run_credential.issue", "Run access sent or refused"} in options
       assert {"model_choice.write", "Model choice changed"} in options
       assert {"time_limit.edit", "Time limit changed"} in options
 
@@ -418,6 +439,10 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"target.rebuild_environment",
             :"adapter.install",
             :"adapter.setup",
+            :"adapter.app_values_set",
+            :"adapter.app_values_seal",
+            :"adapter.end_grant",
+            :"run_credential.issue",
             :"model_choice.write",
             :"time_limit.edit"
           ],
@@ -446,7 +471,7 @@ defmodule ApiaryWeb.FactoryShellTest do
          %{scope: scope, adapter: adapter} do
       admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
       routes = instance_routes(scope, adapter)
-      assert length(routes) == 10
+      assert length(routes) == 15
 
       keys = "/instance/adapters/#{adapter.public_id}/keys"
 
@@ -458,6 +483,10 @@ defmodule ApiaryWeb.FactoryShellTest do
 
           # Add, not found until the catalogue exists.
           String.starts_with?(path, "/instance/adapters/new/") ->
+            assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+
+          # No such node of the instance.
+          String.starts_with?(path, "/instance/nodes/") ->
             assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
 
           # No code just made, no such key, no such code: the page leads to the tab.
@@ -539,11 +568,14 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
-    test "Instance settings list Adapters for an instance admin, before Mail, and for no one else",
+    test "Instance settings list Adapters and Nodes for an instance admin, before Mail, and for no one else",
          %{scope: scope} do
       admin = instance_admin_scope()
       keys = for entry <- Layouts.instance_sections(admin), do: entry.key
-      assert [:adapters, :mail, :configuration] = Enum.take(keys, -3)
+      assert [:adapters, :nodes, :mail, :configuration] = Enum.take(keys, -4)
+
+      assert %{label: "Nodes", path: "/instance/nodes", place: :instance} =
+               Enum.find(Layouts.instance_sections(admin), &(&1.key == :nodes))
 
       assert %{label: "Adapters", path: "/instance/adapters", place: :instance} =
                Enum.find(Layouts.instance_sections(admin), &(&1.key == :adapters))
@@ -557,7 +589,7 @@ defmodule ApiaryWeb.FactoryShellTest do
                "Adapters"
              )
 
-      refute Enum.any?(Layouts.instance_sections(scope), &(&1.key == :adapters))
+      refute Enum.any?(Layouts.instance_sections(scope), &(&1.key in [:adapters, :nodes]))
     end
 
     test "the entry asks the instance, whatever the person is shown in the organisation the scope carries" do

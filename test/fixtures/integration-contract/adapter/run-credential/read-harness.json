@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "grant_ref": "G_1",
+  "resources": [
+    "R_1001"
+  ],
+  "access": "read",
+  "purpose": "harness"
+}

@@ -42,6 +42,11 @@ defmodule Apiary.Runs.Fold do
   event whose `step` is not such an integer is folded into nothing. A log chunk keeps its
   event's `step`, read the same way.
 
+  An egress event is folded into the connection of its destination (host, port and path)
+  and its channel: `channel` `stack` for the stack proxy, which fetches the run's harness
+  definition, and `session` for any other value or none, the run's proxy. One destination
+  reached on both channels is two connections.
+
   An egress event names a `tool` when the proxy decided the request by its path for a host
   the tool serves. It is folded into the destination's connection like any other, and the
   connection's `last_tool` and `last_status` say the tool whose host the last attempt was
@@ -201,7 +206,7 @@ defmodule Apiary.Runs.Fold do
           beat: %{time: DateTime.t(), received_at: DateTime.t()} | nil,
           recount: boolean(),
           beaten: boolean(),
-          connections: %{optional({String.t(), integer(), String.t()}) => map()},
+          connections: %{optional({String.t(), integer(), String.t(), String.t()}) => map()},
           steps: %{optional(pos_integer()) => map()},
           log_chunks: [map()],
           skipped_log_chunks: non_neg_integer()
@@ -216,7 +221,7 @@ defmodule Apiary.Runs.Fold do
   or nil when there is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
-  (host, port, path), `steps` as one delta per step number, `log_chunks` in sequence order
+  (host, port, path, channel), `steps` as one delta per step number, `log_chunks` in sequence order
   and the count of log events skipped because their bytes were not base64.
   """
   @spec fold(map(), Enumerable.t(), map(), map()) :: t()
@@ -371,7 +376,7 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, %{type: @egress, data: data, time: time, sequence: sequence}) do
     with host when is_binary(host) <- host(string(data, "host", :infinity)),
          port when is_integer(port) <- integer(data, "port", 0..65_535) do
-      key = {host, port, string(data, "path", @text) || ""}
+      key = {host, port, string(data, "path", @text) || "", channel(data)}
       decision = string(data, "decision", 64)
 
       # Events come in sequence order, so within a pass the last one folded is the last.
@@ -554,6 +559,11 @@ defmodule Apiary.Runs.Fold do
       _ -> "failed"
     end
   end
+
+  # The channel of an egress event: `stack` for the stack proxy's, `session` for any
+  # other.
+  defp channel(%{"channel" => "stack"}), do: "stack"
+  defp channel(_data), do: "session"
 
   # The destination's host, at most 255 bytes. A longer one is kept, so the attempt is
   # counted and shown: its first 252 bytes, cut on a character boundary, then "…" (3

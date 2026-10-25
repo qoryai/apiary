@@ -67,7 +67,8 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
       Collections.post_listing(Scope.for_access_key(key), %{
         time: DateTime.utc_now(:second),
         connection_id: connection.public_id,
-        collections: Enum.map(titles, &listed/1),
+        collections:
+          Enum.map(titles, &Map.put(listed(&1), :grant_ref, listing_grant(connection))),
         listing: %{id: id, part: 1, started_at: ~U[2026-10-01 09:00:00Z], complete: true}
       })
 

@@ -66,10 +66,15 @@ defmodule Apiary.Dispatches.Handover do
   #      last, with the features `factory` and `secrets` on, an explore run whose model
   #      choice has a provider, while one of the gateway's active keys the run key lists
   #      was made without the stored-secrets flag (`allow_secrets`), or the provider's key
-  #      may not be sealed for a gateway of the gateway's organisation
+  #      may not be sealed for the gateway
   #      (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as such
   #      a gateway never receives the run's model key, and the run never starts on a model
-  #      nobody chose;
+  #      nobody chose. Before that check, a run whose target came from a collection of an
+  #      adapter that declares apply items, while the collection ended, its connection is
+  #      not connected, or the target path is one the apply items refuse, ends
+  #      `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/3`). A run with a work
+  #      credential entry also ends `secrets_not_allowed` when one of those keys was made
+  #      without `allow_secrets`, whatever the features and its model choice;
   #   2. the run key cannot be made for the gateway's address
   #      (`Apiary.Runs.Registration.issue_grant/3`), the run settings take more than 64
   #      KiB, the input does not fit 1 MiB with every comment left out, the run's model
@@ -90,8 +95,9 @@ defmodule Apiary.Dispatches.Handover do
   # from at the code's redemption, `run_key_issued_at` the claim and `attach_by` the
   # code's expiry. A run key of the grant is made all the same, and given to nobody, so a
   # grant no run key can be made for refuses the claim as step 2 says. The run key's
-  # instance id is the run's id. The dispatch stays claimed, and so does the run of the
-  # queue.
+  # instance id is the run's id. A run with a work credential entry has it stored with
+  # the run (`Apiary.Runs.RunCredentials.insert!/2`). The dispatch stays claimed, and so
+  # does the run of the queue.
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
@@ -145,7 +151,6 @@ defmodule Apiary.Dispatches.Handover do
     PublicId,
     Repo,
     Runs,
-    Stacks,
     Targets
   }
 
@@ -162,17 +167,30 @@ defmodule Apiary.Dispatches.Handover do
     Slots
   }
 
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunCode, RunVariables, Target}
+
+  alias Apiary.Runs.{
+    About,
+    ProviderCredential,
+    Registration,
+    Run,
+    RunCode,
+    RunCredential,
+    RunCredentials,
+    RunVariables,
+    Target
+  }
+
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
 
   @prebuild DispatchRun.prebuild()
   # The causes a claimed run ends for when the claim cannot form what it is made from.
   @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++
-              RunSettings.causes() ++ [:secrets_not_allowed]
+              RunSettings.causes() ++ [:secrets_not_allowed, :target_access_gone]
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
@@ -257,6 +275,11 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
+  # The instance's pool's run is in the run's workspace, read here for its grant, its
+  # documents and its seal.
+  defp register_held(%{gateway: {gateway, nil}, run: %DispatchRun{workspace_id: id}} = locked),
+    do: register_held(%{locked | gateway: {gateway, Repo.get!(Workspace, id)}})
+
   defp register_held(%{gateway: {gateway, workspace}, keys: keys} = locked) do
     pool = locked.key.node
 
@@ -273,7 +296,7 @@ defmodule Apiary.Dispatches.Handover do
     issued = Registration.issue_grant(grant, locked.now, @attach_seconds)
     locked = Map.put(locked, :documents_limit, documents_limit(locked.run, issued))
 
-    case locked |> formed(workspace) |> sealable(gateway, workspace, keys) do
+    case locked |> formed(workspace) |> with_work() |> sealable(gateway, workspace, keys) do
       {:end, cause} ->
         {:ended, end_claimed(locked.run, cause, locked.now)}
 
@@ -301,6 +324,8 @@ defmodule Apiary.Dispatches.Handover do
               formed,
               through |> Map.put(:gateway_id, gateway.id) |> Map.put(:run_documents, documents)
             )
+
+          if formed.work, do: RunCredentials.insert!(formed.work, run)
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
@@ -531,17 +556,19 @@ defmodule Apiary.Dispatches.Handover do
   # to now (`Apiary.Gateways.resolve/1`), read `FOR SHARE` as its deletion holds it
   # `FOR UPDATE`, with its workspace and its active keys, at most two, oldest first; or
   # `{:error, :no_gateway}`: the choice is direct, no default gateway resolves, a named
-  # gateway may not serve the workspace, or the gateway has no active key. Inside the
-  # claim's transaction.
+  # gateway may not serve the workspace, or the gateway has no active key. The instance's
+  # pool has no workspace: its gateway is the instance's, which serves every workspace,
+  # and the workspace is nil until `register/2` reads the run's. Inside the claim's
+  # transaction.
   @doc false
   @spec gateway(Node.t()) ::
-          {:ok, {Node.t(), Workspace.t()}, [AccessKey.t()]} | {:error, :no_gateway}
+          {:ok, {Node.t(), Workspace.t() | nil}, [AccessKey.t()]} | {:error, :no_gateway}
   def gateway(%Node{} = pool) do
-    workspace = Repo.get!(Workspace, pool.workspace_id)
+    workspace = pool.workspace_id && Repo.get!(Workspace, pool.workspace_id)
 
     with {:gateway, %Node{id: id}} <- Gateways.resolve(%{pool | workspace: workspace}),
          %Node{} = gateway <- Repo.one(from n in Node, where: n.id == ^id, lock: "FOR SHARE"),
-         true <- Gateways.may_serve?(gateway, workspace),
+         true <- serves?(gateway, workspace),
          [_ | _] = keys <- AccessKeys.active_keys(gateway) do
       {:ok, {gateway, workspace}, Enum.take(keys, 2)}
     else
@@ -549,26 +576,58 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # A run formed with a model provider, with the features under which it is given its
-  # credential (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed`
-  # when one of `keys`, the gateway's keys its run key lists, was made without
-  # `allow_secrets`, as either key may attach the run; or when the provider's key may not
-  # be sealed for the gateway's organisation.
-  defp sealable(
+  # serves?/2 says whether `gateway`, as `gateway/1` read it `FOR SHARE`, may serve the
+  # claim's workspace: for the instance's pool, whose workspace is nil until
+  # `register/2`, only the instance's gateway not deleted.
+  @doc false
+  @spec serves?(Node.t(), Workspace.t() | nil) :: boolean
+  def serves?(%Node{deleted_at: nil} = gateway, nil), do: Gateways.level(gateway) == :instance
+  def serves?(%Node{}, nil), do: false
+  def serves?(gateway, workspace), do: Gateways.may_serve?(gateway, workspace)
+
+  # A run formed with a work credential entry ends `secrets_not_allowed` when one of
+  # `keys`, the gateway's keys its run key lists, was made without `allow_secrets`, as
+  # either key may attach the run and ask for the entry's value. A run formed with a model
+  # provider, with the features under which it is given its credential
+  # (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed` on the same
+  # keys, or when the provider's key may not be sealed for the gateway
+  # (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
+  defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, workspace, keys) do
+    if Enum.all?(keys, & &1.allow_secrets),
+      do: model_sealable(ok, gateway, workspace, keys),
+      else: {:end, :secrets_not_allowed}
+  end
+
+  defp sealable(formed, gateway, workspace, keys),
+    do: model_sealable(formed, gateway, workspace, keys)
+
+  defp model_sealable(
          {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
-         %Node{organisation_id: gateway_organisation_id},
+         %Node{} = gateway,
          %Workspace{organisation_id: organisation_id},
          keys
        ) do
     cond do
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
-      ProviderCredential.sealable_to?(chain, gateway_organisation_id, organisation_id) -> ok
+      ProviderCredential.sealable_to?(chain, gateway, organisation_id) -> ok
       true -> {:end, :secrets_not_allowed}
     end
   end
 
-  defp sealable(formed, _gateway, _workspace, _keys), do: formed
+  defp model_sealable(formed, _gateway, _workspace, _keys), do: formed
+
+  # The run's work credential entry, formed from what the run is formed from
+  # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the
+  # queue ends for.
+  defp with_work({:ok, %{answer: answer} = formed}) do
+    case RunCredentials.form_work(answer.dispatch_run, answer.work_item, answer.target) do
+      {:ok, work} -> {:ok, Map.put(formed, :work, work)}
+      {:end, _cause} = ended -> ended
+    end
+  end
+
+  defp with_work(not_formed), do: not_formed
 
   # What the run is formed from, or the cause its run of the queue ends for.
   defp formed(%{run: %DispatchRun{step: @prebuild} = dispatch_run}, workspace) do
@@ -584,7 +643,8 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # An explore run has its work item's target, nil for none; a work item without one in
-  # a domain that requires a target ends `inputs_invalid`. Its run settings come next
+  # a domain that requires a target ends `inputs_invalid`. Its harness members come from
+  # its harness walk (`harness/2`). Its run settings come next
   # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
   # `RunSettings.causes/0` lists, or refuse the claim. The run's documents and the input
   # get the same target and the same domain, and the input the bytes of the documents'
@@ -592,11 +652,11 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
-    stack = stack(locked.key, workspace, target)
+    harness = harness(dispatch_run, target)
 
     with false <- is_nil(target) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
-      formed(dispatch_run, workspace, target, work_item, settings, stack, fn domain ->
+      formed(dispatch_run, workspace, target, work_item, settings, harness, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
           documents_limit: locked.documents_limit,
@@ -604,7 +664,7 @@ defmodule Apiary.Dispatches.Handover do
           target: target,
           work_item: work_item,
           run_settings: settings && settings.wire,
-          stack: stack
+          harness: harness
         }
 
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
@@ -638,15 +698,32 @@ defmodule Apiary.Dispatches.Handover do
     |> Keyword.get(:answer_limit, @answer_bytes)
   end
 
-  # The stack, the workflow and `harness_hidden` of an explore run of `workspace`, the
-  # key's workspace, in the key's organisation, at `target` (`Apiary.Stacks.for_run/3`);
-  # nil for none.
-  defp stack(%AccessKey{organisation: organisation}, %Workspace{} = workspace, target),
-    do: Stacks.for_run(organisation, workspace, target)
+  # The harness members of an explore run's documents, from its harness walk, which a
+  # claim takes only once resolved (`Apiary.Harnesses.WalkJob`): `target_version`, the
+  # version at which the walk read the target's harness file, while the run has its
+  # target; `workflow` and `harness_hidden`; `access`, the level the walk resolved; and
+  # `harness`, the stacks' document, for a walk whose document came from them
+  # (`:setting`). nil for a run with no workflow, and for a run with no walk, queued
+  # before walks were kept: such a run reads (`ApiaryWeb.Contract.DispatchAnswer.access/1`).
+  defp harness(%DispatchRun{id: id}, target) do
+    case Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id) do
+      %RunHarness{state: :resolved, origin: origin} = walk when origin in [:file, :setting] ->
+        %{
+          target_version: if(target, do: walk.target_version),
+          workflow: walk.workflow,
+          harness_hidden: walk.harness_hidden,
+          access: walk.access_level,
+          harness: if(origin == :setting, do: walk.document)
+        }
+
+      _none ->
+        nil
+    end
+  end
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
-  defp formed(dispatch_run, workspace, target, work_item, settings, stack, inputs) do
+  defp formed(dispatch_run, workspace, target, work_item, settings, harness, inputs) do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
@@ -670,7 +747,7 @@ defmodule Apiary.Dispatches.Handover do
            target: target,
            work_item: work_item,
            run_settings: settings && settings.wire,
-           stack: stack,
+           harness: harness,
            inputs: inputs
          }
        }}
@@ -804,8 +881,8 @@ defmodule Apiary.Dispatches.Handover do
   defp insert_run(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do
     %Run{
       public_id: Run.new_public_id(),
-      organisation_id: key.organisation_id,
-      workspace_id: key.workspace_id,
+      organisation_id: dispatch_run.organisation_id,
+      workspace_id: dispatch_run.workspace_id,
       node_run_id: dispatch_run.run_id,
       access_key_id: key.id,
       state: "pending",

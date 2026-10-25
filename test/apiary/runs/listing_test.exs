@@ -1372,6 +1372,35 @@ defmodule Apiary.Runs.ListingTest do
                Runs.destination_runs(other, cx(%{}), {"registry.example", 443, ""}, now: @now)
     end
 
+    test "a run's harness fetch to a destination counts neither the run nor its attempts", %{
+      scope: scope
+    } do
+      forge = %{"host" => "forge.example", "rule" => "forge.example"}
+      stack = Map.put(forge, "channel", "stack")
+      run = started(scope, shop(), 300, egress: [stack, forge, stack])
+      key = {"forge.example", 443, ""}
+
+      assert [%{host: "forge.example", port: 443, path: "", runs: 1, attempts: 1, allowed: 1}] =
+               Runs.page_destinations(scope, cx(%{"host" => "forge.example"}), @now).rows
+
+      assert %{runs: [%{run: %{id: id}, allowed: 1}], total: 1} =
+               Runs.destination_runs(scope, cx(%{}), key, now: @now)
+
+      assert id == run.id
+      assert [%{runs: 1}] = Runs.destination_targets(scope, cx(%{}), key, now: @now)
+
+      # A destination reached by the harness fetch alone is none of the workspace's.
+      started(scope, shop(), 200, egress: [%{stack | "host" => "fetch.example"}])
+
+      assert %{runs: [], total: 0} =
+               Runs.destination_runs(scope, cx(%{}), {"fetch.example", 443, ""}, now: @now)
+
+      refute "fetch.example" in Enum.map(
+               Runs.page_destinations(scope, cx(%{}), @now).rows,
+               & &1.host
+             )
+    end
+
     test "the window is a token, seen:14d by default; taking it away leaves the widest" do
       default = cx(%{})
       assert [%{key: :started, value: "14d", without: wide}] = Filters.tokens(default)

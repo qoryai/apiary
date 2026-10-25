@@ -1,36 +1,37 @@
 defmodule Apiary.Stacks.Resolution do
-  # What the stacks of a run's organisation come to for the run's workflow: the stack the
-  # run uses, the level it came from, its owner, and whether the run hides the text of
-  # the stack's harness. Pure: stacks in, a resolution out. `Apiary.Stacks` reads what it
-  # takes.
+  # What the stacks of a run's organisation come to for the run's workflow: the harness
+  # document the run uses, the level it came from, its owner, and whether the run hides
+  # the text of the harness. Pure: stacks in, a resolution out. `Apiary.Stacks` reads
+  # what it takes.
   #
   # **The order.** The five stored levels, the most specific first
   # (`Apiary.Stacks.Stack.levels/0`): the target and the workflow, the target, the
   # workspace and the workflow, the workspace, the organisation's default. The first
-  # level with a stack wins; a level without one passes to the next. A run with no target
-  # has no target levels. No stack at any level resolves to `:none`.
+  # level with a harness document wins; a level without one, a row that sets only the
+  # workflow included, passes to the next. A run with no target has no target levels. No
+  # document at any level resolves to `:none`.
   #
-  # **The owner.** A name's owner is the instance, whoever saved it. A reference's owner is
-  # the organisation of the person who saved it, when that person saved it as a member
-  # acting in that organisation (`Apiary.Stacks.saved_by/1`). It is nil, unknown, for a
-  # reference saved by any other reach, such as an instance admin or an operator's person
-  # acting in a client, and once the saver's organisation is deleted; an unknown owner is
-  # never the run's organisation, so the run hides the harness.
+  # **The owner.** A document's owner is its row's owner organisation, which the edition
+  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`). In the
+  # core, that is the organisation of a member who saved it there through that membership
+  # (`Apiary.Stacks.saved_by/1`). For an instance admin who saved it with no such
+  # membership, it is the instance's organisation. It is nil once that organisation is
+  # deleted.
   #
   # **Hidden.** `harness_hidden` is true when the run's organisation is operated
-  # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation. The
-  # instance counts as the run's organisation only when the instance has one
-  # organisation (`c:Apiary.Edition.limits/0`).
+  # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation. A
+  # document the instance's organisation owns is the run's organisation's only for a run
+  # of the instance's organisation: a run of any other organisation hides it, whether the
+  # instance has one organisation or several. A nil owner is never the run's
+  # organisation.
   @moduledoc false
 
-  alias Apiary.Contract
   alias Apiary.Stacks.Stack
 
   @typedoc """
   What a resolution reads: the stacks of the run's organisation (rows of other places and
   workflows are left out here), the run's organisation, workspace, target (nil for none)
-  and workflow, whether the run's organisation is operated, and whether the instance has
-  one organisation.
+  and workflow, and whether the run's organisation is operated.
   """
   @type input :: %{
           required(:stacks) => [Stack.t()],
@@ -38,34 +39,34 @@ defmodule Apiary.Stacks.Resolution do
           required(:workspace_id) => Ecto.UUID.t(),
           required(:target_id) => Ecto.UUID.t() | nil,
           required(:workflow) => String.t(),
-          required(:operated) => boolean,
-          required(:single_organisation) => boolean
+          required(:operated) => boolean
         }
 
-  @typedoc "The level a resolved stack came from."
+  @typedoc "The level a resolved document came from."
   @type level :: Stack.level()
 
-  @typedoc "The owner of a stack: the instance, an organisation's id, or nil for one deleted."
-  @type owner :: :instance | Ecto.UUID.t() | nil
+  @typedoc "The owner of a document: an organisation's id, or nil for one deleted."
+  @type owner :: Ecto.UUID.t() | nil
 
   @typedoc """
-  A resolution: the `stack`, the `workflow`, the `level` and the `owner`, and
-  `harness_hidden`.
+  A resolution: the `harness` document, the id of its row (`stack_id`), the `workflow`,
+  the `level` and the `owner`, and `harness_hidden`.
   """
   @type t :: %__MODULE__{
-          stack: String.t(),
+          harness: String.t(),
+          stack_id: Ecto.UUID.t(),
           workflow: String.t(),
           level: level,
           owner: owner,
           harness_hidden: boolean
         }
 
-  @enforce_keys [:stack, :workflow, :level, :owner, :harness_hidden]
-  defstruct [:stack, :workflow, :level, :owner, :harness_hidden]
+  @enforce_keys [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden]
+  defstruct [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden]
 
   @doc false
   # resolve/1 is what `input` comes to: `{:ok, resolution}`, or `:none` where no level
-  # has a stack.
+  # has a harness document.
   @spec resolve(input) :: {:ok, t} | :none
   def resolve(%{} = input) do
     stored =
@@ -77,8 +78,11 @@ defmodule Apiary.Stacks.Resolution do
     found =
       Enum.find_value(Stack.levels(), fn level ->
         Enum.find_value(stored, fn
-          {^level, stack} -> {level, stack.stack, owner(stack)}
-          _other -> nil
+          {^level, %Stack{harness: harness} = stack} when is_binary(harness) ->
+            {level, stack, owner(stack)}
+
+          _other ->
+            nil
         end)
       end)
 
@@ -86,7 +90,8 @@ defmodule Apiary.Stacks.Resolution do
       {level, stack, owner} ->
         {:ok,
          %__MODULE__{
-           stack: stack,
+           harness: stack.harness,
+           stack_id: stack.id,
            workflow: input.workflow,
            level: level,
            owner: owner,
@@ -99,12 +104,9 @@ defmodule Apiary.Stacks.Resolution do
   end
 
   @doc false
-  # owner/1 is the owner of a stored stack: the instance for a name, the organisation of
-  # the person who saved it for a reference.
+  # owner/1 is the owner of a stored document: its row's owner organisation.
   @spec owner(Stack.t()) :: owner
-  def owner(%Stack{stack: stack, saved_by_organisation_id: saved_by}) do
-    if Contract.Stack.name?(stack), do: :instance, else: saved_by
-  end
+  def owner(%Stack{owner_organisation_id: owner}), do: owner
 
   # The level of `stack` for the run, or nil for a stack of another place or workflow.
   defp place(%Stack{} = stack, input) do
@@ -127,6 +129,5 @@ defmodule Apiary.Stacks.Resolution do
   end
 
   defp hidden?(_owner, %{operated: true}), do: true
-  defp hidden?(:instance, %{single_organisation: single}), do: not single
   defp hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
 end

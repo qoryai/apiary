@@ -60,6 +60,7 @@ defmodule Apiary.Adapters.CollectionsTest do
             ref: ref,
             url: "https://tracker.acme.example/" <> ref,
             title: Keyword.get(opts, :title, "Title of " <> ref),
+            grant_ref: Keyword.get_lazy(opts, :grant_ref, fn -> listing_grant(connection) end),
             target: Keyword.get(opts, :target),
             environment_ref: Keyword.get(opts, :environment_ref)
           }
@@ -872,11 +873,18 @@ defmodule Apiary.Adapters.CollectionsTest do
     end
   end
 
-  describe "a press of Install that replaces a connection" do
-    test "ends a connected one no listing named, which has no collections", ctx do
+  describe "a press of Install on a connected connection" do
+    test "gives it a new pass, and leaves it connected, with no collections", ctx do
+      past = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      {1, _} =
+        Repo.update_all(from(c in Connection, where: c.id == ^ctx.connection.id),
+          set: [pass_expires_at: past]
+        )
+
       {:ok, _url, {public_id, _}} = Adapters.connect(ctx.scope, ctx.adapter)
-      refute public_id == ctx.connection.public_id
-      assert Repo.get!(Connection, ctx.connection.id).ended_reason == :replaced
+      assert public_id == ctx.connection.public_id
+      assert %{state: :connected, ended_at: nil} = Repo.get!(Connection, ctx.connection.id)
       assert Repo.aggregate(Collection, :count) == 0
     end
   end

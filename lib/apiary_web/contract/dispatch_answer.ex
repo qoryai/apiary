@@ -2,19 +2,32 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   @moduledoc false
 
   # The parts of the answers of the provisioner contract: a run's documents, with its
-  # target and its work item, as `definitions.schema.json` has them, what a run of a step
-  # may do on its target, present together with the target or left out with it, and the
-  # run's stack (`Apiary.Stacks.for_run/3`); and a time in UTC to the whole second.
+  # target and its work item, as `definitions.schema.json` has them, what a run may do on
+  # its target, present together with the target or left out with it, and the run's
+  # harness members (`Apiary.Harnesses.WalkJob`); and a time in UTC to the whole second.
 
-  alias Apiary.{Stacks, WorkItems}
+  alias Apiary.WorkItems
+
+  @typedoc """
+  The harness members of an explore run's documents, from its harness walk: the target's
+  version, nil for none; the workflow and `harness_hidden`; the access level the walk
+  resolved; and the stacks' harness document, nil where the target's harness file
+  applies.
+  """
+  @type harness :: %{
+          target_version: String.t() | nil,
+          workflow: String.t(),
+          harness_hidden: boolean,
+          access: :read | :write,
+          harness: map | nil
+        }
 
   # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
-  # this order: the run's `step`, the
-  # workspace's `domain`, the run's `access` and `target` (none for a run without a
-  # target), its `work_item` (none for a prebuild), its `run_settings` (none for none, a
-  # `Jason.OrderedObject`), its `stack`, `workflow` and `harness_hidden` (none for none
-  # and for a prebuild, `Apiary.Stacks.for_run/3`) and its `inputs`. The claim measures
-  # them (`Apiary.Dispatches.Handover`).
+  # this order: the run's `step`, the workspace's `domain`, the run's `access` and
+  # `target` (none for a run without a target), its `target_version`, its `work_item`
+  # (none for a prebuild), its `run_settings` (none for none, a `Jason.OrderedObject`),
+  # its `workflow`, `harness_hidden` and `harness` (`harness/1`) and its `inputs`. The
+  # claim measures them (`Apiary.Dispatches.Handover`).
   @doc false
   @spec documents(%{
           required(:step) => String.t(),
@@ -22,7 +35,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:target) => %{system: String.t(), path: String.t()} | nil,
           required(:work_item) => Apiary.WorkItems.WorkItem.t() | nil,
           required(:run_settings) => Jason.OrderedObject.t() | nil,
-          required(:stack) => Stacks.run_stack() | nil,
+          required(:harness) => harness | nil,
           required(:inputs) => Jason.OrderedObject.t(),
           optional(atom) => term
         }) :: Jason.OrderedObject.t()
@@ -32,28 +45,39 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
 
     Jason.OrderedObject.new(
       [{"step", step}, {"domain", run.domain}] ++
-        reach(step, run.target) ++
-        work_item ++ run_settings ++ stack(run.stack) ++ [{"inputs", run.inputs}]
+        reach(run.harness, run.target) ++
+        target_version(run.harness) ++
+        work_item ++ run_settings ++ harness(run.harness) ++ [{"inputs", run.inputs}]
     )
   end
 
-  # The `stack`, the `workflow` and `harness_hidden` of a run's documents, all three or
-  # none.
-  defp stack(nil), do: []
+  defp target_version(%{target_version: version}) when is_binary(version),
+    do: [{"target_version", version}]
 
-  defp stack(%{stack: stack, workflow: workflow, harness_hidden: hidden}),
-    do: [{"stack", stack}, {"workflow", workflow}, {"harness_hidden", hidden}]
+  defp target_version(_harness), do: []
 
-  # reach/2 is the `access` of a run of `step` and its `target`, both present for a run
-  # with a target and both left out for one without, as the contract requires them
-  # together: `{name, value}` members, in order.
+  # The `workflow` and `harness_hidden` of a run's documents, both or neither, and its
+  # `harness`, `{"harness": document}`, where the stacks' document applies: the run's
+  # target has no harness file whose harness section has `extends` or lists modules
+  # without it, or the run has no `target_version`. The machine composes the target's
+  # file at `target_version` where `harness` is absent.
+  defp harness(nil), do: []
+
+  defp harness(%{workflow: workflow, harness_hidden: hidden, harness: document}) do
+    harness = if document, do: [{"harness", %{"harness" => document}}], else: []
+    [{"workflow", workflow}, {"harness_hidden", hidden}] ++ harness
+  end
+
+  # reach/2 is the `access` of a run with the harness members `harness` (`access/1`) and
+  # its `target`, both present for a run with a target and both left out for one
+  # without, as the contract requires them together: `{name, value}` members, in order.
   @doc false
-  @spec reach(String.t(), %{system: String.t(), path: String.t()} | nil) ::
+  @spec reach(harness | nil, %{system: String.t(), path: String.t()} | nil) ::
           [{String.t(), String.t() | Jason.OrderedObject.t()}]
-  def reach(_step, nil), do: []
+  def reach(_harness, nil), do: []
 
-  def reach(step, %{system: system, path: path}),
-    do: [{"access", access(step)}, {"target", target(system, path)}]
+  def reach(harness, %{system: system, path: path}),
+    do: [{"access", access(harness)}, {"target", target(system, path)}]
 
   # target/2 is a target of `system` and `path`.
   @doc false
@@ -71,12 +95,13 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
     ])
   end
 
-  # access/1 is what a run of a step may do on its target: an explore run and a prebuild
-  # read.
+  # access/1 is what a run with the harness members `harness` may do on its target: the
+  # level its harness walk resolved, `read` or `write`. A run with no harness members, a
+  # prebuild or an explore run with no workflow, reads.
   @doc false
-  @spec access(String.t()) :: String.t()
-  def access("explore"), do: "read"
-  def access("prebuild"), do: "read"
+  @spec access(harness | nil) :: String.t()
+  def access(%{access: level}) when level in [:read, :write], do: Atom.to_string(level)
+  def access(_none), do: "read"
 
   # time/1 is `at` in UTC to the whole second.
   @doc false

@@ -4,7 +4,7 @@ defmodule Apiary.Lingo.Domain.Example do
   its target is named by the `account` label in the system the `platform` label names. It
   has no catalogue, so its locales fall back to the language's. A work item needs no
   target, any target with a system and a path keeps its rules, a run gets no run
-  variables, and no environment is prebuilt.
+  variables, no environment is prebuilt, and no target has a harness file.
   """
   @behaviour Apiary.Lingo.Domain
 
@@ -44,4 +44,7 @@ defmodule Apiary.Lingo.Domain.Example do
 
   @impl true
   def prebuilds?, do: false
+
+  @impl true
+  def harness_file?, do: false
 end

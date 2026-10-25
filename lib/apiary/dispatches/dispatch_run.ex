@@ -1,6 +1,7 @@
 defmodule Apiary.Dispatches.DispatchRun do
   # A run of the provisioner contract, waiting in its workspace's queue: one queue per
-  # workspace, which any node pool of the workspace may claim from.
+  # workspace, which any node pool of the workspace may claim from, or, while the
+  # workspace has no node pool in use, the instance's pool.
   #
   # `run_id` is the run's id, a UUID Qory gives it when it queues the run, unique on the
   # instance: the `run_id` the contract carries, and, once the run is claimed, the run id
@@ -15,7 +16,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   #
   # A run for the step `prebuild` (`prebuild_changeset/2`) has no work item and no take
   # in: it builds the environment of a collection's target (`source_collection_id`) for
-  # one node pool of its workspace, `pool_id`, which alone may claim it, and names the
+  # one node pool of its workspace, or the instance's pool, `pool_id`, which alone may
+  # claim it, and names the
   # collection's `environment_ref` it was queued for. At most one waits per collection,
   # pool and `environment_ref` (`Apiary.Dispatches.queue_prebuild/3`). `environment_ref_at`
   # is when it was queued for that `environment_ref`, which no write changes since. Every
@@ -28,7 +30,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `end_detail` is
-  # the refusal's code of a run ended `run_refused`, nil for any other. `queued_at`
+  # the refusal's code of a run ended `run_refused`, or the failure code of a run ended
+  # `harness_unresolved`, nil for any other. `queued_at`
   # orders the queue, oldest first.
   #
   # `result_outcome` is what the run gave once Qory reads it as decided
@@ -80,7 +83,11 @@ defmodule Apiary.Dispatches.DispatchRun do
   # the refusal's code kept as `end_detail` (`Apiary.Dispatches.RunEnd.refused/1`);
   # `build_failed`, a waiting run held for its target's build, whose build failed, or was
   # lost twice, while no node pool had an image for its target (`Apiary.Environments`),
-  # with the outcome `error`.
+  # with the outcome `error`; `harness_unresolved`, a waiting explore run whose harness
+  # walk failed (`Apiary.Harnesses.WalkJob`), with the outcome `error` and the walk's
+  # failure code kept as `end_detail`; `target_access_gone`, a claimed run that could not
+  # be given access to its target, because the integration that brings in the target no
+  # longer reaches it, with the outcome `error`, which no code gives yet.
   @end_causes [
     :released,
     :closed,
@@ -99,7 +106,9 @@ defmodule Apiary.Dispatches.DispatchRun do
     :model_gone,
     :secrets_not_allowed,
     :run_refused,
-    :build_failed
+    :build_failed,
+    :harness_unresolved,
+    :target_access_gone
   ]
 
   # What a run gave (`Apiary.Explore.Result.outcome/1`).
@@ -128,6 +137,17 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :result_outcome, Ecto.Enum, values: @result_outcomes
     field :result, :map
     field :image_requeue, :boolean, default: false
+    # The call to an adapter the run stopped at, nil for none (`Apiary.Adapters.Calls`,
+    # `dispatch_runs_adapter_failure_check`): the adapter, the cause, the call's path, and
+    # the code of the adapter's refusal for the cause `:refused`. Qory writes them
+    # (`Apiary.Adapters.Calls.record_failure/3`); no changeset casts them.
+    belongs_to :failed_adapter, Apiary.Nodes.Node, foreign_key: :adapter_failure_id
+    # The run's harness walk (`Apiary.Harnesses.RunHarness`), read for a run whose walk
+    # failed (`Apiary.WorkItems.Explore`).
+    has_one :harness_walk, Apiary.Harnesses.RunHarness
+    field :adapter_failure, Ecto.Enum, values: Apiary.Adapters.CallFailure.causes()
+    field :adapter_failure_call, :string
+    field :adapter_failure_code, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -210,6 +230,7 @@ defmodule Apiary.Dispatches.DispatchRun do
       name: :dispatch_runs_source_collection_id_fkey
     )
     |> foreign_key_constraint(:pool_id, name: :dispatch_runs_pool_id_fkey)
+    |> check_constraint(:pool_id, name: :pool_place_matches, message: "does not exist")
   end
 
   # At most `of`, in the words Ecto gives a bound.

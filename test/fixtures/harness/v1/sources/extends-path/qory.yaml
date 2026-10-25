@@ -1,0 +1,4 @@
+# A checkout that extends a stack in a folder of the same checkout.
+harness:
+  extends: {path: ./harness/stacks/web}
+  target: {runtime: claude, model: opus}

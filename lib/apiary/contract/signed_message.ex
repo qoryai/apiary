@@ -62,6 +62,13 @@ defmodule Apiary.Contract.SignedMessage do
   # pass's, a run key's or an answer's, and the reverse. Left out of the module's
   # documentation too.
   @setup_pass_tag "qory-setup-ed25519-v1"
+  # A call's message (`call/5`, `Apiary.Adapters.Calls`), which Qory Apiary signs under
+  # its signing key, and the message of the adapter's answer to it (`call_answer/3`),
+  # which the adapter signs under its access key. Their domain lines keep either
+  # signature from ever verifying as a request's, an answer's, a pass's or a return's,
+  # and the reverse. Left out of the module's documentation too.
+  @call_tag "qory-call-ed25519-v1"
+  @call_answer_tag "qory-call-answer-ed25519-v1"
 
   @doc ~S"""
   run_key/1 is the message a run key's signature covers (`Apiary.Runs.RunKey`): its domain
@@ -94,6 +101,50 @@ defmodule Apiary.Contract.SignedMessage do
   @doc false
   @spec setup_pass(binary) :: binary
   def setup_pass(payload) when is_binary(payload), do: @setup_pass_tag <> "\n" <> payload
+
+  # call/5 is the message a call's signature covers: `qory-call-ed25519-v1`, the adapter's
+  # id, the instance id of the adapter's requests, the method in upper case (POST, the one
+  # method a call has), the call's path as its schema states it, such as `resolve`, not
+  # the address the call is sent to, and the raw body; joined by line feeds, with none
+  # after the last.
+  @doc false
+  @spec call(String.t(), String.t(), String.t(), String.t(), iodata) :: binary
+  def call(adapter_id, instance_id, "POST" = method, path, body)
+      when is_binary(adapter_id) and is_binary(instance_id) and is_binary(path) do
+    IO.iodata_to_binary([
+      @call_tag,
+      ?\n,
+      adapter_id,
+      ?\n,
+      instance_id,
+      ?\n,
+      method,
+      ?\n,
+      path,
+      ?\n,
+      body
+    ])
+  end
+
+  # call_answer/3 is the message the signature of an answer with `status` and `body` to
+  # the call whose signature is `call_signature` covers: `qory-call-answer-ed25519-v1`,
+  # the status as three decimal digits, the call's `X-Qory-Signature-Ed25519` exactly as
+  # sent, and the lower-case hex SHA-256 of the body; joined by line feeds, with none
+  # after the last.
+  @doc false
+  @spec call_answer(100..599, String.t(), iodata) :: binary
+  def call_answer(status, call_signature, body)
+      when status in 100..599 and is_binary(call_signature) do
+    IO.iodata_to_binary([
+      @call_answer_tag,
+      ?\n,
+      Integer.to_string(status),
+      ?\n,
+      call_signature,
+      ?\n,
+      Base.encode16(:crypto.hash(:sha256, body), case: :lower)
+    ])
+  end
 
   @doc ~S"""
   request/5 is the request string of a request under `access_key_id` from `instance_id`

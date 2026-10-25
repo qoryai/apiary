@@ -1,8 +1,10 @@
 defmodule Apiary.Stacks.Stack do
-  # A stack set at a level of an organisation: `stack`, a stack name or a stack reference
-  # (`Apiary.Contract.Stack`), and `saved_by_organisation_id`, the organisation a member
-  # saved it in, nil for a stack saved any other way (`Apiary.Stacks.saved_by/1`) and
-  # once that organisation is deleted.
+  # A stack set at a level of an organisation: `harness`, a harness document, the
+  # contents of the `harness` section of qory's format written in YAML
+  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow; and
+  # `owner_organisation_id`, the organisation that owns the row, which the edition gives
+  # for the person who saved it last (`Apiary.Edition.harness_owner/1`), nil once that
+  # organisation is deleted. A row has a document, a workflow, or both.
   #
   # Its level is read from the columns it has set (`level/1`):
   #
@@ -17,6 +19,10 @@ defmodule Apiary.Stacks.Stack do
   # `workflow` is a workflow name: a lower-case letter, then up to 63 lower-case letters,
   # digits and hyphens. A run's workflow is read from these rows
   # (`Apiary.Stacks.workflow/2`).
+  #
+  # `access` is the access level recorded for the runs of the row's workflow, `:read` or
+  # `:write`, nil for none, and only on a row with a workflow. It only lowers the level
+  # the workflow declares in its stack (`Apiary.Harnesses.Walk`).
   #
   # Changed only through `Apiary.Stacks`.
   @moduledoc false
@@ -34,12 +40,13 @@ defmodule Apiary.Stacks.Stack do
   @foreign_key_type :binary_id
   schema "stacks" do
     field :workflow, :string
-    field :stack, :string
+    field :harness, :string
+    field :access, Ecto.Enum, values: [:read, :write]
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :target, Apiary.Runs.Target
-    belongs_to :saved_by_organisation, Apiary.Organisations.Organisation
+    belongs_to :owner_organisation, Apiary.Organisations.Organisation
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :updated_by, Apiary.Accounts.User
 

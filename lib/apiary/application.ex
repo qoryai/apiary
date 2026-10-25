@@ -43,8 +43,13 @@ defmodule Apiary.Application do
     # QORY_ENROLMENT_DIR that is not an absolute path, stops the boot too. The folder of
     # each adapter listed is made now, so that the adapter that mounts it finds it before
     # the instance is set up; a folder that cannot be made is said and stops nothing.
-    Apiary.Adapters.Installed.boot!()
+    adapters = Apiary.Adapters.Installed.boot!()
     :ok = Apiary.Adapters.Installed.make_folders()
+    # Then the instance's node pool and gateway, declared by QORY_INSTALLED_POOL,
+    # QORY_INSTALLED_GATEWAY and QORY_INSTALLED_GATEWAY_URL, checked against the adapters'
+    # names, their folders made as the adapters' are.
+    Apiary.Nodes.Installed.boot!(adapters)
+    :ok = Apiary.Nodes.Installed.make_folders()
     # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY,
     # TRUSTED_PROXIES, APIARY_SIGNING_SECRET or integration setting stops the boot too, and
     # so does an edition's table or subject the core has already, or a page whose feature
@@ -54,6 +59,8 @@ defmodule Apiary.Application do
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
+    # A malformed QORY_SETUP_CODE_SHA256 stops the boot too.
+    Apiary.Setup.preset!()
     Apiary.Dispatches.MachineLogs.boot!()
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Source.boot!()
@@ -67,6 +74,9 @@ defmodule Apiary.Application do
     :ok = Apiary.Edition.boot!()
     # A database connection encrypted without its certificate checked is said once.
     Apiary.DatabaseUrl.boot()
+    # A PUBLIC_URL over plain http on a host other than localhost is said once, when the
+    # endpoint serves: browsers drop the sign-in cookies there.
+    ApiaryWeb.Endpoint.warn_plain_http()
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()
@@ -98,6 +108,11 @@ defmodule Apiary.Application do
       {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Apiary.PubSub},
       {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
+      # Each attempt of a call to an adapter, bounded in time (`Apiary.Adapters.Calls`).
+      {Task.Supervisor, name: Apiary.Adapters.Calls.Supervisor},
+      # The time of each call to an adapter, later than the one before
+      # (`Apiary.Adapters.CallClock`).
+      Apiary.Adapters.CallClock,
       Apiary.Runs.RateLimit,
       Apiary.Nodes.Throttle,
       # The holds of adapters' reads of their change feeds, a few per key

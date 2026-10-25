@@ -203,11 +203,11 @@ defmodule ApiaryWeb.PathScopeTest do
   } do
     conn = get(conn, workspace_path(scope, "/settings/runs"))
     assert get_session(conn, :last_workspace_id) == scope.workspace.id
-    assert Map.has_key?(conn.resp_cookies, "_apiary_key")
+    assert Map.has_key?(conn.resp_cookies, "__Host-_apiary_key")
 
     for path <- [workspace_path(scope, "/settings/runs"), workspace_path(scope, "/runs/r-1/log")] do
       again = conn |> recycle() |> get(path)
-      refute Map.has_key?(again.resp_cookies, "_apiary_key"), path
+      refute Map.has_key?(again.resp_cookies, "__Host-_apiary_key"), path
     end
   end
 

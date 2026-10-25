@@ -506,6 +506,37 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       %{run: run}
     end
 
+    test "a harness fetch has no Allow, Deny or lock, and a crafted event opens nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = policy_run(scope, egress: [Map.put(@denied, "channel", "stack"), @denied])
+
+      ids =
+        Repo.all(
+          from c in Connection,
+            where: c.run_id == ^run.id and c.host == "files.cdn.example",
+            select: {c.channel, c.id}
+        )
+        |> Map.new()
+
+      view = connections(conn, scope, run)
+      stack = "#cx-#{ids["stack"]}"
+      session = "#cx-#{ids["session"]}"
+
+      assert has_element?(view, stack <> "-stack", "Harness fetch")
+      assert has_element?(view, "button" <> session <> "-allow")
+      assert has_element?(view, "button" <> session <> "-deny")
+
+      for suffix <- ~w(-allow -deny -lock),
+          do: refute(has_element?(view, stack <> suffix), suffix)
+
+      for action <- ~w(allow deny),
+          do: render_click(view, "rule_open", %{"id" => ids["stack"], "action" => action})
+
+      refute has_element?(view, "#rule-panel")
+    end
+
     test "Allow and Deny as icons, the padlock, and a lock for the wall", %{
       conn: conn,
       run: run,

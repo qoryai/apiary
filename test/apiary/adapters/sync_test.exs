@@ -138,6 +138,85 @@ defmodule Apiary.Adapters.SyncTest do
       assert length(entries(:"adapter.declare")) == 4
     end
 
+    test "stores the call_url declared with the instance id it is signed for; a declaration without one clears both",
+         %{adapter: adapter, key_scope: key_scope} do
+      url = "https://acme-tracker.qory.example/calls/"
+      called = &Map.merge(declaration(), %{call_url: url, instance_id: &1})
+
+      assert {:ok, %Node{call_url: ^url, call_instance_id: "instance-a"}} =
+               Adapters.declare(key_scope, called.("instance-a"))
+
+      assert {reload(adapter).call_url, reload(adapter).call_instance_id} == {url, "instance-a"}
+      assert [first] = entries(:"adapter.declare")
+      assert first.after["call_url"] == url
+      refute Map.has_key?(first.after, "call_instance_id")
+
+      # A start under another instance id keeps the address and takes the id, with no
+      # entry: the trail has the address alone.
+      assert {:ok, _} = Adapters.declare(key_scope, called.("instance-b"))
+      assert reload(adapter).call_instance_id == "instance-b"
+      assert length(entries(:"adapter.declare")) == 1
+
+      # A declaration with no call_url clears both, whatever instance id it came with.
+      assert {:ok, %Node{call_url: nil, call_instance_id: nil}} =
+               Adapters.declare(key_scope, Map.put(declaration(), :instance_id, "instance-b"))
+
+      assert [_, second] = entries(:"adapter.declare")
+      assert second.before == %{"call_url" => url}
+      assert second.after == %{"call_url" => nil}
+
+      # A call_url without an instance id is refused, and nothing changes.
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Adapters.declare(key_scope, Map.put(declaration(), :call_url, url))
+
+      assert Keyword.has_key?(changeset.errors, :call_instance_id)
+      assert reload(adapter).call_url == nil
+      assert length(entries(:"adapter.declare")) == 2
+    end
+
+    test "the database holds a call_url to an https address whose path ends with /, with its instance id, on adapters alone",
+         %{scope: scope, adapter: adapter} do
+      at = from(n in Node, where: n.id == ^adapter.id)
+
+      for url <- [
+            "https://tracker.example.com/",
+            "https://tracker.example.com:8443/calls/v1/",
+            "https://tracker.example.com/" <> String.duplicate("a", 2048 - 29) <> "/"
+          ] do
+        assert {1, _} = Repo.update_all(at, set: [call_url: url, call_instance_id: "a.b_c-1"])
+      end
+
+      assert {1, _} = Repo.update_all(at, set: [call_url: nil, call_instance_id: nil])
+
+      for {url, id} <- [
+            {"https://tracker.example.com", "a"},
+            {"https://tracker.example.com/calls", "a"},
+            {"https://tracker.example.com/calls/?x=/", "a"},
+            {"https://tracker.example.com/calls/#x/", "a"},
+            {"http://tracker.example.com/calls/", "a"},
+            {"https://user@tracker.example.com/calls/", "a"},
+            {"https://tracker.example.com/ca lls/", "a"},
+            {"https://tracker.example.com/" <> String.duplicate("a", 2048 - 28) <> "/", "a"},
+            {"https://tracker.example.com/calls/", nil},
+            {nil, "a"},
+            {"https://tracker.example.com/calls/", "-a"},
+            {"https://tracker.example.com/calls/", "a b"},
+            {"https://tracker.example.com/calls/", String.duplicate("a", 65)}
+          ] do
+        assert_raise Postgrex.Error, ~r/nodes_call_url_check/, fn ->
+          Repo.update_all(at, set: [call_url: url, call_instance_id: id])
+        end
+      end
+
+      node = Apiary.NodesFixtures.node_fixture(scope)
+
+      assert_raise Postgrex.Error, ~r/nodes_call_url_check/, fn ->
+        Repo.update_all(from(n in Node, where: n.id == ^node.id),
+          set: [call_url: "https://tracker.example.com/calls/", call_instance_id: "a"]
+        )
+      end
+    end
+
     test "the database holds a setup_url to an https address with no fragment, on adapters alone",
          %{scope: scope, adapter: adapter} do
       at = from(n in Node, where: n.id == ^adapter.id)
@@ -459,7 +538,17 @@ defmodule Apiary.Adapters.SyncTest do
             {%{connect_url: "http://a.example/c"}, :connect_url},
             {%{setup_url: "http://a.example/setup"}, :setup_url},
             {%{setup_url: "https://a.example/setup#start"}, :setup_url},
-            {%{setup_url: "https://a.example/" <> String.duplicate("a", 2048)}, :setup_url}
+            {%{setup_url: "https://a.example/" <> String.duplicate("a", 2048)}, :setup_url},
+            {%{call_url: "http://a.example/calls/", call_instance_id: "a"}, :call_url},
+            {%{call_url: "https://a.example/calls", call_instance_id: "a"}, :call_url},
+            {%{call_url: "https://a.example/calls/?x=/", call_instance_id: "a"}, :call_url},
+            {%{
+               call_url: "https://a.example/" <> String.duplicate("a", 2048) <> "/",
+               call_instance_id: "a"
+             }, :call_url},
+            {%{call_url: "https://a.example/calls/"}, :call_instance_id},
+            {%{call_instance_id: "a"}, :call_url},
+            {%{call_url: "https://a.example/calls/", call_instance_id: "-a"}, :call_instance_id}
           ] do
         changeset =
           Node.declaration_changeset(

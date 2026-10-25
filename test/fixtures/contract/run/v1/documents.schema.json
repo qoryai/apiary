@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/run/v1/documents.schema.json",
   "title": "Run documents",
-  "description": "The run's documents: one object of the members step, domain, inputs, access, target, work_item, run_settings, stack, workflow, harness_hidden, image_destination, environment_destination and environment_image, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and stack exactly when workflow and harness_hidden are. A run of the step explore has work_item. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no work_item, no run_settings, no stack, no workflow and no harness_hidden, and its inputs are prebuild_inputs. run_settings is present only for the step explore, and image_destination, environment_destination and environment_image only for the step prebuild. A member this schema does not define is refused.",
+  "description": "The run's documents: one object of the members step, domain, inputs, access, target, target_version, work_item, run_settings, workflow, harness_hidden, harness, image_destination, environment_destination and environment_image, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and target_version only when target is. workflow is present exactly when harness_hidden is, and a run with workflow has harness, target_version, or both. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, the machine composes that file at target_version, and harness is absent. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as the description of tiers states. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. The machine works at target_version when it is present. A run of the step explore has work_item. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no target_version, no work_item, no run_settings, no workflow, no harness_hidden and no harness, and its inputs are prebuild_inputs. run_settings is present only for the step explore, and image_destination, environment_destination and environment_image only for the step prebuild. A member this schema does not define is refused.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -26,20 +26,23 @@
     "target": {
       "$ref": "#/$defs/target"
     },
+    "target_version": {
+      "$ref": "#/$defs/target_version"
+    },
     "work_item": {
       "$ref": "#/$defs/work_item"
     },
     "run_settings": {
       "$ref": "#/$defs/run_settings"
     },
-    "stack": {
-      "$ref": "#/$defs/stack"
-    },
     "workflow": {
       "$ref": "#/$defs/workflow"
     },
     "harness_hidden": {
       "$ref": "#/$defs/harness_hidden"
+    },
+    "harness": {
+      "$ref": "#/$defs/harness"
     },
     "image_destination": {
       "$ref": "#/$defs/image_destination"
@@ -110,9 +113,10 @@
           "inputs": {
             "$ref": "#/$defs/prebuild_inputs"
           },
-          "stack": false,
+          "target_version": false,
           "workflow": false,
-          "harness_hidden": false
+          "harness_hidden": false,
+          "harness": false
         }
       }
     },
@@ -161,6 +165,27 @@
           "environment_image": false
         }
       }
+    },
+    {
+      "if": {
+        "required": [
+          "workflow"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "harness"
+            ]
+          },
+          {
+            "required": [
+              "target_version"
+            ]
+          }
+        ]
+      }
     }
   ],
   "dependentRequired": {
@@ -170,20 +195,19 @@
     "access": [
       "target"
     ],
-    "stack": [
-      "workflow",
-      "harness_hidden"
+    "target_version": [
+      "target"
     ],
     "workflow": [
-      "stack"
+      "harness_hidden"
     ],
     "harness_hidden": [
-      "stack"
+      "workflow"
     ]
   },
   "$defs": {
     "step": {
-      "description": "The step the run is for, which the control plane sets: explore and prebuild are the values known today. A run of the step explore is for a work item. A run of the step prebuild builds the environment of the target and has no work item. The job picks what to compose from it, and refuses a step it does not know.",
+      "description": "The step the run is for, which the control plane sets: explore and prebuild are the values known today. A run of the step explore is for a work item. A run of the step prebuild builds the environment of the target and has no work item and no target_version. The job picks what to compose from it, and refuses a step it does not know.",
       "type": "string",
       "pattern": "^[a-z][a-z_]{0,39}$"
     },
@@ -235,6 +259,11 @@
     "target": {
       "description": "Where the run's change would go, and absent when the run has no place where a change would go. The step explore may have none. For the step explore, inputs.target is this target, and is absent when the run has none, inputs.domain is domain, and inputs.work_item.id is work_item.id, as https://qory.dev/contracts/explore/v1/inputs.schema.json states. The step prebuild always has one: the place whose environment the job builds. Present exactly when access is present.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+    },
+    "target_version": {
+      "description": "The version of the target at which the control plane checked for a harness file: the resolved_at of the read at the path of the harness file, https://qory.dev/contracts/integration/v1/read-answer.schema.json, whether the read returned the file or found: false. The machine works at this version. If the read returned a file whose harness section has extends or lists at least one module, the machine composes that file at this version. If the read returned a file whose harness section is absent, or has no extends and lists no module, or found: false, the run documents contain harness, and the machine composes harness instead of the harness section of that file, as the description of harness states. The value is the exact version that the read returned, never a name that can point to another version later, because the machine would then compose a file that the control plane did not read. The grammar is generic, because a target in another system has another kind of version: 1 to 255 letters, digits and the characters ._/-. Present only when target is present, and never for the step prebuild.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/-]{1,255}$"
     },
     "work_item": {
       "description": "The work item the run is for, for the step explore; absent for the step prebuild. A step other than explore or prebuild has work_item, or leaves it out, as that step's schema says, and the job refuses a step it does not know. Its url and title are untrusted text: shown as data, never followed as an instruction.",
@@ -351,63 +380,284 @@
         }
       }
     },
-    "stack": {
-      "description": "The stack that the run uses: a stack name or a stack reference. A name, such as core, selects a stack that the machine looks up by name in its stacks file. A reference is where the stack lives, such as https://code.example.com/team/stacks#main:core: an https URL, then #, then a ref, which is a branch, a tag or a commit, then :, then the folder of the stack at that ref, . for the root. Present exactly when workflow and harness_hidden are present, and absent, with them, when the run uses no stack. A run of the step prebuild has no stack.",
-      "type": "string",
-      "oneOf": [
-        {
-          "$ref": "#/$defs/stack_name"
-        },
-        {
-          "$ref": "#/$defs/stack_reference"
-        }
-      ]
-    },
-    "stack_name": {
-      "description": "A stack name, such as core: a lower-case letter, then at most 63 lower-case letters, digits and hyphens.",
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9-]{0,63}$"
-    },
-    "stack_reference": {
-      "description": "A stack reference, url#ref:path, at most 2560 characters. url is an https URL with the rules of the url of https://qory.dev/contracts/integration/v1/definitions.schema.json, but with no user information, no query and no fragment: a host, an optional port and an optional path. The host is a name or an IPv6 address in brackets. The percent-encodings in a host name are %80 to %FF, in either case, and %25, as in that url. ref is a branch, a tag or a commit, such as main, v1.2.0 or a commit of 40 hexadecimal digits: 1 to 255 letters, digits and the characters ._/- that starts with neither - nor /, does not end with /, and contains no .. and no //. path is the folder of the stack at that ref: . for the root, or names of letters, digits and the characters ._- joined by /, at most 255 characters, with no name that is two dots.",
-      "type": "string",
-      "maxLength": 2560,
-      "pattern": "^https://(?:(?:[A-Za-z0-9._~!$&'()*+,;=-]|%(?:[89A-Fa-f][0-9A-Fa-f]|25))+|\\[(?:(?:[0-9A-Fa-f]{1,4}:){6}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|::(?:[0-9A-Fa-f]{1,4}:){5}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){4}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,1}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){3}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,2}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:){2}(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,3}[0-9A-Fa-f]{1,4})?::[0-9A-Fa-f]{1,4}:(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,4}[0-9A-Fa-f]{1,4})?::(?:[0-9A-Fa-f]{1,4}:[0-9A-Fa-f]{1,4}|(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))|(?:(?:[0-9A-Fa-f]{1,4}:){0,5}[0-9A-Fa-f]{1,4})?::[0-9A-Fa-f]{1,4}|(?:(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})?::)\\])(?::(?:0{0,4}[1-9]|0{0,3}[1-9][0-9]|0{0,2}[1-9][0-9]{2}|0?[1-9][0-9]{3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])?)?(?:/(?:[A-Za-z0-9._~!$&'()*+,;=:@/-]|%[0-9A-Fa-f]{2})*)?#[A-Za-z0-9._][A-Za-z0-9._-]*(?:/[A-Za-z0-9._-]+)*:(?:\\.|[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)$",
-      "allOf": [
-        {
-          "description": "The ref has at most 255 characters.",
-          "not": {
-            "pattern": "#[^:]{256}"
-          }
-        },
-        {
-          "description": "The ref contains no two dots in a row.",
-          "not": {
-            "pattern": "#[^:]*\\.\\."
-          }
-        },
-        {
-          "description": "The path has at most 255 characters.",
-          "not": {
-            "pattern": "#[^:]*:[^:]{256}"
-          }
-        },
-        {
-          "description": "The path has no name that is two dots.",
-          "not": {
-            "pattern": "#[^:]*:(?:.*/)?\\.\\.(?:/.*)?$"
-          }
-        }
-      ]
-    },
     "workflow": {
-      "description": "The workflow of the stack that the run starts, invoked as its command, such as hello, which the job invokes as /hello. Present exactly when stack is present. A run of the step prebuild has no workflow.",
+      "description": "The workflow of the harness that the run starts, invoked as its command, such as hello, which the job invokes as /hello. Present exactly when harness_hidden is present. A run of the step prebuild has no workflow.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
     "harness_hidden": {
-      "description": "Whether the text that comes from the harness of the stack is hidden in the run: when true, that text is hidden, and when false, that text is shown. Present exactly when stack is present. A run of the step prebuild has no harness_hidden.",
+      "description": "Whether the text that comes from the harness is hidden in the run: when true, that text is hidden, and when false, that text is shown. Present exactly when workflow is present. A run of the step prebuild has no harness_hidden.",
       "type": "boolean"
+    },
+    "harness": {
+      "description": "The harness document of the workspace, in the form of qory.yaml, https://qory.dev/contracts/harness/v1/config.schema.json, which the control plane takes from the settings of the workspace. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, the machine composes that file at target_version, and harness is absent. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as the description of tiers states. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. harness contains exactly one member, harness, the harness section, which extends a stack or defines one, as the description of harness_section states. Every source is a remote source. These are refused: a source of the form {path}, alone or with module or stack; a module given by name alone; link; the machine keys runtime, model, effort, tiers, force, update, home, links and launch; and the members git, env, worktree, exports and target. A run of the step prebuild has no harness.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "harness"
+      ],
+      "properties": {
+        "harness": {
+          "$ref": "#/$defs/harness_section"
+        }
+      }
+    },
+    "harness_section": {
+      "description": "The harness section of the harness document. A section extends a stack or defines one. A section with extends extends that stack, the base: it appends its modules to the base, and takes the workflows of the base, so it has no workflows. A section without extends defines a stack: it requires modules, at least 1, and may contain workflows, in which the stack declares the access level of each of its workflows. A section that defines a stack, without extends, takes no target: the machine composes it for run_settings.runtime, or, when the run documents have no run_settings, for the default runtime of the machine. Either kind may contain the bindings of roles, the extensions, and a name and a description. Every other key of the harness section of qory.yaml is refused.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "The name of the harness.",
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "description": "A description of the harness.",
+          "type": "string"
+        },
+        "extends": {
+          "description": "The stack the harness extends, the base: a remote source, with path, the folder of the stack inside the remote source, or with stack, the name of a stack the remote source exports, or with neither, the root of the remote source. Absent when the section defines a stack.",
+          "$ref": "#/$defs/harness_base"
+        },
+        "modules": {
+          "description": "The modules, in order, at least 1: the modules appended to the base when the section has extends, and the modules of the stack the section defines when it has none. Required when the section has no extends.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/harness_module"
+          }
+        },
+        "bind": {
+          "description": "The entry that fills each role a module references: <kind>/<role> to the name of an entry of that kind, so a module writes ${qory:agents/coder} and the harness defines which agent that is.",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^(agents|commands|skills)/[^/\\\\@ .][^/\\\\@ ]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+          }
+        },
+        "extensions": {
+          "description": "Values that qory copies into the report and does not read: keys of the author's choosing, each a value of any shape.",
+          "type": "object"
+        },
+        "workflows": {
+          "description": "The settings of each workflow of the stack the section defines, by the workflow's name, with the names, keys and values of workflows in qory-stack.yaml, https://qory.dev/contracts/harness/v1/stack.schema.json. A name is a lower-case letter, then up to 63 lower-case letters, digits and hyphens, as workflow is. Only in a section without extends: a section with extends takes the workflows of its base, and workflows is refused there.",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/harness_workflow"
+          }
+        }
+      },
+      "if": {
+        "required": [
+          "extends"
+        ]
+      },
+      "then": {
+        "properties": {
+          "workflows": false
+        }
+      },
+      "else": {
+        "required": [
+          "modules"
+        ]
+      }
+    },
+    "harness_workflow": {
+      "description": "The settings of one workflow of a stack that a harness section defines: access and time_limit, both optional.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "description": "The access level the workflow declares for what a run of it works on: read or write. Left out, it is read.",
+          "type": "string",
+          "enum": [
+            "read",
+            "write"
+          ]
+        },
+        "time_limit": {
+          "description": "How long a run of the workflow may run, counted from the run's open, as a duration above zero in the form of a Go duration, such as 7h, 45m or 1h30m. The run's run_settings.time_limit_minutes, when the control plane sets it, applies instead.",
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$",
+          "not": {
+            "pattern": "^([0.]+(ns|us|ms|s|m|h))+$"
+          }
+        }
+      }
+    },
+    "harness_base": {
+      "description": "A remote source of a stack: git and ref, with at most one of path, the folder of the stack inside the remote source, and stack, the name of a stack the remote source exports. A source with neither path nor stack is the root of the remote source. A source with both is refused, and so is a source of the form {path}, alone or with stack.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git",
+        "ref"
+      ],
+      "properties": {
+        "git": {
+          "description": "The address of the remote source.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "The version of the remote source.",
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "description": "The folder of the stack inside the remote source.",
+          "type": "string",
+          "minLength": 1
+        },
+        "stack": {
+          "description": "The name of a stack the remote source exports.",
+          "$ref": "#/$defs/harness_export_name"
+        }
+      },
+      "not": {
+        "required": [
+          "path",
+          "stack"
+        ]
+      }
+    },
+    "harness_module": {
+      "description": "A module appended to the stack: a remote source, with an optional name, exclude or only, and variant. A module given by name alone, and link, are refused.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "name": {
+          "description": "The name of the module, which the manifest of the module must declare.",
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/harness_source"
+        },
+        "exclude": {
+          "description": "What of the module the compose leaves out; everything else is composed. Not with only.",
+          "$ref": "#/$defs/harness_selection"
+        },
+        "only": {
+          "description": "The only things of the module the compose takes; everything not listed is left out. Not with exclude.",
+          "$ref": "#/$defs/harness_selection"
+        },
+        "variant": {
+          "description": "The variant of the module.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "harness_source": {
+      "description": "A remote source of a module: git and ref, with at most one of path, the folder of the module inside the remote source, and module, the name of a module the remote source exports. A source with neither path nor module is the root of the remote source. A source with both is refused, and so is a source of the form {path}, alone or with module.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git",
+        "ref"
+      ],
+      "properties": {
+        "git": {
+          "description": "The address of the remote source.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "The version of the remote source.",
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "description": "The folder of the module inside the remote source.",
+          "type": "string",
+          "minLength": 1
+        },
+        "module": {
+          "description": "The name of a module the remote source exports.",
+          "$ref": "#/$defs/harness_export_name"
+        }
+      },
+      "not": {
+        "required": [
+          "path",
+          "module"
+        ]
+      }
+    },
+    "harness_selection": {
+      "description": "Parts of a module, by kind: the names of some entries of each kind listed, true for the instructions, and true or some names for the settings and the variables.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "skills": {
+          "$ref": "#/$defs/harness_names"
+        },
+        "agents": {
+          "$ref": "#/$defs/harness_names"
+        },
+        "commands": {
+          "$ref": "#/$defs/harness_names"
+        },
+        "output-styles": {
+          "$ref": "#/$defs/harness_names"
+        },
+        "hooks": {
+          "$ref": "#/$defs/harness_names"
+        },
+        "mcp": {
+          "$ref": "#/$defs/harness_names"
+        },
+        "files": {
+          "$ref": "#/$defs/harness_names"
+        },
+        "instructions": {
+          "const": true
+        },
+        "settings": {
+          "$ref": "#/$defs/harness_part"
+        },
+        "env": {
+          "$ref": "#/$defs/harness_part"
+        }
+      }
+    },
+    "harness_names": {
+      "description": "Some names, at least 1.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "harness_part": {
+      "description": "A merged part: true for all of it, or the names of some of it.",
+      "oneOf": [
+        {
+          "const": true
+        },
+        {
+          "$ref": "#/$defs/harness_names"
+        }
+      ]
+    },
+    "harness_export_name": {
+      "description": "The name of an export, one path segment, as https://qory.dev/contracts/harness/v1/config.schema.json defines it.",
+      "type": "string",
+      "pattern": "^[^./\\\\@][^/\\\\@]*$"
     },
     "image_destination": {
       "description": "The place at the registry where the build pushes the target image, the image that the runs of the target start from, such as registry.example.com/targets/0123456789abcdef. The target image contains the environment, the agent, the target's files and the results of the setup commands. The value is a place at the registry as image_place defines it. The run reports the image by its digest. A run of the step prebuild has image_destination, and a run of any other step has none.",
@@ -422,10 +672,10 @@
       "$ref": "#/$defs/image_by_digest"
     },
     "image_place": {
-      "description": "A place at the registry, with no tag and no digest: a host, an optional port, then a path, as the OCI distribution spec writes an image name. The host is DNS labels joined by dots, each of upper-case or lower-case letters, digits and hyphens that starts and ends with a letter or a digit, and a port is a colon and 1 to 5 digits. The host contains a dot, has a port, or is exactly localhost. A Docker Hub host, docker.io, index.docker.io, registry-1.docker.io, registry.hub.docker.com or registry.docker.com, in any case and with or without a port, is refused. Docker reads a lower-case first part with no dot, no port and other than localhost, such as registry/env, as a path on Docker Hub, so such a name is refused. A first part with upper case and with no dot, no port and other than localhost, such as Registry/env, is refused too. The path is one or more components, each after a /; a component is runs of lower-case letters and digits, joined by a dot, one or two underscores, or one or more hyphens. At most 255 characters.",
+      "description": "A place at the registry, with no tag and no digest: a host, an optional port, then a path, as the OCI distribution spec writes an image name. The host is DNS labels joined by dots, each of lower-case letters, digits and hyphens that starts and ends with a letter or a digit, and a port is a colon and 1 to 5 digits. The host contains a dot, has a port, or is exactly localhost. A Docker Hub host, docker.io, index.docker.io, registry-1.docker.io, registry.hub.docker.com or registry.docker.com, in any case and with or without a port, is refused. Docker reads a lower-case first part with no dot, no port and other than localhost, such as registry/env, as a path on Docker Hub, so such a name is refused. The path is one or more components, each after a /; a component is runs of lower-case letters and digits, joined by a dot, one or two underscores, or one or more hyphens. At most 255 characters.",
       "type": "string",
       "maxLength": 255,
-      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?::[0-9]{1,5})?|[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?:[0-9]{1,5}|localhost)(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+$",
+      "pattern": "^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?::[0-9]{1,5})?|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?:[0-9]{1,5}|localhost)(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+$",
       "allOf": [
         {
           "not": {
@@ -458,7 +708,7 @@
       "description": "An image by its digest: a place at the registry as image_place defines it, then @sha256:, then 64 lower-case hexadecimal digits, such as registry.example.com/environments/0123456789abcdef@sha256: and the 64 digits. The host contains a dot, has a port, or is exactly localhost, and a Docker Hub host, docker.io, index.docker.io, registry-1.docker.io, registry.hub.docker.com or registry.docker.com, in any case and with or without a port, is refused. A name with no host, such as env@sha256: and the 64 digits, is refused, because Docker pulls such a name from Docker Hub. A tag, such as :latest, is refused, because the image at a tag can change, and the image at a digest cannot. Upper-case hexadecimal digits are refused too. At most 327 characters, so the place is at most 255.",
       "type": "string",
       "maxLength": 327,
-      "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?::[0-9]{1,5})?|[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?:[0-9]{1,5}|localhost)(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+@sha256:[0-9a-f]{64}$",
+      "pattern": "^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?::[0-9]{1,5})?|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?:[0-9]{1,5}|localhost)(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+@sha256:[0-9a-f]{64}$",
       "allOf": [
         {
           "not": {

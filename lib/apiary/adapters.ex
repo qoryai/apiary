@@ -94,6 +94,7 @@ defmodule Apiary.Adapters do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
+  alias Apiary.Secrets.{AdapterSealing, Instance, InstanceSecretValue, Reference}
 
   ## Who may
 
@@ -577,9 +578,10 @@ defmodule Apiary.Adapters do
   @doc false
   # Starts the connection of `adapter` to the scope's organisation (`adapter.connect`,
   # owners and admins, asked of the organisation), with `adapter` as it is now, in use and
-  # held `FOR SHARE`: the organisation's pending connection to it, made or taken
-  # (`Apiary.Adapters.Connections.start/3`, which ends a connected one no listing has
-  # named yet and makes a new one in its place), with a new connect pass for it
+  # held `FOR SHARE`: the organisation's connection to it that has not ended, made or
+  # taken, pending or connected (`Apiary.Adapters.Connections.start/3`: a connected one
+  # takes the pass for an external account the person adds to it), with a new connect
+  # pass for it
   # (`Apiary.Adapters.ConnectPass`), made under the connection's row lock, whose nonce and
   # expiry the connection keeps as its latest pass's; each new pass of a connection
   # expires strictly later than the one before it, and when that would take it more than
@@ -595,15 +597,15 @@ defmodule Apiary.Adapters do
   # the connection changed (`Apiary.Adapters.Collections.broadcast_connection/1`), and,
   # first, that the one it replaced ended, when it replaced one.
   #
-  # `{:error, :connected}` while the organisation is connected to it and a listing named
-  # the connection;
+  # `{:error, :too_soon}` when the organisation's connected connection would need a pass
+  # that expires too far ahead, as for a second press in the same second;
   # `{:error, :no_connect_url}` while the adapter declared no address; `{:error, :no_key}`
   # while it holds no access key in use; `{:error, :forbidden}`; `{:error, :not_found}`;
   # none of them changes anything or leaves an entry.
   @spec connect(Scope.t(), Node.t()) ::
           {:ok, String.t(), {String.t(), String.t()}}
           | {:error,
-             :connected | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
+             :too_soon | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
   def connect(%Scope{} = scope, %Node{id: id}) do
     result =
       Repo.transact(fn ->
@@ -723,7 +725,9 @@ defmodule Apiary.Adapters do
   # closed as a member would close it, by the instance (`Apiary.WorkItems.close_for_adapter/2`,
   # whose moduledoc gives the lock order), and its runs not yet handed over end; once that
   # commits, the workspaces whose queue changed hear of it (`Apiary.Dispatches.broadcast/1`).
-  # The tickets are left as they are. If a close fails, nothing of the deletion is kept.
+  # The tickets are left as they are. The adapter's stored secret and its values are
+  # deleted, and its reference to them cleared (`Apiary.Secrets.Instance`), which the
+  # entry records (`app_values_deleted`). If a close fails, nothing of the deletion is kept.
   # An adapter installed with Qory Apiary whose name `QORY_INSTALLED_ADAPTERS` still lists
   # is `{:error, :installed}`, and nothing changes: the installer would make it again; once
   # the name is off the list, it is deleted as any adapter is, and its file is left as the
@@ -740,9 +744,15 @@ defmodule Apiary.Adapters do
            {:ok, key_ids} <- AccessKeys.revoke_node_keys(recorder, current, :node_deleted),
            connection_ids = Connections.end_for_adapter(current, now),
            {:ok, workspace_ids} <- WorkItems.close_for_adapter(current, now),
+           app_values_deleted = Instance.delete_app_values(Repo, current),
            {:ok, deleted} <-
              current
-             |> Ecto.Changeset.change(deleted_at: now, deleted_by_id: scope.user.id)
+             |> Ecto.Changeset.change(
+               deleted_at: now,
+               deleted_by_id: scope.user.id,
+               secret_store: nil,
+               secret_entry: nil
+             )
              |> Repo.update(),
            {:ok, _entry} <-
              Audit.record(Repo, recorder, :"adapter.delete", deleted, %{
@@ -753,6 +763,7 @@ defmodule Apiary.Adapters do
                  |> Map.take([:name, :kind, :public_id])
                  |> Map.put(:revoked_key_ids, key_ids)
                  |> Map.put(:ended_connection_ids, connection_ids)
+                 |> Map.put(:app_values_deleted, app_values_deleted)
              }) do
         {:ok, {deleted, workspace_ids}}
       end
@@ -923,6 +934,7 @@ defmodule Apiary.Adapters do
   @declared [
     :connect_url,
     :setup_url,
+    :call_url,
     :sync_default_interval,
     :sync_minimum_interval,
     :sync_sends_changes
@@ -933,32 +945,41 @@ defmodule Apiary.Adapters do
   # (`Apiary.Accounts.Scope.for_access_key/1`), declared as it started
   # (`Apiary.Adapters.Wire.declaration/1`): its connect address, where an instance admin
   # sets it up (`setup_url`, which a declaration without one clears: the adapter declares
-  # it only while it is not set up), and how it pulls (`adapter.declare`, `for_key/2`),
-  # and what its description's source role says. One transaction, with the adapter's row
-  # held `FOR NO KEY UPDATE`, as an instance admin's change holds it, so a declaration and
-  # a change of the interval come one after the other; an adapter deleted meanwhile is
-  # `{:error, :not_found}`.
+  # it only while it is not set up), where Qory Apiary calls it (`call_url`, with the
+  # instance id of the request that declared it, `instance_id`, which the calls are
+  # signed for; a declaration without one clears both), how it pulls
+  # (`adapter.declare`, `for_key/2`), and what its description's source role says. One
+  # transaction, with the adapter's row held `FOR NO KEY UPDATE`, as an instance admin's
+  # change holds it, so a declaration and a change of the interval come one after the
+  # other; an adapter deleted meanwhile is `{:error, :not_found}`.
   #
-  # A declaration that changes its connect address, its `setup_url` or how it pulls leaves
-  # an entry in the instance's trail whose actor is the key; one that changes none of them
-  # leaves none. The adapter's first declaration appends `{kind: "sync", interval: nil}`
-  # to its change feed, its default, and a later one appends nothing: as the contract has
-  # it, the feed carries the interval at the first declaration and whenever a person
-  # changes it. The interval an instance admin chose stays whatever a later declaration
-  # says; the adapter raises one below its minimum to that minimum.
+  # A declaration that changes its connect address, its `setup_url`, its `call_url` or how
+  # it pulls leaves an entry in the instance's trail whose actor is the key; one that
+  # changes none of them leaves none. The adapter's first declaration appends
+  # `{kind: "sync", interval: nil}` to its change feed, its default, and a later one
+  # appends nothing: as the contract has it, the feed carries the interval at the first
+  # declaration and whenever a person changes it. The interval an instance admin chose
+  # stays whatever a later declaration says; the adapter raises one below its minimum to
+  # that minimum.
   #
   # Each start also stores what its description's source role says
   # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
   # reports items, its words for its collections, and its line on how to change which
-  # collections it reaches, each replacing what the start before said; a description with
-  # no source role stores the defaults, no words, items and no line. Each start also
+  # collections it reaches, and the apply items of each run's work credential from it with
+  # its description's exact `egress_hosts`, each replacing what the start before said; a
+  # description with no source role stores the defaults, no words, items, no line and no
+  # apply items. A description whose apply items name a host that is not an entry of its
+  # `egress_hosts`, or a path template that a target path could fill to a path out of
+  # Forager's path grammar, never reaches here: the start's body is refused as it is read
+  # (`Apiary.Integrations.Description.parse/1`). Each start also
   # stores the domains its description lists, nil for none
   # (`Apiary.Nodes.Node.domains_changeset/2`); a start that narrows them leaves every
-  # collection assigned as it was. They are no part of the trail's entry. A start that changes `items` writes the feed's
-  # `linked` or `unlinked` entry for each live collection whose link that changes, in the
-  # same transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
-  # declaration's `sync` entry, so that the feed counter is taken after the collections,
-  # last, as the lock order has it; after the commit those collections are broadcast.
+  # collection assigned as it was. They are no part of the trail's entry. A start that
+  # changes `items` writes the feed's `linked` or `unlinked` entry for each live
+  # collection whose link that changes, in the same transaction
+  # (`Apiary.Adapters.Collections.relink_adapter/2`), before the first declaration's
+  # `sync` entry, so that the feed counter is taken after the collections, last, as the
+  # lock order has it; after the commit those collections are broadcast.
   # A start that changes the source's line on access or its words for its items or its
   # collections tells, after the commit, each organisation with a connection to the
   # adapter that its connection changed, once (`connection_changed`), so an open page of
@@ -983,6 +1004,9 @@ defmodule Apiary.Adapters do
              |> Node.declaration_changeset(%{
                connect_url: declaration.connect_url,
                setup_url: Map.get(declaration, :setup_url),
+               call_url: Map.get(declaration, :call_url),
+               call_instance_id:
+                 if(Map.get(declaration, :call_url), do: Map.get(declaration, :instance_id)),
                sync_default_interval: declaration.default_interval,
                sync_minimum_interval: declaration.minimum_interval,
                sync_sends_changes: declaration.sends_changes
@@ -1181,4 +1205,104 @@ defmodule Apiary.Adapters do
   end
 
   def for_key(%Scope{}, _action), do: {:error, :not_found}
+
+  @doc false
+  # Stores `values`, the secrets `adapter` keeps in Qory Apiary, opened from its upload,
+  # for the adapter's key's `scope` (`adapter.app_values_set`): they replace every secret
+  # it stored before (`Apiary.Secrets.Instance.put_app_values/3`). In the same
+  # transaction, with the adapter's row held, each name must be one the source role of its
+  # latest description lists (`secret_names`), and the entry is in the trail the key
+  # records in, about the adapter, with the reference, the names, the revision and
+  # whether the upload replaced secrets: never a value.
+  #
+  # `{:ok, stored}`; `{:error, :undeclared}` for a name the description does not list;
+  # else what `Apiary.Secrets.Instance.put_app_values/3` answers. None of the refusals
+  # changes anything or leaves an entry.
+  @spec store_app_values(Scope.t(), Node.t(), [InstanceSecretValue.t()]) ::
+          {:ok, Instance.stored()} | {:error, term}
+  def store_app_values(%Scope{} = scope, %Node{kind: :adapter} = adapter, values) do
+    Instance.put_app_values(adapter, values,
+      allowed: &declared_names(&1, values),
+      record: fn locked, stored ->
+        Audit.record(Repo, scope, :"adapter.app_values_set", locked, %{
+          details: %{
+            reference: Reference.to_string(stored.reference),
+            names: stored.names,
+            revision: stored.revision,
+            replaced: stored.replaced
+          }
+        })
+      end
+    )
+  end
+
+  @doc false
+  # The answer to `adapter`'s key's read of the secrets the adapter keeps in Qory Apiary
+  # (`adapter.app_values_seal`), for the key's `scope`: every secret it stored, sealed to
+  # `key`, the access key the request verified under, with a fresh ephemeral key, for the
+  # contract revision `revision` (`Apiary.Secrets.AdapterSealing.delivery/3`). With no
+  # secret stored, the answer seals an empty list. In one transaction, with the adapter's
+  # row held `FOR SHARE`, each read leaves an entry in the trail the key records in, about
+  # the adapter, with the access key's id, the secrets' revision and their names: never a
+  # value.
+  #
+  # `{:ok, body}`, the answer's bytes; `{:error, :not_found}` for an adapter deleted, or
+  # installed with Qory Apiary and no longer listed; `{:error, :key}` for an access key
+  # that fails a key check (`Apiary.Contract.Ed25519.check_public_key/1`) or a seal that
+  # fails; `{:error, :unavailable}` when a secret cannot be decrypted, which the log says,
+  # without a value. None of the refusals leaves an entry.
+  @spec seal_app_values(Scope.t(), Node.t(), AccessKey.t(), pos_integer) ::
+          {:ok, binary} | {:error, :not_found | :key | :unavailable | term}
+  def seal_app_values(
+        %Scope{} = scope,
+        %Node{kind: :adapter, id: id},
+        %AccessKey{} = key,
+        revision
+      ) do
+    Repo.transact(fn ->
+      with %Node{} = adapter <-
+             live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
+               {:error, :not_found},
+           :ok <-
+             if(installed?(adapter) and not listed?(adapter), do: {:error, :not_found}, else: :ok),
+           :ok <- recipient_key(key),
+           {:ok, %{revision: secrets_revision, values: values}} <-
+             Instance.reveal_app_values_for_sealing(adapter),
+           {:ok, body} <-
+             AdapterSealing.delivery(
+               values,
+               %{
+                 adapter_id: adapter.public_id,
+                 access_key_id: key.key_id,
+                 public_key: key.public_key
+               },
+               revision
+             ),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, :"adapter.app_values_seal", adapter, %{
+               details: %{
+                 access_key_id: key.key_id,
+                 revision: secrets_revision,
+                 names: Enum.map(values, & &1.value_id)
+               }
+             }) do
+        {:ok, body}
+      end
+    end)
+  end
+
+  defp recipient_key(%AccessKey{public_key: public_key}) do
+    case Ed25519.check_public_key(public_key) do
+      :ok -> :ok
+      {:error, _refusal} -> {:error, :key}
+    end
+  end
+
+  defp declared_names(%Node{secret_names: names}, values) do
+    names = names || []
+
+    if Enum.all?(values, fn %InstanceSecretValue{value_id: id} -> id in names end),
+      do: :ok,
+      else: {:error, :undeclared}
+  end
 end

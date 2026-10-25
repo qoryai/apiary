@@ -4,6 +4,8 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
   # digest as the configuration it was composed from.
   use Apiary.DataCase, async: true
 
+  import Ecto.Query, only: [from: 2]
+
   @moduletag needs: :security
 
   import Apiary.ContractFixtures, only: [contract_key_fixture: 1]
@@ -12,7 +14,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
   alias Apiary.Policy
   alias Apiary.Policy.{ComposedConfiguration, Render, RunConfiguration, Schema, Serving}
-  alias Apiary.Runs.Batch
+  alias Apiary.Runs.{Batch, RunCredentials}
   alias ApiaryWeb.ConnectionLive.Rules
 
   @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
@@ -473,6 +475,321 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       assert Serving.digest_for(key, run, batch, composed.digest) ==
                ComposedConfiguration.digest(newer.document, @image, false)
+    end
+  end
+
+  describe "a run with a work credential entry" do
+    @describetag needs: :factory
+
+    @apply [
+      %{
+        "hosts" => ["git.example.com"],
+        "scheme" => "basic",
+        "username" => "token-user",
+        "paths" => ["/{target.path}.git/*", "/{target.path}/*"]
+      },
+      %{"hosts" => ["api.git.example.com"], "scheme" => "bearer"}
+    ]
+
+    # A sealed run (`Apiary.SealedRunsFixtures.sealed_run_fixture/1`) of a workspace in
+    # `mode`, whose ticket's adapter declares `@apply`, with the work entry its claim would
+    # record (`Apiary.Runs.RunCredentials.form_work/3`), and the document its reload gives.
+    defp work_run!(scope, mode) do
+      {:ok, _mode} = Policy.set_mode(scope, mode)
+      ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
+      dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, ctx.run.dispatch_run_id)
+      work_item = Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(n in Apiary.Nodes.Node, where: n.id == ^work_item.adapter_id),
+          set: [source_apply: @apply]
+        )
+
+      {:ok, entry} =
+        RunCredentials.form_work(dispatch_run, work_item, %{path: work_item.target_path})
+
+      RunCredentials.insert!(entry, ctx.run)
+
+      {key, _seed} = ctx.secrets_key
+
+      {:ok, %{settings: settings, digest: digest}} =
+        Apiary.Runs.Registration.fetch(
+          key,
+          ctx.run.node_run_id,
+          Apiary.ContractFixtures.instance_id()
+        )
+
+      document =
+        settings
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Map.get(:values)
+        |> Enum.reject(fn {name, _value} -> name in ["labels", "about"] end)
+        |> Jason.OrderedObject.new()
+        |> Jason.encode!(escape: :json)
+
+      Map.merge(ctx, %{document: document, digest: digest, work_item: work_item})
+    end
+
+    test "is given work-1 last in credentials, and its hosts in allow_first and allow under enforce",
+         ctx do
+      %{document: document} = work = work_run!(ctx.scope, "enforce")
+      decoded = Jason.decode!(document)
+
+      assert List.last(decoded["credentials"]) == %{
+               "name" => "work-1",
+               "purpose" => "work",
+               "apply" => [
+                 %{
+                   "hosts" => ["git.example.com"],
+                   "scheme" => "basic",
+                   "username" => "token-user",
+                   "paths" => ["/acme/shop.git/*", "/acme/shop/*"]
+                 },
+                 %{"hosts" => ["api.git.example.com"], "scheme" => "bearer"}
+               ]
+             }
+
+      # The model key comes first, and the registry credential, where the feature is on,
+      # before the work entry.
+      assert hd(decoded["credentials"])["name"] == work.provider.public_id
+      refute document =~ ~s("token")
+
+      {"credentials", entries} =
+        document
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Map.get(:values)
+        |> List.keyfind("credentials", 0)
+
+      assert Enum.map(List.last(entries).values, &elem(&1, 0)) == ~w(name purpose apply)
+
+      egress = decoded["security_policy"]["egress"]
+      assert egress["mode"] == "enforce"
+      assert "git.example.com" in egress["allow_first"]
+      assert "api.git.example.com" in egress["allow_first"]
+      assert egress["allow_first"] == Enum.sort(egress["allow_first"])
+      assert "git.example.com" in egress["allow"]
+      assert "api.git.example.com" in egress["allow"]
+
+      assert Schema.validate(document) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+      assert work.digest == Render.digest(document)
+    end
+
+    test "under observe has its hosts in allow_first alone", ctx do
+      %{document: document} = work_run!(ctx.scope, "observe")
+      egress = Jason.decode!(document)["security_policy"]["egress"]
+
+      assert egress["mode"] == "observe"
+      assert "git.example.com" in egress["allow_first"]
+      assert "api.git.example.com" in egress["allow_first"]
+      refute "git.example.com" in egress["allow"]
+      refute "api.git.example.com" in egress["allow"]
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+    end
+
+    test "is read back by RunCredentials.work/1 with its hosts, and a run with none has nil",
+         ctx do
+      %{run: run} = work_run!(ctx.scope, "enforce")
+      assert %{name: "work-1", hosts: hosts} = RunCredentials.work(run)
+      assert hosts == ["git.example.com", "api.git.example.com"]
+      assert RunCredentials.work(%{id: Ecto.UUID.generate()}) == nil
+      assert RunCredentials.work(nil) == nil
+    end
+
+    test "a secrets request may leave work-1 out, and one that names it is refused", ctx do
+      work = work_run!(ctx.scope, "enforce")
+      {key, _seed} = work.secrets_key
+      now = ApiaryWeb.Contract.SignedRequest.now()
+
+      answer =
+        &Apiary.Runs.SecretsRequest.answer(key, &1, Apiary.ContractFixtures.instance_id(), now)
+
+      request = &Apiary.SealedRunsFixtures.secrets_request(work.run, work.digest, &1, now)
+      model = work.provider.public_id
+
+      assert answer.(request.(["work-1"])) == {:error, :credential_unavailable}
+      assert answer.(request.([model, "work-1"])) == {:error, :credential_unavailable}
+      assert answer.(request.(["work-0"])) == {:error, :credentials_differ}
+      assert {:ok, _sealed} = answer.(request.([model]))
+    end
+  end
+
+  describe "the stack hosts" do
+    defp pin(git), do: %{"git" => git, "ref" => "main", "at" => String.duplicate("a1", 20)}
+
+    test "are the host of one source" do
+      assert ComposedConfiguration.stack_hosts([pin("https://git.example/acme/stack")]) ==
+               ["git.example"]
+    end
+
+    test "list a host once for several sources on it, in the order of the pins" do
+      pins = [
+        pin("https://git.example/acme/base"),
+        pin("https://code.example.org/acme/tools"),
+        pin("https://git.example/acme/modules")
+      ]
+
+      assert ComposedConfiguration.stack_hosts(pins) == ["git.example", "code.example.org"]
+    end
+
+    test "leave out the user information, the port, the path and the case" do
+      pins = [pin("https://token-user:secret@Code.Example.ORG:8443/acme/stack.git")]
+      assert ComposedConfiguration.stack_hosts(pins) == ["code.example.org"]
+    end
+
+    test "leave out a source with no network host, and a host no entry takes" do
+      pins = [
+        pin("file:///srv/stacks/base"),
+        pin("/srv/stacks/base"),
+        pin("stacks/base"),
+        pin("https://[2001:db8::1]/acme/stack"),
+        %{"ref" => "main"}
+      ]
+
+      assert ComposedConfiguration.stack_hosts(pins) == []
+
+      assert ComposedConfiguration.stack_hosts([pin("https://192.0.2.10/acme/stack")]) ==
+               ["192.0.2.10"]
+    end
+
+    test "are none for no source" do
+      assert ComposedConfiguration.stack_hosts([]) == []
+      assert ComposedConfiguration.stack_hosts(nil) == []
+    end
+  end
+
+  describe "a document composed with stack hosts" do
+    defp hosts(count), do: for(n <- 1..count, do: "git#{n}.example")
+
+    defp stack_members(hosts, more \\ %{}),
+      do: Map.merge(%{variables: nil, credential: nil, stack_hosts: hosts}, more)
+
+    test "has stack_hosts after the document, before harness_hidden, and no egress change" do
+      members = stack_members(["git.example", "code.example.org"], %{harness_hidden: true})
+
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(@document, nil, false, false, members)
+
+      decoded = Jason.decode!(bytes, objects: :ordered_objects)
+
+      assert Enum.map(decoded.values, &elem(&1, 0)) ==
+               ~w(version security_policy stack_hosts harness_hidden)
+
+      assert Jason.decode!(bytes)["stack_hosts"] == ["git.example", "code.example.org"]
+      assert Jason.decode!(bytes)["security_policy"] == Jason.decode!(@policy)
+      assert Schema.validate(bytes) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
+    end
+
+    test "with no host has no stack_hosts" do
+      assert ComposedConfiguration.shape(@document, nil, false, false, stack_members([])) ==
+               :as_is
+
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(
+                 @document,
+                 nil,
+                 false,
+                 false,
+                 stack_members([], %{harness_hidden: true})
+               )
+
+      refute Map.has_key?(Jason.decode!(bytes), "stack_hosts")
+    end
+
+    test "takes 32 hosts, and 33 compose no document", ctx do
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(@document, nil, false, false, stack_members(hosts(32)))
+
+      assert length(Jason.decode!(bytes)["stack_hosts"]) == 32
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
+
+      assert ComposedConfiguration.shape(@document, nil, false, false, stack_members(hosts(33))) ==
+               {:error, {:stack_hosts_too_many, 33}}
+
+      {result, log} =
+        ExUnit.CaptureLog.with_log(fn ->
+          ComposedConfiguration.serve(
+            ctx.scope.organisation.id,
+            ctx.scope.workspace.id,
+            ctx.configuration,
+            nil,
+            false,
+            false,
+            stack_members(hosts(33))
+          )
+        end)
+
+      assert result == {:error, {:stack_hosts_too_many, 33}}
+      assert log =~ "its stack_hosts would have 33 hosts, more than the 32"
+    end
+  end
+
+  describe "a run whose harness walk pinned sources" do
+    @describetag needs: :factory
+
+    # The run's walk with `pins` and no link, as for a public stack, and the document its
+    # reload gives.
+    defp pinned_run!(scope, pins) do
+      ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness,
+            where: h.dispatch_run_id == ^ctx.run.dispatch_run_id
+          ),
+          set: [pins: pins, harness_links: []]
+        )
+
+      {key, _seed} = ctx.secrets_key
+
+      {:ok, %{settings: settings, digest: digest}} =
+        Apiary.Runs.Registration.fetch(
+          key,
+          ctx.run.node_run_id,
+          Apiary.ContractFixtures.instance_id()
+        )
+
+      document =
+        settings
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Map.get(:values)
+        |> Enum.reject(fn {name, _value} -> name in ["labels", "about"] end)
+        |> Jason.OrderedObject.new()
+        |> Jason.encode!(escape: :json)
+
+      Map.merge(ctx, %{document: document, digest: digest})
+    end
+
+    test "is given their hosts in stack_hosts, and none in its egress", ctx do
+      pins = [
+        pin("https://code.example.org/acme/base"),
+        pin("https://git.example/public/stack"),
+        pin("https://code.example.org/acme/tools")
+      ]
+
+      %{document: document, digest: digest} = pinned_run!(ctx.scope, pins)
+      decoded = Jason.decode!(document)
+
+      assert decoded["stack_hosts"] == ["code.example.org", "git.example"]
+
+      egress = decoded["security_policy"]["egress"]
+      refute Enum.any?(["code.example.org", "git.example"], &(&1 in egress["allow"]))
+
+      refute Enum.any?(
+               ["code.example.org", "git.example"],
+               &(&1 in (egress["allow_first"] || []))
+             )
+
+      assert digest == Render.digest(document)
+      assert Schema.validate(document) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+    end
+
+    test "with no pin is given no stack_hosts", ctx do
+      %{document: document} = pinned_run!(ctx.scope, [])
+      refute Map.has_key?(Jason.decode!(document), "stack_hosts")
     end
   end
 end

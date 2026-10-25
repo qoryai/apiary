@@ -56,7 +56,7 @@
           }
         },
         "source": {
-          "description": "The source adapter: the program that reads a source of work, such as a tracker, and speaks the integration contract to the control plane (adapter.schema.json). Every value here other than items is the integration's words, which the control plane shows verbatim as plain text, never as Markdown or HTML. Each value other than items is one line with no control characters, none of the format characters listed for a prose line ($defs.line) and no bidirectional controls, so no control character in a value overrides the order it is shown in, and each value other than items, item_noun and collection_noun names the system itself, with no placeholder. The source role is not one a reader starts: it is not started as <program> <role> --settings <json>, and it does not end by printing one document as those roles do: start runs the program as a server, and the enrol command prints only the settings to add, as program says. A person runs setup.command, then the enrol command under program, then start, and the program runs as a server. The rules for how a role is started and how it ends apply to describe and to the roles a reader starts, not to this one. A prose line is 1 to 300 characters, and a command 1 to 200 characters of printable ASCII.",
+          "description": "The source adapter: the program that reads a source of work, such as a tracker, and speaks the integration contract to the control plane (adapter.schema.json). Every value here other than items, credential_scope and apply is the integration's words, which the control plane shows verbatim as plain text, never as Markdown or HTML. Each value other than items and apply is one line with no control characters, none of the format characters listed for a prose line ($defs.line) and no bidirectional controls, so no control character in a value overrides the order it is shown in, and each value other than items, item_noun, collection_noun, secrets, credential_scope and apply names the system itself, with no placeholder. The source role is not one a reader starts: it is not started as <program> <role> --settings <json>, and it does not end by printing one document as those roles do: start runs the program as a server, and the enrol command prints only the settings to add, as program says. A person runs setup.command, then the enrol command under program, then start, and the program runs as a server. The rules for how a role is started and how it ends apply to describe and to the roles a reader starts, not to this one. A prose line is 1 to 300 characters, and a command 1 to 200 characters of printable ASCII.",
           "type": "object",
           "additionalProperties": false,
           "required": ["description", "program", "setup", "start", "connect", "access", "disconnect"],
@@ -104,6 +104,26 @@
             "items": {
               "description": "false: the source reports collections and no items. The adapter sends no POST /v1/source-items and no POST /v1/source-items/comments; the control plane never links the source's collections, so the change feed carries no linked entry for them (changes.schema.json), and a POST /v1/source-items for one of them, or a POST /v1/source-items/comments for an item of one of them, is refused, 409 collection_not_linked (refusal.schema.json). Absent, the source reports items.",
               "const": false
+            },
+            "secrets": {
+              "description": "The names of the secrets the adapter stores in the control plane, 1 to 16, each once: it uploads their values with POST /v1/adapter/secrets and reads them back when it starts (adapter-secrets.schema.json). The control plane shows the names, never a value, and refuses an upload of a secret whose name this list does not have. Absent, the adapter stores no secret in the control plane.",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {"$ref": "definitions.schema.json#/$defs/secret_name"}
+            },
+            "credential_scope": {
+              "description": "How far one credential that the adapter answers to the call with the path run-credential reaches (run-credential.schema.json): resource, it covers only the resources the call names; grant, one credential covers every resource of the grant. run-credential.schema.json states the runs for which the control plane uses a credential from a call whose purpose is harness. The control plane uses a credential from a call whose purpose is work only for the run it was minted for, whatever the credential_scope. Absent, the control plane takes resource.",
+              "type": "string",
+              "enum": ["resource", "grant"]
+            },
+            "apply": {
+              "description": "The apply items of the run's work credential from this adapter: where and how the run's proxy sets the credential's value, 1 to 16 items, each in the shape of Forager's apply in run-configuration.schema.json, with each path a template ($defs.apply). At a run's claim, the control plane writes one work credential entry in the run configuration for Forager, with these items as its apply and {target.path} in each path filled with the path of the run's target (definitions.schema.json, $defs.target). That entry is the most the run's work credential from this adapter reaches: the answer to a call with the path run-credential whose purpose is work may narrow it and never widen it (run-credential-answer.schema.json). Each host of each item has an equal entry in egress_hosts, so the control plane allows that host for the run. Absent, the control plane writes no work credential entry from this adapter in the run configuration.",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {"$ref": "#/$defs/apply"}
             }
           },
           "if": {"required": ["items"]},
@@ -150,7 +170,7 @@
       }
     },
     "egress_hosts": {
-      "description": "Every host that runs of this integration need to reach, each listed exactly. Each entry is a host as $defs/host defines it, or an object for a host from a setting. The control plane allows these hosts for the runs that use this integration, and no deny rule applies to these hosts; a *. deny stays in force for the other hosts it covers. Each host in the credential role's hosts, and the host of each model_provider API endpoint that is a URL, has an equal entry. A model_provider API endpoint that is a setting has an entry with the same setting. A host entry is never a single label, a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one, a loopback, link-local or 0.0.0.0/8 IPv4 address, or a number in any form other than a canonical IPv4 address; these rules do not apply to a host from a setting. Absent means no host.",
+      "description": "Every host that runs of this integration need to reach, each listed exactly. Each entry is a host as $defs/host defines it, or an object for a host from a setting. The control plane allows these hosts for the runs that use this integration, and no deny rule applies to these hosts; a *. deny stays in force for the other hosts it covers. Each host in the credential role's hosts, each host of the source role's apply items, and the host of each model_provider API endpoint that is a URL, has an equal entry. A model_provider API endpoint that is a setting has an entry with the same setting. A host entry is never a single label, a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one, a loopback, link-local or 0.0.0.0/8 IPv4 address, or a number in any form other than a canonical IPv4 address; these rules do not apply to a host from a setting. Absent means no host.",
       "type": "array",
       "uniqueItems": true,
       "items": {
@@ -211,6 +231,40 @@
     },
     "no_secret": {"description": "A value of a data description's settings: it has no member writeOnly, and no value inside it has one, at any depth.", "properties": {"writeOnly": false}, "additionalProperties": {"$ref": "#/$defs/no_secret"}, "items": {"$ref": "#/$defs/no_secret"}},
     "host": {"description": "A host: lower-case labels joined by dots, each label 1 to 63 lower-case letters, digits and hyphens that starts and ends with a letter or a digit, with no *. in front.", "type": "string", "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"},
+    "apply": {
+      "description": "One apply item of the source role: the members, limits and rules of Forager's apply in run-configuration.schema.json, with each path a template. The control plane fills each template of the item and leaves out a filled path that equals an earlier filled path of the same item, so each item that the control plane fills from this item is a valid Forager apply item.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hosts", "scheme"],
+      "properties": {
+        "hosts": {"description": "The hosts the value is set on, 1 to 16, none twice, each exact ($defs.apply_host): a DNS name or an IP literal, never a *. pattern. Each host has an equal entry in egress_hosts.", "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/apply_host"}},
+        "scheme": {"description": "bearer sets Authorization: Bearer and the value. basic sets Authorization: Basic with username and the value as the password. header sets the header in header to the value.", "enum": ["bearer", "basic", "header"]},
+        "username": {"description": "The username for basic, and only with basic: 1 or more characters, with no colon and no white space.", "type": "string", "minLength": 1, "pattern": "^[^:\\s]+$"},
+        "header": {"description": "The header name for header, and only with header: 1 to 64 characters of an HTTP header name.", "type": "string", "maxLength": 64, "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"},
+        "paths": {
+          "description": "The path templates of those hosts that the value is set on, 1 to 32, none twice. A template is a path in Forager's path grammar, ^/[^*?#\\s]*\\*?$, with no space character and no { or } other than in the placeholder {target.path}, which it contains at most once. A space character is a character below U+0021, U+007F, U+FEFF, or a character with the Unicode property White_Space: U+0085, U+00A0, U+1680, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000. In a template, a / comes right before {target.path}. After {target.path}, the same segment may continue with a fixed suffix, of characters allowed in a template other than *, {, } and /, and then the template ends or continues with a /. So each path that a filled template with {target.path} covers is the target's path followed by the template's fixed suffix, if any, or a path under that path: /projects/{target.path}/*, /files/{target.path}.v2/* and /projects/{target.path}.json are templates. A * never follows the target's path in the same segment, so /projects/{target.path}* is not a template: for the target path acme it would also cover /projects/acme-other. At a run's claim, the control plane puts the path of the run's target in place of {target.path}: the path member of the target from which the control plane took the run's target, the target of the item (source-items.schema.json) or of its collection (source-collections.schema.json), exactly as the adapter wrote it there, with no case folding and no decoding. Before it fills any template, the control plane refuses a target path that contains .., //, *, ?, # or a space character, so each filled path is also in Forager's path grammar. A template without {target.path} is a path that the control plane copies unchanged. Two templates of an item can fill to the same path, such as /projects/{target.path} and /projects/acme for the target path acme; the control plane leaves out a filled path that equals an earlier filled path of the same item, so the item's filled paths are the same set with no path twice. Absent means every path of those hosts.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^/(?:[^*?#{}\\x00-\\x20\\x7f\\x85\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\\*?|(?:[^*?#{}\\x00-\\x20\\x7f\\x85\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*/)?\\{target\\.path\\}[^*?#{}/\\x00-\\x20\\x7f\\x85\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:/[^*?#{}\\x00-\\x20\\x7f\\x85\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\\*?)?)$"}
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"scheme": {"const": "header"}}}, "then": {"required": ["header"]}, "else": {"not": {"required": ["header"]}}},
+        {"if": {"properties": {"scheme": {"const": "basic"}}}, "then": {"required": ["username"]}, "else": {"not": {"required": ["username"]}}}
+      ]
+    },
+    "apply_host": {
+      "description": "A host of an apply item, in the grammar of Forager's credential_host in run-configuration.schema.json: a lower-case DNS name whose last label starts with a letter, an IPv4 address of four decimal parts with no leading zero, or an IPv6 address of lower-case hex groups with no leading zero, without brackets or a zone, at most 253 characters. Each apply host also has an equal entry in egress_hosts, and egress_hosts has no IPv6 address, so the check that each apply host has an equal entry in egress_hosts refuses an IPv6 apply host.",
+      "type": "string",
+      "maxLength": 253,
+      "anyOf": [
+        {"pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z]([a-z0-9-]{0,61}[a-z0-9])?$"},
+        {"pattern": "^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$"},
+        {"pattern": "^(((0|[1-9a-f][0-9a-f]{0,3}):){7}(0|[1-9a-f][0-9a-f]{0,3})|((0|[1-9a-f][0-9a-f]{0,3}):){1,7}:|((0|[1-9a-f][0-9a-f]{0,3}):){1,6}:(0|[1-9a-f][0-9a-f]{0,3})|((0|[1-9a-f][0-9a-f]{0,3}):){1,5}(:(0|[1-9a-f][0-9a-f]{0,3})){1,2}|((0|[1-9a-f][0-9a-f]{0,3}):){1,4}(:(0|[1-9a-f][0-9a-f]{0,3})){1,3}|((0|[1-9a-f][0-9a-f]{0,3}):){1,3}(:(0|[1-9a-f][0-9a-f]{0,3})){1,4}|((0|[1-9a-f][0-9a-f]{0,3}):){1,2}(:(0|[1-9a-f][0-9a-f]{0,3})){1,5}|(0|[1-9a-f][0-9a-f]{0,3}):(:(0|[1-9a-f][0-9a-f]{0,3})){1,6}|:((:(0|[1-9a-f][0-9a-f]{0,3})){1,7}|:))$"}
+      ]
+    },
     "egress_host": {
       "description": "A host as $defs/host defines it that runs may reach with no admin: not a single label; not a localhost name (localhost, localhost4 or localhost6, alone or with .localdomain, .localdomain4 or .localdomain6) or a host under one; not an IPv4 address in 127.0.0.0/8, 169.254.0.0/16 or 0.0.0.0/8; and not a number in any form other than a canonical IPv4 address. A host is a number when its last label is all digits, or 0x followed by hex digits or none; a canonical IPv4 address is four decimal parts from 0 to 255, each with no leading zero.",
       "allOf": [

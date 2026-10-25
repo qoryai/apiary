@@ -12,7 +12,11 @@ defmodule Apiary.Adapters.Collection do
   # so it has none. It is live until `ended_at`, for `ended_reason`, which is final:
   # `:disconnected`, `:not_listed` (a complete listing left it out) or
   # `:connection_ended`. One collection per adapter and ref is live at a time.
-  # `workspace_id` is the one workspace it is assigned to, or none. `backlog` is whether
+  # `grant_id` is the grant of its connection (`Apiary.Adapters.Grant`) that covers it, as
+  # set by the latest listing that had it; nil for a collection last listed before the
+  # contract had it (`20261025160700_keep_a_grant_s_account_and_its_collections`). A
+  # grant end ends the live collections whose `grant_id` is that grant, as a disconnect
+  # ends them. `workspace_id` is the one workspace it is assigned to, or none. `backlog` is whether
   # its items come into that workspace's Backlog, on unless a person turned it off
   # (`Apiary.Adapters.Collections.set_backlog/3`, for a target, or
   # `Apiary.Adapters.Collections.set_collection_backlog/4`, for the collection alone,
@@ -32,7 +36,7 @@ defmodule Apiary.Adapters.Collection do
   @moduledoc false
   use Ecto.Schema
 
-  alias Apiary.Adapters.Connection
+  alias Apiary.Adapters.{Connection, Grant}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
 
@@ -65,6 +69,7 @@ defmodule Apiary.Adapters.Collection do
     belongs_to :organisation, Organisation
     belongs_to :adapter, Node
     belongs_to :connection, Connection
+    belongs_to :grant, Grant
     belongs_to :workspace, Workspace
 
     timestamps(type: :utc_datetime_usec)

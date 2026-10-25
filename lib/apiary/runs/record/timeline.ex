@@ -32,6 +32,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   use Gettext, backend: ApiaryWeb.Gettext
 
+  alias Apiary.Edition
   alias Apiary.Runs
   alias Apiary.Runs.Fold
 
@@ -712,12 +713,18 @@ defmodule Apiary.Runs.Record.Timeline do
   (see `slim/2`). An item whose first event is missing is left out.
 
   `full:` is a list of item sequences whose events were read with the larger cap.
+
+  `scope:` and `run:`, given together, are the reader and the run: the policy of each
+  `policy.applied` line, and the previous one the delta is taken from, is first read
+  through `client_reads/4`, so the counts and the delta are of what the
+  edition leaves the reader. Without them, no policy is narrowed.
   """
   def build(light, events, opts \\ []) when is_list(light) do
     full = opts |> Keyword.get(:full, []) |> MapSet.new()
 
     for item <- light, event = events[first_sequence(item)], is_map(event) do
       limit = if item.seq in full, do: @full_limit, else: @well_limit
+      {event, events} = narrowed(item, event, events, opts[:scope], opts[:run])
 
       item
       |> Map.take([:seq, :kind, :lane, :rails, :link, :who, :open_calls, :end_seq, :tool_state])
@@ -732,6 +739,62 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   defp first_sequence(%{seq: seq}), do: seq
+
+  # A `policy.applied` line shows counts and a delta of its lists. They are taken from the
+  # policy as the edition leaves it to the reader, for the event and for the previous event
+  # the delta is taken from: the host lists, the hosts of the tools and the counts of both are
+  # replaced by the narrowed ones, and `body/4` reads them as it reads any event's.
+  defp narrowed(%{kind: :policy_applied} = item, event, events, %{} = scope, run) do
+    previous = item[:previous_seq]
+
+    events =
+      if is_map(events[previous]),
+        do: Map.put(events, previous, narrow(events[previous], scope, run)),
+        else: events
+
+    {narrow(event, scope, run), events}
+  end
+
+  defp narrowed(_item, event, events, _scope, _run), do: {event, events}
+
+  defp narrow(event, scope, run) do
+    narrowed = Edition.client_reads(scope, :run_policy, run, policy_of(event)) || %{}
+
+    Map.merge(event, %{
+      allow: narrowed[:allow] || [],
+      allow_count: narrowed[:allow_count] || 0,
+      deny: narrowed[:deny] || [],
+      deny_count: narrowed[:deny_count] || 0,
+      terminated: narrowed[:terminated] || [],
+      terminated_count: narrowed[:terminated_count] || 0,
+      tools: narrowed[:tools] || []
+    })
+  end
+
+  # The event in the shape of `Apiary.Runs.Record.policy/2`, which `client_reads/4` narrows
+  # as `:run_policy`: the same members, the lists as the timeline reads them.
+  defp policy_of(event) do
+    credentials = event.credentials || []
+
+    %{
+      sequence: event.sequence,
+      time: event.time,
+      mode: event.mode,
+      source: event.source,
+      allow: event.allow || [],
+      allow_count: event.allow_count || 0,
+      allow_first: event.allow_first || [],
+      allow_first_count: event.allow_first_count || 0,
+      deny: event.deny || [],
+      deny_count: event.deny_count || 0,
+      terminated: event.terminated || [],
+      terminated_count: event.terminated_count || 0,
+      credentials: credentials,
+      credentials_count: credentials |> Enum.uniq_by(&{&1["name"], &1["argument"]}) |> length(),
+      tools: event.tools || [],
+      tools_count: (event.tools || []) |> Enum.uniq_by(&{&1["name"], &1["argument"]}) |> length()
+    }
+  end
 
   @doc "The sequences `build/3` needs for these light items: at most #{@max_inner + 2} each."
   def needed(light), do: light |> Enum.flat_map(& &1.seqs) |> Enum.uniq()
@@ -1051,7 +1114,7 @@ defmodule Apiary.Runs.Record.Timeline do
   @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall
     mode source model cwd kind outcome reason state code signal method request_method path decision rule
     path_rule credential request_id port exit_code duration_ms turns status cost_usd interrupted in_background allow
-    allow_count deny deny_count run_configuration terminated terminated_count tools summary text
+    allow_count allow_first allow_first_count credentials deny deny_count run_configuration terminated terminated_count tools summary text
     text_bytes error error_bytes error_lines details details_bytes details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
     stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
 
@@ -1119,8 +1182,16 @@ defmodule Apiary.Runs.Record.Timeline do
       in_background: input["run_in_background"] == true,
       allow: hosts(data["allow"]),
       allow_count: if(is_list(data["allow"]), do: length(data["allow"]), else: 0),
+      allow_first: hosts(data["allow_first"]),
+      allow_first_count:
+        if(is_list(data["allow_first"]), do: length(data["allow_first"]), else: 0),
       deny: hosts(data["deny"]),
       deny_count: if(is_list(data["deny"]), do: length(data["deny"]), else: 0),
+      credentials:
+        if(event.type == @prefix <> "run.policy_applied",
+          do: named_hosts(data["credentials"], true),
+          else: []
+        ),
       run_configuration: string(data, "run_configuration"),
       terminated:
         terminated |> Enum.filter(&is_binary/1) |> Enum.take(5) |> Enum.map(&bound(&1, 120)),
@@ -1220,11 +1291,14 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp hosts(_other), do: []
 
-  # The tools of a policy applied event as the query reads them: the first twenty objects
-  # with a string name, each `%{"name", "argument", "hosts"}`, the name cut at 120
-  # characters, the argument at 256 code points with `…` (nil when there is
-  # none) and the first ten string hosts at 255.
-  defp named_hosts(list) when is_list(list) do
+  # The tools or credentials of a policy applied event as the query reads them: the first
+  # twenty objects with a string name, each `%{"name", "argument", "hosts"}`, the name cut
+  # at 120 characters, the argument at 256 code points with `…` (nil when there is none)
+  # and the first ten string hosts at 255. With `purpose?`, a credential's, also
+  # `"purpose"`: `harness` where the entry says so, else `work`.
+  defp named_hosts(list, purpose? \\ false)
+
+  defp named_hosts(list, purpose?) when is_list(list) do
     for item <- list, is_map(item), is_binary(item["name"]) do
       hosts = if is_list(item["hosts"]), do: item["hosts"], else: []
 
@@ -1244,11 +1318,21 @@ defmodule Apiary.Runs.Record.Timeline do
           |> Enum.take(10)
           |> Enum.map(&String.slice(&1, 0, 255))
       }
+      |> then(fn read ->
+        if purpose?,
+          do:
+            Map.put(
+              read,
+              "purpose",
+              if(item["purpose"] == "harness", do: "harness", else: "work")
+            ),
+          else: read
+      end)
     end
     |> Enum.take(20)
   end
 
-  defp named_hosts(_other), do: []
+  defp named_hosts(_other, _purpose?), do: []
 
   defp string(data, key) when is_map(data) do
     case data[key] do

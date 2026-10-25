@@ -16,9 +16,10 @@ defmodule ApiaryWeb.Contract.AdapterController do
   # `Apiary.Adapters.declare/2`: a key `Apiary.Access` does not let declare
   # (`adapter.declare`) is `403` `forbidden`, or `404` `not_found` where its adapter is
   # not found to it; else the declaration is stored, with what the description's source
-  # role says of its items and its collections, and the answer is `204`, signed, with no
-  # body. When it cannot be stored, the answer is `503` `unavailable`. Nothing here logs
-  # the body, a header or a signature.
+  # role says of its items and its collections, and, with a `call_url`, the request's
+  # `X-Qory-Instance-Id`, which Qory Apiary's calls to the adapter are signed for; and the
+  # answer is `204`, signed, with no body. When it cannot be stored, the answer is `503`
+  # `unavailable`. Nothing here logs the body, a header or a signature.
 
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :factory
@@ -35,6 +36,7 @@ defmodule ApiaryWeb.Contract.AdapterController do
     with {:ok, declaration} <- Wire.declaration(conn.assigns.raw_body),
          {:ok, conn} <- AdapterRequest.accept(conn, declaration.time),
          scope = Scope.for_access_key(conn.assigns.access_key),
+         declaration = Map.put(declaration, :instance_id, conn.assigns.instance_id),
          {:ok, _adapter} <- Adapters.declare(scope, declaration) do
       send_resp(conn, 204, "")
     else

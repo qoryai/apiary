@@ -33,6 +33,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary keeps each step of a run from `dev.qory.run.step_started` and
   `dev.qory.run.step_exited`: a fetch, compose, image, setup, join or wall, with its state,
   exit code and duration, and its log lines under the step's number.
+- `QORY_SETUP_CODE_SHA256` takes the SHA-256 of a set-up code that the install makes. With
+  it set, the log shows no set-up link, and the code sets the instance up once
+  (`guides/install.md`).
 
 ### Changed
 
@@ -90,6 +93,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   action, and the Audit log's “Integration changed” filter finds the entries of all
   three, those written before the split included.
 <!-- /feature -->
+- The sign-in cookies are `__Host-` cookies with `Secure`. The upgrade signs everyone out
+  once. Over plain `http://`, sign-in works only in Chrome and Firefox, on `localhost` and
+  loopback addresses; for any other host, Qory Apiary logs a warning at start.
+- The image runs as uid and gid 65532 in place of `nobody` (65534). The Compose service
+  `keys-owner` gives the volume `keys`, and everything in it, to 65532 at every start,
+  without following a symbolic link. Without Compose, give the volume `keys` and its
+  contents to 65532 before the upgrade, or the release cannot read the keys.
 
 ### Security
 
@@ -102,6 +112,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The image build stops unless `ca-certificates` is 20250419+deb13u1 or later. That version
   removes the emSign ECC Root CA - G3 and Comodo AAA Services roots after eMudhra
   intermediate CA certificates were compromised (Debian DSA-6572-1).
+- plug_crypto is updated to 2.2.1, which fixes CVE-2026-105963: a call to `Plug.Crypto` with
+  an argument of the wrong type could write the secret key base to the logs.
+- The log filter replaces an invitation link's token before it looks for `qak_` and an
+  enrolment code's prefix. Before, a token that contained one of them could leave up to
+  39 of its 43 characters in the log line.
 
 ### Migrations
 
@@ -113,6 +128,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A stored secret can now belong to an organisation instead of a workspace, with a data
   key for each organisation.
 <!-- /feature -->
+- `instance_settings`: a nullable column, `used_setup_code_sha256`. It changes no existing
+  row.
+- `connections`: a column with a constant default, which rewrites no row, and a check. Its
+  unique index is dropped and built again with that column inside the migration, so writes
+  to `connections` wait until the build ends.
+- `nodes`: nullable columns, checks, two indexes and a trigger. Three of the checks on
+  the new columns scan `nodes` under a lock that blocks writes.
+- The foreign keys from `dispatches`, `environments`, `dispatch_runs` and `runs` to `nodes`
+  are replaced, with a trigger on each table. They are added `NOT VALID` and validated by a
+  scan that blocks no write.
+- The checks of the end causes on `dispatches` and `dispatch_runs` are replaced, with a
+  scan of both tables that blocks writes to them.
 
 ## [0.1.0] - 2026-10-13
 

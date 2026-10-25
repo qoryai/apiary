@@ -7,8 +7,8 @@ defmodule Apiary.Lingo.Domain.General do
   (`Apiary.Runs.Target.label/1`), or the run names none.
 
   A work item needs no target. A target it has is a host name and a path of 1 to 200
-  characters that can be a label; a run of it gets no run variables, and no collection's
-  environment is prebuilt.
+  characters that can be a label; a run of it gets no run variables, no collection's
+  environment is prebuilt, and no target is read for a harness file.
   """
   @behaviour Apiary.Lingo.Domain
 
@@ -65,4 +65,7 @@ defmodule Apiary.Lingo.Domain.General do
 
   @impl true
   def prebuilds?, do: false
+
+  @impl true
+  def harness_file?, do: false
 end

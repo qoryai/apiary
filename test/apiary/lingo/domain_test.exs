@@ -70,6 +70,10 @@ defmodule Apiary.Lingo.DomainTest do
       assert Software.prebuilds?()
     end
 
+    test "a target may have a harness file" do
+      assert Software.harness_file?()
+    end
+
     test "a target is a host name and an owner/name path with no segment led by a dash" do
       assert Software.check_target(%{system: "git.example.com", path: "acme/shop"}) == :ok
 
@@ -122,6 +126,7 @@ defmodule Apiary.Lingo.DomainTest do
     test "a work item needs no target, a run gets no variables, and nothing is prebuilt" do
       refute General.target_required?()
       refute General.prebuilds?()
+      refute General.harness_file?()
 
       assert General.run_variables(%{system: "ads.example.com", path: "accounts/1234"}, []) ==
                {:ok, nil}
@@ -279,6 +284,13 @@ defmodule Apiary.Lingo.DomainTest do
       assert Domain.prebuilds?(%Workspace{domain: "software"})
       refute Domain.prebuilds?(%Workspace{domain: "general"})
       refute Domain.prebuilds?(%Workspace{domain: "example"})
+    end
+
+    test "harness_file?/1 asks the workspace's domain" do
+      assert Domain.harness_file?(%Workspace{domain: "software"})
+      assert Domain.harness_file?(nil)
+      refute Domain.harness_file?(%Workspace{domain: "general"})
+      refute Domain.harness_file?(%Workspace{domain: "example"})
     end
 
     test "check_target/2 refuses no target only where the domain needs one" do

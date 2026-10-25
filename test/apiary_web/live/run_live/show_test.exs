@@ -723,18 +723,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "ol#timeline[data-target='e-59']")
 
-      # what is not valid is dropped: the page is the plain one, and its links carry none of it
+      # what is not valid is dropped: the page is the plain one, and its links carry none of it.
+      # The unknown sequence has 10 digits, the most the page parses: a short one such as 99999
+      # can occur in the page's generated numbers (fixture names, user emails, microseconds).
       {:ok, lv, html} =
         live(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=99999&lane=nobody&cx=7&x=1"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=8642097531&lane=nobody&cx=7&x=1"
         )
 
       refute has_element?(lv, "ol#timeline[data-target]")
       refute has_element?(lv, "ol#timeline[data-isolate]")
       assert has_element?(lv, "ol#timeline[data-cx='1']")
       refute html =~ "nobody"
-      refute html =~ "99999"
+      refute html =~ "8642097531"
 
       # a valid one among them is kept
       {:ok, lv, _html} =
@@ -1490,6 +1492,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "the connections tab (C1, C3)" do
+    test "a row of the stack proxy says it fetched the harness; a session row does not", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.egress", egress_data(%{"host" => "git.example", "channel" => "stack"})},
+          {3, "run.egress", egress_data(%{"host" => "api.example"})}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
+
+      rows =
+        Repo.all(
+          from c in Apiary.Runs.Connection,
+            where: c.run_id == ^run.id,
+            select: {c.host, c.id}
+        )
+        |> Map.new()
+
+      assert has_element?(lv, "#cx-#{rows["git.example"]}-stack", "Harness fetch")
+      refute has_element?(lv, "#cx-#{rows["api.example"]}-stack")
+    end
+
     test "one row per destination, denied first, with the reason and the outcome", %{
       conn: conn,
       scope: scope

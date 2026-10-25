@@ -987,9 +987,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     ~H|<.avatar email={@email} reader={@reader} size="xs" />|
   end
 
-  # A key an adapter installed with Qory Apiary enrolled with a code of the instance, which
-  # names no maker.
-  defp installed_key?(%AccessKey{arrived_by: :code}, %Node{kind: :adapter, installed_as: name}),
+  # A key that a node installed with Qory Apiary (an adapter, or the instance's pool or
+  # gateway) enrolled with a code of the instance, which names no maker.
+  defp installed_key?(%AccessKey{arrived_by: :code}, %Node{installed_as: name}),
     do: is_binary(name)
 
   defp installed_key?(_key, _node), do: false
@@ -2457,7 +2457,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # its secret. Its Last used is the key's `last_used_at`, which every accepted request of
   # an adapter's key records. An adapter's card is for an instance admin's page alone
   # (`ApiaryWeb.AdapterLive.AccessKey`, at `/instance/adapters`): an adapter's key and
-  # when it was used are the instance admins'.
+  # when it was used are the instance admins'. The instance's pool and gateway enrol as an
+  # installed adapter does, and their cards say so (`ApiaryWeb.InstanceLive.Node`), with
+  # the secret on the node and no Forager file: Qory Apiary writes their codes.
   def key_card(assigns) do
     %{key: key, may: may} = assigns
 
@@ -2521,6 +2523,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dt class="text-faint">{gettext("Secret")}</dt>
         <dd id={"#{@dom}-secret"}>
           {cond do
+            installed_key?(@key, @node) and @node.kind != :adapter ->
+              gettext("Stays on %{name}; it is never shown", name: @node.name)
+
             installed_key?(@key, @node) ->
               gettext("Kept by the adapter; never shown")
 
@@ -2611,7 +2616,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             class="flex flex-wrap gap-3"
           >
             <.button
-              :if={!@adapter}
+              :if={!@adapter and is_nil(@node.installed_as)}
               id={"#{@dom}-forager-file"}
               variant="link"
               patch={key_path(@paths, @key, "forager-file")}

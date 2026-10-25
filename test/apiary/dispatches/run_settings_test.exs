@@ -466,6 +466,104 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     end
   end
 
+  describe "a client on the operator's chain" do
+    setup ctx do
+      %{scope: operator} = sign_up_fixture()
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ServesAcrossWithChain)
+
+      Apiary.EditionStubs.ServesAcross.put([
+        {operator.organisation.id, ctx.scope.organisation.id}
+      ])
+
+      Apiary.EditionStubs.ServesAcrossWithChain.writer(true)
+
+      {:ok, theirs} =
+        Connections.create_provider(operator, %{
+          provider: "anthropic",
+          chain: "operator",
+          keys: [%{value_id: "main", value: @key}]
+        })
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(
+          operator,
+          :organisation,
+          %{provider: theirs.public_id, key: "main", model: "claude-haiku-5-5"},
+          "operator"
+        )
+
+      # The client's choice at its workspace, which the operator's chain does not read.
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, model: "claude-opus-5-5"})
+
+      %{operator: operator, theirs: theirs}
+    end
+
+    # What `build/1` makes of the settings a claim of a fresh work item holds.
+    defp built!(ctx) do
+      work_item = work_item_fixture(ctx.scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      assert {:ok, built} = queued |> RunSettings.hold() |> RunSettings.build()
+      built
+    end
+
+    test "reads the organisation's chain while the edition answers organisation", ctx do
+      built = built!(ctx)
+
+      assert built.stored["model"] == "claude-opus-5-5"
+
+      assert %{provider_connection_id: id, provider_chain: "organisation"} = built.columns
+      assert id == ctx.provider.id
+    end
+
+    test "uses the operator's choice and provider, not the client's", ctx do
+      Apiary.EditionStubs.ServesAcrossWithChain.chain("operator")
+      built = built!(ctx)
+
+      assert built.stored["model"] == "claude-haiku-5-5"
+
+      assert %{
+               provider_connection_id: id,
+               provider_secret_id: secret_id,
+               provider_value_id: "main",
+               provider_chain: "operator"
+             } = built.columns
+
+      assert {id, secret_id} == {ctx.theirs.id, ctx.theirs.secret_id}
+    end
+
+    test "has the runtime alone where the edition names no operator", ctx do
+      Apiary.EditionStubs.ServesAcrossWithChain.chain("operator")
+      Apiary.EditionStubs.ServesAcrossWithChain.operator(nil)
+      built = built!(ctx)
+
+      assert built.stored == %{"runtime" => "claude"}
+      assert built.columns == %{}
+    end
+
+    test "has the runtime alone where the operator has no choice", ctx do
+      Apiary.EditionStubs.ServesAcrossWithChain.chain("operator")
+      assert {:ok, _choice} = ModelChoices.delete_choice(ctx.operator, :organisation, "operator")
+      built = built!(ctx)
+
+      assert built.stored == %{"runtime" => "claude"}
+      assert built.columns == %{}
+    end
+
+    test "ends the run as provider_gone when the operator's provider fails its code", ctx do
+      Apiary.EditionStubs.ServesAcrossWithChain.chain("operator")
+
+      Repo.update_all(from(c in Connection, where: c.id == ^ctx.theirs.id),
+        set: [name: "Tampered"]
+      )
+
+      work_item = work_item_fixture(ctx.scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+      {result, _log} = with_log(fn -> queued |> RunSettings.hold() |> RunSettings.build() end)
+      assert result == {:end, :provider_gone}
+    end
+  end
+
   describe "form/5" do
     setup ctx do
       {:ok, loaded} = Connections.get_provider(ctx.scope, ctx.provider.public_id)

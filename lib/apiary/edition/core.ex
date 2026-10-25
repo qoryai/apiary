@@ -57,9 +57,32 @@ defmodule Apiary.Edition.Core do
   @impl true
   def model_choice_chain(_organisation_id), do: "organisation"
 
+  # The core has no operator: no organisation's chain is an operator's.
+  @impl true
+  def operator_chain_organisation(_organisation_id), do: nil
+
+  # The core has no operator: no person writes an operator's chain.
+  @impl true
+  def operator_chain_writer?(_scope), do: false
+
   # The core has no operator: no organisation is a client of one.
   @impl true
   def operated?(_organisation), do: false
+
+  # The core has no operator: a member owns what they save in their organisation, and an
+  # instance admin who saves any other way saves for the instance's organisation.
+  @impl true
+  def harness_owner(scope) do
+    with nil <- Apiary.Stacks.saved_by(scope) do
+      if Apiary.Access.instance_admin?(scope), do: Apiary.Edition.instance_organisation_id()
+    end
+  end
+
+  # The core has no operator: a run uses another organisation's links for its harness only
+  # under an instance assignment.
+  @impl true
+  def harness_source_allowed?(_run_organisation_id, _owner_organisation_id, _source),
+    do: false
 
   @impl true
   def client_reads(_scope, _kind, _run, subject), do: subject

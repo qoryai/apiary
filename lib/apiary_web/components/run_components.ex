@@ -2455,6 +2455,10 @@ defmodule ApiaryWeb.RunComponents do
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
 
+  A `table` row of the stack proxy's channel (`channel` `stack`, `Apiary.Runs.Connection`)
+  says "Harness fetch" under its destination: the request fetched the run's harness
+  definition before its first session joined.
+
   A tool invocation, a connection whose `tool` (or `last_tool`) is named and whose decision
   is allowed (`Apiary.Runs.tool_invocation?/2`), reads as a call to that tool: the tool's
   name first, then the request line, the host after them; the reason says it was handed to
@@ -2546,6 +2550,7 @@ defmodule ApiaryWeb.RunComponents do
     >
       <td class="q-cx-d">
         <.destination_title c={@c} line copy_id={"#{@id}-copy"} />
+        <span :if={@c.stack} id={"#{@id}-stack"} class="q-cx-path">{gettext("Harness fetch")}</span>
         <span :if={@security} class="q-cx-fold">
           <.reason c={@c} variant="workspace" rule_path={rule_link(@act, @c)} past={@past} />
         </span>
@@ -2851,6 +2856,7 @@ defmodule ApiaryWeb.RunComponents do
       invocation: Runs.tool_invocation?(tool, decision),
       status: get.([:status, :last_status]),
       request_id: get.([:request_id]),
+      stack: get.([:channel]) == "stack",
       attempts: get.([:attempts]) || 0,
       allowed: get.([:allowed]) || 0,
       denied: get.([:denied]) || 0,

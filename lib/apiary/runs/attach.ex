@@ -497,7 +497,7 @@ defmodule Apiary.Runs.Attach do
   # the image its claim read for it (`runs.configured_image`,
   # `Apiary.Environments.claim_image/2`); for such a run its claim gave none, the image
   # the pool that claimed it recorded for the run's target, the one its registration's
-  # labels name (`Apiary.Environments.image_for/2`); nil for any other run, which starts
+  # labels name (`Apiary.Environments.image_for/3`); nil for any other run, which starts
   # in the pool's default.
   defp image(%Run{configured_image: image}, _workspace, %{step: step, pool_id: pool_id})
        when is_binary(image) and is_binary(pool_id) and step != @prebuild,
@@ -508,7 +508,7 @@ defmodule Apiary.Runs.Attach do
     with false <- step == DispatchRun.prebuild(),
          %Node{kind: :pool} = pool <- Repo.get(Node, pool_id),
          {:ok, target} <- Domain.target(workspace, run.registration_labels) do
-      Environments.image_for(pool, target)
+      Environments.image_for(pool, run.workspace_id, target)
     else
       _none -> nil
     end

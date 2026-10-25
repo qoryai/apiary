@@ -83,7 +83,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
       Collections.post_listing(Scope.for_access_key(key), %{
         time: DateTime.utc_now(:second),
         connection_id: connection.public_id,
-        collections: Enum.map(titles, &listed/1),
+        collections:
+          Enum.map(titles, &Map.put(listed(&1), :grant_ref, listing_grant(connection))),
         listing: %{id: id, part: part, started_at: started_at, complete: complete}
       })
 
@@ -101,7 +102,13 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
         connection_id: connection.public_id,
         collections:
           for title <- titles do
-            %{ref: title, url: "https://forge.example.com/" <> title, title: title, target: nil}
+            %{
+              ref: title,
+              url: "https://forge.example.com/" <> title,
+              title: title,
+              grant_ref: listing_grant(connection),
+              target: nil
+            }
           end,
         listing: %{id: id, part: 1, started_at: started_at, complete: true}
       })
@@ -356,7 +363,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
   test "installed and not yet listed: who installed it today, and the wait for its collections",
        %{conn: conn, scope: scope, adapter: adapter} do
-    connection_fixture(scope, adapter, :connected)
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") == "Installed by #{letter(scope.user, true)} today."
@@ -374,6 +381,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert has_element?(lv, "#collections-late span", "If nothing appears, install again.")
     assert has_element?(lv, "#collections-late button#collections-install-install", "Install")
 
+    # A minute on, the press gives the connection a new pass.
+    set(connection, pass_expires_at: DateTime.add(connection.pass_expires_at, -60, :second))
     form = form(lv, "#collections-install")
     render_submit(form)
     conn = follow_trigger_action(form, conn)
@@ -940,6 +949,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
             ref: "acme/api",
             url: "https://forge.example.com/acme/api",
             title: "acme/api",
+            grant_ref: listing_grant(connection),
             target: nil
           }
         ],
@@ -977,6 +987,33 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     # Under the table.
     [_before, after_table] = String.split(render(lv), ~s{id="collections-table"}, parts: 2)
     assert after_table =~ ~s{id="collections-ended"}
+  end
+
+  # The page is not changed for a grant end: this pins what it shows once the last grant
+  # of a connection ends, which leaves the connection connected and ends its collections.
+  test "the last grant of the connection ended: installed, no collections, and the ended line",
+       %{conn: conn, scope: scope, user: user, adapter: adapter, key: key} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    post(key, connection, ["acme/api", "acme/shop"], 1, true)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {:ok, _grant} =
+      Apiary.Adapters.Grants.end_grant(Scope.for_access_key(key), %{
+        connection_id: connection.public_id,
+        grant_ref: listing_grant(connection)
+      })
+
+    {:ok, lv, _html} = live(conn, page(scope, adapter))
+
+    assert words(lv, "#integration-status") == "Installed by #{letter(user, true)} today."
+    refute has_element?(lv, "#integration-install")
+    refute has_element?(lv, "#collections-waiting")
+    assert words(lv, "#collections-heading") == "Collections 0"
+    assert words(lv, "#collections-count") == "0 collections"
+    assert Enum.drop(rows(lv), 1) == []
+
+    assert words(lv, "#collections-ended") ==
+             "2 collections that #{adapter.name} no longer reaches aren't shown."
   end
 
   test "with several workspaces, the unassigned collections come first, on every page", %{

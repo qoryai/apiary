@@ -253,6 +253,70 @@ defmodule ApiaryWeb.SetupLiveTest do
     end
   end
 
+  describe "with a preset code, before set-up" do
+    setup do
+      Apiary.EditionKit.hide_instance_organisation()
+      # The code of a link that a start without the preset logged.
+      earlier = Setup.code!()
+      code = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+      previous = Application.get_env(:apiary, Setup, [])
+      hex = Base.encode16(:crypto.hash(:sha256, code), case: :lower)
+      Application.put_env(:apiary, Setup, Keyword.put(previous, :preset_code_sha256_setting, hex))
+      on_exit(fn -> Application.put_env(:apiary, Setup, previous) end)
+      :ok = Setup.boot()
+      %{code: code, hex: hex, earlier: earlier}
+    end
+
+    test "the code opens the form and sets the instance up, once", %{conn: conn, code: code} do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
+      email = unique_user_email()
+
+      form = form(lv, "#setup_form", user: params(%{"email" => email}))
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      assert redirected_to(conn) == ~p"/acme-ltd/main"
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(user))
+      assert Setup.set_up?()
+
+      {:ok, _lv, html} = live(build_conn(), ~p"/setup/#{code}")
+      assert html =~ "This Qory Apiary is already set up."
+    end
+
+    test "any other code is a path that does not exist", %{conn: conn, code: code, hex: hex} do
+      other = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+      for wrong <- ["nope", other, code <> "A", hex] do
+        assert_error_sent(:not_found, fn -> get(conn, ~p"/setup/#{wrong}") end)
+      end
+
+      assert Setup.valid_code?(code)
+    end
+
+    test "the link a start logged before the preset is a path that does not exist",
+         %{conn: conn, earlier: earlier} do
+      assert_error_sent(:not_found, fn -> get(conn, ~p"/setup/#{earlier}") end)
+      refute Setup.valid_code?(earlier)
+    end
+
+    test "after a purge, the same code is a path that does not exist",
+         %{conn: conn, code: code} do
+      assert {:ok, _signed_up} =
+               Setup.set_up(code, %{
+                 email: unique_user_email(),
+                 organisation_name: "Acme Ltd",
+                 password: @password,
+                 password_confirmation: @password
+               })
+
+      Apiary.EditionKit.hide_instance_organisation()
+
+      assert_error_sent(:not_found, fn -> get(conn, ~p"/setup/#{code}") end)
+    end
+  end
+
   describe "once set up" do
     test "any code says so and leads to the log-in page", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/setup/any-code")

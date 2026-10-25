@@ -145,7 +145,7 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
         conn = follow_trigger_action(form, conn)
 
         assert redirected_to(conn) == ~p"/users/organisations"
-        assert is_map_key(conn.resp_cookies, "_apiary_web_user_remember_me") == cookie?
+        assert is_map_key(conn.resp_cookies, "__Host-_apiary_web_user_remember_me") == cookie?
       end
     end
 

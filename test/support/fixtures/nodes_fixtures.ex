@@ -84,6 +84,43 @@ defmodule Apiary.NodesFixtures do
     adapter
   end
 
+  @doc """
+  The instance's node pool, with no organisation and no workspace, written straight into
+  the table, on `:default` unless `attrs` gives its `gateway_choice`. The instance has
+  one in use at most, so a test that makes it is not async.
+  """
+  def instance_pool_fixture(attrs \\ %{}) do
+    Repo.insert!(%Node{
+      kind: :pool,
+      public_id: Apiary.PublicId.generate("np"),
+      name: Map.get(Map.new(attrs), :name, unique_node_name()),
+      organisation_id: nil,
+      workspace_id: nil,
+      instance_limit: Map.get(Map.new(attrs), :instance_limit),
+      gateway_choice: Map.get(Map.new(attrs), :gateway_choice, :default),
+      gateway_id: Map.get(Map.new(attrs), :gateway_id),
+      installed_as: Map.get(Map.new(attrs), :installed_as)
+    })
+  end
+
+  @doc """
+  The instance's gateway, with no organisation and no workspace, at
+  `https://gateway.example` unless `attrs` gives its `url`, written straight into the
+  table. The instance has one in use at most, so a test that makes it is not async.
+  """
+  def instance_gateway_fixture(attrs \\ %{}) do
+    Repo.insert!(%Node{
+      kind: :gateway,
+      public_id: Apiary.PublicId.generate("ng"),
+      name: Map.get(Map.new(attrs), :name, unique_node_name()),
+      organisation_id: nil,
+      workspace_id: nil,
+      url: Map.get(Map.new(attrs), :url, "https://gateway.example"),
+      gateway_choice: :direct,
+      installed_as: Map.get(Map.new(attrs), :installed_as)
+    })
+  end
+
   @descriptions Path.expand("../../fixtures/integration-contract", __DIR__)
 
   @doc """
@@ -217,7 +254,50 @@ defmodule Apiary.NodesFixtures do
           |> Repo.update!()
       end
 
+    # A connected connection's pass came back linked, so a grant report may name its nonce.
+    if state != :pending do
+      {:ok, _pass} = Apiary.Adapters.LinkedPass.insert(connection, connection.pass_nonce, now)
+    end
+
     {connection, nonce}
+  end
+
+  @doc """
+  The ref of a live grant of `connection`, as a listing of its collections gives it in
+  each collection's `grant_ref`: `ref`, else `G_` and the connection's public id, so that
+  the grants of two connections of one adapter differ. The grant is made as an accepted
+  report makes one, for the external account `1001`, `acme`, with a nonce of no pass,
+  unless the connection has a live grant with that ref already. It writes no feed entry
+  and no trail entry.
+  """
+  def listing_grant(%Apiary.Adapters.Connection{} = connection, ref \\ nil) do
+    alias Apiary.Adapters.Grant
+
+    ref = ref || "G_" <> connection.public_id
+
+    live =
+      Repo.one(
+        from g in Grant,
+          where: g.connection_id == ^connection.id and g.grant_ref == ^ref,
+          where: is_nil(g.ended_at)
+      )
+
+    if is_nil(live) do
+      Repo.insert!(%Grant{
+        public_id: Apiary.PublicId.generate(Grant.prefix()),
+        organisation_id: connection.organisation_id,
+        adapter_id: connection.adapter_id,
+        connection_id: connection.id,
+        grant_ref: ref,
+        account_ref: "1001",
+        account_title: "acme",
+        state: :live,
+        pass_nonce: :crypto.strong_rand_bytes(16),
+        granted_at: DateTime.utc_now()
+      })
+    end
+
+    ref
   end
 
   @doc """

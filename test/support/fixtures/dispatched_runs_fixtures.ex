@@ -11,7 +11,21 @@ defmodule Apiary.DispatchedRunsFixtures do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Runs.{Outcome, Run}
+
+  @doc """
+  Writes the harness walk of `run`, a run of the queue whose workspace has a workflow,
+  resolved, as its job writes it (`Apiary.Harnesses.WalkJob`), with the origin `:none`
+  unless `changes` sets one, and no adapter called: a claim takes the run then. Returns
+  the walk as stored.
+  """
+  def walk_resolved!(%DispatchRun{id: id}, changes \\ []) do
+    RunHarness
+    |> Repo.get_by!(dispatch_run_id: id)
+    |> Ecto.Changeset.change(Keyword.merge([state: :resolved, origin: :none], changes))
+    |> Repo.update!()
+  end
 
   @doc """
   A run of a fresh work item of the scope's workspace, queued, claimed under the pool's

@@ -1188,8 +1188,9 @@ defmodule Apiary.Runs do
     %{options: options, total: total}
   end
 
-  # The workspace's connection rows under the
-  # filters, joined to their run (for the target).
+  # The workspace's connection rows under the filters, joined to their run (for the
+  # target). Only the session's: a run's harness fetch (channel `stack`) to the same
+  # destination is a second row of the run, and the workspace's rules do not decide it.
   defp connections_in(
          %Scope{
            organisation: %Organisation{id: organisation_id},
@@ -1206,7 +1207,8 @@ defmodule Apiary.Runs do
         as: :run,
         on: r.id == c.run_id and r.workspace_id == c.workspace_id,
         where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
-        where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
+        where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
+        where: c.channel == "session"
       )
 
     scope

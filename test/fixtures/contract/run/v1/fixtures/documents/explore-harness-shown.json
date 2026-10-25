@@ -6,12 +6,12 @@
     "system": "code.example.com",
     "path": "acme/shop"
   },
+  "target_version": "0123456789abcdef0123456789abcdef01234567",
   "work_item": {
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "Checkout fails on an empty cart"
   },
-  "stack": "core",
   "workflow": "hello",
   "harness_hidden": false,
   "inputs": {

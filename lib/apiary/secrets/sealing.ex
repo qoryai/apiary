@@ -6,9 +6,10 @@ defmodule Apiary.Secrets.Sealing do
   nothing here touches the database or writes a log line.
 
   **The suite**, `x25519-sha256-aes256gcm`: DHKEM(X25519, HKDF-SHA256) 0x0020,
-  HKDF-SHA256 0x0001 and AES-256-GCM 0x0002, with `:crypto`. The recipient's X25519 key is
-  the access key's Ed25519 public key converted to its Montgomery u-coordinate
-  (`Apiary.Contract.Ed25519.x25519_public_key/1`), as Forager converts it.
+  HKDF-SHA256 0x0001 and AES-256-GCM 0x0002, with `:crypto` (`Apiary.Secrets.Hpke`). The
+  recipient's X25519 key is the access key's Ed25519 public key converted to its
+  Montgomery u-coordinate (`Apiary.Contract.Ed25519.x25519_public_key/1`), as Forager
+  converts it.
 
   **What is bound.** `info/1` and `aad/4` are built from the values `seal/2` is given,
   never from an envelope:
@@ -24,15 +25,18 @@ defmodule Apiary.Secrets.Sealing do
 
   **The plaintext** (`sealed-plaintext.schema.json`) is written as Forager writes it:
   compact JSON of `version`, `run_configuration`, the credentials sorted, and the values
-  sorted by credential, each `credential` then `value`, quoted as Go's `jsontext` quotes.
+  sorted by credential, quoted as Go's `jsontext` quotes. Each value is `credential`, then
+  `value`, then `expires_at` and `apply` where it has them. `expires_at` is RFC 3339 with
+  a zone, written as given. Each item of `apply` is `hosts`, `scheme`, `username`,
+  `header` and `paths`, in that order, each where the item has it.
 
   **What it refuses**, each with an atom and nothing of the input: a recipient that is not
   a map (`:recipient`); identifiers outside their forms (`:identifiers`); an access key
   that fails a key check, or whose seal fails in `:crypto` (`:key`); a plaintext whose
   digest is not the given one (`:digest`); credentials that are not 1 to 8 names, each
   once (`:credentials`); values that are not one for each credential (`:values`); a value
-  that is not 1 to 16,384 bytes of UTF-8 without a NUL (`:value`); any other plaintext
-  (`:plaintext`).
+  that is not 1 to 16,384 bytes of UTF-8 without a NUL, or whose `expires_at` or `apply`
+  is outside the schema's form (`:value`); any other plaintext (`:plaintext`).
 
   **Keys.** `seal/2` seals with a fresh ephemeral key and signs under the instance's
   signing key (`Apiary.SigningKey.current/0`). It uses no other key: the tests of the
@@ -44,6 +48,7 @@ defmodule Apiary.Secrets.Sealing do
   import Bitwise, only: [bsr: 2, band: 2]
 
   alias Apiary.Contract.Ed25519
+  alias Apiary.Secrets.Hpke
   alias Apiary.SigningKey
 
   @suite "x25519-sha256-aes256gcm"
@@ -52,10 +57,6 @@ defmodule Apiary.Secrets.Sealing do
   @aead_id 0x0002
   @info_domain "qory secrets v1"
   @envelope_domain "qory envelope v1"
-
-  # The suite ids as RFC 9180 prefixes its labels: the KEM's alone, and the whole suite's.
-  @kem_suite "KEM" <> <<@kem_id::16>>
-  @hpke_suite "HPKE" <> <<@kem_id::16, @kdf_id::16, @aead_id::16>>
 
   # How far after the server's clock exp lies, in seconds.
   @lifetime 600
@@ -67,6 +68,22 @@ defmodule Apiary.Secrets.Sealing do
   @run_id ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
   @credential ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
+
+  # The forms of `sealed-plaintext.schema.json`'s `expires_at` and of an `apply` item
+  # (`run-configuration.schema.json`, `$defs.apply`).
+  @expires_at ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})\z/
+  @apply_members ~w(hosts scheme username header paths)
+  @max_apply 16
+  @max_hosts 16
+  @max_paths 32
+  @host_patterns [
+    ~r/\A([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z]([a-z0-9-]{0,61}[a-z0-9])?\z/,
+    ~r/\A(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}\z/,
+    ~r/\A(((0|[1-9a-f][0-9a-f]{0,3}):){7}(0|[1-9a-f][0-9a-f]{0,3})|((0|[1-9a-f][0-9a-f]{0,3}):){1,7}:|((0|[1-9a-f][0-9a-f]{0,3}):){1,6}:(0|[1-9a-f][0-9a-f]{0,3})|((0|[1-9a-f][0-9a-f]{0,3}):){1,5}(:(0|[1-9a-f][0-9a-f]{0,3})){1,2}|((0|[1-9a-f][0-9a-f]{0,3}):){1,4}(:(0|[1-9a-f][0-9a-f]{0,3})){1,3}|((0|[1-9a-f][0-9a-f]{0,3}):){1,3}(:(0|[1-9a-f][0-9a-f]{0,3})){1,4}|((0|[1-9a-f][0-9a-f]{0,3}):){1,2}(:(0|[1-9a-f][0-9a-f]{0,3})){1,5}|(0|[1-9a-f][0-9a-f]{0,3}):(:(0|[1-9a-f][0-9a-f]{0,3})){1,6}|:((:(0|[1-9a-f][0-9a-f]{0,3})){1,7}|:))\z/
+  ]
+  @username ~r/\A[^:\s]+\z/
+  @header ~r/\A[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}\z/
+  @path ~r/\A\/[^*?#\s]*\*?\z/
 
   @typedoc """
   Whom and what the values are sealed for: the access key the request verified under, by
@@ -146,7 +163,7 @@ defmodule Apiary.Secrets.Sealing do
       info = info(ids.access_key_id)
       aad = aad(ids.run_id, ids.access_key_id, ids.run_configuration, ids.exp)
 
-      with {:ok, enc, ct} <- hpke_seal(ephemeral, pk_r, info, aad, pt) do
+      with {:ok, enc, ct} <- Hpke.seal(ephemeral, pk_r, info, aad, pt) do
         {:ok, envelope(ids, enc, ct, signing_key.())}
       end
     end
@@ -181,9 +198,7 @@ defmodule Apiary.Secrets.Sealing do
          ~s(,"credentials":[),
          Enum.map_intersperse(credentials, ",", &quote_json/1),
          ~s(],"values":[),
-         Enum.map_intersperse(values, ",", fn {credential, value} ->
-           [~s({"credential":), quote_json(credential), ~s(,"value":), quote_json(value), "}"]
-         end),
+         Enum.map_intersperse(values, ",", &value_json/1),
          "]}"
        ])}
     end
@@ -246,23 +261,107 @@ defmodule Apiary.Secrets.Sealing do
        else: {:error, :credentials}
   end
 
-  # The values as `{credential, value}`, sorted by credential: exactly one for each of
-  # `credentials`, each value in its form.
+  # The values as `{credential, value, expires_at, apply}`, sorted by credential, nil for a
+  # member the value does not have: exactly one for each of `credentials`, each in its
+  # form.
   defp values(values, credentials) do
-    pairs =
+    entries =
       for %{"credential" => credential, "value" => value} = entry <- values,
-          map_size(entry) == 2,
-          do: {credential, value}
+          entry |> Map.keys() |> Enum.all?(&(&1 in ~w(credential value expires_at apply))),
+          do: {credential, value, Map.get(entry, "expires_at"), Map.get(entry, "apply")}
 
-    sorted = Enum.sort_by(pairs, &elem(&1, 0))
+    sorted = Enum.sort_by(entries, &elem(&1, 0))
 
     cond do
-      length(pairs) != length(values) -> {:error, :plaintext}
+      length(entries) != length(values) -> {:error, :plaintext}
       Enum.map(sorted, &elem(&1, 0)) != credentials -> {:error, :values}
-      Enum.all?(sorted, fn {_credential, value} -> value?(value) end) -> {:ok, sorted}
+      Enum.all?(sorted, &entry?/1) -> {:ok, sorted}
       true -> {:error, :value}
     end
   end
+
+  defp entry?({_credential, value, expires_at, apply}),
+    do: value?(value) and expires_at?(expires_at) and apply?(apply)
+
+  defp expires_at?(nil), do: true
+
+  defp expires_at?(expires_at) when is_binary(expires_at),
+    do:
+      Regex.match?(@expires_at, expires_at) and
+        match?({:ok, _, _}, DateTime.from_iso8601(expires_at))
+
+  defp expires_at?(_expires_at), do: false
+
+  defp apply?(nil), do: true
+
+  defp apply?(items) when is_list(items),
+    do: length(items) in 1..@max_apply and Enum.all?(items, &apply_item?/1)
+
+  defp apply?(_items), do: false
+
+  defp apply_item?(%{"hosts" => hosts, "scheme" => scheme} = item) do
+    Enum.all?(Map.keys(item), &(&1 in @apply_members)) and
+      list_of?(hosts, @max_hosts, &host?/1) and scheme_members?(scheme, item) and
+      (not Map.has_key?(item, "paths") or list_of?(item["paths"], @max_paths, &path?/1))
+  end
+
+  defp apply_item?(_item), do: false
+
+  defp scheme_members?("bearer", item),
+    do: not Map.has_key?(item, "username") and not Map.has_key?(item, "header")
+
+  defp scheme_members?("basic", %{"username" => username} = item),
+    do:
+      not Map.has_key?(item, "header") and is_binary(username) and String.valid?(username) and
+        Regex.match?(@username, username)
+
+  defp scheme_members?("header", %{"header" => header} = item),
+    do: not Map.has_key?(item, "username") and is_binary(header) and Regex.match?(@header, header)
+
+  defp scheme_members?(_scheme, _item), do: false
+
+  # A list of 1 to `max` strings, none twice, each one `check` takes.
+  defp list_of?(list, max, check) when is_list(list),
+    do:
+      length(list) in 1..max and Enum.uniq(list) == list and
+        Enum.all?(list, &(is_binary(&1) and String.valid?(&1) and check.(&1)))
+
+  defp list_of?(_list, _max, _check), do: false
+
+  defp host?(host),
+    do: byte_size(host) <= 253 and Enum.any?(@host_patterns, &Regex.match?(&1, host))
+
+  defp path?(path), do: Regex.match?(@path, path)
+
+  defp value_json({credential, value, expires_at, apply}) do
+    [
+      ~s({"credential":),
+      quote_json(credential),
+      ~s(,"value":),
+      quote_json(value),
+      if(expires_at, do: [~s(,"expires_at":), quote_json(expires_at)], else: []),
+      if(apply,
+        do: [~s(,"apply":[), Enum.map_intersperse(apply, ",", &item_json/1), "]"],
+        else: []
+      ),
+      "}"
+    ]
+  end
+
+  # An `apply` item, its members in the schema's order.
+  defp item_json(item) do
+    members =
+      for name <- @apply_members, Map.has_key?(item, name) do
+        [quote_json(name), ":", member_json(item[name])]
+      end
+
+    ["{", Enum.intersperse(members, ","), "}"]
+  end
+
+  defp member_json(list) when is_list(list),
+    do: ["[", Enum.map_intersperse(list, ",", &quote_json/1), "]"]
+
+  defp member_json(string), do: quote_json(string)
 
   defp value?(value) when is_binary(value),
     do:
@@ -292,59 +391,6 @@ defmodule Apiary.Secrets.Sealing do
   defp escape(<<byte, rest::binary>>, acc), do: escape(rest, [byte | acc])
 
   defp hex(digit), do: Enum.at(~c"0123456789abcdef", digit)
-
-  # RFC 9180, base mode, single shot: `{:ok, enc, ct}`, ct with its 16-byte tag, or
-  # `{:error, :key}`. The ephemeral private key is made inside, from `ephemeral`, a function
-  # of no arguments, so no caller's frame contains it. Any exception of `:crypto` is dropped
-  # here with its stack trace, whose top frame can contain a key among its arguments.
-  defp hpke_seal(ephemeral, pk_r, info, aad, pt) do
-    hpke(ephemeral, pk_r, info, aad, pt)
-  rescue
-    _exception -> {:error, :key}
-  catch
-    _kind, _reason -> {:error, :key}
-  end
-
-  defp hpke(ephemeral, pk_r, info, aad, pt) do
-    {pk_e, sk_e} = :crypto.generate_key(:ecdh, :x25519, ephemeral.())
-    dh = :crypto.compute_key(:ecdh, pk_r, sk_e, :x25519)
-
-    # An all-zero shared secret is refused (RFC 9180, 7.1.4); a key that passes the key
-    # checks never gives one.
-    if dh == <<0::256>> do
-      {:error, :key}
-    else
-      eae_prk = labeled_extract(@kem_suite, "", "eae_prk", dh)
-      shared = labeled_expand(@kem_suite, eae_prk, "shared_secret", pk_e <> pk_r, 32)
-
-      psk_id_hash = labeled_extract(@hpke_suite, "", "psk_id_hash", "")
-      info_hash = labeled_extract(@hpke_suite, "", "info_hash", info)
-      context = <<0>> <> psk_id_hash <> info_hash
-      secret = labeled_extract(@hpke_suite, shared, "secret", "")
-      key = labeled_expand(@hpke_suite, secret, "key", context, 32)
-      nonce = labeled_expand(@hpke_suite, secret, "base_nonce", context, 12)
-
-      {ct, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, nonce, pt, aad, 16, true)
-      {:ok, pk_e, ct <> tag}
-    end
-  end
-
-  defp labeled_extract(suite, salt, label, ikm),
-    do: :crypto.mac(:hmac, :sha256, salt, ["HPKE-v1", suite, label, ikm])
-
-  defp labeled_expand(suite, prk, label, info, length),
-    do: expand(prk, [<<length::16>>, "HPKE-v1", suite, label, info], length)
-
-  # HKDF-Expand (RFC 5869) with SHA-256.
-  defp expand(prk, info, length) do
-    {okm, _last} =
-      Enum.reduce(1..div(length + 31, 32), {"", ""}, fn i, {okm, last} ->
-        block = :crypto.mac(:hmac, :sha256, prk, [last, info, <<i>>])
-        {okm <> block, block}
-      end)
-
-    binary_part(okm, 0, length)
-  end
 
   defp envelope(ids, enc, ct, signing_key) do
     exp = Integer.to_string(ids.exp)

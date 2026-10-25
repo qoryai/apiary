@@ -2,8 +2,8 @@ defmodule Apiary.EnvironmentsTest do
   # The environment records (`Apiary.Environments.Record`): the reads, the table's rules
   # (one record per pool and collection, the last good build set together, the image
   # pinned by its digest, the bounds of the refs, a failure's cause and reason), the
-  # composite keys that hold a record to its pool's workspace and its collection's
-  # organisation, the purges of a workspace and of an organisation, a run held for its
+  # trigger that holds a record to its pool's workspace and the composite key that holds
+  # it to its collection's organisation, the purges of a workspace and of an organisation, a run held for its
   # pool's build of its target's `environment_ref` and the build its pool's claim queues
   # for it, a build recorded with the target it was built for and the ref it was queued
   # for, whether a prebuild took its ref before the recorded build took its, and a run's
@@ -57,6 +57,7 @@ defmodule Apiary.EnvironmentsTest do
           ref: "SHOP",
           url: "https://code.example.com/acme/shop",
           title: "shop",
+          grant_ref: listing_grant(ctx.connection),
           target: %{system: "code.example.com", path: "acme/shop"}
         },
         item
@@ -223,7 +224,7 @@ defmodule Apiary.EnvironmentsTest do
       %{scope: other} = sign_up_fixture()
       theirs = pool_fixture(other)
 
-      assert_raise Ecto.ConstraintError, ~r/environments_pool_id_fkey/, fn ->
+      assert_raise Ecto.ConstraintError, ~r/pool_place_matches/, fn ->
         Repo.insert!(record(ctx, %{pool_id: theirs.id}))
       end
 

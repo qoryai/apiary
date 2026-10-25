@@ -150,8 +150,10 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
     end)
 
     # Every cause before the migration stays, `secrets_not_allowed` among them;
-    # `build_failed` came after it.
-    before = DispatchRun.end_causes() -- [:run_refused, :build_failed]
+    # `build_failed`, `harness_unresolved` and `target_access_gone` came after it.
+    before =
+      DispatchRun.end_causes() --
+        [:run_refused, :build_failed, :harness_unresolved, :target_access_gone]
 
     for table <- ~w(dispatch_runs dispatches) do
       assert causes("#{table}_end_cause_check") == Enum.sort(Enum.map(before, &to_string/1))

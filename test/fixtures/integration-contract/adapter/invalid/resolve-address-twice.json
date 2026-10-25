@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "addresses": [
+    "https://code.example.com/acme/harness",
+    "https://code.example.com/acme/harness"
+  ]
+}

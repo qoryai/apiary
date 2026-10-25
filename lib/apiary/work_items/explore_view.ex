@@ -37,7 +37,11 @@ defmodule Apiary.WorkItems.ExploreView do
   # when its work item moves, `attempt`, `of`, `state`
   # (`Apiary.WorkItems.Explore.run_state/1`), `place` (`Apiary.WorkItems.Explore.step/4`),
   # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`,
-  # `end_cause`, the end cause of its run of the queue (nil while it has not ended), and
+  # `end_cause`, the end cause of its run of the queue (nil while it has not ended),
+  # `adapter_failure`, the call to an adapter the run stopped at, nil for none
+  # (`%{adapter: name, cause: cause, call: path, code: code}`), `harness_failure`, why
+  # its harness walk failed, nil for none (`%{code: code, source: source or nil, rule:
+  # rule or nil, adapter: name or nil}`, `Apiary.Harnesses.RunHarness`), and
   # by what it gave: `proposal` (`Apiary.WorkItems.Proposal.from_result/1`), nil for none;
   # `understanding` and `questions`, each `%{public_id: position, text: question, answer:
   # answer or nil}`, for a run that asked; and `answered_by_id` and `answered_at` once its
@@ -74,6 +78,7 @@ defmodule Apiary.WorkItems.ExploreView do
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
 
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.WorkItems.{Explore, Proposal, State, WorkItem}
 
   @ends [:declined, :closed, :undone]
@@ -116,6 +121,28 @@ defmodule Apiary.WorkItems.ExploreView do
     }
   end
 
+  defp adapter_failure(%{adapter_failure: nil}), do: nil
+
+  defp adapter_failure(%{failed_adapter: adapter} = dispatch_run) do
+    %{
+      adapter: adapter.name,
+      cause: dispatch_run.adapter_failure,
+      call: dispatch_run.adapter_failure_call,
+      code: dispatch_run.adapter_failure_code
+    }
+  end
+
+  defp harness_failure(%{end_cause: :harness_unresolved, harness_walk: %RunHarness{} = walk}) do
+    %{
+      code: walk.failure,
+      source: walk.failed_source,
+      rule: walk.failure_rule,
+      adapter: walk.failure_adapter
+    }
+  end
+
+  defp harness_failure(_dispatch_run), do: nil
+
   defp run_view(step, answers, confirmation) do
     rows = Map.get(answers, {step.take_in, step.attempt}, [])
 
@@ -133,6 +160,8 @@ defmodule Apiary.WorkItems.ExploreView do
       duration_ms: ended_at && duration_ms(step, ended_at),
       outcome: step.outcome,
       end_cause: step.dispatch_run.end_cause,
+      adapter_failure: adapter_failure(step.dispatch_run),
+      harness_failure: harness_failure(step.dispatch_run),
       proposal: nil,
       understanding: nil,
       questions: [],

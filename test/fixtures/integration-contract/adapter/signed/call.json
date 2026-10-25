@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "path": "resolve",
+  "url": "https://code-adapter.example.com/calls/resolve",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Qory-Adapter-Id": "na_f1xt0re000000000",
+    "X-Qory-Instance-Id": "i_gYKDhIWGh4iJiouMjY6PkA",
+    "X-Qory-Contract-Version": "1",
+    "X-Qory-Signature-Ed25519": "cDG5pvL-Iy3c839M75S2BhD969xC-F5777h68AEM6d-Pe6W3MYHcF7PC1FUCeAxbEm9wV2EYK8RaK4g3OsipDA"
+  },
+  "body": "{\"version\":1,\"time\":\"2026-10-15T12:00:00Z\",\"addresses\":[\"https://code.example.com/acme/harness\",\"reader@code.example.com:acme/tools\"]}",
+  "note": "A call of the control plane to the adapter at the call_url of adapter/code-host-call.json, signed under the server key of keys.json: the message is qory-call-ed25519-v1, the adapter id, the instance id, POST, the call's path and the raw body, joined by line feeds with none after the last. The path is the call's path alone, not the address in url. Its time is 2026-10-15T12:00:00Z; an adapter whose clock is set to that second accepts it."
+}

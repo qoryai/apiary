@@ -348,6 +348,16 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: [:access_key]
     ),
+    # A gateway's secrets request for a run's work entry: a credential the entry's adapter
+    # issues for the run, sealed to the gateway's access key (`Apiary.Runs.WorkCredential`).
+    # Each attempt is recorded, issued or refused. No other rule applies here, as for
+    # `secret.seal`.
+    Action.new(
+      :"run_credential.issue",
+      "issue a run's work credential from its adapter and seal it to the gateway's access key",
+      feature: :factory,
+      roles: [:access_key]
+    ),
     # The instance's adapters: an organisation's people read them and connect them; an
     # instance admin makes, renames and deletes them and sets how often they pull, which no
     # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`). The
@@ -385,6 +395,13 @@ defmodule Apiary.Access do
     Action.new(
       :"adapter.install",
       "make an adapter installed with Qory Apiary, and give it its one-time codes: the instance, by itself (Apiary.Adapters.install/2)",
+      feature: :factory,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"node.install",
+      "make the instance's node pool or gateway, and give it its one-time codes: the instance, by itself (Apiary.Nodes.Installed.install/2)",
       feature: :factory,
       roles: [:instance],
       asked_of: :organisation
@@ -483,6 +500,20 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited: {:not, @read}
     ),
+    # The secrets an adapter stores in Qory Apiary (`Apiary.Secrets.Instance`): its upload
+    # replaces them, in the trail of the instance's organisation.
+    Action.new(:"adapter.app_values_set", "store the secrets the adapter keeps in Qory",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
+    # The adapter's read of those secrets, sealed to the key that asks: each read is an
+    # entry, in the same trail.
+    Action.new(:"adapter.app_values_seal", "read the secrets the adapter keeps in Qory",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
     Action.new(:"adapter.disconnect", "end a connection of the adapter",
       feature: :factory,
       roles: [:adapter_key],
@@ -490,6 +521,51 @@ defmodule Apiary.Access do
       audited:
         {:not,
          "an adapter's end of a connection is kept on the connection, its end and its reason, not in the audit trail"}
+    ),
+    # The grants of an organisation's connection (`Apiary.Adapters.Grants`): the adapter's
+    # report of one, and its report that the source no longer covers one, each in the
+    # trail of the instance's organisation, and its read of them all.
+    Action.new(:"adapter.report_grant", "report a grant of a connection of the adapter",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.end_grant", "end a grant of a connection of the adapter",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.read_grants", "read the grants of the adapter's connections",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
+    # The harness a run uses: the harness documents of an organisation's levels
+    # (`Apiary.Stacks`), and the instance's assignments of harness sources
+    # (`Apiary.Harnesses`), which an instance admin creates and deletes, which no role
+    # takes: the context function asks `instance_admin?/1`.
+    Action.new(
+      :"harness.save",
+      "save a harness document at a level of the organisation: its default, a workspace or a target, with or without a workflow",
+      feature: :factory,
+      roles: @admins,
+      asked_of: :organisation,
+      audited:
+        {:not,
+         "no route or page saves a harness document: Apiary.Stacks.put_stack/3, which only tests and the demo call, checks no access and writes no entry"}
+    ),
+    Action.new(
+      :"harness.assigned",
+      "let the runs of one organisation, or of every organisation, use the instance's links for a harness source: an instance admin after a recent sign-in, which no role takes (Apiary.Harnesses.assign/3)",
+      feature: :factory,
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"harness.unassigned",
+      "delete an instance assignment of a harness source: an instance admin after a recent sign-in, which no role takes (Apiary.Harnesses.unassign/2)",
+      feature: :factory,
+      asked_of: :organisation
     ),
     # A node pool's key at the server contract, on the runs dispatched to its workspace:
     # one queue per workspace, which any pool of the workspace claims from. Asked of the
@@ -1231,7 +1307,9 @@ defmodule Apiary.Access do
   # (`check_place/3`), and there on its pool: on no other node, and not on the
   # organisation. A dispatch action is asked of the workspace, whose queue every pool of
   # it claims from, or of a dispatch its pool claimed (`dispatch_subject/2`), and of
-  # nothing else.
+  # nothing else. The key of the instance's pool is at the instance, on its pool; a
+  # dispatch action of it is asked of its pool, the queue of every workspace with no pool
+  # in use, or of a dispatch its pool claimed, in any workspace.
   defp key_subject(:pool_key, %Scope{access_key: %AccessKey{} = key}, action, subject)
        when action in @dispatch_actions,
        do: dispatch_subject(key, subject)
@@ -1242,6 +1320,20 @@ defmodule Apiary.Access do
       %Node{} -> {:error, :not_found}
       %Organisation{} -> {:error, :not_found}
       _other -> :ok
+    end
+  end
+
+  # The key of the instance's gateway is at the instance, where it acts on its gateway
+  # alone: on no adapter and not on the instance's pool.
+  defp key_subject(
+         :access_key,
+         %Scope{access_key: %AccessKey{node_id: id, organisation_id: nil, workspace_id: nil}},
+         _action,
+         subject
+       ) do
+    case subject do
+      %Node{id: ^id} when is_binary(id) -> :ok
+      _other -> {:error, :not_found}
     end
   end
 
@@ -1271,6 +1363,20 @@ defmodule Apiary.Access do
        when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id),
        do: :ok
 
+  defp dispatch_subject(
+         %AccessKey{node_id: pool_id, organisation_id: nil, workspace_id: nil},
+         %Node{id: pool_id, kind: :pool, organisation_id: nil, workspace_id: nil}
+       )
+       when is_binary(pool_id),
+       do: :ok
+
+  defp dispatch_subject(
+         %AccessKey{node_id: pool_id, organisation_id: nil, workspace_id: nil},
+         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: pool_id}
+       )
+       when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id),
+       do: :ok
+
   defp dispatch_subject(_key, _subject), do: {:error, :not_found}
 
   @doc """
@@ -1282,7 +1388,7 @@ defmodule Apiary.Access do
   """
   @spec check_place(Scope.t() | nil, action, subject | nil) :: :ok | {:error, :not_found}
   def check_place(scope, action, subject) do
-    place = place(subject)
+    place = subject_place(scope, action, subject)
 
     cond do
       not same_place?(scope, place) -> {:error, :not_found}
@@ -1301,19 +1407,44 @@ defmodule Apiary.Access do
   @spec within?(Scope.t() | nil, subject | nil) :: boolean
   def within?(scope, subject), do: same_place?(scope, place(subject))
 
-  # The key of an adapter, which has no organisation and no workspace, is where its
-  # adapter is, and where nothing else of an organisation is: the instance, which no other
-  # scope is at. It reaches nothing else there: `key_subject/4` holds it to its adapter.
+  # A dispatch the instance's pool claimed is asked of at the instance, where the pool's
+  # key is, whatever workspace the dispatch is in: the pool claims the runs of every
+  # workspace with no pool in use. `dispatch_subject/2` holds the key to the dispatches its
+  # pool claimed.
+  defp subject_place(
+         %Scope{
+           access_key: %AccessKey{
+             node_id: pool_id,
+             organisation_id: nil,
+             workspace_id: nil,
+             node: %Node{kind: :pool, organisation_id: nil, workspace_id: nil}
+           }
+         },
+         action,
+         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: pool_id}
+       )
+       when action in @dispatch_actions and is_binary(pool_id) and
+              is_binary(organisation_id) and is_binary(workspace_id),
+       do: {nil, nil}
+
+  defp subject_place(_scope, _action, subject), do: place(subject)
+
+  # The key of an adapter, or of the instance's pool or gateway, has no organisation and no
+  # workspace: it is where its node is, and where nothing else of an organisation is: the
+  # instance, which no other scope is at. It reaches nothing else there: `key_subject/4`
+  # holds an adapter's key to its adapter, and a pool's key to its pool and the dispatches
+  # its pool claimed.
   defp same_place?(
          %Scope{
            access_key: %AccessKey{
              organisation_id: nil,
              workspace_id: nil,
-             node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
+             node: %Node{kind: kind, organisation_id: nil, workspace_id: nil}
            }
          },
          {nil, nil}
-       ),
+       )
+       when kind in [:adapter, :pool, :gateway],
        do: true
 
   defp same_place?(scope, place), do: in_place?(place(scope), place)

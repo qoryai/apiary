@@ -341,6 +341,8 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
             {:inputs_invalid,
              "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."},
             # A software workspace's word for the target.
+            {:target_access_gone,
+             "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its repository, because the integration no longer reaches it or the repository's path has a character that Qory Apiary does not put in an access rule."},
             {:build_failed,
              "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."}
           ] do
@@ -362,6 +364,31 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
         refute html =~ "ended with an error"
       end
+    end
+
+    test "a run that stopped at a call to an adapter names the adapter on Explore's tab",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+      %{dispatch_run: run} = explore_run_fixture(work_item, end_cause: :inputs_invalid)
+      name = "code-host-#{System.unique_integer([:positive])}"
+      adapter = Apiary.NodesFixtures.adapter_fixture(%{name: name})
+
+      :ok =
+        Apiary.Adapters.Calls.record_failure(Apiary.Repo, run, %Apiary.Adapters.CallFailure{
+          adapter_id: adapter.id,
+          adapter_public_id: adapter.public_id,
+          adapter_name: adapter.name,
+          path: "resolve",
+          cause: :unreachable
+        })
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none-adapter",
+               "Ask an instance admin to check that #{name} is running and that its host name resolves. The run stopped before it started: the call to #{name} for the harness sources did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504."
+             )
     end
 
     test "a run whose last result was an error still says so", %{conn: conn, scope: scope} do

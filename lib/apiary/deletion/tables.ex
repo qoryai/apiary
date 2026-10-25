@@ -34,9 +34,10 @@ defmodule Apiary.Deletion.Tables do
   @typedoc "What a table holds: an organisation's rows, or a workspace's too."
   @type mark :: :organisation | :workspace
 
-  # Children first: a run's events, log, connections and steps before the run; the deliveries
-  # before the access keys they name; the composed run configurations before the run
-  # configurations they were composed from; the run configurations and the policy's rules
+  # Children first: a run's events, log, connections, steps and credential entries before
+  # the run; the deliveries before the access keys they name; the composed run
+  # configurations before the run configurations they were composed from; the run
+  # configurations and the policy's rules
   # before the targets, and so are the pins; the runs before the runs of the queue they
   # name, a dispatch's machine log before the dispatch, the dispatches before the runs of
   # the queue, the node pools and the access keys they name, and the runs of the queue
@@ -46,9 +47,10 @@ defmodule Apiary.Deletion.Tables do
   # the keys, the codes, the runs, the instances and the organisation's connections to
   # adapters before the nodes they name; the work items before the tickets they name, a
   # ticket's comments before the ticket, and the tickets and the bookkeeping of their
-  # listings before the collections they belong to; an adapter's collections and the
-  # bookkeeping of their listings before the connections they name; a work item's events,
-  # answers, confirmations and comments before the work item; a connection's workspaces
+  # listings before the collections they belong to; an adapter's collections, the
+  # bookkeeping of their listings, the grants and the linked passes before the connections
+  # they name; a work item's events, answers, confirmations and comments before the work
+  # item; a connection's workspaces
   # and a provider's models before the connection, and the connections before the
   # releases, the service definitions and the secrets they name; everything of a
   # workspace before the workspace.
@@ -67,6 +69,7 @@ defmodule Apiary.Deletion.Tables do
     {"deliveries", :workspace},
     {"composed_run_configurations", :workspace},
     {"run_configurations", :workspace},
+    {"run_credentials", :workspace},
     {"runs", :workspace},
     {"dispatch_machine_logs", :workspace},
     {"dispatches", :workspace},
@@ -103,9 +106,12 @@ defmodule Apiary.Deletion.Tables do
     {"source_item_listings", :organisation},
     {"source_collection_listings", :organisation},
     {"source_collections", :organisation},
+    {"adapter_grants", :organisation},
+    {"adapter_linked_passes", :organisation},
     {"adapter_connections", :organisation},
     {"nodes", :workspace},
     {"invitations", :workspace},
+    {"harness_assignments", :organisation},
     {"memberships", :organisation},
     {"audit_entries", :workspace},
     {"last_workspaces", :workspace},

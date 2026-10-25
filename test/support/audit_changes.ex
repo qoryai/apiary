@@ -24,6 +24,7 @@ defmodule Apiary.AuditChanges do
     Adapters,
     Audit,
     Deletion,
+    Harnesses,
     Nodes,
     Organisations,
     Policy,
@@ -37,6 +38,9 @@ defmodule Apiary.AuditChanges do
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
+
+  # A harness source at the root of a remote source.
+  @harness_source %{"git" => "https://code.example.com/team/stacks", "ref" => "v1"}
 
   @mail_attrs %{
     "smtp_relay" => "smtp.example.com",
@@ -119,16 +123,24 @@ defmodule Apiary.AuditChanges do
       :"adapter.set_interval",
       :"adapter.delete",
       :"adapter.install",
+      :"node.install",
       :"adapter.setup",
       :"adapter.connect",
       :"adapter.declare",
+      :"adapter.app_values_set",
+      :"adapter.app_values_seal",
+      :"adapter.report_grant",
+      :"adapter.end_grant",
+      :"harness.assigned",
+      :"harness.unassigned",
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
       :"dispatch.release",
       :"target.set_further_repositories",
       :"target.rebuild_environment",
-      :"secret.seal"
+      :"secret.seal",
+      :"run_credential.issue"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -435,6 +447,17 @@ defmodule Apiary.AuditChanges do
     %{scope: instance, actor: :instance, subject: {"node", adapter.id}, before: before}
   end
 
+  # The instance, by itself, makes the node pool its settings declare. The settings are
+  # the node's, and this module is not async.
+  def make(:"node.install", _ctx) do
+    declare_pool()
+    instance = Scope.for_instance(instance_organisation())
+    before = entries()
+    {:ok, pool} = Apiary.Nodes.Installed.install(instance, :pool)
+
+    %{scope: instance, actor: :instance, subject: {"node", pool.id}, before: before}
+  end
+
   # An instance admin starts the set-up of an adapter that declares where, in the trail
   # of the instance's organisation, about the adapter, never with the pass.
   def make(:"adapter.setup", _ctx) do
@@ -448,6 +471,33 @@ defmodule Apiary.AuditChanges do
       scope: in_instance(admin),
       subject: {"node", adapter.id},
       secret: pass,
+      before: before
+    }
+  end
+
+  # An instance admin assigns a harness source to every organisation, and deletes an
+  # assignment, in the trail of the instance's organisation, about the assignment.
+  def make(:"harness.assigned", _ctx) do
+    admin = instance_admin_scope()
+    before = entries()
+    {:ok, assignment} = Harnesses.assign(admin, @harness_source, :every)
+
+    %{
+      scope: in_instance(admin),
+      subject: {"harness_assignment", assignment.id},
+      before: before
+    }
+  end
+
+  def make(:"harness.unassigned", %{scope: scope}) do
+    admin = instance_admin_scope()
+    {:ok, assignment} = Harnesses.assign(admin, @harness_source, scope.organisation)
+    before = entries()
+    {:ok, _} = Harnesses.unassign(admin, assignment)
+
+    %{
+      scope: in_instance(admin),
+      subject: {"harness_assignment", assignment.id},
       before: before
     }
   end
@@ -565,6 +615,95 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # An adapter's key stores the secrets the adapter keeps in Qory Apiary, in the trail of
+  # the instance's organisation, about the adapter; the entry's actor is the key, and the
+  # entry keeps nothing of a value.
+  def make(:"adapter.app_values_set", _ctx) do
+    {adapter, key_scope, key} = app_values_adapter()
+    before = entries()
+    {:ok, _stored} = Adapters.store_app_values(key_scope, adapter, app_values())
+
+    %{
+      scope: key_scope,
+      subject: {"node", adapter.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: "fixture-signing-key-for-tests-only"
+    }
+  end
+
+  # An adapter's key reads those secrets back, sealed to it, in the same trail; the entry
+  # keeps nothing of a value.
+  def make(:"adapter.app_values_seal", _ctx) do
+    {adapter, key_scope, key} = app_values_adapter()
+    {:ok, _stored} = Adapters.store_app_values(key_scope, adapter, app_values())
+    before = entries()
+    {:ok, _body} = Adapters.seal_app_values(key_scope, adapter, key, 1)
+
+    %{
+      scope: key_scope,
+      subject: {"node", adapter.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: "fixture-signing-key-for-tests-only"
+    }
+  end
+
+  # An adapter's key reports a grant of a connection, in the trail of the instance's
+  # organisation, about the adapter; the entry's actor is the key, and the entry keeps
+  # neither the pass's nonce nor the grant's ref.
+  def make(:"adapter.report_grant", %{scope: scope}) do
+    {connection, nonce, key_scope, key} = granting(scope)
+    before = entries()
+
+    {:ok, _grant} =
+      Adapters.Grants.report(key_scope, %{
+        connection_id: connection.public_id,
+        grant_ref: "G_audited",
+        account: %{ref: "1001", title: "acme"},
+        pass_nonce: connection.pass_nonce
+      })
+
+    %{
+      scope: key_scope,
+      subject: {"node", connection.adapter_id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: nonce
+    }
+  end
+
+  # An adapter's key reports that the source no longer covers a grant of a connection, in
+  # the trail of the instance's organisation, about the adapter; the entry's actor is the
+  # key, and the entry keeps neither the grant's ref nor the pass's nonce.
+  def make(:"adapter.end_grant", %{scope: scope}) do
+    {connection, nonce, key_scope, key} = granting(scope)
+
+    {:ok, _grant} =
+      Adapters.Grants.report(key_scope, %{
+        connection_id: connection.public_id,
+        grant_ref: "G_audited",
+        account: %{ref: "1001", title: "acme"},
+        pass_nonce: connection.pass_nonce
+      })
+
+    before = entries()
+
+    {:ok, _ended} =
+      Adapters.Grants.end_grant(key_scope, %{
+        connection_id: connection.public_id,
+        grant_ref: "G_audited"
+      })
+
+    %{
+      scope: key_scope,
+      subject: {"node", connection.adapter_id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: nonce
+    }
+  end
+
   # A gateway's secrets request seals a run's model key to its access key, in the trail of
   # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
   # the entry keeps nothing of the key's value.
@@ -586,6 +725,43 @@ defmodule Apiary.AuditChanges do
       before: before,
       actor: {:access_key, key.id},
       secret: Apiary.SealedRunsFixtures.model_key()
+    }
+  end
+
+  # The adapter's apply items, the work entry's with the target's path filled, and the
+  # token the stub adapter issues.
+  @work_apply [
+    %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/{target.path}/*"]}
+  ]
+  @work_entry_apply [
+    %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/acme/shop/*"]}
+  ]
+  @work_token "fixture-audited-work-token-5c1e"
+
+  # A gateway's secrets request for a run's work entry: the stub adapter issues the
+  # credential, sealed to the gateway's key, in the trail of the run's organisation, about
+  # the run; the entry's actor is the gateway's key, and the entry keeps nothing of the
+  # token.
+  def make(:"run_credential.issue", %{scope: scope}) do
+    {ctx, key, now} = work_run(scope)
+
+    Apiary.WorkCredentialStub.issue(
+      ctx.adapter_seed,
+      Apiary.WorkCredentialStub.credential(@work_token, @work_entry_apply)
+    )
+
+    body = secrets_request(ctx.run, ctx.attached.digest, ["work-1"], now)
+    before = entries()
+
+    {:ok, _answer} =
+      Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"run", ctx.run.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: @work_token
     }
   end
 
@@ -892,6 +1068,13 @@ defmodule Apiary.AuditChanges do
     {before, Adapters.install(scope, "tracker")}
   end
 
+  # Anyone but the instance, here an owner, installs no node of the instance.
+  def refuse(:"node.install", %{scope: scope}) do
+    declare_pool()
+    before = entries()
+    {before, Apiary.Nodes.Installed.install(scope, :pool)}
+  end
+
   # A listing's part of an ended connection names the ref live under the organisation's
   # connection: it is refused, and moves nothing.
   def refuse(:"collection.move", %{scope: scope}) do
@@ -911,10 +1094,72 @@ defmodule Apiary.AuditChanges do
     {before, Adapters.declare(Scope.for_access_key(key), declaration())}
   end
 
+  # A name the adapter's description does not list is refused, and stores nothing.
+  def refuse(:"adapter.app_values_set", _ctx) do
+    {adapter, key_scope, _key} = app_values_adapter()
+    before = entries()
+
+    {before,
+     Adapters.store_app_values(key_scope, adapter, [
+       %Apiary.Secrets.InstanceSecretValue{value_id: "undeclared", value: "v"}
+     ])}
+  end
+
+  # An installed adapter no longer listed reads nothing.
+  def refuse(:"adapter.app_values_seal", _ctx) do
+    {adapter, key_scope, key} = app_values_adapter()
+
+    {1, _} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+        set: [installed_as: "tracker-unlisted-#{System.unique_integer([:positive])}"]
+      )
+
+    before = entries()
+    {before, Adapters.seal_app_values(key_scope, adapter, key, 1)}
+  end
+
+  # A report under a nonce of no linked pass of the connection adds nothing.
+  def refuse(:"adapter.report_grant", %{scope: scope}) do
+    {connection, _nonce, key_scope, _key} = granting(scope)
+    before = entries()
+
+    {before,
+     Adapters.Grants.report(key_scope, %{
+       connection_id: connection.public_id,
+       grant_ref: "G_audited",
+       account: %{ref: "1001", title: "acme"},
+       pass_nonce: :crypto.strong_rand_bytes(16)
+     })}
+  end
+
+  # A grant end of a ref the connection has no live grant with ends nothing.
+  def refuse(:"adapter.end_grant", %{scope: scope}) do
+    {connection, _nonce, key_scope, _key} = granting(scope)
+    before = entries()
+
+    {before,
+     Adapters.Grants.end_grant(key_scope, %{
+       connection_id: connection.public_id,
+       grant_ref: "G_audited"
+     })}
+  end
+
   # A request with a credential the run does not have seals nothing.
   def refuse(:"secret.seal", %{scope: scope}) do
     {ctx, key, now} = sealed_run(scope)
     body = secrets_request(ctx.run, ctx.attached.digest, ["forge"], now)
+    before = entries()
+
+    {before,
+     Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)}
+  end
+
+  # A request whose names are out of the run configuration's order asks the adapter for
+  # nothing, and records nothing.
+  def refuse(:"run_credential.issue", %{scope: scope}) do
+    {ctx, key, now} = work_run(scope)
+    names = ["work-1", ctx.provider.public_id]
+    body = secrets_request(ctx.run, ctx.attached.digest, names, now)
     before = entries()
 
     {before,
@@ -957,7 +1202,13 @@ defmodule Apiary.AuditChanges do
       time: DateTime.utc_now(:second),
       connection_id: connection.public_id,
       collections: [
-        %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+        %{
+          ref: "TRK",
+          url: "https://tracker.acme.example/TRK",
+          title: "Tracker",
+          grant_ref: listing_grant(connection),
+          target: nil
+        }
       ],
       listing: %{id: id, part: 1, started_at: DateTime.utc_now(:second), complete: true}
     }
@@ -974,6 +1225,36 @@ defmodule Apiary.AuditChanges do
       description: Apiary.DescriptionFixtures.read_description()
     }
   end
+
+  # A connected connection of the scope's organisation, the nonce of the pass that
+  # connected it in base64url, its adapter's key's scope, and the key.
+  defp granting(scope) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {connection, nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    {connection, nonce, Scope.for_access_key(key), key}
+  end
+
+  # An adapter whose description lists the secret `signing-key`, and its key's scope.
+  defp app_values_adapter do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    {1, _} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+        set: [secret_names: ["signing-key"]]
+      )
+
+    {Repo.reload!(adapter), Scope.for_access_key(key), key}
+  end
+
+  defp app_values,
+    do: [
+      %Apiary.Secrets.InstanceSecretValue{
+        value_id: "signing-key",
+        value: "fixture-signing-key-for-tests-only"
+      }
+    ]
 
   # An adapter that has declared how it pulls.
   defp declared_adapter do
@@ -1007,6 +1288,15 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
+  defp prepare(:"harness.assigned", _ctx), do: nil
+
+  defp prepare(:"harness.unassigned", %{scope: scope}) do
+    {:ok, assignment} =
+      Harnesses.assign(instance_admin_scope(), @harness_source, scope.organisation)
+
+    assignment
+  end
+
   defp prepare(:"adapter.edit", _ctx), do: adapter_fixture()
   defp prepare(:"adapter.set_interval", _ctx), do: declared_adapter()
   defp prepare(:"adapter.delete", _ctx), do: adapter_fixture()
@@ -1027,7 +1317,13 @@ defmodule Apiary.AuditChanges do
         time: DateTime.utc_now(:second),
         connection_id: connection.public_id,
         collections: [
-          %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+          %{
+            ref: "TRK",
+            url: "https://tracker.acme.example/TRK",
+            title: "Tracker",
+            grant_ref: listing_grant(connection),
+            target: nil
+          }
         ],
         listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
       })
@@ -1083,6 +1379,7 @@ defmodule Apiary.AuditChanges do
             ref: "SHOP",
             url: "https://tracker.acme.example/SHOP",
             title: "acme/shop",
+            grant_ref: listing_grant(connection),
             target: %{system: "code.example.com", path: "acme/shop"}
           }
         ],
@@ -1235,6 +1532,12 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"adapter.create", scope, _),
     do: Adapters.create_adapter(scope, %{name: "Acme tracker"})
+
+  defp attempt(:"harness.assigned", scope, _),
+    do: Harnesses.assign(scope, @harness_source, scope.organisation)
+
+  defp attempt(:"harness.unassigned", scope, assignment),
+    do: Harnesses.unassign(scope, assignment)
 
   defp attempt(:"adapter.edit", scope, adapter),
     do: Adapters.rename_adapter(scope, adapter, %{name: "Acme tracker"})
@@ -1417,6 +1720,27 @@ defmodule Apiary.AuditChanges do
     {ctx, key, ApiaryWeb.Contract.SignedRequest.now()}
   end
 
+  defp work_run(scope) do
+    ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope, work: @work_apply)
+    {key, _seed} = ctx.secrets_key
+    {ctx, key, ApiaryWeb.Contract.SignedRequest.now()}
+  end
+
   defp secrets_request(run, digest, credentials, now),
     do: Apiary.SealedRunsFixtures.secrets_request(run, digest, credentials, now)
+
+  # The instance's node pool declared, as QORY_INSTALLED_POOL=pool declares it, until the
+  # test ends.
+  defp declare_pool do
+    saved = Application.fetch_env(:apiary, :installed_nodes)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case saved do
+        {:ok, value} -> Application.put_env(:apiary, :installed_nodes, value)
+        :error -> Application.delete_env(:apiary, :installed_nodes)
+      end
+    end)
+
+    Application.put_env(:apiary, :installed_nodes, %{pool: "pool", gateway: nil, url: nil})
+  end
 end

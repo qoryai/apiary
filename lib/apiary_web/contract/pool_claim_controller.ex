@@ -40,17 +40,19 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
   # pool at its instance limit, the request is held, up to its `wait_seconds`: it listens
-  # on its workspace's topic (`Apiary.Dispatches.subscribe/1`) and tries again each time
-  # it is told of a change there, and at each poll besides, then answers `204`, signed,
-  # with no body, at the end of the hold. Every try reads the key again and asks
-  # `dispatch.claim` again, so a key revoked, or an organisation out of use, while the
-  # request waits is refused before a dispatch is handed out. `wait_seconds` 0 tries once.
-  # A key holds at most `holds_per_key/0` requests at once, 2, as a key reading its change
-  # feed does (`ApiaryWeb.Contract.ChangesController`): a request that would be a third
-  # hold of its key is answered at once as a hold that ended, `204`. A request that claims
-  # a run at its first try is no hold. Each hold takes a slot of the key, `{key id, n}`,
-  # in the unique `Registry` `Holds`: the hold's process gives it back when the hold ends,
-  # however it ends, and the registry frees it when the process exits.
+  # on its workspace's topic (`Apiary.Dispatches.subscribe/1`), or, for the instance's
+  # node pool, on the instance's topic, where a change of any workspace is told, and
+  # tries again each time it is told of a change there, and at each poll besides, then
+  # answers `204`, signed, with no body, at the end of the hold. Every try reads the key
+  # again and asks `dispatch.claim` again, so a key revoked, or an organisation out of
+  # use, while the request waits is refused before a dispatch is handed out.
+  # `wait_seconds` 0 tries once. A key holds at most `holds_per_key/0` requests at once,
+  # 2, as a key reading its change feed does (`ApiaryWeb.Contract.ChangesController`): a
+  # request that would be a third hold of its key is answered at once as a hold that
+  # ended, `204`. A request that claims a run at its first try is no hold. Each hold takes
+  # a slot of the key, `{key id, n}`, in the unique `Registry` `Holds`: the hold's process
+  # gives it back when the hold ends, however it ends, and the registry frees it when the
+  # process exits.
   #
   # How long a hold lasts at most and how often it tries again besides are `hold` and
   # `poll`, in milliseconds, of `config :apiary, ApiaryWeb.Contract.PoolClaimController`,
@@ -117,7 +119,8 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   defp claim(key, body, 0), do: Dispatches.claim(key, Dispatches.now(), body)
 
-  defp claim(%AccessKey{workspace_id: workspace_id} = key, body, wait_seconds) do
+  defp claim(%AccessKey{} = key, body, wait_seconds) do
+    topic = topic(key)
     settings = Application.get_env(:apiary, __MODULE__) || []
     hold = min(wait_seconds * 1_000, Keyword.get(settings, :hold, @hold))
     poll = Keyword.get(settings, :poll, @poll)
@@ -125,7 +128,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
     # Listening before the first try, so no change told between the try and the wait is
     # missed; and no longer once the request is answered, as the process may serve the
     # connection's next request.
-    :ok = Dispatches.subscribe(workspace_id)
+    :ok = Dispatches.subscribe(topic)
 
     try do
       case Dispatches.claim(key, Dispatches.now(), body) do
@@ -133,10 +136,15 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
         other -> other
       end
     after
-      Dispatches.unsubscribe(workspace_id)
+      Dispatches.unsubscribe(topic)
       flush()
     end
   end
+
+  # The topic a hold listens on: the key's workspace, or the instance's for the key of
+  # the instance's node pool, which has none.
+  defp topic(%AccessKey{workspace_id: nil}), do: :instance
+  defp topic(%AccessKey{workspace_id: workspace_id}), do: workspace_id
 
   # Holds while a slot of the key is free; a key with none answers at once.
   defp hold(%AccessKey{id: key_id} = key, body, none, deadline, poll) do

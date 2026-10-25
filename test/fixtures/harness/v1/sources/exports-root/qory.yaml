@@ -1,0 +1,5 @@
+# The root file of a harness source: its stacks and modules at the root.
+apiVersion: qory.dev/v1alpha1
+exports:
+  stacks: [web, api]
+  modules: [core]

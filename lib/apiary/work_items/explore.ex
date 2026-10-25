@@ -14,9 +14,10 @@ defmodule Apiary.WorkItems.Explore do
   #   * ended lost: `:lost`; ended released: `:cancelled`; ended with its work item closed
   #     or undone, before its handover: `:cancelled`;
   #   * ended at its claim because the claim could not form what the run is made from
-  #     (`variables_invalid`, `ticket_gone`, `inputs_invalid`), or while it waited for
-  #     its environment image's build, which failed (`build_failed`): `:no_result`
-  #     with the outcome `:error`, and no registered run;
+  #     (`variables_invalid`, `ticket_gone`, `inputs_invalid`), while it waited for its
+  #     environment image's build, which failed (`build_failed`), or because its harness
+  #     walk failed (`harness_unresolved`): `:no_result` with the outcome `:error`, and
+  #     no registered run;
   #   * ended by its exit, or by an outcome stored on it before a run of the queue was
   #     refused one (`run_ended`): what the run gave decides. Once
   #     Qory reads it as decided it is kept on the run of the queue
@@ -66,6 +67,7 @@ defmodule Apiary.WorkItems.Explore do
 
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.Result
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Repo
   alias Apiary.Runs.{Event, Run}
   alias Apiary.WorkItems.{Answer, Confirmation, WorkItem, WorkItemEvent}
@@ -345,7 +347,9 @@ defmodule Apiary.WorkItems.Explore do
   # steps/3 is the runs of the take ins `take_ins` of the work item `work_item_id`, or of
   # every take in for `:all`, each where it stands at `now`, by take in, then attempt.
   # Two queries: the runs with their registered runs, then the result event with the
-  # highest sequence of each registered run whose outcome is not stored yet.
+  # highest sequence of each registered run whose outcome is not stored yet; and the
+  # adapters of the runs that stopped at a call to one, and the walks of the runs whose
+  # harness walk failed.
   @doc false
   @spec steps(Ecto.UUID.t(), [pos_integer] | :all, DateTime.t()) :: [step]
   def steps(work_item_id, take_ins, %DateTime{} = now) when is_binary(work_item_id) do
@@ -360,11 +364,39 @@ defmodule Apiary.WorkItems.Explore do
     query = if take_ins == :all, do: query, else: where(query, [d], d.take_in in ^take_ins)
     rows = Repo.all(query)
 
+    # The adapter of each run that stopped at a call to one, a third query only when one
+    # did, and the walk of each run whose harness walk failed, a fourth only when one did.
+    dispatch_runs =
+      rows |> Enum.map(&elem(&1, 0)) |> Repo.preload(:failed_adapter) |> failed_walks()
+
+    rows = Enum.zip_with(dispatch_runs, rows, fn d, {_d, r} -> {d, r} end)
+
     events =
       result_events(for {%DispatchRun{result_outcome: nil}, %Run{id: id}} <- rows, do: id)
 
     for {dispatch_run, run} <- rows,
         do: step(dispatch_run, run, run && Map.get(events, run.id), now)
+  end
+
+  # The runs ended `harness_unresolved` with their walk (`harness_walk`), read in one
+  # query; the others as they are.
+  defp failed_walks(dispatch_runs) do
+    case for(%DispatchRun{end_cause: :harness_unresolved, id: id} <- dispatch_runs, do: id) do
+      [] ->
+        dispatch_runs
+
+      ids ->
+        walks =
+          Repo.all(from h in RunHarness, where: h.dispatch_run_id in ^ids)
+          |> Map.new(&{&1.dispatch_run_id, &1})
+
+        for dispatch_run <- dispatch_runs do
+          case Map.fetch(walks, dispatch_run.id) do
+            {:ok, walk} -> %{dispatch_run | harness_walk: walk}
+            :error -> dispatch_run
+          end
+        end
+    end
   end
 
   defp result_events([]), do: %{}

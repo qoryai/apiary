@@ -1,0 +1,4 @@
+# A key written twice in one mapping.
+harness:
+  extends: {git: https://code.example.com/example-org/harness, ref: v2.4.0}
+  extends: {git: https://other.example.com/example-org/harness, ref: v2.4.0}
