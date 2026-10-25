@@ -102,6 +102,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The image build stops unless `ca-certificates` is 20250419+deb13u1 or later. That version
   removes the emSign ECC Root CA - G3 and Comodo AAA Services roots after eMudhra
   intermediate CA certificates were compromised (Debian DSA-6572-1).
+- plug_crypto is updated to 2.2.1, which fixes CVE-2026-105963: a call to `Plug.Crypto` with
+  an argument of the wrong type could write the secret key base to the logs.
 
 ### Migrations
 
