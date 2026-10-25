@@ -18,6 +18,7 @@ defmodule Apiary.Harnesses.WalkTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.{Assignment, RunHarness, Walk, WalkJob}
   alias Apiary.Nodes.Node
+  alias Apiary.Policy.ComposedConfiguration
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -26,6 +27,9 @@ defmodule Apiary.Harnesses.WalkTest do
   @harness "https://code.example.com/acme/harness"
   @tools "https://code.example.com/acme/tools"
   @lint "https://code.example.com/acme/lint"
+  @public "https://public.example.org/qory/stack"
+  @commit String.duplicate("0a", 20)
+  @commit256 String.duplicate("b1", 32)
 
   # The base by export, its stack listing one module by git.
   @base_files %{
@@ -594,6 +598,128 @@ defmodule Apiary.Harnesses.WalkTest do
                walked.harness_links
     end
 
+    test "a source no grant covers, at a full commit id, has no link and is not read", ctx do
+      setting(
+        ctx.scope,
+        "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n" <>
+          "modules:\n  - source: {git: \"#{@lint}\", ref: \"#{@commit256}\"}\n"
+      )
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+
+      assert walked.pins == [
+               %{"git" => @lint, "ref" => @commit256, "at" => @commit256},
+               %{"git" => @public, "ref" => @commit, "at" => @commit}
+             ]
+
+      assert walked.harness_links == []
+      assert walked.access_level == :read
+
+      assert ComposedConfiguration.stack_hosts(walked.pins) ==
+               ["code.example.com", "public.example.org"]
+
+      # Only the target's harness file is read; the base's stack is not followed.
+      calls = calls()
+      assert resolves(calls) == [[@target], [@public, @lint]]
+      assert Enum.all?(reads(calls), &match?({"R_app", _path, _at}, &1))
+    end
+
+    test "a source no grant covers, at a branch, a tag or a short id, fails not_covered",
+         ctx do
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      for ref <- [
+            "main",
+            "v1.2.0",
+            String.slice(@commit, 0, 12),
+            String.slice(@commit, 0, 39),
+            @commit <> "0",
+            String.upcase(@commit)
+          ] do
+        setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{ref}\", stack: web}\n")
+        assert {:failed, %{failure: :not_covered, source: @public}} = Walk.run(ctx.input)
+      end
+    end
+
+    test "at a full commit id, another organisation's grant changes nothing: same walk, no link",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+      assert {:ok, without} = Walk.run(ctx.input)
+
+      other = scope_fixture()
+      {connection, _nonce} = connection_fixture(other, ctx.run.adapter, :listed)
+      grant(other.organisation.id, ctx.run.adapter, connection, "G_other")
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@public => {"G_other", "R_public"}}),
+        files: @base_files
+      )
+
+      calls()
+      assert {:ok, with_grant} = Walk.run(ctx.input)
+
+      assert with_grant == without
+      assert with_grant.harness_links == []
+      assert with_grant.pins == [%{"git" => @public, "ref" => @commit, "at" => @commit}]
+
+      assert ComposedConfiguration.stack_hosts(with_grant.pins) ==
+               ComposedConfiguration.stack_hosts(without.pins)
+
+      assert ComposedConfiguration.stack_hosts(with_grant.pins) == ["public.example.org"]
+      refute Enum.any?(reads(calls()), &match?({"R_public", _path, _at}, &1))
+
+      # At a branch, both still fail the same way.
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      assert {:failed, %{failure: :not_covered, source: @public}} = Walk.run(ctx.input)
+    end
+
+    test "at a full commit id, the instance's grant with no assignment still fails not_allowed",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
+
+      instance = adapter()
+      instance_scope = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
+      grant(instance_scope.organisation.id, instance.adapter, connection, "G_i")
+
+      serve([ctx.run, instance],
+        covered: Map.put(covering(ctx), instance.adapter.id, %{@public => {"G_i", "R_public"}}),
+        files: @base_files
+      )
+
+      assert {:failed, %{failure: :not_allowed, source: @public}} = Walk.run(ctx.input)
+    end
+
+    test "sources with no link on more than 32 hosts compose no run configuration", ctx do
+      modules =
+        Enum.map_join(
+          1..32,
+          "",
+          &"  - source: {git: \"https://h#{&1}.example.org/public/m\", ref: \"#{@commit}\"}\n"
+        )
+
+      setting(
+        ctx.scope,
+        "extends: {git: \"#{@public}\", ref: \"#{@commit}\"}\nmodules:\n" <> modules
+      )
+
+      serve([ctx.run], covered: covering(ctx), files: %{})
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert walked.harness_links == []
+      hosts = ComposedConfiguration.stack_hosts(walked.pins)
+      assert length(hosts) == 33
+
+      members = %{variables: nil, credential: nil, stack_hosts: hosts}
+
+      assert ComposedConfiguration.shape(nil, nil, false, false, members) ==
+               {:error, {:stack_hosts_too_many, 33}}
+    end
+
     test "more links than a run takes fail too_many", ctx do
       sources =
         for n <- 1..6, do: "https://code.example.com/acme/m#{n}"
@@ -1035,6 +1161,21 @@ defmodule Apiary.Harnesses.WalkTest do
       calls()
       assert :ok = job(run)
       assert calls() == []
+    end
+
+    test "a base no grant covers, at a full commit id, resolves with its pin and no link",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
+      run = queued(ctx)
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :resolved, origin: :setting, harness_links: []} =
+               row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      assert row.pins == [%{"git" => @public, "ref" => @commit, "at" => @commit}]
+      assert Harnesses.entries(run) == []
     end
 
     test "the job writes the access level the walk resolved", ctx do

@@ -18,7 +18,7 @@ defmodule Apiary.Harnesses.RunHarness do
   #   * `target_version`: the version at which the walk read the target's harness file, nil
   #     where it read none.
   #   * `pins`: one `%{"git", "ref", "at"}` per remote source, `at` the version its read
-  #     returned.
+  #     returned, or its `ref` for a source with no link, which the walk does not read.
   #   * `harness_links`: one `%{"grant_id", "adapter_id", "grant_ref", "resources"}` per
   #     link the run reads its harness sources through (`Apiary.Harnesses.entries/1`).
   #   * `failure`, once failed: the code (`Apiary.Harnesses.Walk.failures/0`), with

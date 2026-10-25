@@ -46,8 +46,15 @@ defmodule Apiary.Harnesses.Walk do
   # of their names. A result counts under a live grant of a connected connection: its
   # owner is that connection's organisation, and the rule decides
   # (`Apiary.Harnesses.allowed?/3`). The first result allowed is the source's link. With
-  # none, a source a grant of the instance's organisation covers fails `not_allowed`, and
-  # any other `not_covered`: the run learns nothing of another organisation's grants.
+  # none, a source a grant of the instance's organisation covers fails `not_allowed`.
+  # Any other source, one no grant covers or one only other organisations' grants cover,
+  # fails `not_covered`, unless its `ref` is a full commit id (40 or 64 lower-case hex
+  # digits): then it has no link and is not read. Either way the run learns nothing of
+  # another organisation's grants; only a grant of the instance's organisation shows, as
+  # `not_allowed`. A source with a full commit id and no link has its `ref` as its pin, so
+  # its host is in the run's `stack_hosts`, and qory fetches it with no credential: a
+  # private one fails when qory composes the harness. Such a base's `qory-stack.yaml` is
+  # not followed, so its modules' sources are not checked, pinned or linked.
   #
   # Then the base is read through its link, at its `ref`: `<path>/qory-stack.yaml` for a
   # `path`; the root's harness file's `exports` and the export's `qory-stack.yaml` for a
@@ -70,8 +77,8 @@ defmodule Apiary.Harnesses.Walk do
   #   * declared: `workflows.<workflow>.access` of the base's `qory-stack.yaml`, read for
   #     the run's workflow (`Apiary.Harnesses.Reader.workflow_access/2`). A value other
   #     than `write`, an absent key, an absent `workflows` entry, a document with no base,
-  #     and a base read from a harness file's section, which has no `workflows`, declare
-  #     `:read`;
+  #     a base with no link, which is not read, and a base read from a harness file's
+  #     section, which has no `workflows`, declare `:read`;
   #   * recorded: the access level of the stack row with the run's workflow
   #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
   #
@@ -128,6 +135,7 @@ defmodule Apiary.Harnesses.Walk do
 
   # The form `<user>@<host>:<path>`: no scheme, a user, a host, a colon.
   @scp ~r/\A[^\/:@\s]+@[^\/:@\s]+:/
+  @commit ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
 
   @typedoc "What a walk reads: the run's organisation, workspace, target and workflow."
   @type input :: %{
@@ -384,6 +392,12 @@ defmodule Apiary.Harnesses.Walk do
 
     {{listed, folder}, listed_by} =
       case {base, allowed} do
+        # A base with no link is pinned at its commit and not read: the walk does not
+        # follow its `qory-stack.yaml`, so its modules are neither checked nor pinned.
+        {%{"git" => _git}, [{_source, %{adapter: nil}} | _]} ->
+          put_pin(base["git"], base["ref"], base["ref"])
+          {{[], []}, nil}
+
         {%{"git" => _git}, [{_source, base_location} | _]} ->
           {base_modules(base, base_location, base["ref"]), base_location.source}
 
@@ -600,15 +614,27 @@ defmodule Apiary.Harnesses.Walk do
             {source, location(adapter, grant.grant_ref, resource_ref, shown, [], shown)}
 
           nil ->
-            if Enum.any?(candidates, fn {_a, grant, _r} -> grant.organisation_id == instance end),
-              do: fail(:not_allowed, shown),
-              else: fail(:not_covered, shown)
+            cond do
+              Enum.any?(candidates, fn {_a, grant, _r} -> grant.organisation_id == instance end) ->
+                fail(:not_allowed, shown)
+
+              # No grant, or only other organisations' grants: one result for both.
+              commit?(source["ref"]) ->
+                {source, location(nil, nil, nil, shown, [], shown)}
+
+              true ->
+                fail(:not_covered, shown)
+            end
         end
       end)
 
     if map_size(get(:links)) > @max_links, do: fail(:too_many)
     allowed
   end
+
+  # A full commit id, as `Apiary.Dispatches.Built` takes one: 40 lower-case hex digits
+  # for SHA-1, 64 for SHA-256. A branch, a tag or a short id is none.
+  defp commit?(ref), do: is_binary(ref) and Regex.match?(@commit, ref)
 
   # The covered results of `addresses` at every adapter with a `call_url`, by address:
   # `{adapter, grant, resource_ref}` under a live grant of a connected connection.
@@ -674,7 +700,9 @@ defmodule Apiary.Harnesses.Walk do
   ## Reading
 
   # The version of a remote source's repository: its pin, or its root `harness.yaml`
-  # read once at its `ref`.
+  # read once at its `ref`; for a source with no link, its `ref`, a full commit id.
+  defp pin(%{"git" => git, "ref" => ref}, %{adapter: nil}), do: put_pin(git, ref, ref)
+
   defp pin(%{"git" => git, "ref" => ref}, location) do
     unless Map.has_key?(get(:pins), {git, ref}) do
       {_content, version} = read(location, ["harness.yaml"], ref)
