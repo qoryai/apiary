@@ -934,6 +934,7 @@ defmodule Apiary.Adapters do
   @declared [
     :connect_url,
     :setup_url,
+    :call_url,
     :sync_default_interval,
     :sync_minimum_interval,
     :sync_sends_changes
@@ -944,18 +945,20 @@ defmodule Apiary.Adapters do
   # (`Apiary.Accounts.Scope.for_access_key/1`), declared as it started
   # (`Apiary.Adapters.Wire.declaration/1`): its connect address, where an instance admin
   # sets it up (`setup_url`, which a declaration without one clears: the adapter declares
-  # it only while it is not set up), and how it pulls (`adapter.declare`, `for_key/2`),
-  # and what its description's source role says. One transaction, with the adapter's row
-  # held `FOR NO KEY UPDATE`, as an instance admin's change holds it, so a declaration and
-  # a change of the interval come one after the other; an adapter deleted meanwhile is
-  # `{:error, :not_found}`.
+  # it only while it is not set up), where Qory Apiary calls it (`call_url`, with the
+  # instance id of the request that declared it, `instance_id`, which the calls are
+  # signed for; a declaration without one clears both), how it pulls
+  # (`adapter.declare`, `for_key/2`), and what its description's source role says. One
+  # transaction, with the adapter's row held `FOR NO KEY UPDATE`, as an instance admin's
+  # change holds it, so a declaration and a change of the interval come one after the
+  # other; an adapter deleted meanwhile is `{:error, :not_found}`.
   #
-  # A declaration that changes its connect address, its `setup_url` or how it pulls leaves
-  # an entry in the instance's trail whose actor is the key; one that changes none of them
-  # leaves none. The adapter's first declaration appends `{kind: "sync", interval: nil}`
-  # to its change feed, its default, and a later one appends nothing: as the contract has
-  # it, the feed carries the interval at the first declaration and whenever a person
-  # changes it. The interval an instance admin chose stays whatever a later declaration
+  # A declaration that changes its connect address, its `setup_url`, its `call_url` or how
+  # it pulls leaves an entry in the instance's trail whose actor is the key; one that
+  # changes none of them leaves none. The adapter's first declaration appends
+  # `{kind: "sync", interval: nil}` to its change feed, its default, and a later one
+  # appends nothing: as the contract has it, the feed carries the interval at the first
+  # declaration and whenever a person changes it. The interval an instance admin chose stays whatever a later declaration
   # says; the adapter raises one below its minimum to that minimum.
   #
   # Each start also stores what its description's source role says
@@ -994,6 +997,9 @@ defmodule Apiary.Adapters do
              |> Node.declaration_changeset(%{
                connect_url: declaration.connect_url,
                setup_url: Map.get(declaration, :setup_url),
+               call_url: Map.get(declaration, :call_url),
+               call_instance_id:
+                 if(Map.get(declaration, :call_url), do: Map.get(declaration, :instance_id)),
                sync_default_interval: declaration.default_interval,
                sync_minimum_interval: declaration.minimum_interval,
                sync_sends_changes: declaration.sends_changes
