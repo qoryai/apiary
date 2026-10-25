@@ -1326,6 +1326,26 @@ defmodule Apiary.PolicyTest do
                Policy.rule_from_connection(ctx.scope, ctx.new, :deny, :workspace)
     end
 
+    test "a harness fetch makes no rule at either level", ctx do
+      run =
+        started_run(ctx.scope, shop(),
+          egress: [%{"host" => "fetch.example", "channel" => "stack"}]
+        )
+
+      fetch = Repo.one!(from c in Connection, where: c.run_id == ^run.id)
+      assert fetch.channel == "stack"
+
+      for action <- [:allow, :deny], level <- [:target, :workspace] do
+        assert {:error, %Error{reason: :invalid, field: :host, message: message}} =
+                 Policy.rule_from_connection(ctx.scope, fetch, action, level)
+
+        assert message ==
+                 "No rule can be made from a harness fetch: the stack proxy that sent it reads no rule of the workspace or of a target."
+      end
+
+      refute Repo.exists?(from r in Rule, where: r.host == "fetch.example")
+    end
+
     test "on a host held to paths the path is added or taken out", ctx do
       {:ok, _} =
         Policy.allow(ctx.scope, nil, %{host: "git.example", paths: ["/acme/shop.git/info/refs"]})
