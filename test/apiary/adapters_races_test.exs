@@ -406,6 +406,67 @@ defmodule Apiary.AdaptersRacesTest do
     end
   end
 
+  describe "two reports under one pass" do
+    test "the first takes the pass; the second waits on the connection, then is refused" do
+      %{scope: mine} = sign_up()
+      %{adapter: adapter, access_key: key} = adapter()
+      {connection, _nonce} = connection_fixture(mine, adapter, :connected)
+
+      report = fn ref ->
+        fn ->
+          Grants.report(key_scope(key), %{
+            connection_id: connection.public_id,
+            grant_ref: ref,
+            pass_nonce: connection.pass_nonce
+          })
+        end
+      end
+
+      {first, first_pid} = hold(report.("G_first"))
+      assert {:ok, %Grant{}} = first.result
+
+      second = start(report.("G_second"))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :pass_unknown}
+
+      assert Repo.all(
+               from g in Grant,
+                 where: g.connection_id == ^connection.id and g.state == :live,
+                 select: g.grant_ref
+             ) == ["G_first"]
+    end
+  end
+
+  describe "a grant report and the end of its connection" do
+    test "the end first: the report waits on the connection, then finds it ended" do
+      %{scope: mine} = sign_up()
+      %{adapter: adapter, access_key: key} = adapter()
+      {connection, _nonce} = connection_fixture(mine, adapter, :connected)
+
+      {ending, ending_pid} =
+        hold(fn -> Connections.end_connection(key_scope(key), connection.public_id) end)
+
+      assert {:ok, _} = ending.result
+
+      report =
+        start(fn ->
+          Grants.report(key_scope(key), %{
+            connection_id: connection.public_id,
+            grant_ref: "G_late",
+            pass_nonce: connection.pass_nonce
+          })
+        end)
+
+      await_blocked(report.backend, ending_pid)
+      commit(ending)
+
+      assert Task.await(report.task) == {:error, :ended}
+      assert Repo.all(from g in Grant, where: g.connection_id == ^connection.id) == []
+    end
+  end
+
   describe "a linked return and a press of Install" do
     test "the return first: the press waits, then gives the connection it connected a new pass" do
       %{scope: scope} = sign_up()
