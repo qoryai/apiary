@@ -87,6 +87,19 @@ config :apiary, :enrolment_dir_setting, System.get_env("QORY_ENROLMENT_DIR")
 # refuses.
 config :apiary, Apiary.Setup, preset_code_sha256_setting: System.get_env("QORY_SETUP_CODE_SHA256")
 
+# QORY_INSTALLED_POOL and QORY_INSTALLED_GATEWAY name the instance's node pool and gateway,
+# which run with this instance: each name as an adapter's is, and different from every
+# installed adapter's and from each other. QORY_INSTALLED_GATEWAY_URL is the gateway's
+# address, https:// and a host with a port if needed, required with a gateway. Unset or
+# blank declares none. Once the instance is set up, Qory Apiary adds each node declared
+# and, while it has no key in use, writes a one-time code for it to QORY_ENROLMENT_DIR as
+# <name>/code. The pool takes the runs of every workspace with no node pool in use, and
+# the gateway serves every organisation. Read in every environment;
+# `Apiary.Nodes.Installed.boot!/1` checks them at boot and stops a boot it refuses.
+config :apiary, :installed_pool_setting, System.get_env("QORY_INSTALLED_POOL")
+config :apiary, :installed_gateway_setting, System.get_env("QORY_INSTALLED_GATEWAY")
+config :apiary, :installed_gateway_url_setting, System.get_env("QORY_INSTALLED_GATEWAY_URL")
+
 # AUDIT_RETENTION_DAYS is how long the audit trail keeps an entry: a number of days from
 # 30 to the edition's ceiling (Apiary.Edition.audit_retention_max_days/0, 90 in the core),
 # 90 by default. Read in every environment, as QORY_FEATURES is; `Apiary.Audit.boot!/0`

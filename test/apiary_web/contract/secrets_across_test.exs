@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   # A run's model key and the gateway's organisation (`Apiary.Runs.ProviderCredential`):
   # a key of a provider of the organisation's chain goes only to a gateway of the run's
-  # organisation, and a key of a provider of an operator's chain only to a gateway of an
-  # operator that serves the run's organisation, at the claim and at the secrets
-  # request. The edition's seams are `Apiary.EditionStubs.ServesAcrossWithChain`: the
+  # organisation or to the instance's gateway, and a key of a provider of an operator's
+  # chain only to a gateway of an operator that serves the run's organisation or to the
+  # instance's gateway, at the claim and at the secrets request. The edition's seams are `Apiary.EditionStubs.ServesAcrossWithChain`: the
   # operator's organisation-level gateways serve the client's workspaces. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -24,7 +24,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.Coded
   alias Apiary.ModelChoices.ModelChoice
-  alias Apiary.Runs.{Attach, Registration, Run}
+  alias Apiary.Runs.{Attach, Registration, Run, Sender}
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
@@ -64,15 +64,27 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   defp operator_gateway(ctx), do: keyed(ctx.operator, organisation_gateway_fixture(ctx.operator))
   defp client_gateway(ctx), do: keyed(ctx.client, gateway_fixture(ctx.client))
 
+  # The instance's gateway, the default of every workspace that has no other default, with
+  # one key allowed stored secrets.
+  defp instance_gateway do
+    %{access_key: key, pair: pair} =
+      installed_key_fixture(instance_gateway_fixture(), allow_secrets: true)
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    {key, pair.secret}
+  end
+
   # A pool of the client's workspace, made after its gateway, whose choice is the default,
   # and an explore run of a fresh work item claimed by its key: `{:ok, %{run: run,
   # run_key: run_key}}`, the registered run and the run key its code was redeemed for, or
   # `{:error, :gone}` for a run the claim ended; and the run of the queue.
-  defp hand_over(ctx) do
-    pool = pool_fixture(ctx.client)
+  defp hand_over(%{client: client}), do: hand_over(client)
+
+  defp hand_over(scope) do
+    pool = pool_fixture(scope)
     :default = pool.gateway_choice
-    %{access_key: pool_key} = enrolled_key_fixture(ctx.client, pool)
-    work_item = work_item_fixture(ctx.client)
+    %{access_key: pool_key} = enrolled_key_fixture(scope, pool)
+    work_item = work_item_fixture(scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     case Dispatches.claim(pool_key, Dispatches.now()) do
@@ -161,6 +173,9 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   defp code(conn), do: Jason.decode!(conn.resp_body)["error"]
 
   defp seals, do: Repo.all(from e in Entry, where: e.action == "secret.seal")
+
+  defp seals_of(scope),
+    do: Enum.filter(seals(), &(&1.organisation_id == scope.organisation.id))
 
   defp ended!(queued) do
     assert %DispatchRun{state: :ended, end_cause: :secrets_not_allowed, result_outcome: :error} =
@@ -272,6 +287,114 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
       assert log =~ "#{provider.public_id} may not be sealed for its gateway (gateway)"
+      assert seals() == []
+    end
+  end
+
+  describe "the instance's gateway" do
+    test "is sealed a key of each organisation's chain, in each run's organisation's trail",
+         ctx do
+      gateway_key = instance_gateway()
+
+      {:ok, theirs} =
+        Connections.create_provider(ctx.operator, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: model_key()}]
+        })
+
+      for {scope, provider} <- [{ctx.client, ctx.provider}, {ctx.operator, theirs}] do
+        {:ok, _choice} =
+          ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+        {{:ok, handed}, _queued} = hand_over(scope)
+        run = attach!(gateway_key, handed)
+        assert run.organisation_id == scope.organisation.id
+        assert run.provider_chain == "organisation"
+
+        conn = post_secrets(gateway_key, run, digest(gateway_key, run), provider)
+        assert conn.status == 200
+        assert signed_answer?(conn)
+
+        # In the run's organisation's trail, about the run, by the gateway's key.
+        {key, _seed} = gateway_key
+        assert [%Entry{} = entry] = seals_of(scope)
+        assert {entry.subject_kind, entry.subject_id} == {"run", run.id}
+        assert entry.workspace_id == scope.workspace.id
+        assert {entry.actor_kind, entry.actor_id} == {:access_key, key.id}
+        assert entry.details["provider_id"] == provider.public_id
+      end
+
+      assert length(seals()) == 2
+    end
+
+    test "is sealed a key of an operator's chain, in the operator's trail only", ctx do
+      gateway_key = instance_gateway()
+      provider = operator_chain!(ctx)
+
+      {{:ok, handed}, _queued} = hand_over(ctx)
+      run = attach!(gateway_key, handed)
+      assert run.provider_chain == "operator"
+
+      conn = post_secrets(gateway_key, run, digest(gateway_key, run), provider)
+      assert conn.status == 200
+      assert signed_answer?(conn)
+
+      # The client's people read nothing of the operator's provider: the entry is in the
+      # operator's trail, about the instance's gateway, with the run's id.
+      {key, _seed} = gateway_key
+      assert seals_of(ctx.client) == []
+      assert [%Entry{} = entry] = seals_of(ctx.operator)
+      assert {entry.subject_kind, entry.subject_id} == {"node", key.node_id}
+      assert entry.workspace_id == nil
+      assert entry.details["run_id"] == run.node_run_id
+      assert entry.details["provider_id"] == provider.public_id
+    end
+
+    test "is refused a key of an operator's chain when the edition names no operator", ctx do
+      gateway_key = instance_gateway()
+      provider = operator_chain!(ctx)
+      {{:ok, handed}, _queued} = hand_over(ctx)
+      run = attach!(gateway_key, handed)
+      digest = digest(gateway_key, run)
+
+      EditionStubs.ServesAcrossWithChain.operator(nil)
+
+      {conn, log} = with_log(fn -> post_secrets(gateway_key, run, digest, provider) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "may not be sealed for its gateway (gateway)"
+      assert seals() == []
+    end
+
+    test "the instance pool's key is never sealed the key of a run it claimed", ctx do
+      gateway_key = instance_gateway()
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(ctx.client, :workspace, %{provider: ctx.provider.public_id})
+
+      %{access_key: pool_key, pair: pair} =
+        installed_key_fixture(instance_pool_fixture(), allow_secrets: true)
+
+      {:ok, pool_key} = AccessKeys.fetch_for_verification(pool_key.key_id)
+
+      # The client's workspace has no pool in use: the instance's pool claims its run,
+      # which goes through the instance's gateway.
+      work_item = work_item_fixture(ctx.client)
+      {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      {:ok, claimed} = Dispatches.claim(pool_key, Dispatches.now())
+      handed = %{run: claimed.registered, run_key: redeemed_run_key!(claimed.run_code)}
+      run = attach!(gateway_key, handed)
+      assert run.node_id == pool_key.node_id
+      digest = digest(gateway_key, run)
+
+      # The pool's key reads the run, as its pool claimed it: the refusal is of the key,
+      # which the run key does not list among the gateway's keys.
+      assert %Run{id: id} = Repo.one(Sender.run_query(pool_key, run.node_run_id))
+      assert id == run.id
+
+      conn = post_secrets({pool_key, pair.secret}, run, digest, ctx.provider)
+      assert conn.status == 404
+      assert code(conn) == "not_found"
       assert seals() == []
     end
   end

@@ -765,6 +765,7 @@ msgid "%{kind} runs"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{label} is revoked."
@@ -1043,6 +1044,7 @@ msgid "%{name} is renamed."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
@@ -3239,6 +3241,7 @@ msgid "APIs are set up from it: remove them first."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -3272,6 +3275,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Access key"
@@ -6314,6 +6318,7 @@ msgstr ""
 msgid "Email me a link instead"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Empty means no limit. Lowering it stops nothing running now; new instances wait until fewer run."
@@ -7144,6 +7149,7 @@ msgctxt "workspace type"
 msgid "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -7306,6 +7312,7 @@ msgstr ""
 msgid "Gateway"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Gateway: the runs of nodes and node pools that choose it go through it."
@@ -7636,6 +7643,7 @@ msgstr ""
 msgid "IP addresses in the audit log"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -7848,6 +7856,7 @@ msgid_plural "Installed · %{number} %{collections}, %{unassigned} unassigned"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance"
@@ -7859,10 +7868,16 @@ msgid "Instance cleared"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance limit"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Instance pool: takes this workspace's runs while it has no node pool in use."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -8003,6 +8018,7 @@ msgctxt "plain"
 msgid "It applies to the chosen workspaces below, and to no other."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "It can't be changed."
@@ -8113,6 +8129,7 @@ msgid "It is removed from this organisation. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It is revoked at once, and its public key can never be used again. This cannot be undone."
@@ -8546,6 +8563,7 @@ msgid "Keyboard shortcuts of the timeline"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -8553,6 +8571,8 @@ msgid "Keys"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/instance_live/node.ex
+#: lib/apiary_web/live/instance_live/nodes.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/index.ex
@@ -9355,6 +9375,7 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/general.ex
+#: lib/apiary_web/live/instance_live/nodes.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
@@ -9741,11 +9762,13 @@ msgstr ""
 msgid "No instance of this node has reported yet. It shows here once it runs, running or when it was last seen."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No instance of this pool has reported yet. An instance shows here while it runs."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No instance of this pool is running. An instance shows here while it runs."
@@ -9762,6 +9785,7 @@ msgid "No key yet"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No limit"
@@ -10037,6 +10061,11 @@ msgstr ""
 msgid "No session timeline"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
+#, elixir-autogen, elixir-format
+msgid "No setting of this instance declares this node, so Qory Apiary writes no new code after a revoke."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No target active this week matches"
@@ -10206,6 +10235,7 @@ msgstr ""
 msgid "Node pool"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Node pool: short-lived instances that share one access key."
@@ -10229,6 +10259,8 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
+#: lib/apiary_web/live/instance_live/node.ex
+#: lib/apiary_web/live/instance_live/nodes.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Nodes"
@@ -10596,6 +10628,7 @@ msgid "Nothing was assigned: the page was out of date. It now shows the %{collec
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -11774,6 +11807,11 @@ msgstr ""
 msgid "Qory Apiary tells the adapter nothing."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory asked %{number} question before it can propose what to do."
@@ -12485,6 +12523,7 @@ msgid "Revoke %{label}"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoke %{label}?"
@@ -12526,6 +12565,7 @@ msgid "Revoke…"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoking"
@@ -12815,6 +12855,7 @@ msgstr ""
 msgid "Running"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Running instances"
@@ -12826,6 +12867,7 @@ msgstr ""
 msgid "Running sessions have it within a heartbeat."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -12982,6 +13024,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/mail.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
@@ -13034,6 +13077,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
@@ -13453,6 +13497,7 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -13791,6 +13836,7 @@ msgstr ""
 #: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/adapters.ex
+#: lib/apiary_web/live/instance_live/nodes.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -14833,6 +14879,11 @@ msgstr ""
 msgid "The next page shows the secret once, with everything else the machine needs, for you to set where %{name} runs."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/nodes.ex
+#, elixir-autogen, elixir-format
+msgid "The node pool and the gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The pool takes the runs of every workspace that has no node pool in use. The gateway serves every organisation."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The node's name, its kind and how many instances may run at once."
@@ -15494,6 +15545,11 @@ msgstr ""
 msgid "This host cannot be named in a policy: a rule takes a host name, not an address of this form."
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "This instance"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "This instance doesn't accept integrations from this source."
@@ -16015,6 +16071,7 @@ msgstr ""
 msgid "Type your email, %{email}, to confirm"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -16971,6 +17028,7 @@ msgid "Yes, remove"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, revoke"
@@ -18065,6 +18123,7 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -18511,6 +18570,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/rules.ex
 #, elixir-autogen, elixir-format
 msgid "the workspace's policy"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "this instance"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

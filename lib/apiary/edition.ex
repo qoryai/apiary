@@ -144,6 +144,17 @@ defmodule Apiary.Edition do
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 
+  # With the `factory` feature, which the documentation leaves out: the organisation whose
+  # model choices are the chain of the organisation `organisation_id` while its chain is
+  # "operator" (`c:model_choice_chain/1`): the operator that runs work for it, or nil.
+  # A model key of the operator's chain is sealed only for that organisation's gateway or
+  # the instance's (`Apiary.Runs.ProviderCredential.sealable_to?/3`), and its seal is
+  # recorded in that organisation's trail. Asked without a lock. The core has no operator
+  # and answers nil.
+  @doc false
+  @callback operator_chain_organisation(organisation_id :: Ecto.UUID.t()) ::
+              Ecto.UUID.t() | nil
+
   # With the `factory` feature, which the documentation leaves out: whether `organisation`
   # is a client that an operator runs work for. A run of such an organisation hides the
   # text of its stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`).
@@ -585,6 +596,7 @@ defmodule Apiary.Edition do
     first_sign_up_line: 0,
     above_workspace: 1,
     model_choice_chain: 1,
+    operator_chain_organisation: 1,
     operated?: 1,
     client_reads: 4,
     organisation_secrets: 2,

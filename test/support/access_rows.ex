@@ -130,6 +130,7 @@ defmodule Apiary.AccessRows do
       {:"adapter.set_interval", yes: []},
       {:"adapter.delete", yes: []},
       {:"adapter.install", yes: [:instance, :hidden]},
+      {:"node.install", yes: [:instance, :hidden]},
       {:"adapter.setup", yes: []},
       {:"adapter.connect", yes: @owners ++ [:admin]},
       {:"collection.assign", yes: @owners ++ [:admin]},

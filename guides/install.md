@@ -14,24 +14,26 @@ page is the reference for an installation that stays.
 - **The image**, `ghcr.io/qoryai/apiary`, is built from the `Dockerfile` of the repository.
   CI builds it on every proposed change and every push and publishes nothing; only a release
   publishes it, tagged with its version without the `v` (`X.Y.Z`), `X.Y` and `latest`, for
-  `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as the user
-  `nobody`, listens on port 4100, and its command is `bin/server`, which migrates and
+  `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as uid and
+  gid 65532, listens on port 4100, and its command is `bin/server`, which migrates and
   serves. `bin/migrate` runs the same migrations by hand, `bin/apiary version` prints the
   release's version, and `bin/keys` generates the keys
   ([The keys generated at first start](#the-keys-generated-at-first-start)). The commit it
   was built from is its label `org.opencontainers.image.revision` and `revision` at
   [`GET /health`](#health).
-- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as three
+- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as four
   services. `env.example` is the repository's `.env.example` with the release's version in
-  `APIARY_VERSION`, and becomes `.env`. `keys` runs once at every
-  start and exits: it generates the keys the volume `keys` does not hold yet. `postgres`,
-  in the profile `postgres` that `.env` turns on with `COMPOSE_PROFILES=postgres`, is
-  Postgres 18 with the role `apiary`, the database `apiary` and the volume `postgres-data`.
-  `apiary` starts once `keys` has finished and the database is healthy, and publishes port
-  4100 on `127.0.0.1` only. An external Postgres is one `DATABASE_URL` away, with the line
-  `COMPOSE_PROFILES=postgres` taken out of `.env`
-  ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create and alter
-  tables in its database, since the release migrates it.
+  `APIARY_VERSION`, and becomes `.env`. `keys-owner` runs once at every start and exits:
+  it gives the volume `keys` and everything in it to uid 65532
+  ([The keys generated at first start](#the-keys-generated-at-first-start)). `keys` runs
+  once at every start, after `keys-owner`, and exits: it generates the keys the volume
+  `keys` does not hold yet. `postgres`, in the profile `postgres` that `.env` turns on
+  with `COMPOSE_PROFILES=postgres`, is Postgres 18 with the role `apiary`, the database
+  `apiary` and the volume `postgres-data`. `apiary` starts once `keys` has finished and
+  the database is healthy, and publishes port 4100 on `127.0.0.1` only. An external
+  Postgres is one `DATABASE_URL` away, with the line `COMPOSE_PROFILES=postgres` taken out
+  of `.env` ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create
+  and alter tables in its database, since the release migrates it.
 - **A reverse proxy** that terminates TLS, in front of the port.
 - **An SMTP relay, optional.** Without one the release starts all the same, sends no
   email, and says so in its log: people sign up and log in with a password, an invitation
@@ -49,7 +51,7 @@ mv env.example .env
 
 A given release's files are under `releases/download/vX.Y.Z/` in place of
 `releases/latest/download/`. With `compose.yaml` and its `.env` in one directory,
-`docker compose up -d` starts the three services, and `docker compose logs apiary` shows
+`docker compose up -d` starts the four services, and `docker compose logs apiary` shows
 the boot. [From nothing to a first run](quickstart.md) does the same for a trial on one
 machine.
 
@@ -276,7 +278,9 @@ APIARY_SIGNING_SECRET is a value the Forager contract publishes in its fixtures,
 and the server, keeps the instance's keys in the volume `keys`, in the file
 `/var/lib/apiary/keys/apiary.env`: `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`,
 `APIARY_SIGNING_SECRET` and `DATABASE_PASSWORD`, one `NAME=value` line each, mode 0600,
-owned by `nobody`. For each name:
+owned by uid 65532, the user the image runs as. Before it, the service `keys-owner` gives
+the volume `keys` and everything in it to uid 65532, without following a symbolic link,
+since earlier images ran as `nobody` (65534). For each name:
 
 - set in the environment, that is in `.env`: it is not generated, and the file does not
   keep it;
@@ -312,7 +316,7 @@ APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its 
 When it cannot write, it exits non-zero, and nothing that depends on it starts:
 
 ```text
-Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user nobody.
+Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user 65532.
 ```
 
 The release reads the file at boot, from the directory `APIARY_KEYS_DIR` names, which the

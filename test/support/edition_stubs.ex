@@ -925,7 +925,8 @@ defmodule Apiary.EditionStubs do
     @moduledoc """
     `ServesAcross`, with the chain of model choices of every organisation
     (`c:Apiary.Edition.model_choice_chain/1`) that the test sets with `chain/1`:
-    "organisation" until it does, as the core's edition returns.
+    "organisation" until it does, as the core's edition returns; and the operator's
+    organisation of that chain, which the test may set with `operator/1`.
     """
 
     @doc "chain/1 sets the chain of model choices for the test's process."
@@ -933,6 +934,20 @@ defmodule Apiary.EditionStubs do
       do: Process.put(:model_choice_chain, chain)
 
     def model_choice_chain(_organisation_id), do: Process.get(:model_choice_chain, "organisation")
+
+    @doc """
+    operator/1 sets the operator's organisation for the test's process
+    (`c:Apiary.Edition.operator_chain_organisation/1`), nil for none. Until it does, the
+    operator is the first organisation that serves the run's.
+    """
+    def operator(id), do: Process.put(:operator_chain_organisation, {:set, id})
+
+    def operator_chain_organisation(id) do
+      case Process.get(:operator_chain_organisation) do
+        {:set, operator} -> operator
+        nil -> List.first(ServesAcross.serving_organisations(id))
+      end
+    end
 
     def serving_organisations(id), do: ServesAcross.serving_organisations(id)
     def served_organisations(id), do: ServesAcross.served_organisations(id)

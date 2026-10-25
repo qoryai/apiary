@@ -463,6 +463,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"workspace.purge",
         :"audit.prune",
         :"adapter.install",
+        :"node.install",
         :"collection.move"
       ],
       contract: [

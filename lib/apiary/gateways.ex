@@ -10,12 +10,15 @@ defmodule Apiary.Gateways do
   - at an organisation, `{:organisation, id}`, with no workspace: it may serve every
     workspace of its organisation, and every workspace of the organisations an edition
     names (`c:Apiary.Edition.served_organisations/1`). The core's edition names none.
+  - at the instance, `:instance`, with no organisation and no workspace: it may serve
+    every workspace of every organisation. The instance has one such gateway at most,
+    which Qory Apiary makes from its settings.
 
   A workspace's levels, most specific first (`levels/1`), are the workspace's, its
   organisation's, then those of the organisations whose gateways an edition lets serve it
-  (`c:Apiary.Edition.serving_organisations/1`), in the edition's order. Nothing here
-  assumes that an organisation-level gateway serves its organisation's workspaces
-  alone: each question asks the two seams.
+  (`c:Apiary.Edition.serving_organisations/1`), in the edition's order, and the instance's
+  last. Nothing here assumes that an organisation-level gateway serves its organisation's
+  workspaces alone: each question asks the two seams.
 
   A node or a node pool records a **choice** (`gateway_choice`): `:direct`; `:default`,
   the default gateway its workspace resolves (`default_gateway_for/1`); or `:named`, one
@@ -39,14 +42,17 @@ defmodule Apiary.Gateways do
   - `delete_blockers/1` is what stops a gateway from being deleted.
 
   **The default mark.** Each level marks at most one of its gateways as its default
-  (`default_gateway`, a partial unique index per workspace and one per organisation). A
-  gateway becomes its level's default by itself, as it is made, only when no default
-  resolves for it at its level or after it (`default_resolves?/1`): for a
-  workspace-level gateway, no default resolves for its workspace at all; for an
-  organisation-level one, its organisation has none, and no workspace it may serve
-  resolves a default at a level after its organisation. So making a gateway never moves
-  a node. Otherwise a person marks one, and the mark moves
-  (`Apiary.Nodes.make_default_gateway/2`).
+  (`default_gateway`, a partial unique index per workspace and one per organisation). The
+  instance's gateway is the instance level's default by rule, with no mark, and serves
+  as the default only of a workspace that resolves no default at a workspace's or an
+  organisation's level. A gateway becomes its level's default by itself, as it is made,
+  only when no default marked at a workspace's or an organisation's level resolves for it
+  at its level or after it (`default_resolves?/1`): for a workspace-level gateway, no
+  such default resolves for its workspace at all; for an organisation-level one, its
+  organisation has none, and no workspace it may serve resolves one at a level after its
+  organisation. So making a gateway moves no node off a marked default; the nodes of a
+  workspace whose default was the instance's gateway move to the gateway made. Otherwise
+  a person marks one, and the mark moves (`Apiary.Nodes.make_default_gateway/2`).
 
   A gateway is deleted only when nothing points to it and no run goes through it
   (`delete_blockers/1`): no node names it, wherever the node is; no node on `:default`
@@ -84,8 +90,13 @@ defmodule Apiary.Gateways do
     `FOR NO KEY UPDATE`, and the organisations it serves (`served_organisations/1`)
     `FOR SHARE`.
 
-  So two changes at one workspace take turns on its row, and a change at an organisation
-  takes turns with every change at a workspace it may serve: a choice is checked against
+  Each of the two takes a shared transaction-level advisory lock on `apiary:gateways`
+  before them, and a change of the instance's gateway takes that lock exclusively, alone
+  (`lock(:instance)`).
+
+  So two changes at one workspace take turns on its row, a change at an organisation
+  takes turns with every change at a workspace it may serve, and a change at the instance
+  takes turns with every other change: a choice is checked against
   the gateways as they are, and a deletion against the nodes as they are. Then a change
   of a node holds the node's row `FOR UPDATE`. A deletion holds the gateway's row
   `FOR UPDATE` while it reads the runs that hold it; a registration through the gateway
@@ -106,9 +117,9 @@ defmodule Apiary.Gateways do
   alias Apiary.Runs.Run
 
   @typedoc """
-  A level (`levels/1`): a workspace, or an organisation.
+  A level (`levels/1`): a workspace, an organisation, or the instance.
   """
-  @type level :: {:workspace, Ecto.UUID.t()} | {:organisation, Ecto.UUID.t()}
+  @type level :: {:workspace, Ecto.UUID.t()} | {:organisation, Ecto.UUID.t()} | :instance
   @typedoc """
   Where a node's choice leads (`resolve/1`): directly, to a gateway, or nowhere:
 
@@ -136,14 +147,17 @@ defmodule Apiary.Gateways do
   levels/1 is the levels of `workspace` whose default its nodes resolve to, most specific
   first: the workspace's, its organisation's, then those of the organisations an edition
   names whose organisation-level gateways may serve it
-  (`c:Apiary.Edition.serving_organisations/1`), in its order.
+  (`c:Apiary.Edition.serving_organisations/1`), in its order, then the instance's.
   """
   @spec levels(%Workspace{}) :: [level, ...]
   def levels(%Workspace{id: id, organisation_id: organisation_id}) do
-    [{:workspace, id} | Enum.map(chain(organisation_id), &{:organisation, &1})]
+    [{:workspace, id} | Enum.map(chain(organisation_id), &{:organisation, &1})] ++ [:instance]
   end
 
-  @doc "level/1 is the level `gateway` lives at: its workspace, or its organisation."
+  @doc """
+  level/1 is the level `gateway` lives at: its workspace, its organisation, or the
+  instance.
+  """
   @spec level(Node.t()) :: level
   def level(%Node{kind: :gateway, workspace_id: workspace_id}) when is_binary(workspace_id),
     do: {:workspace, workspace_id}
@@ -151,6 +165,20 @@ defmodule Apiary.Gateways do
   def level(%Node{kind: :gateway, workspace_id: nil, organisation_id: organisation_id})
       when is_binary(organisation_id),
       do: {:organisation, organisation_id}
+
+  def level(%Node{kind: :gateway, workspace_id: nil, organisation_id: nil}), do: :instance
+
+  @doc """
+  instance_gateway/0 is the instance's gateway in use, or nil when the instance has none.
+  """
+  @spec instance_gateway() :: Node.t() | nil
+  def instance_gateway do
+    from(n in Node,
+      where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
+      where: n.kind == :gateway and is_nil(n.deleted_at)
+    )
+    |> Repo.one()
+  end
 
   @doc """
   serving_organisations/1 is the other organisations whose organisation-level gateways
@@ -190,8 +218,9 @@ defmodule Apiary.Gateways do
   (`Apiary.Organisations.lock_organisations/2`). Raises, the transaction usable, when
   Postgres refuses the lock.
   """
-  @spec lock(%Workspace{} | {:organisation, Ecto.UUID.t()}) :: :ok
+  @spec lock(%Workspace{} | {:organisation, Ecto.UUID.t()} | :instance) :: :ok
   def lock(%Workspace{id: id, organisation_id: organisation_id}) do
+    hold_instance(:shared)
     hold(chain(organisation_id), :share)
 
     Repo.one(from w in Workspace, where: w.id == ^id, select: w.id, lock: "FOR NO KEY UPDATE")
@@ -200,19 +229,37 @@ defmodule Apiary.Gateways do
   end
 
   def lock({:organisation, organisation_id}) when is_binary(organisation_id) do
+    hold_instance(:shared)
+
     hold([organisation_id | served_organisations(organisation_id)], fn
       ^organisation_id -> :no_key_update
       _served -> :share
     end)
   end
 
+  def lock(:instance) do
+    hold_instance(:exclusive)
+    :ok
+  end
+
+  # The advisory lock every change of the gateways takes first: shared at a workspace or an
+  # organisation, exclusive at the instance.
+  defp hold_instance(:shared),
+    do: Repo.query!("SELECT pg_advisory_xact_lock_shared(hashtextextended('apiary:gateways', 0))")
+
+  defp hold_instance(:exclusive),
+    do: Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended('apiary:gateways', 0))")
+
   @doc """
   lock_for/2 is `lock/1` for a change of `node`, from the page of `scope`: the node's
-  organisation for an organisation-level gateway, else the scope's workspace.
+  organisation for an organisation-level gateway, the instance for the instance's gateway
+  or pool, else the scope's workspace.
   """
   @spec lock_for(Scope.t(), Node.t()) :: :ok
   def lock_for(%Scope{}, %Node{kind: :gateway, workspace_id: nil} = gateway),
     do: lock(level(gateway))
+
+  def lock_for(%Scope{}, %Node{organisation_id: nil, workspace_id: nil}), do: lock(:instance)
 
   def lock_for(%Scope{workspace: %Workspace{} = workspace}, %Node{}), do: lock(workspace)
 
@@ -227,8 +274,8 @@ defmodule Apiary.Gateways do
 
   @doc """
   may_serve?/2 says whether `gateway` may serve `workspace`: a gateway in use at one of
-  the workspace's levels (`levels/1`). Asked when a node's choice is saved, by
-  `resolve/1`, and by a run's registration and attach.
+  the workspace's levels (`levels/1`), the instance's gateway for every workspace. Asked
+  when a node's choice is saved, by `resolve/1`, and by a run's registration and attach.
   """
   @spec may_serve?(Node.t(), %Workspace{}) :: boolean
   def may_serve?(%Node{kind: :gateway, deleted_at: nil} = gateway, %Workspace{} = workspace) do
@@ -239,6 +286,9 @@ defmodule Apiary.Gateways do
       {:organisation, organisation_id} ->
         organisation_id == workspace.organisation_id or
           organisation_id in serving_organisations(workspace.organisation_id)
+
+      :instance ->
+        is_binary(workspace.id) and is_binary(workspace.organisation_id)
     end
   end
 
@@ -247,7 +297,8 @@ defmodule Apiary.Gateways do
   @doc """
   serves/1 is the workspaces `gateway` may serve, by name: a workspace-level gateway's
   workspace; an organisation-level gateway's every workspace of its organisation and of
-  the organisations it serves (`served_organisations/1`). None for a gateway that is
+  the organisations it serves (`served_organisations/1`); the instance's gateway's every
+  workspace of the instance. None for a gateway that is
   deleted, or a node that is not a gateway. It is never on the wire: a gateway's
   discovery document lists no workspaces (`ApiaryWeb.Contract.Configuration`).
   """
@@ -269,13 +320,16 @@ defmodule Apiary.Gateways do
       {:organisation, organisation_id} ->
         ids = [organisation_id | served_organisations(organisation_id)]
         from w in Workspace, where: w.organisation_id in ^ids
+
+      :instance ->
+        from(w in Workspace)
     end
   end
 
   @doc """
   gateway_choices/1 is the gateways a node of the scope's workspace may name: every
-  gateway in use that may serve the workspace (`may_serve?/2`), by level, most specific
-  first (`levels/1`), then by name.
+  gateway in use that may serve the workspace (`may_serve?/2`), the instance's among them,
+  by level, most specific first (`levels/1`), then by name.
   """
   @spec gateway_choices(Scope.t()) :: [Node.t()]
   def gateway_choices(%Scope{
@@ -288,7 +342,8 @@ defmodule Apiary.Gateways do
     from(n in Node,
       where:
         (n.organisation_id == ^organisation_id and n.workspace_id == ^workspace.id) or
-          (is_nil(n.workspace_id) and n.organisation_id in ^organisations),
+          (is_nil(n.workspace_id) and n.organisation_id in ^organisations) or
+          (is_nil(n.workspace_id) and is_nil(n.organisation_id)),
       where: n.kind == :gateway and is_nil(n.deleted_at),
       order_by: [asc: n.name, asc: n.id]
     )
@@ -301,19 +356,30 @@ defmodule Apiary.Gateways do
   @doc """
   default_gateway_for/1 is the default gateway of `workspace`, most specific level first
   (`levels/1`): the workspace's default, else its organisation's, else that of each
-  organisation that serves it, in turn. Nil when no level has one.
+  organisation that serves it, in turn, else the instance's gateway. Nil when no level has
+  one.
   """
   @spec default_gateway_for(%Workspace{}) :: Node.t() | nil
-  def default_gateway_for(%Workspace{id: id, organisation_id: organisation_id} = workspace) do
-    levels = levels(workspace)
+  def default_gateway_for(%Workspace{} = workspace), do: default_for(workspace, levels(workspace))
+
+  # The default marked at the workspace's level or an organisation's level, without the
+  # instance's gateway: the default that decides whether a gateway made or left after a
+  # deletion becomes its level's default.
+  defp marked_default_for(%Workspace{} = workspace),
+    do: default_for(workspace, levels(workspace) -- [:instance])
+
+  # The default of the first of `levels` that has one.
+  defp default_for(%Workspace{id: id, organisation_id: organisation_id}, levels) do
     organisations = for {:organisation, organisation} <- levels, do: organisation
 
     defaults =
       from(n in Node,
         where:
-          (n.organisation_id == ^organisation_id and n.workspace_id == ^id) or
-            (is_nil(n.workspace_id) and n.organisation_id in ^organisations),
-        where: n.kind == :gateway and n.default_gateway and is_nil(n.deleted_at)
+          (n.organisation_id == ^organisation_id and n.workspace_id == ^id and n.default_gateway) or
+            (is_nil(n.workspace_id) and n.organisation_id in ^organisations and
+               n.default_gateway) or
+            (is_nil(n.workspace_id) and is_nil(n.organisation_id)),
+        where: n.kind == :gateway and is_nil(n.deleted_at)
       )
       |> Repo.all()
 
@@ -322,9 +388,11 @@ defmodule Apiary.Gateways do
 
   @doc """
   default_at/2 is the default gateway `level` marks, or nil; `workspace` is the workspace
-  a workspace's level is of.
+  a workspace's level is of. The instance's level's default is its gateway, by rule.
   """
   @spec default_at(level, %Workspace{} | nil) :: Node.t() | nil
+  def default_at(:instance, _workspace), do: instance_gateway()
+
   def default_at({:workspace, workspace_id}, %Workspace{organisation_id: organisation_id}) do
     from(n in Node,
       where: n.organisation_id == ^organisation_id and n.workspace_id == ^workspace_id,
@@ -347,6 +415,8 @@ defmodule Apiary.Gateways do
   workspace a workspace's level is of.
   """
   @spec oldest_at(level, %Workspace{} | nil) :: Node.t() | nil
+  def oldest_at(:instance, _workspace), do: instance_gateway()
+
   def oldest_at({:workspace, workspace_id}, %Workspace{organisation_id: organisation_id}) do
     from(n in Node,
       where: n.organisation_id == ^organisation_id and n.workspace_id == ^workspace_id,
@@ -373,12 +443,13 @@ defmodule Apiary.Gateways do
   whether any default resolves for the workspace (`default_gateway_for/1`); for an
   organisation's, whether the organisation has a default, or a workspace it serves (the
   organisation's, or one of `served_organisations/1`) resolves one at a level after
-  it, with no default before it. A gateway made at `level` is made its default only when
-  none does (`Apiary.Nodes`).
+  it, with no default before it. The instance's gateway counts at neither level: it is
+  the default only of a workspace that resolves no other. A gateway made at `level` is
+  made its default only when none does (`Apiary.Nodes`).
   """
   @spec default_resolves?(level | {:workspace, %Workspace{}}) :: boolean
   def default_resolves?({:workspace, %Workspace{} = workspace}),
-    do: default_gateway_for(workspace) != nil
+    do: marked_default_for(workspace) != nil
 
   def default_resolves?({:organisation, organisation_id}) do
     served = [organisation_id | served_organisations(organisation_id)]
@@ -400,17 +471,22 @@ defmodule Apiary.Gateways do
 
   @doc """
   needs_default_after_deletion?/1 says whether, once `gateway` is deleted, a workspace it
-  served resolves no default any more while another gateway remains at its level: then
-  the oldest gateway left at the level becomes its default (`oldest_at/2`,
+  served resolves no default marked at a workspace's or an organisation's level any more,
+  the instance's gateway aside, while another gateway remains at its level: then the
+  oldest gateway left at the level becomes its default (`oldest_at/2`,
   `Apiary.Nodes.delete_node/2`). Asked of the records as they are after the deletion,
   under the deletion's locks.
   """
   @spec needs_default_after_deletion?(Node.t()) :: boolean
   def needs_default_after_deletion?(%Node{kind: :gateway} = gateway) do
     case level(gateway) do
+      # The instance has one gateway: none is left at its level to mark.
+      :instance ->
+        false
+
       {:workspace, workspace_id} ->
         workspace = Repo.get(Workspace, workspace_id)
-        workspace != nil and default_gateway_for(workspace) == nil
+        workspace != nil and marked_default_for(workspace) == nil
 
       {:organisation, organisation_id} ->
         served = [organisation_id | served_organisations(organisation_id)]
@@ -464,6 +540,16 @@ defmodule Apiary.Gateways do
   def resolve(%Node{gateway_choice: :direct}), do: :direct
   def resolve(%Node{gateway_choice: :named, gateway_id: nil}), do: {:error, :gateway_not_serving}
 
+  # The instance's pool has no workspace: its choice leads to the instance's gateway alone,
+  # the one gateway that serves every workspace its runs are in.
+  def resolve(%Node{kind: :pool, organisation_id: nil, workspace_id: nil} = pool) do
+    case chosen(pool) do
+      nil when pool.gateway_choice == :default -> {:error, :no_default_gateway}
+      nil -> {:error, :gateway_not_serving}
+      gateway -> with_key(gateway)
+    end
+  end
+
   def resolve(%Node{gateway_choice: :named, gateway_id: gateway_id} = node) do
     gateway = Repo.get(Node, gateway_id)
 
@@ -490,6 +576,17 @@ defmodule Apiary.Gateways do
   def chosen(%Node{kind: :gateway}), do: nil
   def chosen(%Node{gateway_choice: :direct}), do: nil
   def chosen(%Node{gateway_choice: :named, gateway_id: nil}), do: nil
+
+  def chosen(%Node{kind: :pool, organisation_id: nil, workspace_id: nil} = pool) do
+    case pool.gateway_choice do
+      :default ->
+        instance_gateway()
+
+      :named ->
+        gateway = Repo.get(Node, pool.gateway_id)
+        if gateway && gateway.deleted_at == nil && level(gateway) == :instance, do: gateway
+    end
+  end
 
   def chosen(%Node{gateway_choice: :named, gateway_id: gateway_id} = node) do
     gateway = Repo.get(Node, gateway_id)
@@ -567,8 +664,36 @@ defmodule Apiary.Gateways do
   # The nodes on `:default` whose default resolves to `gateway` now: none unless it is its
   # level's default. A workspace-level default holds its workspace's nodes, when the
   # workspace resolves it. An organisation-level default holds the nodes of each workspace
-  # it serves that marks no default of its own, in each organisation whose chain of
-  # defaults reaches it first.
+  # it serves that marks no workspace-level default, in each organisation whose chain of
+  # defaults reaches it first. The instance's gateway, its level's default by rule, holds
+  # the nodes of each workspace that marks no workspace-level default, in each
+  # organisation whose chain reaches no default, and the instance's pool on `:default`.
+  defp defaulting(%Node{kind: :gateway, organisation_id: nil, workspace_id: nil, deleted_at: nil}) do
+    organisations =
+      from(n in Node,
+        where: n.gateway_choice == :default and is_nil(n.deleted_at),
+        where: not is_nil(n.organisation_id),
+        distinct: true,
+        select: n.organisation_id
+      )
+      |> Repo.all()
+
+    chains = Map.new(organisations, &{&1, chain(&1)})
+    defaults = with_default(chains |> Map.values() |> List.flatten())
+
+    reached =
+      for {organisation, chain} <- chains,
+          not Enum.any?(chain, &MapSet.member?(defaults, &1)),
+          do: organisation
+
+    dynamic(
+      [n],
+      n.gateway_choice == :default and
+        ((n.organisation_id in ^reached and n.workspace_id not in subquery(own_defaults())) or
+           (is_nil(n.organisation_id) and is_nil(n.workspace_id)))
+    )
+  end
+
   defp defaulting(%Node{default_gateway: false}), do: dynamic(false)
 
   defp defaulting(%Node{id: id, deleted_at: nil} = gateway) do

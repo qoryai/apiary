@@ -390,6 +390,13 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     Action.new(
+      :"node.install",
+      "make the instance's node pool or gateway, and give it its one-time codes: the instance, by itself (Apiary.Nodes.Installed.install/2)",
+      feature: :factory,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
+    Action.new(
       :"adapter.setup",
       "start setting an adapter up at the system it reads from, with a new setup pass: an instance admin, which no role takes",
       feature: :factory,
@@ -1245,7 +1252,9 @@ defmodule Apiary.Access do
   # (`check_place/3`), and there on its pool: on no other node, and not on the
   # organisation. A dispatch action is asked of the workspace, whose queue every pool of
   # it claims from, or of a dispatch its pool claimed (`dispatch_subject/2`), and of
-  # nothing else.
+  # nothing else. The key of the instance's pool is at the instance, on its pool; a
+  # dispatch action of it is asked of its pool, the queue of every workspace with no pool
+  # in use, or of a dispatch its pool claimed, in any workspace.
   defp key_subject(:pool_key, %Scope{access_key: %AccessKey{} = key}, action, subject)
        when action in @dispatch_actions,
        do: dispatch_subject(key, subject)
@@ -1256,6 +1265,20 @@ defmodule Apiary.Access do
       %Node{} -> {:error, :not_found}
       %Organisation{} -> {:error, :not_found}
       _other -> :ok
+    end
+  end
+
+  # The key of the instance's gateway is at the instance, where it acts on its gateway
+  # alone: on no adapter and not on the instance's pool.
+  defp key_subject(
+         :access_key,
+         %Scope{access_key: %AccessKey{node_id: id, organisation_id: nil, workspace_id: nil}},
+         _action,
+         subject
+       ) do
+    case subject do
+      %Node{id: ^id} when is_binary(id) -> :ok
+      _other -> {:error, :not_found}
     end
   end
 
@@ -1285,6 +1308,20 @@ defmodule Apiary.Access do
        when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id),
        do: :ok
 
+  defp dispatch_subject(
+         %AccessKey{node_id: pool_id, organisation_id: nil, workspace_id: nil},
+         %Node{id: pool_id, kind: :pool, organisation_id: nil, workspace_id: nil}
+       )
+       when is_binary(pool_id),
+       do: :ok
+
+  defp dispatch_subject(
+         %AccessKey{node_id: pool_id, organisation_id: nil, workspace_id: nil},
+         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: pool_id}
+       )
+       when is_binary(pool_id) and is_binary(organisation_id) and is_binary(workspace_id),
+       do: :ok
+
   defp dispatch_subject(_key, _subject), do: {:error, :not_found}
 
   @doc """
@@ -1296,7 +1333,7 @@ defmodule Apiary.Access do
   """
   @spec check_place(Scope.t() | nil, action, subject | nil) :: :ok | {:error, :not_found}
   def check_place(scope, action, subject) do
-    place = place(subject)
+    place = subject_place(scope, action, subject)
 
     cond do
       not same_place?(scope, place) -> {:error, :not_found}
@@ -1315,19 +1352,44 @@ defmodule Apiary.Access do
   @spec within?(Scope.t() | nil, subject | nil) :: boolean
   def within?(scope, subject), do: same_place?(scope, place(subject))
 
-  # The key of an adapter, which has no organisation and no workspace, is where its
-  # adapter is, and where nothing else of an organisation is: the instance, which no other
-  # scope is at. It reaches nothing else there: `key_subject/4` holds it to its adapter.
+  # A dispatch the instance's pool claimed is asked of at the instance, where the pool's
+  # key is, whatever workspace the dispatch is in: the pool claims the runs of every
+  # workspace with no pool in use. `dispatch_subject/2` holds the key to the dispatches its
+  # pool claimed.
+  defp subject_place(
+         %Scope{
+           access_key: %AccessKey{
+             node_id: pool_id,
+             organisation_id: nil,
+             workspace_id: nil,
+             node: %Node{kind: :pool, organisation_id: nil, workspace_id: nil}
+           }
+         },
+         action,
+         %{organisation_id: organisation_id, workspace_id: workspace_id, pool_id: pool_id}
+       )
+       when action in @dispatch_actions and is_binary(pool_id) and
+              is_binary(organisation_id) and is_binary(workspace_id),
+       do: {nil, nil}
+
+  defp subject_place(_scope, _action, subject), do: place(subject)
+
+  # The key of an adapter, or of the instance's pool or gateway, has no organisation and no
+  # workspace: it is where its node is, and where nothing else of an organisation is: the
+  # instance, which no other scope is at. It reaches nothing else there: `key_subject/4`
+  # holds an adapter's key to its adapter, and a pool's key to its pool and the dispatches
+  # its pool claimed.
   defp same_place?(
          %Scope{
            access_key: %AccessKey{
              organisation_id: nil,
              workspace_id: nil,
-             node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
+             node: %Node{kind: kind, organisation_id: nil, workspace_id: nil}
            }
          },
          {nil, nil}
-       ),
+       )
+       when kind in [:adapter, :pool, :gateway],
        do: true
 
   defp same_place?(scope, place), do: in_place?(place(scope), place)

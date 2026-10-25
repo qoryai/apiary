@@ -101,23 +101,25 @@ defmodule Apiary.AccessKeysFixtures do
   end
 
   @doc """
-  A key enrolled on `adapter`, an adapter installed with Qory Apiary, with a code of the
-  instance, which names no maker: the rows `Apiary.AccessKeys.enrol/2` writes, written here
-  without a request or a listing, as `enrolled_key_fixture/3` writes them, and no audit
-  entry. Returns `%{access_key: key, pair: key pair, code: code row}`.
+  A key enrolled on `adapter`, an adapter installed with Qory Apiary, or the instance's
+  pool or gateway, with a code of the instance, which names no maker: the rows
+  `Apiary.AccessKeys.enrol/2` writes, written here without a request or a listing, as
+  `enrolled_key_fixture/3` writes them, and no audit entry. The key allows stored secrets
+  when `attrs` says so. Returns `%{access_key: key, pair: key pair, code: code row}`.
   """
   def installed_key_fixture(adapter, attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{label: unique_label()})
+    attrs = Enum.into(attrs, %{label: unique_label(), allow_secrets: false})
     pair = ed25519_key_pair()
     now = DateTime.utc_now()
     key_id = AccessKey.generate_key_id()
-    code = EnrolmentCode.generate(:adapter)
+    code = EnrolmentCode.generate(adapter.kind)
 
     code_row =
       %EnrolmentCode{
         id: Ecto.UUID.generate(),
         node_id: adapter.id,
         code_sha256: EnrolmentCode.hash(code),
+        allow_secrets: attrs.allow_secrets,
         expires_at: DateTime.add(now, 15, :minute),
         used_at: now,
         used_by_key_id: key_id,
@@ -137,7 +139,7 @@ defmodule Apiary.AccessKeysFixtures do
         enrolment_code_id: code_row.id,
         received_at: now
       }
-      |> AccessKey.insert_changeset(%{allow_secrets: false, label: attrs.label})
+      |> AccessKey.insert_changeset(%{allow_secrets: attrs.allow_secrets, label: attrs.label})
       |> AccessKey.put_integrity()
       |> Repo.insert!()
 

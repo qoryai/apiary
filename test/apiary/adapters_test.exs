@@ -877,7 +877,7 @@ defmodule Apiary.AdaptersTest do
   end
 
   describe "the schema" do
-    test "a node has no organisation exactly when it is an adapter, which has no workspace either",
+    test "a node has no organisation only when it is an adapter, or the instance's pool or gateway, which have no workspace either",
          %{scope: scope} do
       adapter = adapter_fixture()
       gateway = organisation_gateway_fixture(scope)
@@ -895,30 +895,41 @@ defmodule Apiary.AdaptersTest do
                  "nodes_place_check"
       end
 
-      for {other, prefix} <- [{gateway, "ng"}, {node, "nd"}] do
-        assert refused(fn ->
-                 Repo.insert_all(Node, [
-                   row(other, %{
-                     public_id: Apiary.PublicId.generate(prefix),
-                     organisation_id: nil,
-                     workspace_id: nil
-                   })
-                 ])
-               end) == "nodes_place_check"
-      end
+      assert refused(fn ->
+               Repo.insert_all(Node, [
+                 row(node, %{
+                   public_id: Apiary.PublicId.generate("nd"),
+                   organisation_id: nil,
+                   workspace_id: nil
+                 })
+               ])
+             end) == "nodes_place_check"
+
+      # A gateway, or a pool, with no organisation is the instance's: this module is async,
+      # and the instance has one of each, so `Apiary.Nodes.InstanceNodeMigrationTest`, which
+      # is not, makes them. Neither has a workspace without an organisation.
+      assert refused(fn ->
+               Repo.insert_all(Node, [
+                 row(gateway, %{
+                   public_id: Apiary.PublicId.generate("ng"),
+                   organisation_id: nil,
+                   workspace_id: scope.workspace.id
+                 })
+               ])
+             end) == "nodes_place_check"
 
       # None moves: an adapter takes no organisation, and a gateway keeps its own.
       assert refused(fn ->
                Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
                  set: [organisation_id: scope.organisation.id]
                )
-             end) == "nodes_place_check"
+             end) == "nodes_place_fixed"
 
       assert refused(fn ->
                Repo.update_all(from(n in Node, where: n.id == ^gateway.id),
                  set: [organisation_id: nil]
                )
-             end) == "nodes_place_check"
+             end) == "nodes_place_fixed"
 
       assert refused(fn ->
                Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
@@ -1091,7 +1102,9 @@ defmodule Apiary.AdaptersTest do
                end) == "node_place_matches"
       end
 
-      # An adapter has no instances: none without an organisation, none of an organisation.
+      # An adapter has no instances of an organisation. A row without one is the shape of the
+      # instance's pool's and gateway's rows, which the schema accepts for any node with no
+      # organisation; only those two write one (`Apiary.Nodes.seen/3`).
       now = DateTime.utc_now()
 
       instance = fn organisation_id ->
@@ -1110,10 +1123,6 @@ defmodule Apiary.AdaptersTest do
       end
 
       assert refused(fn -> instance.(scope.organisation.id) end) == "node_place_matches"
-
-      assert_raise Postgrex.Error, ~r/null value in column "organisation_id"/, fn ->
-        instance.(nil)
-      end
 
       # The other way: a key of a workspace's node or of an organisation's gateway, out of
       # its organisation.
