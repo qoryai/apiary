@@ -59,8 +59,8 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # The `workflow` and `harness_hidden` of a run's documents, both or neither, and its
   # `harness`, `{"harness": document}`, where the stacks' document applies: the run's
   # target has no harness file whose harness section has `extends` or lists modules
-  # without it, or the run has no `target_version`. The machine composes the target's file at `target_version` where
-  # `harness` is absent.
+  # without it, or the run has no `target_version`. The machine composes the target's
+  # file at `target_version` where `harness` is absent.
   defp harness(nil), do: []
 
   defp harness(%{workflow: workflow, harness_hidden: hidden, harness: document}) do
