@@ -301,13 +301,13 @@ defmodule Apiary.StacksTest do
          ctx do
       assert refused(ctx, "extends: {git: #{@stacks}, ref: v2}\nworkflows: {explore: {}}\n") ==
                [
-                 "may not contain workflows with extends: " <>
+                 "remove workflows or extends: " <>
                    "a harness document that extends a stack takes that stack's workflows"
                ]
 
       for document <- ["name: web\n", "bind: {agents/coder: x}\n"] do
         assert refused(ctx, document) == [
-                 "needs extends or modules: " <>
+                 "add extends or at least one module: " <>
                    "a harness document extends a stack, or defines one with at least one module"
                ],
                document

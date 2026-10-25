@@ -128,7 +128,7 @@ defmodule Apiary.Stacks.Document do
   defp kind(%{"extends" => _base, "workflows" => _workflows}),
     do:
       refuse(
-        "may not contain workflows with extends: " <>
+        "remove workflows or extends: " <>
           "a harness document that extends a stack takes that stack's workflows",
         []
       )
@@ -137,7 +137,7 @@ defmodule Apiary.Stacks.Document do
        when not is_map_key(section, "extends") and not is_map_key(section, "modules"),
        do:
          refuse(
-           "needs extends or modules: " <>
+           "add extends or at least one module: " <>
              "a harness document extends a stack, or defines one with at least one module",
            []
          )
