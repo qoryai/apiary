@@ -1340,7 +1340,7 @@ defmodule Apiary.PolicyTest do
                  Policy.rule_from_connection(ctx.scope, fetch, action, level)
 
         assert message ==
-                 "No rule can be made from a harness fetch: the stack proxy that sent it reads no rule of the workspace or of a target."
+                 "No rule can be made from a harness fetch: the stack proxy that sent it reads no rule of the workspace or of a repository."
       end
 
       refute Repo.exists?(from r in Rule, where: r.host == "fetch.example")

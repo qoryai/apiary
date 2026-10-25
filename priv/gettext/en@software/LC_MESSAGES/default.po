@@ -9908,6 +9908,11 @@ msgstr ""
 msgid "No result"
 msgstr ""
 
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "No rule can be made from a harness fetch: the stack proxy that sent it reads no rule of the workspace or of a target."
+msgstr "No rule can be made from a harness fetch: the stack proxy that sent it reads no rule of the workspace or of a repository."
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "No rule can name this host."
