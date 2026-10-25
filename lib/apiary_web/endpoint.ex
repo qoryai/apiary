@@ -144,10 +144,6 @@ defmodule ApiaryWeb.Endpoint do
     end
   end
 
-  # The hosts where Chrome and Firefox keep a Secure cookie over plain http, besides the
-  # names under `.localhost`. Safari keeps one only over https.
-  @local_hosts ["localhost", "127.0.0.1", "::1"]
-
   @doc false
   # Logs one warning when the endpoint serves requests and `sign_in_cookies_dropped?/1`
   # is true for its `url:`, which config/runtime.exs derives from PUBLIC_URL. Called at
@@ -175,13 +171,22 @@ defmodule ApiaryWeb.Endpoint do
   end
 
   @doc false
-  # True when the endpoint's `url:` is plain http on a host other than localhost, a name
-  # under `.localhost`, 127.0.0.1 or ::1. The sign-in cookies are `__Host-` cookies, so
-  # Secure, and browsers drop them over plain http on any other host.
+  # True when the endpoint's `url:` is plain http on a host other than `localhost`, a name
+  # under `.localhost` or a loopback address (127.0.0.0/8, ::1). The sign-in cookies are
+  # `__Host-` cookies, so Secure: Chrome and Firefox keep them over plain http only on
+  # those hosts, and Safari only over https.
   def sign_in_cookies_dropped?(url) do
     host = String.downcase(url[:host] || "")
 
-    url[:scheme] == "http" and host not in @local_hosts and
-      not String.ends_with?(host, ".localhost")
+    url[:scheme] == "http" and host != "localhost" and
+      not String.ends_with?(host, ".localhost") and not loopback?(host)
+  end
+
+  defp loopback?(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, {127, _, _, _}} -> true
+      {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
+      _other -> false
+    end
   end
 end

@@ -1,5 +1,7 @@
 defmodule ApiaryWeb.EndpointPlainHttpTest do
-  use ExUnit.Case, async: true
+  # Not async: the last test sets the endpoint's configuration in the application's
+  # environment, which other tests read.
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
@@ -28,7 +30,9 @@ defmodule ApiaryWeb.EndpointPlainHttpTest do
             "http://LocalHost",
             "http://app.localhost:4100",
             "http://127.0.0.1:4100",
-            "http://[::1]:4100"
+            "http://127.0.0.2:4100",
+            "http://[::1]:4100",
+            "http://[0:0:0:0:0:0:0:1]:4100"
           ] do
         refute Endpoint.sign_in_cookies_dropped?(url(public_url)), public_url
       end
@@ -65,10 +69,19 @@ defmodule ApiaryWeb.EndpointPlainHttpTest do
       end
     end
 
-    test "is not logged when the endpoint does not serve, as in the test suite" do
-      refute Phoenix.Endpoint.server?(:apiary, Endpoint)
+    test "is logged at boot only when the endpoint serves" do
+      endpoint = Application.get_env(:apiary, Endpoint)
+      on_exit(fn -> Application.put_env(:apiary, Endpoint, endpoint) end)
+      lan = [scheme: "http", host: "192.168.1.20", port: 4100]
+
+      Application.put_env(:apiary, Endpoint, Keyword.merge(endpoint, url: lan, server: false))
       log = capture_log(fn -> assert Endpoint.warn_plain_http() == :ok end)
       refute log =~ @fix
+
+      Application.put_env(:apiary, Endpoint, Keyword.merge(endpoint, url: lan, server: true))
+      log = capture_log(fn -> assert Endpoint.warn_plain_http() == :ok end)
+      assert length(String.split(log, @fix)) == 2
+      assert log =~ "PUBLIC_URL is http://192.168.1.20:4100."
     end
   end
 end
