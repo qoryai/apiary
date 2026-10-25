@@ -16,15 +16,13 @@
   "harness": {
     "harness": {
       "name": "campaigns",
-      "modules": [
-        {
-          "source": {
-            "git": "https://code.example.com/team/harness",
-            "ref": "v2.4.0",
-            "module": "budgets"
-          }
-        }
-      ]
+      "workflows": {
+        "hello": {
+          "access": "write",
+          "time_limit": "45m"
+        },
+        "review": {}
+      }
     }
   },
   "inputs": {

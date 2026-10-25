@@ -247,6 +247,19 @@ defmodule Apiary.StacksTest do
       end
     end
 
+    test "take a document without extends that defines a stack, with its workflows", ctx do
+      for document <- [
+            "modules: [{source: {git: #{@stacks}, ref: v1}}]\n",
+            "name: web\nmodules:\n  - source: {git: #{@stacks}, ref: v1, module: web}\n" <>
+              "workflows:\n  explore: {access: write, time_limit: 45m}\n  review: {}\n"
+          ] do
+        assert {:ok, stack} =
+                 Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+
+        Repo.delete!(stack)
+      end
+    end
+
     test "take modules by git, by export and at the root, with the other keys", ctx do
       document = """
       name: web
@@ -278,9 +291,26 @@ defmodule Apiary.StacksTest do
 
         assert refused(ctx, document) == [
                  "may not contain #{key}: a harness document takes name, description, " <>
-                   "extends, modules, bind and extensions"
+                   "extends, modules, bind, extensions and workflows"
                ],
                key
+      end
+    end
+
+    test "refuse workflows with extends, and a document with neither extends nor modules",
+         ctx do
+      assert refused(ctx, "extends: {git: #{@stacks}, ref: v2}\nworkflows: {explore: {}}\n") ==
+               [
+                 "may not contain workflows with extends: " <>
+                   "a harness document that extends a stack takes that stack's workflows"
+               ]
+
+      for document <- ["name: web\n", "bind: {agents/coder: x}\n"] do
+        assert refused(ctx, document) == [
+                 "needs extends or modules: " <>
+                   "a harness document extends a stack, or defines one with at least one module"
+               ],
+               document
       end
     end
 
@@ -541,7 +571,12 @@ defmodule Apiary.StacksTest do
             {"extends: {path: ., stack: web}\n", "#/extends"},
             {"extends: {git: #{@stacks}, ref: v2, path: s, stack: web}\n", "#/extends"},
             {"extends: {git: #{@stacks}}\n", "#/extends"},
-            {"modules: [{source: {git: #{@stacks}, ref: v1}}]\n", "#"},
+            {"modules: []\n", "#/modules"},
+            {"modules: [{source: {path: ./m}}]\n", "#/modules/0"},
+            {"modules: [{source: {git: #{@stacks}, ref: v1}}]\nworkflows: {explore: {access: admin}}\n",
+             "#/workflows/explore/access"},
+            {"modules: [{source: {git: #{@stacks}, ref: v1}}]\nworkflows: {Explore: {}}\n",
+             "#/workflows"},
             {base <> "modules: [{name: lint}]\n", "#/modules/0"},
             {base <> "modules: [{source: {path: ./m}}]\n", "#/modules/0"},
             {base <> "modules: [{source: {git: #{@stacks}, ref: v1}, link: m}]\n", "#/modules/0"},

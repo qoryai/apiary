@@ -989,9 +989,9 @@ defmodule Apiary.Harnesses.Walk do
       "give the base as a git source and an export: " <>
         "extends: {git: <https address>, ref: <ref>, stack: <name>}",
     ("may not contain %{key}: a harness document takes name, description, extends, " <>
-       "modules, bind and extensions") =>
+       "modules, bind, extensions and workflows") =>
       "may not contain one of its keys: a harness document takes name, description, " <>
-        "extends, modules, bind and extensions",
+        "extends, modules, bind, extensions and workflows",
     "repeats the key %{key}" => "repeats a key"
   }
   # The words of any other such message, the schema's among them.

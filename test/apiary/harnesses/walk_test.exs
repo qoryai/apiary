@@ -352,6 +352,39 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
+    test "a setting without extends is the run's document, with its modules' sources alone",
+         ctx do
+      document =
+        "name: web\nmodules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n" <>
+          "workflows:\n  explore: {access: write}\n"
+
+      stack = setting(ctx.scope, document)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert %{origin: :setting, target_version: "c-R_app"} = walked
+      assert walked.stack_id == stack.id
+
+      assert walked.document == %{
+               "name" => "web",
+               "modules" => [
+                 %{"source" => %{"git" => @harness, "ref" => "v1", "module" => "web"}}
+               ],
+               "workflows" => %{"explore" => %{"access" => "write"}}
+             }
+
+      # The module's source is pinned at its root's version; its export is not followed.
+      assert walked.pins == [%{"git" => @harness, "ref" => "v1", "at" => "c-R_harness"}]
+      assert [%{"resources" => ["R_harness"]}] = walked.harness_links
+      calls = calls()
+      assert resolves(calls) == [[@target], [@harness]]
+      refute Enum.any?(reads(calls), &match?({"R_harness", "stacks/web/qory-stack.yaml", _}, &1))
+    end
+
     test "a target of a domain without harness files is never read, and the run has no target version",
          ctx do
       setting(ctx.scope, @setting)
@@ -553,6 +586,34 @@ defmodule Apiary.Harnesses.WalkTest do
       )
 
       assert {:ok, %{origin: :setting, access_level: :read}} = Walk.run(ctx.input)
+    end
+
+    test "a setting without extends: its own workflows, lowered by the recorded one", ctx do
+      document = fn workflows ->
+        "modules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n" <> workflows
+      end
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      for {workflows, recorded, expected} <- [
+            {"workflows:\n  explore: {access: write}\n", nil, :write},
+            {"workflows:\n  explore: {access: write}\n", :write, :write},
+            {"workflows:\n  explore: {access: write}\n", :read, :read},
+            {"workflows:\n  explore: {access: read}\n", :write, :read},
+            {"workflows:\n  review: {access: write}\n", nil, :read},
+            {"", nil, :read}
+          ] do
+        {:ok, _stack} =
+          Stacks.put_stack(
+            ctx.scope,
+            {:workspace, ctx.scope.workspace, "explore"},
+            document.(workflows),
+            access: recorded
+          )
+
+        assert {:ok, %{origin: :setting, access_level: ^expected}} = Walk.run(ctx.input),
+               inspect({workflows, recorded})
+      end
     end
 
     test "a run whose workflow no row has any longer gets read", ctx do
