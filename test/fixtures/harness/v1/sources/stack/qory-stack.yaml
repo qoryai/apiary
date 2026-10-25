@@ -1,0 +1,9 @@
+# A stack delivered to be extended.
+apiVersion: qory.dev/v1alpha1
+name: web
+modules:
+  - name: core
+  - source: {git: https://code.example.com/example-org/modules, ref: v1.0.0, path: modules/review}
+  - source: {git: https://code.example.com/example-org/modules, ref: v1.0.0, module: lint}
+extending:
+  kinds: [skills, commands]

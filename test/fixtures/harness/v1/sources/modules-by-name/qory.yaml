@@ -1,0 +1,6 @@
+# A checkout that defines its stack with a module read from its modules folder.
+apiVersion: qory.dev/v1alpha1
+harness:
+  target: {runtime: claude}
+  modules:
+    - name: app
