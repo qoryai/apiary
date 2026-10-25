@@ -8,12 +8,13 @@ defmodule Apiary.Adapters.Calls do
   #
   #   1. the address is checked, resolved and pinned (`Apiary.Adapters.CallAddress`);
   #   2. the body is `version` 1, `time`, then the call's members in order (`body/2`), at
-  #      most `max_call` bytes (256 KiB). `time` is in UTC to the second, and later than
-  #      the time of every call before it to the same adapter on this node
+  #      most `max_call` bytes (256 KiB), else the call fails `:too_large` unsent. `time`
+  #      is in UTC to the second, and later than the time of every identical call before
+  #      it, to the same adapter and path with the same members, on this node
   #      (`Apiary.Adapters.CallClock`), so no two calls to an adapter sign the same bytes,
   #      which its replay check would refuse. A time more than 60 seconds ahead of the
-  #      clock waits until it is not, within the call's time, else the call fails
-  #      `:timeout` unsent;
+  #      clock waits until it is not, within the call's time, else the call takes no time
+  #      and fails `:timeout` unsent;
   #   3. it is signed (`signature/4`): the headers `X-Qory-Adapter-Id` (the adapter's
   #      public id), `X-Qory-Instance-Id` (the instance id of the adapter's start-up that
   #      declared the `call_url`), `X-Qory-Contract-Version` (1) and
@@ -69,6 +70,8 @@ defmodule Apiary.Adapters.Calls do
   @retry_wait {250, 500}
   @max_call 256 * 1024
   @max_answer 1024 * 1024
+  # The time of a call's body for its size and its clock key (`CallClock.key/3`).
+  @no_time ~U[2026-01-01 00:00:00Z]
   @refusal_code ~r/\A[a-z_]{1,64}\z/
   @paths ["run-credential", "resolve", "read"]
 
@@ -214,51 +217,55 @@ defmodule Apiary.Adapters.Calls do
   end
 
   # `previous`, the time of the attempt before, nil for the first. Each attempt takes a
-  # new time (`time/2`), so a retry's signature is new too.
+  # later time (`time/2`), so a retry's signature is new too.
   defp attempt(adapter, target, keys, path, members, previous, deadline, settings) do
-    with {:ok, time} <- time(adapter, deadline) do
+    # The body has the same size at every time, so a call too large takes no time.
+    unsent = body(members, @no_time)
+
+    with :ok <- fits(unsent, settings),
+         {:ok, time} <- time(CallClock.key(adapter.id, path, unsent), deadline) do
       body = body(members, time)
 
-      if byte_size(body) > Keyword.get(settings, :max_call, @max_call) do
-        {:error, :too_large, %{}}
-      else
-        signature =
-          signature(SigningKey.current(), adapter.public_id, target.instance_id, path, body)
+      signature =
+        signature(SigningKey.current(), adapter.public_id, target.instance_id, path, body)
 
-        outcome =
-          target
-          |> send_call(adapter.public_id, path, body, signature, deadline, settings)
-          |> answer(signature, keys)
+      outcome =
+        target
+        |> send_call(adapter.public_id, path, body, signature, deadline, settings)
+        |> answer(signature, keys)
 
-        case retry(outcome, previous, deadline, settings) do
-          {:retry, wait} ->
-            Process.sleep(wait)
-            attempt(adapter, target, keys, path, members, time, deadline, settings)
+      case retry(outcome, previous, deadline, settings) do
+        {:retry, wait} ->
+          Process.sleep(wait)
+          attempt(adapter, target, keys, path, members, time, deadline, settings)
 
-          :final ->
-            final(outcome)
-        end
+        :final ->
+          final(outcome)
       end
     end
   end
 
-  # The call's time (`Apiary.Adapters.CallClock.take/2`), waited for while it is more
-  # than `CallClock.ahead/0` seconds ahead of the clock; `:timeout` when that wait would
-  # end after the call's time.
-  defp time(adapter, deadline) do
+  defp fits(body, settings) do
+    if byte_size(body) > Keyword.get(settings, :max_call, @max_call),
+      do: {:error, :too_large, %{}},
+      else: :ok
+  end
+
+  # The call's time (`Apiary.Adapters.CallClock.take/3`) under `key`, waited for while it
+  # is more than `CallClock.ahead/0` seconds ahead of the clock; `:timeout`, with no time
+  # taken, when that wait would end after the call's time.
+  defp time(key, deadline) do
     clock = System.os_time(:second)
-    time = CallClock.take(adapter.id, clock)
-    wait = (time - CallClock.ahead() - clock) * 1000
+    left = deadline - now()
+    latest = clock + CallClock.ahead() + div(max(left, 0), 1000) - 1
 
-    cond do
-      wait <= 0 ->
+    case CallClock.take(key, clock, latest) do
+      {:ok, time} ->
+        wait = (time - CallClock.ahead() - clock) * 1000
+        if wait > 0, do: Process.sleep(wait)
         {:ok, DateTime.from_unix!(time)}
 
-      now() + wait < deadline ->
-        Process.sleep(wait)
-        {:ok, DateTime.from_unix!(time)}
-
-      true ->
+      :late ->
         {:error, :timeout, %{}}
     end
   end

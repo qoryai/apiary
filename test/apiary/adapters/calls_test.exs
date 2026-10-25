@@ -277,16 +277,64 @@ defmodule Apiary.Adapters.CallsTest do
     assert signatures |> Enum.uniq() |> length() == 3
   end
 
-  test "callers at once never take the same time for one adapter" do
-    adapter_id = Ecto.UUID.generate()
+  # The clock key of a call to resolve `addresses` at the adapter `adapter_id`.
+  defp clock_key(adapter_id, addresses) do
+    bytes = Calls.body([{"addresses", addresses}], ~U[2026-01-01 00:00:00Z])
+    CallClock.key(adapter_id, "resolve", bytes)
+  end
+
+  test "identical callers at once never take the same time" do
+    key = clock_key(Ecto.UUID.generate(), ["https://a.example/x"])
     now = System.os_time(:second)
 
     times =
       1..40
-      |> Task.async_stream(fn _caller -> CallClock.take(adapter_id, now) end, max_concurrency: 8)
-      |> Enum.map(fn {:ok, time} -> time end)
+      |> Task.async_stream(fn _caller -> CallClock.take(key, now, now + 100) end,
+        max_concurrency: 8
+      )
+      |> Enum.map(fn {:ok, {:ok, time}} -> time end)
 
     assert Enum.sort(times) == Enum.to_list(now..(now + 39))
+  end
+
+  test "different calls to one adapter in one second share the clock's second" do
+    adapter_id = Ecto.UUID.generate()
+    now = System.os_time(:second)
+
+    times =
+      for n <- 1..40 do
+        {:ok, time} = CallClock.take(clock_key(adapter_id, ["https://a.example/#{n}"]), now, now)
+        time
+      end
+
+    assert Enum.uniq(times) == [now]
+
+    # The same call again takes the next second, or none past the latest it may take.
+    key = clock_key(adapter_id, ["https://a.example/1"])
+    assert CallClock.take(key, now, now) == :late
+    assert CallClock.take(key, now, now + 1) == {:ok, now + 1}
+  end
+
+  test "different calls sent in one second carry the same time", %{adapter: adapter, seed: seed} do
+    stub(fn conn ->
+      {conn, _body} = tell(conn)
+      answer(conn, 200, @ok, seed)
+    end)
+
+    # Within one second of the clock, two different calls carry that second; the test
+    # tries again when the clock's second changed between them.
+    sent =
+      Enum.find_value(1..5, fn _try ->
+        before = System.os_time(:second)
+        assert {:ok, _} = Calls.call(adapter, "resolve", [{"addresses", ["https://a.example/1"]}])
+        assert {:ok, _} = Calls.call(adapter, "resolve", [{"addresses", ["https://a.example/2"]}])
+        sent = calls()
+        if System.os_time(:second) == before, do: {before, sent}
+      end)
+
+    assert {second, [{_first, a}, {_second, b}]} = sent
+    assert time(a) == DateTime.from_unix!(second)
+    assert time(b) == DateTime.from_unix!(second)
   end
 
   test "a time more than 60 seconds ahead of the clock waits; past the call's time it fails :timeout unsent",
@@ -296,10 +344,15 @@ defmodule Apiary.Adapters.CallsTest do
       answer(conn, 200, @ok, seed)
     end)
 
-    CallClock.take(adapter.id, System.os_time(:second) + CallClock.ahead() + 30)
+    key = clock_key(adapter.id, ["https://a.example/x"])
+    ahead = System.os_time(:second) + CallClock.ahead() + 30
+    {:ok, ^ahead} = CallClock.take(key, ahead, ahead)
 
     assert {:error, %CallFailure{cause: :timeout}} = resolve(adapter, @fast)
     assert calls() == []
+
+    # The call took no time: the next identical call's time is the one after.
+    assert CallClock.take(key, ahead, ahead + 1) == {:ok, ahead + 1}
   end
 
   test "an unsigned 502 twice is :unreachable after the one retry", %{adapter: adapter} do
