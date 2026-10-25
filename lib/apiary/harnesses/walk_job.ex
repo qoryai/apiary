@@ -11,8 +11,10 @@ defmodule Apiary.Harnesses.WalkJob do
   # run before it starts, `harness_unresolved` (`fail/3`); a claim takes no run whose walk
   # has not resolved (`Apiary.Dispatches.waiting_query/1`). A walk that timed out or
   # reached no adapter is tried again after 10 seconds, then after 30; after the third
-  # attempt it fails `adapter_unavailable`. A refusal is not tried again. Run twice, the
-  # second finds the row no longer pending and does nothing.
+  # attempt it fails `adapter_unavailable`. A refusal is not tried again. A job that
+  # raises is tried again, and on its last attempt it fails `walk_error` before it raises,
+  # so its run ends and does not wait for ever. Run twice, the second finds the row no
+  # longer pending and does nothing.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -75,6 +77,18 @@ defmodule Apiary.Harnesses.WalkJob do
 
   @impl Apiary.Job
   def perform(%Scope{} = scope, %Oban.Job{args: %{"dispatch_run_id" => id}} = job) do
+    walk(scope, id, job)
+  rescue
+    exception ->
+      if job.attempt >= job.max_attempts do
+        failure = %{failure: :walk_error, source: nil, rule: nil, adapter: nil, call_failure: nil}
+        fail(id, failure, job.attempt)
+      end
+
+      reraise exception, __STACKTRACE__
+  end
+
+  defp walk(scope, id, job) do
     case pending(id) do
       nil ->
         :ok

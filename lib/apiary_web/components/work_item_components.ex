@@ -2803,6 +2803,11 @@ defmodule ApiaryWeb.WorkItemComponents do
           adapter: failure.adapter
         )
 
+      "walk_error" ->
+        gettext(
+          "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
+        )
+
       _adapter_failed ->
         nil
     end
@@ -2879,6 +2884,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp walk_rule_words("calls", values),
     do: gettext("reading it takes more than %{n} calls", n: values["n"])
+
+  defp walk_rule_words("size", values),
+    do: gettext("it is larger than %{n} bytes as JSON", n: values["n"])
 
   defp walk_rule_words("extends", _values),
     do: gettext("extends is not a source")

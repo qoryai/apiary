@@ -89,6 +89,8 @@ defmodule Apiary.Harnesses.Walk do
 
   @time_limit 60_000
   @max_calls 24
+  # The most bytes of a document as stored (`run_harnesses_document_check`).
+  @max_document 65_536
   @max_links 5
   @call_total 10_000
   @head "HEAD"
@@ -102,7 +104,8 @@ defmodule Apiary.Harnesses.Walk do
     :credential_in_address,
     :too_many,
     :adapter_unavailable,
-    :adapter_failed
+    :adapter_failed,
+    :walk_error
   ]
 
   # The form `<user>@<host>:<path>`: no scheme, a user, a host, a colon.
@@ -230,6 +233,9 @@ defmodule Apiary.Harnesses.Walk do
               fail(:invalid, nil, message(message, values))
           end
 
+        if stored_bytes(section) > @max_document,
+          do: fail(:invalid, nil, rule("size", n: @max_document))
+
         sources(section, input.organisation, nil)
 
         walked(%{
@@ -240,6 +246,13 @@ defmodule Apiary.Harnesses.Walk do
           owner_organisation_id: resolution.owner
         })
     end
+  end
+
+  # The bytes of `section` as the row stores it, JSON in Postgres' text form, which has
+  # more spaces than the YAML it came from may have.
+  defp stored_bytes(section) do
+    %{rows: [[bytes]]} = Repo.query!("SELECT octet_length($1::jsonb::text)", [section])
+    bytes
   end
 
   ## The target
@@ -829,13 +842,12 @@ defmodule Apiary.Harnesses.Walk do
   end
 
   # The source a failure shows: the target's address always, any other source only
-  # while the harness is not hidden; at most 512 characters.
-  defp shown({:shown, label}) when is_binary(label), do: String.slice(label, 0, 512)
-
-  defp shown(label) when is_binary(label),
-    do: unless(get(:hidden), do: String.slice(label, 0, 512))
-
+  # while the harness is not hidden; at most 512 code points, as the row's check counts.
+  defp shown({:shown, label}) when is_binary(label), do: cut(label)
+  defp shown(label) when is_binary(label), do: unless(get(:hidden), do: cut(label))
   defp shown(_none), do: nil
+
+  defp cut(label), do: label |> String.to_charlist() |> Enum.take(512) |> List.to_string()
 
   # A rule of the walk, by its name, which the run's page words.
   defp rule(name, values \\ []),

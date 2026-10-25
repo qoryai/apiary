@@ -665,6 +665,32 @@ defmodule Apiary.Harnesses.WalkTest do
       assert length(calls()) == 3
     end
 
+    test "a source shown in a failure is cut at 512 code points, as the row counts them",
+         ctx do
+      # 300 graphemes of two code points each: "e" and a combining acute accent.
+      url = "https://code.example.com/" <> String.duplicate("e\u0301", 300)
+      Repo.update_all(Collection, set: [url: url])
+      setting(ctx.scope, @setting)
+      serve([ctx.run], covered: covering(ctx))
+
+      assert {:failed, %{failure: :not_covered, source: source}} = Walk.run(ctx.input)
+      assert source |> String.to_charlist() |> length() == 512
+      assert String.starts_with?(url, source)
+    end
+
+    test "a document larger than a row stores as JSON fails invalid", ctx do
+      # 20,000 one-letter items: about 40 KB of YAML, and 100 KB of JSON as stored.
+      items = Enum.map_join(1..20_000, ",", fn _item -> "a" end)
+      setting(ctx.scope, @setting <> "extensions: {n: [#{items}]}\n")
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert {:failed,
+              %{failure: :invalid, source: nil, rule: %{"rule" => "size", "values" => values}}} =
+               Walk.run(ctx.input)
+
+      assert values == %{"n" => 65_536}
+    end
+
     test "an adapter that answers no one is a retry, with its name", ctx do
       setting(ctx.scope, @setting)
       serve([ctx.run], down: true)
