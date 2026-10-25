@@ -384,12 +384,14 @@ defmodule ApiaryWeb.UserSessionControllerTest do
 
       for {name, value} <- old_names do
         conn = build_conn() |> put_req_cookie(name, value) |> get(home)
-        assert redirected_to(conn) == ~p"/users/log-in", name
+        assert conn.status == 302, "#{name} signed the request in"
+        assert redirected_to(conn) == ~p"/users/log-in"
       end
 
       for {name, value} <- new_names do
         conn = build_conn() |> put_req_cookie(name, value) |> get(home)
-        assert html_response(conn, 200) =~ user.email, name
+        assert conn.status == 200, "#{name} did not sign the request in"
+        assert html_response(conn, 200) =~ user.email
       end
     end
   end
