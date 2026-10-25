@@ -70,6 +70,22 @@ defmodule Apiary.Adapters.CallAddress do
 
   def check(%Node{kind: :adapter}, _opts), do: {:error, :no_address}
 
+  @doc false
+  # placed?/1 is whether the adapter's `call_url` passes steps 1 and 2 of `check/2`,
+  # without a lookup: what the instance admin's page of the adapter shows.
+  @spec placed?(Node.t()) :: boolean
+  def placed?(%Node{kind: :adapter, call_url: url} = adapter) when is_binary(url) do
+    with {:ok, uri} <- parse(url), :ok <- host(uri.host, adapter), do: true, else: (_ -> false)
+  end
+
+  def placed?(%Node{}), do: false
+
+  @doc false
+  # host_for/1 is the one host the adapter is called at, `<adapter name>.<instance name>`,
+  # in lower case.
+  @spec host_for(Node.t()) :: String.t()
+  def host_for(%Node{name: name}), do: String.downcase("#{name}.#{instance_host()}")
+
   # A `call_url` as the contract allows one (`Apiary.Adapters.Wire.call_url?/1`): https,
   # a host, an optional port and a path that ends with `/`, and nothing else.
   defp parse(url) do

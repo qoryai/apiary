@@ -133,4 +133,13 @@ defmodule Apiary.Adapters.CallAddressTest do
     assert CallAddress.check(adapter("https://nowhere.localhost/", "nowhere")) ==
              {:error, :unresolved}
   end
+
+  test "placed?/1 is the check of the address alone, without a lookup; host_for/1 is the one host" do
+    assert CallAddress.host_for(%Node{name: "Tracker"}) == "tracker.localhost"
+    assert CallAddress.placed?(adapter("https://tracker.localhost/calls/"))
+    assert CallAddress.placed?(adapter("https://loopback.localhost/", "loopback"))
+    refute CallAddress.placed?(adapter("https://other.localhost/calls/"))
+    refute CallAddress.placed?(adapter("http://tracker.localhost/calls/"))
+    refute CallAddress.placed?(%Node{kind: :adapter, name: "tracker"})
+  end
 end

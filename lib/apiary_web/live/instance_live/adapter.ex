@@ -47,6 +47,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   use ApiaryWeb.Features, instance: :factory
 
   alias Apiary.{AccessKeys, Adapters}
+  alias Apiary.Adapters.CallAddress
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{AdapterComponents, SettingsComponents, SourceComponents}
 
@@ -599,6 +600,29 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
           </span>
         <% else %>
           <span class="text-faint">{gettext("Not declared yet")}</span>
+        <% end %>
+      </dd>
+      <dt class="text-faint">{gettext("Call address")}</dt>
+      <dd id="adapter-overview-call">
+        <%= cond do %>
+          <% is_nil(@adapter.call_url) -> %>
+            <span class="text-faint">{gettext("None declared")}</span>
+          <% CallAddress.placed?(@adapter) -> %>
+            <span class="q-mono break-all">{@adapter.call_url}</span>
+            <span class="text-faint">
+              <span aria-hidden="true">·</span>
+              {gettext("where Qory Apiary calls it, as it declares")}
+            </span>
+          <% true -> %>
+            <span class="q-mono break-all">{@adapter.call_url}</span>
+            <p id="adapter-call-hint" class="text-[12.5px]/[18px] text-muted">
+              <.rich text={
+                rich_gettext(
+                  "Set the adapter's call address to an https address at %{host}. Qory Apiary calls an adapter only at its name under the instance's name, so it makes no call to this one.",
+                  host: {:m, CallAddress.host_for(@adapter), "q-mono"}
+                )
+              } />
+            </p>
         <% end %>
       </dd>
       <dt class="text-faint">{gettext("Pulls")}</dt>

@@ -4440,6 +4440,11 @@ msgstr ""
 msgid "By hand"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Call address"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Can you trust your agents? With Qory *you don't have to*."
@@ -10297,6 +10302,11 @@ msgstr ""
 msgid "None"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "None declared"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "None is running. An instance shows here only while it runs; the last was seen"
@@ -13388,6 +13398,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Set password"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Set the adapter's call address to an https address at %{host}. Qory Apiary calls an adapter only at its name under the instance's name, so it makes no call to this one."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -18678,6 +18693,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "wall"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "where Qory Apiary calls it, as it declares"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
