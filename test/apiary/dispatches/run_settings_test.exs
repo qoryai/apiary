@@ -506,7 +506,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       built
     end
 
-    test "reads the client's own chain while the edition answers organisation", ctx do
+    test "reads the organisation's chain while the edition answers organisation", ctx do
       built = built!(ctx)
 
       assert built.stored["model"] == "claude-opus-5-5"

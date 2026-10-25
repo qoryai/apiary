@@ -146,7 +146,7 @@ defmodule Apiary.OperatorChainWritesTest do
       assert id == choice.id
     end
 
-    test "a choice names a provider of its own chain only", ctx do
+    test "a choice names a provider of the same chain only", ctx do
       %{scope: scope, own: own, operator: operator} = ctx
 
       assert {:error, changeset} =
