@@ -195,14 +195,16 @@ defmodule Apiary.Policy.Suggestions do
 
   # The attempts of the target's runs since `since`, as `{host, allowed, denied}`, read
   # through `connections (workspace_id, last_seen_at)`; nil beyond the cap, and the counts
-  # with it: a count of a part would read as the whole.
+  # with it: a count of a part would read as the whole. Only the `session` channel's
+  # connections count: the stack proxy decides by the run configuration's `stack_hosts`,
+  # never by the rules.
   defp attempts(scope, workspace_id, target_id, since) do
     rows =
       Repo.all(
         from [c, r] in connections(scope),
           where:
             c.workspace_id == ^workspace_id and c.last_seen_at >= ^since and
-              r.target_id == ^target_id,
+              r.target_id == ^target_id and c.channel == "session",
           order_by: [desc: c.last_seen_at],
           limit: ^(@attempts_cap + 1),
           select: {c.host, c.allowed, c.denied}

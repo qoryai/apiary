@@ -7560,6 +7560,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Harness fetch"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Heartbeats are due every %{interval}. After %{silence} of silence the run is marked lost."
 msgstr ""
 

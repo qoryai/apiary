@@ -1467,6 +1467,17 @@ defmodule Apiary.PolicyTest do
       assert [%{host: "registry.example", allowed: 0, denied: 2}] =
                Policy.suggestions(scope, target)
 
+      # The stack proxy's attempts count for none: the rules do not decide them.
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "registry.example", "decision" => "allowed", "channel" => "stack"},
+          %{"host" => "registry.example", "decision" => "denied", "channel" => "stack"}
+        ]
+      )
+
+      assert [%{host: "registry.example", allowed: 0, denied: 2}] =
+               Policy.suggestions(scope, target)
+
       future = DateTime.add(DateTime.utc_now(), 60, :second)
       assert [%{allowed: 0, denied: 0}] = Policy.suggestions(scope, target, future)
 
