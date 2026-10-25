@@ -7,10 +7,14 @@ defmodule Apiary.Adapters.CallsTest do
   # followed; an answer over the limit refused; and a log line without a body.
   use Apiary.DataCase, async: true
 
+  import Ecto.Query
   import ExUnit.CaptureLog
   import Apiary.NodesFixtures
+  import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
 
   alias Apiary.Adapters.{CallFailure, Calls}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.{FetchStub, SigningKey}
   alias Apiary.Integrations.Fetch.Address
@@ -392,5 +396,123 @@ defmodule Apiary.Adapters.CallsTest do
     refute log =~ body
     refute log =~ signature
     refute log =~ "instance-1"
+  end
+
+  describe "record_failure/3" do
+    setup %{adapter: adapter} do
+      %{scope: scope} = sign_up_fixture()
+      work_item = work_item_fixture(scope)
+      %{dispatch_run: run} = explore_run_fixture(work_item, end_cause: :inputs_invalid)
+
+      failure = %CallFailure{
+        adapter_id: adapter.id,
+        adapter_public_id: adapter.public_id,
+        adapter_name: adapter.name,
+        path: "resolve",
+        cause: :refused,
+        code: "grant_unknown",
+        status: 409
+      }
+
+      %{run: run, failure: failure}
+    end
+
+    defp reload(run), do: Repo.get!(DispatchRun, run.id)
+
+    test "writes the adapter, the cause, the call and the refusal's code on the run",
+         %{adapter: adapter, run: run, failure: failure} do
+      assert Calls.record_failure(Repo, run, failure) == :ok
+
+      assert %DispatchRun{
+               adapter_failure_id: id,
+               adapter_failure: :refused,
+               adapter_failure_call: "resolve",
+               adapter_failure_code: "grant_unknown"
+             } = reload(run)
+
+      assert id == adapter.id
+
+      # A cause other than :refused keeps no code, whatever the failure has.
+      assert Calls.record_failure(Repo, run, %{failure | cause: :timeout, path: "read"}) == :ok
+
+      assert %DispatchRun{
+               adapter_failure: :timeout,
+               adapter_failure_call: "read",
+               adapter_failure_code: nil
+             } = reload(run)
+    end
+
+    test "a call no run makes, or a run that is gone, writes nothing",
+         %{run: run, failure: failure} do
+      assert_raise FunctionClauseError, fn ->
+        Calls.record_failure(Repo, run, %{failure | path: "other"})
+      end
+
+      assert Calls.record_failure(Repo, %{run | id: Ecto.UUID.generate()}, failure) ==
+               {:error, :not_found}
+
+      assert reload(run).adapter_failure == nil
+    end
+
+    test "the database holds the adapter, the cause and the call together, or none",
+         %{adapter: adapter, run: run} do
+      at = from(d in DispatchRun, where: d.id == ^run.id)
+      set = &Repo.update_all(at, set: &1)
+
+      for cause <- CallFailure.causes(), call <- Calls.paths() do
+        assert {1, _} =
+                 set.(
+                   adapter_failure_id: adapter.id,
+                   adapter_failure: cause,
+                   adapter_failure_call: call,
+                   adapter_failure_code: nil
+                 )
+      end
+
+      for fields <- [
+            [adapter_failure_id: adapter.id],
+            [adapter_failure: :timeout],
+            [adapter_failure_call: "resolve"],
+            [adapter_failure_code: "grant_unknown"],
+            [adapter_failure_id: adapter.id, adapter_failure: :timeout],
+            [adapter_failure_id: adapter.id, adapter_failure_call: "resolve"],
+            [
+              adapter_failure_id: adapter.id,
+              adapter_failure: :timeout,
+              adapter_failure_call: "other"
+            ],
+            [
+              adapter_failure_id: adapter.id,
+              adapter_failure: :timeout,
+              adapter_failure_call: "resolve",
+              adapter_failure_code: "grant_unknown"
+            ],
+            [
+              adapter_failure_id: adapter.id,
+              adapter_failure: :refused,
+              adapter_failure_call: "resolve",
+              adapter_failure_code: "Grant unknown"
+            ]
+          ] do
+        nulls = [
+          adapter_failure_id: nil,
+          adapter_failure: nil,
+          adapter_failure_call: nil,
+          adapter_failure_code: nil
+        ]
+
+        assert_raise Postgrex.Error, ~r/dispatch_runs_adapter_failure_check/, fn ->
+          set.(Keyword.merge(nulls, fields))
+        end
+      end
+
+      assert {1, _} =
+               set.(
+                 adapter_failure_id: adapter.id,
+                 adapter_failure: :refused,
+                 adapter_failure_call: "read",
+                 adapter_failure_code: "grant_unknown"
+               )
+    end
   end
 end

@@ -128,6 +128,14 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :result_outcome, Ecto.Enum, values: @result_outcomes
     field :result, :map
     field :image_requeue, :boolean, default: false
+    # The call to an adapter the run stopped at, nil for none (`Apiary.Adapters.Calls`,
+    # `dispatch_runs_adapter_failure_check`): the adapter, the cause, the call's path, and
+    # the code of the adapter's refusal for the cause `:refused`. Qory writes them
+    # (`Apiary.Adapters.Calls.record_failure/3`); no changeset casts them.
+    belongs_to :failed_adapter, Apiary.Nodes.Node, foreign_key: :adapter_failure_id
+    field :adapter_failure, Ecto.Enum, values: Apiary.Adapters.CallFailure.causes()
+    field :adapter_failure_call, :string
+    field :adapter_failure_code, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

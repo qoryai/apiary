@@ -2616,6 +2616,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       <div>
         <p id={"#{@id}-h"}><b>{@heading}</b></p>
         <p>{@body}</p>
+        <p :if={@run[:adapter_failure]} id={"#{@id}-adapter"}>
+          {adapter_failure_words(@run.adapter_failure)}
+        </p>
         <p :if={@run[:id]}>
           <.rich text={rich_gettext("The run's page, %{run}, shows what it did.", run: run_ref(@run))} />
         </p>
@@ -2663,6 +2666,67 @@ defmodule ApiaryWeb.WorkItemComponents do
        gettext(
          "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
        )}
+
+  # What a member does about a run that stopped at a call to an adapter
+  # (`Apiary.Adapters.Calls`), and what happened to the call, by its cause.
+  defp adapter_failure_words(%{adapter: adapter, cause: cause, call: call} = failure) do
+    what = adapter_call_words(call)
+
+    case cause do
+      :timeout ->
+        gettext(
+          "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} had no answer within 10 seconds.",
+          adapter: adapter,
+          what: what
+        )
+
+      :unreachable ->
+        gettext(
+          "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} could not connect.",
+          adapter: adapter,
+          what: what
+        )
+
+      :refused ->
+        gettext(
+          "Ask an instance admin to check %{adapter}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}.",
+          adapter: adapter,
+          what: what,
+          code: failure.code || "unauthorized"
+        )
+
+      :invalid_answer ->
+        gettext(
+          "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check.",
+          adapter: adapter,
+          what: what
+        )
+
+      :no_address ->
+        gettext(
+          "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: %{adapter} declares no call address, so Qory Apiary could not call it for %{what}.",
+          adapter: adapter,
+          what: what
+        )
+
+      :not_allowed ->
+        gettext(
+          "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: the call address is not at the adapter's name under the instance's name, or it leads to a loopback, link-local or metadata address.",
+          adapter: adapter
+        )
+
+      :too_large ->
+        gettext(
+          "Remove harness sources or files, then start the run again. The run stopped before it started: the call to %{adapter} for %{what} was over 256 KiB.",
+          adapter: adapter,
+          what: what
+        )
+    end
+  end
+
+  defp adapter_call_words("run-credential"), do: gettext("the run's credentials")
+  defp adapter_call_words("resolve"), do: gettext("the harness sources")
+  defp adapter_call_words("read"), do: gettext("the harness files")
 
   # What a member does about a run that ended before it started, at its claim or while it
   # waited for its environment image's build, and why it ended.

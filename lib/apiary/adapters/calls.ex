@@ -44,12 +44,15 @@ defmodule Apiary.Adapters.Calls do
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
 
+  import Ecto.Query
+
   require Logger
 
   alias Apiary.{AccessKeys, SigningKey}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{CallAddress, CallFailure, Wire}
   alias Apiary.Contract.{Ed25519, SignedMessage}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Integrations.Fetch.Address
   alias Apiary.Nodes.Node
 
@@ -60,6 +63,7 @@ defmodule Apiary.Adapters.Calls do
   @max_call 256 * 1024
   @max_answer 1024 * 1024
   @refusal_code ~r/\A[a-z_]{1,64}\z/
+  @paths ["run-credential", "resolve", "read"]
 
   @doc false
   # The contract revision Qory Apiary builds its calls for, `X-Qory-Contract-Version`.
@@ -358,4 +362,35 @@ defmodule Apiary.Adapters.Calls do
   defp final(:timeout), do: {:error, :timeout, %{}}
 
   defp now, do: System.monotonic_time(:millisecond)
+
+  @doc false
+  # The paths of the calls a run makes: its credentials (`run-credential`), its harness
+  # sources (`resolve`) and its harness files (`read`).
+  @spec paths() :: [String.t()]
+  def paths, do: @paths
+
+  @doc false
+  # record_failure/3 writes `failure`, a failed call of one of `paths/0`, on the run of
+  # the queue `run` through `repo`, inside the caller's transaction where there is one:
+  # the adapter, the cause, the call's path, and the refusal's code for `:refused`. The
+  # run's page shows them (`ApiaryWeb.WorkItemComponents`). How the run ends is the
+  # caller's. `:ok`, or `{:error, :not_found}` for a run that is gone.
+  @spec record_failure(module, DispatchRun.t(), CallFailure.t()) :: :ok | {:error, :not_found}
+  def record_failure(repo, %DispatchRun{id: id}, %CallFailure{path: path} = failure)
+      when path in @paths do
+    code = if failure.cause == :refused, do: failure.code
+
+    case repo.update_all(from(d in DispatchRun, where: d.id == ^id),
+           set: [
+             adapter_failure_id: failure.adapter_id,
+             adapter_failure: failure.cause,
+             adapter_failure_call: path,
+             adapter_failure_code: code,
+             updated_at: DateTime.utc_now()
+           ]
+         ) do
+      {1, _} -> :ok
+      {0, _} -> {:error, :not_found}
+    end
+  end
 end

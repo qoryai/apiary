@@ -4208,6 +4208,36 @@ msgstr ""
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} could not connect."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} had no answer within 10 seconds."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: %{adapter} declares no call address, so Qory Apiary could not call it for %{what}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: the call address is not at the adapter's name under the instance's name, or it leads to a loopback, link-local or metadata address."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Ask for a release again"
@@ -12169,6 +12199,11 @@ msgstr ""
 msgid "Remove filter: %{filter} %{value}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove harness sources or files, then start the run again. The run stopped before it started: the call to %{adapter} for %{what} was over 256 KiB."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove program…"
@@ -18438,6 +18473,16 @@ msgstr ""
 msgid "terminal"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "the harness files"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "the harness sources"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the lists are too long to compare here."
@@ -18458,6 +18503,11 @@ msgstr[1] ""
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "the organisation's default"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "the run's credentials"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

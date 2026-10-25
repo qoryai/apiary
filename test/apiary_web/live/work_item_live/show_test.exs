@@ -364,6 +364,31 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       end
     end
 
+    test "a run that stopped at a call to an adapter names the adapter on Explore's tab",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+      %{dispatch_run: run} = explore_run_fixture(work_item, end_cause: :inputs_invalid)
+      name = "code-host-#{System.unique_integer([:positive])}"
+      adapter = Apiary.NodesFixtures.adapter_fixture(%{name: name})
+
+      :ok =
+        Apiary.Adapters.Calls.record_failure(Apiary.Repo, run, %Apiary.Adapters.CallFailure{
+          adapter_id: adapter.id,
+          adapter_public_id: adapter.public_id,
+          adapter_name: adapter.name,
+          path: "resolve",
+          cause: :unreachable
+        })
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none-adapter",
+               "Ask an instance admin to check that #{name} is running. The run stopped before it started: the call to #{name} for the harness sources could not connect."
+             )
+    end
+
     test "a run whose last result was an error still says so", %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
       explore_run_fixture(work_item, result: {:data, %{"is_error" => true, "result" => "No"}})

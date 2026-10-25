@@ -345,7 +345,8 @@ defmodule Apiary.WorkItems.Explore do
   # steps/3 is the runs of the take ins `take_ins` of the work item `work_item_id`, or of
   # every take in for `:all`, each where it stands at `now`, by take in, then attempt.
   # Two queries: the runs with their registered runs, then the result event with the
-  # highest sequence of each registered run whose outcome is not stored yet.
+  # highest sequence of each registered run whose outcome is not stored yet; and the
+  # adapters of the runs that stopped at a call to one.
   @doc false
   @spec steps(Ecto.UUID.t(), [pos_integer] | :all, DateTime.t()) :: [step]
   def steps(work_item_id, take_ins, %DateTime{} = now) when is_binary(work_item_id) do
@@ -359,6 +360,11 @@ defmodule Apiary.WorkItems.Explore do
 
     query = if take_ins == :all, do: query, else: where(query, [d], d.take_in in ^take_ins)
     rows = Repo.all(query)
+
+    # The adapter of each run that stopped at a call to one, a third query only when one
+    # did.
+    dispatch_runs = Repo.preload(Enum.map(rows, &elem(&1, 0)), :failed_adapter)
+    rows = Enum.zip_with(dispatch_runs, rows, fn d, {_d, r} -> {d, r} end)
 
     events =
       result_events(for {%DispatchRun{result_outcome: nil}, %Run{id: id}} <- rows, do: id)
