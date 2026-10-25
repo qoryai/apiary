@@ -17,7 +17,7 @@ defmodule Apiary.Dispatches.TargetAccessGoneMigrationTest do
   alias Apiary.Dispatches
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
 
-  @version 20_261_025_170_000
+  @version 20_261_025_160_200
   @migration Apiary.Repo.Migrations.EndARunWhoseTargetAccessIsGone
 
   setup_all do

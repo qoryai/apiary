@@ -12,7 +12,7 @@ defmodule Apiary.Runs.ConnectionChannelMigrationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
-  @version 20_261_025_170_100
+  @version 20_261_025_160_300
   @migration Apiary.Repo.Migrations.KeepTheChannelOfAConnection
 
   setup_all do
