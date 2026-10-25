@@ -643,9 +643,12 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
-    test "at a full commit id, a source a grant covers but the rule refuses still fails",
+    test "at a full commit id, another organisation's grant changes nothing: same walk, no link",
          ctx do
       setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+      assert {:ok, without} = Walk.run(ctx.input)
 
       other = scope_fixture()
       {connection, _nonce} = connection_fixture(other, ctx.run.adapter, :listed)
@@ -656,7 +659,27 @@ defmodule Apiary.Harnesses.WalkTest do
         files: @base_files
       )
 
+      calls()
+      assert {:ok, with_grant} = Walk.run(ctx.input)
+
+      assert with_grant == without
+      assert with_grant.harness_links == []
+      assert with_grant.pins == [%{"git" => @public, "ref" => @commit, "at" => @commit}]
+
+      assert ComposedConfiguration.stack_hosts(with_grant.pins) ==
+               ComposedConfiguration.stack_hosts(without.pins)
+
+      assert ComposedConfiguration.stack_hosts(with_grant.pins) == ["public.example.org"]
+      refute Enum.any?(reads(calls()), &match?({"R_public", _path, _at}, &1))
+
+      # At a branch, both still fail the same way.
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
       assert {:failed, %{failure: :not_covered, source: @public}} = Walk.run(ctx.input)
+    end
+
+    test "at a full commit id, the instance's grant with no assignment still fails not_allowed",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
 
       instance = adapter()
       instance_scope = instance_admin_scope()

@@ -46,10 +46,12 @@ defmodule Apiary.Harnesses.Walk do
   # of their names. A result counts under a live grant of a connected connection: its
   # owner is that connection's organisation, and the rule decides
   # (`Apiary.Harnesses.allowed?/3`). The first result allowed is the source's link. With
-  # none, a source a grant of the instance's organisation covers fails `not_allowed`, and
-  # any other `not_covered`: the run learns nothing of another organisation's grants.
-  # One exception: a source that no grant covers and whose `ref` is a full commit id (40
-  # or 64 lower-case hex digits) has no link and is not read. Its pin is its `ref`, so
+  # none, a source a grant of the instance's organisation covers fails `not_allowed`.
+  # Any other source, one no grant covers or one only other organisations' grants cover,
+  # fails `not_covered`, unless its `ref` is a full commit id (40 or 64 lower-case hex
+  # digits): then it has no link and is not read. Either way the run learns nothing of
+  # another organisation's grants; only a grant of the instance's organisation shows, as
+  # `not_allowed`. A source with a full commit id and no link has its `ref` as its pin, so
   # its host is in the run's `stack_hosts`, and qory fetches it with no credential: a
   # private one fails when qory composes the harness. Such a base's `qory-stack.yaml` is
   # not followed, so its modules' sources are not checked, pinned or linked.
@@ -616,7 +618,8 @@ defmodule Apiary.Harnesses.Walk do
               Enum.any?(candidates, fn {_a, grant, _r} -> grant.organisation_id == instance end) ->
                 fail(:not_allowed, shown)
 
-              candidates == [] and commit?(source["ref"]) ->
+              # No grant, or only other organisations' grants: one result for both.
+              commit?(source["ref"]) ->
                 {source, location(nil, nil, nil, shown, [], shown)}
 
               true ->
