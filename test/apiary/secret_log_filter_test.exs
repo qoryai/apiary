@@ -19,6 +19,21 @@ defmodule Apiary.SecretLogFilterTest do
 
   defp event(msg), do: %{level: :debug, msg: msg, meta: %{}}
 
+  # The text of a string message, filtered.
+  defp filtered_text(text) do
+    %{msg: {:string, filtered}} = SecretLogFilter.filter(event({:string, text}), nil)
+    filtered
+  end
+
+  # Fails when any 8 characters in a row of `token` are in `text`: a token left in part
+  # fails as a token left whole does.
+  defp refute_token_in(text, token) do
+    for start <- 0..(String.length(token) - 8) do
+      slice = String.slice(token, start, 8)
+      refute String.contains?(text, slice), "#{inspect(slice)} of the token in #{inspect(text)}"
+    end
+  end
+
   test "is installed at boot, once" do
     %{filters: filters} = :logger.get_primary_config()
     assert Keyword.has_key?(filters, :apiary_access_key_secrets)
@@ -312,6 +327,14 @@ defmodule Apiary.SecretLogFilterTest do
       assert scrubbed.path_info == ["users", "password", ":token"]
     end
 
+    test "replaces a secret or a code as a route's token with :token" do
+      for secret <- [@secret, EnrolmentCode.prefix(:node) <> @code_body] do
+        text = filtered_text("GET /users/password/#{secret}?x=1")
+        assert text == "GET /users/password/:token?x=1"
+        refute_token_in(text, secret)
+      end
+    end
+
     test "leaves every other path as it is" do
       for text <- [
             "GET /users/log-in",
@@ -352,7 +375,7 @@ defmodule Apiary.SecretLogFilterTest do
         event |> SecretLogFilter.filter(nil) |> formatter.format(config) |> IO.iodata_to_binary()
 
       assert line =~ "/users/password/:token"
-      refute line =~ token
+      refute_token_in(line, token)
     end
 
     test "is kept out of a line Logger writes, but for the set-up link's own", %{token: token} do
@@ -412,7 +435,7 @@ defmodule Apiary.SecretLogFilterTest do
     end
 
     test "is kept out of the production line of a LiveView that crashed", %{token: token} do
-      # A crashed LiveView's report: its join payload, the url among it.
+      # A crash report of another process: a join's payload, the url among it.
       report = %{
         label: {:gen_server, :terminate},
         last_message: %{
@@ -432,7 +455,15 @@ defmodule Apiary.SecretLogFilterTest do
         event |> SecretLogFilter.filter(nil) |> formatter.format(config) |> IO.iodata_to_binary()
 
       assert line =~ "invitation=:token&lang=en"
-      refute line =~ token
+      refute_token_in(line, token)
+    end
+
+    test "replaces a secret or a code as an invitation's value with [FILTERED]" do
+      for secret <- [@secret, EnrolmentCode.prefix(:node) <> @code_body] do
+        text = filtered_text("GET /users/register?invitation=#{secret}&lang=en")
+        assert text == "GET /users/register?invitation=[FILTERED]&lang=en"
+        refute_token_in(text, secret)
+      end
     end
 
     test "leaves a value that is no token as it is, an invitation's id among them" do
@@ -450,6 +481,151 @@ defmodule Apiary.SecretLogFilterTest do
     test "is masked by the parameters' filter, as Phoenix logs parameters", %{token: token} do
       assert Phoenix.Logger.filter_values(%{"invitation" => token, "lang" => "en"}) ==
                %{"invitation" => "[FILTERED]", "lang" => "en"}
+    end
+  end
+
+  describe "a token that contains a key's or a code's prefix" do
+    # Tokens of 43 base64url characters with `qak_`, `qec_` and `QeCx_` at the start, in
+    # the middle and at the end: a random token contains such a prefix now and then.
+    @prefixed_tokens [
+      "qak_p2Lm9Qx4Rt6Wz8Ny3Hc5Jd1Fg0Se7Ua2Ik4Ol6P",
+      "Vb7Kp2Lm9Qx4Rt6Wz8Nyqec_Jd1Fg0Se7Ua2Ik4Ol6P",
+      "Vb7Kp2Lm9Qx4Rt6Wz8Ny3Hc5Jd1Fg0Se7Ua2IkQeCx_"
+    ]
+
+    test "is replaced whole in a route's path, bare, in a URL and in a request's path" do
+      for token <- @prefixed_tokens,
+          {path, redacted} <- [
+            {"/users/password/#{token}", "/users/password/:token"},
+            {"/invitations/#{token}/continue", "/invitations/:token/continue"}
+          ] do
+        text = filtered_text("GET " <> path)
+        assert text == "GET " <> redacted
+        refute_token_in(text, token)
+
+        text = filtered_text(~s(join %{"url" => "https://qory.example.com#{path}?x=1"}.))
+        assert text == ~s(join %{"url" => "https://qory.example.com#{redacted}?x=1"}.)
+        refute_token_in(text, token)
+
+        conn = Plug.Test.conn(:get, path)
+
+        %{meta: %{conn: scrubbed}} =
+          SecretLogFilter.filter(%{event({:string, "x"}) | meta: %{conn: conn}}, nil)
+
+        assert scrubbed.request_path == redacted
+        refute_token_in(inspect(scrubbed, limit: :infinity, printable_limit: :infinity), token)
+      end
+    end
+
+    test "is replaced whole in a query, plain, URL-encoded, in a join's url and in a " <>
+           "request's query string" do
+      for token <- @prefixed_tokens do
+        for {text, redacted} <- [
+              {"GET /users/register?invitation=#{token}&lang=en",
+               "GET /users/register?invitation=:token&lang=en"},
+              {"GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D#{token}",
+               "GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D:token"},
+              {~s(join %{"url" => "https://qory.example.com/users/register?invitation=#{token}"}),
+               ~s(join %{"url" => "https://qory.example.com/users/register?invitation=:token"})}
+            ] do
+          filtered = filtered_text(text)
+          assert filtered == redacted
+          refute_token_in(filtered, token)
+        end
+
+        conn = Plug.Test.conn(:get, "/users/register?invitation=#{token}")
+
+        %{meta: %{conn: scrubbed}} =
+          SecretLogFilter.filter(%{event({:string, "x"}) | meta: %{conn: conn}}, nil)
+
+        assert scrubbed.query_string == "invitation=:token"
+        refute_token_in(inspect(scrubbed, limit: :infinity, printable_limit: :infinity), token)
+
+        # A crash report of another process: a join's payload, the url among it.
+        report = %{
+          label: {:gen_server, :terminate},
+          last_message: %{
+            "url" => "https://qory.example.com/users/register?invitation=#{token}&lang=en"
+          }
+        }
+
+        %{msg: {:report, scrubbed}} = SecretLogFilter.filter(event({:report, report}), nil)
+
+        assert scrubbed.last_message == %{
+                 "url" => "https://qory.example.com/users/register?invitation=:token&lang=en"
+               }
+
+        refute_token_in(inspect(scrubbed), token)
+      end
+    end
+  end
+
+  describe "a secret glued to a token" do
+    # A token of 43 base64url characters without a prefix in it.
+    @plain_token "Vb7Kp2Lm9Qx4Rt6Wz8Ny3Hc5Jd1Fg0Se7Ua2Ik4Ol6P"
+
+    test "before a route's path: the secret and the token are both replaced" do
+      t = @plain_token
+
+      for {text, redacted} <- [
+            {"qak_xxx/users/password/#{t}", "[FILTERED]/users/password/:token"},
+            {"GET /qak_xxx/users/password/#{t}", "GET /[FILTERED]/users/password/:token"},
+            {"qec_x/setup/#{t}", "[FILTERED]/setup/:code"},
+            {"qecn_#{@code_body}/invitations/#{t}/continue",
+             "[FILTERED]/invitations/:token/continue"}
+          ] do
+        filtered = filtered_text(text)
+        assert filtered == redacted
+        refute_token_in(filtered, t)
+        refute filtered =~ @code_body
+      end
+    end
+
+    test "after a query's token: the token and the secret are both replaced" do
+      t = @plain_token
+
+      for {text, redacted} <- [
+            {"GET /users/register?invitation=#{t}qak_x&lang=en",
+             "GET /users/register?invitation=:token[FILTERED]&lang=en"},
+            {"GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D#{t}qecn%5F" <>
+               @code_body,
+             "GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D:token[FILTERED]"},
+            # A token followed by another URL-encoded parameter is a token still.
+            {"GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D#{t}%26lang%3Den",
+             "GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D:token%26lang%3Den"}
+          ] do
+        filtered = filtered_text(text)
+        assert filtered == redacted
+        refute_token_in(filtered, t)
+        refute filtered =~ @code_body
+      end
+    end
+
+    test "as the end of a query's value of 43 characters before a URL-encoded `_`: " <>
+           "the code is replaced" do
+      for {before, prefix} <- [{39, "qecn%5F"}, {39, "qecn%5f"}, {40, "qec%5F"}, {40, "qec%5f"}] do
+        filler = String.duplicate("A", before)
+        filtered = filtered_text("GET /users/register?invitation=#{filler}#{prefix}#{@code_body}")
+        assert filtered == "GET /users/register?invitation=#{filler}[FILTERED]"
+        refute filtered =~ @code_body
+      end
+    end
+
+    test "or a URL-encoded `_` after a query's token that no code's prefix ends: " <>
+           "the token is replaced" do
+      t = @plain_token
+
+      for {text, redacted} <- [
+            {"GET /users/register?invitation=#{t}%5Fabc",
+             "GET /users/register?invitation=:token%5Fabc"},
+            {"GET /users/register?invitation=#{t}%5Fqak_x",
+             "GET /users/register?invitation=:token%5F[FILTERED]"},
+            {"GET /x%3Finvitation%3D#{t}%5F", "GET /x%3Finvitation%3D:token%5F"}
+          ] do
+        filtered = filtered_text(text)
+        assert filtered == redacted
+        refute_token_in(filtered, t)
+      end
     end
   end
 
