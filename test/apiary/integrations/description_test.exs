@@ -29,15 +29,16 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       assert names ==
                ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
-                  example-gateway.json example-projects.json example-tracker.json github.json
-                  unknown-role.json)
+                  example-gateway.json example-projects.json example-source-apply-basic.json
+                  example-source-apply-bearer.json example-source-apply-header.json
+                  example-tracker.json github.json unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 98
+      assert length(names) == 104
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -56,7 +57,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 33
+      assert length(names) == 39
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -263,10 +264,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "fa7bba91894060f6e9fd386f87445db46a5cf7c0"
+  @integrations_ref "c3dcff533931e86b70ea299e1224bedb31814a21"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "0f9c1b00667341e97deadf08077cf3f0e8a7a293f819e5eea3bf47f3552eeb4a",
+      "b0c2570fc572fadf17415c0bca9b370fe39425a2ca912214f669893f5088707a",
     "priv/contract/integration/definitions.schema.json" =>
       "c9607225effb2b67fa03a5eb1f28fe93d41a3f338f7db3e100237ecae5d8d245",
     "priv/contract/integration/descriptions/anthropic.json" =>

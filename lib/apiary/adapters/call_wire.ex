@@ -6,7 +6,8 @@ defmodule Apiary.Adapters.CallWire do
   # not define is refused.
   #
   #   * `run-credential` (`run-credential.schema.json`): `grant_ref`, `resources`, 1 to 64
-  #     refs, each once, `access` (`read` or `write`) and `purpose` (`harness` or `work`).
+  #     refs, each once, and exactly one for the purpose `work`, `access` (`read` or
+  #     `write`) and `purpose` (`harness` or `work`).
   #     Its answer is `credential`, the Forager contract's credential document as the
   #     integration contract narrows it (`run-credential-answer.schema.json`): `version` 1,
   #     `token`, 1 to 16,384 bytes with no NUL, carriage return or line feed and no space
@@ -58,7 +59,7 @@ defmodule Apiary.Adapters.CallWire do
   defp call_members?("run-credential", body) do
     keys?(body, ~w(access grant_ref purpose resources)) and ref?(body["grant_ref"]) and
       refs?(body["resources"]) and body["access"] in ["read", "write"] and
-      body["purpose"] in ["harness", "work"]
+      purpose?(body["purpose"], body["resources"])
   end
 
   defp call_members?("resolve", body) do
@@ -72,6 +73,11 @@ defmodule Apiary.Adapters.CallWire do
   end
 
   defp call_members?(_path, _body), do: false
+
+  # A work credential is for the run's target alone, so its call names one resource.
+  defp purpose?("work", resources), do: length(resources) == 1
+  defp purpose?("harness", _resources), do: true
+  defp purpose?(_purpose, _resources), do: false
 
   defp time?(value), do: match?({:ok, _time}, Apiary.Adapters.Wire.time(value))
 
