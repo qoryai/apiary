@@ -236,11 +236,44 @@ defmodule ApiaryWeb.RegistryTokenTest do
                error(token(ctx.run.public_id, first, scopes(["repository:#{ctx.target}:pull"])))
     end
 
-    test "is refused a secrets request that lists the model key alone", ctx do
+    test "is sealed the model key alone for a request that names it alone, its secret kept",
+         ctx do
       conn = seal(ctx, [ctx.provider.public_id])
+      assert conn.status == 200, conn.resp_body
+      plaintext = open(ctx, conn)
+      assert plaintext["credentials"] == [ctx.provider.public_id]
+      assert [%{"credential" => model}] = plaintext["values"]
+      assert model == ctx.provider.public_id
+      # The credential stored before stays the one that matches.
+      assert {:ok, _run} = Credential.verify(ctx.run.public_id, ctx.secret)
+    end
+
+    test "is sealed a new registry secret alone for a request that names it alone", ctx do
+      seals = fn ->
+        Repo.aggregate(
+          from(e in Apiary.Audit.Entry, where: e.action == "secret.seal"),
+          :count
+        )
+      end
+
+      before = seals.()
+      conn = seal(ctx, ["registry"])
+      assert conn.status == 200, conn.resp_body
+      plaintext = open(ctx, conn)
+      assert plaintext["credentials"] == ["registry"]
+      assert [%{"credential" => "registry"}] = plaintext["values"]
+      refute Jason.encode!(plaintext) =~ model_key()
+
+      assert {:ok, _run} = Credential.verify(ctx.run.public_id, registry_value(plaintext))
+      assert Credential.verify(ctx.run.public_id, ctx.secret) == :error
+      # No model key sealed, so no seal recorded.
+      assert seals.() == before
+    end
+
+    test "is refused a request out of the run configuration's order", ctx do
+      conn = seal(ctx, ["registry", ctx.provider.public_id])
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"] == "credentials_differ"
-      # The credential stored before stays the one that matches.
       assert {:ok, _run} = Credential.verify(ctx.run.public_id, ctx.secret)
     end
 
