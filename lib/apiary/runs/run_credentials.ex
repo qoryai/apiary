@@ -23,7 +23,8 @@ defmodule Apiary.Runs.RunCredentials do
   #     of the run's harness walk (`Apiary.Harnesses.RunHarness`'s `access_level`), `:read`
   #     for a prebuild and for a run with no walk.
   #
-  # The claim writes the entry with its run (`insert!/2`), once.
+  # The claim writes the entry with its run (`insert!/2`), once. `work/1` reads it back for
+  # the run's documents and its secrets request.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -132,6 +133,40 @@ defmodule Apiary.Runs.RunCredentials do
   defp access(%DispatchRun{id: id}) do
     Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.access_level) ||
       :read
+  end
+
+  @doc false
+  # work/1 is the work entry of `run` (a run, or a map with its `id`), as the run's run
+  # configuration lists it: `%{name:, entry:, hosts:}`, the entry a host credential of the
+  # Forager contract (`name`, `purpose` `work`, `apply`, and `placeholders` where it has
+  # some) and the hosts of its apply items, each once, in their order. Nil for none.
+  @spec work(map | nil) ::
+          %{name: String.t(), entry: Jason.OrderedObject.t(), hosts: [String.t()]} | nil
+  def work(%{id: run_id}) when is_binary(run_id) do
+    query =
+      from c in RunCredential,
+        where: c.run_id == ^run_id and c.purpose == :work,
+        select: %{name: c.name, apply: c.apply, placeholders: c.placeholders}
+
+    case Repo.one(query) do
+      nil ->
+        nil
+
+      %{} = row ->
+        %{name: row.name, entry: work_entry(row), hosts: ApplyTemplates.hosts(row.apply)}
+    end
+  end
+
+  def work(_run), do: nil
+
+  defp work_entry(%{name: name, apply: apply, placeholders: placeholders}) do
+    Jason.OrderedObject.new(
+      [
+        {"name", name},
+        {"purpose", "work"},
+        {"apply", Enum.map(apply, &ApplyTemplates.ordered/1)}
+      ] ++ if(placeholders, do: [{"placeholders", placeholders}], else: [])
+    )
   end
 
   @doc false

@@ -72,7 +72,9 @@ defmodule Apiary.Dispatches.Handover do
   #      nobody chose. Before that check, a run whose target came from a collection of an
   #      adapter that declares apply items, while the collection ended, its connection is
   #      not connected, or the target path is one the apply items refuse, ends
-  #      `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/3`);
+  #      `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/3`). A run with a work
+  #      credential entry also ends `secrets_not_allowed` when one of those keys was made
+  #      without `allow_secrets`, whatever the features and its model choice;
   #   2. the run key cannot be made for the gateway's address
   #      (`Apiary.Runs.Registration.issue_grant/3`), the run settings take more than 64
   #      KiB, the input does not fit 1 MiB with every comment left out, the run's model
@@ -176,6 +178,7 @@ defmodule Apiary.Dispatches.Handover do
     Registration,
     Run,
     RunCode,
+    RunCredential,
     RunCredentials,
     RunVariables,
     Target
@@ -582,12 +585,23 @@ defmodule Apiary.Dispatches.Handover do
   def serves?(%Node{}, nil), do: false
   def serves?(gateway, workspace), do: Gateways.may_serve?(gateway, workspace)
 
-  # A run formed with a model provider, with the features under which it is given its
-  # credential (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed`
-  # when one of `keys`, the gateway's keys its run key lists, was made without
-  # `allow_secrets`, as either key may attach the run; or when the provider's key may not
-  # be sealed for the gateway (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
-  defp sealable(
+  # A run formed with a work credential entry ends `secrets_not_allowed` when one of
+  # `keys`, the gateway's keys its run key lists, was made without `allow_secrets`, as
+  # either key may attach the run and ask for the entry's value. A run formed with a model
+  # provider, with the features under which it is given its credential
+  # (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed` on the same
+  # keys, or when the provider's key may not be sealed for the gateway
+  # (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
+  defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, workspace, keys) do
+    if Enum.all?(keys, & &1.allow_secrets),
+      do: model_sealable(ok, gateway, workspace, keys),
+      else: {:end, :secrets_not_allowed}
+  end
+
+  defp sealable(formed, gateway, workspace, keys),
+    do: model_sealable(formed, gateway, workspace, keys)
+
+  defp model_sealable(
          {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
          %Node{} = gateway,
          %Workspace{organisation_id: organisation_id},
@@ -601,7 +615,7 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  defp sealable(formed, _gateway, _workspace, _keys), do: formed
+  defp model_sealable(formed, _gateway, _workspace, _keys), do: formed
 
   # The run's work credential entry, formed from what the run is formed from
   # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the

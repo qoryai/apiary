@@ -4,6 +4,8 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
   # digest as the configuration it was composed from.
   use Apiary.DataCase, async: true
 
+  import Ecto.Query, only: [from: 2]
+
   @moduletag needs: :security
 
   import Apiary.ContractFixtures, only: [contract_key_fixture: 1]
@@ -12,7 +14,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
   alias Apiary.Policy
   alias Apiary.Policy.{ComposedConfiguration, Render, RunConfiguration, Schema, Serving}
-  alias Apiary.Runs.Batch
+  alias Apiary.Runs.{Batch, RunCredentials}
   alias ApiaryWeb.ConnectionLive.Rules
 
   @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
@@ -473,6 +475,143 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       assert Serving.digest_for(key, run, batch, composed.digest) ==
                ComposedConfiguration.digest(newer.document, @image, false)
+    end
+  end
+
+  describe "a run with a work credential entry" do
+    @describetag needs: :factory
+
+    @apply [
+      %{
+        "hosts" => ["git.example.com"],
+        "scheme" => "basic",
+        "username" => "token-user",
+        "paths" => ["/{target.path}.git/*", "/{target.path}/*"]
+      },
+      %{"hosts" => ["api.git.example.com"], "scheme" => "bearer"}
+    ]
+
+    # A sealed run (`Apiary.SealedRunsFixtures.sealed_run_fixture/1`) of a workspace in
+    # `mode`, whose ticket's adapter declares `@apply`, with the work entry its claim would
+    # record (`Apiary.Runs.RunCredentials.form_work/3`), and the document its reload gives.
+    defp work_run!(scope, mode) do
+      {:ok, _mode} = Policy.set_mode(scope, mode)
+      ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
+      dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, ctx.run.dispatch_run_id)
+      work_item = Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(n in Apiary.Nodes.Node, where: n.id == ^work_item.adapter_id),
+          set: [source_apply: @apply]
+        )
+
+      {:ok, entry} =
+        RunCredentials.form_work(dispatch_run, work_item, %{path: work_item.target_path})
+
+      RunCredentials.insert!(entry, ctx.run)
+
+      {key, _seed} = ctx.secrets_key
+
+      {:ok, %{settings: settings, digest: digest}} =
+        Apiary.Runs.Registration.fetch(
+          key,
+          ctx.run.node_run_id,
+          Apiary.ContractFixtures.instance_id()
+        )
+
+      document =
+        settings
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Map.get(:values)
+        |> Enum.reject(fn {name, _value} -> name in ["labels", "about"] end)
+        |> Jason.OrderedObject.new()
+        |> Jason.encode!(escape: :json)
+
+      Map.merge(ctx, %{document: document, digest: digest, work_item: work_item})
+    end
+
+    test "is given work-1 last in credentials, and its hosts in allow_first and allow under enforce",
+         ctx do
+      %{document: document} = work = work_run!(ctx.scope, "enforce")
+      decoded = Jason.decode!(document)
+
+      assert List.last(decoded["credentials"]) == %{
+               "name" => "work-1",
+               "purpose" => "work",
+               "apply" => [
+                 %{
+                   "hosts" => ["git.example.com"],
+                   "scheme" => "basic",
+                   "username" => "token-user",
+                   "paths" => ["/acme/shop.git/*", "/acme/shop/*"]
+                 },
+                 %{"hosts" => ["api.git.example.com"], "scheme" => "bearer"}
+               ]
+             }
+
+      # The model key comes first, and the registry credential, where the feature is on,
+      # before the work entry.
+      assert hd(decoded["credentials"])["name"] == work.provider.public_id
+      refute document =~ ~s("token")
+
+      {"credentials", entries} =
+        document
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Map.get(:values)
+        |> List.keyfind("credentials", 0)
+
+      assert Enum.map(List.last(entries).values, &elem(&1, 0)) == ~w(name purpose apply)
+
+      egress = decoded["security_policy"]["egress"]
+      assert egress["mode"] == "enforce"
+      assert "git.example.com" in egress["allow_first"]
+      assert "api.git.example.com" in egress["allow_first"]
+      assert egress["allow_first"] == Enum.sort(egress["allow_first"])
+      assert "git.example.com" in egress["allow"]
+      assert "api.git.example.com" in egress["allow"]
+
+      assert Schema.validate(document) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+      assert work.digest == Render.digest(document)
+    end
+
+    test "under observe has its hosts in allow_first alone", ctx do
+      %{document: document} = work_run!(ctx.scope, "observe")
+      egress = Jason.decode!(document)["security_policy"]["egress"]
+
+      assert egress["mode"] == "observe"
+      assert "git.example.com" in egress["allow_first"]
+      assert "api.git.example.com" in egress["allow_first"]
+      refute "git.example.com" in egress["allow"]
+      refute "api.git.example.com" in egress["allow"]
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+    end
+
+    test "is read back by RunCredentials.work/1 with its hosts, and a run with none has nil",
+         ctx do
+      %{run: run} = work_run!(ctx.scope, "enforce")
+      assert %{name: "work-1", hosts: hosts} = RunCredentials.work(run)
+      assert hosts == ["git.example.com", "api.git.example.com"]
+      assert RunCredentials.work(%{id: Ecto.UUID.generate()}) == nil
+      assert RunCredentials.work(nil) == nil
+    end
+
+    test "a secrets request may leave work-1 out, and one that names it is refused", ctx do
+      work = work_run!(ctx.scope, "enforce")
+      {key, _seed} = work.secrets_key
+      now = ApiaryWeb.Contract.SignedRequest.now()
+
+      answer =
+        &Apiary.Runs.SecretsRequest.answer(key, &1, Apiary.ContractFixtures.instance_id(), now)
+
+      request = &Apiary.SealedRunsFixtures.secrets_request(work.run, work.digest, &1, now)
+      model = work.provider.public_id
+
+      assert answer.(request.(["work-1"])) == {:error, :credential_unavailable}
+      assert answer.(request.([model, "work-1"])) == {:error, :credential_unavailable}
+      assert answer.(request.(["work-0"])) == {:error, :credentials_differ}
+      assert {:ok, _sealed} = answer.(request.([model]))
     end
   end
 end

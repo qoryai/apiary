@@ -113,22 +113,21 @@ defmodule Apiary.Integrations.ApplyTemplates do
   end
 
   defp fill_item(%{} = item, target_path) do
-    members =
-      for name <- @members, Map.has_key?(item, name) do
-        case name do
-          "paths" ->
-            {name,
-             item["paths"]
-             |> Enum.map(&String.replace(&1, @placeholder, target_path))
-             |> Enum.uniq()}
-
-          _other ->
-            {name, item[name]}
-        end
-      end
-
-    Jason.OrderedObject.new(members)
+    item
+    |> Map.replace_lazy("paths", fn paths ->
+      paths |> Enum.map(&String.replace(&1, @placeholder, target_path)) |> Enum.uniq()
+    end)
+    |> ordered()
   end
+
+  @doc false
+  # ordered/1 is the apply item `item`, a map, with its members in the schema's order.
+  @spec ordered(item) :: Jason.OrderedObject.t()
+  def ordered(%{} = item),
+    do:
+      Jason.OrderedObject.new(
+        for name <- @members, Map.has_key?(item, name), do: {name, item[name]}
+      )
 
   defp paths_in_grammar?(%Jason.OrderedObject{values: members}) do
     case List.keyfind(members, "paths", 0) do

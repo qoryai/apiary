@@ -37,9 +37,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
     }
   ]
 
+  # The gateway's keys are allowed stored secrets: a run with a work entry ends
+  # `secrets_not_allowed` under a key that is not (the last describe).
   setup do
     %{scope: scope} = sign_up_fixture()
-    Map.put(handover_place_fixture(scope), :scope, scope)
+    Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 
   # A run of the queue for a new work item of the scope, whose target is acme/shop at
@@ -360,6 +362,31 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       # The rows go with their run.
       Repo.delete!(run)
+      assert entries() == []
+    end
+  end
+
+  describe "a gateway key made without allow_secrets" do
+    setup do
+      %{scope: scope} = sign_up_fixture()
+      Map.put(handover_place_fixture(scope), :scope, scope)
+    end
+
+    test "ends a run with a work entry secrets_not_allowed, and stores no entry", ctx do
+      {_work_item, queued} = queued!(ctx)
+      assert {:ok, :none} = claim(ctx)
+
+      assert %DispatchRun{state: :ended, end_cause: :secrets_not_allowed} =
+               Repo.get!(DispatchRun, queued.id)
+
+      assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0
+      assert entries() == []
+    end
+
+    test "leaves a run without a work entry as it was", ctx do
+      {_work_item, queued} = queued!(ctx, nil)
+      assert {:ok, %{registered: %Run{dispatch_run_id: id}}} = claim(ctx)
+      assert id == queued.id
       assert entries() == []
     end
   end
