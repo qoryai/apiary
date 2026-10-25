@@ -2862,7 +2862,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: gettext("its root has no qory-stack.yaml and no harness section")
 
   defp walk_rule_words("version", _values),
-    do: gettext("its ref is no version of its repository")
+    do: gettext("its ref is no version of its source")
 
   defp walk_rule_words("not_text", _values),
     do: gettext("one of its harness files is not text")

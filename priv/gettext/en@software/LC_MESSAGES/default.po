@@ -18011,7 +18011,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "its ref is no version of its repository"
+msgid "its ref is no version of its source"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
