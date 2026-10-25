@@ -597,8 +597,14 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
       invalid = dir |> Path.join("fixtures/invalid/run-configuration-*.json") |> Path.wildcard()
       assert invalid != []
 
+      # A fixture named `run-configuration-beyond-schema-<reason>` breaks a rule only the
+      # gateway checks, and passes the schema.
       for file <- invalid do
-        assert {:error, _} = file |> File.read!() |> Schema.validate(), Path.basename(file)
+        result = file |> File.read!() |> Schema.validate()
+
+        if String.contains?(Path.basename(file), "-beyond-schema-"),
+          do: assert(result == :ok, Path.basename(file)),
+          else: assert({:error, _} = result, Path.basename(file))
       end
 
       # The enforce fixture's policy, said as rules, is served in the fixture's shape: a
