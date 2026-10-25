@@ -263,7 +263,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "ea3b595ffb54b035a56ff3b975056599a015d49c"
+  @integrations_ref "be62e36a80199b1b07ec0a1f7d5b9b76e46888e3"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
       "0f9c1b00667341e97deadf08077cf3f0e8a7a293f819e5eea3bf47f3552eeb4a",

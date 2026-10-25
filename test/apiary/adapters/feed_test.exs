@@ -44,7 +44,8 @@ defmodule Apiary.Adapters.FeedTest do
     test "every change of changes/ is appended and read back as written, in order", %{
       adapter: adapter
     } do
-      for path <- ~w(changes/feed.json changes/feed-loopback.json changes/empty.json) do
+      for path <- ~w(changes/feed.json changes/feed-loopback.json changes/grants.json
+                     changes/empty.json) do
         adapter = if path == "changes/feed.json", do: adapter, else: adapter_fixture()
         %{"changes" => changes} = fixture(path)
 
@@ -62,7 +63,9 @@ defmodule Apiary.Adapters.FeedTest do
     } do
       for path <- ~w(invalid/changes-sync-interval-30.json invalid/changes-unknown-kind.json
                      invalid/changes-work-item-status-linked.json
-                     invalid/changes-work-item-url-http.json) do
+                     invalid/changes-work-item-url-http.json
+                     invalid/changes-grant-status-taken-in.json
+                     invalid/changes-grant-without-connection-id.json) do
         for change <- fixture(path)["changes"] do
           entry = Map.new(change, fn {k, v} -> {String.to_atom(k), v} end)
           raises(adapter, entry)

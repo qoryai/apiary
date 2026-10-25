@@ -972,4 +972,56 @@ defmodule Apiary.Adapters.WireTest do
                :error
     end
   end
+
+  describe "a grant report" do
+    defp grant_report(path),
+      do: with({:ok, body} <- Wire.decode(fixture(path)), do: Wire.grant_report(body))
+
+    test "the contract's report is read as written; its invalid ones are refused" do
+      assert grant_report("grant/linked.json") ==
+               {:ok,
+                %{
+                  time: ~U[2026-10-15 12:00:00Z],
+                  connection_id: "ac_f1xt0re000000000",
+                  grant_ref: "G_1",
+                  pass_nonce: Base.decode16!("000102030405060708090A0B0C0D0E0F")
+                }}
+
+      assert grant_report("invalid/grant-without-pass-nonce.json") == :error
+      assert grant_report("invalid/grant-pass-nonce-21-characters.json") == :error
+      assert Wire.grant_report(nil) == :error
+    end
+
+    test "each member is held to the contract" do
+      {:ok, body} = Wire.decode(fixture("grant/linked.json"))
+
+      for change <- [
+            %{"version" => 2},
+            %{"version" => 1.0},
+            %{"time" => "2026-10-15T12:00:00.5Z"},
+            %{"connection_id" => "ac_f1xt0re00000000u"},
+            %{"connection_id" => "ag_f1xt0re000000000"},
+            %{"grant_ref" => ""},
+            %{"grant_ref" => String.duplicate("g", 201)},
+            %{"grant_ref" => "G" <> <<0>>},
+            %{"grant_ref" => 1},
+            # Not canonical: its last character carries bits past the 128.
+            %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODx"},
+            %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODw=="},
+            %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODwAA"},
+            %{"title" => "Acme"}
+          ] do
+        assert Wire.grant_report(Map.merge(body, change)) == :error, inspect(change)
+      end
+
+      for member <- ~w(version time connection_id grant_ref pass_nonce) do
+        assert Wire.grant_report(Map.delete(body, member)) == :error, member
+      end
+
+      assert {:ok, %{grant_ref: ref}} =
+               Wire.grant_report(Map.put(body, "grant_ref", String.duplicate("😀", 200)))
+
+      assert ref == String.duplicate("😀", 200)
+    end
+  end
 end

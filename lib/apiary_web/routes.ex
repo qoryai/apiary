@@ -265,6 +265,14 @@ defmodule ApiaryWeb.Routes do
         post "/sources/disconnect", SourcesDisconnectController, :create
       end
 
+      # An adapter's report of a grant of a connection, and its read of them all.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/grants", GrantsController, :create
+        get "/grants", GrantsController, :index
+      end
+
       # An adapter's items of a collection, and its comments of an item.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_adapter
