@@ -391,6 +391,7 @@ defmodule Apiary.Secrets.SealingTest do
                inspect(forge)
 
         assert Jason.decode!(bytes)["values"] == values
+        assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
       end
     end
 

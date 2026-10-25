@@ -36,10 +36,10 @@ defmodule Apiary.Registry.RunAccess do
   #
   # **What the run configuration gains** (`member/1`):
   #
-  #   * the host credential `registry`: `hosts`, the host of the instance's public URL;
-  #     `paths`, `/registry/token`; `auth`, `basic` with the run's public id as the user
-  #     name. The document has no value: the secrets request seals it
-  #     (`Apiary.Registry.Credential`);
+  #   * the host credential `registry`, with one `apply` item: `hosts`, the host of the
+  #     instance's public URL; `scheme` `basic` with the run's public id as `username`;
+  #     `paths`, `/registry/token`. The document has no value: the secrets request seals
+  #     it (`Apiary.Registry.Credential`);
   #   * path rules for the registry's host, without a credential, in the
   #     `security_policy`'s `egress.paths`, which a gateway matches against the request's
   #     path alone, without its query and whatever its method, each rule whole or up to a
@@ -301,9 +301,15 @@ defmodule Apiary.Registry.RunAccess do
   defp entry(run) do
     Jason.OrderedObject.new([
       {"name", Credential.name()},
-      {"hosts", [instance_host()]},
-      {"paths", [token_path()]},
-      {"auth", Jason.OrderedObject.new([{"scheme", "basic"}, {"username", run.public_id}])}
+      {"apply",
+       [
+         Jason.OrderedObject.new([
+           {"hosts", [instance_host()]},
+           {"scheme", "basic"},
+           {"username", run.public_id},
+           {"paths", [token_path()]}
+         ])
+       ]}
     ])
   end
 

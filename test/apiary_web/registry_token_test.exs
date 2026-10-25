@@ -189,10 +189,17 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
       assert registry == %{
                "name" => "registry",
-               "hosts" => [host],
-               "paths" => ["/registry/token"],
-               "auth" => %{"scheme" => "basic", "username" => ctx.run.public_id}
+               "apply" => [
+                 %{
+                   "hosts" => [host],
+                   "scheme" => "basic",
+                   "username" => ctx.run.public_id,
+                   "paths" => ["/registry/token"]
+                 }
+               ]
              }
+
+      refute Map.has_key?(document, "harness_hidden")
 
       egress = document["security_policy"]["egress"]
       assert host in egress["allow"] and @service in egress["allow"]
