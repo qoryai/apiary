@@ -6,26 +6,26 @@ defmodule Apiary.Stacks.ResolutionTest do
 
   @organisation "00000000-0000-0000-0000-0000000000d1"
   @other_organisation "00000000-0000-0000-0000-0000000000d2"
+  @instance "00000000-0000-0000-0000-0000000000d3"
   @workspace "00000000-0000-0000-0000-0000000000a1"
   @other_workspace "00000000-0000-0000-0000-0000000000a2"
   @target "00000000-0000-0000-0000-0000000000b1"
   @other_target "00000000-0000-0000-0000-0000000000b2"
-  @reference "https://code.example.com/team/stacks#main:core"
+  @document "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
 
   defp input(stacks, opts \\ []) do
     %{
       stacks: stacks,
-      organisation_id: @organisation,
+      organisation_id: Keyword.get(opts, :organisation_id, @organisation),
       workspace_id: @workspace,
       target_id: Keyword.get(opts, :target_id, @target),
       workflow: "explore",
-      operated: Keyword.get(opts, :operated, false),
-      single_organisation: Keyword.get(opts, :single_organisation, true)
+      operated: Keyword.get(opts, :operated, false)
     }
   end
 
-  # A stack at `level`, of the organisation, workspace and target above; `attrs` are its
-  # columns.
+  # A stack at `level`, of the organisation, workspace and target above, with a document
+  # that names its level; `attrs` are its columns.
   defp at(level, attrs \\ []) do
     place =
       case level do
@@ -38,8 +38,12 @@ defmodule Apiary.Stacks.ResolutionTest do
 
     struct!(
       Stack,
-      %{organisation_id: @organisation, stack: "level-#{level}" |> String.replace("_", "-")}
-      |> Map.merge(%{saved_by_organisation_id: @organisation})
+      %{
+        id: Ecto.UUID.generate(),
+        organisation_id: @organisation,
+        harness: "extends: {git: https://code.example.com/#{level}, ref: main}\n"
+      }
+      |> Map.merge(%{owner_organisation_id: @organisation})
       |> Map.merge(place)
       |> Map.merge(Map.new(attrs))
     )
@@ -58,7 +62,7 @@ defmodule Apiary.Stacks.ResolutionTest do
         stacks = for later <- Enum.drop(levels, index), do: at(later)
         resolution = resolved(input(Enum.reverse(stacks)))
         assert resolution.level == level
-        assert resolution.stack == at(level).stack
+        assert resolution.harness == at(level).harness
       end
     end
 
@@ -76,20 +80,27 @@ defmodule Apiary.Stacks.ResolutionTest do
       assert resolution.level == :workspace_workflow
     end
 
-    test "a resolution has the stack, the workflow, the level and the owner" do
-      stack = at(:workspace_workflow, stack: "software-standard")
+    test "a resolution has the document, its row, the workflow, the level and the owner" do
+      stack = at(:workspace_workflow, harness: @document)
 
       assert resolved(input([stack])) == %Resolution{
-               stack: "software-standard",
+               harness: @document,
+               stack_id: stack.id,
                workflow: "explore",
                level: :workspace_workflow,
-               owner: :instance,
+               owner: @organisation,
                harness_hidden: false
              }
     end
 
-    test "no stack at any level is none" do
+    test "no document at any level is none" do
       assert Resolution.resolve(input([])) == :none
+    end
+
+    test "a row that sets only the workflow falls through to the next level" do
+      stacks = [at(:workspace_workflow, harness: nil), at(:organisation)]
+      assert resolved(input(stacks)).level == :organisation
+      assert Resolution.resolve(input([at(:target_workflow, harness: nil)])) == :none
     end
 
     test "a run without a target skips both target levels" do
@@ -111,51 +122,48 @@ defmodule Apiary.Stacks.ResolutionTest do
   end
 
   describe "the owner" do
-    test "of a name is the instance, whoever saved it" do
-      stack = at(:workspace, stack: "software-standard", saved_by_organisation_id: nil)
-      assert Resolution.owner(stack) == :instance
-      assert resolved(input([stack])).owner == :instance
-    end
-
-    test "of a reference is the organisation of the person who saved it" do
-      stack = at(:workspace, stack: @reference, saved_by_organisation_id: @other_organisation)
+    test "of a document is its row's owner organisation" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: @other_organisation)
       assert Resolution.owner(stack) == @other_organisation
       assert resolved(input([stack])).owner == @other_organisation
+    end
+
+    test "of a document whose owner is deleted is nil" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: nil)
+      assert Resolution.owner(stack) == nil
+      assert resolved(input([stack])).owner == nil
     end
   end
 
   describe "harness_hidden" do
-    test "is false for a name on an instance of one organisation" do
-      refute resolved(input([at(:workspace, stack: "software-standard")])).harness_hidden
+    test "is false for a document the run's organisation owns" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: @organisation)
+      refute resolved(input([stack])).harness_hidden
     end
 
-    test "is true for a name on an instance of more than one organisation" do
-      stack = at(:workspace, stack: "software-standard")
-      assert resolved(input([stack], single_organisation: false)).harness_hidden
-    end
-
-    test "is false for a reference saved by the run's organisation" do
-      stack = at(:workspace, stack: @reference, saved_by_organisation_id: @organisation)
-      refute resolved(input([stack], single_organisation: false)).harness_hidden
-    end
-
-    test "is true for a reference saved by another organisation" do
-      stack = at(:workspace, stack: @reference, saved_by_organisation_id: @other_organisation)
+    test "is true for a document another organisation owns" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: @other_organisation)
       assert resolved(input([stack])).harness_hidden
     end
 
-    test "is true for a reference whose saver's organisation is deleted" do
-      stack = at(:workspace, stack: @reference, saved_by_organisation_id: nil)
+    test "is true for a document whose owner is deleted" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: nil)
       assert resolved(input([stack])).harness_hidden
     end
 
-    test "is true for an operated organisation, whoever owns the stack" do
-      saved_by_run = at(:workspace, stack: @reference, saved_by_organisation_id: @organisation)
+    test "on an instance of several organisations, a document the instance's organisation owns is hidden from the others' runs alone" do
+      # The run's organisation is @organisation, and the instance's is @instance.
+      instance_owned = at(:workspace, harness: @document, owner_organisation_id: @instance)
+      assert resolved(input([instance_owned])).harness_hidden
 
-      name = at(:workspace, stack: "software-standard")
+      # A run of the instance's organisation, at a row of the run's workspace.
+      in_instance = %{instance_owned | organisation_id: @instance}
+      refute resolved(input([in_instance], organisation_id: @instance)).harness_hidden
+    end
 
-      assert resolved(input([name], operated: true)).harness_hidden
-      assert resolved(input([saved_by_run], operated: true)).harness_hidden
+    test "is true for an operated organisation, whoever owns the document" do
+      owned_by_run = at(:workspace, harness: @document, owner_organisation_id: @organisation)
+      assert resolved(input([owned_by_run], operated: true)).harness_hidden
     end
   end
 end

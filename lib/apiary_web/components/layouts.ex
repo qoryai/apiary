@@ -398,7 +398,7 @@ defmodule ApiaryWeb.Layouts do
 
     # The instance's adapters, with the `factory` feature, which the instance has or not:
     # an Instance page has no organisation whose people it could be hidden from (`use
-    # ApiaryWeb.Features, instance: :factory`). After the edition's, before Mail.
+    # ApiaryWeb.Features, instance: :factory`). After the edition's, before Nodes and Mail.
     adapters =
       admin? && Apiary.Features.on?(:factory) &&
         %Entry{
@@ -407,6 +407,18 @@ defmodule ApiaryWeb.Layouts do
           label: gettext("Adapters"),
           icon: "hero-puzzle-piece",
           path: ~p"/instance/adapters",
+          place: :instance
+        }
+
+    # The instance's node pool and gateway, with the `factory` feature, as the adapters.
+    nodes =
+      admin? && Apiary.Features.on?(:factory) &&
+        %Entry{
+          section: :instance,
+          key: :nodes,
+          label: gettext("Nodes"),
+          icon: "hero-server-stack",
+          path: ~p"/instance/nodes",
           place: :instance
         }
 
@@ -423,7 +435,7 @@ defmodule ApiaryWeb.Layouts do
 
     for %Entry{} = entry <-
           [general] ++
-            ApiaryWeb.Edition.instance_sections(scope) ++ [adapters, mail, configuration],
+            ApiaryWeb.Edition.instance_sections(scope) ++ [adapters, nodes, mail, configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 

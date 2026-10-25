@@ -46,6 +46,10 @@ defmodule Apiary.Dispatches.SchemaTest do
   # prebuilds' that it changes do not run again.
   @hold_version 20_261_023_090_000
   @hold Apiary.Repo.Migrations.HoldRunsForTheirEnvironmentBuild
+  # The later migration that keeps each run's harness walk, whose table has a key to the
+  # runs: down first, up last.
+  @walk_version 20_261_025_150_000
+  @walk Apiary.Repo.Migrations.KeepEachRunSHarnessWalk
 
   setup_all do
     for {version, migration, name} <- [
@@ -53,7 +57,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@again_version, @again, "take_work_items_in_again"},
           {@prebuilds_version, @prebuilds, "queue_prebuilds"},
           {@machine_log_version, @machine_log, "keep_a_dispatch_s_machine_log"},
-          {@hold_version, @hold, "hold_runs_for_their_environment_build"}
+          {@hold_version, @hold, "hold_runs_for_their_environment_build"},
+          {@walk_version, @walk, "keep_each_run_s_harness_walk"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -221,8 +226,8 @@ defmodule Apiary.Dispatches.SchemaTest do
         assert %{num_rows: 1} = update!("dispatch_runs", run.id, "state = $2", [state])
       end
 
-      # A cause its handover gives, and `build_failed`, come with the outcome error
-      # (`result_outcome`).
+      # A cause its handover gives, `build_failed` and `harness_unresolved` come with the
+      # outcome error (`result_outcome`).
       for cause <- DispatchRun.end_causes() do
         assert %{num_rows: 1} =
                  update!(
@@ -231,7 +236,7 @@ defmodule Apiary.Dispatches.SchemaTest do
                    "state = 'ended', end_cause = $2, result_outcome = CASE WHEN $2 IN " <>
                      "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
                      "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed', " <>
-                     "'build_failed') " <>
+                     "'build_failed', 'harness_unresolved', 'target_access_gone') " <>
                      "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
@@ -974,6 +979,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @walk_version, @walk, @options)
     assert :ok = Ecto.Migrator.down(Repo, @hold_version, @hold, @options)
     assert :ok = Ecto.Migrator.down(Repo, @machine_log_version, @machine_log, @options)
     assert :ok = Ecto.Migrator.down(Repo, @prebuilds_version, @prebuilds, @options)
@@ -986,6 +992,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @again_version, @again, @options)
     assert :ok = Ecto.Migrator.up(Repo, @prebuilds_version, @prebuilds, @options)
     assert :ok = Ecto.Migrator.up(Repo, @machine_log_version, @machine_log, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @walk_version, @walk, @options)
 
     # `DispatchRun` writes `image_requeue`, of the migration left down, on every insert.
     Repo.query!(

@@ -7,11 +7,34 @@ x-apiary-image: &apiary-image
   ${APIARY_IMAGE:-ghcr.io/qoryai/apiary}:${APIARY_VERSION:?set APIARY_VERSION in .env}
 
 services:
+  # Runs once at every start and exits: gives the volume keys, and each folder and file in
+  # it, to Qory Apiary's user 65532 before keys runs. Earlier images ran as nobody and
+  # left the volume to 65534. Without CAP_DAC_READ_SEARCH, root cannot read a folder that
+  # another user owns with mode 0700, so find first gives each folder to root, parent
+  # before child, and chown then gives everything to 65532. Neither follows a symbolic
+  # link: find tests each entry without following it, and chown -P -h changes a link, not
+  # its target.
+  keys-owner:
+    image: *apiary-image
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-c", 'find /var/lib/apiary/keys -type d -exec chown -h 0:0 {} \; && chown -R -P -h 65532:65532 /var/lib/apiary/keys']
+    network_mode: none
+    volumes:
+      - keys:/var/lib/apiary/keys
+    restart: "no"
+
   # Runs once at every start and exits: generates the keys the volume does not hold yet,
   # and never changes one it holds.
   keys:
     image: *apiary-image
     command: ["/app/bin/keys"]
+    depends_on:
+      keys-owner:
+        condition: service_completed_successfully
     env_file: .env
     volumes:
       - keys:/var/lib/apiary/keys
@@ -55,6 +78,18 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://apiary@postgres/apiary}
       # The adapters installed with Qory Apiary, from .env; none unless .env names them.
       QORY_INSTALLED_ADAPTERS: ${QORY_INSTALLED_ADAPTERS:-}
+    # Qory Apiary calls the github adapter at github.<host of PUBLIC_URL>, through the
+    # reverse proxy on this machine. Set PUBLIC_HOST in .env to the host of PUBLIC_URL.
+    # Never set it to localhost: the mapping would give localhost inside the container a
+    # second address, this machine's.
+    # Another adapter needs a line of the same form under extra_hosts:
+    #   - "<adapter name>.${PUBLIC_HOST:-public-host.invalid}:host-gateway"
+    # The host of PUBLIC_URL is mapped too, so a request from the container to PUBLIC_URL
+    # reaches the reverse proxy here, not the public address, which a machine behind NAT
+    # often cannot reach from inside.
+    extra_hosts:
+      - "${PUBLIC_HOST:-public-host.invalid}:host-gateway"
+      - "github.${PUBLIC_HOST:-public-host.invalid}:host-gateway"
     volumes:
       - keys:/var/lib/apiary/keys:ro
       # The one-time code Qory Apiary writes for the GitHub adapter, in memory. Besides
@@ -110,8 +145,10 @@ services:
 volumes:
   postgres-data:
   keys:
-  # The GitHub adapter's one-time code, in memory. A stop of both apiary and github
-  # loses it; while the adapter has no key in use, Qory Apiary writes a new one.
+  # The GitHub adapter's one-time code, in memory, in a folder of uid 65532, mode 0700:
+  # Qory Apiary and the adapter both run as that user, and the file is mode 0400. A stop
+  # of both apiary and github loses it; while the adapter has no key in use, Qory Apiary
+  # writes a new one.
   github-enrolment:
-    driver_opts: {type: tmpfs, device: tmpfs, o: "uid=65534,gid=65534,mode=0755,size=64k"}
+    driver_opts: {type: tmpfs, device: tmpfs, o: "uid=65532,gid=65532,mode=0700,size=64k"}
   github-state:

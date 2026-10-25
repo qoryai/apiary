@@ -30,6 +30,46 @@ defmodule Apiary.SetupTest do
     end
   end
 
+  # The used preset in the instance's row, `used_setup_code_sha256`; nil when there is no
+  # row.
+  defp used do
+    case Repo.query!("SELECT used_setup_code_sha256 FROM instance_settings WHERE id") do
+      %{rows: [[used]]} -> used
+      %{rows: []} -> nil
+    end
+  end
+
+  # `details.setup_code` of the entry that begins the trail of the organisation `id`.
+  defp setup_code_detail(id) do
+    [entry] =
+      Repo.all(
+        from e in Entry, where: e.organisation_id == ^id and e.action == "organisation.create"
+      )
+
+    entry.details["setup_code"]
+  end
+
+  # A code of the form Qory Apiary makes, as an install makes it.
+  defp new_code, do: Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+  defp sha256(code), do: :crypto.hash(:sha256, code)
+
+  # QORY_SETUP_CODE_SHA256 set to `setting` for this test.
+  defp put_preset_setting(setting) do
+    previous = Application.get_env(:apiary, Setup, [])
+
+    Application.put_env(
+      :apiary,
+      Setup,
+      Keyword.put(previous, :preset_code_sha256_setting, setting)
+    )
+
+    on_exit(fn -> Application.put_env(:apiary, Setup, previous) end)
+  end
+
+  # QORY_SETUP_CODE_SHA256 set to the hash of `code`, as `sha256sum` prints it.
+  defp put_preset(code), do: put_preset_setting(Base.encode16(sha256(code), case: :lower))
+
   # The boot's step, as the application's supervisor starts it, with what it logged at
   # info and up; the suite logs warnings and up.
   defp boot do
@@ -250,6 +290,7 @@ defmodule Apiary.SetupTest do
       assert {entry.actor_kind, entry.actor_id} == {:instance, nil}
       assert entry.worker == "Apiary.Setup"
       assert entry.details["sign_up"] == true
+      assert entry.details["setup_code"] == "link"
       assert entry.details["user_id"] == user.id
       refute inspect(entry) =~ code
 
@@ -366,6 +407,8 @@ defmodule Apiary.SetupTest do
 
       assert {nil, %NaiveDateTime{}} = stored()
       assert Setup.set_up(code, password_attrs()) == {:error, :already_set_up}
+      assert used() == nil
+      assert setup_code_detail(Apiary.Edition.instance_organisation_id()) == "command"
     end
   end
 
@@ -388,6 +431,226 @@ defmodule Apiary.SetupTest do
       assert_raise ArgumentError, ~r/set up already/, fn -> Setup.code!() end
       assert Setup.set_up("any", password_attrs()) == {:error, :already_set_up}
       refute Setup.valid_code?("any")
+    end
+  end
+
+  describe "QORY_SETUP_CODE_SHA256" do
+    test "unset, blank or 64 hexadecimal characters in either case is read; spaces are trimmed" do
+      code = new_code()
+      hash = sha256(code)
+      hex = Base.encode16(hash, case: :lower)
+
+      for {setting, preset} <- [
+            {nil, nil},
+            {"", nil},
+            {"  \n", nil},
+            {hex, hash},
+            {String.upcase(hex), hash},
+            {" #{hex}\n", hash}
+          ] do
+        put_preset_setting(setting)
+        assert Setup.preset!() == preset
+      end
+    end
+
+    test "any other value stops the boot, with a message that starts with the fix and does not contain the value" do
+      hex = Base.encode16(sha256(new_code()), case: :lower)
+
+      for setting <- [
+            binary_part(hex, 0, 63),
+            hex <> "a",
+            String.duplicate("g", 64),
+            "sha256=" <> hex,
+            Base.encode64(sha256(new_code()))
+          ] do
+        put_preset_setting(setting)
+        error = assert_raise ArgumentError, fn -> Setup.preset!() end
+
+        assert error.message ==
+                 "Set QORY_SETUP_CODE_SHA256 to 64 hexadecimal characters, the SHA-256 of the " <>
+                   "set-up code, or leave it unset. The value set is not that."
+
+        refute error.message =~ setting
+        refute inspect(error) =~ setting
+      end
+    end
+  end
+
+  describe "with a preset code, before set-up" do
+    setup do
+      Apiary.EditionKit.hide_instance_organisation()
+      :ok
+    end
+
+    test "a start stores no code, sets a stored one to NULL, and logs a line without a link" do
+      # A code a start without the preset stored and logged.
+      earlier = Setup.code!()
+      code = new_code()
+      put_preset(code)
+
+      assert {:ignore, log} = boot()
+      assert {nil, nil} = stored()
+      refute Setup.valid_code?(earlier)
+      assert Setup.set_up(earlier, password_attrs()) == {:error, :invalid_code}
+
+      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ "Qory Apiary"))
+      assert line =~ "[info]"
+
+      assert line |> String.split("[info] ", parts: 2) |> List.last() ==
+               "Qory Apiary is not set up yet. Open the set-up link that your install " <>
+                 "printed; this log does not show it."
+
+      refute log =~ "/setup/"
+      assert_raise ArgumentError, ~r/preset set-up code/, fn -> Setup.code!() end
+    end
+
+    test "the code sets the instance up once; any other code sets nothing up" do
+      code = new_code()
+      put_preset(code)
+      before = {count(Organisation), count(User)}
+
+      <<first, rest::binary>> = code
+      one_off = <<if(first == ?x, do: ?y, else: ?x), rest::binary>>
+      hex = Base.encode16(sha256(code), case: :lower)
+
+      for wrong <- ["", "short", new_code(), one_off, code <> "A", hex, sha256(code)] do
+        refute Setup.valid_code?(wrong)
+        assert Setup.set_up(wrong, password_attrs()) == {:error, :invalid_code}
+      end
+
+      assert {count(Organisation), count(User)} == before
+      assert used() == nil
+
+      assert Setup.valid_code?(code)
+      assert {:ok, %{organisation: organisation}} = Setup.set_up(code, password_attrs())
+      assert Apiary.Edition.instance_organisation_id() == organisation.id
+      assert {nil, %NaiveDateTime{}} = stored()
+      assert used() == sha256(code)
+      assert setup_code_detail(organisation.id) == "preset"
+
+      assert Setup.set_up(code, password_attrs()) == {:error, :already_set_up}
+      refute Setup.valid_code?(code)
+    end
+
+    test "the release command's claim sets the instance up and marks the preset used" do
+      code = new_code()
+      put_preset(code)
+
+      assert {:ok, :created} =
+               ExUnit.CaptureIO.with_io(fn ->
+                 Apiary.Release.grant_instance_admin("claim@example.com", "Acme")
+               end)
+               |> elem(0)
+
+      assert {nil, %NaiveDateTime{}} = stored()
+      assert used() == sha256(code)
+      assert setup_code_detail(Apiary.Edition.instance_organisation_id()) == "command"
+      assert Setup.set_up(code, password_attrs()) == {:error, :already_set_up}
+
+      # After a purge of the instance's organisation, the preset is used.
+      Apiary.EditionKit.hide_instance_organisation()
+      refute Setup.valid_code?(code)
+      assert Setup.set_up(code, password_attrs()) == {:error, :invalid_code}
+    end
+
+    test "a code is hashed only in the form Qory Apiary makes, and the digests are compared in constant time" do
+      code = new_code()
+      put_preset(code)
+      preset = sha256(code)
+
+      assert traced({:crypto, :hash, 2}, fn ->
+               for wrong <- ["", "short", code <> "A", String.duplicate("!", 43)] do
+                 refute Setup.valid_code?(wrong)
+               end
+             end) == []
+
+      calls =
+        traced({Plug.Crypto, :secure_compare, 2}, fn ->
+          refute Setup.valid_code?(new_code())
+          assert Setup.valid_code?(code)
+        end)
+
+      assert [[wrong_digest, ^preset], [^preset, ^preset]] = calls
+      assert byte_size(wrong_digest) == 32
+    end
+
+    test "the code is checked again inside the transaction, under the row's lock" do
+      code = new_code()
+      put_preset(code)
+
+      assert Organisations.sign_up_user(password_attrs(), nil,
+               first_only: true,
+               actor: :instance,
+               setup_code: new_code()
+             ) == {:error, :invalid_code}
+
+      assert used() == nil
+      refute Setup.set_up?()
+    end
+
+    test "after a purge, the same code is refused, and a start says a new one is needed" do
+      code = new_code()
+      put_preset(code)
+      assert {:ok, _signed_up} = Setup.set_up(code, password_attrs())
+
+      # The instance's organisation purged: its set_up_at and the used preset stay.
+      Apiary.EditionKit.hide_instance_organisation()
+
+      refute Setup.valid_code?(code)
+      assert Setup.set_up(code, password_attrs()) == {:error, :invalid_code}
+
+      assert {:ignore, log} = boot()
+      assert {nil, %NaiveDateTime{}} = stored()
+      assert used() == sha256(code)
+
+      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ "QORY_SETUP_CODE_SHA256"))
+      assert line =~ "[warning]"
+
+      assert line |> String.split("[warning] ", parts: 2) |> List.last() ==
+               "Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to " <>
+                 "get a set-up link in this log. The code it gives has set up this instance before."
+
+      refute log =~ "/setup/"
+      refute log =~ "not set up yet"
+    end
+
+    test "no log line contains the code or its hash, not even the query log's debug lines" do
+      code = new_code()
+      hash = sha256(code)
+      put_preset(code)
+
+      level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: level) end)
+
+      log =
+        capture_log([level: :debug], fn ->
+          assert :ignore = Setup.start_link()
+          assert Setup.valid_code?(code)
+          assert {:ok, _signed_up} = Setup.set_up(code, password_attrs())
+          assert Setup.set_up(code, password_attrs()) == {:error, :already_set_up}
+          Apiary.EditionKit.hide_instance_organisation()
+          refute Setup.valid_code?(code)
+          assert :ignore = Setup.start_link()
+        end)
+
+      Logger.configure(level: level)
+
+      # The log has the lines, at debug the queries among them.
+      assert log =~ "not set up yet"
+      assert log =~ "has set up this instance before"
+      assert log =~ "instance_settings"
+
+      for secret <- [
+            code,
+            Base.encode16(hash, case: :lower),
+            Base.encode16(hash, case: :upper),
+            Base.encode64(hash),
+            Base.url_encode64(hash, padding: false),
+            inspect(hash)
+          ] do
+        refute log =~ secret
+      end
     end
   end
 

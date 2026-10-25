@@ -270,7 +270,7 @@ defmodule Apiary.KeysScriptTest do
     assert {output, 1} = run(dir, [], bin)
 
     assert output ==
-             "Cannot write #{dir}: the write did not complete. The volume keys has to be writable by the user nobody.\n"
+             "Cannot write #{dir}: the write did not complete. The volume keys has to be writable by the user 65532.\n"
 
     assert File.ls!(dir) == ["silent-bin"]
   end
@@ -282,7 +282,7 @@ defmodule Apiary.KeysScriptTest do
     assert {output, 1} = run(missing)
 
     assert output =~
-             ~r/\ACannot write #{Regex.escape(missing)}: [^\n]+\. The volume keys has to be writable by the user nobody\.\n\z/
+             ~r/\ACannot write #{Regex.escape(missing)}: [^\n]+\. The volume keys has to be writable by the user 65532\.\n\z/
 
     # Under root every directory is writable.
     if System.cmd("id", ["-u"]) != {"0\n", 0} do
@@ -294,7 +294,7 @@ defmodule Apiary.KeysScriptTest do
       assert {output, 1} = run(read_only)
 
       assert output ==
-               "Cannot write #{read_only}: Permission denied. The volume keys has to be writable by the user nobody.\n"
+               "Cannot write #{read_only}: Permission denied. The volume keys has to be writable by the user 65532.\n"
     end
   end
 
@@ -320,8 +320,8 @@ defmodule Apiary.KeysScriptTest do
     end
 
     defp write_failed(cert_dir) do
-      "Make #{cert_dir} writable by the user nobody, or set APIARY_REGISTRY_CERT_DIR to a " <>
-        "directory that the user nobody can write. Writing failed: "
+      "Make #{cert_dir} writable by the user 65532, or set APIARY_REGISTRY_CERT_DIR to a " <>
+        "directory that the user 65532 can write. Writing failed: "
     end
 
     defp public_key(args) do

@@ -545,7 +545,9 @@ defmodule Apiary.Policy do
   The rule a connection's row asks for (C4, C5): allow or deny its host, in the run's
   target (`:target`) or in the workspace (`:workspace`). When the host is held to paths in
   the holder and the connection names a path, the path is added to or taken out of those
-  paths instead. The connection is one of the scope's workspace.
+  paths instead. The connection is one of the scope's workspace, and of the session: a
+  harness fetch (channel `stack`) is refused, since the stack proxy reads no rule of the
+  workspace or of a target.
   """
   @spec rule_from_connection(Scope.t(), Connection.t(), :allow | :deny, :target | :workspace) ::
           {:ok, Rule.t()} | refusal
@@ -556,6 +558,7 @@ defmodule Apiary.Policy do
     # loaded, without a read; the write asks again under the lock.
     with :ok <- readable(scope),
          {:ok, host} <- connection_host(scope, connection),
+         :ok <- session_connection(connection),
          {:ok, holder} <- connection_holder(scope, connection, level) do
       held = effective(scope, holder).paths
 
@@ -2704,6 +2707,19 @@ defmodule Apiary.Policy do
 
   defp connection_host(%Scope{}, _connection),
     do: {:error, not_found(gettext("This workspace has no such connection."))}
+
+  defp session_connection(%Connection{channel: "stack"}) do
+    {:error,
+     Error.new(
+       :invalid,
+       gettext(
+         "No rule can be made from a harness fetch: the stack proxy that sent it reads no rule of the workspace or of a target."
+       ),
+       :host
+     )}
+  end
+
+  defp session_connection(%Connection{}), do: :ok
 
   defp connection_holder(_scope, _connection, :workspace), do: {:ok, nil}
 

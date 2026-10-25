@@ -14,24 +14,26 @@ page is the reference for an installation that stays.
 - **The image**, `ghcr.io/qoryai/apiary`, is built from the `Dockerfile` of the repository.
   CI builds it on every proposed change and every push and publishes nothing; only a release
   publishes it, tagged with its version without the `v` (`X.Y.Z`), `X.Y` and `latest`, for
-  `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as the user
-  `nobody`, listens on port 4100, and its command is `bin/server`, which migrates and
+  `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as uid and
+  gid 65532, listens on port 4100, and its command is `bin/server`, which migrates and
   serves. `bin/migrate` runs the same migrations by hand, `bin/apiary version` prints the
   release's version, and `bin/keys` generates the keys
   ([The keys generated at first start](#the-keys-generated-at-first-start)). The commit it
   was built from is its label `org.opencontainers.image.revision` and `revision` at
   [`GET /health`](#health).
-- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as three
+- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as four
   services. `env.example` is the repository's `.env.example` with the release's version in
-  `APIARY_VERSION`, and becomes `.env`. `keys` runs once at every
-  start and exits: it generates the keys the volume `keys` does not hold yet. `postgres`,
-  in the profile `postgres` that `.env` turns on with `COMPOSE_PROFILES=postgres`, is
-  Postgres 18 with the role `apiary`, the database `apiary` and the volume `postgres-data`.
-  `apiary` starts once `keys` has finished and the database is healthy, and publishes port
-  4100 on `127.0.0.1` only. An external Postgres is one `DATABASE_URL` away, with the line
-  `COMPOSE_PROFILES=postgres` taken out of `.env`
-  ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create and alter
-  tables in its database, since the release migrates it.
+  `APIARY_VERSION`, and becomes `.env`. `keys-owner` runs once at every start and exits:
+  it gives the volume `keys` and everything in it to uid 65532
+  ([The keys generated at first start](#the-keys-generated-at-first-start)). `keys` runs
+  once at every start, after `keys-owner`, and exits: it generates the keys the volume
+  `keys` does not hold yet. `postgres`, in the profile `postgres` that `.env` turns on
+  with `COMPOSE_PROFILES=postgres`, is Postgres 18 with the role `apiary`, the database
+  `apiary` and the volume `postgres-data`. `apiary` starts once `keys` has finished and
+  the database is healthy, and publishes port 4100 on `127.0.0.1` only. An external
+  Postgres is one `DATABASE_URL` away, with the line `COMPOSE_PROFILES=postgres` taken out
+  of `.env` ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create
+  and alter tables in its database, since the release migrates it.
 - **A reverse proxy** that terminates TLS, in front of the port.
 - **An SMTP relay, optional.** Without one the release starts all the same, sends no
   email, and says so in its log: people sign up and log in with a password, an invitation
@@ -49,7 +51,7 @@ mv env.example .env
 
 A given release's files are under `releases/download/vX.Y.Z/` in place of
 `releases/latest/download/`. With `compose.yaml` and its `.env` in one directory,
-`docker compose up -d` starts the three services, and `docker compose logs apiary` shows
+`docker compose up -d` starts the four services, and `docker compose logs apiary` shows
 the boot. [From nothing to a first run](quickstart.md) does the same for a trial on one
 machine.
 
@@ -62,8 +64,10 @@ terminated by a reverse proxy in front of it.
   redirected to HTTPS and answers carry HSTS. The proxy must send
   `X-Forwarded-Proto: https` with every request it passes on; without it every request is
   redirected, for ever.
-- With a `PUBLIC_URL` that starts with `http://`, a LAN or a trial on one machine, nothing
-  is redirected.
+- With a `PUBLIC_URL` that starts with `http://`, for a trial on one machine, nothing is
+  redirected. Browsers keep the sign-in cookies over plain HTTP only on `localhost`, a name
+  under `.localhost`, and loopback addresses such as `127.0.0.1` and `::1`. On any other
+  host nobody can sign in, and Qory Apiary logs a warning at boot.
 - `GET /health` is never redirected, so a load balancer can probe it over plain HTTP, and
   neither are requests to the hosts `localhost` and `127.0.0.1`.
 
@@ -276,7 +280,9 @@ APIARY_SIGNING_SECRET is a value the Forager contract publishes in its fixtures,
 and the server, keeps the instance's keys in the volume `keys`, in the file
 `/var/lib/apiary/keys/apiary.env`: `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`,
 `APIARY_SIGNING_SECRET` and `DATABASE_PASSWORD`, one `NAME=value` line each, mode 0600,
-owned by `nobody`. For each name:
+owned by uid 65532, the user the image runs as. Before it, the service `keys-owner` gives
+the volume `keys` and everything in it to uid 65532, without following a symbolic link,
+since earlier images ran as `nobody` (65534). For each name:
 
 - set in the environment, that is in `.env`: it is not generated, and the file does not
   keep it;
@@ -312,7 +318,7 @@ APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its 
 When it cannot write, it exits non-zero, and nothing that depends on it starts:
 
 ```text
-Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user nobody.
+Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user 65532.
 ```
 
 The release reads the file at boot, from the directory `APIARY_KEYS_DIR` names, which the
@@ -706,6 +712,53 @@ already set up." and leads to the log-in page. Anyone who can read the log can u
 link before you do, so open it as soon as the instance is up. On an instance that is set
 up, a restored one included, a start writes no such line. The address in the link is the
 instance's address (`PUBLIC_URL`).
+
+**A set-up code that your install makes.** An install that prints the set-up link itself
+gives Qory Apiary the hash of its code, and the link never appears in the log.
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `QORY_SETUP_CODE_SHA256` | none | The SHA-256 of the set-up code: 64 hexadecimal characters, in either case. When it is not set, or empty, Qory Apiary makes the code and writes the set-up link to its log. |
+
+Make the code from 32 random bytes, in base64url without padding, 43 characters, as Qory
+Apiary makes it, then its hash:
+
+```sh
+code=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+printf %s "$code" | sha256sum | cut -d ' ' -f 1
+```
+
+On macOS, use `shasum -a 256` in place of `sha256sum`.
+
+Set `QORY_SETUP_CODE_SHA256` to the hash, and give the link
+`https://qory.example.com/setup/<code>`, on your `PUBLIC_URL`, to the person who sets the
+instance up. Qory Apiary cannot check how the code was made: take its 32 bytes from a
+random source, as `openssl rand` does. Qory Apiary accepts only a code of 43 base64url
+characters.
+
+With the variable set, a start makes, stores and logs no code. It also removes a code that
+an earlier start stored, so a link already in the log works no more. Until the instance is
+set up, every start logs:
+
+```text
+Qory Apiary is not set up yet. Open the set-up link that your install printed; this log does not show it.
+```
+
+The link works once, as a logged link does. Once the instance is set up, by the link or
+by `Apiary.Release.grant_instance_admin/2`, Qory Apiary keeps the code's hash and refuses
+the same code, also after the instance's organisation is purged. A start after that purge,
+with the same hash set, logs:
+
+```text
+Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to get a set-up link in this log. The code it gives has set up this instance before.
+```
+
+An empty or blank value of `QORY_SETUP_CODE_SHA256` counts as unset. Any other value that
+is not 64 hexadecimal characters, with whitespace around them ignored, stops the boot:
+
+```text
+Set QORY_SETUP_CODE_SHA256 to 64 hexadecimal characters, the SHA-256 of the set-up code, or leave it unset. The value set is not that.
+```
 
 ### The instance admins
 

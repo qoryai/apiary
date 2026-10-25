@@ -1,0 +1,4 @@
+# A checkout that extends a stack its harness source exports.
+harness:
+  extends: {git: https://code.example.com/example-org/harness, ref: v2.4.0, stack: web}
+  target: {runtime: claude}

@@ -7,7 +7,9 @@ defmodule Apiary.Policy.Activity do
   the index `connections (workspace_id, last_seen_at)`, a few small columns a row and at
   most `cap/0` rows. A workspace with more than that in the range gets `:unavailable`: a
   count of a part would read as a count of the whole. A connection's counters are those of
-  its run, so a connection counts whole when it was last seen in the range.
+  its run, so a connection counts whole when it was last seen in the range. Only the
+  connections of the `session` channel are read (`Apiary.Runs.Connection`): the rules
+  decide none of the stack proxy's.
 
   `uncovered` for the workspace counts only the runs of targets that follow the
   workspace's mode, and the runs that name no target: a target that overrides the mode is
@@ -277,7 +279,8 @@ defmodule Apiary.Policy.Activity do
   ## The read
 
   # Newest first through `connections (workspace_id, last_seen_at)`; one row over the cap
-  # says there is more than is read.
+  # says there is more than is read. Only the `session` channel's connections count: the
+  # stack proxy decides by the run configuration's `stack_hosts`, never by the rules.
   # `cap:` is for the tests, which cannot afford the real one.
   defp rows(scope, workspace_id, target_id, since, opts) do
     cap = Keyword.get(opts, :cap, cap())
@@ -293,6 +296,7 @@ defmodule Apiary.Policy.Activity do
     query =
       from [c, r] in connections,
         where: c.workspace_id == ^workspace_id and c.last_seen_at >= ^since,
+        where: c.channel == "session",
         order_by: [desc: c.last_seen_at],
         limit: ^(cap + 1),
         select: %{

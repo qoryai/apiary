@@ -15,8 +15,9 @@ defmodule ApiaryWeb.Contract.SourceCollectionsController do
   # `Apiary.Adapters.Collections.post_listing/2`: `403` `forbidden` for a key that may not
   # post (`source_item.post`), `403` `connection_unknown` for a connection the instance does
   # not hold for the adapter, or one pending, `409` `connection_ended`, `409`
-  # `connection_suspended`, and `400` `invalid_request` for a part that disagrees with the
-  # listing's parts before it; else `204`, signed, with no body. When the part cannot be
+  # `connection_suspended`, and `400` `invalid_request` for a part with a
+  # `grant_ref` the connection has no live grant with, then for a part that disagrees with
+  # the listing's parts before it; else `204`, signed, with no body. When the part cannot be
   # taken, the answer is `503` `unavailable`. Nothing here logs the body, a header or a
   # signature.
 

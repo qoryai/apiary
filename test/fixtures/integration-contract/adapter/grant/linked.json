@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "connection_id": "ac_f1xt0re000000000",
+  "grant_ref": "G_1",
+  "account": {
+    "ref": "1001",
+    "title": "acme"
+  },
+  "pass_nonce": "AAECAwQFBgcICQoLDA0ODw"
+}

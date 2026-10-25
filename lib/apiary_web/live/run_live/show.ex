@@ -2366,9 +2366,16 @@ defmodule ApiaryWeb.RunLive.Show do
   defp refresh_policy(socket), do: socket
 
   # What each row of the page may ask, and the line after the rows a rule already answers.
+  # A harness fetch (channel `stack`) asks nothing: the stack proxy reads no rule of the
+  # workspace or of a target, so its row has no Allow or Deny.
   defp assign_acts(%{assigns: %{effective: %Policy.Effective{} = effective}} = socket) do
     %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
-    rule_options = Enum.map(rows, &{&1, Rules.rule_option(&1, effective, :run)})
+
+    rule_options =
+      for row <- rows,
+          Map.get(row, :channel) != "stack",
+          do: {row, Rules.rule_option(row, effective, :run)}
+
     changes = Rules.changes(scope, target, Enum.map(rule_options, &elem(&1, 1)))
 
     rule_options =

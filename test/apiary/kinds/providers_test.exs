@@ -211,7 +211,7 @@ defmodule Apiary.Kinds.ProvidersTest do
   end
 
   describe "serve/2 against the vendored claude runtime" do
-    # At Forager b6ac9f06, the claude runtime reads a model key from ANTHROPIC_API_KEY
+    # At Forager 9002cf45, the claude runtime reads a model key from ANTHROPIC_API_KEY
     # (header x-api-key), ANTHROPIC_AUTH_TOKEN (bearer) and CLAUDE_CODE_OAUTH_TOKEN
     # (bearer, oauth), each for anthropic-messages. Every vendored provider sends
     # anthropic-messages with a header x-api-key or a bearer without oauth.

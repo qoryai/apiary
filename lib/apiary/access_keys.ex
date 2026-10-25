@@ -54,6 +54,7 @@ defmodule Apiary.AccessKeys do
   alias Apiary.{Access, Adapters, Audit, Features, Repo}
   alias Apiary.Adapters.Installed
   alias Apiary.Adapters.Installed.CodeFile
+  alias Apiary.Nodes.Installed, as: NodesInstalled
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Contract.{Ed25519, Enrolment}
@@ -64,6 +65,9 @@ defmodule Apiary.AccessKeys do
 
   @code_ttl_minutes 15
   @key_limit 2
+  # The kinds of node that get their codes from the instance: an adapter installed with Qory
+  # Apiary, and the instance's pool and gateway.
+  @installed_kinds [:adapter, :pool, :gateway]
   # A code's own limit at enrolment, as `Apiary.Runs.RateLimit` counts it: requests a
   # second, and at once.
   @code_limit [rate: 1, burst: 5]
@@ -214,8 +218,9 @@ defmodule Apiary.AccessKeys do
   # use: it may serve the workspaces of other organisations, whose runs it keeps carrying.
   # A workspace's gateway serves that workspace alone, and is held to it as any node is. For each run, its own place is checked
   # (`place_in_use?/2`), so it acts for none of its own organisation's while that is out
-  # of use. A key without an organisation, an adapter's, of an adapter without one, is the
-  # instance's: no organisation's state holds it, whatever it is.
+  # of use. A key without an organisation, of an adapter or of the instance's pool or
+  # gateway, none of which has one, is the instance's: no organisation's state holds it,
+  # whatever it is.
   defp verifiable_query do
     in_use =
       from(o in Organisation, as: :organisation, select: o.id)
@@ -229,8 +234,8 @@ defmodule Apiary.AccessKeys do
       where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
       where: is_nil(n.deleted_at),
       where:
-        (n.kind == :adapter and is_nil(k.organisation_id) and is_nil(k.workspace_id) and
-           is_nil(n.organisation_id) and is_nil(n.workspace_id)) or
+        (n.kind in [:adapter, :pool, :gateway] and is_nil(k.organisation_id) and
+           is_nil(k.workspace_id) and is_nil(n.organisation_id) and is_nil(n.workspace_id)) or
           (not is_nil(o.id) and
              ((n.kind == :gateway and is_nil(n.workspace_id)) or o.id in subquery(in_use))),
       preload: [workspace: w, node: n, organisation: o]
@@ -469,10 +474,11 @@ defmodule Apiary.AccessKeys do
 
   defp read_place(_scope, %Node{workspace_id: workspace_id}), do: workspace_id
 
-  # An adapter installed with Qory Apiary gets its codes from the instance alone
-  # (`issue_installed_code/2`): a person's code for it is `{:error, :installed}`, under the
-  # adapter's lock, so the answer holds while the code would be made.
-  defp not_installed(%Node{kind: :adapter, installed_as: name}) when is_binary(name),
+  # An adapter installed with Qory Apiary, and the instance's pool and gateway, get their
+  # codes from the instance alone (`issue_installed_code/2`): a person's code for one is
+  # `{:error, :installed}`, under the node's lock, so the answer holds while the code would
+  # be made.
+  defp not_installed(%Node{installed_as: name}) when is_binary(name),
     do: {:error, :installed}
 
   defp not_installed(%Node{}), do: :ok
@@ -586,13 +592,18 @@ defmodule Apiary.AccessKeys do
   #
   # `{:error, :not_found}` for an adapter deleted, not installed, or a feature that is off;
   # `{:error, :forbidden}` for a scope that is not the instance's.
+  #
+  # The instance's node pool and gateway (`Apiary.Nodes.Installed`) get their codes the
+  # same way, by the instance's `node.install`: the pool's code without stored secrets, the
+  # gateway's with them, since the gateway receives the runs' sealed secrets.
   @spec issue_installed_code(Scope.t(), Node.t()) ::
           {:ok, :enrolled | :kept | :issued}
           | {:error, {:code_file, atom} | Ecto.Changeset.t() | Access.reason()}
-  def issue_installed_code(%Scope{} = scope, %Node{kind: :adapter, id: id}) do
+  def issue_installed_code(%Scope{} = scope, %Node{kind: kind, id: id})
+      when kind in @installed_kinds do
     Repo.transact(fn ->
-      with :ok <- installing(scope),
-           {:ok, adapter} <- lock_installed(id) do
+      with :ok <- installing(scope, kind),
+           {:ok, adapter} <- lock_installed(id, kind) do
         now = DateTime.utc_now()
 
         if held(adapter) > 0 do
@@ -624,12 +635,14 @@ defmodule Apiary.AccessKeys do
   # under the adapter's row `FOR UPDATE`; once that commits, each is announced on the
   # adapter's topic and its file is deleted. The adapter, its keys and its connections stay
   # as they are. `{:ok, count}`, `{:error, :not_found}` or `{:error, :forbidden}`.
+  # The instance's pool or gateway no longer declared is treated alike, by `node.install`.
   @spec cancel_installed_codes(Scope.t(), Node.t()) ::
           {:ok, non_neg_integer} | {:error, Ecto.Changeset.t() | Access.reason()}
-  def cancel_installed_codes(%Scope{} = scope, %Node{kind: :adapter, id: id}) do
+  def cancel_installed_codes(%Scope{} = scope, %Node{kind: kind, id: id})
+      when kind in @installed_kinds do
     Repo.transact(fn ->
-      with :ok <- installing(scope),
-           {:ok, adapter} <- lock_installed(id),
+      with :ok <- installing(scope, kind),
+           {:ok, adapter} <- lock_installed(id, kind),
            {:ok, cancelled} <- cancel_installed(scope, adapter, DateTime.utc_now()),
            do: {:ok, {adapter, cancelled}}
     end)
@@ -645,14 +658,17 @@ defmodule Apiary.AccessKeys do
   end
 
   # The instance, in the instance's organisation, which `adapter.install` is asked of
-  # (`Apiary.Adapters.authorize_install/1`).
-  defp installing(scope), do: Adapters.authorize_install(scope)
+  # (`Apiary.Adapters.authorize_install/1`), or `node.install` for the instance's pool and
+  # gateway (`Apiary.Nodes.Installed.authorize_install/1`).
+  defp installing(scope, :adapter), do: Adapters.authorize_install(scope)
+  defp installing(scope, _kind), do: NodesInstalled.authorize_install(scope)
 
-  # The adapter installed with Qory Apiary, in use, locked `FOR UPDATE`.
-  defp lock_installed(id) do
+  # The adapter installed with Qory Apiary, or the instance's pool or gateway, in use,
+  # locked `FOR UPDATE`.
+  defp lock_installed(id, kind) do
     query =
       from n in Node,
-        where: n.id == ^id and n.kind == :adapter and is_nil(n.deleted_at),
+        where: n.id == ^id and n.kind == ^kind and is_nil(n.deleted_at),
         where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
         where: not is_nil(n.installed_as),
         lock: "FOR UPDATE"
@@ -704,7 +720,7 @@ defmodule Apiary.AccessKeys do
   end
 
   defp issue(scope, adapter, now, first?) do
-    code = EnrolmentCode.generate(:adapter)
+    code = EnrolmentCode.generate(adapter.kind)
 
     changeset =
       %EnrolmentCode{
@@ -714,7 +730,7 @@ defmodule Apiary.AccessKeys do
         node_id: adapter.id,
         created_by_id: nil,
         code_sha256: EnrolmentCode.hash(code),
-        allow_secrets: false,
+        allow_secrets: adapter.kind == :gateway,
         expires_at: DateTime.add(now, code_ttl_minutes(), :minute)
       }
       |> Ecto.Changeset.change()
@@ -847,6 +863,7 @@ defmodule Apiary.AccessKeys do
 
   # An adapter's key is enrolled with a code alone, never made in a browser.
   defp made_in_browser(%Node{kind: :adapter}), do: {:error, :forbidden}
+  defp made_in_browser(%Node{installed_as: name}) when is_binary(name), do: {:error, :forbidden}
   defp made_in_browser(%Node{}), do: :ok
 
   # The public key a browser sent, checked: any refusal, a key the checks or the ledger
@@ -1022,7 +1039,7 @@ defmodule Apiary.AccessKeys do
   def unsubscribe(%Scope{}, %Node{id: node_id} = node),
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(place_id(node), node_id))
 
-  defp delete_installed_file(%Node{kind: :adapter, installed_as: name}) when is_binary(name) do
+  defp delete_installed_file(%Node{installed_as: name}) when is_binary(name) do
     _ = CodeFile.delete(name)
     :ok
   end
@@ -1134,10 +1151,11 @@ defmodule Apiary.AccessKeys do
   end
 
   # A code that names no maker is the instance's, made for an adapter installed with Qory
-  # Apiary (`issue_installed_code/2`): it approves the key it brings only while its node is
-  # an adapter in use installed as a name the setting still lists
-  # (`Apiary.Adapters.Installed.listed?/1`). The name is fixed once the adapter is made, so
-  # the read needs no lock; the node is locked next, as for every code.
+  # Apiary or for the instance's pool or gateway (`issue_installed_code/2`): it approves
+  # the key it brings only while its node is in use and installed as a name the settings
+  # still list (`Apiary.Adapters.Installed.listed?/1`) or declare
+  # (`Apiary.Nodes.Installed.declared?/1`). The read needs no lock: the node is locked
+  # next, as for every code, and the settings are fixed while the instance runs.
   defp maker_may_enrol(%EnrolmentCode{
          organisation_id: nil,
          workspace_id: nil,
@@ -1145,18 +1163,20 @@ defmodule Apiary.AccessKeys do
          node_id: node_id
        })
        when is_binary(node_id) do
-    installed_as =
+    node =
       Repo.one(
         from n in Node,
-          where: n.id == ^node_id and n.kind == :adapter and is_nil(n.deleted_at),
-          where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
-          select: n.installed_as
+          where: n.id == ^node_id and n.kind in ^@installed_kinds and is_nil(n.deleted_at),
+          where: is_nil(n.organisation_id) and is_nil(n.workspace_id)
       )
 
-    if Installed.listed?(installed_as), do: :ok, else: {:error, :unauthorized}
+    if installed_listed?(node), do: :ok, else: {:error, :unauthorized}
   end
 
   defp maker_may_enrol(%EnrolmentCode{}), do: {:error, :unauthorized}
+
+  defp installed_listed?(%Node{kind: :adapter, installed_as: name}), do: Installed.listed?(name)
+  defp installed_listed?(node), do: NodesInstalled.declared?(node)
 
   defp lock_enrolling_node(%EnrolmentCode{} = code) do
     query =
@@ -1185,8 +1205,11 @@ defmodule Apiary.AccessKeys do
 
   defp enrols_kind(%Node{}), do: :ok
 
-  # A code without an organisation is an adapter's, whose node has none either.
-  defp same_organisation(nil), do: dynamic([n], is_nil(n.organisation_id) and n.kind == :adapter)
+  # A code without an organisation is an adapter's, or the instance's pool's or gateway's,
+  # whose node has none either.
+  defp same_organisation(nil),
+    do: dynamic([n], is_nil(n.organisation_id) and n.kind in ^@installed_kinds)
+
   defp same_organisation(organisation_id), do: dynamic([n], n.organisation_id == ^organisation_id)
 
   defp same_workspace(nil), do: dynamic([n], is_nil(n.workspace_id))
@@ -1588,7 +1611,7 @@ defmodule Apiary.AccessKeys do
     if held(node) >= node_key_limit(node), do: {:error, :key_limit}, else: :ok
   end
 
-  defp node_key_limit(%Node{kind: :adapter, installed_as: name}) when is_binary(name), do: 1
+  defp node_key_limit(%Node{installed_as: name}) when is_binary(name), do: 1
   defp node_key_limit(%Node{}), do: @key_limit
 
   # The keys `node` holds, not revoked: read under its lock by whoever holds it.
@@ -1608,8 +1631,9 @@ defmodule Apiary.AccessKeys do
       where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
   end
 
-  # The node at the instance is an adapter, which is the only one with no organisation.
-  defp instance_kind(:instance), do: dynamic([n], n.kind == :adapter)
+  # A node at the instance, with no organisation, is an adapter, or the instance's pool or
+  # gateway.
+  defp instance_kind(:instance), do: dynamic([n], n.kind in ^@installed_kinds)
   defp instance_kind(_place), do: dynamic(true)
 
   # The rows of the scope at the place `workspace_id` names: the scope's workspace's, or,

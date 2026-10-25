@@ -5,4 +5,4 @@
 # run's record in its state directory on the node, outside the checkout. To its Forager,
 # a node's or a node pool's key needs exactly one `workspaces` entry in its discovery,
 # and a gateway's (`ng_`) key's discovery lists none.
-2e3af09033548e2155b7911b9adae473136e21cf
+a0c1d6e739749ebfa77b15332aa94d4305451261

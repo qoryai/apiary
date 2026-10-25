@@ -31,7 +31,13 @@ defmodule ApiaryWeb.ActivityCollectionMoveTest do
       time: DateTime.utc_now(:second),
       connection_id: connection.public_id,
       collections: [
-        %{ref: "SHOP", url: "https://tracker.acme.example/SHOP", title: "Shop board", target: nil}
+        %{
+          ref: "SHOP",
+          url: "https://tracker.acme.example/SHOP",
+          title: "Shop board",
+          grant_ref: listing_grant(connection),
+          target: nil
+        }
       ],
       listing: %{id: id, part: 1, started_at: DateTime.utc_now(:second), complete: true}
     }

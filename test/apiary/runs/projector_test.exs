@@ -40,11 +40,12 @@ defmodule Apiary.Runs.ProjectorTest do
         Repo.all(
           from c in Connection,
             where: c.run_id == ^id,
-            order_by: [c.host, c.port, c.path],
+            order_by: [c.host, c.port, c.path, c.channel],
             select:
               map(c, [
                 :organisation_id,
                 :workspace_id,
+                :channel,
                 :host,
                 :port,
                 :path,
@@ -248,6 +249,33 @@ defmodule Apiary.Runs.ProjectorTest do
 
       assert [%{attempts: 2, allowed: 1, denied: 1, last_decision: "denied"}] =
                projection(run).connections
+    end
+
+    test "a destination reached on both channels is two rows, across passes and a rebuild",
+         %{run: run} do
+      event_fixture(run, 1, "run.egress", egress_data())
+
+      event_fixture(
+        run,
+        2,
+        "run.egress",
+        egress_data(%{"channel" => "stack", "decision" => "denied", "rule" => ""})
+      )
+
+      {:ok, _} = Projector.project(run)
+      event_fixture(run, 3, "run.egress", egress_data(%{"channel" => "stack"}))
+      {:ok, run} = Projector.project(run)
+
+      assert [
+               %{channel: "session", attempts: 1, allowed: 1, denied: 0},
+               %{channel: "stack", attempts: 2, allowed: 1, denied: 1}
+             ] = projection(run).connections
+
+      assert run.denied_count == 1
+
+      before = projection(run)
+      {:ok, _rebuilt} = Projector.rebuild(run)
+      assert projection(run) == before
     end
 
     test "the run counts its denied egress events, once each, and a rebuild counts the same",

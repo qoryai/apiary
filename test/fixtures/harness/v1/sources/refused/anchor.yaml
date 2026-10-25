@@ -1,0 +1,3 @@
+# An anchor with no alias, refused too.
+harness:
+  extends: &base {git: https://code.example.com/example-org/harness, ref: v2.4.0}

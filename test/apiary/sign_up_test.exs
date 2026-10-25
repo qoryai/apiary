@@ -85,6 +85,7 @@ defmodule Apiary.SignUpTest do
                )
 
       assert entry.details["sign_up"] == true
+      refute Map.has_key?(entry.details, "setup_code")
     end
 
     test "with an invitation creates no organisation, whatever the edition opens" do

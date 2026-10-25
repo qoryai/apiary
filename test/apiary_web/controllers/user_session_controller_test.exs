@@ -55,7 +55,7 @@ defmodule ApiaryWeb.UserSessionControllerTest do
           }
         })
 
-      assert conn.resp_cookies["_apiary_web_user_remember_me"]
+      assert conn.resp_cookies["__Host-_apiary_web_user_remember_me"]
       assert redirected_to(conn) == home
     end
 
@@ -308,6 +308,116 @@ defmodule ApiaryWeb.UserSessionControllerTest do
       refute get_session(conn, :user_token)
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "You are logged out"
     end
+  end
+
+  # A page on an adapter's host, `<adapter>.<instance name>`, can set a cookie with
+  # `Domain=<instance name>`; a browser rejects that Domain on a `__Host-` cookie, and one
+  # without Secure or Path=/.
+  describe "the sign-in cookies" do
+    @session_cookie "__Host-_apiary_key"
+    @remember_me_cookie "__Host-_apiary_web_user_remember_me"
+
+    test "both have the __Host- prefix, Secure, Path=/ and no Domain", %{conn: conn, user: user} do
+      conn = log_in_with_password(conn, user, "true")
+
+      for name <- [@session_cookie, @remember_me_cookie] do
+        attributes = set_cookie_attributes(conn, name)
+        assert "secure" in attributes, name
+        assert "path=/" in attributes, name
+        refute Enum.any?(attributes, &String.starts_with?(&1, "domain")), name
+      end
+    end
+
+    test "sign in, the remember-me sign-in and sign out work", %{
+      conn: conn,
+      user: user,
+      home: home
+    } do
+      conn = log_in_with_password(conn, user, "true")
+      assert redirected_to(conn) == home
+
+      assert conn |> recycle() |> get(home) |> html_response(200) =~ user.email
+
+      # The remember-me cookie alone, as a browser sends it after the session cookie ended.
+      %{value: remembered} = conn.resp_cookies[@remember_me_cookie]
+
+      assert build_conn()
+             |> put_req_cookie(@remember_me_cookie, remembered)
+             |> get(home)
+             |> html_response(200) =~ user.email
+
+      conn = conn |> recycle() |> delete(~p"/users/log-out")
+      assert redirected_to(conn) == ~p"/"
+      deleted = set_cookie_attributes(conn, @remember_me_cookie)
+      assert "max-age=0" in deleted
+      assert "secure" in deleted
+      assert "path=/" in deleted
+
+      assert conn |> recycle() |> get(home) |> redirected_to() == ~p"/users/log-in"
+    end
+
+    test "a request with a cookie under its old name is not signed in", %{
+      conn: conn,
+      user: user,
+      home: home
+    } do
+      conn = log_in_with_password(conn, user, "true")
+      %{value: session} = conn.resp_cookies[@session_cookie]
+      token = conn.cookies[@remember_me_cookie]
+
+      # The session cookie's value is signed with the signing salt alone, so it is valid
+      # under either name. Plug signs a cookie with the salt `<name>_cookie`, so the
+      # remember-me token is signed for each name.
+      sign = fn name ->
+        Plug.Crypto.sign(conn.secret_key_base, name <> "_cookie", token, keys: Plug.Keys)
+      end
+
+      old_names = [
+        {"_apiary_key", session},
+        {"_apiary_web_user_remember_me", sign.("_apiary_web_user_remember_me")}
+      ]
+
+      new_names = [
+        {@session_cookie, session},
+        {@remember_me_cookie, sign.(@remember_me_cookie)}
+      ]
+
+      for {name, value} <- old_names do
+        conn = build_conn() |> put_req_cookie(name, value) |> get(home)
+        assert conn.status == 302, "#{name} signed the request in"
+        assert redirected_to(conn) == ~p"/users/log-in"
+      end
+
+      for {name, value} <- new_names do
+        conn = build_conn() |> put_req_cookie(name, value) |> get(home)
+        assert conn.status == 200, "#{name} did not sign the request in"
+        assert html_response(conn, 200) =~ user.email
+      end
+    end
+  end
+
+  defp log_in_with_password(conn, user, remember_me) do
+    user = set_password(user)
+
+    post(conn, ~p"/users/log-in", %{
+      "user" => %{
+        "email" => user.email,
+        "password" => valid_user_password(),
+        "remember_me" => remember_me
+      }
+    })
+  end
+
+  # The attributes of the response's Set-Cookie header for `name`, in lower case.
+  defp set_cookie_attributes(conn, name) do
+    header =
+      conn
+      |> get_resp_header("set-cookie")
+      |> Enum.find(&String.starts_with?(&1, name <> "="))
+
+    assert header, "no Set-Cookie header for #{name}"
+    [_name_and_value | attributes] = String.split(header, ";")
+    Enum.map(attributes, &(&1 |> String.trim() |> String.downcase()))
   end
 
   # The user joins the scope's workspace through an invitation, as a second membership.

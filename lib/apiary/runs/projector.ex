@@ -618,12 +618,13 @@ defmodule Apiary.Runs.Projector do
 
   defp upsert_connections(run, connections) do
     rows =
-      for {{host, port, path}, delta} <- connections do
+      for {{host, port, path, channel}, delta} <- connections do
         Map.merge(delta, %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
           workspace_id: run.workspace_id,
           run_id: run.id,
+          channel: channel,
           host: host,
           port: port,
           path: path
@@ -707,7 +708,7 @@ defmodule Apiary.Runs.Projector do
 
     Repo.insert_all(Connection, rows,
       on_conflict: on_conflict,
-      conflict_target: [:run_id, :host, :port, :path],
+      conflict_target: [:run_id, :channel, :host, :port, :path],
       log: false
     )
   end

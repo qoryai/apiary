@@ -644,33 +644,43 @@ defmodule Apiary.ModelChoicesTest do
     test "reads the chain the edition answers for the organisation", ctx do
       %{scope: scope, provider: provider} = ctx
 
-      {:ok, %ModelChoice{} = written} =
-        ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      {:ok, %ModelChoice{}} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
 
       assert Apiary.Edition.model_choice_chain(scope.organisation.id) == "organisation"
 
-      # A row of the operator's chain, which an edition writes; the organisation's rows
-      # are kept and unused while the edition answers "operator".
-      operator =
-        Repo.insert!(%ModelChoice{
-          written
-          | id: Ecto.UUID.generate(),
-            chain: "operator",
-            model_id: "claude-haiku-5-5",
-            effort: nil,
-            inserted_at: nil,
-            updated_at: nil
+      # The operator's chain is the rows of the operator's organisation; the organisation's
+      # rows are kept and unused while the edition answers "operator".
+      %{scope: operator} = sign_up_fixture()
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ServesAcrossWithChain)
+      Apiary.EditionStubs.ServesAcross.put([{operator.organisation.id, scope.organisation.id}])
+      Apiary.EditionStubs.ServesAcrossWithChain.writer(true)
+
+      {:ok, theirs} =
+        Connections.create_provider(operator, %{
+          provider: "anthropic",
+          chain: "operator",
+          keys: [%{value_id: "main", value: @key}]
         })
 
-      assert operator.chain == "operator"
+      {:ok, %ModelChoice{chain: "operator"}} =
+        ModelChoices.put_choice(
+          operator,
+          :organisation,
+          %{provider: theirs.public_id, key: "main", model: "claude-haiku-5-5"},
+          "operator"
+        )
 
       assert {:ok, {:ok, %Resolution{model_id: @model}}} =
                ModelChoices.resolve(scope, :workspace, "hello")
 
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OperatorChain)
+      Apiary.EditionStubs.ServesAcrossWithChain.chain("operator")
 
-      assert {:ok, {:ok, %Resolution{model_id: "claude-haiku-5-5"}}} =
+      assert {:ok, {:ok, %Resolution{level: 6, model_id: "claude-haiku-5-5"}}} =
                ModelChoices.resolve(scope, :workspace, "hello")
+
+      # The edition names no operator: the chain has no choice, and the run no provider.
+      Apiary.EditionStubs.ServesAcrossWithChain.operator(nil)
+      assert ModelChoices.resolve(scope, :workspace, "hello") == {:ok, :none}
     end
 
     test "refuses a workflow that is no workflow name", %{scope: scope} do

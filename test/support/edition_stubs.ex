@@ -55,12 +55,46 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule WritesOperatorChain do
+    @moduledoc """
+    A person of the scope writes the operator's chain of model providers and choices in
+    the scope's organisation (`c:Apiary.Edition.operator_chain_writer?/1`). `writer/1`
+    sets the answer for the test's process, true until it does.
+    """
+
+    @doc "writer/1 sets the answer of `operator_chain_writer?/1` for the test's process."
+    def writer(answer) when is_boolean(answer), do: Process.put(:operator_chain_writer, answer)
+
+    def operator_chain_writer?(_scope), do: Process.get(:operator_chain_writer, true)
+  end
+
   defmodule Operated do
     @moduledoc """
     Every organisation is a client that an operator runs work for
     (`c:Apiary.Edition.operated?/1`).
     """
     def operated?(%Organisation{}), do: true
+  end
+
+  defmodule NoHarnessOwner do
+    @moduledoc """
+    No organisation owns a harness document anyone saves
+    (`c:Apiary.Edition.harness_owner/1`), so every save is refused.
+    """
+    def harness_owner(_scope), do: nil
+  end
+
+  defmodule HarnessSourceAllowed do
+    @moduledoc """
+    A run may use any organisation's links for any harness source
+    (`c:Apiary.Edition.harness_source_allowed?/3`). Each call sends
+    `{:harness_source_allowed?, run_organisation_id, owner_organisation_id, source}` to the
+    process that asks.
+    """
+    def harness_source_allowed?(run_organisation_id, owner_organisation_id, source) do
+      send(self(), {:harness_source_allowed?, run_organisation_id, owner_organisation_id, source})
+      true
+    end
   end
 
   @doc """
@@ -925,7 +959,9 @@ defmodule Apiary.EditionStubs do
     @moduledoc """
     `ServesAcross`, with the chain of model choices of every organisation
     (`c:Apiary.Edition.model_choice_chain/1`) that the test sets with `chain/1`:
-    "organisation" until it does, as the core's edition returns.
+    "organisation" until it does, as the core's edition returns; the operator's
+    organisation of that chain, which the test may set with `operator/1`; and whether a
+    scope writes the operator's chain, which the test may set with `writer/1`.
     """
 
     @doc "chain/1 sets the chain of model choices for the test's process."
@@ -933,6 +969,29 @@ defmodule Apiary.EditionStubs do
       do: Process.put(:model_choice_chain, chain)
 
     def model_choice_chain(_organisation_id), do: Process.get(:model_choice_chain, "organisation")
+
+    @doc """
+    operator/1 sets the operator's organisation for the test's process
+    (`c:Apiary.Edition.operator_chain_organisation/1`), nil for none. Until it does, the
+    operator is the first organisation that serves the run's.
+    """
+    def operator(id), do: Process.put(:operator_chain_organisation, {:set, id})
+
+    def operator_chain_organisation(id) do
+      case Process.get(:operator_chain_organisation) do
+        {:set, operator} -> operator
+        nil -> List.first(ServesAcross.serving_organisations(id))
+      end
+    end
+
+    @doc """
+    writer/1 sets whether a scope writes the operator's chain
+    (`c:Apiary.Edition.operator_chain_writer?/1`) for the test's process; false until it does,
+    as the core answers.
+    """
+    def writer(answer) when is_boolean(answer), do: Process.put(:operator_chain_writer, answer)
+
+    def operator_chain_writer?(_scope), do: Process.get(:operator_chain_writer, false)
 
     def serving_organisations(id), do: ServesAcross.serving_organisations(id)
     def served_organisations(id), do: ServesAcross.served_organisations(id)
@@ -951,5 +1010,47 @@ defmodule Apiary.EditionStubs do
 
     def client_reads(_scope, :run_policy, _run, _policy), do: nil
     def client_reads(_scope, _kind, _run, query), do: where(query, false)
+  end
+
+  defmodule NarrowsRunPolicy do
+    @moduledoc """
+    A reader is shown a run's policy (`c:Apiary.Edition.client_reads/4`, `:run_policy`)
+    without the hosts of the credential named `"model-provider"`: its entry in
+    `credentials`, its hosts in `allow`, `allow_first` and `terminated`, and its hosts in the
+    `hosts` of each tool, with the counts recounted. The tools stay. Every other read is left
+    as it is.
+    """
+
+    @provider "model-provider"
+
+    def client_reads(_scope, :run_policy, _run, %{credentials: credentials} = policy) do
+      hidden =
+        for %{"name" => @provider, "hosts" => hosts} <- credentials, host <- hosts, do: host
+
+      allow = Enum.reject(policy.allow, &(&1 in hidden))
+      allow_first = Enum.reject(policy.allow_first, &(&1 in hidden))
+      kept = Enum.reject(credentials, &(&1["name"] == @provider))
+      terminated = Enum.reject(policy.terminated, &(&1 in hidden))
+
+      tools =
+        for tool <- policy.tools,
+            do: Map.update(tool, "hosts", [], &Enum.reject(&1, fn host -> host in hidden end))
+
+      %{
+        policy
+        | terminated: terminated,
+          terminated_count:
+            policy.terminated_count - (length(policy.terminated) - length(terminated)),
+          tools: tools,
+          allow: allow,
+          allow_count: length(allow),
+          allow_first: allow_first,
+          allow_first_count: length(allow_first),
+          credentials: kept,
+          credentials_count: length(kept)
+      }
+    end
+
+    def client_reads(_scope, _kind, _run, subject), do: subject
   end
 end

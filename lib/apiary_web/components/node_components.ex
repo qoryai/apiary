@@ -145,36 +145,37 @@ defmodule ApiaryWeb.NodeComponents do
   node_tabs/1 is a node's tabs: Overview, Access key, and Settings last, set apart. Overview
   and Settings are patches of `ApiaryWeb.NodeLive.Show`, Access key is
   `ApiaryWeb.NodeLive.AccessKey`'s: `view` names the LiveView the tabs are drawn in, so each
-  tab of another is a navigation.
+  tab of another is a navigation. `:all` is a LiveView that draws all three: each tab is a
+  patch.
   """
   attr :node, Node, required: true
   attr :paths, :map, required: true, doc: "`overview`, `access_key` and `settings`"
   attr :current, :atom, required: true, values: [:overview, :access_key, :settings]
-  attr :view, :atom, required: true, values: [:show, :access_key]
+  attr :view, :atom, required: true, values: [:show, :access_key, :all]
 
   def node_tabs(assigns) do
     ~H"""
     <.page_tabs id="node-tabs" label={kind_label(@node.kind)} current={@current}>
       <:tab
         key={:overview}
-        patch={if @view == :show, do: @paths.overview}
-        navigate={if @view != :show, do: @paths.overview}
+        patch={if @view in [:show, :all], do: @paths.overview}
+        navigate={if @view == :access_key, do: @paths.overview}
         icon="hero-book-open"
       >
         {gettext("Overview")}
       </:tab>
       <:tab
         key={:access_key}
-        patch={if @view == :access_key, do: @paths.access_key}
-        navigate={if @view != :access_key, do: @paths.access_key}
+        patch={if @view in [:access_key, :all], do: @paths.access_key}
+        navigate={if @view == :show, do: @paths.access_key}
         icon="hero-key"
       >
         {gettext("Access key")}
       </:tab>
       <:tab
         key={:settings}
-        patch={if @view == :show, do: @paths.settings}
-        navigate={if @view != :show, do: @paths.settings}
+        patch={if @view in [:show, :all], do: @paths.settings}
+        navigate={if @view == :access_key, do: @paths.settings}
         icon="hero-cog-6-tooth"
         settings
       >
@@ -532,9 +533,11 @@ defmodule ApiaryWeb.NodeComponents do
     end
   end
 
+  defp level_key(%Node{workspace_id: nil, organisation_id: nil}), do: :instance
   defp level_key(%Node{workspace_id: nil, organisation_id: id}), do: {:organisation, id}
   defp level_key(%Node{workspace_id: id}), do: {:workspace, id}
 
+  defp level_label(%Node{workspace_id: nil, organisation_id: nil}), do: gettext("This instance")
   defp level_label(%Node{workspace_id: nil} = gateway), do: organisation_name(gateway)
   defp level_label(%Node{}), do: gettext("This workspace")
 
@@ -777,8 +780,9 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc """
   gateway_name/2 is `gateway`'s name as a node of the organisation `organisation_id`
-  names it: its name alone, or "edge-1 of Acme" for a gateway of another organisation,
-  whose organisation must be loaded.
+  names it: its name alone, "edge-1 of Acme" for a gateway of another organisation,
+  whose organisation must be loaded, or "edge-1 of this instance" for the instance's
+  gateway.
   """
   @spec gateway_name(Ecto.UUID.t(), Node.t()) :: String.t()
   def gateway_name(organisation_id, %Node{organisation_id: organisation_id, name: name}),
@@ -803,6 +807,9 @@ defmodule ApiaryWeb.NodeComponents do
       ApiaryWeb.Edition.nodes_managed_by_sentence(scope.organisation) ||
         ApiaryWeb.Access.who_may(scope, action, default)
 
+  # The instance's gateway has no organisation: the sentences that name a gateway's
+  # organisation say "this instance" for it.
+  defp organisation_name(%Node{organisation_id: nil}), do: gettext("this instance")
   defp organisation_name(%Node{organisation: %Organisation{name: name}}), do: name
 
   @doc """

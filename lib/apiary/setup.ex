@@ -29,6 +29,24 @@ defmodule Apiary.Setup do
   finds, makes and logs nothing. Off in test (`config :apiary, Apiary.Setup, enabled:
   false`), where the tests call `boot/0` themselves.
 
+  **A preset code.** With `QORY_SETUP_CODE_SHA256` set (`preset!/0`), the install makes
+  the code and prints its link, and Qory Apiary has the code's SHA-256 alone, the preset.
+  A start then makes, stores and logs no code. It sets a stored `setup_code` to NULL, so a
+  link that an earlier start logged works no more, and logs a line without a link:
+
+      Qory Apiary is not set up yet. Open the set-up link that your install printed; this log does not show it.
+
+  The one code accepted is 43 base64url characters whose SHA-256 is the preset; the
+  digests are compared in constant time, and a code of any other form is refused before
+  it is hashed. The set-up, by the link or by the release command, writes the preset to
+  `used_setup_code_sha256`, and a code whose SHA-256 is that column's value is refused,
+  so a preset sets an instance up once. After a purge of the instance's organisation, a
+  start with that preset logs, at warning:
+
+      Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to get a set-up link in this log. The code it gives has set up this instance before.
+
+  The code is never stored or logged, and the preset is not logged either.
+
   **The lock.** `code!/0` holds the row `FOR UPDATE` while it reads, and makes, the code,
   so of two starts at once one makes it and the other finds it. The first sign-up holds
   the instance's first-sign-up lock and then the row
@@ -43,13 +61,22 @@ defmodule Apiary.Setup do
 
   @code_bytes 32
 
+  # The form of a code Qory Apiary makes: 32 bytes in base64url without padding.
+  @code_form ~r/\A[A-Za-z0-9_-]{43}\z/
+
+  @preset_line "Qory Apiary is not set up yet. Open the set-up link that your install printed; this log does not show it."
+
+  @preset_used_line "Set QORY_SETUP_CODE_SHA256 to the hash of a new set-up code, or unset it to get a set-up link in this log. The code it gives has set up this instance before."
+
+  @preset_refusal "Set QORY_SETUP_CODE_SHA256 to 64 hexadecimal characters, the SHA-256 of the set-up code, or leave it unset. The value set is not that."
+
   # The instance's own row, made when nothing has made it yet, with the columns' defaults.
   @ensure_row """
   INSERT INTO instance_settings (id, updated_at) VALUES (true, $1)
   ON CONFLICT (id) DO NOTHING
   """
 
-  @lock_row "SELECT setup_code FROM instance_settings WHERE id FOR UPDATE"
+  @lock_row "SELECT setup_code, used_setup_code_sha256 FROM instance_settings WHERE id FOR UPDATE"
 
   @doc "Starts once, as a worker the supervisor does not restart."
   @spec child_spec(term) :: Supervisor.child_spec()
@@ -77,18 +104,83 @@ defmodule Apiary.Setup do
 
   @doc """
   boot/0 logs the set-up link while the instance is not set up, the code found or made
-  by `code!/0`; once it is set up it does nothing. `:ok`.
+  by `code!/0`; once it is set up it does nothing. With a preset (`preset!/0`) it makes
+  no code: it sets a stored code to NULL and logs a line without a link, at warning when
+  the preset has set the instance up before. `:ok`.
   """
   @spec boot() :: :ok
   def boot do
+    case preset!() do
+      nil -> boot_link()
+      preset -> boot_preset(preset)
+    end
+
+    :ok
+  end
+
+  defp boot_link do
     case find_or_create() do
       # The one line the log filter lets the code through (`Apiary.SecretLogFilter`).
       {:ok, code} -> Logger.info(log_line(code), setup_link: true)
       :set_up -> :ok
     end
-
-    :ok
   end
+
+  # Asked first without a lock, as `find_or_create/0` asks; then, under the row's lock, a
+  # stored code is set to NULL, and the used preset is read.
+  defp boot_preset(preset) do
+    if set_up?() do
+      :ok
+    else
+      {:ok, found} =
+        Repo.transaction(fn ->
+          {stored, used} = lock_row(Repo)
+
+          if is_binary(stored),
+            do: Repo.query!("UPDATE instance_settings SET setup_code = NULL WHERE id")
+
+          cond do
+            set_up?() -> :set_up
+            used == preset -> :used
+            true -> :unused
+          end
+        end)
+
+      case found do
+        :unused -> Logger.info(@preset_line)
+        :used -> Logger.warning(@preset_used_line)
+        :set_up -> :ok
+      end
+    end
+  end
+
+  @doc """
+  preset!/0 is the SHA-256 of the preset set-up code, 32 bytes, from
+  `QORY_SETUP_CODE_SHA256`: 64 hexadecimal characters in either case, spaces around them
+  trimmed. nil when the variable is unset or blank. Called at boot; raises on any other
+  value, so the instance does not start, with a message that does not contain the value.
+  """
+  @spec preset!() :: <<_::256>> | nil
+  def preset! do
+    case parse_preset(
+           Keyword.get(Application.get_env(:apiary, __MODULE__, []), :preset_code_sha256_setting)
+         ) do
+      {:ok, preset} -> preset
+      :error -> raise ArgumentError, @preset_refusal
+    end
+  end
+
+  defp parse_preset(nil), do: {:ok, nil}
+
+  defp parse_preset(setting) when is_binary(setting) do
+    case String.trim(setting) do
+      "" -> {:ok, nil}
+      hex when byte_size(hex) == 64 -> Base.decode16(hex, case: :mixed)
+      _other -> :error
+    end
+  end
+
+  defp parse_preset(_setting), do: :error
 
   @doc false
   # The one line that carries the code.
@@ -106,10 +198,14 @@ defmodule Apiary.Setup do
   @doc """
   code!/0 is the set-up code, found or made: the stored one, or else a new one, stored
   before it is returned, all under the row's lock. The same code until it is used.
-  Raises once the instance is set up, when there is no code to give.
+  Raises once the instance is set up, when there is no code to give, and with a preset
+  (`preset!/0`), when Qory Apiary makes no code.
   """
   @spec code!() :: String.t()
   def code! do
+    if preset!(),
+      do: raise(ArgumentError, "this Qory Apiary has a preset set-up code: it makes none")
+
     case find_or_create() do
       {:ok, code} -> code
       :set_up -> raise ArgumentError, "this Qory Apiary is set up already: it has no set-up code"
@@ -124,7 +220,7 @@ defmodule Apiary.Setup do
     else
       {:ok, found} =
         Repo.transaction(fn ->
-          stored = lock_row(Repo)
+          {stored, _used} = lock_row(Repo)
 
           cond do
             set_up?() -> :set_up
@@ -151,30 +247,55 @@ defmodule Apiary.Setup do
     code
   end
 
+  # The stored code and the used preset, `{setup_code, used_setup_code_sha256}`, the row
+  # held `FOR UPDATE` until the transaction ends.
   defp lock_row(repo) do
     repo.query!(@ensure_row, [DateTime.utc_now()])
-    %{rows: [[stored]]} = repo.query!(@lock_row)
-    stored
+    %{rows: [[stored, used]]} = repo.query!(@lock_row)
+    {stored, used}
   end
 
   @doc """
   valid_code?/1 says whether `code` is the stored, unused set-up code, compared in
   constant time; read without a lock, for the set-up page to decide what it shows.
-  `set_up/3` checks again under the lock.
+  `set_up/3` checks again under the lock. With a preset (`preset!/0`) it says whether
+  `code` is the preset code and the preset has not set the instance up before.
   """
   @spec valid_code?(term) :: boolean
   def valid_code?(code) when is_binary(code) do
+    case preset!() do
+      nil -> valid_stored_code?(code)
+      preset -> preset_code?(preset, read_used(), code)
+    end
+  end
+
+  def valid_code?(_code), do: false
+
+  defp valid_stored_code?(code) do
     case Repo.query!("SELECT setup_code FROM instance_settings WHERE id") do
       %{rows: [[stored]]} when is_binary(stored) -> same_code?(stored, code)
       _none -> false
     end
   end
 
-  def valid_code?(_code), do: false
+  defp read_used do
+    case Repo.query!("SELECT used_setup_code_sha256 FROM instance_settings WHERE id") do
+      %{rows: [[used]]} -> used
+      %{rows: []} -> nil
+    end
+  end
 
   # The one comparison of a code with the stored one, in constant time, so the time it
   # takes tells nothing of how much of the code was right.
   defp same_code?(stored, code), do: Plug.Crypto.secure_compare(stored, code)
+
+  # A code is the preset code when it has the form of a code Qory Apiary makes, checked
+  # before it is hashed, the preset is not the used one, and its SHA-256 is the preset.
+  # SHA-256 of 43 bytes takes a fixed time, and the digests are compared in constant time.
+  defp preset_code?(preset, used, code) do
+    byte_size(code) == 43 and code =~ @code_form and used != preset and
+      Plug.Crypto.secure_compare(:crypto.hash(:sha256, code), preset)
+  end
 
   @doc """
   set_up/3 sets the instance up with `code`: the instance's first sign-up,
@@ -187,7 +308,8 @@ defmodule Apiary.Setup do
 
   Answers `{:ok, map}` as the sign-up does; `{:error, :already_set_up}` once the instance
   is set up, a set-up a moment before included; `{:error, :invalid_code}` for a code that
-  is not the stored one; or `{:error, changeset}`, the sign-up form's.
+  is not the stored one, or with a preset not the preset code (`valid_code?/1`); or
+  `{:error, changeset}`, the sign-up form's.
 
   `password: :required` asks for a password, as the set-up page does; by default it is
   required while the instance sends no email (`Apiary.Mail.configured?/0`), as a
@@ -232,28 +354,59 @@ defmodule Apiary.Setup do
   # The first sign-up's step, inside its transaction and after the instance's
   # first-sign-up lock (`Apiary.Organisations.sign_up_user/3`): holds the row, compares
   # `code` with the stored one when one is given (the link's set-up; the release command
-  # gives none), and marks the code used. `{:ok, nil}`, or `{:error, :invalid_code}`.
-  @spec use_code(Ecto.Repo.t(), String.t() | nil) :: {:ok, nil} | {:error, :invalid_code}
+  # gives none), and marks the code used. With a preset (`preset!/0`), `code` is compared
+  # with the preset instead, and the preset is written to `used_setup_code_sha256`, by
+  # the release command's sign-up too. `{:ok, way}`, the way the instance was set up, for
+  # the entry of its organisation (`details.setup_code`): `"link"` with the stored code,
+  # `"preset"` with the preset code, `"command"` without a code. Or
+  # `{:error, :invalid_code}`.
+  @spec use_code(Ecto.Repo.t(), String.t() | nil) ::
+          {:ok, String.t()} | {:error, :invalid_code}
   def use_code(repo, code) do
-    stored = lock_row(repo)
+    {stored, used} = lock_row(repo)
+    preset = preset!()
 
-    if is_nil(code) or (is_binary(stored) and same_code?(stored, code)) do
-      repo.query!(
-        "UPDATE instance_settings SET setup_code = NULL, set_up_at = $1 WHERE id",
-        [DateTime.utc_now()]
-      )
+    cond do
+      is_nil(code) ->
+        mark_used(repo, preset, "command")
 
-      {:ok, nil}
-    else
-      {:error, :invalid_code}
+      is_nil(preset) and is_binary(stored) and same_code?(stored, code) ->
+        mark_used(repo, nil, "link")
+
+      is_binary(preset) and preset_code?(preset, used, code) ->
+        mark_used(repo, preset, "preset")
+
+      true ->
+        {:error, :invalid_code}
     end
+  end
+
+  defp mark_used(repo, nil, way) do
+    repo.query!(
+      "UPDATE instance_settings SET setup_code = NULL, set_up_at = $1 WHERE id",
+      [DateTime.utc_now()]
+    )
+
+    {:ok, way}
+  end
+
+  # Not in the query log, whose debug lines print a query's parameters.
+  defp mark_used(repo, preset, way) do
+    repo.query!(
+      "UPDATE instance_settings SET setup_code = NULL, set_up_at = $1, " <>
+        "used_setup_code_sha256 = $2 WHERE id",
+      [DateTime.utc_now(), preset],
+      log: false
+    )
+
+    {:ok, way}
   end
 
   @doc """
   claim/3 sets up an instance from a shell, for `Apiary.Release.grant_instance_admin/2`:
   the instance's first sign-up with `email` and `organisation_name`, by the instance, from
-  `origin`, which marks any stored code used, then the account's log-in link, sent as the
-  sign-up page sends it. `{:ok, user, :sent}`, or `{:ok, user, :not_sent}` when the mail
+  `origin`, which marks any stored code used, and the preset with one (`preset!/0`), then
+  the account's log-in link, sent as the sign-up page sends it. `{:ok, user, :sent}`, or `{:ok, user, :not_sent}` when the mail
   did not go out; `{:error, :instance_claimed}` once the instance has its organisation, a
   set-up that came first included; or `{:error, changeset}`, the sign-up form's, for an
   address or a name it refuses. A refusal with the instance claimed by then is

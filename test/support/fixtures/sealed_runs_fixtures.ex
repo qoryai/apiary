@@ -6,8 +6,11 @@ defmodule Apiary.SealedRunsFixtures do
   gateway, under a key of the gateway allowed stored secrets.
   """
 
+  import Ecto.Query, only: [from: 2]
+
   alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
   alias Apiary.Accounts.Scope
+  alias Apiary.Nodes.Node
   alias Apiary.Runs.{Attach, Run}
 
   @model_key "sk-ant-fixture-model-key-0123456789"
@@ -22,8 +25,15 @@ defmodule Apiary.SealedRunsFixtures do
   allowed stored secrets. Returns the place's map with `provider`, `run` (as stored after
   the attach), `attached` (the attach's answer: `settings`, its bytes, and `digest`) and
   `secrets_key: {key, seed}`.
+
+  With `work: apply`, the work item's adapter declares the apply items `apply` before the
+  claim, so the run has the work entry `work-1`
+  (`Apiary.Runs.RunCredentials.form_work/3`), and the adapter has an access key in use
+  and a `call_url` that the calls' stub answers (`Req.Test`, `Apiary.Adapters.Calls`).
+  The map then also has `adapter` and `adapter_seed`, the seed of the adapter's key, to
+  sign the stub's answers with.
   """
-  def sealed_run_fixture(%Scope{} = scope) do
+  def sealed_run_fixture(%Scope{} = scope, opts \\ []) do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "anthropic",
@@ -36,6 +46,7 @@ defmodule Apiary.SealedRunsFixtures do
     {key, seed} = place.gateway_key
 
     work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    adapter = if apply = opts[:work], do: callable_adapter_fixture(work_item.adapter_id, apply)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     {:ok, claimed} = Dispatches.claim(place.key, Dispatches.now())
     run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)
@@ -48,12 +59,42 @@ defmodule Apiary.SealedRunsFixtures do
         instance_id: Apiary.ContractFixtures.instance_id()
       })
 
-    Map.merge(place, %{
+    place
+    |> Map.merge(%{
       provider: provider,
       run: Repo.get!(Run, claimed.registered.id),
       attached: attached,
       secrets_key: {key, seed}
     })
+    |> Map.merge(adapter || %{})
+  end
+
+  @doc """
+  Makes the adapter `adapter_id` declare the apply items `apply`, and gives it an access
+  key in use and a call address under `.localhost`, which the test resolver
+  (`Apiary.FetchStub`) and the calls' stub answer. Returns `%{adapter: adapter,
+  adapter_seed: seed}`, the seed of its key, to sign the stub's answers with
+  (`Apiary.WorkCredentialStub`).
+  """
+  def callable_adapter_fixture(adapter_id, apply) do
+    adapter = Repo.get!(Node, adapter_id)
+
+    %{pair: pair} =
+      Apiary.AccessKeysFixtures.enrolled_key_fixture(
+        Apiary.OrganisationsFixtures.instance_admin_scope(),
+        adapter
+      )
+
+    {1, _rows} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter_id),
+        set: [
+          source_apply: apply,
+          call_url: "https://#{adapter.name}.localhost/calls/",
+          call_instance_id: "instance-1"
+        ]
+      )
+
+    %{adapter: Repo.get!(Node, adapter_id), adapter_seed: pair.secret}
   end
 
   @doc """

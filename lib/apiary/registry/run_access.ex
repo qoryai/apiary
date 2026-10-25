@@ -10,9 +10,18 @@ defmodule Apiary.Registry.RunAccess do
   # the secrets request. Any other run gains nothing, and its tokens grant nothing.
   #
   # **The names.** A run with a target has its target's image name
-  # (`Apiary.Registry.Names.target_name/3`). A build, a run of a workspace's queue for the
-  # step `prebuild` (`Apiary.Policy.ComposedConfiguration.prebuild?/1`), also has the
-  # name of the environment image for its key (`environment_key/2`).
+  # (`Apiary.Registry.Names.target_name/3`): for a run that registered, the target of
+  # its registration's labels; for any other run, the target its row has. A build is a
+  # run of a workspace's queue for the step `prebuild`
+  # (`Apiary.Policy.ComposedConfiguration.prebuild?/1`) whose target is also its
+  # collection's target when the run's names are read (`dispatched_target_id/1`). The
+  # claim writes the labels of such a run from its collection's target at the claim
+  # (`Apiary.Dispatches.Handover`); a listing of the collection's adapter can change the
+  # collection's target since. A build also has the name of the environment image for
+  # its key (`environment_key/4`). A prebuild whose two targets differ, or that lacks
+  # either, is no build: it has its target's image name, to pull, and no environment
+  # image name. A collection that ended still has its target here, so its build keeps
+  # its push rights.
   #
   # **The rights.** A run that is not a build may pull its target's image name. A build
   # may push and pull its target's image name, and push and pull the environment image's
@@ -27,10 +36,10 @@ defmodule Apiary.Registry.RunAccess do
   #
   # **What the run configuration gains** (`member/1`):
   #
-  #   * the host credential `registry`: `hosts`, the host of the instance's public URL;
-  #     `paths`, `/registry/token`; `auth`, `basic` with the run's public id as the user
-  #     name. The document has no value: the secrets request seals it
-  #     (`Apiary.Registry.Credential`);
+  #   * the host credential `registry`, with one `apply` item: `hosts`, the host of the
+  #     instance's public URL; `scheme` `basic` with the run's public id as `username`;
+  #     `paths`, `/registry/token`. The document has no value: the secrets request seals
+  #     it (`Apiary.Registry.Credential`);
   #   * path rules for the registry's host, without a credential, in the
   #     `security_policy`'s `egress.paths`, which a gateway matches against the request's
   #     path alone, without its query and whatever its method, each rule whole or up to a
@@ -55,12 +64,13 @@ defmodule Apiary.Registry.RunAccess do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Features, InstanceConfig, Policy, Registry, Repo}
+  alias Apiary.Adapters.Collection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
+  alias Apiary.Policy.RunConfiguration
   alias Apiary.Registry.{Credential, Names}
   alias Apiary.Runs.{ProviderCredential, Run, Target}
 
@@ -145,7 +155,7 @@ defmodule Apiary.Registry.RunAccess do
   defp names(run) do
     target_id = target_id(run)
     target = target_name(run, target_id)
-    build? = not is_nil(target) and match?(%Run{}, run) and ComposedConfiguration.prebuild?(run)
+    build? = is_binary(target) and target_id == dispatched_target_id(run)
 
     if build? do
       environment = environment_name(run, target_id)
@@ -160,6 +170,29 @@ defmodule Apiary.Registry.RunAccess do
       %{target: target, build?: false}
     end
   end
+
+  # The target row of the collection a run of a workspace's queue for the step
+  # `prebuild` was queued for (`source_collection_id`), by the collection's target system
+  # and path when this function runs, while the collection is assigned to the run's
+  # workspace; whether the collection ended is not read. Nil for any other run, for a
+  # collection without a target, and for a target without a row in the workspace.
+  defp dispatched_target_id(%Run{dispatch_run_id: id, workspace_id: workspace_id})
+       when is_binary(id) and is_binary(workspace_id) do
+    Repo.one(
+      from d in DispatchRun,
+        join: c in Collection,
+        on: c.id == d.source_collection_id,
+        join: t in Target,
+        on:
+          t.workspace_id == c.workspace_id and t.system == c.target_system and
+            t.path == c.target_path,
+        where: d.id == ^id and d.step == ^DispatchRun.prebuild(),
+        where: d.workspace_id == ^workspace_id and c.workspace_id == ^workspace_id,
+        select: t.id
+    )
+  end
+
+  defp dispatched_target_id(_run), do: nil
 
   # The run's target, as `Apiary.Policy.Serving` reads it: for a run that registered,
   # the target row its registration's labels name by the workspace's domain, whatever its
@@ -268,9 +301,15 @@ defmodule Apiary.Registry.RunAccess do
   defp entry(run) do
     Jason.OrderedObject.new([
       {"name", Credential.name()},
-      {"hosts", [instance_host()]},
-      {"paths", [token_path()]},
-      {"auth", Jason.OrderedObject.new([{"scheme", "basic"}, {"username", run.public_id}])}
+      {"apply",
+       [
+         Jason.OrderedObject.new([
+           {"hosts", [instance_host()]},
+           {"scheme", "basic"},
+           {"username", run.public_id},
+           {"paths", [token_path()]}
+         ])
+       ]}
     ])
   end
 

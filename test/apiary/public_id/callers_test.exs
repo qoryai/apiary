@@ -12,7 +12,7 @@ defmodule Apiary.PublicId.CallersTest do
 
   alias Apiary.{Organisations, PublicId, PublicIdSource, Repo, Secrets}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.Connection
+  alias Apiary.Adapters.{ConnectPass, Connection}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Batch, Ingest, Registration, Run, Target}
@@ -253,22 +253,29 @@ defmodule Apiary.PublicId.CallersTest do
       assert PublicId.valid?("ac", second.public_id)
     end
 
-    test "that replaces a connected one, with an id that is taken, gets a fresh id and a pass for it",
+    test "that replaces a pending one, with an id that is taken, gets a fresh id and a pass for it",
          ctx do
       PublicIdSource.force([@taken])
       {first, _nonce} = connection_fixture(ctx.scope, ctx.first, :pending)
       assert first.public_id == "ac_" <> @taken
 
-      {connected, _nonce} = connection_fixture(ctx.scope, ctx.second, :connected)
+      # Its next pass would expire too far ahead, so a press replaces it.
+      {pending, _nonce} = connection_fixture(ctx.scope, ctx.second, :pending)
+      ahead = DateTime.add(DateTime.utc_now(), 2 * ConnectPass.validity(), :second)
+
+      {1, _} =
+        Repo.update_all(from(c in Connection, where: c.id == ^pending.id),
+          set: [pass_expires_at: ahead]
+        )
 
       PublicIdSource.force([@taken])
       assert {:ok, url, {public_id, _nonce}} = Apiary.Adapters.connect(ctx.scope, ctx.second)
 
       assert public_id != first.public_id
-      assert public_id != connected.public_id
+      assert public_id != pending.public_id
       assert url =~ "state="
       assert Repo.get_by!(Connection, public_id: public_id).state == :pending
-      assert Repo.get!(Connection, connected.id).state == :ended
+      assert Repo.get!(Connection, pending.id).state == :ended
     end
   end
 end

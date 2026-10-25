@@ -1,0 +1,6 @@
+# A checkout that defines its stack with a module in a folder of the checkout.
+harness:
+  target: {runtime: claude}
+  modules:
+    - name: team
+      source: {path: ./harness}

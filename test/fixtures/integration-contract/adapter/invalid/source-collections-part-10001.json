@@ -6,7 +6,8 @@
     {
       "ref": "TRK",
       "url": "https://tracker.acme.example/TRK",
-      "title": "Tracker"
+      "title": "Tracker",
+      "grant_ref": "G_1"
     }
   ],
   "listing": {

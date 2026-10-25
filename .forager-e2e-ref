@@ -3,4 +3,4 @@
 # pseudo-version, put in place of that module (e2e/run.sh, FORAGER_SRC). The contract
 # the tests replay is pinned in a separate file, .forager-contract-ref, so that the two
 # pins can move apart.
-b6ac9f0604569bdd3ac5a67a74aa4ee79e649ceb
+9002cf45e62166d0e16208c28a18ae59d0018d7f

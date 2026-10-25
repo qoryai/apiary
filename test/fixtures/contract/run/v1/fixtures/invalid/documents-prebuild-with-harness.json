@@ -1,0 +1,34 @@
+{
+  "step": "prebuild",
+  "domain": "software",
+  "access": "read",
+  "target": {
+    "system": "code.example.com",
+    "path": "acme/shop"
+  },
+  "image_destination": "registry.example.com/targets/0123456789abcdef",
+  "environment_destination": "registry.example.com/environments/0123456789abcdef",
+  "harness": {
+    "harness": {
+      "name": "campaigns",
+      "extends": {
+        "git": "https://code.example.com/team/harness",
+        "ref": "v2.4.0",
+        "stack": "marketing"
+      },
+      "modules": [
+        {
+          "source": {
+            "git": "https://code.example.com/team/harness",
+            "ref": "v2.4.0",
+            "module": "budgets"
+          }
+        }
+      ]
+    }
+  },
+  "inputs": {
+    "version": 1,
+    "environment_ref": "env-3f2a91c4"
+  }
+}

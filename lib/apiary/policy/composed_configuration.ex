@@ -82,10 +82,31 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # Under observe, a run reaches every path of the instance's host; the gateway sends
   # the registry credential only with requests to `/registry/token`.
   #
+  # For a run whose claim recorded a work credential entry (`Apiary.Runs.RunCredentials`,
+  # `work/1`): the entry `work-1`, after the registry credential in `credentials`, with
+  # `purpose` `work` and the apply items filled at the claim; and, where the document has
+  # a `security_policy`, the hosts of its items, all exact, in `egress.allow_first`, as the
+  # provider's exact hosts are, and in `egress.allow` only when `egress.mode` is
+  # `enforce`. More than 8 entries in `credentials`, the most the contract takes, compose
+  # no document, as more than 64 in `allow_first` do.
+  #
+  # For a run of a workspace's queue whose harness walk pinned a source with a network
+  # host (`Apiary.Harnesses.RunHarness`, `pins`): `stack_hosts`, the hosts the run's stack
+  # proxy allows for qory's fetch of the harness sources before the first session joins
+  # (`stack_hosts/1`). The hosts come from every source in `pins`, not from the walk's
+  # `harness_links`, and go in no `egress` list. More than 32 hosts, the most the
+  # contract takes, compose no document, as more than 64 entries in `allow_first` do. A
+  # run with no walk, or whose walk pinned no such source, gains no such member.
+  #
+  # For a run of a workspace's queue whose harness walk hid its harness
+  # (`Apiary.Harnesses.RunHarness`, `harness_hidden`): `harness_hidden`, `true`. A run with
+  # no walk, or whose walk did not hide its harness, gains no such member.
+  #
   # The members come after the document's last member, in the schema's order:
-  # `variables`, `credentials`, `model_credential`. A document composed with them is
-  # composed for the run and kept as any other (`serve/7`), so its digest is the SHA-256
-  # of the bytes the run is sent, and a document composed from no policy gains them too.
+  # `variables`, `credentials`, `model_credential`, `stack_hosts`, `harness_hidden`. A
+  # document composed with them is composed for the run and kept as any other
+  # (`serve/7`), so its digest is the SHA-256 of the bytes the run is sent, and a
+  # document composed from no policy gains them too.
   use Ecto.Schema
 
   import Ecto.Query, only: [from: 2]
@@ -93,12 +114,19 @@ defmodule Apiary.Policy.ComposedConfiguration do
   require Logger
 
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
   alias Apiary.Repo
   alias Apiary.Registry.RunAccess
-  alias Apiary.Runs.{ProviderCredential, Run, RunVariables}
+  alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, RunVariables}
 
   @type t :: %__MODULE__{}
+
+  @typedoc "Why `shape/5` composes no document: more entries than the contract takes."
+  @type compose_error ::
+          {:allow_first_too_long, pos_integer}
+          | {:credentials_too_many, pos_integer}
+          | {:stack_hosts_too_many, pos_integer}
 
   @typedoc "The image a run is given, or, once fixed, what it started in (`started/1`)."
   @type image :: String.t() | {:policy, String.t()} | :none | nil
@@ -111,8 +139,11 @@ defmodule Apiary.Policy.ComposedConfiguration do
   @image "image"
   @security_policy "security_policy"
 
-  # The most entries the contract's `egress.allow_first` takes.
+  # The most entries the contract's `egress.allow_first` takes, its `credentials`, and its
+  # `stack_hosts`.
   @allow_first_max 64
+  @credentials_max 8
+  @stack_hosts_max 32
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -138,12 +169,14 @@ defmodule Apiary.Policy.ComposedConfiguration do
   none. See the moduledoc. `members`, nil unless given, is what else the run's document
   is composed with: its run variables, nil for none.
   `{:error, {:allow_first_too_long, count}}` when the members would give
-  `egress.allow_first` more than 64 entries.
+  `egress.allow_first` more than 64 entries, `{:error, {:credentials_too_many, count}}`
+  when they would give `credentials` more than 8, and `{:error, {:stack_hosts_too_many,
+  count}}` when they would give `stack_hosts` more than 32.
   """
   @spec shape(binary | nil, image, prebuild, boolean, map | nil) ::
           :as_is
           | {:composed, binary, String.t() | nil}
-          | {:error, {:allow_first_too_long, pos_integer}}
+          | {:error, compose_error}
         when image: image | (-> image),
              prebuild: boolean | (-> boolean)
   def shape(document, image, prebuild?, fixed? \\ false, members \\ nil) do
@@ -209,7 +242,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   its error where it composes none: a read, nothing stored.
   """
   @spec digest(binary | nil, image, boolean | (-> boolean), boolean, map | nil) ::
-          String.t() | nil | {:error, {:allow_first_too_long, pos_integer}}
+          String.t() | nil | {:error, compose_error}
   def digest(document, image, prebuild?, fixed? \\ false, members \\ nil) do
     case shape(document, image, prebuild?, fixed?, members) do
       {:composed, bytes, _image} -> Render.digest(bytes)
@@ -331,7 +364,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   workspace (`configuration`, nil where it serves none): `:as_is`, or `{:ok, row}`, the
   composed document kept, made now or read when it was made before. Inside or outside a
   transaction: a second writer of the same document reads the first's row.
-  `{:error, {:allow_first_too_long, count}}`, with a line in the log, where `shape/5`
+  `{:error, reason}`, as `shape/5` returns it, with a line in the log, where `shape/5`
   composes none.
   """
   @spec serve(
@@ -342,7 +375,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
           boolean | (-> boolean),
           boolean,
           map | nil
-        ) :: :as_is | {:ok, t} | {:error, {:allow_first_too_long, pos_integer}}
+        ) :: :as_is | {:ok, t} | {:error, compose_error}
   def serve(
         organisation_id,
         workspace_id,
@@ -365,6 +398,24 @@ defmodule Apiary.Policy.ComposedConfiguration do
         Logger.error(
           "a run's run configuration was not composed: its allow_first would have " <>
             "#{count} hosts, more than the 64 the contract takes: the run is given no " <>
+            "run configuration"
+        )
+
+        error
+
+      {:error, {:credentials_too_many, count}} = error ->
+        Logger.error(
+          "a run's run configuration was not composed: it would have #{count} " <>
+            "credentials, more than the 8 the contract takes: the run is given no " <>
+            "run configuration"
+        )
+
+        error
+
+      {:error, {:stack_hosts_too_many, count}} = error ->
+        Logger.error(
+          "a run's run configuration was not composed: its stack_hosts would have " <>
+            "#{count} hosts, more than the 32 the contract takes: the run is given no " <>
             "run configuration"
         )
 
@@ -454,10 +505,15 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   def members(run) do
     with {:ok, credential} <- ProviderCredential.for_run(run) do
+      {hidden?, pins} = walk(run)
+
       members = %{
         variables: Map.get(run, :registration_variables),
         credential: credential,
-        registry: RunAccess.member(run)
+        registry: RunAccess.member(run),
+        work: RunCredentials.work(run),
+        stack_hosts: stack_hosts(pins),
+        harness_hidden: hidden?
       }
 
       {:ok, if(members?(members), do: members)}
@@ -467,22 +523,72 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp members?(%{variables: variables, credential: credential} = members),
     do:
       (is_map(variables) and map_size(variables) > 0) or not is_nil(credential) or
-        not is_nil(Map.get(members, :registry))
+        not is_nil(Map.get(members, :registry)) or not is_nil(Map.get(members, :work)) or
+        Map.get(members, :stack_hosts, []) != [] or Map.get(members, :harness_hidden) == true
 
   defp members?(nil), do: false
 
+  # The harness walk of `run`'s run of the queue: whether it hid its harness, and the
+  # sources it pinned, in its order; `{false, []}` for a run of no queue, and for one with
+  # no walk.
+  defp walk(run) do
+    case Map.get(run, :dispatch_run_id) do
+      id when is_binary(id) ->
+        Repo.one(
+          from h in RunHarness,
+            where: h.dispatch_run_id == ^id,
+            select: {h.harness_hidden, h.pins}
+        ) || {false, []}
+
+      _none ->
+        {false, []}
+    end
+  end
+
+  # stack_hosts/1 is the hosts of the harness sources `pins` (`%{"git" => url, …}` each,
+  # as a harness walk pins them), for a run configuration's `stack_hosts`: each URL's
+  # host, lower-case, with no scheme, user information, port or path, each once, in the
+  # order of `pins`. A source with no network host, such as a `file://` URL or a local
+  # path, adds none, nor does a host that is no exact entry of the contract's host
+  # grammar (`Apiary.Policy.Grammar.exact_host?/1`), such as an IPv6 address.
+  @doc false
+  @spec stack_hosts([map] | nil) :: [String.t()]
+  def stack_hosts(pins) when is_list(pins) do
+    pins
+    |> Enum.flat_map(fn
+      %{"git" => git} when is_binary(git) -> [source_host(git)]
+      _other -> []
+    end)
+    |> Enum.filter(&Grammar.exact_host?/1)
+    |> Enum.uniq()
+  end
+
+  def stack_hosts(nil), do: []
+
+  defp source_host(git) do
+    case URI.parse(git) do
+      %URI{host: host} when is_binary(host) -> String.downcase(host)
+      _none -> nil
+    end
+  end
+
   # `document`, or the document of no policy for nil, with the run's members after its
   # last member and the provider's hosts in its `egress`: `{:ok, bytes}`, canonical, or
-  # `{:error, {:allow_first_too_long, count}}`.
+  # `{:error, {:allow_first_too_long, count}}`, or `{:error, {:credentials_too_many,
+  # count}}` for more than the 8 entries `credentials` takes, or `{:error,
+  # {:stack_hosts_too_many, count}}` for more than the 32 hosts `stack_hosts` takes.
   defp with_members(document, %{variables: variables, credential: credential} = run_members) do
     registry = Map.get(run_members, :registry)
+    work = Map.get(run_members, :work)
+    stack_hosts = Map.get(run_members, :stack_hosts) || []
 
     hosts =
       if(credential, do: credential.hosts, else: []) ++ if(registry, do: registry.hosts, else: [])
 
     entries =
       if(credential, do: [credential.entry], else: []) ++
-        if registry, do: [registry.entry], else: []
+        if(registry, do: [registry.entry], else: []) ++
+        if work, do: [work.entry], else: []
 
     added =
       if(is_map(variables) and map_size(variables) > 0,
@@ -490,7 +596,11 @@ defmodule Apiary.Policy.ComposedConfiguration do
         else: []
       ) ++
         if(entries != [], do: [{"credentials", entries}], else: []) ++
-        if credential, do: [{"model_credential", credential.name}], else: []
+        if(credential, do: [{"model_credential", credential.name}], else: []) ++
+        if(stack_hosts != [], do: [{"stack_hosts", stack_hosts}], else: []) ++
+        if Map.get(run_members, :harness_hidden) == true,
+          do: [{"harness_hidden", true}],
+          else: []
 
     names = Enum.map(added, &elem(&1, 0))
 
@@ -501,9 +611,21 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
     open? = is_map(registry) and host_open?(members, registry.instance_host)
 
-    with {:ok, members} <- policy_with_hosts(members, hosts),
+    with :ok <- credentials_fit(entries),
+         :ok <- stack_hosts_fit(stack_hosts),
+         {:ok, members} <- policy_with_hosts(members, hosts, if(work, do: work.hosts, else: [])),
          do: {:ok, encode(policy_with_paths(members, registry, open?) ++ added)}
   end
+
+  defp credentials_fit(entries) when length(entries) > @credentials_max,
+    do: {:error, {:credentials_too_many, length(entries)}}
+
+  defp credentials_fit(_entries), do: :ok
+
+  defp stack_hosts_fit(hosts) when length(hosts) > @stack_hosts_max,
+    do: {:error, {:stack_hosts_too_many, length(hosts)}}
+
+  defp stack_hosts_fit(_hosts), do: :ok
 
   # Whether the document's `egress` allows `host` before any host is added: in
   # `allow_first`, or in `allow` and not in `deny`.
@@ -588,14 +710,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   # The members with the provider's `hosts` in the `security_policy`'s `egress`, where
   # there is one: added to `egress.allow` after its entries, each once, and each exact one
-  # to `egress.allow_first`, with the entries there, sorted, each once.
-  defp policy_with_hosts(members, []), do: {:ok, members}
+  # to `egress.allow_first`, with the entries there, sorted, each once. The work entry's
+  # `work_hosts`, all exact, go to `egress.allow_first` as well, and to `egress.allow`
+  # only when the mode is `enforce`.
+  defp policy_with_hosts(members, [], []), do: {:ok, members}
 
-  defp policy_with_hosts(members, hosts) do
+  defp policy_with_hosts(members, hosts, work_hosts) do
     with {@security_policy, %Jason.OrderedObject{values: policy}} <-
            List.keyfind(members, @security_policy, 0),
          {"egress", %Jason.OrderedObject{values: egress}} <- List.keyfind(policy, "egress", 0),
-         {:ok, egress} <- egress_with(egress, hosts) do
+         {:ok, egress} <- egress_with(egress, hosts, work_hosts) do
       policy = List.keyreplace(policy, "egress", 0, {"egress", Jason.OrderedObject.new(egress)})
 
       {:ok,
@@ -611,14 +735,19 @@ defmodule Apiary.Policy.ComposedConfiguration do
     end
   end
 
-  defp egress_with(egress, hosts) do
+  defp egress_with(egress, hosts, work_hosts) do
     allow =
       case List.keyfind(egress, "allow", 0) do
         {"allow", allow} when is_list(allow) -> allow
         _none -> []
       end
 
-    allow = allow ++ Enum.reject(Enum.uniq(hosts), &(&1 in allow))
+    allowed =
+      if List.keyfind(egress, "mode", 0) == {"mode", "enforce"},
+        do: hosts ++ work_hosts,
+        else: hosts
+
+    allow = allow ++ Enum.reject(Enum.uniq(allowed), &(&1 in allow))
 
     egress =
       if List.keymember?(egress, "allow", 0),
@@ -631,7 +760,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         _none -> []
       end
 
-    case Enum.sort(Enum.uniq(first ++ Enum.filter(hosts, &Grammar.exact_host?/1))) do
+    case Enum.sort(Enum.uniq(first ++ Enum.filter(hosts ++ work_hosts, &Grammar.exact_host?/1))) do
       [] ->
         {:ok, egress}
 

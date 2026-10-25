@@ -24,7 +24,8 @@ defmodule Apiary.Accounts.Scope do
   membership reaches, which `Apiary.Access` asks it about. What each allows is
   `Apiary.Access`'s answer.
   At the server contract the scope is an access key's instead (`for_access_key/1`): no
-  user, the key's workspace. A job that no person enqueued acts as the instance
+  user, the key's workspace; `key_organisation`, set by `key_in_organisation/2`, is the
+  organisation whose audit trail records the key's act, nil for the key's. A job that no person enqueued acts as the instance
   (`for_instance/2`): no user, and `instance: true`, the one mark `Apiary.Access` gives
   the instance's role by; a scope without a person that does not carry it may nothing.
   What a scope may do is `Apiary.Access`'s answer.
@@ -72,7 +73,8 @@ defmodule Apiary.Accounts.Scope do
             instance: false,
             origin: nil,
             hidden: nil,
-            edition: %{}
+            edition: %{},
+            key_organisation: nil
 
   @doc """
   Creates a scope for the given user.
@@ -105,6 +107,19 @@ defmodule Apiary.Accounts.Scope do
   # An adapter's key is the instance's, as its adapter is: no organisation and no
   # workspace, so nothing an edition asks of an organisation is asked of one for it.
   defp of_key(%AccessKey{node: %Node{kind: :adapter}, workspace_id: nil} = access_key) do
+    %__MODULE__{access_key: access_key, organisation: nil, workspace: nil}
+  end
+
+  # The key of the instance's pool or gateway is the instance's too: no organisation and no
+  # workspace. What it may reach is `Apiary.Access`'s answer.
+  defp of_key(
+         %AccessKey{
+           organisation_id: nil,
+           workspace_id: nil,
+           node: %Node{kind: kind, organisation_id: nil, workspace_id: nil}
+         } = access_key
+       )
+       when kind in [:pool, :gateway] do
     %__MODULE__{access_key: access_key, organisation: nil, workspace: nil}
   end
 
@@ -152,10 +167,21 @@ defmodule Apiary.Accounts.Scope do
   key_place/1 is what the place of an access key's scope is asked as, a subject of
   `Apiary.Access`: the key's workspace, or, for a key with none, its organisation, which
   the key carries loaded (`Apiary.AccessKeys.fetch_for_verification/1`), or a struct with
-  its id alone; nil for a key with neither, which is at no place of an organisation.
+  its id alone; the node of the instance's pool or gateway for its key, which is at the
+  instance; nil for any other key with neither, which is at no place of an organisation.
   """
-  @spec key_place(t) :: %Workspace{} | %Organisation{} | nil
+  @spec key_place(t) :: %Workspace{} | %Organisation{} | Node.t() | nil
   def key_place(%__MODULE__{workspace: %Workspace{} = workspace}), do: workspace
+
+  def key_place(%__MODULE__{
+        access_key: %AccessKey{
+          organisation_id: nil,
+          workspace_id: nil,
+          node: %Node{kind: kind, organisation_id: nil, workspace_id: nil} = node
+        }
+      })
+      when kind in [:pool, :gateway],
+      do: node
 
   def key_place(%__MODULE__{access_key: %AccessKey{organisation_id: nil}}), do: nil
 
@@ -196,6 +222,22 @@ defmodule Apiary.Accounts.Scope do
         hidden: nil
     }
   end
+
+  @doc false
+  # key_in_organisation/2 is an access key's scope acting in `organisation`, for the audit
+  # entry of an act whose trail is that organisation's rather than the key's: a seal for a
+  # run of another organisation (`Apiary.Runs.SecretsRequest`), or an act of the
+  # instance's pool on a dispatch of any organisation. The entry is in `organisation`'s
+  # trail, by the key; the key's node, when it has no organisation, may be its subject
+  # there (`Apiary.Audit`). Nothing else of the scope changes, and no answer of
+  # `Apiary.Access` reads it.
+  @spec key_in_organisation(t, %Organisation{}) :: t
+  def key_in_organisation(
+        %__MODULE__{access_key: %AccessKey{}} = scope,
+        %Organisation{id: id} = organisation
+      )
+      when is_binary(id),
+      do: %{scope | key_organisation: organisation}
 
   @doc """
   The scope with `origin`, from where its caller acts; nil stays nil.

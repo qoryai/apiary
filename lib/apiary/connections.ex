@@ -40,8 +40,12 @@ defmodule Apiary.Connections do
   `Apiary.Kinds.Endpoint.check/1` at every save, or the save is refused with that rule's
   sentence on `settings`. Providers are left out of the overlap check: a choice of model
   decides which provider a run uses, never the host. A provider with `chain` `operator`
-  belongs to an operator's chain, and the core refuses every change to it,
-  `{:error, :forbidden}`; an edition manages it.
+  belongs to an operator's chain, and every function refuses a change to it,
+  `{:error, :forbidden}`, unless the edition says that the scope writes the operator's
+  chain (`operator_chain_writer?/1`): then the scope's organisation is
+  the operator's, and it creates, reads and changes the providers of that chain as it does
+  those of the organisation's chain: `create_provider/2` with `chain` `operator`, and
+  `list_providers/2` and `get_provider/3` given the chain. The core answers false.
 
   A provider's keys are entered and changed only through the functions here
   (`add_provider_key/3` to `delete_provider_key/3`): `Apiary.Secrets` leaves them out of
@@ -104,6 +108,7 @@ defmodule Apiary.Connections do
   alias Apiary.{
     Access,
     Audit,
+    Edition,
     Features,
     Integrations,
     LogMetadata,
@@ -1109,15 +1114,21 @@ defmodule Apiary.Connections do
   values, never a value, and `intact` set: `{:ok, providers}` for a reader who may
   `connection.read`, where the features `factory` and `secrets` are shown to the scope;
   else `{:error, reason}`, `:not_found` with either off.
+
+  `chain` is the chain whose providers are listed, `"organisation"` by default. The
+  providers of the chain `"operator"` are listed only where the edition says that the scope
+  writes it (`operator_chain_writer?/1`); else `{:error, :not_found}`.
   """
-  @spec list_providers(Scope.t()) :: {:ok, [Connection.t()]} | {:error, Access.reason()}
-  def list_providers(%Scope{} = scope) do
+  @spec list_providers(Scope.t(), String.t()) ::
+          {:ok, [Connection.t()]} | {:error, Access.reason()}
+  def list_providers(%Scope{} = scope, chain \\ "organisation") do
     with :ok <- providers_shown(scope),
+         :ok <- chain_readable(scope, chain),
          {:ok, organisation} <- may_read(scope) do
       {:ok,
        Repo.all(
          from c in connections(organisation.id),
-           where: not is_nil(c.provider_kind),
+           where: not is_nil(c.provider_kind) and c.chain == ^chain,
            order_by: [asc: fragment("lower(?)", c.name), asc: c.id],
            preload: ^preloads(%Connection{provider_kind: ""})
        )
@@ -1128,17 +1139,22 @@ defmodule Apiary.Connections do
   @doc """
   get_provider/2 is the scope's organisation's model provider with the public id
   `public_id`, loaded as `list_providers/1` loads it: `{:ok, provider}`, or
-  `{:error, reason}`, `:not_found` for one the organisation does not have.
+  `{:error, reason}`, `:not_found` for one the organisation does not have in `chain`,
+  `"organisation"` by default, or for the chain `"operator"` where the scope does not write
+  it (`list_providers/2`).
   """
-  @spec get_provider(Scope.t(), term) :: {:ok, Connection.t()} | {:error, Access.reason()}
-  def get_provider(%Scope{} = scope, public_id) do
+  @spec get_provider(Scope.t(), term, String.t()) ::
+          {:ok, Connection.t()} | {:error, Access.reason()}
+  def get_provider(%Scope{} = scope, public_id, chain \\ "organisation") do
     with :ok <- providers_shown(scope),
+         :ok <- chain_readable(scope, chain),
          {:ok, organisation} <- may_read(scope),
          true <- PublicId.valid?("con", public_id),
          %Connection{} = provider <-
            Repo.one(
              from c in connections(organisation.id),
-               where: c.public_id == ^public_id and not is_nil(c.provider_kind)
+               where:
+                 c.public_id == ^public_id and not is_nil(c.provider_kind) and c.chain == ^chain
            ) do
       provider = Repo.preload(provider, preloads(provider))
       {:ok, %{provider | intact: intact?(provider)}}
@@ -1175,7 +1191,10 @@ defmodule Apiary.Connections do
       each address setting by `Apiary.Kinds.Endpoint.check/1`;
     * `keys`, its keys: a list of maps of `value_id` and `value`, or a map of them by
       index, as `Apiary.Secrets.create_provider_keys/2` takes them;
-    * `default_key`, the value id of its default key, the first key's by default.
+    * `default_key`, the value id of its default key, the first key's by default;
+    * `chain`, `"organisation"` by default, or `"operator"` for a provider of the operator's
+      chain, which is refused with `:forbidden` unless the edition says that the scope
+      writes that chain (`operator_chain_writer?/1`).
 
   The keys are stored as an organisation's secret that the provider links; the models
   are the description's, in its order, the first the default. `{:ok, provider}`, loaded as
@@ -1190,8 +1209,9 @@ defmodule Apiary.Connections do
     write(scope, fn scope, organisation ->
       with :ok <- providers_shown(scope),
            :ok <- Access.check(scope, :"provider.write", organisation),
+           {:ok, chain} <- new_chain(scope, attrs["chain"]),
            {:ok, provider} <- fetch_provider(attrs["provider"]),
-           new = new_provider(scope, organisation, provider),
+           new = new_provider(scope, organisation, provider, chain),
            changeset = new |> change() |> attrs_changeset(new, attrs),
            {:ok, changeset} <- provider_settings(changeset, provider, attrs),
            :ok <- valid(changeset),
@@ -1233,7 +1253,25 @@ defmodule Apiary.Connections do
     end
   end
 
-  defp new_provider(scope, organisation, %Provider{} = provider) do
+  # The chain of a provider being created: the organisation's by default, the operator's
+  # only for a scope that writes it.
+  defp new_chain(_scope, chain) when chain in [nil, "organisation"], do: {:ok, "organisation"}
+
+  defp new_chain(scope, "operator"),
+    do:
+      if(Edition.operator_chain_writer?(scope), do: {:ok, "operator"}, else: {:error, :forbidden})
+
+  defp new_chain(_scope, _other), do: {:error, :forbidden}
+
+  # The chain's providers are read only by a scope that may write them.
+  defp chain_readable(_scope, "organisation"), do: :ok
+
+  defp chain_readable(scope, "operator"),
+    do: if(Edition.operator_chain_writer?(scope), do: :ok, else: {:error, :not_found})
+
+  defp chain_readable(_scope, _other), do: {:error, :not_found}
+
+  defp new_provider(scope, organisation, %Provider{} = provider, chain) do
     %Connection{
       id: Ecto.UUID.generate(),
       public_id: PublicId.generate("con"),
@@ -1243,7 +1281,7 @@ defmodule Apiary.Connections do
       provider_kind: provider.name,
       description_ref: Providers.ref(),
       description_sha256: provider.sha256,
-      chain: "organisation",
+      chain: chain,
       created_by_id: scope.user && scope.user.id,
       updated_by_id: scope.user && scope.user.id
     }
@@ -1927,9 +1965,14 @@ defmodule Apiary.Connections do
 
   defp provider_shown(_scope, %Connection{}), do: :ok
 
-  # The core changes the organisation's chain only; an edition manages an operator's.
-  defp organisation_chain(%Connection{chain: "organisation"}), do: :ok
-  defp organisation_chain(%Connection{}), do: {:error, :forbidden}
+  # The organisation's chain is changed by anyone who may write it; the operator's only by a
+  # scope that the edition says writes it.
+  defp organisation_chain(_scope, %Connection{chain: "organisation"}), do: :ok
+
+  defp organisation_chain(scope, %Connection{chain: "operator"}),
+    do: if(Edition.operator_chain_writer?(scope), do: :ok, else: {:error, :forbidden})
+
+  defp organisation_chain(_scope, %Connection{}), do: {:error, :forbidden}
 
   ## Service definitions
 
@@ -2123,8 +2166,9 @@ defmodule Apiary.Connections do
 
   # A write to one connection: the row read again under `FOR UPDATE` in the scope's
   # organisation, with its workspaces, then asked of under the action for its kind
-  # (`write_action/1`). A provider needs its features first, and belongs to the
-  # organisation's chain.
+  # (`write_action/1`). A provider needs its features first, and is of the organisation's
+  # chain, or of the operator's chain for a scope that the edition lets write that chain
+  # (`c:Apiary.Edition.operator_chain_writer?/1`).
   defp write_connection(scope, %Connection{id: id}, fun) do
     write(scope, fn scope, organisation ->
       with %Connection{} = current <-
@@ -2133,7 +2177,7 @@ defmodule Apiary.Connections do
              ),
            :ok <- provider_shown(scope, current),
            :ok <- Access.check(scope, write_action(current), current),
-           :ok <- organisation_chain(current) do
+           :ok <- organisation_chain(scope, current) do
         current = Repo.preload(current, preloads(current))
         workspaces = lock_rendered(current, organisation.id)
 

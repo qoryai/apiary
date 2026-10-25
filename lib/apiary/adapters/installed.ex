@@ -181,7 +181,7 @@ defmodule Apiary.Adapters.Installed do
   def folder_line(name, reason),
     do:
       "could not make the folder of the installed adapter #{name}, #{CodeFile.folder(name)}: " <>
-        "#{:file.format_error(reason)}; trying again when its one-time code is written"
+        "#{CodeFile.format_error(reason)}; trying again when its one-time code is written"
 
   defp setting, do: Application.get_env(:apiary, :installed_adapters_setting)
 

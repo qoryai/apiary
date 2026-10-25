@@ -31,7 +31,9 @@ defmodule Apiary.AccessRows do
   an instance admin's too, as `Apiary.ProductName.rename/2` asks, nor for changing the
   instance's settings, an instance admin's after a recent sign-in, as
   `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
-  the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks.
+  the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks,
+  nor for creating and deleting an instance assignment of a harness source, an instance
+  admin's, as `Apiary.Harnesses` asks.
   Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
   let a signed-in person create one. Creating, deleting and restoring a workspace are
   asked of the organisation: an owner creates one, an owner or an admin deletes any
@@ -124,12 +126,14 @@ defmodule Apiary.AccessRows do
       {:"run.post_events", yes: [:access_key, :pool_key, :hidden]},
       {:"run_configuration.fetch", yes: [:access_key, :pool_key, :hidden]},
       {:"secret.seal", yes: [:access_key, :hidden]},
+      {:"run_credential.issue", yes: [:access_key, :hidden]},
       {:"adapter.read", yes: @owners ++ [:member, :admin]},
       {:"adapter.create", yes: []},
       {:"adapter.edit", yes: []},
       {:"adapter.set_interval", yes: []},
       {:"adapter.delete", yes: []},
       {:"adapter.install", yes: [:instance, :hidden]},
+      {:"node.install", yes: [:instance, :hidden]},
       {:"adapter.setup", yes: []},
       {:"adapter.connect", yes: @owners ++ [:admin]},
       {:"collection.assign", yes: @owners ++ [:admin]},
@@ -148,9 +152,17 @@ defmodule Apiary.AccessRows do
       # alone answers. A comment's author is asked of the comment (`test/apiary/access_test.exs`).
       {:"work_item.comment_delete", yes: @owners ++ [:admin]},
       {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.app_values_set", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.app_values_seal", yes: [:adapter_key, :hidden], on: :adapter},
       {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.report_grant", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.end_grant", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.read_grants", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"harness.save", yes: @owners ++ [:admin]},
+      {:"harness.assigned", yes: []},
+      {:"harness.unassigned", yes: []},
       {:"dispatch.claim", yes: [:pool_key, :hidden]},
       {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
       {:"dispatch.release", yes: [:pool_key, :hidden]},

@@ -583,6 +583,7 @@ defmodule Apiary.Nodes do
 
   defp level_workspace({:workspace, id}), do: Repo.get(Workspace, id)
   defp level_workspace({:organisation, _id}), do: nil
+  defp level_workspace(:instance), do: nil
 
   # `mutate/4` under the gateways' locks of the node's place, taken first, before the
   # node's row (`Apiary.Gateways.lock_for/2`).
@@ -754,8 +755,9 @@ defmodule Apiary.Nodes do
   def subscribe(%Scope{organisation: %Organisation{id: organisation_id}}, :organisation),
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(organisation_id))
 
-  # Where a node's instances are announced: its workspace, or an organisation-level
-  # gateway's organisation.
+  # Where a node's instances are announced: its workspace, an organisation-level
+  # gateway's organisation, or `instance` for the instance's pool and gateway.
+  defp place_id(%Node{workspace_id: nil, organisation_id: nil}), do: "instance"
   defp place_id(%Node{workspace_id: nil, organisation_id: organisation_id}), do: organisation_id
   defp place_id(%Node{workspace_id: workspace_id}), do: workspace_id
 
@@ -950,11 +952,13 @@ defmodule Apiary.Nodes do
 
   # The distinct instance ids of the node's runs alive at `now` that were not dispatched,
   # read from the partial index on the runs alive by node and instance. A dispatched run
-  # counts by the slot its dispatch holds, not here.
-  defp running_instance_ids(%Node{id: id, workspace_id: workspace_id}, now) do
+  # counts by the slot its dispatch holds, not here. The instance's pool runs in every
+  # workspace it serves, so its runs are counted in all of them.
+  defp running_instance_ids(%Node{id: id} = node, now) do
     from(r in Run,
       as: :run,
-      where: r.node_id == ^id and r.workspace_id == ^workspace_id,
+      where: r.node_id == ^id,
+      where: ^in_node_workspace(node),
       where: not is_nil(r.node_instance_id) and is_nil(r.dispatch_run_id),
       distinct: true,
       select: r.node_instance_id
@@ -1057,11 +1061,20 @@ defmodule Apiary.Nodes do
     result
   end
 
-  defp open_runs(%Node{id: id, workspace_id: workspace_id}, instance_id) do
+  defp open_runs(%Node{id: id} = node, instance_id) do
     from r in Run,
-      where: r.node_id == ^id and r.workspace_id == ^workspace_id,
+      as: :run,
+      where: r.node_id == ^id,
+      where: ^in_node_workspace(node),
       where: r.node_instance_id == ^instance_id and r.state in ["pending", "running"]
   end
+
+  # The runs, bound `:run`, of the node's workspace; of any workspace for a node with none,
+  # the instance's pool.
+  defp in_node_workspace(%Node{workspace_id: nil}), do: dynamic(true)
+
+  defp in_node_workspace(%Node{workspace_id: workspace_id}),
+    do: dynamic([run: r], r.workspace_id == ^workspace_id)
 
   ## Reading instances
 
@@ -1164,12 +1177,19 @@ defmodule Apiary.Nodes do
   once `prune_instances/1` has taken a pool's last instance. Four reads, whatever the
   number of nodes.
   """
-  @spec activity(Scope.t(), [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => activity}
+  #
+  # `:instance` in place of a scope reads the instance's pool and gateway, which have no
+  # organisation: their instances, their keys, and the runs of the pool in every workspace
+  # it served. Only a caller that checked the person is an instance admin shows all of it
+  # (`Apiary.Nodes.Installed.activity/3`); a workspace's Nodes page takes from it only
+  # when the nodes' keys were last used.
+  @spec activity(Scope.t() | :instance, [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => activity}
   def activity(scope, nodes, now \\ DateTime.utc_now())
 
-  def activity(%Scope{}, [], _now), do: %{}
+  def activity(_scope, [], _now), do: %{}
 
-  def activity(%Scope{} = scope, nodes, %DateTime{} = now) do
+  def activity(scope, nodes, %DateTime{} = now)
+      when is_struct(scope, Scope) or scope == :instance do
     ids = Enum.map(nodes, & &1.id)
     runs = alive_runs(scope, ids, now)
 
@@ -1227,7 +1247,10 @@ defmodule Apiary.Nodes do
   end
 
   # The rows of nodes the scope reads: of its workspace, of its organisation's own
-  # gateways, and of the gateways of the organisations that serve it.
+  # gateways, and of the gateways of the organisations that serve it; for `:instance`,
+  # those of no organisation.
+  defp of_scope(:instance), do: dynamic([r], is_nil(r.organisation_id) and is_nil(r.workspace_id))
+
   defp of_scope(%Scope{organisation: %Organisation{id: organisation_id}, workspace: workspace}) do
     serving = Gateways.serving_organisations(organisation_id)
 
@@ -1261,6 +1284,22 @@ defmodule Apiary.Nodes do
   end
 
   defp alive_runs(%Scope{workspace: nil}, _ids, _now), do: []
+
+  defp alive_runs(:instance, ids, now) do
+    from(r in Run,
+      as: :run,
+      where: r.node_id in ^ids and not is_nil(r.node_instance_id),
+      select: %{
+        node_id: r.node_id,
+        instance_id: r.node_instance_id,
+        public_id: r.public_id,
+        since: coalesce(r.started_at, r.inserted_at),
+        forager_version: r.forager_version
+      }
+    )
+    |> Liveness.alive(now)
+    |> Repo.all()
+  end
 
   defp alive_runs(%Scope{organisation: organisation, workspace: workspace}, ids, now) do
     from(r in Run,

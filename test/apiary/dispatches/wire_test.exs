@@ -105,10 +105,10 @@ defmodule Apiary.Dispatches.WireTest do
   }
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "f5bc79a410348ce50d42979166f456adcf93b798"},
-          {"run/v1", "f5bc79a410348ce50d42979166f456adcf93b798"},
-          {"integration/v1", "f5bc79a410348ce50d42979166f456adcf93b798"},
-          {"explore/v1", "f5bc79a410348ce50d42979166f456adcf93b798"}
+          {"provisioner/v1", "1774020bb474b73913e8a9f0245bd466709e3d35"},
+          {"run/v1", "e8272d526cbbcfcf416dc78c0a25c7079cb0f9f0"},
+          {"integration/v1", "e8272d526cbbcfcf416dc78c0a25c7079cb0f9f0"},
+          {"explore/v1", "1774020bb474b73913e8a9f0245bd466709e3d35"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end

@@ -6,7 +6,8 @@
     {
       "ref": "OPS",
       "url": "https://tracker.acme.example/OPS",
-      "title": "Operations"
+      "title": "Operations",
+      "grant_ref": "G_1"
     }
   ],
   "listing": {

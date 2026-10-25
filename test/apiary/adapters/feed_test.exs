@@ -15,6 +15,7 @@ defmodule Apiary.Adapters.FeedTest do
 
   @fixtures Path.expand("../../fixtures/integration-contract/adapter", __DIR__)
   @url "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
+  @connection "ac_f1xt0re000000000"
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
@@ -43,7 +44,8 @@ defmodule Apiary.Adapters.FeedTest do
     test "every change of changes/ is appended and read back as written, in order", %{
       adapter: adapter
     } do
-      for path <- ~w(changes/feed.json changes/feed-loopback.json changes/empty.json) do
+      for path <- ~w(changes/feed.json changes/feed-loopback.json changes/grants.json
+                     changes/empty.json) do
         adapter = if path == "changes/feed.json", do: adapter, else: adapter_fixture()
         %{"changes" => changes} = fixture(path)
 
@@ -61,7 +63,9 @@ defmodule Apiary.Adapters.FeedTest do
     } do
       for path <- ~w(invalid/changes-sync-interval-30.json invalid/changes-unknown-kind.json
                      invalid/changes-work-item-status-linked.json
-                     invalid/changes-work-item-url-http.json) do
+                     invalid/changes-work-item-url-http.json
+                     invalid/changes-grant-status-taken-in.json
+                     invalid/changes-grant-without-connection-id.json) do
         for change <- fixture(path)["changes"] do
           entry = Map.new(change, fn {k, v} -> {String.to_atom(k), v} end)
           raises(adapter, entry)
@@ -102,12 +106,14 @@ defmodule Apiary.Adapters.FeedTest do
             %{kind: "collection", collection_ref: "TRK", status: "unlinked"},
             %{kind: "sync", interval: nil},
             %{kind: "sync", interval: 60},
-            %{kind: "sync", interval: 86_400}
+            %{kind: "sync", interval: 86_400},
+            %{kind: "grant", connection_id: @connection, grant_ref: ref, status: "linked"},
+            %{kind: "grant", connection_id: @connection, grant_ref: "G_1", status: "unlinked"}
           ] do
         assert is_integer(append!(adapter, entry))
       end
 
-      assert length(Feed.entries(adapter)) == 8
+      assert length(Feed.entries(adapter)) == 10
     end
 
     test "refuses a member missing, extra or out of range", %{adapter: adapter} do
@@ -150,6 +156,22 @@ defmodule Apiary.Adapters.FeedTest do
             %{kind: "sync", interval: 600.0},
             %{kind: "sync"},
             %{kind: "settings", interval: 600},
+            %{kind: "grant", connection_id: @connection, grant_ref: "G_1", status: "taken_in"},
+            %{
+              kind: "grant",
+              connection_id: "ag_f1xt0re000000000",
+              grant_ref: "G_1",
+              status: "linked"
+            },
+            %{kind: "grant", connection_id: @connection, grant_ref: "", status: "linked"},
+            %{kind: "grant", connection_id: @connection, grant_ref: "G_1"},
+            %{
+              kind: "grant",
+              connection_id: @connection,
+              grant_ref: "G_1",
+              status: "linked",
+              x: 1
+            },
             %{"kind" => "sync", "interval" => nil}
           ] do
         raises(adapter, bad)

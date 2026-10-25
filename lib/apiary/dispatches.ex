@@ -4,7 +4,9 @@ defmodule Apiary.Dispatches do
   # The runs a workspace's node pools claim and start, as the provisioner contract has
   # them (qoryai/integrations, `contracts/provisioner/v1`): one queue per workspace, which
   # any node pool of the workspace claims from with its pool's access key
-  # (`Apiary.Dispatches.DispatchRun`, `Apiary.Dispatches.Dispatch`).
+  # (`Apiary.Dispatches.DispatchRun`, `Apiary.Dispatches.Dispatch`). The instance's pool,
+  # with no organisation and no workspace, claims from the queue of every workspace with
+  # no pool in use.
   #
   # ## Queueing: `queue/2`, `queue_next/2`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
@@ -87,13 +89,14 @@ defmodule Apiary.Dispatches do
   #      (`Apiary.AccessKeys.fetch_for_verification/1`): revoked, of a pool deleted, or of a
   #      workspace or an organisation marked for deletion or out of use since, it is
   #      `{:error, :unauthorized}`;
-  #   2. `dispatch.claim` asked of the key's workspace (`Apiary.Access`): any refusal is
+  #   2. `dispatch.claim` asked of the key's workspace, or of the instance's pool for its
+  #      key (`Apiary.Access`): any refusal is
   #      `{:error, :forbidden}`, one answer whatever its reason;
   #   3. the connections and then the collections a build for the pool is due for, with
   #      the collections of the pool's prebuilds whose dispatch lapsed at `now`, held
   #      `FOR SHARE`, by id, in one statement (`Apiary.Environments.hold_builds/3`): a
   #      build is due for the collections of the targets of the runs held for the pool's
-  #      build (`Apiary.Environments.held/2`) with no prebuild of their `environment_ref`
+  #      build (`Apiary.Environments.held/1`) with no prebuild of their `environment_ref`
   #      for the pool waiting, claimed or handed over; then the pool's
   #      row locked `FOR NO KEY UPDATE`, so two claims of one pool, and a claim and a
   #      registration on the pool (`Apiary.Nodes.check_instance_limit/3`, which locks it
@@ -111,12 +114,15 @@ defmodule Apiary.Dispatches do
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
-  #      take, locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
+  #      take, or, for the instance's pool, of any workspace with no pool in use: no pool
+  #      that is not deleted, enrolled or not, in a workspace and an organisation in use
+  #      (`waiting_query/1`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
   #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by
   #      the pool it is held for. A run held for the pool's build of its target is not
-  #      taken (`Apiary.Environments.held/2`), nor one that a key change or a cleared
+  #      taken (`Apiary.Environments.held/1`), nor one that a key change or a cleared
   #      image held again after that read (`Apiary.Environments.claim_image/2`): it
-  #      waits. An explore run is given the image its target's build made for the pool,
+  #      waits, and so does a run whose harness walk is pending
+  #      (`Apiary.Harnesses.WalkJob`). An explore run is given the image its target's build made for the pool,
   #      nil for the pool's default. A run whose work item has no target is taken as any
   #      other. A run whose work item is no longer live (closed, declined, undone, its
   #      connection ended, or gone) or no longer in the run's workspace is not handed
@@ -127,7 +133,7 @@ defmodule Apiary.Dispatches do
   #      longer has: it ends, `superseded`. A stale dispatch of a run ended so ends with
   #      it (`run_ended`), and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
-  #      organisation and its workspace from the key alone, `claimed_at` `now` and
+  #      organisation and its workspace from the run, `claimed_at` `now` and
   #      `lease_until` `now` in whole seconds plus `lease_seconds/0`;
   #   8. the run registered through that gateway, with a run code bound to it
   #      (`Apiary.Dispatches.Handover.register/2`). A run the claim cannot form ends, with
@@ -164,9 +170,12 @@ defmodule Apiary.Dispatches do
   #
   # A claim held while its pool can claim nothing listens on its workspace's topic: a run
   # queued there, a run back in its queue, or a slot of its pools freed is told there as
-  # `{Apiary.Dispatches, :changed}`, and the holder tries again. A run queued inside a
-  # transaction is told before that transaction commits, so a holder may find nothing
-  # when told; it tries again at its next poll (`ApiaryWeb.Contract.PoolClaimController`).
+  # `{Apiary.Dispatches, :changed}`, and the holder tries again. The instance's pool has
+  # no workspace: its claim listens on the instance's topic, where every such change of
+  # any workspace is told too, and tries again, as its claim reads the queues of every
+  # workspace it serves. A run queued inside a transaction is told before that
+  # transaction commits, so a holder may find nothing when told; it tries again at its
+  # next poll (`ApiaryWeb.Contract.PoolClaimController`).
   #
   # ## The sweep: `sweep/1`
   #
@@ -206,7 +215,7 @@ defmodule Apiary.Dispatches do
   # slots freed, the sweep and the end of a run its projection ended all read it, never the
   # database's.
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query, only: [dynamic: 2, from: 2]
 
   require Logger
 
@@ -218,7 +227,9 @@ defmodule Apiary.Dispatches do
   alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
+  alias Apiary.Harnesses.{RunHarness, WalkJob}
   alias Apiary.Nodes.Node
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.WorkItems.WorkItem
 
   # The step every run of a take in is queued for: the contract's `explore`.
@@ -333,19 +344,25 @@ defmodule Apiary.Dispatches do
   end
 
   # The work item `id` locked `FOR UPDATE`, as the transaction reads it: its id, its
-  # organisation and the workspace it is in now.
+  # organisation, the workspace it is in now and its target.
   defp lock_work_item!(id) do
     Repo.one!(
       from w in WorkItem,
         where: w.id == ^id,
         lock: "FOR UPDATE",
-        select: %{id: w.id, organisation_id: w.organisation_id, workspace_id: w.workspace_id}
+        select: %{
+          id: w.id,
+          organisation_id: w.organisation_id,
+          workspace_id: w.workspace_id,
+          target_system: w.target_system,
+          target_path: w.target_path
+        }
     )
   end
 
   # A waiting run of take in `take_in` of the locked work item, `attempt` of `of`, for the
-  # step `step/0`, in the work item's organisation and workspace, with `image_requeue`;
-  # the workspace is told.
+  # step `step/0`, in the work item's organisation and workspace, with `image_requeue`,
+  # and its harness walk (`Apiary.Harnesses.WalkJob.queue/2`); the workspace is told.
   defp insert_run(work_item, take_in, attempt, of, image_requeue \\ false) do
     %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
@@ -365,24 +382,39 @@ defmodule Apiary.Dispatches do
       })
       |> Repo.insert()
 
-    with {:ok, _run} <- result, do: broadcast([workspace_id])
-    result
+    with {:ok, run} <- result,
+         {:ok, _walk} <- WalkJob.queue(run, target(work_item)) do
+      broadcast([workspace_id])
+      {:ok, run}
+    end
   end
 
+  defp target(%{target_system: system, target_path: path})
+       when is_binary(system) and is_binary(path),
+       do: %{system: system, path: path}
+
+  defp target(_work_item), do: nil
+
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
-  # node pool `pool` of the collection's workspace, for `environment_ref`, unless one
-  # waits for that ref already, which it answers, and the environment record of the
-  # collection and pool where there is none, inside the caller's transaction (the
-  # moduledoc).
+  # node pool `pool` of the collection's workspace, or the instance's pool, for
+  # `environment_ref`, unless one waits for that ref already, which it answers, and the
+  # environment record of the collection and pool where there is none, inside the
+  # caller's transaction (the moduledoc). The run and the record are in the collection's
+  # workspace.
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
   def queue_prebuild(
-        %Collection{
-          id: collection_id,
-          organisation_id: organisation_id,
-          workspace_id: workspace_id
-        },
+        %Collection{workspace_id: workspace_id} = collection,
+        %Node{kind: :pool, id: pool_id, organisation_id: nil, workspace_id: nil},
+        environment_ref
+      )
+      when is_binary(workspace_id) and is_binary(environment_ref),
+      do: insert_prebuild(collection, pool_id, environment_ref)
+
+  def queue_prebuild(
+        %Collection{organisation_id: organisation_id, workspace_id: workspace_id} =
+          collection,
         %Node{
           kind: :pool,
           id: pool_id,
@@ -391,7 +423,18 @@ defmodule Apiary.Dispatches do
         },
         environment_ref
       )
-      when is_binary(workspace_id) and is_binary(environment_ref) do
+      when is_binary(workspace_id) and is_binary(environment_ref),
+      do: insert_prebuild(collection, pool_id, environment_ref)
+
+  defp insert_prebuild(
+         %Collection{
+           id: collection_id,
+           organisation_id: organisation_id,
+           workspace_id: workspace_id
+         },
+         pool_id,
+         environment_ref
+       ) do
     in_transaction!("queue_prebuild/3")
     now = now()
 
@@ -513,6 +556,8 @@ defmodule Apiary.Dispatches do
             id: w.id,
             organisation_id: w.organisation_id,
             workspace_id: w.workspace_id,
+            target_system: w.target_system,
+            target_path: w.target_path,
             state: w.state,
             take_in: w.take_in
           }
@@ -728,7 +773,8 @@ defmodule Apiary.Dispatches do
 
   # current_key/1 is the key `key_id` as a request's verification reads it now: of the
   # same pool, workspace and organisation as when the request verified, or
-  # `{:error, :unauthorized}`.
+  # `{:error, :unauthorized}`. The key of the instance's pool has neither, as its pool has
+  # none.
   @doc false
   @spec current_key(String.t()) :: {:ok, AccessKey.t()} | {:error, :unauthorized}
   def current_key(key_id) do
@@ -743,32 +789,50 @@ defmodule Apiary.Dispatches do
       when is_binary(workspace_id) and is_binary(organisation_id) ->
         {:ok, key}
 
+      {:ok,
+       %AccessKey{
+         node: %Node{kind: :pool, id: pool_id, workspace_id: nil, organisation_id: nil},
+         node_id: pool_id,
+         workspace_id: nil,
+         organisation_id: nil
+       } = key} ->
+        {:ok, key}
+
       _other ->
         {:error, :unauthorized}
     end
   end
 
-  # Asked of the key's workspace, the queue, as the key's scope holds it.
+  # Asked of the key's place (`Apiary.Accounts.Scope.key_place/1`): the key's workspace,
+  # the queue, or the instance's pool, which claims in every workspace with no pool in use.
   defp may_claim(key) do
     scope = Scope.for_access_key(key)
 
-    case Access.authorize(scope, :"dispatch.claim", scope.workspace) do
+    case Access.authorize(scope, :"dispatch.claim", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :forbidden}
     end
   end
 
-  defp lock_pool(%AccessKey{node_id: pool_id, workspace_id: workspace_id}) do
+  defp lock_pool(%AccessKey{node_id: pool_id} = key) do
     pool =
       Repo.one(
         from n in Node,
-          where: n.id == ^pool_id and n.workspace_id == ^workspace_id and n.kind == :pool,
-          where: is_nil(n.deleted_at),
+          where: n.id == ^pool_id and n.kind == :pool and is_nil(n.deleted_at),
+          where: ^pool_place(key),
           lock: "FOR NO KEY UPDATE"
       )
 
     if pool, do: {:ok, pool}, else: {:error, :unauthorized}
   end
+
+  # The pool of the key's workspace, or the instance's pool, with no organisation and no
+  # workspace.
+  defp pool_place(%AccessKey{workspace_id: nil}),
+    do: dynamic([n], is_nil(n.organisation_id) and is_nil(n.workspace_id))
+
+  defp pool_place(%AccessKey{workspace_id: workspace_id}),
+    do: dynamic([n], n.workspace_id == ^workspace_id)
 
   # The oldest waiting run the pool may take, claimed and registered through the gateway
   # `through` has, with the workspaces whose queue it ended runs of; `:none` at the limit
@@ -787,7 +851,7 @@ defmodule Apiary.Dispatches do
   defp pick(_key, _pool, _through, _now, 0, ended), do: {:none, ended}
 
   defp pick(key, pool, through, now, max, ended) do
-    case oldest_waiting(key) do
+    case key |> waiting_query() |> Repo.one() do
       nil ->
         {:none, ended}
 
@@ -837,7 +901,7 @@ defmodule Apiary.Dispatches do
   end
 
   # What the run is for: its work item, with the image `pool` keeps for its target, or a
-  # prebuild's collection. A run whose image went since `oldest_waiting/2` read it is
+  # prebuild's collection. A run whose image went since `waiting_query/1` read it is
   # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits.
   defp for_run(%DispatchRun{step: @prebuild} = run, _pool) do
     with {:ok, collection} <- collection_of(run), do: {:ok, %{collection: collection}}
@@ -929,7 +993,7 @@ defmodule Apiary.Dispatches do
       )
 
     dispatch =
-      %Dispatch{organisation_id: key.organisation_id, workspace_id: key.workspace_id}
+      %Dispatch{organisation_id: run.organisation_id, workspace_id: run.workspace_id}
       |> Dispatch.claim_changeset(%{
         dispatch_run_id: run.id,
         pool_id: key.node_id,
@@ -953,32 +1017,107 @@ defmodule Apiary.Dispatches do
     if Nodes.instances_in_use(pool, now) < limit, do: :ok, else: :at_limit
   end
 
-  # A prebuild goes only to the pool it is held for; a run held for the pool's build of
-  # its target (`Apiary.Environments.held/2`) is left waiting.
-  defp oldest_waiting(%AccessKey{
-         organisation_id: organisation_id,
-         workspace_id: workspace_id,
-         node_id: pool_id
-       }) do
+  # waiting_query/1 is the query of the oldest waiting run the pool of `key` may take,
+  # locked `FOR UPDATE SKIP LOCKED`. A prebuild goes only to the pool it is held for; a
+  # run held for the pool's build of its target (`Apiary.Environments.held/1`) is left
+  # waiting.
+  @doc false
+  @spec waiting_query(AccessKey.t()) :: Ecto.Query.t()
+  def waiting_query(%AccessKey{
+        organisation_id: organisation_id,
+        workspace_id: workspace_id,
+        node_id: pool_id
+      })
+      when is_binary(workspace_id) do
     query =
       from r in DispatchRun,
         as: :run,
         where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
         where: fragment("? = 'waiting'", r.state),
         where: r.step != ^@prebuild or r.pool_id == ^pool_id,
+        where: not exists(walk_unresolved()),
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
         lock: "FOR UPDATE SKIP LOCKED"
 
-    query =
-      if Environments.holds?(workspace_id),
-        do:
-          from(r in query,
-            where: r.step == ^@prebuild or not exists(Environments.held(workspace_id, pool_id))
-          ),
-        else: query
+    if Environments.holds?(workspace_id),
+      do:
+        from(r in query,
+          where: r.step == ^@prebuild or not exists(Environments.held(pool_id))
+        ),
+      else: query
+  end
 
-    Repo.one(query)
+  # The instance's pool takes the oldest waiting run of any workspace with no pool in use,
+  # across organisations, and the prebuilds held for it, each in a place in use
+  # (`in_use_place/0`). A workspace whose pool never enrolled has a pool in use: its runs
+  # wait for that pool.
+  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}) do
+    takes =
+      dynamic(
+        [run: r],
+        (r.step == ^@prebuild and r.pool_id == ^pool_id) or
+          (r.step != ^@prebuild and ^no_pool_in_use() and
+             not exists(Environments.held(pool_id)))
+      )
+
+    from r in DispatchRun,
+      as: :run,
+      where: fragment("? = 'waiting'", r.state),
+      where: ^takes,
+      where: ^in_use_place(),
+      where: not exists(walk_unresolved()),
+      order_by: [asc: r.queued_at, asc: r.id],
+      limit: 1,
+      lock: "FOR UPDATE SKIP LOCKED"
+  end
+
+  # The harness walk of a run bound `:run` that has not resolved: pending, or failed, which
+  # ends the run in the transaction that writes it (`Apiary.Harnesses.WalkJob`). A run
+  # with no walk, a prebuild, has none.
+  defp walk_unresolved do
+    from h in RunHarness,
+      where: h.dispatch_run_id == parent_as(:run).id and h.state != :resolved,
+      select: 1
+  end
+
+  # no_pool_in_use/0 is the condition, on a row bound `:run` with a `workspace_id`, a run
+  # of the queue or a collection, that its workspace has no node pool in use: none that
+  # is not deleted, enrolled or not. The instance's pool serves such a workspace.
+  @doc false
+  @spec no_pool_in_use() :: Ecto.Query.dynamic_expr()
+  def no_pool_in_use do
+    pool_in_use =
+      from n in Node,
+        where: n.workspace_id == parent_as(:run).workspace_id,
+        where: n.kind == :pool and is_nil(n.deleted_at),
+        select: 1
+
+    dynamic([run: _r], not exists(pool_in_use))
+  end
+
+  # in_use_place/0 is the condition, on a row bound `:run` with a `workspace_id` and an
+  # `organisation_id`, a run of the queue or a collection, that its workspace and its
+  # organisation are in use: neither marked for deletion, nor the organisation out of use
+  # (`Apiary.AccessKeys.place_in_use?/2`). A workspace pool's key is held to its place
+  # when it is verified; the instance's pool's key has no place, so its claim holds each
+  # run to the run's.
+  @doc false
+  @spec in_use_place() :: Ecto.Query.dynamic_expr()
+  def in_use_place do
+    in_use =
+      from(w in Workspace,
+        join: o in Organisation,
+        as: :organisation,
+        on: o.id == w.organisation_id,
+        where: w.id == parent_as(:run).workspace_id,
+        where: o.id == parent_as(:run).organisation_id,
+        where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
+        select: 1
+      )
+      |> Apiary.Edition.active_organisations(:organisation)
+
+    dynamic([run: _r], exists(in_use))
   end
 
   ## The starter on a dispatch
@@ -1116,23 +1255,25 @@ defmodule Apiary.Dispatches do
 
   ## The wake
 
-  # subscribe/1 listens for the changes of the queue and the slots of `workspace_id`.
+  # subscribe/1 listens for the changes of the queue and the slots of `workspace_id`, or,
+  # with `:instance`, of every workspace.
   @doc false
-  @spec subscribe(Ecto.UUID.t()) :: :ok | {:error, term}
-  def subscribe(workspace_id) when is_binary(workspace_id),
+  @spec subscribe(Ecto.UUID.t() | :instance) :: :ok | {:error, term}
+  def subscribe(workspace_id) when is_binary(workspace_id) or workspace_id == :instance,
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id))
 
-  # unsubscribe/1 stops listening on `workspace_id`.
+  # unsubscribe/1 stops listening on `workspace_id`, or on `:instance`.
   @doc false
-  @spec unsubscribe(Ecto.UUID.t()) :: :ok
-  def unsubscribe(workspace_id) when is_binary(workspace_id),
+  @spec unsubscribe(Ecto.UUID.t() | :instance) :: :ok
+  def unsubscribe(workspace_id) when is_binary(workspace_id) or workspace_id == :instance,
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id))
 
   # broadcast/1 tells each workspace whose id `told` holds that its queue or its slots
-  # changed, and each work item `told` names as `{:work_item, workspace_id, public_id}`,
-  # whose run settled (`Apiary.Dispatches.Settle`), that it changed, on the topic of the
-  # work items of its workspace (`Apiary.WorkItems.topic/1`): `{:work_items_changed, ids}`,
-  # public ids only, one message per workspace.
+  # changed, and the instance's topic once when `told` has any workspace id, and each
+  # work item `told` names as `{:work_item, workspace_id, public_id}`, whose run settled
+  # (`Apiary.Dispatches.Settle`), that it changed, on the topic of the work items of its
+  # workspace (`Apiary.WorkItems.topic/1`): `{:work_items_changed, ids}`, public ids
+  # only, one message per workspace.
   @doc false
   @spec broadcast([Ecto.UUID.t() | Settle.told()]) :: :ok
   def broadcast(told) when is_list(told) do
@@ -1140,6 +1281,9 @@ defmodule Apiary.Dispatches do
 
     for workspace_id <- workspace_ids,
         do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(workspace_id), {__MODULE__, :changed})
+
+    if workspace_ids != [],
+      do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(:instance), {__MODULE__, :changed})
 
     for {workspace_id, ids} <-
           Enum.group_by(work_items, &elem(&1, 1), &elem(&1, 2)) do
@@ -1153,6 +1297,7 @@ defmodule Apiary.Dispatches do
     :ok
   end
 
+  defp topic(:instance), do: "dispatches:instance"
   defp topic(workspace_id), do: "dispatches:" <> workspace_id
 
   defp in_transaction!(what) do

@@ -13,6 +13,8 @@ defmodule ApiaryWeb.RegistryTokenTest do
   import Apiary.SealedRunsFixtures
 
   alias Apiary.{InstanceConfig, Policy, Registry, Repo, SealedOpen, SigningKey}
+  alias Apiary.Adapters.Collection
+  alias Apiary.Contract.Ed25519
   alias Apiary.Environments.Record
   alias Apiary.Registry.{Credential, Names, RunAccess}
   alias Apiary.Runs.{Attach, RateLimit, Run, Target}
@@ -60,6 +62,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
       run: Repo.get!(Run, registered.id),
       attached: attached,
       secrets_key: place.gateway_key,
+      collection: collection,
       target: target_name(scope, collection.target_system, collection.target_path)
     })
   end
@@ -187,10 +190,17 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
       assert registry == %{
                "name" => "registry",
-               "hosts" => [host],
-               "paths" => ["/registry/token"],
-               "auth" => %{"scheme" => "basic", "username" => ctx.run.public_id}
+               "apply" => [
+                 %{
+                   "hosts" => [host],
+                   "scheme" => "basic",
+                   "username" => ctx.run.public_id,
+                   "paths" => ["/registry/token"]
+                 }
+               ]
              }
+
+      refute Map.has_key?(document, "harness_hidden")
 
       egress = document["security_policy"]["egress"]
       assert host in egress["allow"] and @service in egress["allow"]
@@ -227,11 +237,44 @@ defmodule ApiaryWeb.RegistryTokenTest do
                error(token(ctx.run.public_id, first, scopes(["repository:#{ctx.target}:pull"])))
     end
 
-    test "is refused a secrets request that lists the model key alone", ctx do
+    test "is sealed the model key alone for a request that names it alone, its secret kept",
+         ctx do
       conn = seal(ctx, [ctx.provider.public_id])
+      assert conn.status == 200, conn.resp_body
+      plaintext = open(ctx, conn)
+      assert plaintext["credentials"] == [ctx.provider.public_id]
+      assert [%{"credential" => model}] = plaintext["values"]
+      assert model == ctx.provider.public_id
+      # The credential stored before stays the one that matches.
+      assert {:ok, _run} = Credential.verify(ctx.run.public_id, ctx.secret)
+    end
+
+    test "is sealed a new registry secret alone for a request that names it alone", ctx do
+      seals = fn ->
+        Repo.aggregate(
+          from(e in Apiary.Audit.Entry, where: e.action == "secret.seal"),
+          :count
+        )
+      end
+
+      before = seals.()
+      conn = seal(ctx, ["registry"])
+      assert conn.status == 200, conn.resp_body
+      plaintext = open(ctx, conn)
+      assert plaintext["credentials"] == ["registry"]
+      assert [%{"credential" => "registry"}] = plaintext["values"]
+      refute Jason.encode!(plaintext) =~ model_key()
+
+      assert {:ok, _run} = Credential.verify(ctx.run.public_id, registry_value(plaintext))
+      assert Credential.verify(ctx.run.public_id, ctx.secret) == :error
+      # No model key sealed, so no seal recorded.
+      assert seals.() == before
+    end
+
+    test "is refused a request out of the run configuration's order", ctx do
+      conn = seal(ctx, ["registry", ctx.provider.public_id])
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"] == "credentials_differ"
-      # The credential stored before stays the one that matches.
       assert {:ok, _run} = Credential.verify(ctx.run.public_id, ctx.secret)
     end
 
@@ -245,6 +288,36 @@ defmodule ApiaryWeb.RegistryTokenTest do
       conn = seal(%{ctx | secrets_key: {plain, seed}}, [ctx.provider.public_id, "registry"])
       assert {conn.status, Jason.decode!(conn.resp_body)["error"]} == {404, "not_found"}
       assert Credential.verify(ctx.run.public_id, ctx.secret) |> elem(0) == :ok
+    end
+
+    test "is sealed the registry credential alone for a listed key not allowed stored secrets",
+         ctx do
+      # The claim ends a run with a model key whose gateway has such a key, so the test
+      # writes the run's run key to list one.
+      %{access_key: plain, secret: seed} =
+        Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      refute plain.allow_secrets
+      payload = Jason.decode!(ctx.run.run_key_payload)
+      keys = [%{"alg" => "ed25519", "public_key" => Ed25519.encode(plain.public_key)}]
+      listed = Jason.encode!(%{payload | "gateway_public_key" => keys})
+
+      {1, _} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [run_key_payload: listed]
+        )
+
+      ctx = %{ctx | secrets_key: {plain, seed}}
+
+      conn = seal(ctx, [ctx.provider.public_id, "registry"])
+      assert {conn.status, Jason.decode!(conn.resp_body)["error"]} == {409, "secrets_not_allowed"}
+
+      conn = seal(ctx, ["registry"])
+      assert conn.status == 200, conn.resp_body
+      plaintext = open(ctx, conn)
+      assert [%{"credential" => "registry"}] = plaintext["values"]
+      refute Jason.encode!(plaintext) =~ model_key()
+      assert {:ok, _run} = Credential.verify(ctx.run.public_id, registry_value(plaintext))
     end
 
     test "has its target's image name, to pull, and a run without a gateway has nothing",
@@ -452,6 +525,92 @@ defmodule ApiaryWeb.RegistryTokenTest do
           do: assert("/v2/#{e}/#{rule}" in paths)
     end
 
+    test "pushes to its target and its environment image while its collection keeps the target",
+         ctx do
+      e = environment(ctx)
+      query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
+
+      assert RunAccess.rights(ctx.run) == %{
+               ctx.target => ["pull", "push"],
+               e => ["pull", "push"]
+             }
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull", "push"]},
+               %{"type" => "repository", "name" => e, "actions" => ["pull", "push"]}
+             ]
+    end
+
+    test "pushes nowhere once a listing changes its collection's target after the claim",
+         ctx do
+      e = environment(ctx)
+      :ok = target_row(ctx.scope, "code.example.com", "acme/other")
+      other = target_name(ctx.scope, "code.example.com", "acme/other")
+
+      {1, _rows} =
+        Repo.update_all(from(c in Collection, where: c.id == ^ctx.collection.id),
+          set: [target_system: "code.example.com", target_path: "acme/other"]
+        )
+
+      run = Repo.get!(Run, ctx.run.id)
+      assert RunAccess.rights(run) == %{ctx.target => ["pull"]}
+
+      query =
+        scopes([
+          "repository:#{ctx.target}:pull,push",
+          "repository:#{other}:pull,push",
+          "repository:#{e}:pull,push"
+        ])
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
+             ]
+
+      assert RunAccess.member(run).paths ==
+               @base ++
+                 [
+                   "/v2/#{ctx.target}/manifests/sha256:*",
+                   "/v2/#{ctx.target}/blobs/*",
+                   "/v2/#{ctx.target}/referrers/*"
+                 ]
+    end
+
+    test "pushes nowhere without a dispatched target, whatever its labels are", ctx do
+      e = environment(ctx)
+      query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
+
+      # The collection has no target any more; the labels are still those of its old target.
+      {1, _rows} =
+        Repo.update_all(from(c in Collection, where: c.id == ^ctx.collection.id),
+          set: [target_system: nil, target_path: nil]
+        )
+
+      run = Repo.get!(Run, ctx.run.id)
+      assert RunAccess.rights(run) == %{ctx.target => ["pull"]}
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
+             ]
+
+      assert RunAccess.member(run).paths ==
+               @base ++
+                 [
+                   "/v2/#{ctx.target}/manifests/sha256:*",
+                   "/v2/#{ctx.target}/blobs/*",
+                   "/v2/#{ctx.target}/referrers/*"
+                 ]
+
+      # A run of no queue with the target's labels, as a registration stores them.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [dispatch_run_id: nil])
+
+      assert RunAccess.rights(Repo.get!(Run, ctx.run.id)) == %{ctx.target => ["pull"]}
+
+      assert access(token_for(ctx, query)) == [
+               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
+             ]
+    end
+
     test "never pushes under shared/ or upstream/", ctx do
       assert access(
                token_for(
@@ -651,5 +810,42 @@ defmodule ApiaryWeb.RegistryTokenTest do
     assert InstanceConfig.record_registry_instance() == name
 
     assert Repo.one!(from s in "instance_settings", select: s.registry_instance) == name
+  end
+
+  describe "a run of the queue with a work entry" do
+    @apply [
+      %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/{target.path}/*"]}
+    ]
+    @entry_apply [
+      %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/acme/shop/*"]}
+    ]
+
+    setup %{scope: scope} do
+      :ok = target_row(scope, "forge.example.com", "acme/shop")
+      sealed_run_fixture(scope, work: @apply)
+    end
+
+    test "keeps its registry secret at a renewal of work-1 alone", ctx do
+      credential = &Apiary.WorkCredentialStub.credential(&1, @entry_apply)
+      Apiary.WorkCredentialStub.issue(ctx.adapter_seed, credential.("fixture-work-token-start"))
+      credentials = [ctx.provider.public_id, "registry", "work-1"]
+      conn = seal(ctx, credentials)
+      assert conn.status == 200, conn.resp_body
+      assert Enum.map(open(ctx, conn)["values"], & &1["credential"]) == Enum.sort(credentials)
+      hash = Repo.get!(Run, ctx.run.id).registry_credential_sha256
+      assert is_binary(hash)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "running"])
+
+      Apiary.WorkCredentialStub.issue(ctx.adapter_seed, credential.("fixture-work-token-renewed"))
+      conn = seal(ctx, ["work-1"])
+      assert conn.status == 200, conn.resp_body
+
+      assert [%{"credential" => "work-1", "value" => "fixture-work-token-renewed"}] =
+               open(ctx, conn)["values"]
+
+      assert Repo.get!(Run, ctx.run.id).registry_credential_sha256 == hash
+    end
   end
 end

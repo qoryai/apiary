@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/changes.schema.json",
   "title": "Changes",
-  "description": "The body of the signed 200 answer to the signed GET /v1/work-items/changes?after=<cursor>, application/json: the entries of the adapter's change feed after the cursor. The adapter sends the answer's cursor as after on its next request; after absent means from the start. The control plane holds the request up to 25 seconds while the feed has no entry after the cursor. The feed is one append-only log per adapter. Reading from the start replays every entry in order, so the last entry per collection_ref is the current link state of the live collection with that ref, or unlinked when no collection with that ref is live, the last per work_item_id that work item's current status, and the last sync entry the current interval. Whenever a linked collection ends, by any path (sources/disconnect, a complete listing that leaves it out, the race rule or a connection's end), the control plane writes an unlinked entry for it. When a live collection stops being linked, the control plane writes an unlinked entry for it, and a linked entry whenever it becomes linked; a move from one workspace to another while it stays linked writes no entry. When the control plane no longer holds a connection, as after its organisation is removed, the feed carries an unlinked entry for each of that connection's collections that was linked, so the adapter stops mirroring them. An adapter that lost its store reads from the start. Entries apply in cursor order. The entries are bounded by the request's X-Qory-Contract-Version: the feed holds only the entry kinds that revision defines, and an entry of a newer kind is skipped, not sent, while the cursor still moves past it, as definitions.schema.json describes. The answer names that revision in revision, inside the signed body: the adapter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, and does not advance its cursor from a refused answer. The feed holds only the work items taken in from the adapter's items, the adapter's collections and the adapter's interval. The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. The adapter refuses a member this schema does not define.",
+  "description": "The body of the signed 200 answer to the signed GET /v1/work-items/changes?after=<cursor>, application/json: the entries of the adapter's change feed after the cursor. The adapter sends the answer's cursor as after on its next request; after absent means from the start. The control plane holds the request up to 25 seconds while the feed has no entry after the cursor. The feed is one append-only log per adapter. Reading from the start replays every entry in order, so the last entry per collection_ref is the current link state of the live collection with that ref, or unlinked when no collection with that ref is live, the last per work_item_id that work item's current status, the last grant entry per connection_id and grant_ref whether the control plane holds that grant, and the last sync entry the current interval. Whenever a linked collection ends, by any path (sources/disconnect, a complete listing that leaves it out, the race rule, a grant end or a connection's end), the control plane writes an unlinked entry for it. When a live collection stops being linked, the control plane writes an unlinked entry for it, and a linked entry whenever it becomes linked; a move from one workspace to another while it stays linked writes no entry. When the control plane no longer holds a connection, as after its organisation is removed, the feed carries an unlinked entry for each of that connection's collections that was linked, so the adapter stops mirroring them. The control plane writes a grant entry, linked, whenever it accepts a report of a grant (grant.schema.json), a replacement included, and a grant entry, unlinked, whenever a grant leaves its copy: when its connection ends, when the control plane accepts a grant end (grant-end.schema.json), or when the control plane no longer holds the connection. An adapter that lost its store reads from the start. Entries apply in cursor order. The entries are bounded by the request's X-Qory-Contract-Version: the feed holds only the entry kinds that revision defines, and an entry of a newer kind is skipped, not sent, while the cursor still moves past it, as definitions.schema.json describes. The answer names that revision in revision, inside the signed body: the adapter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, and does not advance its cursor from a refused answer. The feed holds only the work items taken in from the adapter's items, the adapter's collections, the grants of the adapter's connections and the adapter's interval. The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. The adapter refuses a member this schema does not define.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "revision", "cursor", "changes"],
@@ -34,11 +34,12 @@
       "type": "object",
       "required": ["kind"],
       "properties": {
-        "kind": {"description": "The entry's kind.", "type": "string", "enum": ["work_item", "collection", "sync"]}
+        "kind": {"description": "The entry's kind.", "type": "string", "enum": ["work_item", "collection", "grant", "sync"]}
       },
       "allOf": [
         {"if": {"properties": {"kind": {"const": "work_item"}}}, "then": {"$ref": "#/$defs/work_item"}},
         {"if": {"properties": {"kind": {"const": "collection"}}}, "then": {"$ref": "#/$defs/collection"}},
+        {"if": {"properties": {"kind": {"const": "grant"}}}, "then": {"$ref": "#/$defs/grant"}},
         {"if": {"properties": {"kind": {"const": "sync"}}}, "then": {"$ref": "#/$defs/sync"}}
       ]
     },
@@ -63,6 +64,18 @@
       "properties": {
         "kind": {"const": "collection"},
         "collection_ref": {"description": "The collection's ref, as source-collections.schema.json listed it.", "$ref": "definitions.schema.json#/$defs/ref"},
+        "status": {"description": "linked, or unlinked.", "type": "string", "enum": ["linked", "unlinked"]}
+      }
+    },
+    "grant": {
+      "description": "A grant of one of the adapter's connections linked or unlinked in the control plane's copy (grant.schema.json). On linked the adapter holds the grant for that connection; on unlinked it drops it. The control plane's copy wins, except for a grant whose report the adapter is still sending again, until the expires_at of its linked connect return (grants.schema.json).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "connection_id", "grant_ref", "status"],
+      "properties": {
+        "kind": {"const": "grant"},
+        "connection_id": {"description": "The connection that holds the grant.", "$ref": "definitions.schema.json#/$defs/connection_id"},
+        "grant_ref": {"description": "The grant's ref, as the adapter reported it.", "$ref": "definitions.schema.json#/$defs/ref"},
         "status": {"description": "linked, or unlinked.", "type": "string", "enum": ["linked", "unlinked"]}
       }
     },

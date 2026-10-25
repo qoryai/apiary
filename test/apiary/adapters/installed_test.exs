@@ -202,14 +202,14 @@ defmodule Apiary.Adapters.InstalledTest do
   end
 
   describe "the folders at boot" do
-    test "are made for each name listed, 0755, and those there are kept", %{dir: dir} do
+    test "are made for each name listed, 0700, and those there are kept", %{dir: dir} do
       list(["tracker", "wiki"])
       File.mkdir!(Path.join(dir, "wiki"))
       File.write!(Path.join([dir, "wiki", "code"]), "kept\n")
 
       assert Installed.make_folders() == :ok
       assert Enum.sort(File.ls!(dir)) == ["tracker", "wiki"]
-      assert mode(Path.join(dir, "tracker")) == 0o755
+      assert mode(Path.join(dir, "tracker")) == 0o700
       assert File.ls!(Path.join(dir, "tracker")) == []
       assert File.read!(Path.join([dir, "wiki", "code"])) == "kept\n"
     end
@@ -224,7 +224,8 @@ defmodule Apiary.Adapters.InstalledTest do
 
       assert log =~
                "could not make the folder of the installed adapter tracker, " <>
-                 "#{Path.join(dir, "tracker")}: not a directory; " <>
+                 "#{Path.join(dir, "tracker")}: not a directory, or a directory that its " <>
+                 "group or other users may write to; " <>
                  "trying again when its one-time code is written"
 
       assert File.dir?(Path.join(dir, "wiki"))
@@ -244,7 +245,7 @@ defmodule Apiary.Adapters.InstalledTest do
   end
 
   describe "the code file" do
-    test "is written whole, 0644, with one newline, in the adapter's folder, made 0755",
+    test "is written whole, 0400, with one newline, in the adapter's folder, made 0700",
          %{dir: dir} do
       assert CodeFile.folder("tracker") == Path.join(dir, "tracker")
       assert CodeFile.path("tracker") == Path.join([dir, "tracker", "code"])
@@ -252,8 +253,8 @@ defmodule Apiary.Adapters.InstalledTest do
       assert CodeFile.write("tracker", "first") == :ok
       assert CodeFile.write("tracker", "second") == :ok
       assert File.read!(Path.join([dir, "tracker", "code"])) == "second\n"
-      assert mode(Path.join([dir, "tracker", "code"])) == 0o644
-      assert mode(Path.join(dir, "tracker")) == 0o755
+      assert mode(Path.join([dir, "tracker", "code"])) == 0o400
+      assert mode(Path.join(dir, "tracker")) == 0o700
       assert File.ls!(dir) == ["tracker"]
       assert File.ls!(Path.join(dir, "tracker")) == ["code"]
       assert CodeFile.exists?("tracker")
@@ -276,11 +277,23 @@ defmodule Apiary.Adapters.InstalledTest do
       File.ln_s!(elsewhere, Path.join(dir, "tracker"))
       File.write!(Path.join(dir, "wiki"), "")
 
-      assert CodeFile.write("tracker", "first") == {:error, :enotdir}
-      assert CodeFile.write("wiki", "first") == {:error, :enotdir}
+      assert CodeFile.write("tracker", "first") == {:error, :folder_mode}
+      assert CodeFile.write("wiki", "first") == {:error, :folder_mode}
       assert File.ls!(elsewhere) == []
       assert File.read!(Path.join(dir, "wiki")) == ""
       refute CodeFile.exists?("tracker")
+    end
+
+    test "is refused in a folder that its group or other users may write to", %{dir: dir} do
+      for mode <- [0o775, 0o757] do
+        folder = Path.join(dir, "tracker")
+        File.mkdir!(folder)
+        File.chmod!(folder, mode)
+
+        assert CodeFile.write("tracker", "first") == {:error, :folder_mode}, inspect(mode)
+        assert File.ls!(folder) == []
+        File.rmdir!(folder)
+      end
     end
 
     test "is deleted, a missing one too, and the folder stays", %{dir: dir} do
@@ -308,7 +321,7 @@ defmodule Apiary.Adapters.InstalledTest do
 
       fingerprint = Apiary.SigningKey.fingerprint()
       assert file(name) =~ ~r/\Aqeci_[0-9A-Z]{26}\.#{Regex.escape(fingerprint)}\n\z/
-      assert mode(CodeFile.path(name)) == 0o644
+      assert mode(CodeFile.path(name)) == 0o400
       assert File.ls!(dir) == [name]
       assert File.ls!(Path.join(dir, name)) == ["code"]
 
@@ -400,13 +413,14 @@ defmodule Apiary.Adapters.InstalledTest do
       File.mkdir!(elsewhere)
       File.ln_s!(elsewhere, Path.join(dir, name))
 
-      assert Installer.pass() == {:ok, [{name, {:code_file, :enotdir}}]}
+      assert Installer.pass() == {:ok, [{name, {:code_file, :folder_mode}}]}
       assert outstanding(installed(name)) == []
       assert File.ls!(elsewhere) == []
 
-      assert Installer.failure_line(name, {:code_file, :enotdir}) =~
+      assert Installer.failure_line(name, {:code_file, :folder_mode}) =~
                "could not write the one-time code of the installed adapter #{name} to " <>
-                 "#{Path.join(dir, name)}: not a directory; trying again"
+                 "#{Path.join(dir, name)}: not a directory, or a directory that its group " <>
+                 "or other users may write to; trying again"
     end
 
     test "a name's pass that exits or throws is the name's failure, with its kind alone",

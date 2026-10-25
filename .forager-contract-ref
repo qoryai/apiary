@@ -1,6 +1,6 @@
 # The commit of qoryai/forager whose contracts/forager/v1 the :contract tests replay, in
-# CI and in development (Apiary.ContractFixtures.contract_dir/0): a commit of Forager's
-# main branch after its release v0.7.0, pinned by its id, where an enrolment code's
+# CI and in development (Apiary.ContractFixtures.contract_dir/0): a commit of Forager
+# after its release v0.7.0, pinned by its id, where an enrolment code's
 # prefix names its node's kind (`qec[npgi]_`): Forager's module in three parts over one
 # core, the session, the gateway and the wall, with a gateway between the session and
 # Qory Apiary, every run's exit saying how the run ended, discovery listing the one
@@ -60,12 +60,17 @@
 # value that contains an enrolment code)`, the phrases in place of a name or a value
 # that contains `qecn_`, `qecp_`, `qecg_` or `qeci_`, in any case, and none of `qak_`,
 # `qrk_` and `qecr_`, in the 7 event schemas that have the other phrases; and those four
-# prefixes in the strings for which `(*session.Run).Built` returns an error.
+# prefixes in the strings for which `(*session.Run).Built` returns an error; and a host
+# credential's `apply` items, each with its hosts, scheme and paths, in place of its
+# `hosts`, `paths` and `auth`, and its `purpose`, `work` or `harness`; a sealed value's
+# `expires_at` and `apply`, and a secrets request at a renewal for the entries that are
+# due; and a run configuration's `stack_hosts` and `harness_hidden`, and `channel`
+# `stack` on the stack proxy's `dev.qory.run.egress`.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-8215d28776a1e75786ba3f84a4f2f7511f0deae4
+9002cf45e62166d0e16208c28a18ae59d0018d7f
 priv/contract/api-format.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json

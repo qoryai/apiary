@@ -12,7 +12,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
   alias Apiary.{AccessKeys, Adapters, Deletion, Edition, EditionStubs, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
-  alias Apiary.Adapters.{Collection, Collections, Connection, Connections, Feed}
+  alias Apiary.Adapters.{Collection, Collections, ConnectPass, Connection, Connections, Feed}
   alias Apiary.Organisations.Workspace
   alias Apiary.Sources.Backlog
 
@@ -49,7 +49,13 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       connection_id: connection.public_id,
       collections:
         for {ref, title} <- collections do
-          %{ref: ref, url: "https://tracker.acme.example/" <> ref, title: title, target: nil}
+          %{
+            ref: ref,
+            url: "https://tracker.acme.example/" <> ref,
+            title: title,
+            grant_ref: listing_grant(connection),
+            target: nil
+          }
         end,
       listing: %{
         id: Keyword.get(opts, :id, "listing-1"),
@@ -789,32 +795,47 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
                messages()
     end
 
-    test "a press of Install that replaces a connection tells of both: the one it ended first",
+    test "a press of Install tells of the connection it gives a pass, and of one it replaced first",
          ctx do
       :ok = Collections.subscribe(ctx.scope)
       old_id = ctx.connection.id
       adapter_id = ctx.adapter.id
-
-      # Connected, and no listing named it: a press ends it and makes a new one.
-      {:ok, _url, {public_id, _nonce}} = Adapters.connect(ctx.scope, ctx.adapter)
-      new_id = Repo.get_by!(Connection, public_id: public_id).id
-      assert Repo.get!(Connection, old_id).ended_reason == :replaced
-
-      assert [
-               {:connection_changed, %{connection_id: ^old_id, adapter_id: ^adapter_id}},
-               {:connection_changed, %{connection_id: ^new_id, adapter_id: ^adapter_id}}
-             ] = messages()
-
-      # A press on the pending one, its pass long expired, takes it, and tells of it alone.
       past = DateTime.add(DateTime.utc_now(), -3600, :second)
 
+      # Connected, its pass long expired: a press gives it a new pass and tells of it.
       {1, _} =
-        Repo.update_all(from(c in Connection, where: c.id == ^new_id),
+        Repo.update_all(from(c in Connection, where: c.id == ^old_id),
           set: [pass_expires_at: past]
         )
 
-      {:ok, _url, {^public_id, _nonce}} = Adapters.connect(ctx.scope, ctx.adapter)
-      assert [{:connection_changed, %{connection_id: ^new_id}}] = messages()
+      {:ok, _url, {public_id, _nonce}} = Adapters.connect(ctx.scope, ctx.adapter)
+      assert public_id == ctx.connection.public_id
+
+      assert [{:connection_changed, %{connection_id: ^old_id, adapter_id: ^adapter_id}}] =
+               messages()
+
+      # Ended, then a press makes a pending one. A press when the next pass would expire too
+      # far ahead replaces it: it tells of both, the one it ended first.
+      {:ok, _} = Connections.end_connection(ctx.key_scope, ctx.connection.public_id)
+      _ = messages()
+      {:ok, _url, {pending_public_id, _nonce}} = Adapters.connect(ctx.scope, ctx.adapter)
+      pending_id = Repo.get_by!(Connection, public_id: pending_public_id).id
+      assert [{:connection_changed, %{connection_id: ^pending_id}}] = messages()
+      ahead = DateTime.add(DateTime.utc_now(), 2 * ConnectPass.validity(), :second)
+
+      {1, _} =
+        Repo.update_all(from(c in Connection, where: c.id == ^pending_id),
+          set: [pass_expires_at: ahead]
+        )
+
+      {:ok, _url, {new_public_id, _nonce}} = Adapters.connect(ctx.scope, ctx.adapter)
+      new_id = Repo.get_by!(Connection, public_id: new_public_id).id
+      assert Repo.get!(Connection, pending_id).ended_reason == :replaced
+
+      assert [
+               {:connection_changed, %{connection_id: ^pending_id, adapter_id: ^adapter_id}},
+               {:connection_changed, %{connection_id: ^new_id, adapter_id: ^adapter_id}}
+             ] = messages()
     end
 
     test "a part that changes no collection and no marker says nothing", ctx do

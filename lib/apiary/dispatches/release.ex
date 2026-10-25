@@ -74,6 +74,7 @@ defmodule Apiary.Dispatches.Release do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Slots}
+  alias Apiary.Organisations.Organisation
   alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
@@ -167,7 +168,10 @@ defmodule Apiary.Dispatches.Release do
     [dispatch.workspace_id]
   end
 
-  # The one audit entry, in the transaction, about `subject`.
+  # The one audit entry, in the transaction, about `subject`, the key's pool, in the trail
+  # of the dispatch's organisation: the key's, or, for the instance's pool's key, which
+  # has none, the organisation of the workspace it served
+  # (`Apiary.Accounts.Scope.key_in_organisation/2`).
   defp record(%{key: key, dispatch: dispatch, run: run}, release, came, subject) do
     details =
       %{
@@ -179,10 +183,15 @@ defmodule Apiary.Dispatches.Release do
       |> Map.merge(came)
 
     {:ok, _entry} =
-      Audit.record(Repo, Scope.for_access_key(key), :"dispatch.release", subject, %{
+      Audit.record(Repo, scope(key, dispatch), :"dispatch.release", subject, %{
         details: details
       })
 
     :ok
   end
+
+  defp scope(%AccessKey{organisation_id: nil} = key, %Dispatch{organisation_id: id}),
+    do: Scope.key_in_organisation(Scope.for_access_key(key), Repo.get!(Organisation, id))
+
+  defp scope(%AccessKey{} = key, %Dispatch{}), do: Scope.for_access_key(key)
 end

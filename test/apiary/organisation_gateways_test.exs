@@ -261,7 +261,8 @@ defmodule Apiary.OrganisationGatewaysTest do
       assert Gateways.levels(scope.workspace) == [
                {:workspace, scope.workspace.id},
                {:organisation, scope.organisation.id},
-               {:organisation, other.organisation.id}
+               {:organisation, other.organisation.id},
+               :instance
              ]
 
       assert Gateways.may_serve?(theirs, scope.workspace)

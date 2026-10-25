@@ -96,6 +96,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     made = connectable_adapter_fixture(%{name: name("adapter")})
     Agent.update(Process.get(:race_adapters), &[made.adapter.id | &1])
     {connection, _nonce} = connection_fixture(scope, made.adapter, :connected)
+    _ref = listing_grant(connection)
 
     %{
       scope: scope,
@@ -115,6 +116,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     )
 
     Repo.delete_all(from c in Collection, where: c.adapter_id in ^ids)
+    Repo.delete_all(from g in Apiary.Adapters.Grant, where: g.adapter_id in ^ids)
     Repo.delete_all(from c in Connection, where: c.adapter_id in ^ids)
     Repo.delete_all(from k in AccessKey, where: k.node_id in ^ids)
     Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^ids)
@@ -126,6 +128,9 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     Scope.for_access_key(verified)
   end
 
+  # Each collection's `grant_ref` is the live grant that the setup made for the
+  # connection (`listing_grant/1`), written here without a query, as a part runs in a
+  # racing process.
   defp part(connection, refs, id, started_at, target \\ nil) do
     %{
       time: DateTime.utc_now(:second),
@@ -133,7 +138,13 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
       collections:
         for(
           ref <- refs,
-          do: %{ref: ref, url: "https://t.example/" <> ref, title: ref, target: target}
+          do: %{
+            ref: ref,
+            url: "https://t.example/" <> ref,
+            title: ref,
+            grant_ref: "G_" <> connection.public_id,
+            target: target
+          }
         ),
       listing: %{id: id, part: 1, started_at: started_at, complete: true}
     }
@@ -264,6 +275,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
        ctx do
     %{scope: other} = sign_up()
     {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+    _ref = listing_grant(theirs)
 
     answers =
       together([
@@ -653,6 +665,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     %{scope: scope} = sign_up()
     other_workspace = Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation)
     {connection, _nonce} = connection_fixture(scope, ctx.adapter, :connected)
+    _ref = listing_grant(connection)
     %{ctx | scope: scope, other_workspace: other_workspace, connection: connection}
   end
 
@@ -1067,7 +1080,14 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
         time: DateTime.utc_now(:second),
         connection_id: ctx.connection.public_id,
         collections: [
-          %{ref: ref, url: "https://t.example/" <> ref, title: ref, target: target, items: items}
+          %{
+            ref: ref,
+            url: "https://t.example/" <> ref,
+            title: ref,
+            grant_ref: "G_" <> ctx.connection.public_id,
+            target: target,
+            items: items
+          }
         ],
         listing: %{id: id, part: 1, started_at: started_at, complete: false}
       })

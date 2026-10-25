@@ -1,14 +1,22 @@
 defmodule ApiaryWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :apiary
 
+  require Logger
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  #
+  # A browser accepts a `__Host-` cookie only with Secure, Path=/ and no Domain, so a page
+  # on an adapter's host, `<adapter>.<instance name>`, cannot set this cookie for the
+  # instance's host. Chrome and Firefox also accept a Secure cookie on http://localhost;
+  # Safari accepts one only over https.
   @session_options [
     store: :cookie,
-    key: "_apiary_key",
+    key: "__Host-_apiary_key",
     signing_salt: "pFOPn1LM",
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: true
   ]
 
   # The peer's address, the user agent and, behind a trusted proxy, `X-Forwarded-For` are
@@ -133,6 +141,52 @@ defmodule ApiaryWeb.Endpoint do
       Keyword.put(config, :https, https)
     else
       _absent -> config
+    end
+  end
+
+  @doc false
+  # Logs one warning when the endpoint serves requests and `sign_in_cookies_dropped?/1`
+  # is true for its `url:`, which config/runtime.exs derives from PUBLIC_URL. Called at
+  # boot (`Apiary.Application`); it never stops the boot.
+  def warn_plain_http do
+    if Phoenix.Endpoint.server?(:apiary, __MODULE__) do
+      warn_plain_http(Application.get_env(:apiary, __MODULE__, [])[:url] || [])
+    end
+
+    :ok
+  end
+
+  @doc false
+  def warn_plain_http(url) do
+    if sign_in_cookies_dropped?(url) do
+      public_url = URI.to_string(%URI{scheme: url[:scheme], host: url[:host], port: url[:port]})
+
+      Logger.warning("""
+      Set PUBLIC_URL to an https:// address, or nobody can sign in.
+      Browsers keep the sign-in cookies over plain http only on localhost and loopback addresses; PUBLIC_URL is #{public_url}.\
+      """)
+    end
+
+    :ok
+  end
+
+  @doc false
+  # True when the endpoint's `url:` is plain http on a host other than `localhost`, a name
+  # under `.localhost` or a loopback address (127.0.0.0/8, ::1). The sign-in cookies are
+  # `__Host-` cookies, so Secure: Chrome and Firefox keep them over plain http only on
+  # those hosts, and Safari only over https.
+  def sign_in_cookies_dropped?(url) do
+    host = String.downcase(url[:host] || "")
+
+    url[:scheme] == "http" and host != "localhost" and
+      not String.ends_with?(host, ".localhost") and not loopback?(host)
+  end
+
+  defp loopback?(host) do
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, {127, _, _, _}} -> true
+      {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
+      _other -> false
     end
   end
 end

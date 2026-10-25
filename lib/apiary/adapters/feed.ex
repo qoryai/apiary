@@ -5,7 +5,8 @@ defmodule Apiary.Adapters.Feed do
   # append-only log per adapter, which the adapter reads back after a cursor, in order
   # (`GET /v1/work-items/changes`, `ApiaryWeb.Contract.ChangesController`). It holds the
   # work items taken in from the adapter's items, the link state of the adapter's
-  # collections, and the adapter's interval, and nothing of any other adapter.
+  # collections, the grants of the adapter's connections, and the adapter's interval, and
+  # nothing of any other adapter.
   #
   # ## Writing: `append/2`
   #
@@ -26,6 +27,12 @@ defmodule Apiary.Adapters.Feed do
   #     is the collection's ref as the adapter listed it.
   #   * `%{kind: "sync", interval: seconds | nil}`: the adapter's interval, 60 to 86,400
   #     seconds, or nil for the default the adapter declared.
+  #   * `%{kind: "grant", connection_id: id, grant_ref: ref, status: status}`: a grant of
+  #     one of the adapter's connections linked (`"linked"`, a report accepted,
+  #     `Apiary.Adapters.Grants.report/2`), or unlinked (`"unlinked"`, its connection
+  #     ended, or the adapter ended the grant with a grant end,
+  #     `Apiary.Adapters.Grants.end_grant/2`). `id` is the connection's public id,
+  #     `ac_…`; `ref` the grant's ref as the adapter reported it.
   #
   # A ref is 1 to 200 characters (code points) of valid UTF-8, with no NUL, which the
   # store cannot hold. Anything else raises `ArgumentError`: outside a transaction, for a
@@ -36,8 +43,10 @@ defmodule Apiary.Adapters.Feed do
   # whenever a linked collection ends, by any path, its writer appends an `unlinked`
   # entry for it, so that the last entry per `collection_ref`, read from the start, is the
   # link state of the live collection with that ref, or `unlinked` when none is live; and
-  # the last entry per `work_item_id` is that work item's status. The feed keeps the
-  # entries in the order they commit, which is what lets a reader rely on the last one.
+  # the last entry per `work_item_id` is that work item's status; and the last `grant`
+  # entry per `connection_id` and `grant_ref` whether Qory Apiary holds that grant. The
+  # feed keeps the entries in the order they commit, which is what lets a reader rely on
+  # the last one.
   #
   # The number is taken from the adapter's row of `adapter_feed_counters` by an upsert
   # that adds one, inside the caller's transaction; the row stays locked until that
@@ -62,7 +71,7 @@ defmodule Apiary.Adapters.Feed do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.Adapters.Wire
+  alias Apiary.Adapters.{Connection, Wire}
   alias Apiary.Nodes.Node
   alias Apiary.Repo
 
@@ -70,7 +79,7 @@ defmodule Apiary.Adapters.Feed do
   @page_size 100
   # The contract revision that defines each kind: an adapter that names an earlier one is
   # not sent it.
-  @kind_revision %{"work_item" => 1, "collection" => 1, "sync" => 1}
+  @kind_revision %{"work_item" => 1, "collection" => 1, "sync" => 1, "grant" => 1}
   @work_item_id ~r/\Awi_[A-Za-z0-9_-]{1,64}\z/
   @cursor ~r/\Ac_([0-9]{8,18})\z/
   @max_ref 200
@@ -94,6 +103,12 @@ defmodule Apiary.Adapters.Feed do
           }
           | %{kind: String.t(), collection_ref: String.t(), status: String.t()}
           | %{kind: String.t(), interval: pos_integer | nil}
+          | %{
+              kind: String.t(),
+              connection_id: String.t(),
+              grant_ref: String.t(),
+              status: String.t()
+            }
 
   @doc false
   @spec append(Node.t(), entry) :: {:ok, pos_integer}
@@ -232,6 +247,9 @@ defmodule Apiary.Adapters.Feed do
   defp change("collection", data), do: ordered("collection", data, ~w(collection_ref status))
   defp change("sync", data), do: ordered("sync", data, ~w(interval))
 
+  defp change("grant", data),
+    do: ordered("grant", data, ~w(connection_id grant_ref status))
+
   defp ordered(kind, data, members) do
     Jason.OrderedObject.new([{"kind", kind} | Enum.map(members, &{&1, Map.fetch!(data, &1)})])
   end
@@ -268,6 +286,18 @@ defmodule Apiary.Adapters.Feed do
     end
 
     {"sync", %{"interval" => interval}}
+  end
+
+  defp shape!(%{kind: "grant", connection_id: id, grant_ref: ref, status: status} = entry)
+       when map_size(entry) == 4 do
+    unless Connection.public_id?(id) do
+      raise ArgumentError, "a grant entry's connection_id is a connection's public id"
+    end
+
+    ref!(ref, "a grant entry's grant_ref")
+    status!(status, ~w(linked unlinked), "a grant entry's status is linked or unlinked")
+
+    {"grant", %{"connection_id" => id, "grant_ref" => ref, "status" => status}}
   end
 
   defp shape!(entry) do

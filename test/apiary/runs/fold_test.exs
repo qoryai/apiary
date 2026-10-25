@@ -1166,6 +1166,35 @@ defmodule Apiary.Runs.FoldTest do
   end
 
   describe "dev.qory.run.egress" do
+    test "one host on both channels is two deltas; a stack record may lack a path" do
+      events = [
+        egress(6, %{}),
+        egress(7, %{"channel" => "stack", "rule" => "api.example.com"}),
+        egress(8, %{"channel" => "stack", "decision" => "denied", "rule" => ""}),
+        # Under a hidden harness, a stack request has no path and no path rule.
+        egress(9, %{"channel" => "stack", "method" => "HTTPS", "credential" => "harness-1"}),
+        # A channel the contract does not define is the run's proxy's.
+        egress(10, %{"channel" => "other"}),
+        egress(11, %{"channel" => 7})
+      ]
+
+      %{connections: connections} = Fold.fold(@run, events)
+
+      assert map_size(connections) == 2
+
+      assert %{attempts: 3, allowed: 3, denied: 0, last_sequence: 11} =
+               connections[{"api.example.com", 443, "", "session"}]
+
+      assert %{
+               attempts: 3,
+               allowed: 2,
+               denied: 1,
+               last_sequence: 9,
+               last_credential: "harness-1",
+               last_path_rule: nil
+             } = connections[{"api.example.com", 443, "", "stack"}]
+    end
+
     test "one delta per host, port and path, counting every attempt once" do
       events = [
         egress(6, %{}),
@@ -1182,7 +1211,7 @@ defmodule Apiary.Runs.FoldTest do
 
       assert map_size(connections) == 3
 
-      assert connections[{"api.example.com", 443, ""}] == %{
+      assert connections[{"api.example.com", 443, "", "session"}] == %{
                method: "CONNECT",
                attempts: 2,
                allowed: 1,
@@ -1202,9 +1231,9 @@ defmodule Apiary.Runs.FoldTest do
              }
 
       assert %{attempts: 1, method: "HTTPS", last_request_method: "POST"} =
-               connections[{"api.example.com", 443, "/v1/messages"}]
+               connections[{"api.example.com", 443, "/v1/messages", "session"}]
 
-      assert %{attempts: 1} = connections[{"api.example.com", 8443, ""}]
+      assert %{attempts: 1} = connections[{"api.example.com", 8443, "", "session"}]
     end
 
     test "the highest sequence is the last, at equal times and against the clock" do
@@ -1224,7 +1253,7 @@ defmodule Apiary.Runs.FoldTest do
                  attempts: 3,
                  first_seen_at: first,
                  last_seen_at: last
-               } = connections[{"api.example.com", 443, ""}]
+               } = connections[{"api.example.com", 443, "", "session"}]
 
         assert {first, last} == {at(10), at(50)}
       end
@@ -1241,7 +1270,7 @@ defmodule Apiary.Runs.FoldTest do
           egress(9, %{"path" => path, "host" => String.duplicate("h", 300)})
         ])
 
-      assert [{{host, 443, cut}, %{attempts: 1}}] = Map.to_list(connections)
+      assert [{{host, 443, cut, "session"}, %{attempts: 1}}] = Map.to_list(connections)
       assert host == String.duplicate("h", 252) <> "…"
       assert byte_size(cut) <= 1024
       assert String.valid?(cut)
@@ -1254,7 +1283,7 @@ defmodule Apiary.Runs.FoldTest do
       %{connections: connections} =
         Fold.fold(@run, [egress(6, %{"host" => long, "decision" => "denied", "rule" => ""})])
 
-      assert [{{host, 443, ""}, %{attempts: 1, allowed: 0, denied: 1}}] =
+      assert [{{host, 443, "", "session"}, %{attempts: 1, allowed: 0, denied: 1}}] =
                Map.to_list(connections)
 
       assert host == binary_part(long, 0, 252) <> "…"
@@ -1270,8 +1299,8 @@ defmodule Apiary.Runs.FoldTest do
         Fold.fold(@run, [egress(6, %{"host" => exact}), egress(7, %{"host" => over})])
 
       assert connections |> Map.keys() |> Enum.sort() == [
-               {exact, 443, ""},
-               {String.duplicate("b", 252) <> "…", 443, ""}
+               {exact, 443, "", "session"},
+               {String.duplicate("b", 252) <> "…", 443, "", "session"}
              ]
     end
 
@@ -1281,7 +1310,7 @@ defmodule Apiary.Runs.FoldTest do
 
       %{connections: connections} = Fold.fold(@run, [egress(6, %{"host" => long})])
 
-      assert [{host, 443, ""}] = Map.keys(connections)
+      assert [{host, 443, "", "session"}] = Map.keys(connections)
       assert String.valid?(host)
       assert host == "a" <> String.duplicate("é", 125) <> "…"
       assert byte_size(host) == 254
@@ -1299,13 +1328,13 @@ defmodule Apiary.Runs.FoldTest do
         ])
 
       assert %{
-               {^cut, 443, ""} => %{
+               {^cut, 443, "", "session"} => %{
                  attempts: 2,
                  allowed: 1,
                  denied: 1,
                  last_sequence: 7
                },
-               {^cut, 8443, ""} => %{attempts: 1}
+               {^cut, 8443, "", "session"} => %{attempts: 1}
              } = connections
 
       assert map_size(connections) == 2
@@ -1353,10 +1382,14 @@ defmodule Apiary.Runs.FoldTest do
                last_tool: "files",
                last_status: 200,
                last_outcome: "connected"
-             } = connections[{"files.tools.internal", 443, "/media/acme/shop/checkout.png"}]
+             } =
+               connections[
+                 {"files.tools.internal", 443, "/media/acme/shop/checkout.png", "session"}
+               ]
 
       # A plain host that answered: a status and no tool.
-      assert %{last_tool: nil, last_status: 503} = connections[{"api.example.com", 443, ""}]
+      assert %{last_tool: nil, last_status: 503} =
+               connections[{"api.example.com", 443, "", "session"}]
     end
 
     test "the last attempt's tool and status win; a refused one clears the status" do
@@ -1376,7 +1409,7 @@ defmodule Apiary.Runs.FoldTest do
       ]
 
       for order <- [events, Enum.reverse(events)] do
-        %{connections: %{{"files.tools.internal", 443, "/a"} => connection}} =
+        %{connections: %{{"files.tools.internal", 443, "/a", "session"} => connection}} =
           Fold.fold(@run, order)
 
         assert %{last_sequence: 7, last_tool: "files", last_status: nil, denied: 1, allowed: 1} =
@@ -1393,7 +1426,7 @@ defmodule Apiary.Runs.FoldTest do
       ]
 
       for order <- [events, Enum.reverse(events)] do
-        %{connections: %{{"files.tools.internal", 443, "/a"} => connection}} =
+        %{connections: %{{"files.tools.internal", 443, "/a", "session"} => connection}} =
           Fold.fold(@run, order)
 
         assert %{last_sequence: 7, last_tool: nil, last_status: nil, attempts: 2} = connection
@@ -1405,13 +1438,14 @@ defmodule Apiary.Runs.FoldTest do
         %{connections: connections} =
           Fold.fold(@run, [egress(6, %{"tool" => tool, "status" => status})])
 
-        assert %{last_tool: nil, last_status: nil} = connections[{"api.example.com", 443, ""}]
+        assert %{last_tool: nil, last_status: nil} =
+                 connections[{"api.example.com", 443, "", "session"}]
       end
 
       %{connections: connections} =
         Fold.fold(@run, [egress(6, %{"tool" => String.duplicate("t", 300)})])
 
-      assert byte_size(connections[{"api.example.com", 443, ""}].last_tool) == 255
+      assert byte_size(connections[{"api.example.com", 443, "", "session"}].last_tool) == 255
     end
 
     test "an event without a host or a port is not a connection" do

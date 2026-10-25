@@ -13,11 +13,16 @@ defmodule ApiaryWeb.UserAuth do
   # Make the remember me cookie valid for 14 days. This should match
   # the session validity setting in UserToken.
   @max_cookie_age_in_days 14
-  @remember_me_cookie "_apiary_web_user_remember_me"
+  #
+  # For the `__Host-` prefix, see the session options in `ApiaryWeb.Endpoint`. The log-out
+  # deletes the cookie with these options: a browser rejects a `__Host-` cookie without
+  # Secure, the deleting one included.
+  @remember_me_cookie "__Host-_apiary_web_user_remember_me"
   @remember_me_options [
     sign: true,
     max_age: @max_cookie_age_in_days * 24 * 60 * 60,
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: true
   ]
 
   # The workspace a signed-in user last opened, remembered for `/`, the log-in and `/:org`

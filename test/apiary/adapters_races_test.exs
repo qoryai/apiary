@@ -13,7 +13,8 @@ defmodule Apiary.AdaptersRacesTest do
   # The rules under test (`Apiary.Adapters.Connections`): one connection that has not
   # ended per organisation and adapter, the second insert waiting on the first's; a press
   # on a connected connection, not yet listed, replacing it; and the lock order, the
-  # adapter's row, then its connections.
+  # adapter's row, then its connections. And two organisations' reports of one grant at
+  # once: one wins (`Apiary.Adapters.Grants.report/2`).
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -24,7 +25,7 @@ defmodule Apiary.AdaptersRacesTest do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{ConnectPass, Connection, Connections}
+  alias Apiary.Adapters.{ConnectPass, Connection, Connections, Grant, Grants}
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
   alias Ecto.Adapters.SQL.Sandbox
@@ -68,6 +69,7 @@ defmodule Apiary.AdaptersRacesTest do
 
   defp delete_adapters(query) do
     ids = Repo.all(select(query, [n], n.id))
+    Repo.delete_all(from g in Grant, where: g.adapter_id in ^ids)
     Repo.delete_all(from c in Connection, where: c.adapter_id in ^ids)
     Repo.delete_all(from k in AccessKey, where: k.node_id in ^ids)
     Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^ids)
@@ -365,13 +367,117 @@ defmodule Apiary.AdaptersRacesTest do
     end
   end
 
+  describe "two organisations' reports of one grant" do
+    test "the first holds the ref; the second waits on the live index, then is refused" do
+      %{scope: mine} = sign_up()
+      %{scope: theirs} = sign_up()
+      %{adapter: adapter, access_key: key} = adapter()
+      {first_connection, _nonce} = connection_fixture(mine, adapter, :connected)
+      {second_connection, _nonce} = connection_fixture(theirs, adapter, :connected)
+
+      report = fn connection ->
+        fn ->
+          Grants.report(key_scope(key), %{
+            connection_id: connection.public_id,
+            grant_ref: "G_raced",
+            account: %{ref: "1001", title: "acme"},
+            pass_nonce: connection.pass_nonce
+          })
+        end
+      end
+
+      {first, first_pid} = hold(report.(first_connection))
+      assert {:ok, %Grant{}} = first.result
+
+      second = start(report.(second_connection))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :grant_taken}
+
+      assert Repo.all(
+               from g in Grant,
+                 where: g.adapter_id == ^adapter.id and g.state == :live,
+                 select: g.connection_id
+             ) == [first_connection.id]
+
+      # The second's pass is not spent: once the first's connection ends, it reports.
+      {:ok, _} = Connections.end_connection(key_scope(key), first_connection.public_id)
+      assert {:ok, %Grant{}} = report.(second_connection).()
+    end
+  end
+
+  describe "two reports under one pass" do
+    test "the first takes the pass; the second waits on the connection, then is refused" do
+      %{scope: mine} = sign_up()
+      %{adapter: adapter, access_key: key} = adapter()
+      {connection, _nonce} = connection_fixture(mine, adapter, :connected)
+
+      report = fn ref ->
+        fn ->
+          Grants.report(key_scope(key), %{
+            connection_id: connection.public_id,
+            grant_ref: ref,
+            account: %{ref: "1001", title: "acme"},
+            pass_nonce: connection.pass_nonce
+          })
+        end
+      end
+
+      {first, first_pid} = hold(report.("G_first"))
+      assert {:ok, %Grant{}} = first.result
+
+      second = start(report.("G_second"))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :pass_unknown}
+
+      assert Repo.all(
+               from g in Grant,
+                 where: g.connection_id == ^connection.id and g.state == :live,
+                 select: g.grant_ref
+             ) == ["G_first"]
+    end
+  end
+
+  describe "a grant report and the end of its connection" do
+    test "the end first: the report waits on the connection, then finds it ended" do
+      %{scope: mine} = sign_up()
+      %{adapter: adapter, access_key: key} = adapter()
+      {connection, _nonce} = connection_fixture(mine, adapter, :connected)
+
+      {ending, ending_pid} =
+        hold(fn -> Connections.end_connection(key_scope(key), connection.public_id) end)
+
+      assert {:ok, _} = ending.result
+
+      report =
+        start(fn ->
+          Grants.report(key_scope(key), %{
+            connection_id: connection.public_id,
+            grant_ref: "G_late",
+            account: %{ref: "1001", title: "acme"},
+            pass_nonce: connection.pass_nonce
+          })
+        end)
+
+      await_blocked(report.backend, ending_pid)
+      commit(ending)
+
+      assert Task.await(report.task) == {:error, :ended}
+      assert Repo.all(from g in Grant, where: g.connection_id == ^connection.id) == []
+    end
+  end
+
   describe "a linked return and a press of Install" do
-    test "the return first: the press waits, then replaces the connection it connected" do
+    test "the return first: the press waits, then gives the connection it connected a new pass" do
       %{scope: scope} = sign_up()
       %{scope: admin} = member(scope, :admin)
       %{adapter: adapter, pair: pair} = adapter()
       {connection, nonce} = connection_fixture(scope, adapter, :pending)
       token = return_token(pair.secret, connection.public_id, nonce)
+      :ok = pass_made_earlier(connection.public_id)
 
       {first, first_pid} =
         hold(fn -> Connections.complete_return(scope, connection.public_id, token, nonce) end)
@@ -382,14 +488,26 @@ defmodule Apiary.AdaptersRacesTest do
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, _url, {public_id, _nonce}} = Task.await(second.task)
-      refute public_id == connection.public_id
+      assert {:ok, _url, {public_id, next}} = Task.await(second.task)
+      assert public_id == connection.public_id
 
-      assert %Connection{state: :ended, ended_reason: :replaced, connected_at: %DateTime{}} =
-               Repo.get!(Connection, connection.id)
+      assert %Connection{
+               state: :connected,
+               connected_at: %DateTime{},
+               pass_nonce_used_at: nil,
+               pass_nonce: kept
+             } = Repo.get!(Connection, connection.id)
 
-      assert %Connection{state: :pending, connected_at: nil} =
-               Repo.get_by!(Connection, public_id: public_id)
+      assert Apiary.Contract.Ed25519.encode(kept) == next
+
+      assert [linked] =
+               Repo.all(
+                 from p in Apiary.Adapters.LinkedPass,
+                   where: p.connection_id == ^connection.id,
+                   select: p.nonce
+               )
+
+      assert Apiary.Contract.Ed25519.encode(linked) == nonce
     end
 
     test "the press first: the return waits, then is not found, under the earlier pass" do
@@ -417,15 +535,17 @@ defmodule Apiary.AdaptersRacesTest do
     end
   end
 
-  describe "a press of Install on a connected connection no listing has named" do
-    # A connection that a linked return connected, which no listing has named yet: a press
-    # ends it (`replaced`) and makes a new one in its place, in one transaction, under the
-    # adapter's row held `FOR SHARE` and the connection's `FOR UPDATE`.
+  describe "a press of Install on a connected connection" do
+    # A connection that a linked return connected: a press gives it a new pass, for an
+    # external account the person adds to it, in one transaction, under the adapter's row
+    # held `FOR SHARE` and the connection's `FOR UPDATE`. It stays connected, and is never
+    # replaced.
     setup do
       %{scope: scope} = sign_up()
       %{scope: admin, user: other} = member(scope, :admin)
       %{adapter: adapter, pair: pair, access_key: key} = adapter()
       {connection, nonce} = connection_fixture(scope, adapter, :connected)
+      :ok = pass_made_earlier(connection.public_id)
 
       %{
         scope: scope,
@@ -434,7 +554,7 @@ defmodule Apiary.AdaptersRacesTest do
         adapter: adapter,
         pair: pair,
         key: key,
-        connection: connection,
+        connection: Repo.get!(Connection, connection.id),
         nonce: nonce
       }
     end
@@ -467,15 +587,30 @@ defmodule Apiary.AdaptersRacesTest do
     defp all(ctx),
       do: Repo.aggregate(from(c in Connection, where: c.adapter_id == ^ctx.adapter.id), :count)
 
-    # The old connection ended for `reason`, with its pass, its person and the time it
-    # connected as they were; the adapter's key, unless the adapter was deleted with its keys,
-    # reaches it no more.
-    defp ended_as(ctx, reason, deleted? \\ false) do
-      assert %Connection{state: :ended, ended_reason: ^reason} =
-               ended = Repo.get!(Connection, ctx.connection.id)
+    # The connection, still connected, took the pass `nonce`, started by the admin, with
+    # the time it connected and the person whose pass connected it as they were.
+    defp took_pass(ctx, nonce) do
+      assert live(ctx) == [ctx.connection.public_id]
 
-      fields = [:connected_at, :pass_nonce, :pass_nonce_used_at, :created_by_id]
-      assert Map.take(ended, fields) == Map.take(ctx.connection, fields)
+      assert %Connection{
+               state: :connected,
+               pass_nonce_used_at: nil,
+               pass_started_by_id: by,
+               pass_nonce: kept
+             } = taken = Repo.get!(Connection, ctx.connection.id)
+
+      assert by == ctx.other.id
+      assert Apiary.Contract.Ed25519.encode(kept) == nonce
+
+      fields = [:connected_at, :created_by_id]
+      assert Map.take(taken, fields) == Map.take(ctx.connection, fields)
+    end
+
+    # The connection ended for `reason`, connected before; the adapter's key, unless the
+    # adapter was deleted with its keys, reaches it no more.
+    defp ended_as(ctx, reason, deleted? \\ false) do
+      assert %Connection{state: :ended, ended_reason: ^reason, connected_at: %DateTime{}} =
+               Repo.get!(Connection, ctx.connection.id)
 
       if not deleted? do
         assert Connections.connection_for_key(
@@ -486,24 +621,7 @@ defmodule Apiary.AdaptersRacesTest do
       end
     end
 
-    # The connection `public_id` is the one live, pending, started by the admin with the
-    # pass `nonce`.
-    defp replaced_by(ctx, public_id, nonce) do
-      assert live(ctx) == [public_id]
-
-      assert %Connection{
-               state: :pending,
-               connected_at: nil,
-               pass_nonce_used_at: nil,
-               created_by_id: by,
-               pass_nonce: kept
-             } = Repo.get_by!(Connection, public_id: public_id)
-
-      assert by == ctx.other.id
-      assert Apiary.Contract.Ed25519.encode(kept) == nonce
-    end
-
-    test "the first listing first: the press waits, then is refused, and nothing changes",
+    test "the first listing first: the press waits, then gives the listed connection a pass",
          ctx do
       {first, first_pid} = hold(listing(ctx))
       assert {:ok, %Connection{state: :connected, listed_at: %DateTime{}}} = first.result
@@ -512,39 +630,32 @@ defmodule Apiary.AdaptersRacesTest do
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert Task.await(second.task) == {:error, :connected}
-      assert live(ctx) == [ctx.connection.public_id]
+      assert {:ok, _url, {public_id, nonce}} = Task.await(second.task)
+      assert public_id == ctx.connection.public_id
+      took_pass(ctx, nonce)
 
-      assert %Connection{state: :connected, listed_at: %DateTime{}} =
-               Repo.get!(Connection, ctx.connection.id)
+      assert %Connection{listed_at: %DateTime{}} = Repo.get!(Connection, ctx.connection.id)
     end
 
-    test "the press first: the listing waits, then finds it ended, and nothing is listed",
-         ctx do
+    test "the press first: the listing waits, then records the first listing", ctx do
       {first, first_pid} = hold(press(ctx))
       assert {:ok, _url, {public_id, nonce}} = first.result
+      assert public_id == ctx.connection.public_id
 
-      # Found before the press commits, then waiting on the row to record the listing.
       second = start(listing(ctx))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert Task.await(second.task) == {:error, :ended}
-      ended_as(ctx, :replaced)
-      replaced_by(ctx, public_id, nonce)
+      assert {:ok, %Connection{state: :connected, listed_at: %DateTime{}}} =
+               Task.await(second.task)
 
-      assert Repo.aggregate(
-               from(c in Connection,
-                 where: c.adapter_id == ^ctx.adapter.id and not is_nil(c.listed_at)
-               ),
-               :count
-             ) == 0
+      took_pass(ctx, nonce)
     end
 
-    test "the press first: a return for the old connection waits, then changes nothing",
+    test "the press first: a return under the pass that connected it waits, then is not found",
          ctx do
       {first, first_pid} = hold(press(ctx))
-      assert {:ok, _url, {public_id, nonce}} = first.result
+      assert {:ok, _url, {_public_id, nonce}} = first.result
 
       token = return_token(ctx.pair.secret, ctx.connection.public_id, ctx.nonce)
 
@@ -557,8 +668,7 @@ defmodule Apiary.AdaptersRacesTest do
       commit(first)
 
       assert Task.await(second.task) == {:error, :not_found}
-      ended_as(ctx, :replaced)
-      replaced_by(ctx, public_id, nonce)
+      took_pass(ctx, nonce)
     end
 
     test "the adapter's disconnect first: the press waits, then starts a new one", ctx do
@@ -571,10 +681,12 @@ defmodule Apiary.AdaptersRacesTest do
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, _url, {public_id, nonce}} = Task.await(second.task)
+      assert {:ok, _url, {public_id, _nonce}} = Task.await(second.task)
       refute public_id == ctx.connection.public_id
       ended_as(ctx, :adapter_reported)
-      replaced_by(ctx, public_id, nonce)
+      assert live(ctx) == [public_id]
+
+      assert %Connection{state: :pending} = Repo.get_by!(Connection, public_id: public_id)
     end
 
     test "the disconnect's lock before the press's insert, its end after: the press tries again",
@@ -603,15 +715,16 @@ defmodule Apiary.AdaptersRacesTest do
 
       commit(first)
 
-      assert {:ok, _url, {public_id, nonce}} = Task.await(second.task)
+      assert {:ok, _url, {public_id, _nonce}} = Task.await(second.task)
       refute public_id == ctx.connection.public_id
       ended_as(ctx, :adapter_reported)
-      replaced_by(ctx, public_id, nonce)
+      assert live(ctx) == [public_id]
     end
 
-    test "the press first: the adapter's disconnect waits, then finds it ended", ctx do
+    test "the press first: the adapter's disconnect waits, then ends the connection", ctx do
       {first, first_pid} = hold(press(ctx))
-      assert {:ok, _url, {public_id, nonce}} = first.result
+      assert {:ok, _url, {public_id, _nonce}} = first.result
+      assert public_id == ctx.connection.public_id
 
       second =
         start(fn -> Connections.end_connection(key_scope(ctx.key), ctx.connection.public_id) end)
@@ -619,9 +732,9 @@ defmodule Apiary.AdaptersRacesTest do
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert Task.await(second.task) == {:error, :ended}
-      ended_as(ctx, :replaced)
-      replaced_by(ctx, public_id, nonce)
+      assert {:ok, %Connection{state: :ended}} = Task.await(second.task)
+      ended_as(ctx, :adapter_reported)
+      assert live(ctx) == []
     end
 
     test "the adapter's deletion first: the press waits, then finds no adapter", ctx do
@@ -638,21 +751,19 @@ defmodule Apiary.AdaptersRacesTest do
       assert live(ctx) == []
     end
 
-    test "the press first: the adapter's deletion waits, then ends the new one", ctx do
+    test "the press first: the adapter's deletion waits, then ends the connection", ctx do
       instance_admin = Apiary.OrganisationsFixtures.instance_admin_scope()
       {first, first_pid} = hold(press(ctx))
       assert {:ok, _url, {public_id, _nonce}} = first.result
+      assert public_id == ctx.connection.public_id
 
       second = start(fn -> Adapters.delete_adapter(instance_admin, ctx.adapter) end)
       await_blocked(second.backend, first_pid)
       commit(first)
 
       assert {:ok, %Node{deleted_at: %DateTime{}}} = Task.await(second.task)
-      ended_as(ctx, :replaced, true)
+      ended_as(ctx, :integration_deleted, true)
       assert live(ctx) == []
-
-      assert %Connection{state: :ended, ended_reason: :integration_deleted} =
-               Repo.get_by!(Connection, public_id: public_id)
 
       assert %Entry{details: details} =
                Repo.one!(
@@ -663,65 +774,80 @@ defmodule Apiary.AdaptersRacesTest do
       assert details["ended_connection_ids"] == [public_id]
     end
 
-    test "two presses in the same second: the second waits, then replaces the first's new connection too",
+    test "two presses in the same second: the second waits, then is too soon, and changes nothing",
          ctx do
       at = ~U[2026-10-16 12:00:00.250000Z]
-      {first, first_pid} = hold(press_at(ctx.scope, ctx.adapter, at))
-      assert {:ok, {first_connection, _pass}} = first.result
-      refute first_connection.public_id == ctx.connection.public_id
 
-      second = start(press_at(ctx.admin, ctx.adapter, at))
+      Repo.update_all(from(c in Connection, where: c.id == ^ctx.connection.id),
+        set: [pass_expires_at: ~U[2026-10-16 12:14:00Z]]
+      )
+
+      {first, first_pid} = hold(press_at(ctx.admin, ctx.adapter, at))
+      assert {:ok, {first_connection, first_pass}} = first.result
+      assert first_connection.id == ctx.connection.id
+
+      second = start(press_at(ctx.scope, ctx.adapter, at))
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:ok, {second_connection, second_pass}} = Task.await(second.task)
-      refute second_connection.public_id == first_connection.public_id
-      ended_as(ctx, :replaced)
+      assert Task.await(second.task) == {:error, :too_soon}
 
-      assert %Connection{state: :ended, ended_reason: :replaced} =
-               Repo.get!(Connection, first_connection.id)
+      assert %Connection{state: :connected, pass_expires_at: ~U[2026-10-16 12:15:00Z]} =
+               Repo.get!(Connection, ctx.connection.id)
 
-      replaced_by(ctx, second_connection.public_id, nonce_of(second_pass))
-      assert all(ctx) == 3
+      took_pass(ctx, nonce_of(first_pass))
+      assert all(ctx) == 1
     end
 
-    test "two presses a second apart: the second waits, then takes the first's new connection",
+    test "two presses a second apart: the second waits, then takes the connection with a later pass",
          ctx do
       at = ~U[2026-10-16 12:00:00.250000Z]
+
+      Repo.update_all(from(c in Connection, where: c.id == ^ctx.connection.id),
+        set: [pass_expires_at: ~U[2026-10-16 12:14:00Z]]
+      )
+
       {first, first_pid} = hold(press_at(ctx.scope, ctx.adapter, at))
       assert {:ok, {first_connection, first_pass}} = first.result
-      refute first_connection.public_id == ctx.connection.public_id
+      assert first_connection.id == ctx.connection.id
 
       second = start(press_at(ctx.admin, ctx.adapter, DateTime.add(at, 1, :second)))
       await_blocked(second.backend, first_pid)
       commit(first)
 
       assert {:ok, {second_connection, second_pass}} = Task.await(second.task)
-      assert second_connection.public_id == first_connection.public_id
-      refute nonce_of(first_pass) == nonce_of(second_pass)
-      ended_as(ctx, :replaced)
-      replaced_by(ctx, first_connection.public_id, nonce_of(second_pass))
-
-      assert all(ctx) == 2
+      assert second_connection.id == ctx.connection.id
+      assert pass_expiry(second_pass) == DateTime.add(pass_expiry(first_pass), 1, :second)
+      took_pass(ctx, nonce_of(second_pass))
+      assert all(ctx) == 1
     end
 
-    test "many at once: none past validity/0, one new connection live, the rest replaced", ctx do
+    test "many at once: none past validity/0, the connection kept, each pass later than the one before",
+         ctx do
       n = sides(6)
       results = together(for _ <- 1..n, do: press(ctx))
       finished = DateTime.utc_now()
 
-      assert Enum.all?(results, &match?({:ok, _url, {_id, _nonce}}, &1))
+      # Each press took a pass, or, in the same second as the one before it, was too soon.
+      assert Enum.all?(
+               results,
+               &(match?({:ok, _url, {_id, _nonce}}, &1) or &1 == {:error, :too_soon})
+             )
+
       urls = for {:ok, url, _session} <- results, do: url
+      assert urls != []
       all_good_at(urls, finished)
 
-      ended_as(ctx, :replaced)
-      assert [public_id] = live(ctx)
-      refute public_id == ctx.connection.public_id
+      assert live(ctx) == [ctx.connection.public_id]
+      assert all(ctx) == 1
 
-      # The old connection took no pass; the new ones took them as presses on a pending
-      # connection do.
-      rows = one_live_and_the_rest_replaced(ctx.adapter, urls)
-      assert all(ctx) == length(rows) + 1
+      expiries = Enum.map(urls, &expiry/1)
+      assert length(Enum.uniq(expiries)) == length(expiries)
+
+      assert %Connection{state: :connected, pass_expires_at: latest} =
+               Repo.get!(Connection, ctx.connection.id)
+
+      assert latest == Enum.max(expiries, DateTime)
     end
   end
 end

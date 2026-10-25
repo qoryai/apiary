@@ -144,6 +144,28 @@ defmodule Apiary.Edition do
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 
+  # With the `factory` feature, which the documentation leaves out: the organisation whose
+  # model choices are the chain of the organisation `organisation_id` while its chain is
+  # "operator" (`c:model_choice_chain/1`): the operator that runs work for it, or nil.
+  # A model key of the operator's chain is sealed only for that organisation's gateway or
+  # the instance's (`Apiary.Runs.ProviderCredential.sealable_to?/3`), and its seal is
+  # recorded in that organisation's trail. Asked without a lock. The core has no operator
+  # and answers nil.
+  @doc false
+  @callback operator_chain_organisation(organisation_id :: Ecto.UUID.t()) ::
+              Ecto.UUID.t() | nil
+
+  # With the `factory` feature, which the documentation leaves out: whether the person of
+  # `scope` writes the operator's chain of model providers and choices in the scope's
+  # organisation, the organisation whose rows are the chain of the clients it runs work for
+  # (`c:operator_chain_organisation/1`). When true, the scope's organisation's providers
+  # and choices of the chain "operator" are read, created, changed and deleted by that
+  # person, under the access check of `provider.write`; their audit entries go to the
+  # organisation's trail. Asked inside the write, with the scope read again. The core
+  # has no operator and answers false.
+  @doc false
+  @callback operator_chain_writer?(Scope.t()) :: boolean
+
   # With the `factory` feature, which the documentation leaves out: whether `organisation`
   # is a client that an operator runs work for. A run of such an organisation hides the
   # text of its stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`).
@@ -151,6 +173,31 @@ defmodule Apiary.Edition do
   # answers false.
   @doc false
   @callback operated?(%Organisation{}) :: boolean
+
+  # With the `factory` feature, which the documentation leaves out: the organisation that
+  # owns a harness document the person of `scope` saves (`Apiary.Stacks.put_stack/3`), or
+  # nil, which refuses the save. A run of another organisation hides the document's text
+  # (`Apiary.Stacks.Resolution`). Asked once per save, before its transaction. The core
+  # answers the scope's organisation for a member who reaches it through that membership
+  # (`Apiary.Stacks.saved_by/1`); else the instance's organisation
+  # (`c:instance_organisation_id/0`) for an instance admin
+  # (`Apiary.Access.instance_admin?/1`); else nil.
+  @doc false
+  @callback harness_owner(Scope.t()) :: Ecto.UUID.t() | nil
+
+  # With the `factory` feature, which the documentation leaves out: whether a run of the
+  # organisation `run_organisation_id` may use a link of the organisation
+  # `owner_organisation_id` for `source`, a harness source as it is in a harness document
+  # (`Apiary.Harnesses.allowed?/3`). Asked only after the core's checks refuse it: the
+  # link is not the run's organisation's, and the link is not the instance's
+  # organisation's under an instance assignment that covers the source for the run's
+  # organisation. Asked without a lock. The core has no operator and answers false.
+  @doc false
+  @callback harness_source_allowed?(
+              run_organisation_id :: Ecto.UUID.t(),
+              owner_organisation_id :: Ecto.UUID.t(),
+              source :: Apiary.Harnesses.source()
+            ) :: boolean
 
   # With the `factory` feature, which the documentation leaves out: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
@@ -161,7 +208,10 @@ defmodule Apiary.Edition do
   # - `:run_events`, the query of a run's events (`Apiary.Runs.Record`);
   # - `:run_connections`, the query of a run's connections (`Apiary.Runs.Record`);
   # - `:run_policy`, the policy a run's last `policy.applied` event reported, a map or nil
-  #   (`Apiary.Runs.Record.policy/2`);
+  #   (`Apiary.Runs.Record.policy/2`), and the policy of each `policy.applied` line of the
+  #   run's timeline, and of the line before it, in the same shape
+  #   (`Apiary.Runs.Record.Timeline.build/3`), whose counts and delta are of the narrowed
+  #   lists;
   # - `:workspace_connections`, the query of the workspace's connections, joined to their
   #   runs, the connection the first binding and the run the second: the policy activity
   #   (`Apiary.Policy.Activity`), the attempts beside the declared hosts
@@ -172,7 +222,8 @@ defmodule Apiary.Edition do
   #   (`Apiary.Policy.Suggestions`).
   #
   # `run` is the run read, nil for `:workspace_connections` and `:workspace_events`.
-  # Called once per read. The core returns `subject` as it is.
+  # Called once per read, and for `:run_policy` once for each policy line of a timeline and
+  # once for the line before it. The core returns `subject` as it is.
   @doc false
   @callback client_reads(
               Scope.t(),
@@ -585,7 +636,11 @@ defmodule Apiary.Edition do
     first_sign_up_line: 0,
     above_workspace: 1,
     model_choice_chain: 1,
+    operator_chain_organisation: 1,
+    operator_chain_writer?: 1,
     operated?: 1,
+    harness_owner: 1,
+    harness_source_allowed?: 3,
     client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,

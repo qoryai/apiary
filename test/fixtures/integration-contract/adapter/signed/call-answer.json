@@ -1,0 +1,9 @@
+{
+  "status": 200,
+  "headers": {
+    "Content-Type": "application/json",
+    "X-Qory-Signature-Ed25519": "kMrDqn2PDPSUQyqjEuGSdDto7RG4srbfcMPDTegTJDHqhEvokbcnCcMHGTHhc3MPTR9QpOtOTw-_0n8X9ZUIDQ"
+  },
+  "body": "{\"version\":1,\"revision\":1,\"results\":[{\"address\":\"https://code.example.com/acme/harness\",\"grant_ref\":\"G_1\",\"resource_ref\":\"R_1001\"},{\"address\":\"reader@code.example.com:acme/tools\",\"covered\":false}]}",
+  "note": "The adapter's answer to call.json, signed under the access key of keys.json over four lines: qory-call-answer-ed25519-v1, 200, the call's X-Qory-Signature-Ed25519, and the lower-case hex SHA-256 of the body."
+}

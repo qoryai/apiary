@@ -35,6 +35,7 @@ defmodule Apiary.Runs.ProviderCredential do
   alias Apiary.{Connections, Edition, Features, Gateways, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Endpoint, Provider}
+  alias Apiary.Nodes.Node
 
   @typedoc """
   A run's model key: the credential's `name`, the `entry` as the run configuration writes
@@ -66,25 +67,53 @@ defmodule Apiary.Runs.ProviderCredential do
 
   @doc false
   # sealable_to?/3 is whether the key of a provider of `chain`, of the run's organisation
-  # `run_organisation_id`, may be sealed for a gateway of `gateway_organisation_id`. A
-  # provider of the organisation's chain: only for a gateway of the run's organisation. A
-  # provider of an operator's chain: only while the edition returns "operator" for the
-  # run's organisation (`c:Apiary.Edition.model_choice_chain/1`), and only for a gateway
-  # of another organisation whose gateways serve the run's
-  # (`Apiary.Gateways.serving_organisations/1`). The claim
+  # `run_organisation_id`, may be sealed for `gateway`, by the level it lives at
+  # (`Apiary.Gateways.level/1`). The instance's gateway serves every organisation, so it
+  # may receive a key of either chain. A provider of the organisation's chain: only for a
+  # gateway of the run's organisation, or the instance's. A provider of an operator's
+  # chain: only while the edition returns "operator" for the run's organisation
+  # (`c:Apiary.Edition.model_choice_chain/1`) and names the operator's organisation
+  # (`c:Apiary.Edition.operator_chain_organisation/1`), and only for a gateway of that
+  # organisation whose gateways serve the run's
+  # (`Apiary.Gateways.serving_organisations/1`), or the instance's. The claim
   # (`Apiary.Dispatches.Handover`) and the secrets request
   # (`Apiary.Runs.SecretsRequest`) both check it.
-  @spec sealable_to?(String.t(), Ecto.UUID.t(), Ecto.UUID.t()) :: boolean
-  def sealable_to?("organisation", gateway_organisation_id, run_organisation_id),
-    do: gateway_organisation_id == run_organisation_id
-
-  def sealable_to?("operator", gateway_organisation_id, run_organisation_id) do
-    gateway_organisation_id != run_organisation_id and
-      Edition.model_choice_chain(run_organisation_id) == "operator" and
-      gateway_organisation_id in Gateways.serving_organisations(run_organisation_id)
+  @spec sealable_to?(String.t(), Node.t(), Ecto.UUID.t()) :: boolean
+  def sealable_to?(chain, %Node{kind: :gateway} = gateway, run_organisation_id)
+      when is_binary(run_organisation_id) do
+    sealable_at?(chain, Gateways.level(gateway), gateway.organisation_id, run_organisation_id)
   end
 
-  def sealable_to?(_chain, _gateway_organisation_id, _run_organisation_id), do: false
+  def sealable_to?(_chain, _gateway, _run_organisation_id), do: false
+
+  defp sealable_at?("organisation", :instance, nil, _run_organisation_id), do: true
+
+  defp sealable_at?("organisation", _level, gateway_organisation_id, run_organisation_id),
+    do: gateway_organisation_id == run_organisation_id
+
+  defp sealable_at?("operator", level, gateway_organisation_id, run_organisation_id) do
+    operator = operator_of(run_organisation_id)
+
+    is_binary(operator) and
+      (level == :instance or
+         (gateway_organisation_id == operator and
+            operator in Gateways.serving_organisations(run_organisation_id)))
+  end
+
+  defp sealable_at?(_chain, _level, _gateway_organisation_id, _run_organisation_id),
+    do: false
+
+  @doc false
+  # operator_of/1 is the operator's organisation whose chain of model choices the runs of
+  # `run_organisation_id` take: the one the edition names
+  # (`c:Apiary.Edition.operator_chain_organisation/1`) while it returns "operator" for the
+  # run's organisation (`c:Apiary.Edition.model_choice_chain/1`); nil otherwise, and in the
+  # core's edition.
+  @spec operator_of(Ecto.UUID.t()) :: Ecto.UUID.t() | nil
+  def operator_of(run_organisation_id) do
+    if Edition.model_choice_chain(run_organisation_id) == "operator",
+      do: Edition.operator_chain_organisation(run_organisation_id)
+  end
 
   defp credential(run, api) do
     with {:ok, provider} <- provider(Map.get(run, :provider_connection_id)),

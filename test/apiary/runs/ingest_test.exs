@@ -1,6 +1,8 @@
 defmodule Apiary.Runs.IngestTest do
   use Apiary.DataCase, async: true
 
+  import Ecto.Query, only: [from: 2]
+
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
@@ -139,5 +141,59 @@ defmodule Apiary.Runs.IngestTest do
 
     order = for param <- params, sequence = ids[param], do: sequence
     assert order == [1, 2, 3]
+  end
+
+  # Forager under a hidden harness: a harness credential listed by its name and purpose
+  # alone, and a stack request with no path and no path rule. Intake stores `data` as
+  # received, and the projection keeps the stack channel's row beside the session's.
+  test "a hidden harness's records are stored and folded on their channel", %{key: key} do
+    {subject, [started]} = first_events()
+
+    applied =
+      wire_event(subject, 3, "run.policy_applied", %{
+        "mode" => "enforce",
+        "credentials" => [
+          %{"name" => "work-1", "purpose" => "work", "hosts" => ["git.example"]},
+          %{"name" => "harness-1", "purpose" => "harness"}
+        ]
+      })
+
+    egress = %{
+      "host" => "git.example",
+      "port" => 443,
+      "method" => "HTTPS",
+      "decision" => "allowed",
+      "outcome" => "connected",
+      "mode" => "enforce",
+      "rule" => "git.example"
+    }
+
+    stack =
+      wire_event(
+        subject,
+        4,
+        "run.egress",
+        Map.merge(egress, %{"channel" => "stack", "credential" => "harness-1"})
+      )
+
+    session = wire_event(subject, 5, "run.egress", Map.put(egress, "path", "/team/app.git"))
+
+    assert {:ok, %{status: 202, inserted: 4, run: run}} =
+             Ingest.ingest(key, batch!([started, applied, stack, session]), @meta)
+
+    assert %Event{data: %{"credentials" => [_work, %{"name" => "harness-1"} = harness]}} =
+             Repo.get_by!(Event, run_id: run.id, sequence: 3)
+
+    assert harness == %{"name" => "harness-1", "purpose" => "harness"}
+
+    {:ok, _run} = Apiary.Runs.Projector.project(Repo.get!(Run, run.id))
+
+    assert [{"session", "/team/app.git"}, {"stack", ""}] =
+             Repo.all(
+               from c in Apiary.Runs.Connection,
+                 where: c.run_id == ^run.id,
+                 order_by: c.channel,
+                 select: {c.channel, c.path}
+             )
   end
 end

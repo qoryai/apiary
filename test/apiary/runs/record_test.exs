@@ -362,37 +362,40 @@ defmodule Apiary.Runs.RecordTest do
 
       # One entry per use, as the event lists them; the argument whole up to the contract's
       # 4096 code points, cut there visibly, and nil when the entry has no non-empty string.
-      assert read == [
-               %{
-                 "name" => "forge-token",
-                 "argument" => "acme/shop",
-                 "hosts" => ["forge.example"]
-               },
-               %{
-                 "name" => "forge-token",
-                 "argument" => "acme/shop",
-                 "hosts" => ["api.forge.example"]
-               },
-               %{"name" => "model", "argument" => nil, "hosts" => ["api.model.example"]},
-               %{"name" => "whole", "argument" => String.duplicate("w", 4096), "hosts" => []},
-               %{
-                 "name" => "long",
-                 "argument" => String.duplicate("l", 4096) <> "…",
-                 "hosts" => []
-               },
-               %{
-                 "name" => "accent",
-                 "argument" => String.duplicate(e, 4096) <> "…",
-                 "hosts" => []
-               },
-               %{
-                 "name" => "combining",
-                 "argument" => String.duplicate(combining, 2048) <> "…",
-                 "hosts" => []
-               },
-               %{"name" => "empty", "argument" => nil, "hosts" => []},
-               %{"name" => "number", "argument" => nil, "hosts" => []}
-             ]
+      assert read ==
+               [
+                 %{
+                   "name" => "forge-token",
+                   "argument" => "acme/shop",
+                   "hosts" => ["forge.example"]
+                 },
+                 %{
+                   "name" => "forge-token",
+                   "argument" => "acme/shop",
+                   "hosts" => ["api.forge.example"]
+                 },
+                 %{"name" => "model", "argument" => nil, "hosts" => ["api.model.example"]},
+                 %{"name" => "whole", "argument" => String.duplicate("w", 4096), "hosts" => []},
+                 %{
+                   "name" => "long",
+                   "argument" => String.duplicate("l", 4096) <> "…",
+                   "hosts" => []
+                 },
+                 %{
+                   "name" => "accent",
+                   "argument" => String.duplicate(e, 4096) <> "…",
+                   "hosts" => []
+                 },
+                 %{
+                   "name" => "combining",
+                   "argument" => String.duplicate(combining, 2048) <> "…",
+                   "hosts" => []
+                 },
+                 %{"name" => "empty", "argument" => nil, "hosts" => []},
+                 %{"name" => "number", "argument" => nil, "hosts" => []}
+               ]
+               # A credential without a purpose is a work credential; a tool has none.
+               |> Enum.map(&Map.put(&1, "purpose", "work"))
 
       assert tools == [
                %{
@@ -407,6 +410,39 @@ defmodule Apiary.Runs.RecordTest do
       # number have no argument, each an entry of its own name.
       assert policy.credentials_count == 8
       assert policy.tools_count == 2
+    end
+
+    test "a harness credential listed by its name and purpose alone is read with no hosts",
+         %{scope: scope} do
+      data =
+        tool_policy_data(%{
+          "credentials" => [
+            %{"name" => "work-1", "purpose" => "work", "hosts" => ["git.example"]},
+            %{"name" => "harness-1", "purpose" => "harness"},
+            %{"name" => "odd", "purpose" => 7, "hosts" => ["odd.example"]}
+          ]
+        })
+
+      run =
+        projected(scope, [{1, "run.started", started_data()}, {2, "run.policy_applied", data}])
+
+      assert %{credentials: read, credentials_count: 3} = Record.policy(scope, run)
+
+      assert read == [
+               %{
+                 "name" => "work-1",
+                 "argument" => nil,
+                 "hosts" => ["git.example"],
+                 "purpose" => "work"
+               },
+               %{"name" => "harness-1", "argument" => nil, "hosts" => [], "purpose" => "harness"},
+               %{
+                 "name" => "odd",
+                 "argument" => nil,
+                 "hosts" => ["odd.example"],
+                 "purpose" => "work"
+               }
+             ]
     end
 
     test "the counts of credentials and tools cover the entries past the twentieth", %{
@@ -784,6 +820,150 @@ defmodule Apiary.Runs.RecordTest do
         |> Map.new(&{&1.sequence, Timeline.slim(&1)})
 
       assert items == Timeline.build(index.items, whole)
+    end
+  end
+
+  describe "the policy lines of the timeline" do
+    defp applied_record do
+      first = %{
+        "mode" => "enforce",
+        "source" => "config",
+        "allow" => ["api.example.com", "models.example.net"],
+        "deny" => ["bad.example.org"],
+        "credentials" => [
+          %{"name" => "model-provider", "hosts" => ["models.example.net"]},
+          %{"name" => "deploy-key", "hosts" => ["api.example.com"]}
+        ]
+      }
+
+      second = %{
+        first
+        | "allow" => [
+            "api.example.com",
+            "cdn.example.com",
+            "models.example.net",
+            "m2.example.net"
+          ],
+          "credentials" => [
+            %{"name" => "model-provider", "hosts" => ["models.example.net", "m2.example.net"]},
+            %{"name" => "deploy-key", "hosts" => ["api.example.com"]}
+          ]
+      }
+
+      [
+        {1, "run.started", started_data()},
+        {2, "run.policy_applied", first},
+        {3, "run.policy_applied", second}
+      ]
+    end
+
+    defp policy_lines(scope, run) do
+      index = Record.timeline(scope, run)
+      for %{kind: :policy_applied} = line <- Record.items(scope, run, index.items), do: line
+    end
+
+    test "under the core's edition, a line shows the counts and the delta of the event", %{
+      scope: scope
+    } do
+      run = projected(scope, applied_record())
+      index = Record.timeline(scope, run)
+
+      assert [first, again] = policy_lines(scope, run)
+      assert first.allowed_hosts == 2 and first.denied_hosts == 1
+      assert again.allowed_hosts == 4
+
+      assert %{added: ["cdn.example.com", "m2.example.net"], added_count: 2, removed: []} =
+               again.delta
+
+      # The members read to narrow a policy are not on the line.
+      for key <- ~w(credentials allow allow_first allow_first_count)a do
+        refute Map.has_key?(again, key)
+      end
+
+      # The line is what building it from whole events, with no edition asked, makes of it.
+      whole =
+        Repo.all(
+          from e in Apiary.Runs.Event,
+            where: e.run_id == ^run.id,
+            select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
+        )
+        |> Map.new(&{&1.sequence, Timeline.slim(&1)})
+
+      assert Record.items(scope, run, index.items) == Timeline.build(index.items, whole)
+    end
+
+    test "under an edition that narrows the policy, the counts and the delta leave out its hosts",
+         %{scope: scope} do
+      run = projected(scope, applied_record())
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NarrowsRunPolicy)
+
+      assert [first, again] = policy_lines(scope, run)
+      assert first.allowed_hosts == 1 and first.denied_hosts == 1
+      assert again.allowed_hosts == 2
+
+      # The previous line is narrowed too: the delta is of the two narrowed lists.
+      assert %{added: ["cdn.example.com"], added_count: 1, removed: [], removed_count: 0} =
+               again.delta
+
+      refute inspect(again) =~ "example.net"
+      refute inspect(first) =~ "example.net"
+    end
+
+    # The record of `applied_record/0` with a host that the model provider is read through,
+    # in `terminated` and in the hosts of a tool, beside the ones a reader may see.
+    defp terminated_record do
+      for {sequence, type, data} <- applied_record() do
+        if type == "run.policy_applied" do
+          {sequence, type,
+           Map.merge(data, %{
+             "terminated" => ["models.example.net", "files.example.com"],
+             "tools" => [
+               %{
+                 "name" => "files",
+                 "argument" => "acme/shop",
+                 "hosts" => ["files.example.com", "models.example.net"]
+               },
+               %{"name" => "models", "hosts" => ["models.example.net"]}
+             ]
+           })}
+        else
+          {sequence, type, data}
+        end
+      end
+    end
+
+    test "under the core's edition, a line shows the hosts it terminates and its tools serve", %{
+      scope: scope
+    } do
+      run = projected(scope, terminated_record())
+
+      assert [first, _again] = policy_lines(scope, run)
+      assert first.terminated == ["models.example.net", "files.example.com"]
+      assert first.terminated_count == 2
+
+      assert [%{hosts: ["files.example.com", "models.example.net"]}, %{hosts: hosts}] =
+               first.tools
+
+      assert hosts == ["models.example.net"]
+    end
+
+    test "under an edition that narrows the policy, the line leaves out its hosts of the tools and terminated",
+         %{scope: scope} do
+      run = projected(scope, terminated_record())
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NarrowsRunPolicy)
+
+      assert [first, again] = policy_lines(scope, run)
+
+      for line <- [first, again] do
+        assert line.terminated == ["files.example.com"]
+        assert line.terminated_count == 1
+
+        # The tools stay, and so do the hosts that are not the model provider's.
+        assert [%{name: "files", hosts: ["files.example.com"]}, %{name: "models", hosts: []}] =
+                 line.tools
+
+        refute inspect(line) =~ "example.net"
+      end
     end
   end
 

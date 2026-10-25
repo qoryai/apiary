@@ -4,9 +4,15 @@
 # signed connect pass and return and the signed setup pass, with their keys and payloads,
 # setup passes refused, the adapter's declarations, accepted and refused, with a setup_url
 # among them, the change feed's answers, accepted and refused, the listings of
-# collections and a disconnect of one, accepted and refused, the bodies of a collection's
-# items and of an item's comments, accepted and refused, the refusals the control plane
-# answers with, and two signed requests, a POST and a GET, with the GET's signed answer),
+# collections, each collection with the grant_ref of the grant that covers it, and a
+# disconnect of one, accepted and refused, the bodies of a collection's items and of an
+# item's comments, accepted and refused, a grant report with its external account, a
+# grant end, the answer to the read of the grants and the feed's grant entries, accepted
+# and refused, the refusals
+# the control plane answers with, two signed requests, a POST and a GET, with the GET's
+# signed answer, a declaration with a call_url, a signed call with its signed answer, and
+# the bodies of the calls for a run's credential, to resolve addresses and to read a
+# document, with their answers, accepted and refused),
 # and whose connect-return.schema.json and setup-pass.schema.json are under
 # test/fixtures/integration-contract/schema/: a commit of the integrations, pinned by its
 # id.
@@ -18,4 +24,4 @@
 # description: the 256 KiB of a fetched description.json when it is fetched, and every
 # bound, those 256 KiB included, in Apiary.Integrations.Description.parse/1, which an
 # adapter's start-up gives the description's value as its body carries it.
-f5bc79a410348ce50d42979166f456adcf93b798
+e8272d526cbbcfcf416dc78c0a25c7079cb0f9f0

@@ -2,8 +2,9 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
   # Install (`POST /:org/settings/integrations/:adapter_id/install`): the member's right
   # first, then the adapter, then `Apiary.Adapters.connect/2`; the nonce kept in the
   # session; the page that sends the person on to the adapter's connect address with the
-  # pass, kept by no cache and telling no referrer; the CSRF check; and where a person is
-  # sent when the organisation is connected already or the adapter cannot be connected.
+  # pass, kept by no cache and telling no referrer; the CSRF check; a connected
+  # organisation's new pass; and where a person is sent when the connected connection
+  # cannot take a pass yet or the adapter cannot be connected.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -130,18 +131,44 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
     assert connections(scope) == []
   end
 
-  test "while the organisation is connected, the person is sent to the integration's page", %{
-    conn: conn,
-    scope: scope,
-    adapter: adapter
-  } do
+  test "while the organisation is connected, the person is sent on with a new pass for the same connection",
+       %{conn: conn, scope: scope, adapter: adapter} do
     {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+    :ok = pass_made_earlier(connection.public_id)
+    conn = install(conn, scope, adapter.public_id)
+
+    assert "https://tracker.example.com/connect?state=" <> _pass = refresh_url(conn)
+
+    assert [%Connection{state: :connected, public_id: public_id} = connected] =
+             connections(scope)
+
+    assert public_id == connection.public_id
+    nonce = ConnectSession.fetch(conn, public_id)
+    assert Apiary.Contract.Ed25519.encode(connected.pass_nonce) == nonce
+  end
+
+  test "a connected organisation's press too soon after the last pass sends the person to the integration's page",
+       %{conn: conn, scope: scope, adapter: adapter} do
+    {connection, _nonce} = connection_fixture(scope, adapter, :listed)
+
+    # The last pass expires validity/0 seconds from now, at the latest second it may: the
+    # next would expire later than that.
+    Repo.update_all(from(c in Connection, where: c.id == ^connection.id),
+      set: [
+        pass_expires_at:
+          DateTime.utc_now()
+          |> DateTime.truncate(:second)
+          |> DateTime.add(Apiary.Adapters.ConnectPass.validity() + 1, :second)
+      ]
+    )
+
+    kept = Repo.reload!(connection)
     conn = install(conn, scope, adapter.public_id)
 
     assert redirected_to(conn) ==
              "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}"
 
-    assert connections(scope) == [Repo.reload!(connection)]
+    assert connections(scope) == [kept]
   end
 
   test "an adapter that cannot be connected yet sends the person to Add an integration", %{

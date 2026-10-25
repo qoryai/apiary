@@ -235,11 +235,14 @@ defmodule ApiaryWeb.Routes do
         get "/work-items/changes", ChangesController, :index
       end
 
-      # An adapter's requests: its declaration as it starts.
+      # An adapter's requests: its declaration as it starts, and the secrets it stores in
+      # Qory Apiary and reads back.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_adapter
 
         post "/adapter", AdapterController, :create
+        post "/adapter/secrets", AppValuesController, :create
+        get "/adapter/secrets", AppValuesController, :show
       end
 
       # A node pool's starter's requests, with the `factory` feature: its claim of a run
@@ -260,6 +263,16 @@ defmodule ApiaryWeb.Routes do
 
         post "/source-collections", SourceCollectionsController, :create
         post "/sources/disconnect", SourcesDisconnectController, :create
+      end
+
+      # An adapter's report of a grant of a connection, its read of them all, and its
+      # report that the source no longer covers one.
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_adapter
+
+        post "/grants", GrantsController, :create
+        get "/grants", GrantsController, :index
+        post "/grants/end", GrantEndController, :create
       end
 
       # An adapter's items of a collection, and its comments of an item.
@@ -491,6 +504,17 @@ defmodule ApiaryWeb.Routes do
             live "/instance/adapters/:adapter_id/settings/remove",
                  InstanceLive.Adapter,
                  :remove
+
+            # Instance settings › Nodes, with the `factory` feature, for the instance's
+            # admins: the instance's node pool and gateway, which Qory Apiary makes from its
+            # settings, and each node's tabs, Overview, Access key (`…/keys`) and Settings, by
+            # its public id. Revoke is the one act on a key: the next code comes from Qory
+            # Apiary, never from a person.
+            live "/instance/nodes", InstanceLive.Nodes, :index
+            live "/instance/nodes/:node_id", InstanceLive.Node, :overview
+            live "/instance/nodes/:node_id/keys", InstanceLive.Node, :access_key
+            live "/instance/nodes/:node_id/keys/:key_id/revoke", InstanceLive.Node, :revoke
+            live "/instance/nodes/:node_id/settings", InstanceLive.Node, :settings
 
             unquote(@block)
           end

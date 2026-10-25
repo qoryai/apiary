@@ -21,6 +21,7 @@ defmodule Apiary.KeyCheckTest do
   alias Apiary.{AccessKeys, Connections, KeyCheck, KeyDerivation, Release, Secrets, SigningKey}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Mail.{Password, Settings}
+  alias Apiary.Secrets.Cipher
 
   setup do
     derivation = Application.get_env(:apiary, KeyDerivation)
@@ -385,6 +386,19 @@ defmodule Apiary.KeyCheckTest do
 
   defp count(table), do: Repo.one(from(t in table, select: count()))
 
+  # The instance's data key, wrapped under the current `:values` key, as the instance's
+  # first secret makes it (`Apiary.Secrets.Instance`).
+  defp instance_data_key_fixture do
+    {key_id, wrapping_key} = KeyDerivation.key(:values)
+
+    Repo.insert!(%Apiary.Secrets.InstanceDataKey{
+      id: true,
+      wrapped_key:
+        Cipher.wrap(wrapping_key, Cipher.new_data_key(), Cipher.instance_data_key_aad()),
+      wrapping_key_id: key_id
+    })
+  end
+
   describe "a database with access keys and no recorded values" do
     setup do
       %{scope: scope} = sign_up_fixture()
@@ -513,6 +527,7 @@ defmodule Apiary.KeyCheckTest do
         })
 
       mail_password_fixture()
+      instance_data_key_fixture()
 
       for {table, _column, _purpose} <- KeyCheck.key_id_columns(),
           do: assert(count(table) > 0, table)

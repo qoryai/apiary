@@ -100,6 +100,11 @@ defmodule Apiary.Nodes.Node do
     # it up at the system it reads from, as its latest start-up declared it; nil while it
     # declares none.
     field :setup_url, :string
+    # An adapter's alone (`nodes_call_url_check`): where Qory Apiary calls it
+    # (`Apiary.Adapters.Calls`), as its latest start-up declared it, and the instance id of
+    # that start-up, which each call is signed for; both nil while it declares none.
+    field :call_url, :string
+    field :call_instance_id, :string
     # An adapter's alone (`nodes_items_check`): what its description's source role says of
     # its items, its words for one and for many, both or neither (nil for the default),
     # and whether it reports items, false for a source that reports collections and no
@@ -129,6 +134,25 @@ defmodule Apiary.Nodes.Node do
     # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
     # by `Apiary.Adapters.install/2`, and never cast from what a person or an adapter sends.
     field :installed_as, :string
+    # An adapter's alone (`nodes_secret_reference_check`): where its secret is
+    # (`Apiary.Secrets.Reference`), the store and the entry, both nil until the adapter
+    # first stores its secrets (`Apiary.Secrets.Instance`). Never cast from what a person
+    # or an adapter sends.
+    field :secret_store, :string
+    field :secret_entry, :string
+    # An adapter's alone (`nodes_secret_names_check`): the names of the secrets it stores
+    # in Qory Apiary, as its latest start-up's description lists them, sorted; nil for
+    # none (`source_role_changeset/2`).
+    field :secret_names, {:array, :string}
+    # An adapter's alone (`nodes_source_apply_check`): the `apply` items of its latest
+    # start's source role, the templates of each run's work credential from it, as the
+    # description has them (`Apiary.Integrations.ApplyTemplates`), 1 to 16; nil where it
+    # has none, and before its first start. `egress_hosts` is the entries of that
+    # description's `egress_hosts` that are hosts, each exact, nil for none; each apply
+    # host has an equal entry there. Set at each start (`source_role_changeset/2`) and
+    # never cast.
+    field :source_apply, {:array, :map}
+    field :egress_hosts, {:array, :string}
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -274,6 +298,11 @@ defmodule Apiary.Nodes.Node do
   # `https://`, an authority with no `@` and no whitespace, then nothing, or a path or a
   # query without whitespace, and no fragment: as `nodes_setup_url_check` has it.
   @setup_url ~r{\Ahttps://[^/?#@[:space:]]+(?:[/?][^#[:space:]]*)?\z}u
+  # `https://`, an authority with no `@` and no whitespace, then a path that ends with
+  # `/`, with no whitespace, query or fragment: as `nodes_call_url_check` has it.
+  @call_url ~r{\Ahttps://[^/?#@[:space:]]+/(?:[^?#[:space:]]*/)?\z}u
+  # An adapter's instance id, as `X-Qory-Instance-Id` carries it.
+  @instance_id ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
   @doc false
   # The changeset of what an adapter declares each time it starts
@@ -284,13 +313,18 @@ defmodule Apiary.Nodes.Node do
   # to at most the default (`nodes_sync_check`). And where an instance admin is sent to
   # set it up, `setup_url`, which it declares only while it is not set up: as a connect
   # address is, but with no fragment, at most `max_url/0` characters; nil clears it
-  # (`nodes_setup_url_check`).
+  # (`nodes_setup_url_check`). And where Qory Apiary calls it, `call_url`, with the
+  # instance id of the start-up that declared it, `call_instance_id`, both or neither: an
+  # https address with a path that ends with `/`, no query and no fragment, at most
+  # `max_url/0` characters; nil clears both (`nodes_call_url_check`).
   @spec declaration_changeset(t, map) :: Ecto.Changeset.t()
   def declaration_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
     adapter
     |> connect_url_changeset(attrs)
     |> cast(attrs, [
       :setup_url,
+      :call_url,
+      :call_instance_id,
       :sync_default_interval,
       :sync_minimum_interval,
       :sync_sends_changes
@@ -309,6 +343,11 @@ defmodule Apiary.Nodes.Node do
       end
     end)
     |> check_constraint(:setup_url, name: :nodes_setup_url_check)
+    |> validate_length(:call_url, max: @max_url)
+    |> validate_format(:call_url, @call_url)
+    |> validate_format(:call_instance_id, @instance_id)
+    |> validate_call_instance_id()
+    |> check_constraint(:call_url, name: :nodes_call_url_check)
     |> validate_required([
       :connect_url,
       :sync_default_interval,
@@ -327,6 +366,24 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:sync_default_interval, name: :nodes_sync_check)
   end
 
+  # A call address comes with the instance id it is signed for, and neither without the
+  # other.
+  defp validate_call_instance_id(changeset) do
+    case {get_field(changeset, :call_url), get_field(changeset, :call_instance_id)} do
+      {nil, nil} ->
+        changeset
+
+      {url, id} when is_binary(url) and is_binary(id) ->
+        changeset
+
+      {nil, _id} ->
+        add_error(changeset, :call_url, "can't be blank", validation: :required)
+
+      {_url, nil} ->
+        add_error(changeset, :call_instance_id, "can't be blank", validation: :required)
+    end
+  end
+
   defp validate_minimum_interval(changeset) do
     case get_field(changeset, :sync_default_interval) do
       default when is_integer(default) ->
@@ -343,10 +400,16 @@ defmodule Apiary.Nodes.Node do
   # `collection_noun/1` and `access/1`, which the description's schema has checked): its
   # words for one item and for many, or none, whether it reports items, its words for one
   # collection and for many, or none, and its line on how to change, at the source, which
-  # collections it reaches. A description with no source role gives the defaults: no
-  # words, items, and no line. The database holds the words and items to the same
-  # (`nodes_items_check`, `nodes_collection_noun_check`), and the line to adapters
-  # (`nodes_source_access_check`). `Apiary.Adapters.declare/2` calls it at each start, on
+  # collections it reaches, and the names of the secrets it stores in Qory Apiary
+  # (`Apiary.Integrations.Description.source_secrets/1`, nil for none), and the apply
+  # items of its work credential with the description's exact `egress_hosts`
+  # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
+  # none). A description with no source role gives the defaults: no words, items, no
+  # line, no names and no apply items. The database holds the words and items to the
+  # same (`nodes_items_check`, `nodes_collection_noun_check`), and the line, the names
+  # and the apply items to adapters (`nodes_source_access_check`,
+  # `nodes_secret_names_check`, `nodes_source_apply_check`).
+  # `Apiary.Adapters.declare/2` calls it at each start, on
   # the changeset of the declaration, so the latest start's description replaces what an
   # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
   # `items` changes whether the adapter's collections are linked, and whoever writes it
@@ -371,11 +434,16 @@ defmodule Apiary.Nodes.Node do
       items: Description.items?(description),
       collection_noun_one: collection_noun && collection_noun.one,
       collection_noun_other: collection_noun && collection_noun.other,
-      source_access: Description.access(description)
+      source_access: Description.access(description),
+      secret_names: Description.source_secrets(description),
+      source_apply: Description.source_apply(description),
+      egress_hosts: Description.exact_egress_hosts(description)
     )
     |> check_constraint(:items, name: :nodes_items_check)
+    |> check_constraint(:secret_names, name: :nodes_secret_names_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)
+    |> check_constraint(:source_apply, name: :nodes_source_apply_check)
   end
 
   @doc false

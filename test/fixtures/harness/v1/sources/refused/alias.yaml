@@ -1,0 +1,5 @@
+# An anchor and an alias, refused before the alias expands.
+harness:
+  extends: &base {git: https://code.example.com/example-org/harness, ref: v2.4.0}
+  modules:
+    - source: *base

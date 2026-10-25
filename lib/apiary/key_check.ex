@@ -80,9 +80,9 @@ defmodule Apiary.KeyCheck do
 
   # Each column that stores a key id derived from APIARY_ENCRYPTION_SECRET, with its table
   # and the purpose of the key it names (`Apiary.KeyDerivation`). The check's migration
-  # comes after every table but `instance_settings`' mail columns and
-  # `organisation_data_keys`, which later migrations add: a table or column the schema does not have yet holds no key id
-  # (`oldest_key_id/1`).
+  # comes after every table but `instance_settings`' mail columns, `organisation_data_keys`
+  # and `instance_data_keys`, which later migrations add: a table or column the schema
+  # does not have yet holds no key id (`oldest_key_id/1`).
   @key_id_columns [
     {"access_keys", :integrity_key_id, :integrity},
     {"access_key_enrolment_codes", :integrity_key_id, :integrity},
@@ -91,6 +91,7 @@ defmodule Apiary.KeyCheck do
     {"organisation_connections", :integrity_key_id, :integrity},
     {"workspace_data_keys", :wrapping_key_id, :values},
     {"organisation_data_keys", :wrapping_key_id, :values},
+    {"instance_data_keys", :wrapping_key_id, :values},
     {"instance_settings", :mail_key_id, :mail}
   ]
 
