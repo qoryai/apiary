@@ -57,7 +57,7 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
       <.settings_page section={:nodes} title={gettext("Nodes")} measure="list">
         <:subtitle>
           {gettext(
-            "The node pool and the gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The pool takes the runs of every workspace that has no node pool. The gateway serves every organisation."
+            "The node pool and the gateway that run with this instance. Qory Apiary makes them and writes their one-time codes. The pool takes the runs of every workspace that has no node pool in use. The gateway serves every organisation."
           )}
         </:subtitle>
 

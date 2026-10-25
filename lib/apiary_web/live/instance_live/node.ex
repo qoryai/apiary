@@ -335,7 +335,7 @@ defmodule ApiaryWeb.InstanceLive.Node do
     <div id="node-access-key" class="grid max-w-[60rem] gap-8">
       <p id="node-access-key-intro" class="max-w-[80ch] text-[13px]/5 text-muted">
         {gettext(
-          "Qory Apiary writes this node's one-time code to its folder. Revoking the key makes the node enrol again with a new key."
+          "Qory Apiary writes this node's one-time code to its folder. When you revoke the key, Qory Apiary writes a new code to the node's code file, and the node enrols with it when it reads the file."
         )}
       </p>
 

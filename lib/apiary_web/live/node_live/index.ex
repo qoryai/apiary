@@ -170,16 +170,16 @@ defmodule ApiaryWeb.NodeLive.Index do
     narrowing = Map.take(filters, [:q, :kind])
 
     instance = instance_nodes(scope)
+    listed_instance = Enum.filter(instance, &narrowed_in?(&1, narrowing))
 
     nodes =
       Enum.sort_by(
         Nodes.list_nodes(scope, narrowing) ++
-          organisation_gateways(scope, narrowing) ++
-          Enum.filter(instance, &narrowed_in?(&1, narrowing)),
+          organisation_gateways(scope, narrowing) ++ listed_instance,
         &{&1.name, &1.id}
       )
 
-    activity = scope |> Nodes.activity(nodes, now) |> with_keys_used(instance, now)
+    activity = scope |> Nodes.activity(nodes, now) |> with_keys_used(listed_instance, now)
     running? = &(activity[&1.id].running != [])
     shown = Enum.filter(nodes, &in_view?(filters.view, running?.(&1)))
 
@@ -240,7 +240,8 @@ defmodule ApiaryWeb.NodeLive.Index do
   # The instance's nodes' activity under the workspace's scope has this workspace's runs
   # alone, and none of their instances' rows or keys, which have no organisation: when
   # their keys were last used comes from the instance's, so the row says when the node
-  # was last seen.
+  # was last seen. `instance` is the instance's nodes in the list, under its search and
+  # kind, each of which has a row in `activity`.
   defp with_keys_used(activity, [], _now), do: activity
 
   defp with_keys_used(activity, instance, now) do
@@ -765,7 +766,9 @@ defmodule ApiaryWeb.NodeLive.Index do
                     :if={instance?(node) and node.kind == :pool}
                     id={"node-#{node.public_id}-level"}
                     text={
-                      gettext("Instance pool: takes this workspace's runs while it has no node pool.")
+                      gettext(
+                        "Instance pool: takes this workspace's runs while it has no node pool in use."
+                      )
                     }
                   />
                   <.side_words

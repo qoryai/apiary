@@ -1,11 +1,13 @@
 defmodule ApiaryWeb.InstanceLive.NodesTest do
   # Instance settings › Nodes (`ApiaryWeb.InstanceLive.Nodes`, `ApiaryWeb.InstanceLive.Node`),
   # for an instance admin: the instance's pool and gateway, each with its Overview, its
-  # Access key tab, where Revoke is the one act, and its Settings, the pool's instance
+  # Access key tab, where Revoke is the one act, refused for a person no longer an
+  # instance admin and for a node deleted meanwhile, and its Settings, the pool's instance
   # limit; a path that does not exist for anyone else. Then a workspace's Nodes page, which
   # lists the instance's gateway, and the instance's pool while the workspace has no pool
-  # in use, with links only for an instance admin. Not async: the instance has one pool
-  # and one gateway in use.
+  # in use, with links only for an instance admin, under a kind or a search; and a
+  # workspace's node pages, where the default is the instance's gateway. Not async: the
+  # instance has one pool and one gateway in use.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query
@@ -178,7 +180,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
       assert has_element?(
                lv,
                "#node-#{pool.public_id}-level",
-               "Instance pool: takes this workspace's runs while it has no node pool."
+               "Instance pool: takes this workspace's runs while it has no node pool in use."
              )
 
       assert has_element?(lv, "#node-#{pool.public_id}-state", "1 running")
@@ -207,6 +209,119 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       refute has_element?(lv, "#node-#{pool.public_id}")
       assert has_element?(lv, "#node-#{gateway.public_id}")
+    end
+
+    test "narrowed by kind or by a search, lists the instance's nodes that match alone",
+         %{pool: pool, gateway: gateway} do
+      %{scope: scope, user: user} = sign_up_fixture()
+      ours = node_fixture(scope, %{name: "edge-node"})
+      conn = log_in_user(build_conn(), user)
+      nodes = ~p"/#{scope.organisation}/#{scope.workspace}/nodes"
+
+      {:ok, lv, _html} = live(conn, nodes <> "?kind=node")
+      assert has_element?(lv, "#node-#{ours.public_id}")
+      refute has_element?(lv, "#node-#{pool.public_id}")
+      refute has_element?(lv, "#node-#{gateway.public_id}")
+
+      {:ok, lv, _html} = live(conn, nodes <> "?kind=gateway")
+      assert has_element?(lv, "#node-#{gateway.public_id}")
+      refute has_element?(lv, "#node-#{pool.public_id}")
+
+      {:ok, lv, _html} = live(conn, nodes <> "?q=zzzz")
+      refute has_element?(lv, "#node-#{ours.public_id}")
+      refute has_element?(lv, "#node-#{pool.public_id}")
+      refute has_element?(lv, "#node-#{gateway.public_id}")
+
+      {:ok, lv, _html} = live(conn, nodes <> "?q=shared-gate")
+      assert has_element?(lv, "#node-#{gateway.public_id}")
+      refute has_element?(lv, "#node-#{pool.public_id}")
+    end
+  end
+
+  describe "a workspace's node pages, where the default is the instance's gateway" do
+    setup do
+      %{scope: scope, user: user} = sign_up_fixture()
+      node = node_fixture(scope, %{gateway_choice: :default})
+      %{scope: scope, node: node, member: log_in_user(build_conn(), user)}
+    end
+
+    test "the forms for a node and a pool say the default is this instance's gateway",
+         %{scope: scope, member: conn} do
+      for path <- [
+            ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new",
+            ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new-pool"
+          ] do
+        {:ok, _lv, html} = live(conn, path)
+
+        assert html =~
+                 "On Default gateway, runs go through shared-gateway, the default for this instance."
+      end
+    end
+
+    test "with a gateway of the workspace too, the form groups the instance's under This instance",
+         %{scope: scope, member: conn, gateway: gateway} do
+      ours = gateway_fixture(scope)
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new")
+
+      assert has_element?(lv, ~s|optgroup[label="This workspace"] option[value="#{ours.id}"]|)
+      assert has_element?(lv, ~s|optgroup[label="This instance"] option[value="#{gateway.id}"]|)
+    end
+
+    test "the node's Overview, Settings and Access key tabs name the gateway of this instance",
+         %{scope: scope, member: conn, node: node} do
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}"
+
+      {:ok, _lv, html} = live(conn, base)
+      assert html =~ "shared-gateway of this instance"
+
+      {:ok, _lv, html} = live(conn, base <> "/settings")
+      assert html =~ "the default for this instance"
+
+      {:ok, _lv, html} = live(conn, base <> "/access-key")
+      assert html =~ "shared-gateway of this instance"
+    end
+  end
+
+  describe "Revoke on the Access key tab, refused" do
+    setup %{pool: pool} do
+      %{access_key: key} = installed_key_fixture(pool)
+      %{key: key}
+    end
+
+    defp confirm(conn, pool, key) do
+      {:ok, lv, _html} =
+        live(conn, ~p"/instance/nodes/#{pool.public_id}/keys/#{key.key_id}/revoke")
+
+      lv
+    end
+
+    test "for a person no longer an instance admin, leads to the list and revokes nothing",
+         %{conn: conn, pool: pool, key: key, admin: admin} do
+      lv = confirm(conn, pool, key)
+
+      Repo.update_all(
+        from(m in Apiary.Organisations.Membership,
+          where: m.user_id == ^admin.user.id and m.organisation_id == ^admin.organisation.id
+        ),
+        set: [suspended_at: DateTime.utc_now()]
+      )
+
+      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+      assert_redirect(lv, ~p"/instance/nodes")
+      assert Repo.get!(AccessKey, key.id).revoked_at == nil
+    end
+
+    test "for a node deleted meanwhile, leads to the list and revokes nothing",
+         %{conn: conn, pool: pool, key: key} do
+      lv = confirm(conn, pool, key)
+
+      Repo.update_all(from(n in Node, where: n.id == ^pool.id),
+        set: [deleted_at: DateTime.utc_now()]
+      )
+
+      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+      assert_redirect(lv, ~p"/instance/nodes")
+      assert Repo.get!(AccessKey, key.id).revoked_at == nil
     end
   end
 end

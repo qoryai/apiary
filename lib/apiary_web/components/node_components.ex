@@ -533,9 +533,11 @@ defmodule ApiaryWeb.NodeComponents do
     end
   end
 
+  defp level_key(%Node{workspace_id: nil, organisation_id: nil}), do: :instance
   defp level_key(%Node{workspace_id: nil, organisation_id: id}), do: {:organisation, id}
   defp level_key(%Node{workspace_id: id}), do: {:workspace, id}
 
+  defp level_label(%Node{workspace_id: nil, organisation_id: nil}), do: gettext("This instance")
   defp level_label(%Node{workspace_id: nil} = gateway), do: organisation_name(gateway)
   defp level_label(%Node{}), do: gettext("This workspace")
 
@@ -778,8 +780,9 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc """
   gateway_name/2 is `gateway`'s name as a node of the organisation `organisation_id`
-  names it: its name alone, or "edge-1 of Acme" for a gateway of another organisation,
-  whose organisation must be loaded.
+  names it: its name alone, "edge-1 of Acme" for a gateway of another organisation,
+  whose organisation must be loaded, or "edge-1 of this instance" for the instance's
+  gateway.
   """
   @spec gateway_name(Ecto.UUID.t(), Node.t()) :: String.t()
   def gateway_name(organisation_id, %Node{organisation_id: organisation_id, name: name}),
@@ -804,6 +807,9 @@ defmodule ApiaryWeb.NodeComponents do
       ApiaryWeb.Edition.nodes_managed_by_sentence(scope.organisation) ||
         ApiaryWeb.Access.who_may(scope, action, default)
 
+  # The instance's gateway has no organisation: the sentences that name a gateway's
+  # organisation say "this instance" for it.
+  defp organisation_name(%Node{organisation_id: nil}), do: gettext("this instance")
   defp organisation_name(%Node{organisation: %Organisation{name: name}}), do: name
 
   @doc """
