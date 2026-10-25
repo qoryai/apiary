@@ -14,7 +14,7 @@ defmodule Apiary.Stacks.HarnessMigrationTest do
   @migration {20_261_025_100_000, Apiary.Repo.Migrations.KeepAHarnessDocumentAtEachLevel,
               "keep_a_harness_document_at_each_level"}
 
-  @demo "https://github.com/qoryai/qory#2e3af09033548e2155b7911b9adae473136e21cf:" <>
+  @demo "https://github.com/qoryai/qory#a0c1d6e739749ebfa77b15332aa94d4305451261:" <>
           "examples/hello"
 
   setup_all do
@@ -90,7 +90,7 @@ defmodule Apiary.Stacks.HarnessMigrationTest do
 
     assert value("harness", demo) ==
              "extends:\n  git: \"https://github.com/qoryai/qory\"\n" <>
-               "  ref: \"2e3af09033548e2155b7911b9adae473136e21cf\"\n" <>
+               "  ref: \"a0c1d6e739749ebfa77b15332aa94d4305451261\"\n" <>
                "  path: \"examples/hello\"\n"
 
     assert Stacks.Document.errors(value("harness", demo)) == []

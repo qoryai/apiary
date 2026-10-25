@@ -75,7 +75,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   @harness """
   extends:
     git: https://github.com/qoryai/qory
-    ref: 2e3af09033548e2155b7911b9adae473136e21cf
+    ref: a0c1d6e739749ebfa77b15332aa94d4305451261
     path: examples/hello
   """
 
