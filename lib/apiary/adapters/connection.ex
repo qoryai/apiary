@@ -12,7 +12,7 @@ defmodule Apiary.Adapters.Connection do
   # pending and its next pass would have expired more than
   # `Apiary.Adapters.ConnectPass.validity/0` seconds ahead
   # (`Apiary.Adapters.Connections.start/3`), or, before
-  # `20261025100100_keep_a_connection_s_linked_pass`, while it was connected and no
+  # `20261025120100_keep_a_connection_s_linked_pass`, while it was connected and no
   # listing had named it yet. `listed_at` is when the adapter's first listing that names
   # it was accepted, and `listing_completed_at` when a listing of it last became complete
   # (`Apiary.Adapters.Collections.post_listing/2`), from

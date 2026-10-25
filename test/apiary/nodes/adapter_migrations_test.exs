@@ -48,11 +48,11 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   @hold {20_261_023_090_000, Apiary.Repo.Migrations.HoldRunsForTheirEnvironmentBuild,
          "hold_runs_for_their_environment_build"}
 
-  @grants {20_261_025_100_000, Apiary.Repo.Migrations.KeepAnOrganisationSGrants,
+  @grants {20_261_025_120_000, Apiary.Repo.Migrations.KeepAnOrganisationSGrants,
            "keep_an_organisation_s_grants"}
-  @linked_pass {20_261_025_100_100, Apiary.Repo.Migrations.KeepAConnectionSLinkedPass,
+  @linked_pass {20_261_025_120_100, Apiary.Repo.Migrations.KeepAConnectionSLinkedPass,
                 "keep_a_connection_s_linked_pass"}
-  @linked_passes {20_261_025_100_200, Apiary.Repo.Migrations.KeepEachLinkedPassOfAConnection,
+  @linked_passes {20_261_025_120_200, Apiary.Repo.Migrations.KeepEachLinkedPassOfAConnection,
                   "keep_each_linked_pass_of_a_connection"}
 
   @tables ~w(nodes access_keys access_key_enrolment_codes node_instances)

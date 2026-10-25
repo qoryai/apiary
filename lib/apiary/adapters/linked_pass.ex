@@ -3,7 +3,7 @@ defmodule Apiary.Adapters.LinkedPass do
   # `linked` (`Apiary.Adapters.Connections.complete_return/4`): the adapter may report the
   # grant it linked under that pass, once, naming the pass's nonce
   # (`Apiary.Adapters.Grants.report/2`, the integration contract's `grant.schema.json`).
-  # The table and its rules are `20261025100200_keep_each_linked_pass_of_a_connection`'s.
+  # The table and its rules are `20261025120200_keep_each_linked_pass_of_a_connection`'s.
   #
   # `nonce` is the 16 bytes of the pass's nonce, `linked_at` when Qory Apiary accepted the
   # return, and `reported_at` when it accepted the grant report under that nonce, nil until

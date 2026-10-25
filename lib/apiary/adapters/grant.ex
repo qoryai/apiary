@@ -3,7 +3,7 @@ defmodule Apiary.Adapters.Grant do
   # adapter's source gives for one external account, which the adapter reports after a
   # person's linked connect return (the integration contract's `grant.schema.json`,
   # `Apiary.Adapters.Grants`). The table and its rules are
-  # `20261025100000_keep_an_organisation_s_grants`'s.
+  # `20261025120000_keep_an_organisation_s_grants`'s.
   #
   # `grant_ref` is the adapter's ref to the grant, stable for its external account, which
   # Qory Apiary compares and stores and never parses. `pass_nonce` is the 16 bytes of the
