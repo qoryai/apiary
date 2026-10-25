@@ -7,8 +7,13 @@ defmodule Apiary.Adapters.Calls do
   # `call/4` makes one call, in this order:
   #
   #   1. the address is checked, resolved and pinned (`Apiary.Adapters.CallAddress`);
-  #   2. the body is `version` 1, `time`, now in UTC to the second, then the call's
-  #      members in order (`body/2`), at most `max_call` bytes (256 KiB);
+  #   2. the body is `version` 1, `time`, then the call's members in order (`body/2`), at
+  #      most `max_call` bytes (256 KiB). `time` is in UTC to the second, and later than
+  #      the time of every call before it to the same adapter on this node
+  #      (`Apiary.Adapters.CallClock`), so no two calls to an adapter sign the same bytes,
+  #      which its replay check would refuse. A time more than 60 seconds ahead of the
+  #      clock waits until it is not, within the call's time, else the call fails
+  #      `:timeout` unsent;
   #   3. it is signed (`signature/4`): the headers `X-Qory-Adapter-Id` (the adapter's
   #      public id), `X-Qory-Instance-Id` (the instance id of the adapter's start-up that
   #      declared the `call_url`), `X-Qory-Contract-Version` (1) and
@@ -52,7 +57,7 @@ defmodule Apiary.Adapters.Calls do
 
   alias Apiary.{AccessKeys, SigningKey}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{CallAddress, CallFailure, CallWire, RunCredential, Wire}
+  alias Apiary.Adapters.{CallAddress, CallClock, CallFailure, CallWire, RunCredential, Wire}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Integrations.Fetch.Address
@@ -208,41 +213,54 @@ defmodule Apiary.Adapters.Calls do
         do: key
   end
 
-  # `previous`, the time of the attempt before, nil for the first: a retry's time is
-  # later, by a second when the clock has not moved past it, so its signature is new and
-  # the adapter's replay check does not refuse it.
+  # `previous`, the time of the attempt before, nil for the first. Each attempt takes a
+  # new time (`time/2`), so a retry's signature is new too.
   defp attempt(adapter, target, keys, path, members, previous, deadline, settings) do
-    time = time(previous)
-    body = body(members, time)
+    with {:ok, time} <- time(adapter, deadline) do
+      body = body(members, time)
 
-    if byte_size(body) > Keyword.get(settings, :max_call, @max_call) do
-      {:error, :too_large, %{}}
-    else
-      signature =
-        signature(SigningKey.current(), adapter.public_id, target.instance_id, path, body)
+      if byte_size(body) > Keyword.get(settings, :max_call, @max_call) do
+        {:error, :too_large, %{}}
+      else
+        signature =
+          signature(SigningKey.current(), adapter.public_id, target.instance_id, path, body)
 
-      outcome =
-        target
-        |> send_call(adapter.public_id, path, body, signature, deadline, settings)
-        |> answer(signature, keys)
+        outcome =
+          target
+          |> send_call(adapter.public_id, path, body, signature, deadline, settings)
+          |> answer(signature, keys)
 
-      case retry(outcome, previous, deadline, settings) do
-        {:retry, wait} ->
-          Process.sleep(wait)
-          attempt(adapter, target, keys, path, members, time, deadline, settings)
+        case retry(outcome, previous, deadline, settings) do
+          {:retry, wait} ->
+            Process.sleep(wait)
+            attempt(adapter, target, keys, path, members, time, deadline, settings)
 
-        :final ->
-          final(outcome)
+          :final ->
+            final(outcome)
+        end
       end
     end
   end
 
-  defp time(previous) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+  # The call's time (`Apiary.Adapters.CallClock.take/2`), waited for while it is more
+  # than `CallClock.ahead/0` seconds ahead of the clock; `:timeout` when that wait would
+  # end after the call's time.
+  defp time(adapter, deadline) do
+    clock = System.os_time(:second)
+    time = CallClock.take(adapter.id, clock)
+    wait = (time - CallClock.ahead() - clock) * 1000
 
-    if previous && DateTime.compare(now, previous) != :gt,
-      do: DateTime.add(previous, 1, :second),
-      else: now
+    cond do
+      wait <= 0 ->
+        {:ok, DateTime.from_unix!(time)}
+
+      now() + wait < deadline ->
+        Process.sleep(wait)
+        {:ok, DateTime.from_unix!(time)}
+
+      true ->
+        {:error, :timeout, %{}}
+    end
   end
 
   @doc false

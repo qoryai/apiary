@@ -13,7 +13,7 @@ defmodule Apiary.Adapters.CallsTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.Adapters.{CallFailure, Calls, RunCredential}
+  alias Apiary.Adapters.{CallClock, CallFailure, Calls, RunCredential}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.{FetchStub, SigningKey}
@@ -255,6 +255,51 @@ defmodule Apiary.Adapters.CallsTest do
   defp time(body) do
     {:ok, time, 0} = DateTime.from_iso8601(Jason.decode!(body)["time"])
     time
+  end
+
+  test "identical calls to one adapter take times that strictly increase, so each signature is new",
+       %{adapter: adapter, seed: seed} do
+    stub(fn conn ->
+      {conn, _body} = tell(conn)
+      answer(conn, 200, @ok, seed)
+    end)
+
+    for _call <- 1..3, do: assert({:ok, _body} = resolve(adapter))
+    assert [{first, a}, {second, b}, {third, c}] = calls()
+
+    assert DateTime.compare(time(b), time(a)) == :gt
+    assert DateTime.compare(time(c), time(b)) == :gt
+
+    signatures =
+      for conn <- [first, second, third],
+          do: Plug.Conn.get_req_header(conn, "x-qory-signature-ed25519")
+
+    assert signatures |> Enum.uniq() |> length() == 3
+  end
+
+  test "callers at once never take the same time for one adapter" do
+    adapter_id = Ecto.UUID.generate()
+    now = System.os_time(:second)
+
+    times =
+      1..40
+      |> Task.async_stream(fn _caller -> CallClock.take(adapter_id, now) end, max_concurrency: 8)
+      |> Enum.map(fn {:ok, time} -> time end)
+
+    assert Enum.sort(times) == Enum.to_list(now..(now + 39))
+  end
+
+  test "a time more than 60 seconds ahead of the clock waits; past the call's time it fails :timeout unsent",
+       %{adapter: adapter, seed: seed} do
+    stub(fn conn ->
+      {conn, _body} = tell(conn)
+      answer(conn, 200, @ok, seed)
+    end)
+
+    CallClock.take(adapter.id, System.os_time(:second) + CallClock.ahead() + 30)
+
+    assert {:error, %CallFailure{cause: :timeout}} = resolve(adapter, @fast)
+    assert calls() == []
   end
 
   test "an unsigned 502 twice is :unreachable after the one retry", %{adapter: adapter} do
