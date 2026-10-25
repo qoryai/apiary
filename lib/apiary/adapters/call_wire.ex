@@ -7,8 +7,9 @@ defmodule Apiary.Adapters.CallWire do
   #
   #   * `run-credential` (`run-credential.schema.json`): `resources`, refs, each once,
   #     `access` (`read` or `write`) and `purpose`: for `harness`, 1 to 64 resources,
-  #     `grant_ref` and the access `read`; for `work`, exactly one resource, the ref of the target's collection,
-  #     and `connection_id`, that collection's connection, with no `grant_ref`.
+  #     `grant_ref` and the access `read`; for `work`, exactly one resource, the ref of
+  #     the target's collection, and `connection_id`, that collection's connection, with
+  #     no `grant_ref`.
   #     Its answer is `credential`, the Forager contract's credential document as the
   #     integration contract narrows it (`run-credential-answer.schema.json`): `version` 1,
   #     `token`, 1 to 16,384 bytes with no NUL, carriage return or line feed and no space
