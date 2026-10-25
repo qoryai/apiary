@@ -174,6 +174,17 @@ defmodule Apiary.Edition do
   @doc false
   @callback operated?(%Organisation{}) :: boolean
 
+  # With the `factory` feature, which the documentation leaves out: the organisation that
+  # owns a harness document the person of `scope` saves (`Apiary.Stacks.put_stack/3`), or
+  # nil, which refuses the save. A run of another organisation hides the document's text
+  # (`Apiary.Stacks.Resolution`). Asked once per save, before its transaction. The core
+  # answers the scope's organisation for a member who reaches it through that membership
+  # (`Apiary.Stacks.saved_by/1`); else the instance's organisation
+  # (`c:instance_organisation_id/0`) for an instance admin
+  # (`Apiary.Access.instance_admin?/1`); else nil.
+  @doc false
+  @callback harness_owner(Scope.t()) :: Ecto.UUID.t() | nil
+
   # With the `factory` feature, which the documentation leaves out: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
   # the edition, so that a client of an operator is not shown the operator's model
@@ -614,6 +625,7 @@ defmodule Apiary.Edition do
     operator_chain_organisation: 1,
     operator_chain_writer?: 1,
     operated?: 1,
+    harness_owner: 1,
     client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,

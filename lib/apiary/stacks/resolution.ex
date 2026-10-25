@@ -11,15 +11,14 @@ defmodule Apiary.Stacks.Resolution do
   # workflow included, passes to the next. A run with no target has no target levels. No
   # document at any level resolves to `:none`.
   #
-  # **The owner.** A document's owner is the organisation of the person who saved it, when
-  # that person saved it as a member acting in that organisation
-  # (`Apiary.Stacks.saved_by/1`). It is nil, unknown, for a document saved by any other
-  # reach, such as an instance admin or a person acting in a client through another
-  # organisation, and once the saver's organisation is deleted; an unknown owner is never
-  # the run's organisation, so the run hides the harness.
+  # **The owner.** A document's owner is its row's owner organisation, which the edition
+  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`): in the
+  # core, the organisation of a member who saved it there, or the instance's organisation
+  # for a document an instance admin saved. It is nil once that organisation is deleted.
   #
   # **Hidden.** `harness_hidden` is true when the run's organisation is operated
-  # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation.
+  # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation. A
+  # nil owner is never the run's organisation.
   @moduledoc false
 
   alias Apiary.Stacks.Stack
@@ -41,7 +40,7 @@ defmodule Apiary.Stacks.Resolution do
   @typedoc "The level a resolved document came from."
   @type level :: Stack.level()
 
-  @typedoc "The owner of a document: an organisation's id, or nil for one unknown or deleted."
+  @typedoc "The owner of a document: an organisation's id, or nil for one deleted."
   @type owner :: Ecto.UUID.t() | nil
 
   @typedoc """
@@ -98,10 +97,9 @@ defmodule Apiary.Stacks.Resolution do
   end
 
   @doc false
-  # owner/1 is the owner of a stored document: the organisation of the person who saved
-  # it.
+  # owner/1 is the owner of a stored document: its row's owner organisation.
   @spec owner(Stack.t()) :: owner
-  def owner(%Stack{saved_by_organisation_id: saved_by}), do: saved_by
+  def owner(%Stack{owner_organisation_id: owner}), do: owner
 
   # The level of `stack` for the run, or nil for a stack of another place or workflow.
   defp place(%Stack{} = stack, input) do

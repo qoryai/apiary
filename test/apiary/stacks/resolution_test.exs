@@ -41,7 +41,7 @@ defmodule Apiary.Stacks.ResolutionTest do
         organisation_id: @organisation,
         harness: "extends: {git: https://code.example.com/#{level}, ref: main}\n"
       }
-      |> Map.merge(%{saved_by_organisation_id: @organisation})
+      |> Map.merge(%{owner_organisation_id: @organisation})
       |> Map.merge(place)
       |> Map.merge(Map.new(attrs))
     )
@@ -119,38 +119,38 @@ defmodule Apiary.Stacks.ResolutionTest do
   end
 
   describe "the owner" do
-    test "of a document is the organisation of the person who saved it" do
-      stack = at(:workspace, harness: @document, saved_by_organisation_id: @other_organisation)
+    test "of a document is its row's owner organisation" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: @other_organisation)
       assert Resolution.owner(stack) == @other_organisation
       assert resolved(input([stack])).owner == @other_organisation
     end
 
-    test "of a document saved by no member is unknown" do
-      stack = at(:workspace, harness: @document, saved_by_organisation_id: nil)
+    test "of a document whose owner is deleted is nil" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: nil)
       assert Resolution.owner(stack) == nil
       assert resolved(input([stack])).owner == nil
     end
   end
 
   describe "harness_hidden" do
-    test "is false for a document saved by the run's organisation" do
-      stack = at(:workspace, harness: @document, saved_by_organisation_id: @organisation)
+    test "is false for a document the run's organisation owns" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: @organisation)
       refute resolved(input([stack])).harness_hidden
     end
 
-    test "is true for a document saved by another organisation" do
-      stack = at(:workspace, harness: @document, saved_by_organisation_id: @other_organisation)
+    test "is true for a document another organisation owns" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: @other_organisation)
       assert resolved(input([stack])).harness_hidden
     end
 
-    test "is true for a document whose saver's organisation is deleted" do
-      stack = at(:workspace, harness: @document, saved_by_organisation_id: nil)
+    test "is true for a document whose owner is deleted" do
+      stack = at(:workspace, harness: @document, owner_organisation_id: nil)
       assert resolved(input([stack])).harness_hidden
     end
 
     test "is true for an operated organisation, whoever owns the document" do
-      saved_by_run = at(:workspace, harness: @document, saved_by_organisation_id: @organisation)
-      assert resolved(input([saved_by_run], operated: true)).harness_hidden
+      owned_by_run = at(:workspace, harness: @document, owner_organisation_id: @organisation)
+      assert resolved(input([owned_by_run], operated: true)).harness_hidden
     end
   end
 end

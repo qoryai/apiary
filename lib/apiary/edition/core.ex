@@ -69,6 +69,15 @@ defmodule Apiary.Edition.Core do
   @impl true
   def operated?(_organisation), do: false
 
+  # The core has no operator: a member owns what they save in their organisation, and an
+  # instance admin who saves any other way saves for the instance's organisation.
+  @impl true
+  def harness_owner(scope) do
+    with nil <- Apiary.Stacks.saved_by(scope) do
+      if Apiary.Access.instance_admin?(scope), do: Apiary.Edition.instance_organisation_id()
+    end
+  end
+
   @impl true
   def client_reads(_scope, _kind, _run, subject), do: subject
 

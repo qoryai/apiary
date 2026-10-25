@@ -20,11 +20,12 @@ defmodule Apiary.Stacks do
   # call them, and the demo (`mix apiary.demo.console`) calls `put_stack/3`: no action,
   # route or page does, and they check no access. The access check comes with the
   # action. A write records the person who saved the value and, in
-  # `saved_by_organisation_id`, the scope's organisation when the scope reaches it
-  # through a membership there alone (`saved_by/1`). A scope that reaches it any other
-  # way, such as an instance admin or an operator's person acting in a client, or the
-  # instance acting by itself, records nil: the owner of a document saved so is
-  # unknown, and the run hides the harness.
+  # `owner_organisation_id`, the organisation the edition gives for the scope
+  # (`Apiary.Edition.harness_owner/1`). The core gives the scope's organisation when the
+  # scope reaches it through a membership there alone (`saved_by/1`), and the instance's
+  # organisation for an instance admin who reaches it any other way. A scope the edition
+  # gives no organisation for, such as the instance acting by itself, saves nothing
+  # (`{:error, :forbidden}`).
   #
   # ## Refused on save
   #
@@ -177,32 +178,40 @@ defmodule Apiary.Stacks do
 
   @doc false
   # put_stack/3 sets the harness document at `place` to `harness`, nil for none at a
-  # place with a workflow, replacing what the place had, saved by the scope's person in
-  # the scope's organisation. `{:ok, stack}`, or `{:error,
-  # changeset}` with the reason on its field. Only tests and the demo call it: no action,
-  # route or page does, and it checks no access (the moduledoc).
-  @spec put_stack(Scope.t(), place, term) :: {:ok, Stack.t()} | {:error, Ecto.Changeset.t()}
+  # place with a workflow, replacing what the place had, saved by the scope's person and
+  # owned by the organisation the edition gives for the scope
+  # (`Apiary.Edition.harness_owner/1`). `{:ok, stack}`; `{:error, :forbidden}` when the
+  # edition gives none; or `{:error, changeset}` with the reason on its field. Only tests
+  # and the demo call it: no action, route or page does, and it checks no access (the
+  # moduledoc).
+  @spec put_stack(Scope.t(), place, term) ::
+          {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness) do
     columns = columns(place)
     user_id = scope.user && scope.user.id
-    saved_by = saved_by(scope)
 
-    Repo.transact(fn ->
-      current = lock_row(columns)
+    case Edition.harness_owner(scope) do
+      owner when is_binary(owner) ->
+        Repo.transact(fn ->
+          current = lock_row(columns)
 
-      changes =
-        Map.merge(columns, %{
-          harness: harness,
-          saved_by_organisation_id: saved_by,
-          updated_by_id: user_id
-        })
+          changes =
+            Map.merge(columns, %{
+              harness: harness,
+              owner_organisation_id: owner,
+              updated_by_id: user_id
+            })
 
-      changes = if current, do: changes, else: Map.put(changes, :created_by_id, user_id)
+          changes = if current, do: changes, else: Map.put(changes, :created_by_id, user_id)
 
-      (current || %Stack{})
-      |> changeset(changes)
-      |> Repo.insert_or_update()
-    end)
+          (current || %Stack{})
+          |> changeset(changes)
+          |> Repo.insert_or_update()
+        end)
+
+      nil ->
+        {:error, :forbidden}
+    end
   end
 
   @doc false
@@ -222,9 +231,9 @@ defmodule Apiary.Stacks do
   end
 
   @doc false
-  # saved_by/1 is the organisation a write by `scope` records: the scope's organisation
-  # when the scope's membership is in it and the scope reaches it through that
-  # membership alone (`reach` nil or `:membership`), else nil.
+  # saved_by/1 is the scope's organisation when the scope's membership is in it and the
+  # scope reaches it through that membership alone (`reach` nil or `:membership`), else
+  # nil: the core's first answer to `Apiary.Edition.harness_owner/1`.
   @spec saved_by(Scope.t()) :: Ecto.UUID.t() | nil
   def saved_by(%Scope{
         organisation: %Organisation{id: id},
