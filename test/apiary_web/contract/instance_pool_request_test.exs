@@ -3,9 +3,11 @@ defmodule ApiaryWeb.Contract.InstancePoolRequestTest do
   # no organisation and no workspace (`ApiaryWeb.Contract.AdapterRequest` with
   # `kind: :pool`): `POST /v1/pools/claim` with `wait_seconds` 0 and above, the hold woken
   # by a run queued in any workspace, and `dispatched`, `release` and `machine-log` on a
-  # dispatch it claimed. The key of the instance's gateway, which has no place either, is
-  # still refused. Not async: the instance has one pool and one gateway in use, and the
-  # hold's settings are the whole node's.
+  # dispatch it claimed, and 403 on a dispatch another pool claimed. A revoked key of the
+  # instance's pool, the key of the instance's gateway, which has no place either, an
+  # organisation gateway's key and an adapter's key are refused as an unknown key. Not
+  # async: the instance has one pool and one gateway in use, and the hold's settings are
+  # the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -234,6 +236,58 @@ defmodule ApiaryWeb.Contract.InstancePoolRequestTest do
       assert conn.status == 401
       assert unsigned_answer?(conn)
       refute Repo.reload!(dispatch).dispatched_at
+    end
+
+    test "the instance pool's key is refused, 403, on a dispatch another pool claimed", ctx do
+      %{scope: c} = sign_up_fixture()
+      theirs = pool_fixture(c)
+      %{access_key: their_key} = enrolled_key_fixture(c, theirs)
+      Apiary.DispatchedRunsFixtures.gateway_for!(c, theirs)
+      queue!(c)
+      {:ok, %{dispatch: dispatch}} = Dispatches.claim(their_key, Dispatches.now())
+
+      for {action, body} <- [
+            {"dispatched", %{}},
+            {"release", %{"reason" => "The job could not start."}}
+          ] do
+        conn = signed(ctx, "/v1/dispatches/#{dispatch.public_id}/#{action}", body)
+
+        assert {conn.status, Jason.decode!(conn.resp_body)} == {403, %{"error" => "forbidden"}}
+        assert signed_answer?(conn)
+      end
+
+      assert %Dispatch{dispatched_at: nil, ended_at: nil} = Repo.reload!(dispatch)
+    end
+  end
+
+  describe "a key of another shape on the provisioner routes" do
+    test "the instance pool's key, revoked, is refused as an unknown key, unsigned", ctx do
+      queue!(ctx.a)
+      {:ok, _revoked} = Apiary.Adapters.revoke_key(instance_admin_scope(), ctx.key)
+
+      conn = claim(ctx, 0)
+      assert conn.status == 401
+      assert unsigned_answer?(conn)
+      assert Repo.aggregate(Dispatch, :count) == 0
+    end
+
+    test "an organisation gateway's key and an adapter's key are refused, unsigned", ctx do
+      queue!(ctx.a)
+      organisation_gateway = organisation_gateway_fixture(ctx.b)
+
+      %{access_key: gateway_key, pair: gateway_pair} =
+        enrolled_key_fixture(ctx.b, organisation_gateway)
+
+      %{access_key: adapter_key, pair: adapter_pair} =
+        installed_key_fixture(installed_adapter_fixture())
+
+      for {key, pair} <- [{gateway_key, gateway_pair}, {adapter_key, adapter_pair}] do
+        conn = claim(ctx, 0, key_id: key.key_id, seed: pair.secret)
+        assert conn.status == 401
+        assert unsigned_answer?(conn)
+      end
+
+      assert Repo.aggregate(Dispatch, :count) == 0
     end
   end
 end
