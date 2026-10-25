@@ -605,6 +605,7 @@ defmodule Apiary.Harnesses.WalkTest do
             "https://adapter.localhost/r",
             "https://localhost./r",
             "https://a.localhost./r",
+            "https://localhost../r",
             "https://127.0.0.1./r"
           ] do
         assert {:failed, %{failure: :invalid, rule: %{"rule" => "host"}}} = walk_file(ctx, git),

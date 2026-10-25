@@ -34,7 +34,7 @@ defmodule Apiary.Harnesses.Walk do
   # `invalid` for the save rules of a source (`Apiary.Stacks.Document.source_error/2`),
   # a host with a percent-encoding, an address longer than a call takes, a `ref` that is
   # no version a read takes, a host that is an IP address in any notation or a local
-  # name (`localhost`, `*.localhost`, each also with a final `.`), and a `path` that is
+  # name (`localhost`, `*.localhost`, each also with final dots), and a `path` that is
   # absolute, leads out of its source with `..`, or has a `\` or a `%`, which could
   # spell `..` another way. Every other `path` the walk reads is checked the same way: a
   # local path of the target's file, an export's stack file, and a local module of a
@@ -478,11 +478,11 @@ defmodule Apiary.Harnesses.Walk do
   defp host(git), do: git |> URI.parse() |> Map.get(:host) |> to_string()
 
   # A host that is an IP address in any notation, such as `[::1]`, `127.0.0.1`, `127.1`
-  # or `0x7f.1`, or a local name, with or without one final `.`, such as `localhost.`.
+  # or `0x7f.1`, or a local name, with or without final dots, such as `localhost.`.
   # A host with a percent-encoding never gets here: decoded, a fullwidth letter or digit
   # can map to `localhost` or `127.0.0.1`.
   defp local_host?(git) do
-    host = git |> host() |> String.downcase() |> String.replace_suffix(".", "")
+    host = git |> host() |> String.downcase() |> String.trim_trailing(".")
     bare = host |> String.trim_leading("[") |> String.trim_trailing("]")
 
     match?({:ok, _address}, :inet.parse_address(String.to_charlist(bare))) or
