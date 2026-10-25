@@ -11,9 +11,11 @@ defmodule Apiary.Adapters.Grants do
   # person who started it brought back in the browser they started it in
   # (`Apiary.Adapters.Connections.complete_return/4`): an adapter's report alone cannot add
   # an external account to an organisation. Each such nonce is accepted once. A report of
-  # a ref the connection holds replaces that grant in place. A ref live under another
-  # organisation's connection of the adapter is refused (`grant_taken`): an external
-  # account is linked to one live connection at a time.
+  # a ref the connection holds replaces that grant in place. The pass check
+  # (`pass_unknown`) runs first. Then a report is refused (`grant_taken`) when the adapter
+  # has a grant with the same ref that has not ended under any other connection of the
+  # adapter, of any organisation, a connection made but with no accepted listing yet
+  # included: an external account is linked to one connection of the adapter at a time.
   #
   # A grant ends only with its connection (`end_for_connections/2`), and the connection
   # stays connected when it holds no grant. Each report accepted writes the feed's grant
@@ -59,8 +61,10 @@ defmodule Apiary.Adapters.Grants do
   #   * `{:error, :pass_unknown}` when `pass_nonce` is not the nonce of a pass of that
   #     connection whose return came back linked, or a report under it was accepted
   #     already;
-  #   * `{:error, :grant_taken}` when `grant_ref` is live under another connection of the
-  #     adapter, another organisation's.
+  #   * `{:error, :grant_taken}`, checked after `pass_unknown`, when the adapter has a
+  #     grant with `grant_ref` that has not ended under any other connection of the
+  #     adapter, of any organisation, a connection made but with no accepted listing yet
+  #     included.
   #
   # Then, in one transaction, the grant is added, or the connection's live grant with that
   # ref takes the pass's nonce and the time; the pass is marked reported; the feed's grant
@@ -122,10 +126,13 @@ defmodule Apiary.Adapters.Grants do
     end
   end
 
-  # The live grant of the adapter with `ref`, held `FOR UPDATE`: the connection's takes
-  # the new nonce and time; another connection's refuses the report; with none, a grant
-  # is added. Two organisations' reports of one ref at once: the second's insert waits on
-  # the live index for the first's to commit, and is refused then.
+  # The grant of the adapter with `ref` that has not ended, held `FOR UPDATE`; it runs
+  # after `lock_pass/2`, so `pass_unknown` comes first. The connection's grant takes the
+  # new nonce and time; a grant under any other connection of the adapter, of any
+  # organisation, a connection made but with no accepted listing yet included, refuses
+  # the report (`grant_taken`); with none, a grant is added. Two connections' reports of
+  # one ref at once: the second's insert waits on the live index for the first's to
+  # commit, and is refused then.
   defp put_grant(%Connection{} = connection, ref, nonce, now) do
     live =
       Repo.one(

@@ -13,9 +13,10 @@ defmodule ApiaryWeb.Contract.GrantsController do
   # is `401`, unsigned (`ApiaryWeb.Contract.AdapterRequest.accept/2`); then
   # `Apiary.Adapters.Grants.report/2`: `403` `forbidden` for a key that may not report a
   # grant (`adapter.report_grant`); `403` `connection_unknown`; `409`
-  # `connection_ended`; `409` `connection_suspended`; `409` `pass_unknown`; `409`
-  # `grant_taken` for a ref live under another organisation's connection; else `204`,
-  # signed, with no body.
+  # `connection_ended`; `409` `connection_suspended`; `409` `pass_unknown`; then `409`
+  # `grant_taken` when the adapter has a grant with the same ref that has not ended under
+  # any other connection of the adapter, of any organisation, a connection made but with
+  # no accepted listing yet included; else `204`, signed, with no body.
   #
   # `GET /v1/grants`, the adapter's read of Qory Apiary's copy: `403` `forbidden` for a
   # key that may not read it (`adapter.read_grants`); else `200`, signed:
