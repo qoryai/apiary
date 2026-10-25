@@ -787,6 +787,93 @@ defmodule Apiary.Runs.RecordTest do
     end
   end
 
+  describe "the policy lines of the timeline" do
+    defp applied_record do
+      first = %{
+        "mode" => "enforce",
+        "source" => "config",
+        "allow" => ["api.example.com", "models.example.net"],
+        "deny" => ["bad.example.org"],
+        "credentials" => [
+          %{"name" => "model-provider", "hosts" => ["models.example.net"]},
+          %{"name" => "deploy-key", "hosts" => ["api.example.com"]}
+        ]
+      }
+
+      second = %{
+        first
+        | "allow" => [
+            "api.example.com",
+            "cdn.example.com",
+            "models.example.net",
+            "m2.example.net"
+          ],
+          "credentials" => [
+            %{"name" => "model-provider", "hosts" => ["models.example.net", "m2.example.net"]},
+            %{"name" => "deploy-key", "hosts" => ["api.example.com"]}
+          ]
+      }
+
+      [
+        {1, "run.started", started_data()},
+        {2, "run.policy_applied", first},
+        {3, "run.policy_applied", second}
+      ]
+    end
+
+    defp policy_lines(scope, run) do
+      index = Record.timeline(scope, run)
+      for %{kind: :policy_applied} = line <- Record.items(scope, run, index.items), do: line
+    end
+
+    test "under the core's edition, a line shows the counts and the delta of the event", %{
+      scope: scope
+    } do
+      run = projected(scope, applied_record())
+      index = Record.timeline(scope, run)
+
+      assert [first, again] = policy_lines(scope, run)
+      assert first.allowed_hosts == 2 and first.denied_hosts == 1
+      assert again.allowed_hosts == 4
+
+      assert %{added: ["cdn.example.com", "m2.example.net"], added_count: 2, removed: []} =
+               again.delta
+
+      # The members read to narrow a policy are not on the line.
+      for key <- ~w(credentials allow allow_first allow_first_count)a do
+        refute Map.has_key?(again, key)
+      end
+
+      # The line is what building it from whole events, with no edition asked, makes of it.
+      whole =
+        Repo.all(
+          from e in Apiary.Runs.Event,
+            where: e.run_id == ^run.id,
+            select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
+        )
+        |> Map.new(&{&1.sequence, Timeline.slim(&1)})
+
+      assert Record.items(scope, run, index.items) == Timeline.build(index.items, whole)
+    end
+
+    test "under an edition that narrows the policy, the counts and the delta leave out its hosts",
+         %{scope: scope} do
+      run = projected(scope, applied_record())
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NarrowsRunPolicy)
+
+      assert [first, again] = policy_lines(scope, run)
+      assert first.allowed_hosts == 1 and first.denied_hosts == 1
+      assert again.allowed_hosts == 2
+
+      # The previous line is narrowed too: the delta is of the two narrowed lists.
+      assert %{added: ["cdn.example.com"], added_count: 1, removed: [], removed_count: 0} =
+               again.delta
+
+      refute inspect(again) =~ "example.net"
+      refute inspect(first) =~ "example.net"
+    end
+  end
+
   describe "read budgets" do
     # What a read costs this server is set by the number of rows, never by what Forager
     # put in them. The window of 300 calls with 512 KiB payloads, which writes some

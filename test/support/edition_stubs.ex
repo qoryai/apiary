@@ -967,4 +967,36 @@ defmodule Apiary.EditionStubs do
     def client_reads(_scope, :run_policy, _run, _policy), do: nil
     def client_reads(_scope, _kind, _run, query), do: where(query, false)
   end
+
+  defmodule NarrowsRunPolicy do
+    @moduledoc """
+    A reader is shown a run's policy (`c:Apiary.Edition.client_reads/4`, `:run_policy`)
+    without the hosts of the credential named `"model-provider"`: its entry in
+    `credentials`, and its hosts in `allow` and `allow_first`, with the counts recounted.
+    Every other read is left as it is.
+    """
+
+    @provider "model-provider"
+
+    def client_reads(_scope, :run_policy, _run, %{credentials: credentials} = policy) do
+      hidden =
+        for %{"name" => @provider, "hosts" => hosts} <- credentials, host <- hosts, do: host
+
+      allow = Enum.reject(policy.allow, &(&1 in hidden))
+      allow_first = Enum.reject(policy.allow_first, &(&1 in hidden))
+      kept = Enum.reject(credentials, &(&1["name"] == @provider))
+
+      %{
+        policy
+        | allow: allow,
+          allow_count: length(allow),
+          allow_first: allow_first,
+          allow_first_count: length(allow_first),
+          credentials: kept,
+          credentials_count: length(kept)
+      }
+    end
+
+    def client_reads(_scope, _kind, _run, subject), do: subject
+  end
 end

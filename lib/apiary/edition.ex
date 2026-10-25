@@ -172,7 +172,10 @@ defmodule Apiary.Edition do
   # - `:run_events`, the query of a run's events (`Apiary.Runs.Record`);
   # - `:run_connections`, the query of a run's connections (`Apiary.Runs.Record`);
   # - `:run_policy`, the policy a run's last `policy.applied` event reported, a map or nil
-  #   (`Apiary.Runs.Record.policy/2`);
+  #   (`Apiary.Runs.Record.policy/2`), and the policy of each `policy.applied` line of the
+  #   run's timeline, and of the line before it, in the same shape
+  #   (`Apiary.Runs.Record.Timeline.build/3`), whose counts and delta are of the narrowed
+  #   lists;
   # - `:workspace_connections`, the query of the workspace's connections, joined to their
   #   runs, the connection the first binding and the run the second: the policy activity
   #   (`Apiary.Policy.Activity`), the attempts beside the declared hosts
@@ -183,7 +186,8 @@ defmodule Apiary.Edition do
   #   (`Apiary.Policy.Suggestions`).
   #
   # `run` is the run read, nil for `:workspace_connections` and `:workspace_events`.
-  # Called once per read. The core returns `subject` as it is.
+  # Called once per read, and for `:run_policy` once for each policy line of a timeline and
+  # once for the line before it. The core returns `subject` as it is.
   @doc false
   @callback client_reads(
               Scope.t(),
