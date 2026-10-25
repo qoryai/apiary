@@ -60,8 +60,9 @@ defmodule Apiary.Harnesses.Walk do
   #
   # Then the base is read through its link, at its `ref`: `<path>/qory-stack.yaml` for a
   # `path`; the root's harness file's `exports` and the export's `qory-stack.yaml` for a
-  # `stack`; and for the root, its `qory-stack.yaml`, else its harness file's harness
-  # section. A base of the target's file with `path` and no `git` is read the same way
+  # `stack`; and for the root, its `qory-stack.yaml`. As qory reads a base, a folder
+  # without `qory-stack.yaml` fails `invalid`: its harness file's harness section is no
+  # stack. A base of the target's file with `path` and no `git` is read the same way
   # in the target, at `target_version`. Every other remote source's repository has its
   # root `harness.yaml` read once, at its `ref`, for its version. Each later read of a
   # repository is at the version the first returned, its pin.
@@ -79,9 +80,8 @@ defmodule Apiary.Harnesses.Walk do
   #   * declared: `workflows.<workflow>.access`, read for the run's workflow
   #     (`Apiary.Harnesses.Reader.workflow_access/2`), of the base's `qory-stack.yaml`
   #     for a section with `extends`, and of the section's `workflows` for one without.
-  #     A value other than `write`, an absent key, an absent `workflows` entry, a base
-  #     with no link, which is not read, and a base read from a harness file's section
-  #     declare `:read`;
+  #     A value other than `write`, an absent key, an absent `workflows` entry, and a
+  #     base with no link, which is not read, declare `:read`;
   #   * recorded: the access level of the stack row with the run's workflow
   #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
   #
@@ -749,11 +749,10 @@ defmodule Apiary.Harnesses.Walk do
         is_binary(base["path"]) and is_map_key(base, "git") ->
           stack_at(location, inside!(base["path"], nil), at)
 
-        is_binary(base["path"]) ->
-          stack_at(location, [], at)
-
+        # A base of the target's file by `path`, read from the target's folder, or the
+        # root of a remote source.
         true ->
-          root(location, at)
+          stack_at(location, [], at)
       end
 
     if is_binary(base["git"]), do: put_pin(base["git"], base["ref"], version)
@@ -803,35 +802,6 @@ defmodule Apiary.Harnesses.Walk do
 
       {content, version} ->
         {version, stack_modules(location, content), location.prefix ++ parts}
-    end
-  end
-
-  # The modules of the root of the source at `location`: its `qory-stack.yaml`, else
-  # the harness section of its harness file.
-  defp root(location, at) do
-    case read(location, [@stack_file], at) do
-      {nil, version} ->
-        case harness_file(location, version) do
-          {_version, {file, content}} ->
-            case Reader.harness(content) do
-              {:ok, section} ->
-                modules = Map.get(section, "modules")
-                modules = if is_list(modules), do: Enum.filter(modules, &is_map/1), else: []
-                {version, modules, location.prefix}
-
-              :none ->
-                fail(:invalid, location.source, rule("no_stack"))
-
-              {:error, reason} ->
-                fail(:invalid, location.source, yaml(file, reason))
-            end
-
-          {_version, nil} ->
-            fail(:invalid, location.source, rule("no_stack"))
-        end
-
-      {content, version} ->
-        {version, stack_modules(location, content), location.prefix}
     end
   end
 

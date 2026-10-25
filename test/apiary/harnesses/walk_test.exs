@@ -422,7 +422,7 @@ defmodule Apiary.Harnesses.WalkTest do
     end
 
     test "both harness files in a remote base fail invalid, naming the base", ctx do
-      setting(ctx.scope, "extends: {git: \"#{@harness}\", ref: v1}\n")
+      setting(ctx.scope, @setting)
 
       serve([ctx.run],
         covered: covering(ctx),
@@ -568,54 +568,6 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
-    test "a base read from a harness file's section declares nothing: read", ctx do
-      {:ok, _stack} =
-        Stacks.put_stack(
-          ctx.scope,
-          {:workspace, ctx.scope.workspace, "explore"},
-          "extends: {git: \"#{@harness}\", ref: v1}\n"
-        )
-
-      section =
-        "harness:\n  modules:\n    - source: {git: \"#{@tools}\", ref: v2}\n" <>
-          "workflows:\n  explore: {access: write}\n"
-
-      serve([ctx.run],
-        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
-        files: %{{"R_harness", "harness.yaml"} => section}
-      )
-
-      assert {:ok, %{origin: :setting, access_level: :read}} = Walk.run(ctx.input)
-    end
-
-    test "a setting without extends: its own workflows, lowered by the recorded one", ctx do
-      document = fn workflows ->
-        "modules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n" <> workflows
-      end
-
-      serve([ctx.run], covered: covering(ctx), files: @base_files)
-
-      for {workflows, recorded, expected} <- [
-            {"workflows:\n  explore: {access: write}\n", nil, :write},
-            {"workflows:\n  explore: {access: write}\n", :write, :write},
-            {"workflows:\n  explore: {access: write}\n", :read, :read},
-            {"workflows:\n  explore: {access: read}\n", :write, :read},
-            {"workflows:\n  review: {access: write}\n", nil, :read},
-            {"", nil, :read}
-          ] do
-        {:ok, _stack} =
-          Stacks.put_stack(
-            ctx.scope,
-            {:workspace, ctx.scope.workspace, "explore"},
-            document.(workflows),
-            access: recorded
-          )
-
-        assert {:ok, %{origin: :setting, access_level: ^expected}} = Walk.run(ctx.input),
-               inspect({workflows, recorded})
-      end
-    end
-
     test "a run whose workflow no row has any longer gets read", ctx do
       {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting)
 
@@ -657,26 +609,32 @@ defmodule Apiary.Harnesses.WalkTest do
       refute Enum.any?(reads(calls), &match?({"R_tools", "qory-stack.yaml", _at}, &1))
     end
 
-    test "a bare root: its qory-stack.yaml, else its harness file's section, else invalid",
-         ctx do
+    test "a bare root: its qory-stack.yaml, else invalid, as qory reads a base", ctx do
       setting(ctx.scope, "extends: {git: \"#{@harness}\", ref: v1}\n")
       tools = "modules:\n  - source: {git: \"#{@tools}\", ref: v2}\n"
       covered = covering(ctx, %{@tools => {"G_run", "R_tools"}})
 
       serve([ctx.run], covered: covered, files: %{{"R_harness", "qory-stack.yaml"} => tools})
       assert {:ok, %{pins: [_harness, %{"git" => @tools}]}} = Walk.run(ctx.input)
+      calls()
 
+      # A root harness section is no stack, whatever modules and workflows it lists.
       section =
-        "harness:\n  extends: {git: \"#{@lint}\", ref: v1}\n  modules:\n" <>
-          "    - source: {git: \"#{@tools}\", ref: v2}\n"
+        "harness:\n  modules:\n    - source: {git: \"#{@tools}\", ref: v2}\n" <>
+          "  workflows:\n    explore: {access: write}\n"
 
-      serve([ctx.run], covered: covered, files: %{{"R_harness", "harness.yaml"} => section})
-      assert {:ok, %{pins: [_harness, %{"git" => @tools}]}} = Walk.run(ctx.input)
+      for files <- [%{{"R_harness", "harness.yaml"} => section}, %{}] do
+        serve([ctx.run], covered: covered, files: files)
 
-      serve([ctx.run], covered: covered, files: %{})
+        assert {:failed,
+                %{
+                  failure: :invalid,
+                  source: @harness,
+                  rule: %{"rule" => "no_stack_file", "values" => %{"path" => "qory-stack.yaml"}}
+                }} = Walk.run(ctx.input)
 
-      assert {:failed, %{failure: :invalid, source: @harness, rule: %{"rule" => "no_stack"}}} =
-               Walk.run(ctx.input)
+        refute Enum.any?(resolves(calls()), &(@tools in &1))
+      end
     end
 
     test "a base that exports no such stack fails invalid", ctx do
