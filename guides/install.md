@@ -21,17 +21,19 @@ page is the reference for an installation that stays.
   ([The keys generated at first start](#the-keys-generated-at-first-start)). The commit it
   was built from is its label `org.opencontainers.image.revision` and `revision` at
   [`GET /health`](#health).
-- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as three
+- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as four
   services. `env.example` is the repository's `.env.example` with the release's version in
-  `APIARY_VERSION`, and becomes `.env`. `keys` runs once at every
-  start and exits: it generates the keys the volume `keys` does not hold yet. `postgres`,
-  in the profile `postgres` that `.env` turns on with `COMPOSE_PROFILES=postgres`, is
-  Postgres 18 with the role `apiary`, the database `apiary` and the volume `postgres-data`.
-  `apiary` starts once `keys` has finished and the database is healthy, and publishes port
-  4100 on `127.0.0.1` only. An external Postgres is one `DATABASE_URL` away, with the line
-  `COMPOSE_PROFILES=postgres` taken out of `.env`
-  ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create and alter
-  tables in its database, since the release migrates it.
+  `APIARY_VERSION`, and becomes `.env`. `keys-owner` runs once at every start and exits:
+  it gives the volume `keys` and everything in it to uid 65532
+  ([The keys generated at first start](#the-keys-generated-at-first-start)). `keys` runs
+  once at every start, after `keys-owner`, and exits: it generates the keys the volume
+  `keys` does not hold yet. `postgres`, in the profile `postgres` that `.env` turns on
+  with `COMPOSE_PROFILES=postgres`, is Postgres 18 with the role `apiary`, the database
+  `apiary` and the volume `postgres-data`. `apiary` starts once `keys` has finished and
+  the database is healthy, and publishes port 4100 on `127.0.0.1` only. An external
+  Postgres is one `DATABASE_URL` away, with the line `COMPOSE_PROFILES=postgres` taken out
+  of `.env` ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create
+  and alter tables in its database, since the release migrates it.
 - **A reverse proxy** that terminates TLS, in front of the port.
 - **An SMTP relay, optional.** Without one the release starts all the same, sends no
   email, and says so in its log: people sign up and log in with a password, an invitation

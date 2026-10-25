@@ -401,7 +401,7 @@ defmodule Apiary.Audit do
   defp actor(_scope),
     do: raise(ArgumentError, "an audit entry needs a person, an access key or the instance")
 
-  # A key acting in another organisation than its own records there
+  # A key acting in an organisation other than the key's organisation records there
   # (`Apiary.Accounts.Scope.key_in_organisation/2`). Any other key without an organisation,
   # an adapter's or the instance's pool's or gateway's, is the instance's: it acts in the
   # trail of the instance's organisation, as its node's entries are.

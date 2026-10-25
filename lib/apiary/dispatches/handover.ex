@@ -66,7 +66,7 @@ defmodule Apiary.Dispatches.Handover do
   #      last, with the features `factory` and `secrets` on, an explore run whose model
   #      choice has a provider, while one of the gateway's active keys the run key lists
   #      was made without the stored-secrets flag (`allow_secrets`), or the provider's key
-  #      may not be sealed for a gateway of the gateway's organisation
+  #      may not be sealed for the gateway
   #      (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as such
   #      a gateway never receives the run's model key, and the run never starts on a model
   #      nobody chose;
@@ -556,9 +556,14 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  defp serves?(%Node{deleted_at: nil} = gateway, nil), do: Gateways.level(gateway) == :instance
-  defp serves?(%Node{}, nil), do: false
-  defp serves?(gateway, workspace), do: Gateways.may_serve?(gateway, workspace)
+  # serves?/2 says whether `gateway`, as `gateway/1` read it `FOR SHARE`, may serve the
+  # claim's workspace: for the instance's pool, whose workspace is nil until
+  # `register/2`, only the instance's gateway not deleted.
+  @doc false
+  @spec serves?(Node.t(), Workspace.t() | nil) :: boolean
+  def serves?(%Node{deleted_at: nil} = gateway, nil), do: Gateways.level(gateway) == :instance
+  def serves?(%Node{}, nil), do: false
+  def serves?(gateway, workspace), do: Gateways.may_serve?(gateway, workspace)
 
   # A run formed with a model provider, with the features under which it is given its
   # credential (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed`

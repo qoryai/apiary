@@ -292,8 +292,11 @@ pool's key acts on its workspace and, there, on its pool: another node and the
 organisation are not found to it. A dispatch action is asked of the workspace, the one
 queue every pool of it claims a waiting run from, or of a dispatch of that workspace its
 pool claimed; another workspace's queue, or a dispatch another pool claimed or that names
-no pool, is not found to it. A release leaves an audit entry; a claim and the start of
-its machine do not.
+no pool, is not found to it. The instance's node pool has no workspace and no
+organisation: its key acts on its pool and on the dispatches it claimed, in any
+workspace, and claims from the queue of every workspace that has no node pool in use;
+every other node, workspace and organisation is not found to it. A release leaves an
+audit entry; a claim and the start of its machine do not.
 
 A gateway of an organisation, which has no workspace, is asked at the organisation: its
 making and listing (`node.create`, `node.read` of the organisation), its changes and
@@ -383,9 +386,10 @@ instance has a separate role in the role table, with only what its jobs need: pr
 the audit trail, deleting the invitations expired for 30 days, purging a workspace or
 an organisation whose deletion's grace period is over, and making the adapters its
 setting lists and giving them their one-time codes (`adapter.install`,
-`Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), and the same for
-the node pool and the gateway its settings declare (`node.install`,
-`Apiary.Nodes.Installed.install/2`), in the instance's organisation. Any other scope without a person may nothing, whatever it carries.
+`Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), and the same
+for the node pool and the gateway its settings declare (`node.install`,
+`Apiary.Nodes.Installed.install/2`), in the instance's organisation. Any other scope
+without a person may nothing, whatever it carries.
 
 An action taken on the strength of something other than a role, signing up, accepting an
 invitation with its token, or a release command run on the release's machine, is in the

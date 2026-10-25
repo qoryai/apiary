@@ -1,9 +1,9 @@
 defmodule Apiary.Repo.Migrations.KeepAPoolAndAGatewayAtTheInstance do
   use Ecto.Migration
 
-  # The instance may have one node pool and one gateway of its own, with no organisation
-  # and no workspace, as an adapter has: the pool takes the runs of every workspace that
-  # has no pool in use, and the gateway serves every workspace.
+  # The instance may have one node pool and one gateway, with no organisation and no
+  # workspace, as an adapter has: the pool takes the runs of every workspace that has no
+  # pool in use, and the gateway serves every workspace.
   #
   # - `nodes_place_check`: a workspace means an organisation; a node always has a
   #   workspace; an adapter never has an organisation; a pool has a workspace, or neither a
