@@ -138,7 +138,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       assert html =~ "Qory Apiary writes this node&#39;s one-time code to its folder."
       assert html =~ "When you revoke the key, Qory Apiary writes a new code"
-      refute html =~ "No setting of this instance declares this node"
+      refute html =~ "This instance has no setting for this node"
       assert words(lv, "#key-#{key.key_id}-secret") == "Stays on shared-pool; it is never shown"
       refute has_element?(lv, "#key-#{key.key_id}-forager-file")
       refute html =~ "command"
@@ -161,7 +161,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
         {:ok, lv, _html} = live(conn, ~p"/instance/nodes/#{node.public_id}/keys")
 
         assert words(lv, "#node-access-key-intro") ==
-                 "No setting of this instance declares this node, so Qory Apiary writes no new code after a revoke."
+                 "This instance has no setting for this node, so Qory Apiary writes no new code after a revoke."
       end
     end
 

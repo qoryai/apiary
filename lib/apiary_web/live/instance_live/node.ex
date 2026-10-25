@@ -345,7 +345,7 @@ defmodule ApiaryWeb.InstanceLive.Node do
           )}
         <% else %>
           {gettext(
-            "No setting of this instance declares this node, so Qory Apiary writes no new code after a revoke."
+            "This instance has no setting for this node, so Qory Apiary writes no new code after a revoke."
           )}
         <% end %>
       </p>
