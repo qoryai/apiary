@@ -18744,7 +18744,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "the credential from the adapter applies to other places than at the run's start"
+msgid "the credential from the adapter covers other hosts or paths than at the run's start"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

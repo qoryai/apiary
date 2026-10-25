@@ -55,7 +55,7 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
           {"token_padded", "the credential from the adapter is invalid"},
           {"invalid_answer", "the credential from the adapter is invalid"},
           {"apply_moved",
-           "the credential from the adapter applies to other places than at the run's start"}
+           "the credential from the adapter covers other hosts or paths than at the run's start"}
         ] do
       assert sentence(Map.merge(@details, %{"outcome" => outcome, "access" => "read"})) ==
                "Was refused read access to acme/shop for the run: #{cause}"

@@ -596,7 +596,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("the credential from the adapter reaches beyond the run's access")
 
   defp refusal_cause("apply_moved"),
-    do: gettext("the credential from the adapter applies to other places than at the run's start")
+    do:
+      gettext(
+        "the credential from the adapter covers other hosts or paths than at the run's start"
+      )
 
   defp refusal_cause(cause) when cause in ["invalid_answer" | @answer_causes],
     do: gettext("the credential from the adapter is invalid")
