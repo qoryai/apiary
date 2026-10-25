@@ -64,9 +64,10 @@ terminated by a reverse proxy in front of it.
   redirected to HTTPS and answers carry HSTS. The proxy must send
   `X-Forwarded-Proto: https` with every request it passes on; without it every request is
   redirected, for ever.
-- With a `PUBLIC_URL` that starts with `http://`, a LAN or a trial on one machine, nothing
-  is redirected. Browsers keep the sign-in cookies over plain HTTP only on `localhost`, so
-  on any other host nobody can sign in, and Qory Apiary logs a warning at boot.
+- With a `PUBLIC_URL` that starts with `http://`, for a trial on one machine, nothing is
+  redirected. Browsers keep the sign-in cookies over plain HTTP only on `localhost`, a name
+  under `.localhost`, and loopback addresses such as `127.0.0.1` and `::1`. On any other
+  host nobody can sign in, and Qory Apiary logs a warning at boot.
 - `GET /health` is never redirected, so a load balancer can probe it over plain HTTP, and
   neither are requests to the hosts `localhost` and `127.0.0.1`.
 
