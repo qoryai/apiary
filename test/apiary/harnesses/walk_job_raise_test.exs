@@ -1,6 +1,7 @@
 defmodule Apiary.Harnesses.WalkJobRaiseTest do
   # A harness walk's job whose write raises (`Apiary.Harnesses.WalkJob`): tried again,
-  # and on its last attempt it ends its run `walk_error` before it raises, so the run
+  # and on its last attempt it fails the walk `walk_error` and ends its run
+  # `harness_unresolved`, with `walk_error` as its detail, before it raises, so the run
   # does not wait for ever. The test adds a check to `run_harnesses` that refuses every
   # failure but `walk_error`, inside its transaction, which rolls it back; the check
   # locks the table, so the module is not async.
@@ -31,7 +32,7 @@ defmodule Apiary.Harnesses.WalkJobRaiseTest do
     )
   end
 
-  test "a write that raises leaves the run waiting, and on the last attempt ends it walk_error" do
+  test "a write that raises leaves the run waiting, and on the last attempt ends it" do
     %{scope: scope} = sign_up_fixture()
     {:ok, _stack} = Stacks.put_stack(scope, {:workspace, scope.workspace, "explore"}, @setting)
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(scope), 1) end)
