@@ -100,6 +100,8 @@ defmodule Apiary.Application do
       {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Apiary.PubSub},
       {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
+      # Each attempt of a call to an adapter, bounded in time (`Apiary.Adapters.Calls`).
+      {Task.Supervisor, name: Apiary.Adapters.Calls.Supervisor},
       Apiary.Runs.RateLimit,
       Apiary.Nodes.Throttle,
       # The holds of adapters' reads of their change feeds, a few per key
