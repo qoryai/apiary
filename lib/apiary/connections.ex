@@ -2166,8 +2166,9 @@ defmodule Apiary.Connections do
 
   # A write to one connection: the row read again under `FOR UPDATE` in the scope's
   # organisation, with its workspaces, then asked of under the action for its kind
-  # (`write_action/1`). A provider needs its features first, and belongs to the
-  # organisation's chain.
+  # (`write_action/1`). A provider needs its features first, and is of the organisation's
+  # chain, or of the operator's chain for a scope that the edition lets write that chain
+  # (`c:Apiary.Edition.operator_chain_writer?/1`).
   defp write_connection(scope, %Connection{id: id}, fun) do
     write(scope, fn scope, organisation ->
       with %Connection{} = current <-

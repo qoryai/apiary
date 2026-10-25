@@ -34,8 +34,8 @@ defmodule Apiary.ModelChoices do
   #
   # A save is checked, each refusal a changeset error on its field:
   #
-  #   * `provider`: a model provider of the organisation's chain (`is invalid` otherwise),
-  #     that applies to the workspace, and that serves the runtime of the runs
+  #   * `provider`: a model provider of the chain the choice is set on (`is invalid`
+  #     otherwise), that applies to the workspace, and that serves the runtime of the runs
   #     (`Apiary.Kinds.Providers.serve/2`). A deny rule of the security policy is not
   #     asked: it never blocks a host of an integration;
   #   * `key`: a value id of the provider's keys;
@@ -175,8 +175,8 @@ defmodule Apiary.ModelChoices do
   def resolve(%Scope{}, _holder, _workflow), do: {:error, :not_found}
 
   # What a resolution reads for the runs of `workflow` of `workspace` at `target`, nil for
-  # none: the choices of the organisation's chain that may reach them, and the providers
-  # those name. Read without a lock.
+  # none: the choices of the run's chain that may reach them, read from the organisation
+  # that `chain_owner/1` names, and the providers those name. Read without a lock.
   defp input(%Workspace{} = workspace, target, workflow) do
     input = choices_for(workspace, target, workflow)
     ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
