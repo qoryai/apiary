@@ -144,7 +144,7 @@ defmodule Apiary.Harnesses.ReaderTest do
     end
   end
 
-  describe "document/1" do
+  describe "document/2" do
     test "reads a settings row's document, the contents of a harness section" do
       assert {:ok, %{"extends" => %{"git" => @harness, "ref" => "main"}}} =
                Reader.document("extends: {git: #{@harness}, ref: main}\n")
@@ -227,7 +227,21 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   describe "the parse's time and heap limits" do
     # Each input took seconds to minutes in yamerl before the limits, and each is under
-    # 64 KiB. The parse is killed at 2 s or 32 MiB of heap, whichever comes first.
+    # 64 KiB. The parse is killed at 2 s or 32 MiB of heap, whichever comes first. Each
+    # slow input of 32,000 items, and 65,000 brackets, also passes the heap limit, so a
+    # machine fast enough to parse it in less than 2 s still refuses it.
+    # The process the parse of `caller` runs in, which `caller` monitors.
+    defp parse_process(caller, tries \\ 100) do
+      case Process.info(caller, :monitors) do
+        {:monitors, [{:process, child}]} ->
+          child
+
+        _none when tries > 0 ->
+          Process.sleep(10)
+          parse_process(caller, tries - 1)
+      end
+    end
+
     defp timed(input) do
       {time, result} = :timer.tc(fn -> Reader.parse(input) end)
       assert time < 5_000_000, "took #{div(time, 1000)} ms"
@@ -242,8 +256,30 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert timed("[" <> String.duplicate("a,", 32_000) <> "a]") == {:error, :too_complex}
     end
 
-    test "refuse a flow sequence of 16,000 items in a block sequence" do
-      assert timed("- [" <> String.duplicate("a,", 16_000) <> "a]") == {:error, :too_complex}
+    test "refuse a flow sequence of 32,000 items in a block sequence" do
+      assert timed("- [" <> String.duplicate("a,", 32_000) <> "a]") == {:error, :too_complex}
+    end
+
+    test "end the parse at its time limit when the caller exits first" do
+      for {input, opts, limit} <- [
+            {"[" <> String.duplicate("a,", 32_000) <> "a]", [], 2_000},
+            {String.duplicate("{a: ", 16_000), [], 2_000},
+            {"[" <> String.duplicate("a,", 32_000) <> "a]", [time_limit: 200], 200}
+          ] do
+        caller = spawn(fn -> Reader.parse(input, opts) end)
+        child = parse_process(caller)
+        ref = Process.monitor(child)
+        Process.exit(caller, :kill)
+        assert_receive {:DOWN, ^ref, :process, ^child, :killed}, limit + 500
+      end
+    end
+
+    test "take no time limit above the default" do
+      input = "[" <> String.duplicate("a,", 32_000) <> "a]"
+      caller = spawn(fn -> Reader.parse(input, time_limit: 60_000) end)
+      ref = Process.monitor(parse_process(caller))
+      Process.exit(caller, :kill)
+      assert_receive {:DOWN, ^ref, :process, _child, :killed}, 2_500
     end
 
     test "take 64 KiB of ordinary YAML well within the limits" do

@@ -323,9 +323,7 @@ defmodule Apiary.StacksTest do
             "https:user:SECRET@host.example.com/r",
             "https:\\\\\\\\user:SECRET@host.example.com",
             "user:SECRET@host.example.com:org/r",
-            "ssh://user:SECRET@host.example.com/r",
-            "https://user:SECRET#x@host.example.com/r",
-            "https://user:SECRET?x@host.example.com/r"
+            "ssh://user:SECRET@host.example.com/r"
           ],
           document <- [
             "extends: {git: #{inspect(address)}, ref: v2}\n",
@@ -339,6 +337,31 @@ defmodule Apiary.StacksTest do
         assert values[:source] =~ "host.example.com", document
         refute Enum.any?(values, fn {_key, value} -> inspect(value) =~ "SECRET" end), document
         refute Enum.any?(values, fn {_key, value} -> inspect(value) =~ "user" end), document
+      end
+    end
+
+    test "show the address as \"the address\" when a ? or # comes before its last @", ctx do
+      text =
+        " with no query (?) and no fragment (#): a harness source address is " <>
+          "https://, a host, an optional port and an optional path"
+
+      for address <- [
+            "https://user:SECRET#x@host.example.com/r",
+            "https://user:SECRET?x@host.example.com/r",
+            "https://h/r?x@SECRET",
+            "https://host.example.com/r?u=me@example.com&token=SECRET"
+          ],
+          document <- [
+            "extends: {git: '#{address}', ref: v2}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nmodules:\n  - source: {git: '#{address}', ref: v1}\n"
+          ] do
+        assert refused(ctx, document) == ["write the address" <> text], document
+
+        assert {:error, changeset} =
+                 Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+
+        assert [{:harness, {_message, values}}] = changeset.errors, document
+        refute Enum.any?(values, fn {_key, value} -> inspect(value) =~ "SECRET" end), document
       end
     end
 
@@ -465,10 +488,16 @@ defmodule Apiary.StacksTest do
     end
 
     test "refuse a document that takes too long to read", ctx do
-      assert refused(ctx, "- [" <> String.duplicate("a,", 16_000) <> "a]") == [
-               "takes longer to read than a harness document may: " <>
-                 "write long lists as block lists, with one - item per line"
-             ]
+      expected = [
+        "takes longer to read than a harness document may: " <>
+          "write long lists as block lists, with one - item per line"
+      ]
+
+      # The reader's heap limit stops this input too, but only after seconds of parsing
+      # (4.4 s in one measured run); the save check's limit of 200 ms stops it first.
+      slow = "modules:\n- [" <> String.duplicate("a,", 32_000) <> "a]\n"
+      assert {time, ^expected} = :timer.tc(fn -> refused(ctx, slow) end)
+      assert time < 1_000_000
     end
 
     test "refuse what the run contract's harness section refuses", ctx do

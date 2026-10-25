@@ -8,7 +8,7 @@ defmodule Apiary.Stacks.Document do
   # `errors/1` checks a document in this order, and returns the first refusal:
   #
   #   1. The reader's limits: 64 KiB, 16 nested collections, no anchor or alias, one
-  #      YAML document, a mapping at the top.
+  #      YAML document, a mapping at the top, and a read of at most 200 ms.
   #   2. A key the run contract's harness section does not take, such as a machine key
   #      (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
   #   3. A base given by name alone, `extends: {stack: <name>}` with neither `git` nor
@@ -19,8 +19,11 @@ defmodule Apiary.Stacks.Document do
   #      fragment, and any other address that is not `https://`, a host, an optional
   #      port and an optional path, at most 2,560 characters, as a stack reference's
   #      address was before harness documents. An error shows an address without
-  #      anything before its last `@` and without anything from its first `?` or `#`,
-  #      whatever the address's shape, so it shows no user name, password or query.
+  #      anything from its first `?` or `#`, and without anything before its last `@`
+  #      but a scheme at its start: `https://user@host/r?q` shows as `https://host/r`.
+  #      When a `?` or `#` comes before the last `@`, the error shows "the address"
+  #      instead. So an error shows no user name, password or query, whatever the
+  #      address's shape.
   #   5. The run contract's `harness_section` (`documents.schema.json` beside this file,
   #      vendored from the integrations contract at the commit in `.contract-ref`),
   #      validated with JSV: git sources and exports only, no `{path}` source, no module
@@ -51,12 +54,17 @@ defmodule Apiary.Stacks.Document do
   @typedoc "A changeset error on `harness`: a message and its values."
   @type error :: {String.t(), keyword}
 
+  # The save check's wall-clock limit for reading a document, a tenth of the reader's
+  # limit of 2 seconds: a saved document reads well inside the reader's limit when a
+  # handover reads it again for the run's stack (`reference/1`).
+  @save_time_limit_ms 200
+
   @doc false
   # errors/1 is the refusals of `text` under the save rules of the moduledoc: `[]`, or
   # one `{message, values}`.
   @spec errors(String.t()) :: [error]
   def errors(text) when is_binary(text) do
-    case Reader.document(text) do
+    case Reader.document(text, time_limit: @save_time_limit_ms) do
       {:ok, section} ->
         with :ok <- keys(section),
              :ok <- base(section),
@@ -236,28 +244,41 @@ defmodule Apiary.Stacks.Document do
     end
   end
 
-  # An address as an error shows it, whatever its shape: everything before its last `@`
-  # is left out, but a scheme at its start, so no user name or password is shown; then
-  # everything from its first `?` or `#` is left out, so no query is shown, as a query
-  # may contain a credential; and each control character and each whitespace but a
-  # space becomes U+FFFD.
+  # An address as an error shows it, whatever its shape, with no user name, password or
+  # query: everything from its first `?` or `#` is left out, as a query may contain a
+  # credential, and so is everything before its last `@`, but a scheme at its start.
+  # When a `?` or `#` comes before the last `@`, the part after that `@` may be a query
+  # or the host after a password that contains `?` or `#`, so the error shows "the
+  # address" alone. Each control character and each whitespace but a space becomes
+  # U+FFFD.
   defp shown(git) do
-    shown =
-      case String.split(git, "@") do
-        [_no_at] ->
-          git
-
-        parts ->
-          scheme =
-            case Regex.run(~r{\A[A-Za-z][A-Za-z0-9+.-]*://}, git) do
-              [scheme] -> scheme
-              nil -> ""
-            end
-
-          scheme <> List.last(parts)
+    cut =
+      case :binary.match(git, ["?", "#"]) do
+        {cut, 1} -> cut
+        :nomatch -> byte_size(git)
       end
 
-    [shown | _query] = String.split(shown, ["?", "#"], parts: 2)
+    shown =
+      case :binary.matches(git, "@") do
+        [] ->
+          binary_part(git, 0, cut)
+
+        ats ->
+          {at, 1} = List.last(ats)
+
+          if at < cut do
+            scheme =
+              case Regex.run(~r{\A[A-Za-z][A-Za-z0-9+.-]*://}, git) do
+                [scheme] -> scheme
+                nil -> ""
+              end
+
+            scheme <> binary_part(git, at + 1, cut - at - 1)
+          else
+            "the address"
+          end
+      end
+
     Regex.replace(~r/[^\S ]|[\x{00}-\x{1F}\x{7F}-\x{9F}]/u, shown, "\u{FFFD}")
   end
 

@@ -15,13 +15,14 @@ defmodule Apiary.Harnesses.Reader do
       nor in a text the file escapes, `:control_character`;
     * at most 16 nested mappings and sequences, `:too_deep`;
     * no anchor and no alias, `:alias`;
-    * at most 2 seconds and 32 MiB of heap for the parse, `:too_complex`.
+    * at most 2 seconds of wall-clock time, or less with the `:time_limit` option, and
+      32 MiB of heap for the parse, `:too_complex`.
 
   The parser, yamerl, holds back its tokens while a flow collection could still turn out
   to be a key, and reverses that queue for each token it adds, so a long flow collection
   at the top level or in a block sequence costs time that grows with the square of its
   length. Both passes therefore run in a separate process with a heap limit, which
-  is killed when either limit is reached.
+  is killed when either limit is reached, also when the caller exits first.
 
   The first pass reads the parser's tokens only, and stops at the first anchor, alias or
   collection that nests too deep. No node is built in that pass, so an alias never
@@ -40,7 +41,7 @@ defmodule Apiary.Harnesses.Reader do
   @max_depth 16
 
   # The parse's limits, far above what a harness document takes: a 64 KiB document of
-  # ordinary YAML parses in well under 100 ms and a few MiB of heap.
+  # ordinary YAML parses in well under 200 ms and a few MiB of heap.
   @time_limit_ms 2_000
   @max_heap_words div(32 * 1024 * 1024, :erlang.system_info(:wordsize))
 
@@ -59,6 +60,9 @@ defmodule Apiary.Harnesses.Reader do
     schema: :core,
     node_mods: []
   ]
+
+  @typedoc "An option of `parse/2`: the parse's wall-clock limit in milliseconds."
+  @type option :: {:time_limit, pos_integer}
 
   @typedoc "Why a file is refused."
   @type reason ::
@@ -125,12 +129,13 @@ defmodule Apiary.Harnesses.Reader do
   defp section(_other), do: {:error, :invalid_harness}
 
   @doc """
-  document/1 is a harness document as a settings row keeps it, the contents of a
-  harness section written in YAML: `{:ok, section}` or `{:error, reason}`.
+  document/2 is a harness document as a settings row keeps it, the contents of a
+  harness section written in YAML: `{:ok, section}` or `{:error, reason}`. `opts` are
+  those of `parse/2`.
   """
-  @spec document(binary) :: {:ok, map} | {:error, reason}
-  def document(bytes) when is_binary(bytes) do
-    case parse(bytes) do
+  @spec document(binary, [option]) :: {:ok, map} | {:error, reason}
+  def document(bytes, opts \\ []) when is_binary(bytes) do
+    case parse(bytes, opts) do
       {:ok, %{} = section} -> {:ok, section}
       {:ok, _other} -> {:error, :not_a_mapping}
       {:error, reason} -> {:error, reason}
@@ -208,35 +213,49 @@ defmodule Apiary.Harnesses.Reader do
   end
 
   @doc """
-  parse/1 is the value of one YAML file under the limits of the moduledoc: `{:ok,
+  parse/2 is the value of one YAML file under the limits of the moduledoc: `{:ok,
   value}`, nil for an empty file, or `{:error, reason}`. Mappings are maps with text
   keys.
+
+  `time_limit: ms` sets the parse's wall-clock limit, at most the default of
+  #{@time_limit_ms} ms.
   """
-  @spec parse(binary) :: {:ok, term} | {:error, reason}
-  def parse(bytes) when is_binary(bytes) do
+  @spec parse(binary, [option]) :: {:ok, term} | {:error, reason}
+  def parse(bytes, opts \\ []) when is_binary(bytes) do
+    limit = min(Keyword.get(opts, :time_limit, @time_limit_ms), @time_limit_ms)
+
     cond do
       byte_size(bytes) > @max_bytes -> {:error, :too_large}
       not String.valid?(bytes) -> {:error, :invalid_yaml}
       Regex.match?(@control, bytes) -> {:error, :control_character}
-      true -> isolated(bytes)
+      true -> isolated(bytes, limit)
     end
   end
 
   # Both passes in a process with a heap limit, killed at the time limit. The result
-  # comes back as the process's exit reason.
-  defp isolated(bytes) do
+  # comes back as the process's exit reason. The process kills itself at the time limit
+  # too, so it ends at the limit even when the caller exits first.
+  defp isolated(bytes, limit) do
     {pid, ref} =
-      :erlang.spawn_opt(fn -> exit({__MODULE__, read(bytes)}) end, [
-        :monitor,
-        {:max_heap_size, %{size: @max_heap_words, kill: true, error_logger: false}}
-      ])
+      :erlang.spawn_opt(
+        fn ->
+          {:ok, timer} = :timer.kill_after(limit)
+          result = read(bytes)
+          :timer.cancel(timer)
+          exit({__MODULE__, result})
+        end,
+        [
+          :monitor,
+          {:max_heap_size, %{size: @max_heap_words, kill: true, error_logger: false}}
+        ]
+      )
 
     receive do
       {:DOWN, ^ref, :process, ^pid, {__MODULE__, result}} -> result
       {:DOWN, ^ref, :process, ^pid, :killed} -> {:error, :too_complex}
       {:DOWN, ^ref, :process, ^pid, _crash} -> {:error, :invalid_yaml}
     after
-      @time_limit_ms ->
+      limit ->
         Process.exit(pid, :kill)
         receive do: ({:DOWN, ^ref, :process, ^pid, _reason} -> :ok)
         {:error, :too_complex}
