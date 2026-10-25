@@ -54,7 +54,8 @@ defmodule Apiary.Harnesses do
 
   alias Apiary.{Adapters, Audit, Edition, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Harnesses.Assignment
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.{Assignment, RunHarness}
   alias Apiary.Organisations.Organisation
   alias Apiary.Stacks.Document
 
@@ -118,6 +119,28 @@ defmodule Apiary.Harnesses do
       root when map_size(root) == 0 -> true
       narrowing -> Map.take(source, @narrowing) == narrowing
     end
+  end
+
+  ## A run's links
+
+  @doc false
+  # entries/1 is the links the run of the queue `run` reads its harness sources through,
+  # read only, as its walk resolved them (`Apiary.Harnesses.Walk`): one per link, its
+  # grant, with the resources the walk found under it. `[]` for a run whose walk has not
+  # resolved, or resolved none.
+  @spec entries(DispatchRun.t()) :: [
+          %{purpose: :harness, link_id: Ecto.UUID.t(), resources: [term], access: :read}
+        ]
+  def entries(%DispatchRun{id: id}) do
+    Repo.one(
+      from h in RunHarness,
+        where: h.dispatch_run_id == ^id and h.state == :resolved,
+        select: h.harness_links
+    )
+    |> List.wrap()
+    |> Enum.map(fn link ->
+      %{purpose: :harness, link_id: link["grant_id"], resources: link["resources"], access: :read}
+    end)
   end
 
   ## Writes

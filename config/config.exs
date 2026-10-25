@@ -141,9 +141,11 @@ config :apiary, ApiaryWeb.Contract.EnrolmentController,
   code_burst: 5
 
 # Background work as durable jobs on Postgres; every job is an `Apiary.Job`.
-# One queue to start with, `default`, five at a time: a running job holds a connection of
-# the repo's pool (POOL_SIZE, 10 by default) while it queries, and the requests keep the
-# rest. A kind of work that needs a limit of its own gets a queue of its own when it is
+# Two queues, five at a time each: a running job holds a connection of the repo's pool
+# (POOL_SIZE, 10 by default) while it queries, and the requests keep the rest. `default`
+# takes every job but the harness walks of explore runs (`Apiary.Harnesses.WalkJob`),
+# which wait on adapters' calls and go in `harness`, so a slow adapter holds up no other
+# job. A kind of work that needs a limit of its own gets a queue of its own when it is
 # built. Finished, cancelled and discarded jobs are kept for a week, so a failure can be
 # read after a weekend, then pruned. A job still executing after 30 minutes is taken to be
 # orphaned by a node that stopped, and made available again (or discarded when it has no
@@ -158,7 +160,7 @@ config :apiary, ApiaryWeb.Contract.EnrolmentController,
 config :apiary, Oban,
   engine: Oban.Engines.Basic,
   repo: Apiary.Repo,
-  queues: [default: 5],
+  queues: [default: 5, harness: 5],
   pruner: [max_age: {7, :days}],
   lifeline: [rescue_after: {30, :minutes}]
 

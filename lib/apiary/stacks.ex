@@ -97,6 +97,33 @@ defmodule Apiary.Stacks do
   end
 
   @doc false
+  # workflow_for/2 is the workflow of an explore run of `workspace` at `target`, the work
+  # item's `%{system, path}`, nil for none (`workflow/2`). A target no row of the
+  # workspace has counts as none.
+  @spec workflow_for(Workspace.t(), %{system: String.t(), path: String.t()} | nil) ::
+          String.t() | nil
+  def workflow_for(%Workspace{} = workspace, target),
+    do: workflow(workspace, target_row(workspace, target))
+
+  @doc false
+  # resolve_for/4 is what the stacks of `organisation` come to for an explore run of
+  # `workflow` of `workspace` at `target`, the work item's `%{system, path}`, nil for
+  # none (`Apiary.Stacks.Resolution.resolve/1`): `{:ok, resolution}`, or `:none` where no
+  # level has a harness document. Read without a lock.
+  @spec resolve_for(
+          Organisation.t(),
+          Workspace.t(),
+          %{system: String.t(), path: String.t()} | nil,
+          String.t()
+        ) :: {:ok, Resolution.t()} | :none
+  def resolve_for(%Organisation{} = organisation, %Workspace{} = workspace, target, workflow)
+      when is_binary(workflow) do
+    organisation
+    |> input_for(workspace, target_row(workspace, target), workflow)
+    |> Resolution.resolve()
+  end
+
+  @doc false
   # workflow/2 is the workflow of the runs of `workspace` at `target`, a target row of
   # the workspace or nil for none: the workflow of the one row with a workflow at the
   # workspace level and, for a run with a target, the target level. Nil for no such row,

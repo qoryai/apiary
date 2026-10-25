@@ -39,6 +39,7 @@ defmodule Apiary.Stacks.ResolutionTest do
     struct!(
       Stack,
       %{
+        id: Ecto.UUID.generate(),
         organisation_id: @organisation,
         harness: "extends: {git: https://code.example.com/#{level}, ref: main}\n"
       }
@@ -79,11 +80,12 @@ defmodule Apiary.Stacks.ResolutionTest do
       assert resolution.level == :workspace_workflow
     end
 
-    test "a resolution has the document, the workflow, the level and the owner" do
+    test "a resolution has the document, its row, the workflow, the level and the owner" do
       stack = at(:workspace_workflow, harness: @document)
 
       assert resolved(input([stack])) == %Resolution{
                harness: @document,
+               stack_id: stack.id,
                workflow: "explore",
                level: :workspace_workflow,
                owner: @organisation,

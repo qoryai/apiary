@@ -226,6 +226,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
+  alias Apiary.Harnesses.WalkJob
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.WorkItems.WorkItem
@@ -342,19 +343,25 @@ defmodule Apiary.Dispatches do
   end
 
   # The work item `id` locked `FOR UPDATE`, as the transaction reads it: its id, its
-  # organisation and the workspace it is in now.
+  # organisation, the workspace it is in now and its target.
   defp lock_work_item!(id) do
     Repo.one!(
       from w in WorkItem,
         where: w.id == ^id,
         lock: "FOR UPDATE",
-        select: %{id: w.id, organisation_id: w.organisation_id, workspace_id: w.workspace_id}
+        select: %{
+          id: w.id,
+          organisation_id: w.organisation_id,
+          workspace_id: w.workspace_id,
+          target_system: w.target_system,
+          target_path: w.target_path
+        }
     )
   end
 
   # A waiting run of take in `take_in` of the locked work item, `attempt` of `of`, for the
-  # step `step/0`, in the work item's organisation and workspace, with `image_requeue`;
-  # the workspace is told.
+  # step `step/0`, in the work item's organisation and workspace, with `image_requeue`,
+  # and its harness walk (`Apiary.Harnesses.WalkJob.queue/2`); the workspace is told.
   defp insert_run(work_item, take_in, attempt, of, image_requeue \\ false) do
     %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
@@ -374,9 +381,18 @@ defmodule Apiary.Dispatches do
       })
       |> Repo.insert()
 
-    with {:ok, _run} <- result, do: broadcast([workspace_id])
-    result
+    with {:ok, run} <- result,
+         {:ok, _walk} <- WalkJob.queue(run, target(work_item)) do
+      broadcast([workspace_id])
+      {:ok, run}
+    end
   end
+
+  defp target(%{target_system: system, target_path: path})
+       when is_binary(system) and is_binary(path),
+       do: %{system: system, path: path}
+
+  defp target(_work_item), do: nil
 
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
   # node pool `pool` of the collection's workspace, or the instance's pool, for
@@ -539,6 +555,8 @@ defmodule Apiary.Dispatches do
             id: w.id,
             organisation_id: w.organisation_id,
             workspace_id: w.workspace_id,
+            target_system: w.target_system,
+            target_path: w.target_path,
             state: w.state,
             take_in: w.take_in
           }
