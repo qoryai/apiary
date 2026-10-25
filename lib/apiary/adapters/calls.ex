@@ -21,10 +21,12 @@ defmodule Apiary.Adapters.Calls do
   #      `Apiary.Contract.SignedMessage.call_answer/3`, bound to the call's signature. A
   #      signed 200 whose body is a JSON object with `version` 1 and `revision` 1, the
   #      call's `X-Qory-Contract-Version`, is `{:ok, body}`; a signed refusal is `:refused`
-  #      with its code and status; an unsigned 401 is `:refused`, `unauthorized`; every
-  #      other answer is `:invalid_answer`, an unsigned 502, 503 or 504 `:unreachable`.
+  #      with its code and status; an unsigned 401 is `:refused`, `unauthorized`; an
+  #      unsigned 502, 503 or 504 is `:unreachable`; every other answer, one with a status
+  #      outside 100 to 599 and one over `max_answer` included, is `:invalid_answer`.
   #
-  # **Time.** The whole call, its retry included, has `total` milliseconds (10 seconds),
+  # **Time.** The whole call, the lookup of the adapter's host and the retry included, has
+  # `total` milliseconds (10 seconds),
   # and each attempt at most `attempt` (5 seconds). One more attempt follows, built anew
   # with a later time and signed again, after 250 to 500 milliseconds, when an attempt
   # made no connection, broke before an answer, timed out, or got an unsigned 502, 503 or
@@ -83,7 +85,7 @@ defmodule Apiary.Adapters.Calls do
     deadline = started + Keyword.get(settings, :total, @total)
 
     result =
-      with {:ok, target} <- address(adapter, settings) do
+      with {:ok, target} <- address(adapter, deadline, settings) do
         attempt(adapter, target, answer_keys(adapter), path, members, nil, deadline, settings)
       end
 
@@ -182,11 +184,21 @@ defmodule Apiary.Adapters.Calls do
     end
   end
 
-  defp address(adapter, settings) do
-    case CallAddress.check(adapter, Keyword.take(settings, [:resolver])) do
-      {:ok, target} -> {:ok, target}
-      {:error, :unresolved} -> {:error, :unreachable, %{}}
-      {:error, cause} -> {:error, cause, %{}}
+  # The address checked and resolved (`Apiary.Adapters.CallAddress.check/2`) within the
+  # call's time: the lookup has no time limit of its own, so it runs in a task, and one
+  # still running when the call's time ends is `:timeout`.
+  defp address(adapter, deadline, settings) do
+    task =
+      Task.Supervisor.async_nolink(__MODULE__.Supervisor, fn ->
+        CallAddress.check(adapter, Keyword.take(settings, [:resolver]))
+      end)
+
+    case Task.yield(task, max(deadline - now(), 0)) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:ok, target}} -> {:ok, target}
+      {:ok, {:error, :unresolved}} -> {:error, :unreachable, %{}}
+      {:ok, {:error, cause}} -> {:error, cause, %{}}
+      {:exit, _reason} -> {:error, :unreachable, %{}}
+      nil -> {:error, :timeout, %{}}
     end
   end
 
@@ -256,9 +268,11 @@ defmodule Apiary.Adapters.Calls do
   @doc false
   # signed?/5 is whether `encoded`, an answer's `X-Qory-Signature-Ed25519`, is the
   # signature under one of `keys` of the answer with `status` and `body` to the call
-  # signed `call_signature`: decoded strictly, 64 bytes.
-  @spec signed?(term, 100..599, String.t(), binary, [binary]) :: boolean
-  def signed?(encoded, status, call_signature, body, keys) when is_binary(encoded) do
+  # signed `call_signature`: decoded strictly, 64 bytes. An answer with a status outside
+  # 100 to 599 is never signed.
+  @spec signed?(term, integer, String.t(), binary, [binary]) :: boolean
+  def signed?(encoded, status, call_signature, body, keys)
+      when is_binary(encoded) and status in 100..599 do
     case Ed25519.decode(encoded, 64) do
       {:ok, raw} ->
         message = SignedMessage.call_answer(status, call_signature, body)
@@ -273,8 +287,10 @@ defmodule Apiary.Adapters.Calls do
 
   # One attempt, within the attempt's time and the call's: `{:answer, status, headers,
   # body}`, `:too_large`, `:unreachable` or `:timeout`.
+  defp attempt_setting(settings), do: Keyword.get(settings, :attempt, @attempt)
+
   defp send_call(target, adapter_public_id, path, body, signature, deadline, settings) do
-    budget = min(Keyword.get(settings, :attempt, @attempt), deadline - now())
+    budget = min(attempt_setting(settings), deadline - now())
 
     if budget <= 0 do
       :timeout
@@ -318,7 +334,10 @@ defmodule Apiary.Adapters.Calls do
         raw: true,
         inet6: tuple_size(target.address) == 8,
         receive_timeout: budget,
-        connect_options: [hostname: target.host, timeout: budget],
+        # A fixed connect timeout, the attempt's setting: the connect options are part of
+        # the key of Finch's pool, so a timeout that changed with each budget would start
+        # a pool for each. The attempt's task holds the budget.
+        connect_options: [hostname: target.host, timeout: attempt_setting(settings)],
         into: collect(max_answer)
       ]
       |> Keyword.merge(Keyword.get(settings, :req_options, []))

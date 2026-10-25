@@ -166,6 +166,38 @@ defmodule Apiary.Adapters.CallsTest do
     end
   end
 
+  test "an answer with a status outside 100 to 599 is :invalid_answer, whatever signature it has",
+       %{adapter: adapter, seed: seed} do
+    for status <- [600, 999] do
+      stub(fn conn ->
+        {conn, _body} = tell(conn)
+        # A well-formed signature, over the answer as if its status were 200.
+        answer_as(conn, status, 200, @ok, seed)
+      end)
+
+      assert {:error, %CallFailure{cause: :invalid_answer, status: ^status}} =
+               resolve(adapter, @fast)
+
+      assert length(calls()) == 1
+    end
+  end
+
+  test "the lookup of the adapter's host counts in the call's time", %{adapter: adapter} do
+    stub(fn conn -> flunk("sent #{conn.request_path}") end)
+
+    slow = fn _host ->
+      Process.sleep(1_000)
+      {:ok, [FetchStub.public()]}
+    end
+
+    started = System.monotonic_time(:millisecond)
+
+    assert {:error, %CallFailure{cause: :timeout}} =
+             resolve(adapter, Keyword.merge(@fast, total: 100, resolver: slow))
+
+    assert System.monotonic_time(:millisecond) - started < 1_000
+  end
+
   test "a signed refusal is :refused with its code and status, and an unsigned 401 too, neither tried again",
        %{adapter: adapter, seed: seed} do
     for {plug, code, status} <- [
