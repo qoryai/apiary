@@ -26,16 +26,23 @@ defmodule Apiary.WorkCredentialStub do
     end)
   end
 
-  @doc "Answers every call with `credential`, signed under `seed`."
-  def issue(seed, credential) do
+  @doc """
+  Answers every call with `credential`, signed under `seed`, after it calls `before`, a
+  function of no arguments, in the stub's process.
+  """
+  def issue(seed, credential, before \\ fn -> :ok end) do
     body = Jason.encode!(%{"version" => 1, "revision" => 1, "credential" => credential})
-    answer(seed, 200, body)
+    answer(seed, 200, body, before)
   end
 
-  @doc "Answers every call with `body`, as given, with `status`, signed under `seed`."
-  def answer(seed, status, body) do
+  @doc """
+  Answers every call with `body`, as given, with `status`, signed under `seed`, after it
+  calls `before`.
+  """
+  def answer(seed, status, body, before \\ fn -> :ok end) do
     Req.Test.stub(Apiary.Adapters.Calls, fn conn ->
       conn = told(conn)
+      before.()
       [call_signature] = Plug.Conn.get_req_header(conn, "x-qory-signature-ed25519")
       message = SignedMessage.call_answer(status, call_signature, body)
       signature = Ed25519.encode(:crypto.sign(:eddsa, :none, message, [seed, :ed25519]))

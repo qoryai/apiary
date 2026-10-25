@@ -476,6 +476,38 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert %DispatchRun{adapter_failure: nil} = Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
     end
 
+    test "410 for a run that ended during the call: nothing sealed, kept or said received",
+         ctx do
+      end_run = fn ->
+        {1, _rows} =
+          Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+      end
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply),
+        end_run
+      )
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+      assert conn.status == 410
+      assert conn.resp_body == ""
+      assert [{"/calls/run-credential", _body}] = WorkCredentialStub.calls()
+      assert [%Entry{details: %{"outcome" => "run_not_live"}} = entry] = issues()
+      assert work_row(ctx).issued_apply == nil
+      assert seals() == []
+      refute log =~ @token
+
+      sentence =
+        Enum.find_value(
+          ApiaryWeb.Activity.Describer.describers(),
+          & &1.sentence(:"run_credential.issue", entry, %{})
+        )
+
+      assert sentence =~ "Was refused read access to acme/shop for the run: the run ended"
+      refute sentence =~ "Received"
+    end
+
     test "409 credentials_differ for its names out of order, before any call", ctx do
       conn = post_secrets(ctx, request(ctx, credentials: Enum.reverse(names(ctx))))
       assert conn.status == 409

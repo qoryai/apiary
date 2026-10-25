@@ -1,7 +1,11 @@
 defmodule Apiary.Runs.WorkCredential do
   # The value of a run's work entry (`Apiary.Runs.RunCredentials`, `work-1`), for a secrets
   # request that names it (`Apiary.Runs.SecretsRequest`): `issue/4` asks the adapter for a
-  # credential and checks the answer. The caller seals it to the gateway.
+  # credential and checks the answer; the caller seals it, then keeps its apply items
+  # (`keep/1`) and writes its Activity entry (`record_issued/3`) in one transaction.
+  #
+  # The caller makes every check that needs no token first, the model key's read
+  # included, so that a credential the adapter issued fails only at a step that needs it.
   #
   # `issue/4`, in this order, stops at the first refusal:
   #
@@ -15,28 +19,34 @@ defmodule Apiary.Runs.WorkCredential do
   #      exception on the call path, whose message is never read.
   #   3. The answer's check against the entry (`Apiary.Runs.RunCredentialIssue.check/3`),
   #      with its causes.
-  #   4. The answer's apply items, the same as those of the first credential issued for
-  #      the run, as the gateway refuses a renewal whose items differ from those at the
-  #      run's start (`:apply_moved`). The first credential's items are kept on the entry
-  #      (`issued_apply`), in one statement that writes them only where none are kept,
-  #      and compares them where some are, as JSON values: the items in their order, the
-  #      members of each in any order.
+  #   4. The run, read again, is still live: pending or running, its sending not ended
+  #      (`:run_not_live`).
   #
-  # Each attempt writes one Activity entry, `run_credential.issue`, issued or refused, in
-  # the run's organisation, about the run, by the gateway's key: the run's id, the
-  # connection's, the adapter's and the collection's public ids, the target's path, the
-  # access, the purpose, the entry's name, the expiry and the outcome, `issued` or the
-  # cause. Every detail comes from the entry, the connection, the adapter and the
-  # collection, and the expiry from the checked answer: nothing of the token, and no
-  # word of the adapter.
+  # After the seal, `keep/1` keeps the answer's apply items on the entry
+  # (`issued_apply`) when none are kept, and compares them with those kept otherwise, as
+  # JSON values: the items in their order, the members of each in any order. Other items
+  # are `:apply_moved`, because the gateway refuses a renewal whose items differ from
+  # those at the run's start. The caller's transaction rolls back when a later write
+  # fails, so the entry keeps only the items of a credential sealed and recorded.
   #
-  # A refusal is `:unavailable` for a call that timed out or reached no one, and
-  # `:credential_unavailable` for every other cause. On a pending run, a failed call, a
-  # failed check or other apply items are written on its run of the queue as well
-  # (`Apiary.Adapters.Calls.record_failure/3`); a failed check counts as an invalid
-  # answer there. On a running run they are a log line only: the run's id, the
-  # connection's and the adapter's public ids and the cause. No log line has a body, a
-  # header, a decode error or an exception message.
+  # Each attempt writes one Activity entry, `run_credential.issue`, in the run's
+  # organisation, about the run, by the gateway's key, unless the write fails: `issued`,
+  # written last before the answer, or the cause of the refusal, with `:seal_failed` and
+  # `:not_recorded` for a seal or a write that failed after the call (`refused/4`). Its
+  # details: the run's id, the connection's, the adapter's and the collection's public
+  # ids, the target's path, the access, the purpose, the entry's name, the expiry when
+  # issued and the outcome. Every detail comes from the entry, the connection, the
+  # adapter and the collection, and the expiry from the checked answer: nothing of the
+  # token, and no word of the adapter.
+  #
+  # A refusal is `:unavailable` for a call that timed out or reached no one and for an
+  # entry that could not be written, `:gone` for a run no longer live, and
+  # `:credential_unavailable` for every other cause. On a pending run, a failed call with
+  # a cause of `Apiary.Adapters.CallFailure`, a failed check and other apply items are
+  # written on its run of the queue as well (`Apiary.Adapters.Calls.record_failure/3`); a
+  # failed check and other apply items count as an invalid answer there. Every refusal
+  # has a log line: the run's id, the connection's and the adapter's public ids and the
+  # cause. No log line has a body, a header, a decode error or an exception message.
   #
   # The token stays in the checked credential (`Apiary.Runs.RunCredentialIssue`), whose
   # `inspect` hides it, until `value/2` builds the sealed value. Nothing here writes it
@@ -57,7 +67,7 @@ defmodule Apiary.Runs.WorkCredential do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.{Run, RunCredential, RunCredentialIssue}
+  alias Apiary.Runs.{Run, RunCredential, RunCredentialIssue, Sender}
 
   @typedoc "Why a work credential was not issued."
   @type cause ::
@@ -66,21 +76,32 @@ defmodule Apiary.Runs.WorkCredential do
           | :call_failed
           | CallFailure.cause()
           | RunCredentialIssue.cause()
+          | :run_not_live
+          | :seal_failed
           | :apply_moved
+          | :not_recorded
+
+  @typedoc """
+  A credential `issue/4` issued and checked, with the entry it was issued for and the
+  rows its Activity entry is made from.
+  """
+  @type t :: %{issued: RunCredentialIssue.t(), row: RunCredential.t(), place: map}
 
   @doc false
   # causes/0 is every cause an Activity entry's `outcome` may have, besides `issued`.
   @spec causes() :: [cause]
   def causes do
     [:connection_gone, :adapter_key_missing, :call_failed] ++
-      CallFailure.causes() ++ RunCredentialIssue.causes() ++ [:apply_moved]
+      CallFailure.causes() ++
+      RunCredentialIssue.causes() ++ [:run_not_live, :seal_failed, :apply_moved, :not_recorded]
   end
 
   @doc false
   # sealable_to?/2 is whether a work credential of a run of `run_organisation_id` may be
-  # sealed for `gateway`, as a model key of the organisation's chain may: a gateway of the
-  # run's organisation, a gateway of an organisation whose gateways serve the run's
-  # (`Apiary.Gateways.serving_organisations/1`), or the instance's gateway.
+  # sealed for `gateway`: a gateway of the run's organisation, the instance's gateway, or
+  # a gateway of an organisation whose gateways serve the run's
+  # (`Apiary.Gateways.serving_organisations/1`). The last is more than a model key of the
+  # organisation's chain may reach (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
   @spec sealable_to?(Node.t(), Ecto.UUID.t()) :: boolean
   def sealable_to?(%Node{kind: :gateway} = gateway, run_organisation_id)
       when is_binary(run_organisation_id) do
@@ -93,11 +114,12 @@ defmodule Apiary.Runs.WorkCredential do
 
   @doc false
   # issue/4 is the work credential for `run`'s entry `row`, asked for by the gateway's
-  # `access_key` at `now` (Unix seconds): `{:ok, %RunCredentialIssue{}}`, or
-  # `{:error, :unavailable | :credential_unavailable}`, each with its Activity entry
-  # written (the comment at the top of the module).
+  # `access_key` at `now` (Unix seconds): `{:ok, work}`, with nothing written yet, or
+  # `{:error, :unavailable | :gone | :credential_unavailable}`, after the refusal's log
+  # line and its attempt at the Activity entry; `{:error, :unavailable}` also where that
+  # entry cannot be written.
   @spec issue(Run.t(), RunCredential.t(), AccessKey.t(), integer) ::
-          {:ok, RunCredentialIssue.t()} | {:error, :unavailable | :credential_unavailable}
+          {:ok, t} | {:error, :unavailable | :gone | :credential_unavailable}
   def issue(%Run{} = run, %RunCredential{purpose: :work} = row, %AccessKey{} = access_key, now)
       when is_integer(now) do
     place = place(row)
@@ -106,16 +128,55 @@ defmodule Apiary.Runs.WorkCredential do
       with :ok <- live(place, run),
            {:ok, answer} <- call(place, row),
            {:ok, issued} <- checked(row, answer, now),
-           :ok <- same_apply(row, issued) do
+           :ok <- still_live(run) do
         {:ok, issued}
       end
 
-    with :ok <- noted(outcome, run, place),
-         :ok <- record(access_key, run, row, place, outcome) do
-      case outcome do
-        {:ok, issued} -> {:ok, issued}
-        {:error, cause, _failure} -> {:error, refusal(cause)}
-      end
+    case outcome do
+      {:ok, issued} -> {:ok, %{issued: issued, row: row, place: place}}
+      {:error, cause, failure} -> refusal(access_key, run, row, place, cause, failure)
+    end
+  end
+
+  @doc false
+  # refused/4 writes the refusal of `work`, issued by `issue/4`, for `cause`, a step after
+  # the call that failed: its log line, on a pending run its run of the queue for other
+  # apply items, and its Activity entry. `{:error, :credential_unavailable}` for
+  # `:apply_moved` and `:seal_failed`, `{:error, :unavailable}` for `:not_recorded` and
+  # where the Activity entry cannot be written.
+  @spec refused(AccessKey.t(), Run.t(), t, :seal_failed | :apply_moved | :not_recorded) ::
+          {:error, :unavailable | :credential_unavailable}
+  def refused(%AccessKey{} = access_key, %Run{} = run, %{row: row, place: place}, cause)
+      when cause in [:seal_failed, :apply_moved, :not_recorded] do
+    refusal(access_key, run, row, place, cause, nil)
+  end
+
+  @doc false
+  # keep/1 keeps the apply items of `work` on its entry, where none are kept, or compares
+  # them with those kept: `:ok`, or `{:error, :apply_moved}` for other items. Inside the
+  # caller's transaction, after the seal.
+  @spec keep(t) :: :ok | {:error, :apply_moved}
+  def keep(%{row: %RunCredential{id: id}, issued: %RunCredentialIssue{apply: apply}}) do
+    query =
+      from c in RunCredential,
+        where: c.id == ^id,
+        where: is_nil(c.issued_apply) or c.issued_apply == fragment("?::jsonb", ^apply)
+
+    case Repo.update_all(query, set: [issued_apply: apply]) do
+      {1, _rows} -> :ok
+      {0, _rows} -> {:error, :apply_moved}
+    end
+  end
+
+  @doc false
+  # record_issued/3 writes the Activity entry of `work`, issued and sealed, inside the
+  # caller's transaction, as its last write before the answer: `:ok`, or
+  # `{:error, :not_recorded}`.
+  @spec record_issued(AccessKey.t(), Run.t(), t) :: :ok | {:error, :not_recorded}
+  def record_issued(%AccessKey{} = access_key, %Run{} = run, %{issued: issued} = work) do
+    case record(access_key, run, work.row, work.place, "issued", issued.expires_at) do
+      :ok -> :ok
+      {:error, _reason} -> {:error, :not_recorded}
     end
   end
 
@@ -202,27 +263,37 @@ defmodule Apiary.Runs.WorkCredential do
     end
   end
 
-  # The answer's items kept as the first credential's, or compared with those kept.
-  defp same_apply(%RunCredential{id: id}, %RunCredentialIssue{apply: apply}) do
-    query =
-      from c in RunCredential,
-        where: c.id == ^id,
-        where: is_nil(c.issued_apply) or c.issued_apply == fragment("?::jsonb", ^apply)
+  # The run, read again after the call.
+  defp still_live(%Run{id: id}) do
+    case Repo.get(Run, id) do
+      %Run{} = run ->
+        if run.state in Run.alive_states() and not Sender.sending_ended?(run),
+          do: :ok,
+          else: {:error, :run_not_live, nil}
 
-    case Repo.update_all(query, set: [issued_apply: apply]) do
-      {1, _rows} -> :ok
-      {0, _rows} -> {:error, :apply_moved, nil}
+      nil ->
+        {:error, :run_not_live, nil}
     end
   end
 
   ## What a refusal writes
 
-  defp refusal(cause) when cause in [:timeout, :unreachable], do: :unavailable
-  defp refusal(_cause), do: :credential_unavailable
+  # The refusal's log line, its write on a pending run, its Activity entry, and its code.
+  # An Activity entry that cannot be written makes the code `:unavailable`.
+  defp refusal(access_key, run, row, place, cause, failure) do
+    :ok = noted(cause, failure, run, place)
 
-  defp noted({:ok, _issued}, _run, _place), do: :ok
+    case record(access_key, run, row, place, Atom.to_string(cause), nil) do
+      :ok -> {:error, code(cause)}
+      {:error, :unavailable} -> {:error, :unavailable}
+    end
+  end
 
-  defp noted({:error, cause, failure}, %Run{} = run, place) do
+  defp code(cause) when cause in [:timeout, :unreachable, :not_recorded], do: :unavailable
+  defp code(:run_not_live), do: :gone
+  defp code(_cause), do: :credential_unavailable
+
+  defp noted(cause, failure, %Run{} = run, place) do
     Logger.warning(
       "a work credential for the run #{run.node_run_id} was not issued " <>
         "connection=#{public_id(place.connection)} adapter=#{public_id(place.adapter)} " <>
@@ -261,13 +332,7 @@ defmodule Apiary.Runs.WorkCredential do
 
   ## The Activity entry
 
-  defp record(access_key, %Run{} = run, %RunCredential{} = row, place, outcome) do
-    {result, expires_at} =
-      case outcome do
-        {:ok, %RunCredentialIssue{expires_at: expires_at}} -> {"issued", expires_at}
-        {:error, cause, _failure} -> {Atom.to_string(cause), nil}
-      end
-
+  defp record(access_key, %Run{} = run, %RunCredential{} = row, place, result, expires_at) do
     details =
       %{
         "run_id" => run.node_run_id,

@@ -45,17 +45,24 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
 
   test "the sentence of a refusal names its cause in a few groups" do
     for {outcome, cause} <- [
-          {"connection_gone", "the connection is no longer connected"},
-          {"adapter_key_missing", "the adapter has no access key in use"},
+          {"connection_gone",
+           "the connection is not connected, or does not match the run's organisation and adapter"},
+          {"adapter_key_missing", "the adapter is deleted or has no access key in use"},
           {"timeout", "the call to the adapter timed out"},
           {"unreachable", "the call to the adapter failed"},
+          {"call_failed", "the call to the adapter failed"},
           {"refused", "the adapter returned a refusal"},
+          {"entry_invalid", "Qory Apiary could not check the credential from the adapter"},
+          {"now_invalid", "Qory Apiary could not check the credential from the adapter"},
           {"host_outside_entry",
            "the credential from the adapter reaches beyond the run's access"},
           {"token_padded", "the credential from the adapter is invalid"},
           {"invalid_answer", "the credential from the adapter is invalid"},
           {"apply_moved",
-           "the credential from the adapter covers other hosts or paths than at the run's start"}
+           "the credential from the adapter differs from the one at the run's start"},
+          {"run_not_live", "the run ended before the credential could be sealed"},
+          {"seal_failed", "the credential could not be sealed for the gateway"},
+          {"not_recorded", "the credential could not be recorded, so it was not sent"}
         ] do
       assert sentence(Map.merge(@details, %{"outcome" => outcome, "access" => "read"})) ==
                "Was refused read access to acme/shop for the run: #{cause}"
@@ -65,7 +72,7 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
   test "every cause of a refusal has its words" do
     for cause <- Apiary.Runs.WorkCredential.causes() do
       assert sentence(Map.put(@details, "outcome", Atom.to_string(cause))) =~
-               ~r/\AWas refused write access to acme\/shop for the run: the /
+               ~r/\AWas refused write access to acme\/shop for the run: (the|Qory Apiary) /
     end
   end
 end

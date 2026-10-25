@@ -130,10 +130,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # run, the choosing of what a target's runs also read, the setting of a model choice or
   # a time limit of a workspace or a target, a build of a target's environment asked for,
   # the installing of an adapter, the start of its set-up, the storing and sending of
-  # its secrets and a run's access sent or refused have labels yet, so the filter offers those alone, where the reader is
-  # shown the feature (the page asks it); the others' entries show as any change. The
-  # filter offers `connection.write` alone of the three actions that split it
-  # (`@connection_writes`), and its entries are those of the three
+  # its secrets and a run's access sent or refused have labels yet, so the filter offers
+  # those alone, where the reader is shown the feature (the page asks it); the others'
+  # entries show as any change. The filter offers `connection.write` alone of the three
+  # actions that split it (`@connection_writes`), and its entries are those of the three
   # (`Apiary.Audit.list_entries/3`). Nothing writes `dispatch.handover` or
   # `dispatch.prebuilt` any more: the filter offers neither, and their labels and words
   # stay for the entries stored before.
@@ -583,26 +583,40 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # a few groups.
   @answer_causes Enum.map(Apiary.Runs.RunCredentialIssue.causes(), &Atom.to_string/1)
   @wider_causes ~w(scheme_outside_entry host_outside_entry path_outside_entry)
+  @check_faults ~w(now_invalid entry_invalid)
 
-  defp refusal_cause("connection_gone"), do: gettext("the connection is no longer connected")
+  defp refusal_cause("connection_gone"),
+    do:
+      gettext(
+        "the connection is not connected, or does not match the run's organisation and adapter"
+      )
 
   defp refusal_cause("adapter_key_missing"),
-    do: gettext("the adapter has no access key in use")
+    do: gettext("the adapter is deleted or has no access key in use")
 
   defp refusal_cause("timeout"), do: gettext("the call to the adapter timed out")
   defp refusal_cause("refused"), do: gettext("the adapter returned a refusal")
+
+  defp refusal_cause(cause) when cause in @check_faults,
+    do: gettext("Qory Apiary could not check the credential from the adapter")
 
   defp refusal_cause(cause) when cause in @wider_causes,
     do: gettext("the credential from the adapter reaches beyond the run's access")
 
   defp refusal_cause("apply_moved"),
-    do:
-      gettext(
-        "the credential from the adapter covers other hosts or paths than at the run's start"
-      )
+    do: gettext("the credential from the adapter differs from the one at the run's start")
 
   defp refusal_cause(cause) when cause in ["invalid_answer" | @answer_causes],
     do: gettext("the credential from the adapter is invalid")
+
+  defp refusal_cause("run_not_live"),
+    do: gettext("the run ended before the credential could be sealed")
+
+  defp refusal_cause("seal_failed"),
+    do: gettext("the credential could not be sealed for the gateway")
+
+  defp refusal_cause("not_recorded"),
+    do: gettext("the credential could not be recorded, so it was not sent")
 
   defp refusal_cause(_cause), do: gettext("the call to the adapter failed")
 

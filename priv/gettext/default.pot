@@ -11824,6 +11824,11 @@ msgstr ""
 msgid "Qory Apiary"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not check the credential from the adapter"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary does not prune runs automatically: a workspace's retention takes effect when the pruning job is run by hand."
@@ -18719,7 +18724,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "the adapter has no access key in use"
+msgid "the adapter is deleted or has no access key in use"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -18739,12 +18744,22 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "the connection is no longer connected"
+msgid "the connection is not connected, or does not match the run's organisation and adapter"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "the credential from the adapter covers other hosts or paths than at the run's start"
+msgid "the credential could not be recorded, so it was not sent"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the credential could not be sealed for the gateway"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the credential from the adapter differs from the one at the run's start"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -18802,6 +18817,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "the ref %{ref} is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the run ended before the credential could be sealed"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

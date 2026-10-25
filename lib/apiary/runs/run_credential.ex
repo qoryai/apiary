@@ -19,9 +19,9 @@ defmodule Apiary.Runs.RunCredential do
   #   * `apply`: the adapter's apply items with `{target.path}` filled
   #     (`Apiary.Integrations.ApplyTemplates`); `placeholders`: nil for none.
   #   * `issued_apply`: the apply items of the first work credential the adapter issued
-  #     for the run (`Apiary.Runs.WorkCredential`), nil until then. A later credential
-  #     whose items differ is refused, as the gateway refuses a renewal whose items
-  #     differ from those at the run's start.
+  #     for the run and Qory Apiary sealed and recorded (`Apiary.Runs.WorkCredential`),
+  #     nil until then. A later credential whose items differ is refused, as the gateway
+  #     refuses a renewal whose items differ from those at the run's start.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
