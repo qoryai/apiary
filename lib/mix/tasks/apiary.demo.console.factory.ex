@@ -429,7 +429,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
   ## The connection
 
-  # Dana presses Install, and comes back with the adapter's return, which says it linked;
+  # Dana presses Install, and comes back with the adapter's linked return;
   # the adapter then reports the grant of Acme's external account under that pass.
   defp connect!(main, adapter, {key, secret}) do
     {:ok, _url, {connection_id, nonce}} = Adapters.connect(main, adapter)

@@ -12,8 +12,8 @@ defmodule Apiary.Adapters.Grants do
   # (`Apiary.Adapters.Connections.complete_return/4`): an adapter's report alone cannot add
   # an external account to an organisation. Each such nonce is accepted once. The grant
   # keeps the report's external account, its id at the source and its display name. A
-  # report of a ref the connection holds replaces that grant in place, its account
-  # included. The pass check
+  # report of a ref the connection has a grant for replaces that grant in place, its
+  # account included. The pass check
   # (`pass_unknown`) runs first. Then a report is refused (`grant_taken`) when the adapter
   # has a grant with the same ref that has not ended under any other connection of the
   # adapter, of any organisation, a connection made but with no accepted listing yet
@@ -21,9 +21,9 @@ defmodule Apiary.Adapters.Grants do
   #
   # A grant ends with its connection (`end_for_connections/2`), or alone when the adapter
   # reports that the source no longer covers it (`end_grant/2`, `POST /v1/grants/end`),
-  # which ends the collections the grant covers, those whose latest listing gave that
+  # which ends the collections the grant covers, those whose latest listing had that
   # grant (`Apiary.Adapters.Collections.end_for_grant/2`), and leaves the connection
-  # connected. The connection stays connected when it holds no grant. Each report
+  # connected. The connection stays connected when it has no grant. Each report
   # accepted writes the feed's grant entry, `linked`, and each grant that ends writes
   # one, `unlinked` (`Apiary.Adapters.Feed`). The adapter reads Qory Apiary's copy of every grant of its
   # connections that have not ended (`list_for_adapter/1`, `GET /v1/grants`).
@@ -32,7 +32,7 @@ defmodule Apiary.Adapters.Grants do
   # collections (`Apiary.Adapters.Collections`), then the adapter's feed counter. A
   # report holds the connection `FOR UPDATE`, so two reports for one connection run one
   # after the other; an end holds the connection, ends its grants, then its collections,
-  # then writes the grants' entries. A grant end holds the connection `FOR UPDATE`, so it
+  # then writes the grants' entries. A grant end locks the connection `FOR UPDATE`, so it
   # runs one at a time with the connection's reports and the parts of its listings.
   #
   # The feature is hidden from the documentation, so the module is too.
@@ -255,7 +255,7 @@ defmodule Apiary.Adapters.Grants do
   #   * `{:error, :forbidden}` for a request outside the key's rights, decided from the
   #     key and the action alone, before any connection is looked up
   #     (`Apiary.Adapters.Connections.key_rights/2`);
-  #   * `{:error, :unknown}` (`connection_unknown`) for an id that names no connection of
+  #   * `{:error, :unknown}` (`connection_unknown`) for an id of no connection of
   #     the key's adapter, a connection of another adapter, of any organisation, and one
   #     pending, which has no grant: one answer for all;
   #   * `{:error, :ended}` for a connection that ended;
@@ -264,8 +264,8 @@ defmodule Apiary.Adapters.Grants do
   #     reported.
   #
   # The organisation's state is not asked: a grant end of a connection whose
-  # organisation is out of use goes on, as the contract says. Then, in one transaction
-  # that holds the connection `FOR UPDATE`, then the grant: the grant ends
+  # organisation is out of use goes on, as in the contract. Then, in one transaction
+  # that locks the connection `FOR UPDATE`, then the grant: the grant ends
   # (`adapter_reported`); the live collections whose grant it is end as a disconnect
   # ends them, with the feed's `unlinked` entry for each that was linked
   # (`Apiary.Adapters.Collections.end_for_grant/2`); the feed's grant entry, `unlinked`,
@@ -323,10 +323,10 @@ defmodule Apiary.Adapters.Grants do
     end
   end
 
-  # The connection `public_id` of the adapter `adapter_id`, of any organisation, held
+  # The connection `public_id` of the adapter `adapter_id`, of any organisation, locked
   # `FOR UPDATE`: `{:ok, connection}` while it is connected; `{:error, :ended}` once it
-  # ended; `{:error, :unknown}` for an id that names none of the adapter's, or one
-  # pending.
+  # ended; `{:error, :unknown}` for an id that matches none of the adapter's connections,
+  # or one pending.
   defp lock_for_end(adapter_id, public_id) do
     with true <- Connection.public_id?(public_id),
          %Connection{} = connection <-
@@ -345,7 +345,7 @@ defmodule Apiary.Adapters.Grants do
     end
   end
 
-  # The live grant of `connection` with `ref`, held `FOR UPDATE`, or
+  # The live grant of `connection` with `ref`, locked `FOR UPDATE`, or
   # `{:error, :grant_unknown}`.
   defp lock_live_grant(%Connection{id: connection_id}, ref) do
     case Repo.one(
@@ -360,9 +360,9 @@ defmodule Apiary.Adapters.Grants do
   end
 
   @doc false
-  # live_refs/2, inside a transaction that holds `connection` `FOR UPDATE`, as a listing's
-  # part does: the ids of its live grants with the refs `refs`, by ref. A ref with no live
-  # grant of the connection is not a key.
+  # live_refs/2, inside a transaction that locks `connection` `FOR UPDATE`, as the
+  # transaction of a listing's part does: the ids of its live grants with the refs
+  # `refs`, by ref. A ref with no live grant of the connection is not a key.
   @spec live_refs(Connection.t(), [String.t()]) :: %{String.t() => Ecto.UUID.t()}
   def live_refs(%Connection{id: connection_id}, refs) when is_list(refs) do
     Repo.all(

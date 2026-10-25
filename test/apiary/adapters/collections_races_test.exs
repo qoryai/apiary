@@ -129,7 +129,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   end
 
   # Each collection's `grant_ref` is the live grant that the setup made for the
-  # connection (`listing_grant/1`), named here without a query, as a part runs in a
+  # connection (`listing_grant/1`), written here without a query, as a part runs in a
   # racing process.
   defp part(connection, refs, id, started_at, target \\ nil) do
     %{

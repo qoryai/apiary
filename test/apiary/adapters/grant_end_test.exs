@@ -2,7 +2,7 @@ defmodule Apiary.Adapters.GrantEndTest do
   # A grant's external account and the collections it covers, and the end of one grant
   # (`Apiary.Adapters.Grants`, `Apiary.Adapters.Collections`): a report keeps its
   # account, and a report that replaces the grant replaces it; a listing keeps each
-  # collection's grant, and a part that gives a grant the connection has no live grant
+  # collection's grant, and a part with a grant the connection has no live grant
   # with is refused after the connection's checks and stores nothing; a grant end answers
   # in the contract's order, ends the grant and the collections it covers with their feed
   # entries and one trail entry, leaves the connection and its other grants, goes on for
@@ -288,7 +288,7 @@ defmodule Apiary.Adapters.GrantEndTest do
                  {:error, :forbidden}
       end
 
-      # Unknown: a pending connection, an id that names none, a malformed id, another
+      # Unknown: a pending connection, an id of no connection, a malformed id, another
       # adapter's connection in another organisation, and this connection to another
       # adapter's key.
       assert end_grant(ctx, ref, pending.public_id) == {:error, :unknown}

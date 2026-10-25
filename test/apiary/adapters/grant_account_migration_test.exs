@@ -1,11 +1,11 @@
 defmodule Apiary.Adapters.GrantAccountMigrationTest do
   # The migration of a grant's account and a collection's grant, run down and up again
   # inside the test's transaction, which rolls it all back: up adds `account_ref`,
-  # `account_title` and `grant_id`, NULL for the rows there already, with their checks and
-  # the key that holds a collection's grant to its connection, and the ended reason of a
-  # grant end; down takes them away and deletes the grants a grant end ended. It changes
-  # `adapter_grants` and `source_collections` under every other test, so this is not
-  # async.
+  # `account_title` and `grant_id`, NULL for the rows there already, with their checks,
+  # the foreign key that keeps a collection's grant a grant of its connection, and the
+  # ended reason of a grant end; down takes them away and deletes the grants a grant end
+  # ended. It changes `adapter_grants` and `source_collections` under every other test, so
+  # this is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration down and up again while later ones are applied makes Ecto warn.

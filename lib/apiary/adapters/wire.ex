@@ -55,7 +55,7 @@ defmodule Apiary.Adapters.Wire do
   # (`source-collections.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters), `collections`, at most 100, each exactly `ref`,
   # `url`, `title` and `grant_ref`, a ref, the grant of the same connection that covers
-  # it, `target` when given, which holds exactly `system` and `path`, and
+  # it, `target` when given, which has exactly `system` and `path`, and
   # `items` when given, which is `false` (`items: true` when it is not given), and
   # `environment_ref` when given, 1 to 200 characters like a ref (nil when absent: the
   # collection has no environment definition); and `listing`, exactly `id`, `part`,

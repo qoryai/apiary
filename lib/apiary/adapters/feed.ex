@@ -30,8 +30,9 @@ defmodule Apiary.Adapters.Feed do
   #   * `%{kind: "grant", connection_id: id, grant_ref: ref, status: status}`: a grant of
   #     one of the adapter's connections linked (`"linked"`, a report accepted,
   #     `Apiary.Adapters.Grants.report/2`), or unlinked (`"unlinked"`, its connection
-  #     ended). `id` is the connection's public id, `ac_…`; `ref` the grant's ref as the
-  #     adapter reported it.
+  #     ended, or the adapter ended the grant with a grant end,
+  #     `Apiary.Adapters.Grants.end_grant/2`). `id` is the connection's public id,
+  #     `ac_…`; `ref` the grant's ref as the adapter reported it.
   #
   # A ref is 1 to 200 characters (code points) of valid UTF-8, with no NUL, which the
   # store cannot hold. Anything else raises `ArgumentError`: outside a transaction, for a

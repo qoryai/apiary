@@ -13,8 +13,8 @@ defmodule ApiaryWeb.Contract.GrantEndController do
   # than 300 seconds from the clock, either way, or a request whose signature was accepted
   # before, is `401`, unsigned (`ApiaryWeb.Contract.AdapterRequest.accept/2`); then
   # `Apiary.Adapters.Grants.end_grant/2`: `403` `forbidden` for a key that may not end a
-  # grant (`adapter.end_grant`); `403` `connection_unknown` for a connection the instance
-  # does not hold for the adapter, or one pending; `409` `connection_ended`; `409`
+  # grant (`adapter.end_grant`); `403` `connection_unknown` for an id that matches none
+  # of the adapter's connections, or a pending connection; `409` `connection_ended`; `409`
   # `grant_unknown` when the connection has no live grant with that `grant_ref`; else
   # `204`, signed, with no body, which ends the grant and its collections and leaves the
   # connection. A connection whose organisation is out of use gets the `204` too: never
@@ -48,9 +48,7 @@ defmodule ApiaryWeb.Contract.GrantEndController do
     end
   rescue
     exception ->
-      Logger.error(
-        "an adapter's end of a grant could not be stored: " <> inspect(exception.__struct__)
-      )
+      Logger.error("storing an adapter's grant end failed: " <> inspect(exception.__struct__))
 
       refuse(conn, 503, "unavailable")
   end

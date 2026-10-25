@@ -1165,7 +1165,7 @@ defmodule Apiary.Adapters.WireTest do
             %{"grant_ref" => String.duplicate("g", 201)},
             %{"grant_ref" => "G" <> <<0>>},
             %{"grant_ref" => 1},
-            %{"reason" => "uninstalled"}
+            %{"reason" => "ended"}
           ] do
         assert Wire.grant_end(Map.merge(body, change)) == :error, inspect(change)
       end

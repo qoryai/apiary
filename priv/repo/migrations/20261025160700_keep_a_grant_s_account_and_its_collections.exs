@@ -7,16 +7,16 @@ defmodule Apiary.Repo.Migrations.KeepAGrantSAccountAndItsCollections do
   #
   # - `adapter_grants` gains `account_ref`, the external account's id at the source, 1 to
   #   200 characters, and `account_title`, its display name, 1 to 1,024 characters, both
-  #   or neither, as the latest accepted report of the grant gave them. `ended_reason`
+  #   or neither, as set by the latest accepted report of the grant. `ended_reason`
   #   gains `adapter_reported`: the adapter reported that the source no longer covers the
   #   grant (`POST /v1/grants/end`), and the connection stays.
-  # - `source_collections` gains `grant_id`, the grant of the same connection that the
-  #   latest listing naming the collection gave, held to that connection by the composite
-  #   key on `adapter_grants` (`id`, `connection_id`).
+  # - `source_collections` gains `grant_id`, the grant of the same connection, as set by
+  #   the latest listing with the collection. Its foreign key to the composite key on
+  #   `adapter_grants` (`id`, `connection_id`) keeps it a grant of that connection.
   #
   # The rows there already keep NULL in the three columns, and adding a column with no
-  # default rewrites no row: an account is never made up, and a collection takes its grant
-  # from the next listing that names it. A grant end ends only the collections whose
+  # default rewrites no row: an account is never made up, and the next listing with a
+  # collection sets its grant. A grant end ends only the collections whose
   # `grant_id` is that grant. `adapter_grants` has one row per external account a
   # connection reaches, so its new index is built inside the transaction.
   def up do
@@ -41,7 +41,8 @@ defmodule Apiary.Repo.Migrations.KeepAGrantSAccountAndItsCollections do
                  "ended_reason IN ('connection_ended', 'adapter_reported'))"
            )
 
-    # The key a collection names its grant by: the grant and its connection at once.
+    # The key that a collection's foreign key to its grant links to: the grant and its
+    # connection at once.
     create unique_index(:adapter_grants, [:id, :connection_id])
 
     alter table(:source_collections) do

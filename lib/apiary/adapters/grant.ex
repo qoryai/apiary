@@ -7,8 +7,8 @@ defmodule Apiary.Adapters.Grant do
   #
   # `grant_ref` is the adapter's ref to the grant, stable for its external account, which
   # Qory Apiary compares and stores and never parses. `account_ref` and `account_title`
-  # are the external account's id at the source and its display name, as the latest
-  # accepted report gave them; nil for a grant reported before the contract had them
+  # are the external account's id at the source and its display name, as set by the
+  # latest accepted report; nil for a grant reported before the contract had them
   # (`20261025160700_keep_a_grant_s_account_and_its_collections`) and not reported since.
   # `pass_nonce` is the 16 bytes of the nonce of the connect pass it was last reported
   # under. `state` is `:live` from `granted_at`, the time of the report Qory Apiary last

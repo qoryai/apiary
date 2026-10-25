@@ -13,7 +13,7 @@ defmodule Apiary.Adapters.Collection do
   # `:disconnected`, `:not_listed` (a complete listing left it out) or
   # `:connection_ended`. One collection per adapter and ref is live at a time.
   # `grant_id` is the grant of its connection (`Apiary.Adapters.Grant`) that covers it, as
-  # the latest listing that named it gave it; nil for a collection last listed before the
+  # set by the latest listing that had it; nil for a collection last listed before the
   # contract had it (`20261025160700_keep_a_grant_s_account_and_its_collections`). A
   # grant end ends the live collections whose `grant_id` is that grant, as a disconnect
   # ends them. `workspace_id` is the one workspace it is assigned to, or none. `backlog` is whether
