@@ -9,10 +9,11 @@ defmodule Apiary.Adapters.CallAddress do
   #      no call to it;
   #   2. `{:error, :not_allowed}` for an address that is not `https://`, has user
   #      information, a query or a fragment, or a path that does not end with `/`, and for
-  #      a host that is not exactly one label, the adapter's name as its node has it, then
-  #      `.` and the instance's public name (the host of `PUBLIC_URL`): an adapter named
-  #      `tracker` on the instance `qory.example.com` is called at
-  #      `https://tracker.qory.example.com/…` and nowhere else. Case does not count;
+  #      a host that is not exactly the adapter's name as its node has it, then `.`, then
+  #      the instance's public name (the host of `PUBLIC_URL`), compared without case;
+  #      always when `PUBLIC_URL` has no host. An adapter named `tracker` on the instance
+  #      `qory.example.com` is called at `https://tracker.qory.example.com/…` and nowhere
+  #      else;
   #   3. the host is resolved, every address it has: `{:error, :not_allowed}` when any is
   #      forbidden (`Apiary.Integrations.Fetch.Address`: loopback, link-local with the
   #      cloud metadata address `169.254.169.254`, the other metadata addresses,

@@ -958,8 +958,9 @@ defmodule Apiary.Adapters do
   # changes none of them leaves none. The adapter's first declaration appends
   # `{kind: "sync", interval: nil}` to its change feed, its default, and a later one
   # appends nothing: as the contract has it, the feed carries the interval at the first
-  # declaration and whenever a person changes it. The interval an instance admin chose stays whatever a later declaration
-  # says; the adapter raises one below its minimum to that minimum.
+  # declaration and whenever a person changes it. The interval an instance admin chose
+  # stays whatever a later declaration says; the adapter raises one below its minimum to
+  # that minimum.
   #
   # Each start also stores what its description's source role says
   # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
@@ -968,11 +969,12 @@ defmodule Apiary.Adapters do
   # no source role stores the defaults, no words, items and no line. Each start also
   # stores the domains its description lists, nil for none
   # (`Apiary.Nodes.Node.domains_changeset/2`); a start that narrows them leaves every
-  # collection assigned as it was. They are no part of the trail's entry. A start that changes `items` writes the feed's
-  # `linked` or `unlinked` entry for each live collection whose link that changes, in the
-  # same transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
-  # declaration's `sync` entry, so that the feed counter is taken after the collections,
-  # last, as the lock order has it; after the commit those collections are broadcast.
+  # collection assigned as it was. They are no part of the trail's entry. A start that
+  # changes `items` writes the feed's `linked` or `unlinked` entry for each live
+  # collection whose link that changes, in the same transaction
+  # (`Apiary.Adapters.Collections.relink_adapter/2`), before the first declaration's
+  # `sync` entry, so that the feed counter is taken after the collections, last, as the
+  # lock order has it; after the commit those collections are broadcast.
   # A start that changes the source's line on access or its words for its items or its
   # collections tells, after the commit, each organisation with a connection to the
   # adapter that its connection changed, once (`connection_changed`), so an open page of

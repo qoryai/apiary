@@ -43,8 +43,9 @@ defmodule Apiary.Adapters.Feed do
   # entry for it, so that the last entry per `collection_ref`, read from the start, is the
   # link state of the live collection with that ref, or `unlinked` when none is live; and
   # the last entry per `work_item_id` is that work item's status; and the last `grant`
-  # entry per `connection_id` and `grant_ref` whether Qory Apiary holds that grant. The feed keeps the
-  # entries in the order they commit, which is what lets a reader rely on the last one.
+  # entry per `connection_id` and `grant_ref` whether Qory Apiary holds that grant. The
+  # feed keeps the entries in the order they commit, which is what lets a reader rely on
+  # the last one.
   #
   # The number is taken from the adapter's row of `adapter_feed_counters` by an upsert
   # that adds one, inside the caller's transaction; the row stays locked until that

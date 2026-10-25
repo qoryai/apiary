@@ -135,8 +135,9 @@ config :apiary, Apiary.Integrations.Fetch,
   req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]
 
 # Qory Apiary's calls to an adapter resolve its host by the test resolver's rule too
-# (`Apiary.FetchStub`), which a test may override with its own, and go to the `Req.Test`
-# stub of `Apiary.Adapters.Calls`.
+# (`Apiary.FetchStub`), which a test may replace with a function of the host
+# (`resolver:` in the call's options), and go to the `Req.Test` stub of
+# `Apiary.Adapters.Calls`.
 config :apiary, Apiary.Adapters.Calls,
   resolver: Apiary.FetchStub,
   req_options: [plug: {Req.Test, Apiary.Adapters.Calls}]

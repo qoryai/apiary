@@ -385,9 +385,9 @@ defmodule Apiary.Adapters.Connections do
   #
   # Then a return that says `linked` makes a pending connection connected, now, leaves a
   # connected one connected, and keeps the nonce as the one a grant report may name
-  # (`Apiary.Adapters.LinkedPass`); `refused` and `cancelled` change nothing but the nonce, which is used
-  # either way. `{:ok, :linked}`,
-  # `{:ok, {:refused, reason}}`, `{:ok, :cancelled}`; `{:error, :wrong_person}` for 7;
+  # (`Apiary.Adapters.LinkedPass`); `refused` and `cancelled` change nothing but the
+  # nonce, which is used either way. `{:ok, :linked}`, `{:ok, {:refused, reason}}`,
+  # `{:ok, :cancelled}`; `{:error, :wrong_person}` for 7;
   # `{:error, :not_found}` for every other refusal, one answer for a token that is bad,
   # expired or used.
   @spec complete_return(Scope.t() | nil, term, term, term) ::
