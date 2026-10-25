@@ -4,6 +4,7 @@ defmodule Apiary.Harnesses.ReaderTest do
   use ExUnit.Case, async: true
 
   alias Apiary.Harnesses.Reader
+  alias Apiary.Kinds.Budget
 
   @sources Path.expand("../../fixtures/harness/v1/sources", __DIR__)
 
@@ -259,27 +260,58 @@ defmodule Apiary.Harnesses.ReaderTest do
     end
   end
 
-  describe "the parse's time and heap limits" do
-    # Each input took seconds to minutes in yamerl before the limits, and each is under
-    # 64 KiB. The parse is killed at 2 s or 32 MiB of heap, whichever comes first. Each
-    # slow input of 32,000 items, and 65,000 brackets, also passes the heap limit, so a
-    # machine fast enough to parse it in less than 2 s still refuses it.
-    # The process the parse of `caller` runs in, which `caller` monitors.
+  describe "the parse's limits" do
+    # Each slow input took seconds to minutes in yamerl before the limits, and each is
+    # under 64 KiB. The parse stops at 30 million reductions, 64 MiB of heap or 10 s,
+    # whichever comes first. On an idle machine each slow input passes the reductions
+    # within 3 s, and an ordinary 64 KiB file parses within 0.2 s.
+    @slow [
+      String.duplicate("[", 65_000),
+      "[" <> String.duplicate("a,", 32_000) <> "a]",
+      "- [" <> String.duplicate("a,", 32_000) <> "a]"
+    ]
+
+    @list "k: [" <> String.duplicate("a,", 32_000) <> "a]"
+
+    # The process the parse of `caller` runs in, which `caller` monitors, once `caller`
+    # also monitors the watcher that kills the parse when `caller` exits
+    # (`Apiary.Kinds.Budget`). The parse process is the one with a heap limit.
     defp parse_process(caller, tries \\ 100) do
-      case Process.info(caller, :monitors) do
-        {:monitors, [{:process, child}]} ->
+      {:monitors, monitors} = Process.info(caller, :monitors)
+      pids = for {:process, pid} <- monitors, do: pid
+
+      case Enum.filter(pids, &heap_limited?/1) do
+        [child] when length(pids) == 2 ->
           child
 
-        _none when tries > 0 ->
+        _not_yet when tries > 0 ->
           Process.sleep(10)
           parse_process(caller, tries - 1)
       end
     end
 
+    defp heap_limited?(pid) do
+      match?({:max_heap_size, %{size: size}} when size > 0, Process.info(pid, :max_heap_size))
+    end
+
+    # The parse's 10 s backstop, and 2 s to spare.
     defp timed(input) do
       {time, result} = :timer.tc(fn -> Reader.parse(input) end)
-      assert time < 5_000_000, "took #{div(time, 1000)} ms"
+      assert time < 12_000_000, "took #{div(time, 1000)} ms"
       result
+    end
+
+    # The reductions `fun` does, counted in another process, and its value.
+    defp reductions(fun) do
+      task =
+        Task.async(fn ->
+          {:reductions, before} = Process.info(self(), :reductions)
+          value = fun.()
+          {:reductions, done} = Process.info(self(), :reductions)
+          {done - before, value}
+        end)
+
+      Task.await(task, :infinity)
     end
 
     test "refuse 65,000 open brackets" do
@@ -294,39 +326,61 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert timed("- [" <> String.duplicate("a,", 32_000) <> "a]") == {:error, :too_complex}
     end
 
-    test "end the parse at its time limit when the caller exits first" do
-      for {input, opts, limit} <- [
-            {"[" <> String.duplicate("a,", 32_000) <> "a]", [], 2_000},
-            {String.duplicate("{a: ", 16_000), [], 2_000},
-            {"[" <> String.duplicate("a,", 32_000) <> "a]", [time_limit: 200], 200}
+    test "end the parse at once when the caller exits first" do
+      for input <- [
+            "[" <> String.duplicate("a,", 32_000) <> "a]",
+            String.duplicate("{a: ", 16_000)
           ] do
-        caller = spawn(fn -> Reader.parse(input, opts) end)
+        caller = spawn(fn -> Reader.parse(input) end)
         child = parse_process(caller)
         ref = Process.monitor(child)
         Process.exit(caller, :kill)
-        assert_receive {:DOWN, ^ref, :process, ^child, :killed}, limit + 500
+        assert_receive {:DOWN, ^ref, :process, ^child, :killed}, 1_000
       end
-    end
-
-    test "take no time limit above the default" do
-      input = "[" <> String.duplicate("a,", 32_000) <> "a]"
-      caller = spawn(fn -> Reader.parse(input, time_limit: 60_000) end)
-      ref = Process.monitor(parse_process(caller))
-      Process.exit(caller, :kill)
-      assert_receive {:DOWN, ^ref, :process, _child, :killed}, 2_500
     end
 
     test "take 64 KiB of ordinary YAML well within the limits" do
       assert {:ok, list} = timed(String.duplicate("- a\n", 16_000))
       assert length(list) == 16_000
 
-      assert {:ok, %{"k" => items}} = timed("k: [" <> String.duplicate("a,", 32_000) <> "a]")
+      assert {:ok, %{"k" => items}} = timed(@list)
       assert length(items) == 32_001
 
       keys = Enum.map_join(1..4_000, fn i -> "key-#{i}: value\n" end)
       assert byte_size(keys) < Reader.max_bytes()
       assert {:ok, map} = timed(keys)
       assert map_size(map) == 4_000
+    end
+
+    # The next two tests catch a change in how many reductions a parse does, such as
+    # after an upgrade of Erlang/OTP or yamerl. If one fails, measure the reductions of
+    # the ordinary files and of the slow inputs again, and set the budget,
+    # `@max_reductions` in lib/apiary/harnesses/reader.ex, at least 3 times the largest
+    # ordinary count and at most half the reductions at which each slow input is still
+    # unfinished. Then set the measured counts here and in the comment beside the budget.
+
+    test "an ordinary 64 KiB list does 0.5 to 2 times the reductions measured on OTP 29" do
+      # 8,917,982 reductions measured on OTP 29.
+      assert {count, {:ok, %{"k" => _items}}} = reductions(fn -> Reader.read(@list) end)
+      assert count in 4_458_991..17_835_964, "#{count} reductions"
+    end
+
+    @tag timeout: 180_000
+    test "each slow input is unfinished at twice the budget of reductions" do
+      over =
+        Task.async_stream(
+          @slow,
+          fn input ->
+            Budget.run(fn -> Reader.read(input) end,
+              reductions: 2 * Reader.max_reductions(),
+              heap_words: div(256 * 1024 * 1024, :erlang.system_info(:wordsize)),
+              ms: 150_000
+            )
+          end,
+          timeout: :infinity
+        )
+
+      assert Enum.to_list(over) == List.duplicate({:ok, {:error, :reductions}}, 3)
     end
   end
 

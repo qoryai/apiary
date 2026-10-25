@@ -8,7 +8,10 @@ defmodule Apiary.Stacks.Document do
   # `errors/1` checks a document in this order, and returns the first refusal:
   #
   #   1. The reader's limits: 64 KiB, 16 nested collections, no anchor or alias, one
-  #      YAML document, a mapping at the top, and a read of at most 200 ms.
+  #      YAML document, a mapping at the top, and the reader's budget of work and heap
+  #      for the read. A run's harness walk reads the document under the same budget
+  #      (`Apiary.Harnesses.Walk`), so it refuses a document the save took as too
+  #      complex only when the read runs past the reader's backstop of 10 seconds.
   #   2. A key the run contract's harness section does not take, such as a machine key
   #      (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
   #   3. The kind of document: one with `extends` has no `workflows`, and one without
@@ -51,17 +54,12 @@ defmodule Apiary.Stacks.Document do
   @typedoc "A changeset error on `harness`: a message and its values."
   @type error :: {String.t(), keyword}
 
-  # The save check's wall-clock limit for reading a document, a tenth of the reader's
-  # limit of 2 seconds: a saved document reads well inside the reader's limit when a
-  # run's harness walk reads it again (`Apiary.Harnesses.Walk`).
-  @save_time_limit_ms 200
-
   @doc false
   # errors/1 is the refusals of `text` under the save rules of the moduledoc: `[]`, or
   # one `{message, values}`.
   @spec errors(String.t()) :: [error]
   def errors(text) when is_binary(text) do
-    case Reader.document(text, time_limit: @save_time_limit_ms) do
+    case Reader.document(text) do
       {:ok, section} ->
         with :ok <- keys(section),
              :ok <- kind(section),

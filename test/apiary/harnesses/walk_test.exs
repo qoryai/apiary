@@ -1203,7 +1203,7 @@ defmodule Apiary.Harnesses.WalkTest do
       # Two items of 20,000 backslashes each: about 40 KB of YAML, and 80 KB of JSON as
       # stored, which escapes each backslash as two. A block list of two long items
       # reads in about 3 ms; a flow list of 20,000 items read in about 60 ms locally
-      # and hit the save check's 200 ms limit on CI.
+      # and hit the save check's former limit of 200 ms on CI.
       item = String.duplicate("\\", 20_000)
       setting(ctx.scope, @setting <> "extensions:\n  n:\n    - #{item}\n    - #{item}\n")
       serve([ctx.run], covered: covering(ctx), files: @base_files)
