@@ -11,9 +11,12 @@ defmodule Apiary.Stacks.Document do
   #      YAML document, a mapping at the top, and a read of at most 200 ms.
   #   2. A key the run contract's harness section does not take, such as a machine key
   #      (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
-  #   3. A base given by name alone, `extends: {stack: <name>}` with neither `git` nor
+  #   3. The kind of document: one with `extends` has no `workflows`, and one without
+  #      `extends` has `modules`. The run contract's schema refuses both too, in words
+  #      that name neither key.
+  #   4. A base given by name alone, `extends: {stack: <name>}` with neither `git` nor
   #      `path`.
-  #   4. Each `git` address of the base and of the modules' sources: a whitespace or
+  #   5. Each `git` address of the base and of the modules' sources: a whitespace or
   #      control character, user information, any address that does not start with
   #      `https://`, the scp form `<user>@<host>:<path>` included, a query or a
   #      fragment, and any other address that is not `https://`, a host, an optional
@@ -24,11 +27,13 @@ defmodule Apiary.Stacks.Document do
   #      When a `?` or `#` comes before the last `@`, the error shows "the address"
   #      instead. So an error shows no user name, password or query, whatever the
   #      address's shape.
-  #   5. The run contract's `harness_section` (`documents.schema.json` beside this file,
+  #   6. The run contract's `harness_section` (`documents.schema.json` beside this file,
   #      vendored from the integrations contract at the commit in `.contract-ref`),
   #      validated with JSV: git sources and exports only, no `{path}` source, no module
   #      by name alone, no `link`. A bare `{git, ref}` source, the root of a remote
-  #      source, is allowed.
+  #      source, is allowed. A document with `extends` extends that base and has no
+  #      `workflows`; one without `extends` defines a stack: it lists at least one module
+  #      and may contain `workflows`.
   @moduledoc false
 
   @behaviour JSV.Resolver
@@ -41,7 +46,7 @@ defmodule Apiary.Stacks.Document do
   @schema_id @schema["$id"]
 
   # The keys of the run contract's harness section.
-  @keys ~w(name description extends modules bind extensions)
+  @keys ~w(name description extends modules bind extensions workflows)
 
   @typedoc "A changeset error on `harness`: a message and its values."
   @type error :: {String.t(), keyword}
@@ -59,6 +64,7 @@ defmodule Apiary.Stacks.Document do
     case Reader.document(text, time_limit: @save_time_limit_ms) do
       {:ok, section} ->
         with :ok <- keys(section),
+             :ok <- kind(section),
              :ok <- base(section),
              :ok <- sources(section),
              :ok <- schema(section),
@@ -113,11 +119,30 @@ defmodule Apiary.Stacks.Document do
       key ->
         refuse(
           "may not contain %{key}: a harness document takes name, description, extends, " <>
-            "modules, bind and extensions",
+            "modules, bind, extensions and workflows",
           key: key
         )
     end
   end
+
+  defp kind(%{"extends" => _base, "workflows" => _workflows}),
+    do:
+      refuse(
+        "may not contain workflows with extends: " <>
+          "a harness document that extends a stack takes that stack's workflows",
+        []
+      )
+
+  defp kind(section)
+       when not is_map_key(section, "extends") and not is_map_key(section, "modules"),
+       do:
+         refuse(
+           "needs extends or modules: " <>
+             "a harness document extends a stack, or defines one with at least one module",
+           []
+         )
+
+  defp kind(_section), do: :ok
 
   defp base(%{"extends" => %{"stack" => name} = base})
        when is_binary(name) and not is_map_key(base, "git") and not is_map_key(base, "path"),
@@ -282,7 +307,7 @@ defmodule Apiary.Stacks.Document do
   @doc false
   # source_error/2 is the refusal of `source`, a remote source of a harness file or of a
   # `qory-stack.yaml`, which no save check reads, by the save rules of a document's
-  # sources: its `git` address as step 4 checks it, then step 5's definition of a base
+  # sources: its `git` address as step 5 checks it, then step 6's definition of a base
   # (`kind` `:base`, `harness_base`) or of a module's source (`:module`,
   # `harness_source`). nil, or one `{message, values}`.
   @spec source_error(map, :base | :module) :: error | nil

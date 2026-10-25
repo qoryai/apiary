@@ -7,10 +7,10 @@ defmodule Apiary.Harnesses.RunHarness do
   #   * `state`: `:pending` until the job ends, then `:resolved` or `:failed`. A claim
   #     takes no run whose walk is pending.
   #   * `origin`, once resolved: `:file`, the target's harness file, whose harness section
-  #     has `extends`; `:setting`, the harness document of the most specific level of the
-  #     stacks (`Apiary.Stacks.Resolution`), its row `stack_id` and its owner
-  #     `owner_organisation_id`, the section in `document`; `:none`, a run with no
-  #     workflow, for which nothing is read.
+  #     has `extends` or lists modules without it; `:setting`, the harness document of the
+  #     most specific level of the stacks (`Apiary.Stacks.Resolution`), its row `stack_id`
+  #     and its owner `owner_organisation_id`, the section in `document`; `:none`, a run
+  #     with no workflow, for which nothing is read.
   #   * `workflow` and `harness_hidden`: the run's workflow and whether its harness is
   #     hidden.
   #   * `access_level`: what the run may do on its target, `:read` or `:write`, the level
