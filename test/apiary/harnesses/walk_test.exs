@@ -332,6 +332,21 @@ defmodule Apiary.Harnesses.WalkTest do
                Walk.run(ctx.input)
     end
 
+    test "both harness files in a remote base fail invalid, naming the base", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@harness}\", ref: v1}\n")
+
+      serve([ctx.run],
+        covered: covering(ctx),
+        files: %{
+          {"R_harness", "harness.yaml"} => "exports:\n  stacks: [web]\n",
+          {"R_harness", "qory.yaml"} => "exports:\n  stacks: [web]\n"
+        }
+      )
+
+      assert {:failed, %{failure: :invalid, source: @harness, rule: %{"rule" => "both_files"}}} =
+               Walk.run(ctx.input)
+    end
+
     test "a file whose base has a name alone fails invalid, and the rule names the base", ctx do
       serve([ctx.run],
         covered: covering(ctx),
@@ -663,6 +678,23 @@ defmodule Apiary.Harnesses.WalkTest do
                Walk.run(ctx.input, max_calls: 3)
 
       assert length(calls()) == 3
+    end
+
+    test "more calls than a walk takes, where the target's file applies, show the target",
+         ctx do
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: Map.put(@base_files, {"R_app", "harness.yaml"}, @file_section)
+      )
+
+      assert {:failed, %{failure: :invalid, source: @target, rule: %{"rule" => "calls"}}} =
+               Walk.run(ctx.input, max_calls: 3)
+
+      setting(ctx.scope, @setting)
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert {:failed, %{failure: :invalid, source: nil, rule: %{"rule" => "calls"}}} =
+               Walk.run(ctx.input, max_calls: 4)
     end
 
     test "a source shown in a failure is cut at 512 code points, as the row counts them",

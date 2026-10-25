@@ -1349,7 +1349,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                source: "https://code.example.com/acme/app",
                rule: %{"rule" => "both_files", "values" => %{}}
              },
-             "Correct https://code.example.com/acme/app, then run Explore again. It breaks the harness format: the repository has both harness.yaml and qory.yaml: keep one."},
+             "Correct https://code.example.com/acme/app, then run Explore again. It breaks the harness format: it has both harness.yaml and qory.yaml: keep one."},
+            {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: it is larger than 65536 bytes as JSON."},
+            {%{code: "walk_error"},
+             "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."},
             {%{
                code: "invalid",
                rule: %{

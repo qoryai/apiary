@@ -18114,6 +18114,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "it has both harness.yaml and qory.yaml: keep one"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "it has no %{path}"
 msgstr ""
 
@@ -18722,11 +18727,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "the starter released it"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "the target has both harness.yaml and qory.yaml: keep one"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

@@ -169,6 +169,7 @@ defmodule Apiary.Harnesses.Walk do
       calls: Keyword.get(opts, :max_calls, @max_calls),
       call_opts: Keyword.get(opts, :call_opts, []),
       hidden: false,
+      label: nil,
       pins: %{},
       links: %{}
     })
@@ -198,6 +199,7 @@ defmodule Apiary.Harnesses.Walk do
         })
 
       {version, :absent} ->
+        put(:label, nil)
         setting(input, version)
     end
   end
@@ -312,6 +314,7 @@ defmodule Apiary.Harnesses.Walk do
   defp target_location(organisation, collection, adapter) do
     label = Document.shown(collection.url)
     shown = {:shown, label}
+    put(:label, shown)
 
     unless CallWire.address?(collection.url), do: fail(:not_covered, shown)
 
@@ -775,15 +778,16 @@ defmodule Apiary.Harnesses.Walk do
 
   ## Calls and time
 
-  # A call within the walk's time and calls: one more than `max_calls/0` fails `invalid`,
-  # and a walk out of time is `{:retry, failure}`.
+  # A call within the walk's time and calls: one more than `max_calls/0` fails `invalid`
+  # with the harness's label, the target's address while its file is read or applies and
+  # none for the stacks' document; a walk out of time is `{:retry, failure}`.
   defp call(adapter, fun) do
     state = Process.get(__MODULE__)
     left = state.deadline - now()
 
     cond do
       state.calls <= 0 ->
-        fail(:invalid, nil, rule("calls", n: @max_calls))
+        fail(:invalid, state.label, rule("calls", n: @max_calls))
 
       left <= 0 ->
         retry(adapter)

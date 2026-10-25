@@ -2842,7 +2842,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp walk_rule_words("both_files", _values),
-    do: gettext("the target has both harness.yaml and qory.yaml: keep one")
+    do: gettext("it has both harness.yaml and qory.yaml: keep one")
 
   defp walk_rule_words("host", _values),
     do: gettext("its host is an IP address or a local name: give a public host name")
