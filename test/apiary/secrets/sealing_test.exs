@@ -64,6 +64,14 @@ defmodule Apiary.Secrets.SealingTest do
 
   defp fixture_plaintext, do: json("fixtures/sealed/sealed-plaintext.json")
 
+  # An item of a value's `apply`.
+  @item %{
+    "hosts" => ["git.example"],
+    "scheme" => "basic",
+    "username" => "x-access-token",
+    "paths" => ["/example-org/app.git/*"]
+  }
+
   # The case of vectors.json for fixtures/sealed/invalid/<name>.json.
   defp invalid(name),
     do: Enum.find(vectors()["invalid"], &(&1["file"] == "fixtures/sealed/invalid/#{name}.json"))
@@ -323,6 +331,70 @@ defmodule Apiary.Secrets.SealingTest do
       assert {:ok, _} = Sealing.seal_with(%{plaintext | "values" => values}, recipient(), opts())
     end
 
+    test "a value whose expires_at or apply is outside the schema's form" do
+      plaintext = fixture_plaintext()
+      [forge, model] = plaintext["values"]
+      item = @item
+      forge = Map.merge(forge, %{"expires_at" => "2026-10-24T13:00:00Z", "apply" => [@item]})
+
+      for other <- [
+            %{forge | "expires_at" => "2026-10-24 13:00:00"},
+            %{forge | "expires_at" => "2026-10-24T13:00:00"},
+            %{forge | "expires_at" => "2026-13-24T13:00:00Z"},
+            %{forge | "expires_at" => 1_700_000_000},
+            %{forge | "apply" => []},
+            %{forge | "apply" => List.duplicate(item, 17)},
+            %{forge | "apply" => [Map.put(item, "token", "t")]},
+            %{forge | "apply" => [Map.delete(item, "username")]},
+            %{forge | "apply" => [%{item | "scheme" => "bearer"}]},
+            %{forge | "apply" => [Map.put(item, "header", "x-api-key")]},
+            %{forge | "apply" => [%{item | "hosts" => ["*.git.example"]}]},
+            %{forge | "apply" => [%{item | "hosts" => ["Git.example"]}]},
+            %{forge | "apply" => [%{item | "hosts" => []}]},
+            %{forge | "apply" => [%{item | "paths" => ["no-slash"]}]},
+            %{forge | "apply" => [%{item | "paths" => ["/a*b"]}]},
+            %{forge | "apply" => [%{item | "paths" => ["/a", "/a"]}]},
+            %{forge | "apply" => [%{item | "username" => "a:b"}]}
+          ] do
+        values = [other, model]
+
+        assert Sealing.seal_with(%{plaintext | "values" => values}, recipient(), opts()) ==
+                 {:error, :value},
+               inspect(other)
+      end
+    end
+
+    test "a value with neither, one or both of expires_at and apply is sealed" do
+      plaintext = fixture_plaintext()
+      [forge, model] = plaintext["values"]
+      forge = Map.drop(forge, ["expires_at", "apply"])
+
+      for forge <- [
+            forge,
+            Map.put(forge, "expires_at", "2026-10-24T15:00:00.5+02:00"),
+            Map.put(forge, "apply", [@item]),
+            Map.merge(forge, %{
+              "expires_at" => "2026-10-24T13:00:00Z",
+              "apply" => [
+                %{"hosts" => ["api.git.example", "2001:db8::1"], "scheme" => "bearer"},
+                %{"hosts" => ["192.0.2.1"], "scheme" => "header", "header" => "x-token"}
+              ]
+            })
+          ] do
+        values = [forge, model]
+
+        assert {:ok, bytes} =
+                 Sealing.plaintext(
+                   %{plaintext | "values" => values},
+                   plaintext["run_configuration"]
+                 ),
+               inspect(forge)
+
+        assert Jason.decode!(bytes)["values"] == values
+        assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
+      end
+    end
+
     test "any other plaintext" do
       plaintext = fixture_plaintext()
 
@@ -331,6 +403,13 @@ defmodule Apiary.Secrets.SealingTest do
             Map.put(plaintext, "extra", true),
             Map.delete(plaintext, "values"),
             %{plaintext | "values" => [%{"credential" => "forge"}, hd(plaintext["values"])]},
+            %{
+              plaintext
+              | "values" => [
+                  Map.put(hd(plaintext["values"]), "token", "t"),
+                  List.last(plaintext["values"])
+                ]
+            },
             "not a map"
           ] do
         assert Sealing.seal_with(other, recipient(), opts()) == {:error, :plaintext}
@@ -356,6 +435,24 @@ defmodule Apiary.Secrets.SealingTest do
                  "\x7f<>&\u2028é漢😀\uFFFD\"}]}"
 
       assert Jason.decode!(bytes)["values"] |> List.last() |> Map.fetch!("value") == value
+    end
+
+    test "writes expires_at and apply after the value, an item's members in the schema's order" do
+      plaintext = fixture_plaintext()
+      [forge, model] = plaintext["values"]
+      forge = Map.merge(forge, %{"expires_at" => "2026-10-24T13:00:00Z", "apply" => [@item]})
+
+      assert {:ok, bytes} =
+               Sealing.plaintext(
+                 %{plaintext | "values" => [model, forge]},
+                 plaintext["run_configuration"]
+               )
+
+      assert bytes =~
+               ~S({"credential":"forge","value":"fixture-forge-token-not-a-real-one",) <>
+                 ~S("expires_at":"2026-10-24T13:00:00Z","apply":[{"hosts":["git.example"],) <>
+                 ~S("scheme":"basic","username":"x-access-token",) <>
+                 ~S("paths":["/example-org/app.git/*"]}]})
     end
 
     test "sorts the credentials, and the values by credential" do

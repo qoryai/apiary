@@ -85,6 +85,30 @@ defmodule Apiary.Policy.ActivityTest do
     end
   end
 
+  describe "the stack proxy's connections" do
+    test "count in none of the lists: the rules decide none of them", ctx do
+      stack = %{"channel" => "stack"}
+      {:ok, before_uncovered} = Policy.uncovered(ctx.scope, since())
+      {:ok, before_denied} = Policy.denied_destinations(ctx.scope, since())
+      before_summary = Activity.denied_summary(ctx.scope, since())
+      before_rules = Activity.rule_activity(ctx.scope, nil, since())
+
+      started_run(ctx.scope, @site,
+        egress: [
+          allowed("harness.example", stack),
+          allowed("new.example", stack),
+          denied("ads.example", stack),
+          denied("blocked.example", Map.put(stack, "rule", ""))
+        ]
+      )
+
+      assert Policy.uncovered(ctx.scope, since()) == {:ok, before_uncovered}
+      assert Policy.denied_destinations(ctx.scope, since()) == {:ok, before_denied}
+      assert Activity.denied_summary(ctx.scope, since()) == before_summary
+      assert Activity.rule_activity(ctx.scope, nil, since()) == before_rules
+    end
+  end
+
   describe "denied_destinations/2" do
     test "the denied destinations today's rules still do not allow, most denied first", ctx do
       # ads.example is denied by a workspace rule; mcp.example is allowed in acme/site by

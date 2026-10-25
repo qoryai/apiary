@@ -1189,7 +1189,7 @@ defmodule Apiary.Runs.Record.Timeline do
       deny_count: if(is_list(data["deny"]), do: length(data["deny"]), else: 0),
       credentials:
         if(event.type == @prefix <> "run.policy_applied",
-          do: named_hosts(data["credentials"]),
+          do: named_hosts(data["credentials"], true),
           else: []
         ),
       run_configuration: string(data, "run_configuration"),
@@ -1291,11 +1291,14 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp hosts(_other), do: []
 
-  # The tools of a policy applied event as the query reads them: the first twenty objects
-  # with a string name, each `%{"name", "argument", "hosts"}`, the name cut at 120
-  # characters, the argument at 256 code points with `…` (nil when there is
-  # none) and the first ten string hosts at 255.
-  defp named_hosts(list) when is_list(list) do
+  # The tools or credentials of a policy applied event as the query reads them: the first
+  # twenty objects with a string name, each `%{"name", "argument", "hosts"}`, the name cut
+  # at 120 characters, the argument at 256 code points with `…` (nil when there is none)
+  # and the first ten string hosts at 255. With `purpose?`, a credential's, also
+  # `"purpose"`: `harness` where the entry says so, else `work`.
+  defp named_hosts(list, purpose? \\ false)
+
+  defp named_hosts(list, purpose?) when is_list(list) do
     for item <- list, is_map(item), is_binary(item["name"]) do
       hosts = if is_list(item["hosts"]), do: item["hosts"], else: []
 
@@ -1315,11 +1318,21 @@ defmodule Apiary.Runs.Record.Timeline do
           |> Enum.take(10)
           |> Enum.map(&String.slice(&1, 0, 255))
       }
+      |> then(fn read ->
+        if purpose?,
+          do:
+            Map.put(
+              read,
+              "purpose",
+              if(item["purpose"] == "harness", do: "harness", else: "work")
+            ),
+          else: read
+      end)
     end
     |> Enum.take(20)
   end
 
-  defp named_hosts(_other), do: []
+  defp named_hosts(_other, _purpose?), do: []
 
   defp string(data, key) when is_map(data) do
     case data[key] do

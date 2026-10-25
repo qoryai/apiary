@@ -82,10 +82,15 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # Under observe, a run reaches every path of the instance's host; the gateway sends
   # the registry credential only with requests to `/registry/token`.
   #
+  # For a run of a workspace's queue whose harness walk hid its harness
+  # (`Apiary.Harnesses.RunHarness`, `harness_hidden`): `harness_hidden`, `true`. A run with
+  # no walk, or whose walk did not hide its harness, gains no such member.
+  #
   # The members come after the document's last member, in the schema's order:
-  # `variables`, `credentials`, `model_credential`. A document composed with them is
-  # composed for the run and kept as any other (`serve/7`), so its digest is the SHA-256
-  # of the bytes the run is sent, and a document composed from no policy gains them too.
+  # `variables`, `credentials`, `model_credential`, `harness_hidden`. A document composed
+  # with them is composed for the run and kept as any other (`serve/7`), so its digest is
+  # the SHA-256 of the bytes the run is sent, and a document composed from no policy gains
+  # them too.
   use Ecto.Schema
 
   import Ecto.Query, only: [from: 2]
@@ -93,6 +98,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   require Logger
 
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
   alias Apiary.Repo
   alias Apiary.Registry.RunAccess
@@ -457,7 +463,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
       members = %{
         variables: Map.get(run, :registration_variables),
         credential: credential,
-        registry: RunAccess.member(run)
+        registry: RunAccess.member(run),
+        harness_hidden: harness_hidden?(run)
       }
 
       {:ok, if(members?(members), do: members)}
@@ -467,9 +474,23 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp members?(%{variables: variables, credential: credential} = members),
     do:
       (is_map(variables) and map_size(variables) > 0) or not is_nil(credential) or
-        not is_nil(Map.get(members, :registry))
+        not is_nil(Map.get(members, :registry)) or Map.get(members, :harness_hidden) == true
 
   defp members?(nil), do: false
+
+  # Whether the harness walk of `run`'s run of the queue hid its harness: false for a run
+  # of no queue, and for one with no walk.
+  defp harness_hidden?(run) do
+    case Map.get(run, :dispatch_run_id) do
+      id when is_binary(id) ->
+        Repo.exists?(
+          from h in RunHarness, where: h.dispatch_run_id == ^id and h.harness_hidden == true
+        )
+
+      _none ->
+        false
+    end
+  end
 
   # `document`, or the document of no policy for nil, with the run's members after its
   # last member and the provider's hosts in its `egress`: `{:ok, bytes}`, canonical, or
@@ -490,7 +511,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
         else: []
       ) ++
         if(entries != [], do: [{"credentials", entries}], else: []) ++
-        if credential, do: [{"model_credential", credential.name}], else: []
+        if(credential, do: [{"model_credential", credential.name}], else: []) ++
+        if Map.get(run_members, :harness_hidden) == true,
+          do: [{"harness_hidden", true}],
+          else: []
 
     names = Enum.map(added, &elem(&1, 0))
 

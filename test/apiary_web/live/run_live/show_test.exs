@@ -1490,6 +1490,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "the connections tab (C1, C3)" do
+    test "a row of the stack proxy says it fetched the harness; a session row does not", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.egress", egress_data(%{"host" => "git.example", "channel" => "stack"})},
+          {3, "run.egress", egress_data(%{"host" => "api.example"})}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}/network")
+
+      rows =
+        Repo.all(
+          from c in Apiary.Runs.Connection,
+            where: c.run_id == ^run.id,
+            select: {c.host, c.id}
+        )
+        |> Map.new()
+
+      assert has_element?(lv, "#cx-#{rows["git.example"]}-stack", "Harness fetch")
+      refute has_element?(lv, "#cx-#{rows["api.example"]}-stack")
+    end
+
     test "one row per destination, denied first, with the reason and the outcome", %{
       conn: conn,
       scope: scope

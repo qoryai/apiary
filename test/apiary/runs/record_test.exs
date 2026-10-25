@@ -362,37 +362,40 @@ defmodule Apiary.Runs.RecordTest do
 
       # One entry per use, as the event lists them; the argument whole up to the contract's
       # 4096 code points, cut there visibly, and nil when the entry has no non-empty string.
-      assert read == [
-               %{
-                 "name" => "forge-token",
-                 "argument" => "acme/shop",
-                 "hosts" => ["forge.example"]
-               },
-               %{
-                 "name" => "forge-token",
-                 "argument" => "acme/shop",
-                 "hosts" => ["api.forge.example"]
-               },
-               %{"name" => "model", "argument" => nil, "hosts" => ["api.model.example"]},
-               %{"name" => "whole", "argument" => String.duplicate("w", 4096), "hosts" => []},
-               %{
-                 "name" => "long",
-                 "argument" => String.duplicate("l", 4096) <> "…",
-                 "hosts" => []
-               },
-               %{
-                 "name" => "accent",
-                 "argument" => String.duplicate(e, 4096) <> "…",
-                 "hosts" => []
-               },
-               %{
-                 "name" => "combining",
-                 "argument" => String.duplicate(combining, 2048) <> "…",
-                 "hosts" => []
-               },
-               %{"name" => "empty", "argument" => nil, "hosts" => []},
-               %{"name" => "number", "argument" => nil, "hosts" => []}
-             ]
+      assert read ==
+               [
+                 %{
+                   "name" => "forge-token",
+                   "argument" => "acme/shop",
+                   "hosts" => ["forge.example"]
+                 },
+                 %{
+                   "name" => "forge-token",
+                   "argument" => "acme/shop",
+                   "hosts" => ["api.forge.example"]
+                 },
+                 %{"name" => "model", "argument" => nil, "hosts" => ["api.model.example"]},
+                 %{"name" => "whole", "argument" => String.duplicate("w", 4096), "hosts" => []},
+                 %{
+                   "name" => "long",
+                   "argument" => String.duplicate("l", 4096) <> "…",
+                   "hosts" => []
+                 },
+                 %{
+                   "name" => "accent",
+                   "argument" => String.duplicate(e, 4096) <> "…",
+                   "hosts" => []
+                 },
+                 %{
+                   "name" => "combining",
+                   "argument" => String.duplicate(combining, 2048) <> "…",
+                   "hosts" => []
+                 },
+                 %{"name" => "empty", "argument" => nil, "hosts" => []},
+                 %{"name" => "number", "argument" => nil, "hosts" => []}
+               ]
+               # A credential without a purpose is a work credential; a tool has none.
+               |> Enum.map(&Map.put(&1, "purpose", "work"))
 
       assert tools == [
                %{
@@ -407,6 +410,39 @@ defmodule Apiary.Runs.RecordTest do
       # number have no argument, each an entry of its own name.
       assert policy.credentials_count == 8
       assert policy.tools_count == 2
+    end
+
+    test "a harness credential listed by its name and purpose alone is read with no hosts",
+         %{scope: scope} do
+      data =
+        tool_policy_data(%{
+          "credentials" => [
+            %{"name" => "work-1", "purpose" => "work", "hosts" => ["git.example"]},
+            %{"name" => "harness-1", "purpose" => "harness"},
+            %{"name" => "odd", "purpose" => 7, "hosts" => ["odd.example"]}
+          ]
+        })
+
+      run =
+        projected(scope, [{1, "run.started", started_data()}, {2, "run.policy_applied", data}])
+
+      assert %{credentials: read, credentials_count: 3} = Record.policy(scope, run)
+
+      assert read == [
+               %{
+                 "name" => "work-1",
+                 "argument" => nil,
+                 "hosts" => ["git.example"],
+                 "purpose" => "work"
+               },
+               %{"name" => "harness-1", "argument" => nil, "hosts" => [], "purpose" => "harness"},
+               %{
+                 "name" => "odd",
+                 "argument" => nil,
+                 "hosts" => ["odd.example"],
+                 "purpose" => "work"
+               }
+             ]
     end
 
     test "the counts of credentials and tools cover the entries past the twentieth", %{

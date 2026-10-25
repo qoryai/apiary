@@ -116,6 +116,28 @@ defmodule Apiary.Runs.ProviderCredentialTest do
                configuration.digest
     end
 
+    test "whose harness walk hid its harness is given harness_hidden, last, and none else",
+         ctx do
+      refute Map.has_key?(Jason.decode!(document(ctx)), "harness_hidden")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness,
+            where: h.dispatch_run_id == ^ctx.run.dispatch_run_id
+          ),
+          set: [harness_hidden: true]
+        )
+
+      assert {:ok, %{settings: settings, digest: digest}} = reload(ctx)
+      document = document(%{attached: %{settings: settings}})
+      assert digest == sha256(document)
+      assert digest != ctx.attached.digest
+
+      decoded = Jason.decode!(document, objects: :ordered_objects)
+      assert List.last(decoded.values) == {"harness_hidden", true}
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+    end
+
     test "every run of the provider is given the same name", ctx do
       %{run: run} = ctx
       {:ok, credential} = ProviderCredential.for_run(run)
