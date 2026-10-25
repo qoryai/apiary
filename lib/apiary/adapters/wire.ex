@@ -70,9 +70,12 @@ defmodule Apiary.Adapters.Wire do
   # (`sources-disconnect.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters, as a listing names it) and `collection_ref`.
   #
-  # `grant_report/1` reads the body of `POST /v1/grants` (`grant.schema.json`), and
-  # `grant_end/1` the body of `POST /v1/grants/end` (`grant-end.schema.json`): exactly
-  # `version` (1), `time`, `connection_id` and `grant_ref`.
+  # `grant_report/1` reads the body of `POST /v1/grants` (`grant.schema.json`): exactly
+  # `version` (1), `time`, `connection_id`, `grant_ref`, `account` (an object of exactly
+  # `ref` and `title`) and `pass_nonce`.
+  #
+  # `grant_end/1` reads the body of `POST /v1/grants/end` (`grant-end.schema.json`):
+  # exactly `version` (1), `time`, `connection_id` and `grant_ref`.
   #
   # Their text is counted in code points, as the contract's lengths are, and none of it
   # may hold U+0000, which the database cannot keep. A part numbered past `max_part/0`,
