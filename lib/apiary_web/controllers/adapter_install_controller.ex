@@ -15,10 +15,10 @@ defmodule ApiaryWeb.AdapterInstallController do
   #      nonce it gives is kept in the person's session (`ApiaryWeb.ConnectSession`), so
   #      the return comes back in this browser, and the person is sent to the address it
   #      answers, the adapter's connect address with the pass;
-  #   4. while the organisation is connected to it already, the person is sent to the
-  #      integration's page; when the adapter cannot be connected yet (it declared no
-  #      address, holds no key in use, or no pass could be made), to Add an integration.
-  #      Neither changes anything.
+  #   4. when the organisation's connected connection cannot take a new pass yet, as for
+  #      a second press in the same second, the person is sent to the integration's page;
+  #      when the adapter cannot be connected yet (it declared no address, holds no key in
+  #      use, or no pass could be made), to Add an integration. Neither changes anything.
   #
   # The address is outside the console, so the person is sent there by a page that
   # refreshes to it (`ApiaryWeb.SendOn`), told no referrer and kept by no cache. The pass
@@ -52,7 +52,7 @@ defmodule ApiaryWeb.AdapterInstallController do
       {:error, :not_found} ->
         raise ApiaryWeb.NotFound
 
-      {:error, :connected} ->
+      {:error, :too_soon} ->
         redirect(conn,
           to: ~p"/#{scope.organisation}/settings/integrations/#{adapter_id}"
         )

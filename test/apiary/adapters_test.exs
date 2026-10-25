@@ -28,7 +28,9 @@ defmodule Apiary.AdaptersTest do
     :"work_item.read_changes",
     :"adapter.app_values_set",
     :"adapter.app_values_seal",
-    :"adapter.disconnect"
+    :"adapter.disconnect",
+    :"adapter.report_grant",
+    :"adapter.read_grants"
   ]
 
   # The edition holds the organisations a test names refused, as an edition that refuses

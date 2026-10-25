@@ -100,6 +100,11 @@ defmodule Apiary.Nodes.Node do
     # it up at the system it reads from, as its latest start-up declared it; nil while it
     # declares none.
     field :setup_url, :string
+    # An adapter's alone (`nodes_call_url_check`): where Qory Apiary calls it
+    # (`Apiary.Adapters.Calls`), as its latest start-up declared it, and the instance id of
+    # that start-up, which each call is signed for; both nil while it declares none.
+    field :call_url, :string
+    field :call_instance_id, :string
     # An adapter's alone (`nodes_items_check`): what its description's source role says of
     # its items, its words for one and for many, both or neither (nil for the default),
     # and whether it reports items, false for a source that reports collections and no
@@ -284,6 +289,11 @@ defmodule Apiary.Nodes.Node do
   # `https://`, an authority with no `@` and no whitespace, then nothing, or a path or a
   # query without whitespace, and no fragment: as `nodes_setup_url_check` has it.
   @setup_url ~r{\Ahttps://[^/?#@[:space:]]+(?:[/?][^#[:space:]]*)?\z}u
+  # `https://`, an authority with no `@` and no whitespace, then a path that ends with
+  # `/`, with no whitespace, query or fragment: as `nodes_call_url_check` has it.
+  @call_url ~r{\Ahttps://[^/?#@[:space:]]+/(?:[^?#[:space:]]*/)?\z}u
+  # An adapter's instance id, as `X-Qory-Instance-Id` carries it.
+  @instance_id ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
   @doc false
   # The changeset of what an adapter declares each time it starts
@@ -294,13 +304,18 @@ defmodule Apiary.Nodes.Node do
   # to at most the default (`nodes_sync_check`). And where an instance admin is sent to
   # set it up, `setup_url`, which it declares only while it is not set up: as a connect
   # address is, but with no fragment, at most `max_url/0` characters; nil clears it
-  # (`nodes_setup_url_check`).
+  # (`nodes_setup_url_check`). And where Qory Apiary calls it, `call_url`, with the
+  # instance id of the start-up that declared it, `call_instance_id`, both or neither: an
+  # https address with a path that ends with `/`, no query and no fragment, at most
+  # `max_url/0` characters; nil clears both (`nodes_call_url_check`).
   @spec declaration_changeset(t, map) :: Ecto.Changeset.t()
   def declaration_changeset(%__MODULE__{kind: :adapter} = adapter, attrs) do
     adapter
     |> connect_url_changeset(attrs)
     |> cast(attrs, [
       :setup_url,
+      :call_url,
+      :call_instance_id,
       :sync_default_interval,
       :sync_minimum_interval,
       :sync_sends_changes
@@ -319,6 +334,11 @@ defmodule Apiary.Nodes.Node do
       end
     end)
     |> check_constraint(:setup_url, name: :nodes_setup_url_check)
+    |> validate_length(:call_url, max: @max_url)
+    |> validate_format(:call_url, @call_url)
+    |> validate_format(:call_instance_id, @instance_id)
+    |> validate_call_instance_id()
+    |> check_constraint(:call_url, name: :nodes_call_url_check)
     |> validate_required([
       :connect_url,
       :sync_default_interval,
@@ -335,6 +355,24 @@ defmodule Apiary.Nodes.Node do
     )
     |> validate_minimum_interval()
     |> check_constraint(:sync_default_interval, name: :nodes_sync_check)
+  end
+
+  # A call address comes with the instance id it is signed for, and neither without the
+  # other.
+  defp validate_call_instance_id(changeset) do
+    case {get_field(changeset, :call_url), get_field(changeset, :call_instance_id)} do
+      {nil, nil} ->
+        changeset
+
+      {url, id} when is_binary(url) and is_binary(id) ->
+        changeset
+
+      {nil, _id} ->
+        add_error(changeset, :call_url, "can't be blank", validation: :required)
+
+      {_url, nil} ->
+        add_error(changeset, :call_instance_id, "can't be blank", validation: :required)
+    end
   end
 
   defp validate_minimum_interval(changeset) do

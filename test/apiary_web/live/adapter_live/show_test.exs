@@ -356,7 +356,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
   test "installed and not yet listed: who installed it today, and the wait for its collections",
        %{conn: conn, scope: scope, adapter: adapter} do
-    connection_fixture(scope, adapter, :connected)
+    {connection, _nonce} = connection_fixture(scope, adapter, :connected)
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#integration-status") == "Installed by #{letter(scope.user, true)} today."
@@ -374,6 +374,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert has_element?(lv, "#collections-late span", "If nothing appears, install again.")
     assert has_element?(lv, "#collections-late button#collections-install-install", "Install")
 
+    # A minute on, the press gives the connection a new pass.
+    set(connection, pass_expires_at: DateTime.add(connection.pass_expires_at, -60, :second))
     form = form(lv, "#collections-install")
     render_submit(form)
     conn = follow_trigger_action(form, conn)

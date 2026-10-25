@@ -98,6 +98,19 @@ defmodule ApiaryWeb.Contract.AdapterRequestTest do
       assert Enum.map(Feed.entries(ctx.adapter), & &1.kind) == ["sync"]
     end
 
+    test "with a call_url, stores it with the request's instance id, which the calls are signed for",
+         ctx do
+      url = "https://acme-tracker.qory.example/calls/"
+      conn = declare(ctx, body(%{"call_url" => url}))
+      assert conn.status == 204
+
+      assert %Node{call_url: ^url, call_instance_id: instance_id} = reload(ctx.adapter)
+      assert instance_id == Apiary.ContractFixtures.instance_id()
+
+      assert declare(ctx, body(%{"time" => now_time(1)})).status == 204
+      assert %Node{call_url: nil, call_instance_id: nil} = reload(ctx.adapter)
+    end
+
     test "accepts a time up to 300 seconds from the clock, either way", ctx do
       for offset <- [-290, 290] do
         assert declare(ctx, body(%{"time" => now_time(offset)})).status == 204, "#{offset}"

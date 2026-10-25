@@ -30,7 +30,8 @@ defmodule Apiary.Adapters.Wire do
   # decoded as `decode/1` decodes it: exactly `version` (1), `time`, `connect_url`, `sync`,
   # which holds exactly `default_interval` and `minimum_interval`, integers from 60 to
   # 86,400, the minimum at most the default, and `sends_changes`, a boolean, `setup_url`
-  # when given (`setup_url?/1`; nil when absent: the adapter has nothing to set up), and
+  # when given (`setup_url?/1`; nil when absent: the adapter has nothing to set up),
+  # `call_url` when given (`call_url?/1`; nil when absent: Qory Apiary does not call it), and
   # `description`, the description the adapter's program prints, which
   # `Apiary.Integrations.Description.parse/1` reads and checks. It is given the
   # description's value as the body carries it, its bytes from the first of the value to
@@ -38,6 +39,11 @@ defmodule Apiary.Adapters.Wire do
   # limit on its raw bytes, 256 KiB, is measured on what the adapter sent: an encoding of
   # the decoded value would write its numbers and its whitespace otherwise, `1e5` as
   # `1.0e5`.
+  #
+  # `call_url?/1` holds the address at which Qory Apiary calls the adapter
+  # (`Apiary.Adapters.Calls`) to what `adapter.schema.json` allows of `call_url`: a URL as
+  # `url?/1` holds one, with no query and no fragment, whose path ends with `/`. A
+  # declaration without it declares none.
   #
   # `setup_url?/1` holds the address an instance admin is sent to, to set the adapter up,
   # to what `adapter.schema.json` allows of `setup_url`: a URL as `url?/1` holds one, with
@@ -104,6 +110,7 @@ defmodule Apiary.Adapters.Wire do
   @collection_keys ~w(ref title url)
   @target_keys ~w(path system)
   @disconnect_keys ~w(collection_ref connection_id time version)
+  @grant_report_keys ~w(connection_id grant_ref pass_nonce time version)
   @secrets_upload_keys ~w(sealed time version)
   @max_collections 100
   @max_part 10_000
@@ -115,6 +122,7 @@ defmodule Apiary.Adapters.Wire do
           time: DateTime.t(),
           connect_url: String.t(),
           setup_url: String.t() | nil,
+          call_url: String.t() | nil,
           default_interval: pos_integer,
           minimum_interval: pos_integer,
           sends_changes: boolean,
@@ -142,6 +150,13 @@ defmodule Apiary.Adapters.Wire do
             started_at: DateTime.t(),
             complete: boolean
           }
+        }
+
+  @type grant_report :: %{
+          time: DateTime.t(),
+          connection_id: String.t(),
+          grant_ref: String.t(),
+          pass_nonce: <<_::128>>
         }
 
   @type source_disconnect :: %{
@@ -238,17 +253,29 @@ defmodule Apiary.Adapters.Wire do
 
   def setup_url?(_value), do: false
 
+  # The address at which Qory Apiary calls an adapter: a URL as `url?/1` holds one, with no
+  # query and no fragment, whose path ends with `/`, as `adapter.schema.json` has it.
+  @doc false
+  @spec call_url?(term) :: boolean
+  def call_url?(value) when is_binary(value) do
+    url?(value) and not String.contains?(value, ["?", "#"]) and String.ends_with?(value, "/")
+  end
+
+  def call_url?(_value), do: false
+
   # The raw body of `POST /v1/adapter`: `{:ok, declaration}` or `:error`. The description
   # is read last, once every other member is as the contract has it.
   @doc false
   @spec declaration(term) :: {:ok, declaration} | :error
   def declaration(raw) when is_binary(raw) do
     with {:ok, body} <- decode(raw),
-         true <- Enum.sort(Map.keys(Map.delete(body, "setup_url"))) == @declaration_keys,
+         true <-
+           Enum.sort(Map.keys(Map.drop(body, ["setup_url", "call_url"]))) == @declaration_keys,
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
          true <- url?(body["connect_url"]),
          {:ok, setup_url} <- setup_url(body),
+         {:ok, call_url} <- call_url(body),
          %{} = sync <- body["sync"],
          true <- Enum.sort(Map.keys(sync)) == @sync_keys,
          default when is_integer(default) <- sync["default_interval"],
@@ -264,6 +291,7 @@ defmodule Apiary.Adapters.Wire do
          time: time,
          connect_url: body["connect_url"],
          setup_url: setup_url,
+         call_url: call_url,
          default_interval: default,
          minimum_interval: minimum,
          sends_changes: sends_changes,
@@ -281,6 +309,10 @@ defmodule Apiary.Adapters.Wire do
     do: if(setup_url?(url), do: {:ok, url}, else: :error)
 
   defp setup_url(%{}), do: {:ok, nil}
+
+  # `call_url` when the body gives one, held to `call_url?/1`; nil when it gives none.
+  defp call_url(%{"call_url" => url}), do: if(call_url?(url), do: {:ok, url}, else: :error)
+  defp call_url(%{}), do: {:ok, nil}
 
   # The bytes of the value of the top-level member `name` of `raw`, as `raw` carries them:
   # from the first byte of the value to its last, without the whitespace around it.
@@ -559,6 +591,32 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def source_disconnect(_body), do: :error
+
+  # The body of `POST /v1/grants` (`grant.schema.json`), decoded (`decode/1`): exactly
+  # `version` (1), `time`, `connection_id`, `grant_ref`, a ref, and `pass_nonce`, 16 bytes
+  # in base64url without padding, decoded strictly. `{:ok, report}` or `:error`.
+  @doc false
+  @spec grant_report(term) :: {:ok, grant_report} | :error
+  def grant_report(%{} = body) do
+    with true <- Enum.sort(Map.keys(body)) == @grant_report_keys,
+         true <- body["version"] === 1,
+         {:ok, time} <- time(body["time"]),
+         true <- Apiary.Adapters.Connection.public_id?(body["connection_id"]),
+         true <- text?(body["grant_ref"], 1, @max_ref),
+         {:ok, nonce} <- Apiary.Contract.Ed25519.decode(body["pass_nonce"], 16) do
+      {:ok,
+       %{
+         time: time,
+         connection_id: body["connection_id"],
+         grant_ref: body["grant_ref"],
+         pass_nonce: nonce
+       }}
+    else
+      _ -> :error
+    end
+  end
+
+  def grant_report(_body), do: :error
 
   # The raw body of `POST /v1/adapter/secrets` (`adapter-secrets.schema.json`), decoded as
   # `decode/1` decodes it: exactly `version` (1), `time` and `sealed`, an object, whose

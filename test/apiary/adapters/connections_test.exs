@@ -13,7 +13,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
   alias Apiary.{Access, AccessKeys, Adapters, Deletion, Edition, EditionStubs}
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{ConnectPass, Connection, Connections}
+  alias Apiary.Adapters.{ConnectPass, Connection, Connections, LinkedPass}
   alias Apiary.Audit.Entry
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
@@ -60,6 +60,16 @@ defmodule Apiary.Adapters.ConnectionsTest do
   end
 
   defp nonce_bytes(nonce), do: elem(Ed25519.decode(nonce, 16), 1)
+
+  # The nonces of the connection's passes whose return came back linked, oldest first.
+  defp linked(%Connection{id: id}),
+    do:
+      Repo.all(
+        from p in LinkedPass,
+          where: p.connection_id == ^id,
+          order_by: [p.linked_at, p.id],
+          select: p.nonce
+      )
 
   describe "connecting" do
     test "an owner starts a pending connection, with a pass for it whose nonce it keeps", %{
@@ -109,13 +119,41 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Repo.aggregate(Connection, :count) == 1
     end
 
-    test "an organisation connected, and listed, is told so, and changes nothing", %{
-      scope: scope,
-      adapter: adapter
-    } do
-      {connection, _nonce} = connection_fixture(scope, adapter, :listed)
-      assert Adapters.connect(scope, adapter) == {:error, :connected}
-      assert reload(connection) == connection
+    test "a connected organisation, listed or not, takes a new pass on the same connection",
+         %{scope: scope, adapter: adapter} do
+      %{scope: admin, user: other} = member_fixture(scope, :admin)
+
+      for state <- [:connected, :listed] do
+        {connection, _nonce} = connection_fixture(scope, adapter, state)
+        :ok = pass_made_earlier(connection.public_id)
+
+        assert {:ok, url, {public_id, second}} = Adapters.connect(admin, adapter)
+        assert public_id == connection.public_id
+        "https://tracker.example.com/connect?state=" <> pass = url
+
+        assert {:ok, %{connection_id: ^public_id, nonce: bytes}} =
+                 ConnectPass.verify(pass, Apiary.SigningKey.public_key())
+
+        assert Ed25519.encode(bytes) == second
+
+        # Still connected, with the person whose pass connected it and the nonce a grant
+        # report may name; the new pass is the admin's, unused.
+        assert %Connection{
+                 state: :connected,
+                 pass_nonce: ^bytes,
+                 pass_nonce_used_at: nil,
+                 pass_started_by_id: by
+               } = taken = reload(connection)
+
+        assert by == other.id
+
+        fields = [:created_by_id, :connected_at, :listed_at, :ended_at]
+        assert Map.take(taken, fields) == Map.take(connection, fields)
+        assert linked(connection) == [connection.pass_nonce]
+        assert Repo.aggregate(from(c in Connection, where: is_nil(c.ended_at)), :count) == 1
+
+        1 = Connections.end_for_organisation(scope.organisation.id)
+      end
     end
 
     test "an ended connection is never taken back: a new one is made", %{
@@ -347,10 +385,8 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert %Connection{state: :pending, ended_at: nil} = reload(second)
     end
 
-    test "a new connection in place of a replaced one: its pass expires as a first", %{
-      scope: scope,
-      adapter: adapter
-    } do
+    test "a connected connection is never replaced: a press in the same second is too soon",
+         %{scope: scope, adapter: adapter} do
       {first, first_at, _} = press(scope, adapter, @at)
       now = DateTime.utc_now()
 
@@ -358,12 +394,20 @@ defmodule Apiary.Adapters.ConnectionsTest do
       |> Ecto.Changeset.change(state: :connected, connected_at: now, pass_nonce_used_at: now)
       |> Repo.update!()
 
-      {second, second_at, _} = press(scope, adapter, @at)
-      refute second.id == first.id
-      assert second_at == first_at
+      connected = reload(first)
 
-      assert %Connection{state: :ended, ended_reason: :replaced, pass_expires_at: ^first_at} =
-               reload(first)
+      assert Repo.transact(fn ->
+               Connections.start(scope, adapter, ConnectPass.new_nonce(), now: @at)
+             end) == {:error, :too_soon}
+
+      assert reload(first) == connected
+      assert live(adapter) == [first.public_id]
+
+      # A second later it takes the pass, on the same connection.
+      {second, second_at, _} = press(scope, adapter, DateTime.add(@at, 1, :second))
+      assert second.id == first.id
+      assert second_at == DateTime.add(first_at, 1, :second)
+      assert %Connection{state: :connected} = reload(second)
     end
 
     test "a pending connection replaced so: the old pass's return is not found, and the adapter finds it ended",
@@ -488,7 +532,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert %Connection{state: :pending, connected_at: nil} = reload(connection)
     end
 
-    test "connected and not yet listed, a press ends it as replaced and starts anew",
+    test "connected, a press by another admin gives it a new pass, whose linked return keeps it connected",
          %{
            scope: scope,
            adapter: adapter,
@@ -500,39 +544,48 @@ defmodule Apiary.Adapters.ConnectionsTest do
       token = return_token(pair.secret, connection.public_id, nonce)
       {:ok, :linked} = Connections.complete_return(scope, connection.public_id, token, nonce)
       connected = reload(connection)
+      assert linked(connection) == [nonce_bytes(nonce)]
       %{scope: admin, user: other} = member_fixture(scope, :admin)
+      :ok = pass_made_earlier(connection.public_id)
 
-      assert {:ok, url, {public_id, second}} = Adapters.connect(admin, adapter)
-      refute public_id == connection.public_id
+      assert {:ok, _url, {public_id, second}} = Adapters.connect(admin, adapter)
+      assert public_id == connection.public_id
       refute second == nonce
 
-      # The pass names the new connection, with its nonce.
-      "https://tracker.example.com/connect?state=" <> pass = url
+      # The pass that connected it is spent, and its linked pass stays the only one until
+      # the new pass comes back linked.
+      assert Connections.complete_return(scope, public_id, token, nonce) == {:error, :not_found}
 
-      assert {:ok, %{connection_id: ^public_id, nonce: bytes}} =
-               ConnectPass.verify(pass, Apiary.SigningKey.public_key())
-
-      assert Ed25519.encode(bytes) == second
-
-      # The connected one ended, with its pass, its person and the time it connected as they
-      # were.
-      assert %Connection{state: :ended, ended_at: %DateTime{}, ended_reason: :replaced} =
-               ended = reload(connection)
-
-      fields = [:pass_nonce, :pass_nonce_used_at, :created_by_id, :connected_at, :listed_at]
-      assert Map.take(ended, fields) == Map.take(connected, fields)
-      assert {ended.pass_nonce, ended.created_by_id} == {nonce_bytes(nonce), scope.user.id}
-
-      # The new one is pending, started by the admin with the new pass.
       assert %Connection{
-               state: :pending,
-               connected_at: nil,
-               pass_nonce_used_at: nil,
-               created_by_id: by,
-               pass_nonce: ^bytes
-             } = fresh = Repo.get_by!(Connection, public_id: public_id)
+               state: :connected,
+               created_by_id: by_first,
+               pass_started_by_id: by_second
+             } = reload(connection)
 
-      assert by == other.id
+      assert {by_first, by_second} == {scope.user.id, other.id}
+      assert linked(connection) == [nonce_bytes(nonce)]
+
+      # The new pass's return is the admin's: the first person brings it back as the wrong
+      # person.
+      second_token = return_token(pair.secret, public_id, second)
+
+      assert Connections.complete_return(scope, public_id, second_token, second) ==
+               {:error, :wrong_person}
+
+      assert Connections.complete_return(admin, public_id, second_token, second) ==
+               {:ok, :linked}
+
+      fields = [:state, :created_by_id, :connected_at, :listed_at]
+
+      assert %Connection{pass_nonce_used_at: %DateTime{}} = relinked = reload(connection)
+      assert linked(connection) == [nonce_bytes(nonce), nonce_bytes(second)]
+      assert Map.take(relinked, fields) == Map.take(connected, fields)
+
+      # The key reaches it as before, and it is the organisation's one live connection.
+      assert {:ok, %Connection{id: id}, _scope} =
+               Connections.connection_for_key(key_scope(key), public_id, :"source_item.post")
+
+      assert id == connection.id
 
       assert Repo.all(
                from c in Connection,
@@ -540,56 +593,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
                  select: c.public_id
              ) == [public_id]
 
-      # The adapter's key reaches the old one no more, and the new one not yet.
-      key_scope = key_scope(key)
-
-      assert Connections.connection_for_key(key_scope, connection.public_id, :"source_item.post") ==
-               {:error, :ended}
-
-      assert Connections.mark_listed(connected) == {:error, :ended}
-
-      assert Connections.connection_for_key(key_scope, public_id, :"source_item.post") ==
-               {:error, :unknown}
-
-      assert Connections.mark_listed(fresh) == {:error, :unknown}
-
-      # A return for the old one, or under the old pass, is not found; so is the new pass's
-      # return brought by someone else than the admin, or for the old connection.
-      for {id, token, session, presser} <- [
-            {connection.public_id, token, nonce, scope},
-            {connection.public_id, return_token(pair.secret, connection.public_id, second),
-             second, admin},
-            {public_id, return_token(pair.secret, public_id, nonce), nonce, scope},
-            {public_id, return_token(pair.secret, public_id, nonce), second, admin}
-          ] do
-        assert Connections.complete_return(presser, id, token, session) == {:error, :not_found}
-      end
-
-      linked = return_token(pair.secret, public_id, second)
-
-      assert Connections.complete_return(scope, public_id, linked, second) ==
-               {:error, :wrong_person}
-
-      assert reload(connection) == ended
-      assert reload(fresh) == fresh
-
-      # The new one is connected by the return under its pass, then listed, and a press is
-      # refused.
-      assert Connections.complete_return(admin, public_id, linked, second) == {:ok, :linked}
-
-      assert {:ok, %Connection{id: id}, _scope} =
-               Connections.connection_for_key(key_scope, public_id, :"source_item.post")
-
-      assert id == fresh.id
-
-      assert {:ok, %Connection{state: :connected, listed_at: %DateTime{}}} =
-               Connections.mark_listed(fresh)
-
-      assert Adapters.connect(scope, adapter) == {:error, :connected}
-
-      # Each press of this adapter left its entry, naming its connection; the end left
-      # none. In the order written: the two entries can share a time, and the ids are
-      # monotonic.
+      # Each press left its entry, naming the connection.
       assert Repo.all(
                from e in Entry,
                  where: e.subject_id == ^scope.organisation.id,
@@ -597,10 +601,31 @@ defmodule Apiary.Adapters.ConnectionsTest do
                  where: e.details["public_id"] == ^adapter.public_id,
                  order_by: [asc: e.id],
                  select: {e.action, e.details["connection_id"]}
-             ) == [
-               {"adapter.connect", connection.public_id},
-               {"adapter.connect", public_id}
-             ]
+             ) == [{"adapter.connect", public_id}, {"adapter.connect", public_id}]
+    end
+
+    test "a refused or cancelled return under a connected connection's new pass adds no linked pass",
+         %{scope: scope, adapter: adapter, pair: pair, connection: connection, nonce: nonce} do
+      token = return_token(pair.secret, connection.public_id, nonce)
+      {:ok, :linked} = Connections.complete_return(scope, connection.public_id, token, nonce)
+
+      for outcome <- [:refused, :cancelled] do
+        :ok = pass_made_earlier(connection.public_id)
+        {:ok, _url, {_id, next}} = Adapters.connect(scope, adapter)
+
+        refusal =
+          return_token(pair.secret, connection.public_id, next,
+            outcome: outcome,
+            reason: if(outcome == :refused, do: :grant_taken)
+          )
+
+        assert {:ok, _} = Connections.complete_return(scope, connection.public_id, refusal, next)
+
+        assert %Connection{state: :connected, pass_nonce_used_at: %DateTime{}} =
+                 reload(connection)
+
+        assert linked(connection) == [nonce_bytes(nonce)]
+      end
     end
 
     test "the adapter's disconnect ends a pending connection, and its return is not found after",
@@ -678,16 +703,6 @@ defmodule Apiary.Adapters.ConnectionsTest do
       end
 
       assert reload(connection) == connected
-
-      # Even with its nonce unused, a connected connection takes no return.
-      Repo.update_all(from(c in Connection, where: c.id == ^connection.id),
-        set: [pass_nonce_used_at: nil]
-      )
-
-      assert Connections.complete_return(scope, connection.public_id, linked, nonce) ==
-               {:error, :not_found}
-
-      assert reload(connection) == %{connected | pass_nonce_used_at: nil}
     end
 
     test "a later press makes the earlier pass's return not found", %{
@@ -774,14 +789,15 @@ defmodule Apiary.Adapters.ConnectionsTest do
       assert Connections.complete_return(scope, id, good, nonce) == {:error, :not_found}
     end
 
-    test "3. a connection that is connected or ended takes no return", %{
-      scope: scope,
-      adapter: adapter,
-      pair: pair,
-      key: key,
-      connection: connection,
-      nonce: nonce
-    } do
+    test "3. an ended connection takes no return, a connected one only under its latest pass",
+         %{
+           scope: scope,
+           adapter: adapter,
+           pair: pair,
+           key: key,
+           connection: connection,
+           nonce: nonce
+         } do
       {:ok, :linked} =
         Connections.complete_return(
           scope,
@@ -790,22 +806,22 @@ defmodule Apiary.Adapters.ConnectionsTest do
           nonce
         )
 
-      {:ok, connected} = Connections.mark_listed(reload(connection))
-      assert Adapters.connect(scope, adapter) == {:error, :connected}
+      {:ok, _connected} = Connections.mark_listed(reload(connection))
+      :ok = pass_made_earlier(connection.public_id)
+      {:ok, _url, {_id, next}} = Adapters.connect(scope, adapter)
+      token = return_token(pair.secret, connection.public_id, next)
 
-      # A connected one keeps its nonce; a return under it is refused, used or not.
-      Repo.update_all(from(c in Connection, where: c.id == ^connected.id),
-        set: [pass_nonce_used_at: nil]
-      )
-
-      token = return_token(pair.secret, connection.public_id, nonce)
-
-      assert Connections.complete_return(scope, connection.public_id, token, nonce) ==
-               {:error, :not_found}
+      # Under an earlier pass of the connected connection: not found.
+      assert Connections.complete_return(
+               scope,
+               connection.public_id,
+               return_token(pair.secret, connection.public_id, nonce),
+               next
+             ) == {:error, :not_found}
 
       {:ok, _} = Connections.end_connection(key_scope(key), connection.public_id)
 
-      assert Connections.complete_return(scope, connection.public_id, token, nonce) ==
+      assert Connections.complete_return(scope, connection.public_id, token, next) ==
                {:error, :not_found}
     end
 

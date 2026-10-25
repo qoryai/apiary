@@ -35,8 +35,13 @@ defmodule ApiaryWeb.Contract.RawBody do
   # The integration contract's signed paths served here, read the same way where
   # `served?/1` holds, as below: `POST /v1/adapter`, `POST /v1/source-collections`,
   # `POST /v1/source-items`, `POST /v1/sources/disconnect`,
-  # `POST /v1/source-items/comments` and `POST /v1/adapter/secrets`.
-  @adapter_paths [["v1", "adapter"], ["v1", "source-collections"], ["v1", "source-items"]]
+  # `POST /v1/source-items/comments`, `POST /v1/adapter/secrets` and `POST /v1/grants`.
+  @adapter_paths [
+    ["v1", "adapter"],
+    ["v1", "source-collections"],
+    ["v1", "source-items"],
+    ["v1", "grants"]
+  ]
   @adapter_three_paths [
     ["v1", "sources", "disconnect"],
     ["v1", "source-items", "comments"],

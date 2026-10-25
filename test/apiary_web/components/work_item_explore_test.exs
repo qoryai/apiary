@@ -1283,6 +1283,53 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a run that stopped at a call to an adapter says which, what for and what to do, beside its end words" do
+      for {failure, line} <- [
+            {%{cause: :timeout, call: "run-credential", code: nil},
+             "Ask an instance admin to check that code-host is running. The run stopped before it started: the call to code-host for the run's credentials had no answer in time."},
+            {%{cause: :unreachable, call: "resolve", code: nil},
+             "Ask an instance admin to check that code-host is running and that its host name resolves. The run stopped before it started: the call to code-host for the harness sources did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504."},
+            {%{cause: :refused, call: "read", code: "grant_unknown"},
+             "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness files returned the error grant_unknown."},
+            {%{cause: :refused, call: "read", code: nil},
+             "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness files returned the error unauthorized."},
+            {%{cause: :invalid_answer, call: "resolve", code: nil},
+             "Ask an instance admin to check code-host. The run stopped before it started: the answer of code-host to the call for the harness sources failed its signature check or its format check, or was over 1 MiB."},
+            {%{cause: :no_address, call: "resolve", code: nil},
+             "Ask an instance admin to check the call address of code-host. The run stopped before it started: code-host declares no call address, so Qory Apiary could not call it for the harness sources."},
+            {%{cause: :not_allowed, call: "resolve", code: nil},
+             "Ask an instance admin to check the call address of code-host and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to a loopback, link-local, metadata, unspecified, multicast or broadcast address, or the instance's public address has no host name."},
+            {%{cause: :too_large, call: "resolve", code: nil},
+             "Remove harness sources or files, then start the run again. The run stopped before it started: the call to code-host for the harness sources was over 256 KiB."}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :inputs_invalid,
+            adapter_failure: Map.put(failure, :adapter, "code-host"),
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+        assert text(html, "#work-item-explore-none-adapter") == line
+        assert length(texts(html, "#work-item-explore-none p")) == 3
+      end
+
+      # A run with none has no such line.
+      r =
+        run(%{state: :failed, outcome: :error, end_cause: :inputs_invalid, adapter_failure: nil})
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+      assert count(html, "#work-item-explore-none-adapter") == 0
+    end
+
     test "a run whose last result was an error keeps its words, here and in the folds" do
       r =
         run(%{

@@ -45,10 +45,12 @@ defmodule Apiary.Adapters.WireTest do
              } = declaration
 
       assert Enum.sort(Map.keys(declaration)) ==
-               ~w(connect_url default_interval description minimum_interval sends_changes setup_url time)a
+               ~w(call_url connect_url default_interval description minimum_interval sends_changes setup_url time)a
 
-      # Without a setup_url, the adapter has nothing to set up.
+      # Without a setup_url, the adapter has nothing to set up; without a call_url, Qory
+      # Apiary does not call it.
       assert declaration.setup_url == nil
+      assert declaration.call_url == nil
 
       assert Description.item_noun(description) == %{one: "issue", other: "issues"}
       assert Description.collection_noun(description) == %{one: "project", other: "projects"}
@@ -76,12 +78,21 @@ defmodule Apiary.Adapters.WireTest do
              } = declaration
     end
 
+    test "code-host-call.json, with a call_url, is accepted as written" do
+      assert {:ok, %{call_url: "https://code-adapter.example.com/calls/", setup_url: nil}} =
+               read(fixture("adapter/code-host-call.json"))
+    end
+
     test "the schema's refusals and the control plane's are refused" do
       names =
         Path.wildcard(Path.join(@fixtures, "invalid/adapter-*.json")) ++
           Path.wildcard(Path.join(@fixtures, "refused-by-control-plane/adapter-*.json"))
 
       assert Enum.map(names, &Path.relative_to(&1, @fixtures)) == [
+               # Each refused for its call_url alone: "call_url" below.
+               "invalid/adapter-call-url-http.json",
+               "invalid/adapter-call-url-query.json",
+               "invalid/adapter-call-url-without-final-slash.json",
                "invalid/adapter-description-item-noun-upper-case.json",
                "invalid/adapter-description-string.json",
                "invalid/adapter-description-version-2.json",
@@ -768,6 +779,59 @@ defmodule Apiary.Adapters.WireTest do
     end
   end
 
+  describe "call_url" do
+    test "each invalid fixture is refused for its call_url: with the fault taken out, it is accepted" do
+      for {name, fixed} <- [
+            {"adapter-call-url-http.json", "https://code-adapter.example.com/calls/"},
+            {"adapter-call-url-query.json", "https://code-adapter.example.com/calls/"},
+            {"adapter-call-url-without-final-slash.json",
+             "https://code-adapter.example.com/calls/"}
+          ] do
+        raw = fixture("invalid/" <> name)
+        body = Jason.decode!(raw)
+
+        assert read(raw) == :error, name
+        refute Wire.call_url?(body["call_url"]), name
+        assert {:ok, %{call_url: ^fixed}} = declaration(Map.put(body, "call_url", fixed)), name
+        assert {:ok, %{call_url: nil}} = declaration(Map.delete(body, "call_url")), name
+      end
+    end
+
+    test "an https URI with no query and no fragment whose path ends with / is accepted" do
+      for url <- [
+            "https://a.example/",
+            "https://a.example/calls/",
+            "https://a.example:8443/calls/v1/",
+            "https://[2001:db8::1]/"
+          ] do
+        assert Wire.call_url?(url), url
+        assert {:ok, %{call_url: ^url}} = declaration(Map.put(valid(), "call_url", url))
+      end
+    end
+
+    test "a query, a fragment, a path that does not end with /, or what no URL may be is refused" do
+      for url <- [
+            "https://a.example",
+            "https://a.example/calls",
+            "https://a.example/calls/?",
+            "https://a.example/calls/?x=1",
+            "https://a.example/calls/#",
+            "https://a.example/calls/#x",
+            "https://a.example/calls?x=/",
+            "http://a.example/calls/",
+            "https://user@a.example/calls/",
+            "https://a.example/ca lls/",
+            "https://a.example/" <> String.duplicate("a", 2048 - 18) <> "/",
+            "",
+            nil,
+            42
+          ] do
+        refute Wire.call_url?(url), inspect(url)
+        assert declaration(Map.put(valid(), "call_url", url)) == :error, inspect(url)
+      end
+    end
+  end
+
   describe "sync" do
     test "the intervals are integers from 60 to 86,400, the minimum at most the default" do
       for {default, minimum} <- [{60, 60}, {86_400, 86_400}, {86_400, 60}, {900, 900}] do
@@ -970,6 +1034,58 @@ defmodule Apiary.Adapters.WireTest do
 
       assert Wire.source_disconnect(Map.put(body, "collection_ref", String.duplicate("😀", 201))) ==
                :error
+    end
+  end
+
+  describe "a grant report" do
+    defp grant_report(path),
+      do: with({:ok, body} <- Wire.decode(fixture(path)), do: Wire.grant_report(body))
+
+    test "the contract's report is read as written; its invalid ones are refused" do
+      assert grant_report("grant/linked.json") ==
+               {:ok,
+                %{
+                  time: ~U[2026-10-15 12:00:00Z],
+                  connection_id: "ac_f1xt0re000000000",
+                  grant_ref: "G_1",
+                  pass_nonce: Base.decode16!("000102030405060708090A0B0C0D0E0F")
+                }}
+
+      assert grant_report("invalid/grant-without-pass-nonce.json") == :error
+      assert grant_report("invalid/grant-pass-nonce-21-characters.json") == :error
+      assert Wire.grant_report(nil) == :error
+    end
+
+    test "each member is held to the contract" do
+      {:ok, body} = Wire.decode(fixture("grant/linked.json"))
+
+      for change <- [
+            %{"version" => 2},
+            %{"version" => 1.0},
+            %{"time" => "2026-10-15T12:00:00.5Z"},
+            %{"connection_id" => "ac_f1xt0re00000000u"},
+            %{"connection_id" => "ag_f1xt0re000000000"},
+            %{"grant_ref" => ""},
+            %{"grant_ref" => String.duplicate("g", 201)},
+            %{"grant_ref" => "G" <> <<0>>},
+            %{"grant_ref" => 1},
+            # Not canonical: its last character carries bits past the 128.
+            %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODx"},
+            %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODw=="},
+            %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODwAA"},
+            %{"title" => "Acme"}
+          ] do
+        assert Wire.grant_report(Map.merge(body, change)) == :error, inspect(change)
+      end
+
+      for member <- ~w(version time connection_id grant_ref pass_nonce) do
+        assert Wire.grant_report(Map.delete(body, member)) == :error, member
+      end
+
+      assert {:ok, %{grant_ref: ref}} =
+               Wire.grant_report(Map.put(body, "grant_ref", String.duplicate("😀", 200)))
+
+      assert ref == String.duplicate("😀", 200)
     end
   end
 end

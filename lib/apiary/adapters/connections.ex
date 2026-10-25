@@ -13,27 +13,29 @@ defmodule Apiary.Adapters.Connections do
   # press ends the pending connection (`replaced`) and starts a new one in its place,
   # whose pass is its first. The person comes back with a return
   # (`Apiary.Adapters.ReturnToken`), which `complete_return/4` checks, every check before
-  # any change; a return that says the adapter linked makes the connection connected.
+  # any change; a return that says the adapter linked makes the connection connected, and
+  # keeps its nonce as one a grant report may name (`Apiary.Adapters.LinkedPass`).
   # The adapter's first listing that names it is recorded as it is accepted
-  # (`mark_listed/1`, `listed_at`). A connected connection takes no new pass: its pass,
-  # the person who started it and the time it connected stay as they are. Until that first
-  # listing, a new press of Install ends it (`replaced`) and starts a new connection in
-  # its place, which needs a return under the new pass; once listed, a press is refused.
+  # (`mark_listed/1`, `listed_at`). A connected connection takes a new pass for each
+  # external account a person adds to it: a press of Install gives it one, as it gives a
+  # pending one, and a `linked` return under that pass keeps it connected, the person
+  # whose pass connected it and the time it connected as they were.
   #
   # At the server contract an adapter's key acts for an organisation only through a
   # connection of its adapter (`connection_for_key/3`), with its scope narrowed to that
   # organisation (`Apiary.Accounts.Scope.for_connection/2`).
   #
   # A connection ends for good: when the adapter says it is gone (`end_connection/2`),
-  # when a press of Install replaces it (`start/3`), while connected and not yet listed,
-  # or while pending when its next pass would expire too far ahead,
+  # when a press of Install replaces it (`start/3`), while pending when its next pass
+  # would expire too far ahead,
   # when the adapter is deleted (`end_for_adapter/2`, `Apiary.Adapters.delete_adapter/2`),
   # and when the organisation's purge starts (`end_for_organisation/1`,
   # `Apiary.Deletion`). While the organisation is marked for deletion, or out of use, its
   # connections are suspended instead, and come back with it. Each end ends the
-  # connection's live collections in the same transaction
-  # (`Apiary.Adapters.Collections.end_for_connections/2`), with the feed's `unlinked`
-  # entry for each one linked (`Apiary.Adapters.Collection.linked?/1`).
+  # connection's grants (`Apiary.Adapters.Grants.end_for_connections/2`) and its live
+  # collections (`Apiary.Adapters.Collections.end_for_connections/2`) in the same
+  # transaction, with the feed's `unlinked` entry for each collection linked
+  # (`Apiary.Adapters.Collection.linked?/1`) and for each grant.
   #
   # The lock order: the adapter's row, then its connections.
   #
@@ -67,7 +69,9 @@ defmodule Apiary.Adapters.Connections do
   #     `FOR SHARE`, by id, then the collections (`set_backlog/3`, `unlink_workspace/2`
   #     there). An end (`end_connection/2`,
   #     `end_for_organisation/1`) holds the connection, or all of the organisation's,
-  #     then its collections, then the adapter's feed counter.
+  #     then its grants, then its collections, then the adapter's feed counter. A grant
+  #     report holds the connection `FOR UPDATE`, then its linked pass, then the grant,
+  #     then the feed counter (`Apiary.Adapters.Grants.report/2`).
   #
   # Once each change commits, the organisation hears of it on its topic
   # (`Apiary.Adapters.Collections.broadcast_connection/1`): a press of Install, for the
@@ -82,7 +86,7 @@ defmodule Apiary.Adapters.Connections do
   alias Apiary.{Access, AccessKeys, Features, Organisations, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{Collections, ConnectPass, Connection, ReturnToken}
+  alias Apiary.Adapters.{Collections, ConnectPass, Connection, Grants, LinkedPass, ReturnToken}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
@@ -166,17 +170,18 @@ defmodule Apiary.Adapters.Connections do
   # to `adapter`, made, or the one pending taken, `FOR UPDATE`, with a new connect pass
   # for it (`Apiary.Adapters.ConnectPass.issue/3`), made under that lock, now with
   # `nonce` as the nonce of its latest pass, unused, the pass's expiry as
-  # `pass_expires_at`, and the scope's person as the one who started it. One connected
-  # (`complete_return/4`), which no listing has named yet (`mark_listed/1`), is ended
-  # (`replaced`), as `end_connection/2` ends one, with its pass, its person and the time
-  # it connected as they were, and a new pending connection is made in its place, with a
-  # new public id, as above. One pending is replaced so too when its next pass would
-  # expire too far ahead, below.
+  # `pass_expires_at`, and the scope's person as the one who started that pass
+  # (`pass_started_by_id`, and `created_by_id` while it is pending). One connected
+  # (`complete_return/4`) takes the new pass in the same way, for an external account the
+  # person adds to it, and keeps its state, the time it connected, the person whose pass
+  # connected it and the nonces a grant report may name. One pending is
+  # replaced when its next pass would expire too far ahead, below.
   # `{:ok, connection, pass, replaced}`, `replaced` the connection this press ended in its
   # place, or nil;
-  # `{:error, :connected}` while the organisation is connected to it and a listing named
-  # the connection, which changes nothing; `{:error, :invalid | :too_long}` when the pass
-  # cannot be made, which the caller's transaction rolls back.
+  # `{:error, :too_soon}` for one connected whose next pass would expire too far ahead,
+  # which changes nothing: a connected connection is never replaced;
+  # `{:error, :invalid | :too_long}` when the pass cannot be made, which the caller's
+  # transaction rolls back.
   #
   # The pass expires `Apiary.Adapters.ConnectPass.validity/0` seconds after now, to the
   # second, which is strictly later than the pass the connection had before, so long as
@@ -189,8 +194,8 @@ defmodule Apiary.Adapters.Connections do
   # than that ahead of its clock, which the adapter refuses (`pass_expired`): the
   # pending connection is ended (`replaced`) instead, in the same transaction and under
   # the same lock, with its nonce, its pass's expiry and its person as they were, and a
-  # new pending connection is made in its place, as for one connected. A return under
-  # the ended one's pass is not found after, and the adapter's key finds it ended. A new
+  # new pending connection is made in its place. A return under the ended one's pass is
+  # not found after, and the adapter's key finds it ended. A new
   # connection, the first press's or one made in place of a replaced one, has no previous
   # pass, nor has one made before its pass's expiry was kept: its pass expires
   # `validity/0` seconds after now. So each new pass of a connection expires strictly
@@ -206,7 +211,7 @@ defmodule Apiary.Adapters.Connections do
   # commit of another transaction that ended the live row.
   @spec start(Scope.t(), Node.t(), <<_::128>>, keyword) ::
           {:ok, Connection.t(), String.t(), Connection.t() | nil}
-          | {:error, :connected | :invalid | :too_long}
+          | {:error, :too_soon | :invalid | :too_long}
   def start(
         %Scope{user: %User{id: user_id}, organisation: %Organisation{id: organisation_id}},
         %Node{kind: :adapter} = adapter,
@@ -236,37 +241,43 @@ defmodule Apiary.Adapters.Connections do
 
       # Its pass is made here, under the row's lock: the previous pass's expiry is read and
       # the new one written in the same update. Should the new pass have to expire more
-      # than `validity/0` seconds ahead to expire after the previous one, the connection
-      # ends and a new one takes its place, whose pass is its first.
-      %Connection{state: :pending} = pending ->
-        not_before = after_previous(pending.pass_expires_at)
+      # than `validity/0` seconds ahead to expire after the previous one, a pending
+      # connection ends and a new one takes its place, whose pass is its first; a connected
+      # one takes no pass.
+      %Connection{} = live ->
+        not_before = after_previous(live.pass_expires_at)
 
-        if ConnectPass.beyond_validity?(now, not_before) do
-          replace(pending, organisation_id, adapter, user_id, nonce, now)
-        else
-          with {:ok, pass, expires_at} <-
-                 issue(adapter, pending.public_id, nonce, now, not_before),
-               {:ok, connection} <-
-                 pending
-                 |> Ecto.Changeset.change(
-                   pass_nonce: nonce,
-                   pass_nonce_used_at: nil,
-                   pass_expires_at: expires_at,
-                   created_by_id: user_id,
-                   updated_at: now
-                 )
-                 |> Repo.update() do
-            {:ok, connection, pass, nil}
-          end
+        cond do
+          not ConnectPass.beyond_validity?(now, not_before) ->
+            new_pass(live, adapter, user_id, nonce, now, not_before)
+
+          live.state == :pending ->
+            replace(live, organisation_id, adapter, user_id, nonce, now)
+
+          true ->
+            {:error, :too_soon}
         end
+    end
+  end
 
-      # Connected, and no listing has named it: it takes no new pass, so it ends, and a new
-      # one takes its place, whose pass is its first.
-      %Connection{state: :connected, listed_at: nil} = unlisted ->
-        replace(unlisted, organisation_id, adapter, user_id, nonce, now)
+  # Gives `live`, held `FOR UPDATE`, a new pass with `nonce`, unused, started by
+  # `user_id`, who is also the one who started a pending connection. `{:ok, connection,
+  # pass, nil}`.
+  defp new_pass(%Connection{} = live, adapter, user_id, nonce, now, not_before) do
+    started =
+      [
+        pass_nonce: nonce,
+        pass_nonce_used_at: nil,
+        pass_started_by_id: user_id,
+        updated_at: now
+      ] ++ if(live.state == :pending, do: [created_by_id: user_id], else: [])
 
-      %Connection{state: :connected} ->
-        {:error, :connected}
+    with {:ok, pass, expires_at} <- issue(adapter, live.public_id, nonce, now, not_before),
+         {:ok, connection} <-
+           live
+           |> Ecto.Changeset.change([pass_expires_at: expires_at] ++ started)
+           |> Repo.update() do
+      {:ok, connection, pass, nil}
     end
   end
 
@@ -330,6 +341,7 @@ defmodule Apiary.Adapters.Connections do
       organisation_id: organisation_id,
       adapter_id: adapter_id,
       created_by_id: user_id,
+      pass_started_by_id: user_id,
       state: :pending,
       pass_nonce: nonce,
       pass_expires_at: nil,
@@ -360,20 +372,22 @@ defmodule Apiary.Adapters.Connections do
   #      of the access keys in use of the adapter of the connection the link names, an
   #      adapter in use;
   #   2. its `connection_id` is the link's;
-  #   3. the connection is pending (it is the adapter's: its keys signed);
+  #   3. the connection is pending or connected (it is the adapter's: its keys signed);
   #   4. its nonce is the connection's latest pass's;
   #   5. no return under that nonce came back yet;
   #   6. it has not expired (`Apiary.Adapters.ReturnToken.good_at?/2`);
-  #   7. the person is the one who started the connection, in the browser they started it
+  #   7. the person is the one who started the latest pass, in the browser they started it
   #      in: the session's nonce is the return's;
   #      Adapters rely on this check: an adapter cannot tell whose pass it holds, so a
   #      return brought through a browser the starter did not use must never connect.
   #   8. they may still connect an adapter to the connection's organisation
   #      (`adapter.connect`).
   #
-  # Then a return that says `linked` makes the connection connected, now; `refused` and
-  # `cancelled` change nothing but the nonce, which is used either way. `{:ok, :linked}`,
-  # `{:ok, {:refused, reason}}`, `{:ok, :cancelled}`; `{:error, :wrong_person}` for 7;
+  # Then a return that says `linked` makes a pending connection connected, now, leaves a
+  # connected one connected, and keeps the nonce as the one a grant report may name
+  # (`Apiary.Adapters.LinkedPass`); `refused` and `cancelled` change nothing but the
+  # nonce, which is used either way. `{:ok, :linked}`, `{:ok, {:refused, reason}}`,
+  # `{:ok, :cancelled}`; `{:error, :wrong_person}` for 7;
   # `{:error, :not_found}` for every other refusal, one answer for a token that is bad,
   # expired or used.
   @spec complete_return(Scope.t() | nil, term, term, term) ::
@@ -388,7 +402,7 @@ defmodule Apiary.Adapters.Connections do
            %Node{} = adapter <- live_adapter(connection.adapter_id),
            {:ok, return} <- ReturnToken.verify(token, public_keys(adapter)),
            true <- return.connection_id == connection.public_id,
-           true <- connection.state == :pending,
+           true <- connection.state in [:pending, :connected],
            true <- Plug.Crypto.secure_compare(return.nonce, connection.pass_nonce),
            true <- is_nil(connection.pass_nonce_used_at),
            true <- ReturnToken.good_at?(return, now),
@@ -436,20 +450,19 @@ defmodule Apiary.Adapters.Connections do
         do: key
       )
 
-  # The person is the one who started the connection, and their session kept the nonce of
-  # the return, so they come back in the browser they started in.
+  # The person is the one who started the latest pass (`pass_started_by_id`, else
+  # `created_by_id` for a pass made before it was kept), and their session kept the nonce
+  # of the return, so they come back in the browser they started in.
   # Adapters rely on this check: an adapter cannot tell whose pass it holds, so a return
   # brought through a browser the starter did not use must never connect.
-  defp same_person(
-         %Scope{user: %User{id: user_id}},
-         %Connection{created_by_id: user_id},
-         session_nonce,
-         nonce
-       )
+  defp same_person(%Scope{user: %User{id: user_id}}, connection, session_nonce, nonce)
        when is_binary(user_id) do
-    case Ed25519.decode(session_nonce, 16) do
-      {:ok, kept} -> if Plug.Crypto.secure_compare(kept, nonce), do: :ok, else: wrong_person()
-      :error -> wrong_person()
+    with true <- user_id == (connection.pass_started_by_id || connection.created_by_id),
+         {:ok, kept} <- Ed25519.decode(session_nonce, 16),
+         true <- Plug.Crypto.secure_compare(kept, nonce) do
+      :ok
+    else
+      _ -> wrong_person()
     end
   end
 
@@ -468,16 +481,15 @@ defmodule Apiary.Adapters.Connections do
     end
   end
 
-  defp returned(connection, %{outcome: :linked}, now) do
+  defp returned(connection, %{outcome: :linked, nonce: nonce}, now) do
+    connects =
+      if connection.state == :pending, do: [state: :connected, connected_at: now], else: []
+
     with {:ok, connected} <-
            connection
-           |> Ecto.Changeset.change(
-             state: :connected,
-             connected_at: now,
-             pass_nonce_used_at: now,
-             updated_at: now
-           )
+           |> Ecto.Changeset.change(connects ++ [pass_nonce_used_at: now, updated_at: now])
            |> Repo.update(),
+         {:ok, _pass} <- LinkedPass.insert(connected, nonce, now),
          do: {:ok, {:linked, connected}}
   end
 
@@ -629,8 +641,8 @@ defmodule Apiary.Adapters.Connections do
 
   @doc false
   # mark_listed/1 records the adapter's first listing that names `connection`, connected,
-  # once `connection_for_key/3` found it: `listed_at`, now. From then on a press of
-  # Install is refused (`start/3`). One listed already stays as it is. `{:ok, connection}`;
+  # once `connection_for_key/3` found it: `listed_at`, now. One listed already stays as it
+  # is. `{:ok, connection}`;
   # `{:error, :ended}` for one that ended meanwhile; `{:error, :unknown}` for one pending
   # or not there, as `connection_for_key/3` answers for them (`connection_unknown` in the
   # contract: a listing of a pending connection is refused so).
@@ -705,9 +717,18 @@ defmodule Apiary.Adapters.Connections do
              updated_at: now
            )
            |> Repo.update() do
-      _count = Collections.end_for_connections([ended.id], now)
+      :ok = end_with([ended.id], now)
       {:ok, ended}
     end
+  end
+
+  # Ends the grants and the live collections of the connections `connection_ids`, which
+  # the caller's transaction ended and holds, in the lock order: the grants, the
+  # collections with their `unlinked` entries, then the grants' `unlinked` entries.
+  defp end_with(connection_ids, now) do
+    grants = Grants.end_for_connections(connection_ids, now)
+    _count = Collections.end_for_connections(connection_ids, now)
+    Grants.tell_unlinked(grants)
   end
 
   @doc false
@@ -726,7 +747,7 @@ defmodule Apiary.Adapters.Connections do
         set: [state: :ended, ended_at: now, ended_reason: :integration_deleted, updated_at: now]
       )
 
-    _count = Collections.end_for_connections(Enum.map(ended, &elem(&1, 0)), now)
+    :ok = end_with(Enum.map(ended, &elem(&1, 0)), now)
     ended |> Enum.map(&elem(&1, 1)) |> Enum.sort()
   end
 
@@ -768,7 +789,7 @@ defmodule Apiary.Adapters.Connections do
             ]
           )
 
-        _collections = Collections.end_for_connections(Enum.map(ended, & &1.id), now)
+        :ok = end_with(Enum.map(ended, & &1.id), now)
         {:ok, ended}
       end)
 

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_1",
+  "changes": [
+    {
+      "kind": "grant",
+      "connection_id": "ac_f1xt0re000000000",
+      "grant_ref": "G_1",
+      "status": "taken_in"
+    }
+  ]
+}

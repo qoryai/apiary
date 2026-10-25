@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "revision": 1,
+  "credential": {
+    "version": 1,
+    "token": "fixture-access-token-for-tests-only",
+    "apply": [
+      {
+        "hosts": [
+          "code.example.com"
+        ],
+        "scheme": "basic",
+        "username": "x-access",
+        "paths": [
+          "/acme/shop*",
+          "/acme/docs*"
+        ]
+      }
+    ]
+  }
+}

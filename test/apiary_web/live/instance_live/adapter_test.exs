@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.InstanceLive.AdapterTest do
   # An adapter's page in Instance settings › Adapters (`ApiaryWeb.InstanceLive.Adapter`),
   # for an instance admin: its Overview, the state, when it was last seen, read again as a
-  # key arrives, the install address and how often it pulls; its Settings tab, with the
-  # pull interval, its name and the danger zone; the Rename page, with its errors; the
-  # Remove page, which revokes its keys, ends every connection to it and closes the open
-  # work items of those connections; and a path that does not exist for anyone else.
+  # key arrives, the install address, the call address and how often it pulls; its
+  # Settings tab, with the pull interval, its name and the danger zone; the Rename page,
+  # with its errors; the Remove page, which revokes its keys, ends every connection to it
+  # and closes the open work items of those connections; and a path that does not exist
+  # for anyone else.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -70,7 +71,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
              )
 
       assert words(lv, "#adapter-overview") ==
-               "State No key yet · organisations can install it once it is connected and running · Connect it Install address Not declared yet Pulls Not declared yet"
+               "State No key yet · organisations can install it once it is connected and running · Connect it Install address Not declared yet Call address None declared Pulls Not declared yet"
 
       assert has_element?(lv, ~s{#adapter-connect-it[href="#{page_path(adapter, "/keys")}"]})
     end
@@ -105,6 +106,35 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       send(lv.pid, {:key_enrolled, %{key_id: key.key_id, node_id: other.id}})
       assert words(lv, "#adapter-overview-state") == "Never seen"
       refute has_element?(lv, "#adapter-connect-it")
+    end
+  end
+
+  describe "the Overview's Call address row" do
+    test "shows the call address declared, and, for one Qory Apiary does not call, where to set it",
+         %{conn: conn} do
+      name = "shop-#{System.unique_integer([:positive])}"
+      adapter = adapter_fixture(%{name: name})
+
+      declare(adapter,
+        call_url: "https://#{name}.localhost/calls/",
+        call_instance_id: "instance-1"
+      )
+
+      {:ok, lv, _html} = live(conn, page_path(adapter))
+
+      assert words(lv, "#adapter-overview-call") ==
+               "https://#{name}.localhost/calls/ · where Qory Apiary calls it, as it declares"
+
+      refute has_element?(lv, "#adapter-call-hint")
+
+      for url <- ["https://elsewhere.localhost/calls/", "https://#{name}.example.com/"] do
+        declare(adapter, call_url: url)
+        {:ok, lv, _html} = live(conn, page_path(adapter))
+
+        assert words(lv, "#adapter-overview-call") ==
+                 "#{url} Set the adapter's call address to an https address at #{name}.localhost. " <>
+                   "Qory Apiary calls an adapter only at its name under the instance's name, so it makes no call to this one."
+      end
     end
   end
 

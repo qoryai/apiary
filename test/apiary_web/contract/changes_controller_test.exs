@@ -66,6 +66,7 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       for {path, adapter_ctx} <- [
             {"changes/feed.json", ctx},
             {"changes/feed-loopback.json", fresh()},
+            {"changes/grants.json", fresh()},
             {"changes/empty.json", fresh()}
           ] do
         %{"changes" => written} = fixture(path)
@@ -85,7 +86,9 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
 
       for path <- ~w(invalid/changes-sync-interval-30.json invalid/changes-unknown-kind.json
                      invalid/changes-work-item-status-linked.json
-                     invalid/changes-work-item-url-http.json),
+                     invalid/changes-work-item-url-http.json
+                     invalid/changes-grant-status-taken-in.json
+                     invalid/changes-grant-without-connection-id.json),
           change <- fixture(path)["changes"] do
         assert_raise ArgumentError, fn ->
           Repo.transaction(fn ->

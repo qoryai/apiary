@@ -4212,6 +4212,36 @@ msgstr ""
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the call to %{adapter} for %{what} returned the error %{code}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check that %{adapter} is running and that its host name resolves. The run stopped before it started: the call to %{adapter} for %{what} did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} had no answer in time."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to a loopback, link-local, metadata, unspecified, multicast or broadcast address, or the instance's public address has no host name."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: %{adapter} declares no call address, so Qory Apiary could not call it for %{what}."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Ask for a release again"
@@ -4412,6 +4442,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "By hand"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Call address"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -10294,6 +10329,11 @@ msgstr ""
 msgid "None"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "None declared"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "None is running. An instance shows here only while it runs; the last was seen"
@@ -12202,6 +12242,11 @@ msgstr ""
 msgid "Remove filter: %{filter} %{value}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove harness sources or files, then start the run again. The run stopped before it started: the call to %{adapter} for %{what} was over 256 KiB."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove program…"
@@ -13392,6 +13437,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Set password"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "Set the adapter's call address to an https address at %{host}. Qory Apiary calls an adapter only at its name under the instance's name, so it makes no call to this one."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -18497,6 +18547,16 @@ msgstr ""
 msgid "terminal"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "the harness files"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "the harness sources"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the lists are too long to compare here."
@@ -18517,6 +18577,11 @@ msgstr[1] ""
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "the organisation's default"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "the run's credentials"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -18692,6 +18757,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "wall"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/adapter.ex
+#, elixir-autogen, elixir-format
+msgid "where Qory Apiary calls it, as it declares"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex

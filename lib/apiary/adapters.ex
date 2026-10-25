@@ -578,9 +578,10 @@ defmodule Apiary.Adapters do
   @doc false
   # Starts the connection of `adapter` to the scope's organisation (`adapter.connect`,
   # owners and admins, asked of the organisation), with `adapter` as it is now, in use and
-  # held `FOR SHARE`: the organisation's pending connection to it, made or taken
-  # (`Apiary.Adapters.Connections.start/3`, which ends a connected one no listing has
-  # named yet and makes a new one in its place), with a new connect pass for it
+  # held `FOR SHARE`: the organisation's connection to it that has not ended, made or
+  # taken, pending or connected (`Apiary.Adapters.Connections.start/3`: a connected one
+  # takes the pass for an external account the person adds to it), with a new connect
+  # pass for it
   # (`Apiary.Adapters.ConnectPass`), made under the connection's row lock, whose nonce and
   # expiry the connection keeps as its latest pass's; each new pass of a connection
   # expires strictly later than the one before it, and when that would take it more than
@@ -596,15 +597,15 @@ defmodule Apiary.Adapters do
   # the connection changed (`Apiary.Adapters.Collections.broadcast_connection/1`), and,
   # first, that the one it replaced ended, when it replaced one.
   #
-  # `{:error, :connected}` while the organisation is connected to it and a listing named
-  # the connection;
+  # `{:error, :too_soon}` when the organisation's connected connection would need a pass
+  # that expires too far ahead, as for a second press in the same second;
   # `{:error, :no_connect_url}` while the adapter declared no address; `{:error, :no_key}`
   # while it holds no access key in use; `{:error, :forbidden}`; `{:error, :not_found}`;
   # none of them changes anything or leaves an entry.
   @spec connect(Scope.t(), Node.t()) ::
           {:ok, String.t(), {String.t(), String.t()}}
           | {:error,
-             :connected | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
+             :too_soon | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
   def connect(%Scope{} = scope, %Node{id: id}) do
     result =
       Repo.transact(fn ->
@@ -933,6 +934,7 @@ defmodule Apiary.Adapters do
   @declared [
     :connect_url,
     :setup_url,
+    :call_url,
     :sync_default_interval,
     :sync_minimum_interval,
     :sync_sends_changes
@@ -943,19 +945,22 @@ defmodule Apiary.Adapters do
   # (`Apiary.Accounts.Scope.for_access_key/1`), declared as it started
   # (`Apiary.Adapters.Wire.declaration/1`): its connect address, where an instance admin
   # sets it up (`setup_url`, which a declaration without one clears: the adapter declares
-  # it only while it is not set up), and how it pulls (`adapter.declare`, `for_key/2`),
-  # and what its description's source role says. One transaction, with the adapter's row
-  # held `FOR NO KEY UPDATE`, as an instance admin's change holds it, so a declaration and
-  # a change of the interval come one after the other; an adapter deleted meanwhile is
-  # `{:error, :not_found}`.
+  # it only while it is not set up), where Qory Apiary calls it (`call_url`, with the
+  # instance id of the request that declared it, `instance_id`, which the calls are
+  # signed for; a declaration without one clears both), how it pulls
+  # (`adapter.declare`, `for_key/2`), and what its description's source role says. One
+  # transaction, with the adapter's row held `FOR NO KEY UPDATE`, as an instance admin's
+  # change holds it, so a declaration and a change of the interval come one after the
+  # other; an adapter deleted meanwhile is `{:error, :not_found}`.
   #
-  # A declaration that changes its connect address, its `setup_url` or how it pulls leaves
-  # an entry in the instance's trail whose actor is the key; one that changes none of them
-  # leaves none. The adapter's first declaration appends `{kind: "sync", interval: nil}`
-  # to its change feed, its default, and a later one appends nothing: as the contract has
-  # it, the feed carries the interval at the first declaration and whenever a person
-  # changes it. The interval an instance admin chose stays whatever a later declaration
-  # says; the adapter raises one below its minimum to that minimum.
+  # A declaration that changes its connect address, its `setup_url`, its `call_url` or how
+  # it pulls leaves an entry in the instance's trail whose actor is the key; one that
+  # changes none of them leaves none. The adapter's first declaration appends
+  # `{kind: "sync", interval: nil}` to its change feed, its default, and a later one
+  # appends nothing: as the contract has it, the feed carries the interval at the first
+  # declaration and whenever a person changes it. The interval an instance admin chose
+  # stays whatever a later declaration says; the adapter raises one below its minimum to
+  # that minimum.
   #
   # Each start also stores what its description's source role says
   # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
@@ -964,11 +969,12 @@ defmodule Apiary.Adapters do
   # no source role stores the defaults, no words, items and no line. Each start also
   # stores the domains its description lists, nil for none
   # (`Apiary.Nodes.Node.domains_changeset/2`); a start that narrows them leaves every
-  # collection assigned as it was. They are no part of the trail's entry. A start that changes `items` writes the feed's
-  # `linked` or `unlinked` entry for each live collection whose link that changes, in the
-  # same transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
-  # declaration's `sync` entry, so that the feed counter is taken after the collections,
-  # last, as the lock order has it; after the commit those collections are broadcast.
+  # collection assigned as it was. They are no part of the trail's entry. A start that
+  # changes `items` writes the feed's `linked` or `unlinked` entry for each live
+  # collection whose link that changes, in the same transaction
+  # (`Apiary.Adapters.Collections.relink_adapter/2`), before the first declaration's
+  # `sync` entry, so that the feed counter is taken after the collections, last, as the
+  # lock order has it; after the commit those collections are broadcast.
   # A start that changes the source's line on access or its words for its items or its
   # collections tells, after the commit, each organisation with a connection to the
   # adapter that its connection changed, once (`connection_changed`), so an open page of
@@ -993,6 +999,9 @@ defmodule Apiary.Adapters do
              |> Node.declaration_changeset(%{
                connect_url: declaration.connect_url,
                setup_url: Map.get(declaration, :setup_url),
+               call_url: Map.get(declaration, :call_url),
+               call_instance_id:
+                 if(Map.get(declaration, :call_url), do: Map.get(declaration, :instance_id)),
                sync_default_interval: declaration.default_interval,
                sync_minimum_interval: declaration.minimum_interval,
                sync_sends_changes: declaration.sends_changes
