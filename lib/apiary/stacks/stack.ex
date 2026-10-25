@@ -1,8 +1,10 @@
 defmodule Apiary.Stacks.Stack do
-  # A stack set at a level of an organisation: `stack`, a stack name or a stack reference
-  # (`Apiary.Contract.Stack`), and `saved_by_organisation_id`, the organisation a member
-  # saved it in, nil for a stack saved any other way (`Apiary.Stacks.saved_by/1`) and
-  # once that organisation is deleted.
+  # A stack set at a level of an organisation: `harness`, a harness document, the
+  # contents of the `harness` section of qory's format written in YAML
+  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow; and
+  # `saved_by_organisation_id`, the organisation a member saved it in, nil for a stack
+  # saved any other way (`Apiary.Stacks.saved_by/1`) and once that organisation is
+  # deleted. A row has a document, a workflow, or both.
   #
   # Its level is read from the columns it has set (`level/1`):
   #
@@ -34,7 +36,7 @@ defmodule Apiary.Stacks.Stack do
   @foreign_key_type :binary_id
   schema "stacks" do
     field :workflow, :string
-    field :stack, :string
+    field :harness, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

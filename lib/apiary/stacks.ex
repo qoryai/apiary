@@ -1,14 +1,18 @@
 defmodule Apiary.Stacks do
-  # The stacks of an organisation (`Apiary.Stacks.Stack`): the stack a run uses, a stack
-  # name or a stack reference (`Apiary.Contract.Stack`), set at five levels and resolved
-  # for each run by `Apiary.Stacks.Resolution`.
+  # The stacks of an organisation (`Apiary.Stacks.Stack`): the harness document a run
+  # uses, the contents of the `harness` section of qory's format written in YAML
+  # (`Apiary.Stacks.Document`), set at five levels and resolved for each run by
+  # `Apiary.Stacks.Resolution`. A row may set only the workflow.
   #
   # ## The run's stack
   #
   # `for_run/3` is the `stack`, `workflow` and `harness_hidden` of an explore run's
   # documents. The run's workflow is the workflow of the one row with a workflow at the
   # run's places, its workspace and its target (`workflow/2`). With no such row, or two
-  # or more, the run has no workflow, so it has no stack, whatever the levels have.
+  # or more, the run has no workflow, so it has no stack, whatever the levels have. The
+  # run's `stack` is the stack reference of the document that resolves
+  # (`Apiary.Stacks.Document.reference/1`): a run whose document is not a base alone, or
+  # with no document at any level, has no stack and no workflow.
   #
   # ## Writes
   #
@@ -19,30 +23,31 @@ defmodule Apiary.Stacks do
   # `saved_by_organisation_id`, the scope's organisation when the scope reaches it
   # through a membership there alone (`saved_by/1`). A scope that reaches it any other
   # way, such as an instance admin or an operator's person acting in a client, or the
-  # instance acting by itself, records nil: the owner of a reference saved so is
+  # instance acting by itself, records nil: the owner of a document saved so is
   # unknown, and the run hides the harness.
   #
   # ## Refused on save
   #
-  # `stack`: a stack name or a stack reference (`Apiary.Contract.Stack.valid?/1`).
-  # `workflow`: a lower-case letter, then up to 63 lower-case letters, digits and hyphens.
-  # Each refusal is a changeset error on its field.
+  # `harness`: a harness document under the save rules of `Apiary.Stacks.Document`, or
+  # nil at a place with a workflow. `workflow`: a lower-case letter, then up to 63
+  # lower-case letters, digits and hyphens. Each refusal is a changeset error on its
+  # field.
   #
   # ## Locks
   #
   # A write takes the row of its place `FOR UPDATE`, when there is one; two first writes
   # at one place meet at the unique index, and the second is a changeset error on
-  # `stack`. A read for a run takes no lock.
+  # `harness`. A read for a run takes no lock.
   @moduledoc false
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias Apiary.{Contract, Edition, Repo}
+  alias Apiary.{Edition, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias Apiary.Runs.Target
-  alias Apiary.Stacks.{Resolution, Stack}
+  alias Apiary.Stacks.{Document, Resolution, Stack}
 
   @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
 
@@ -64,10 +69,11 @@ defmodule Apiary.Stacks do
 
   @doc false
   # for_run/3 is the stack of an explore run of `workspace` in `organisation`, at
-  # `target`, the work item's `%{system, path}`, nil for none: the resolution's `stack`,
-  # the run's workflow (`workflow/2`) and `harness_hidden`, or nil for a run without a
-  # workflow. The row the workflow is read from has a stack, so a run with a workflow has
-  # a stack. A target no row of the workspace has counts as none.
+  # `target`, the work item's `%{system, path}`, nil for none: the stack reference of the
+  # resolution's document (`Apiary.Stacks.Document.reference/1`), the run's workflow
+  # (`workflow/2`) and `harness_hidden`; or nil for a run without a workflow, without a
+  # document at any level, or whose document has no stack reference. A target no row of
+  # the workspace has counts as none.
   @spec for_run(Organisation.t(), Workspace.t(), %{system: String.t(), path: String.t()} | nil) ::
           run_stack | nil
   def for_run(%Organisation{} = organisation, %Workspace{} = workspace, target) do
@@ -77,9 +83,10 @@ defmodule Apiary.Stacks do
          {:ok, %Resolution{} = resolution} <-
            organisation
            |> input_for(workspace, target, workflow)
-           |> Resolution.resolve() do
+           |> Resolution.resolve(),
+         stack when is_binary(stack) <- Document.reference(resolution.harness) do
       %{
-        stack: resolution.stack,
+        stack: stack,
         workflow: resolution.workflow,
         harness_hidden: resolution.harness_hidden
       }
@@ -118,9 +125,8 @@ defmodule Apiary.Stacks do
   @doc false
   # input_for/4 is what a resolution reads for the runs of `workflow` of `workspace` in
   # `organisation`, at `target`, nil for none: the organisation's stacks at the run's
-  # places, read without a lock, whether the organisation is operated
-  # (`c:Apiary.Edition.operated?/1`), and whether the instance has one organisation
-  # (`c:Apiary.Edition.limits/0`).
+  # places, read without a lock, and whether the organisation is operated
+  # (`c:Apiary.Edition.operated?/1`).
   @spec input_for(Organisation.t(), Workspace.t(), Target.t() | nil, String.t()) ::
           Resolution.input()
   def input_for(%Organisation{} = organisation, %Workspace{} = workspace, target, workflow)
@@ -152,8 +158,7 @@ defmodule Apiary.Stacks do
       workspace_id: workspace.id,
       target_id: target_id,
       workflow: workflow,
-      operated: Edition.operated?(organisation),
-      single_organisation: Edition.limits().organisations == 1
+      operated: Edition.operated?(organisation)
     }
   end
 
@@ -171,12 +176,13 @@ defmodule Apiary.Stacks do
   ## Writing
 
   @doc false
-  # put_stack/3 sets the stack at `place` to `stack`, replacing what the place had, saved
-  # by the scope's person in the scope's organisation. `{:ok, stack}`, or `{:error,
+  # put_stack/3 sets the harness document at `place` to `harness`, nil for none at a
+  # place with a workflow, replacing what the place had, saved by the scope's person in
+  # the scope's organisation. `{:ok, stack}`, or `{:error,
   # changeset}` with the reason on its field. Only tests and the demo call it: no action,
   # route or page does, and it checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term) :: {:ok, Stack.t()} | {:error, Ecto.Changeset.t()}
-  def put_stack(%Scope{organisation: %Organisation{}} = scope, place, stack) do
+  def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness) do
     columns = columns(place)
     user_id = scope.user && scope.user.id
     saved_by = saved_by(scope)
@@ -186,7 +192,7 @@ defmodule Apiary.Stacks do
 
       changes =
         Map.merge(columns, %{
-          stack: stack,
+          harness: harness,
           saved_by_organisation_id: saved_by,
           updated_by_id: user_id
         })
@@ -278,13 +284,24 @@ defmodule Apiary.Stacks do
   # The changes, checked against the rules of the moduledoc.
   defp changeset(%Stack{} = row, changes) do
     row
-    |> change(Map.drop(changes, [:stack, :workflow]))
-    |> cast(changes, [:stack, :workflow])
-    |> validate_required([:stack])
-    |> validate_change(:stack, fn :stack, value ->
-      if Contract.Stack.valid?(value), do: [], else: [stack: "has invalid format"]
+    |> change(Map.drop(changes, [:harness, :workflow]))
+    |> cast(changes, [:harness, :workflow])
+    |> validate_harness_or_workflow()
+    |> validate_change(:harness, fn :harness, value ->
+      for error <- Document.errors(value), do: {:harness, error}
     end)
     |> validate_format(:workflow, @workflow)
-    |> unique_constraint(:stack, name: :stacks_place_index)
+    |> check_constraint(:harness, name: :stacks_harness_or_workflow, message: "can't be blank")
+    |> check_constraint(:harness, name: :stacks_harness_size, message: "is too long")
+    |> unique_constraint(:harness, name: :stacks_place_index)
+  end
+
+  # A row sets a harness document, a workflow, or both. A value that did not cast has the
+  # error "is invalid" already.
+  defp validate_harness_or_workflow(changeset) do
+    if is_nil(get_field(changeset, :harness)) and is_nil(get_field(changeset, :workflow)) and
+         not Keyword.has_key?(changeset.errors, :harness),
+       do: add_error(changeset, :harness, "can't be blank", validation: :required),
+       else: changeset
   end
 end
