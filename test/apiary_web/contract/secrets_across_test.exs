@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   # A run's model key and the gateway's organisation (`Apiary.Runs.ProviderCredential`):
   # a key of a provider of the organisation's chain goes only to a gateway of the run's
-  # organisation, and a key of a provider of an operator's chain only to a gateway of an
-  # operator that serves the run's organisation, at the claim and at the secrets
-  # request. The edition's seams are `Apiary.EditionStubs.ServesAcrossWithChain`: the
+  # organisation or to the instance's gateway, and a key of a provider of an operator's
+  # chain only to a gateway of an operator that serves the run's organisation or to the
+  # instance's gateway, at the claim and at the secrets request. The edition's seams are `Apiary.EditionStubs.ServesAcrossWithChain`: the
   # operator's organisation-level gateways serve the client's workspaces. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -24,7 +24,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.Coded
   alias Apiary.ModelChoices.ModelChoice
-  alias Apiary.Runs.{Attach, Registration, Run}
+  alias Apiary.Runs.{Attach, Registration, Run, Sender}
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
@@ -366,20 +366,31 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
       assert seals() == []
     end
 
-    test "a pool's key is never sealed the run's key", ctx do
+    test "the instance pool's key is never sealed the key of a run it claimed", ctx do
       gateway_key = instance_gateway()
 
       {:ok, _choice} =
         ModelChoices.put_choice(ctx.client, :workspace, %{provider: ctx.provider.public_id})
 
-      {{:ok, handed}, _queued} = hand_over(ctx)
-      run = attach!(gateway_key, handed)
-      digest = digest(gateway_key, run)
-
       %{access_key: pool_key, pair: pair} =
         installed_key_fixture(instance_pool_fixture(), allow_secrets: true)
 
       {:ok, pool_key} = AccessKeys.fetch_for_verification(pool_key.key_id)
+
+      # The client's workspace has no pool in use: the instance's pool claims its run,
+      # which goes through the instance's gateway.
+      work_item = work_item_fixture(ctx.client)
+      {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      {:ok, claimed} = Dispatches.claim(pool_key, Dispatches.now())
+      handed = %{run: claimed.registered, run_key: redeemed_run_key!(claimed.run_code)}
+      run = attach!(gateway_key, handed)
+      assert run.node_id == pool_key.node_id
+      digest = digest(gateway_key, run)
+
+      # The pool's key reads the run, as its pool claimed it: the refusal is of the key,
+      # which the run key does not list among the gateway's keys.
+      assert %Run{id: id} = Repo.one(Sender.run_query(pool_key, run.node_run_id))
+      assert id == run.id
 
       conn = post_secrets({pool_key, pair.secret}, run, digest, ctx.provider)
       assert conn.status == 404

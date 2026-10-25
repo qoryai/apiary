@@ -4,8 +4,10 @@ defmodule Apiary.Nodes.InstalledTest do
   # (`Apiary.Adapters.Installer.pass/0`): each made once, its code written to its folder
   # while it has no key, the pool's without stored secrets and the gateway's with them, the
   # enrolment with the file's code, a revocation that brings a code at once, and a node no
-  # longer declared, whose codes are cancelled. Not async: the settings, the directory and
-  # the instance's one pool and one gateway are the whole node's.
+  # longer declared, whose codes are cancelled and enrol nothing. Then the refusals of
+  # `install/2`, `authorize_install/1` and `set_instance_limit/3`, and of a key made in a
+  # browser. Not async: the settings, the directory and the instance's one pool and one
+  # gateway are the whole node's.
   use Apiary.DataCase, async: false
 
   import Ecto.Query
@@ -141,7 +143,7 @@ defmodule Apiary.Nodes.InstalledTest do
     end
 
     @tag with_features: [:observability, :security]
-    test "stop the boot on a node declared where the instance has no node pools of its own" do
+    test "stop the boot on a node declared with the factory feature off" do
       error = assert_raise ArgumentError, fn -> boot("pool", nil, nil) end
       assert error.message =~ "declares a node of\nthe instance"
       refute error.message =~ "factory"
@@ -286,6 +288,136 @@ defmodule Apiary.Nodes.InstalledTest do
       declare(%{pool: nil, gateway: nil, url: nil})
       assert Installer.pass() == {:ok, []}
       assert Repo.all(from n in Node, where: n.kind in [:pool, :gateway]) == []
+    end
+
+    test "enrols nothing with a code it got while it was declared" do
+      assert Installer.pass() == {:ok, []}
+      pool = declared_node(:pool)
+      code = code_in_file("pool")
+
+      # No pass since: the code is outstanding, and the node is no longer declared.
+      declare(%{pool: nil, gateway: "gateway", url: "https://gateway.example"})
+      assert [_code] = outstanding(pool)
+
+      assert {:error, :unauthorized} = enrol(code)
+      assert Repo.all(from k in AccessKey, where: k.node_id == ^pool.id) == []
+    end
+  end
+
+  describe "install/2 and authorize_install/1, refused" do
+    defp instance_nodes, do: Repo.all(from n in Node, where: n.kind in [:pool, :gateway])
+
+    test "the instance in another organisation than the instance's is forbidden" do
+      %{scope: other} = sign_up_fixture()
+      elsewhere = Apiary.Accounts.Scope.for_instance(other.organisation)
+
+      assert NodesInstalled.authorize_install(elsewhere) == {:error, :forbidden}
+      assert NodesInstalled.install(elsewhere, :pool) == {:error, :forbidden}
+      assert instance_nodes() == []
+    end
+
+    test "a person, an instance admin among them, is forbidden", %{admin: admin} do
+      assert NodesInstalled.authorize_install(admin) == {:error, :forbidden}
+      assert NodesInstalled.authorize_install(nil) == {:error, :forbidden}
+      assert NodesInstalled.install(admin, :gateway) == {:error, :forbidden}
+      assert instance_nodes() == []
+    end
+
+    @tag with_features: [:observability, :security]
+    test "where the factory feature is off, is not found", %{scope: instance} do
+      assert NodesInstalled.authorize_install(instance) == {:error, :not_found}
+      assert NodesInstalled.authorize_install(nil) == {:error, :not_found}
+      assert NodesInstalled.install(instance, :pool) == {:error, :not_found}
+      assert instance_nodes() == []
+    end
+
+    test "a kind not declared is not declared", %{scope: instance} do
+      declare(%{pool: nil, gateway: "gateway", url: "https://gateway.example"})
+      assert NodesInstalled.install(instance, :pool) == {:error, :not_declared}
+      assert instance_nodes() == []
+    end
+
+    test "a name an adapter is installed as conflicts at each of 3 tries, then is a conflict",
+         %{scope: instance} do
+      _adapter = Apiary.NodesFixtures.installed_adapter_fixture("pool")
+
+      assert NodesInstalled.install(instance, :pool) == {:error, :conflict}
+      assert instance_nodes() == []
+      assert Repo.all(from e in Entry, where: e.action == "node.install") == []
+    end
+  end
+
+  describe "set_instance_limit/3, refused" do
+    setup do
+      %{
+        pool: Apiary.NodesFixtures.instance_pool_fixture(%{installed_as: "pool"}),
+        gateway: Apiary.NodesFixtures.instance_gateway_fixture(%{installed_as: "gateway"})
+      }
+    end
+
+    test "for a person not an instance admin", %{pool: pool} do
+      %{scope: member} = sign_up_fixture()
+
+      assert NodesInstalled.set_instance_limit(member, pool, %{"instance_limit" => "3"}) ==
+               {:error, :forbidden}
+
+      assert Repo.reload!(pool).instance_limit == nil
+    end
+
+    @tag with_features: [:observability, :security]
+    test "where the factory feature is off", %{admin: admin, pool: pool} do
+      assert NodesInstalled.set_instance_limit(admin, pool, %{"instance_limit" => "3"}) ==
+               {:error, :not_found}
+
+      assert Repo.reload!(pool).instance_limit == nil
+    end
+
+    test "for a pool no longer in use", %{admin: admin, pool: pool} do
+      Repo.update_all(from(n in Node, where: n.id == ^pool.id),
+        set: [deleted_at: DateTime.utc_now()]
+      )
+
+      assert NodesInstalled.set_instance_limit(admin, pool, %{"instance_limit" => "3"}) ==
+               {:error, :not_found}
+
+      assert Repo.reload!(pool).instance_limit == nil
+    end
+
+    test "for the gateway, which has no limit", %{admin: admin, gateway: gateway} do
+      assert NodesInstalled.set_instance_limit(admin, gateway, %{"instance_limit" => "3"}) ==
+               {:error, :not_found}
+    end
+
+    test "with a limit below 1, as a changeset", %{admin: admin, pool: pool} do
+      assert {:error, %Ecto.Changeset{}} =
+               NodesInstalled.set_instance_limit(admin, pool, %{"instance_limit" => "0"})
+
+      assert Repo.reload!(pool).instance_limit == nil
+      assert Repo.all(from e in Entry, where: e.action == "node.set_limit") == []
+    end
+  end
+
+  describe "a key made in a browser" do
+    # The instance's nodes are at no organisation's place: `Apiary.AccessKeys.add_access_key/3`
+    # refuses them as not found to an instance admin, before its check of a node installed
+    # with Qory Apiary.
+    test "is refused for a node installed with Qory Apiary, as not found", %{admin: admin} do
+      assert Installer.pass() == {:ok, []}
+
+      for kind <- [:pool, :gateway] do
+        node = declared_node(kind)
+        pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
+
+        assert {:error, reason} =
+                 AccessKeys.add_access_key(admin, node, %{
+                   label: "browser",
+                   public_key: pair.encoded,
+                   allow_secrets: false
+                 })
+
+        assert reason == :not_found
+        assert Repo.all(from k in AccessKey, where: k.node_id == ^node.id) == []
+      end
     end
   end
 end
