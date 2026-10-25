@@ -632,7 +632,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
                ["issued", "invalid_answer", "token_control_character", "invalid_answer"]
 
       refute inspect(Repo.all(Entry)) =~ @token
-      # The scan's own queries have the token as a parameter: their log lines are left out.
+      # The scan's queries have the token as a parameter: their log lines are left out.
       capture_log(fn -> assert columns_with(@token) == [] end)
     end
   end
