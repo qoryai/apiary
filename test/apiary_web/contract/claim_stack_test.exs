@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.Contract.ClaimStackTest do
   # The claim answer as a node pool's starter receives it, with no `machine`, and the
   # run's documents: for an explore run, the workflow of the one stack row with a
-  # workflow at the run's places, the stack that resolves (`Apiary.Stacks`) and
-  # `harness_hidden`; none of the three with no such row, with two, and for a prebuild.
+  # workflow at the run's places, the stack reference of the harness document that
+  # resolves (`Apiary.Stacks`) and `harness_hidden`; none of the three with no such row,
+  # with two, and for a prebuild.
   # Each answer is valid under the vendored `claim-answer.schema.json`, so the module is
   # tagged `:contract`. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -49,8 +50,9 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
     def resolve(url, _roots), do: {:error, {:not_vendored, url}}
   end
 
-  @stack "core"
+  @document "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
   @reference "https://code.example.com/team/stacks#main:core"
+  @other_document "extends: {git: https://code.example.com/team/stacks, ref: v2, path: x}\n"
 
   setup do
     Process.put(:now_time, {SignedRequest.now(), 0})
@@ -61,9 +63,10 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
     |> Map.put(:scope, scope)
   end
 
-  # Stores the workspace's stack row for the workflow `hello`, with `stack`.
-  defp workflow!(ctx, stack \\ @stack) do
-    {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "hello"}, stack)
+  # Stores the workspace's stack row for the workflow `hello`, with `harness`.
+  defp workflow!(ctx, harness \\ @document) do
+    {:ok, _stack} =
+      Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "hello"}, harness)
   end
 
   # A request's time, one second earlier for each request the test sends, so no two
@@ -156,13 +159,16 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
       claim = claim(ctx)
       assert members(claim) == @claim ++ @code
       documents = documents(claim)
-      assert %{"stack" => "core", "workflow" => "hello", "harness_hidden" => false} = documents
+
+      assert %{"stack" => @reference, "workflow" => "hello", "harness_hidden" => false} =
+               documents
+
       assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
     end
 
-    test "has the reference its target's level sets, shown to the organisation that saved it",
+    test "has the stack its target's level sets, shown to the organisation that saved it",
          ctx do
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "hello"}, @reference)
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "hello"}, @document)
 
       explore!(ctx)
       documents = documents(claim(ctx))
@@ -173,11 +179,11 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
       assert {:ok, _} = JSV.validate(documents, validator("run/v1/documents.schema.json"))
     end
 
-    test "hides the harness of a reference another organisation saved", ctx do
+    test "hides the harness of a document another organisation saved", ctx do
       %{scope: other} = sign_up_fixture()
 
       {:ok, _stack} =
-        Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "hello"}, @reference)
+        Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "hello"}, @document)
 
       explore!(ctx)
       documents = documents(claim(ctx))
@@ -190,8 +196,10 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
 
     test "with no stack row with a workflow has no stack, whatever its levels set, and no machine",
          ctx do
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @reference)
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, "x")
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @document)
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, @other_document)
 
       explore!(ctx)
       claim = claim(ctx)
@@ -203,7 +211,7 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
 
     test "with two stack rows with a workflow has no stack", ctx do
       workflow!(ctx)
-      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "review"}, @stack)
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "review"}, @document)
 
       explore!(ctx)
       claim = claim(ctx)
@@ -215,7 +223,7 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
 
   describe "a prebuild" do
     test "of a workspace with a stack row with a workflow has no machine and no stack", ctx do
-      workflow!(ctx, @reference)
+      workflow!(ctx)
       collection = collection_fixture(ctx.scope)
 
       {:ok, _run} =

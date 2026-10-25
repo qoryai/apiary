@@ -1,4 +1,4 @@
-# A harness repository's root file: its stacks and its modules in two folders.
+# The root file of a harness source: its stacks and its modules in two folders.
 exports:
   dir: {stacks: delivered/stacks, modules: delivered/modules}
   stacks: [web]

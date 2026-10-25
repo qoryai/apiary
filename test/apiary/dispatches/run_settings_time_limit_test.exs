@@ -17,7 +17,8 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   @moduletag needs: :factory
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
-  @stack "core"
+  @harness "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
+  @stack "https://code.example.com/team/stacks#main:core"
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -26,7 +27,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
   # Stores the workspace's stack row for `workflow`: the run's one row with a workflow.
   defp workflow!(%{scope: scope}, workflow) do
-    {:ok, _stack} = Stacks.put_stack(scope, {:workspace, scope.workspace, workflow}, @stack)
+    {:ok, _stack} = Stacks.put_stack(scope, {:workspace, scope.workspace, workflow}, @harness)
   end
 
   # A fresh work item's explore run, queued and claimed under `place`'s pool key: what
@@ -172,7 +173,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
   test "with two stack rows with a workflow, the member is absent whatever the limits", ctx do
     workflow!(ctx, "hello")
-    {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx.scope), "hello"}, @stack)
+    {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx.scope), "hello"}, @harness)
     place = handover_place_fixture(ctx.scope)
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 

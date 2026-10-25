@@ -1,4 +1,4 @@
-# A checkout that extends a stack and appends a module its harness repository exports.
+# A checkout that extends a stack and appends a module its harness source exports.
 harness:
   extends: {git: https://code.example.com/example-org/harness, ref: v2.4.0, stack: web}
   modules:

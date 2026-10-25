@@ -1,4 +1,4 @@
-# A checkout that extends the stack in a folder of a remote repository.
+# A checkout that extends the stack in a folder of a remote source.
 harness:
   extends:
     git: https://code.example.com/example-org/harness

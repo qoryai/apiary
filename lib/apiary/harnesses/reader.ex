@@ -170,8 +170,8 @@ defmodule Apiary.Harnesses.Reader do
   defp dir?(_other), do: false
 
   @doc """
-  stack_file/2 is the path of the `qory-stack.yaml` of the stack `name` in a repository
-  whose root file has `exports`, from the repository's root.
+  stack_file/2 is the path of the `qory-stack.yaml` of the stack `name` in a source
+  whose root file has `exports`, from the source's root.
   """
   @spec stack_file(exports, String.t()) :: String.t()
   def stack_file(%{dir: dir}, name) when is_binary(name) do
@@ -200,7 +200,7 @@ defmodule Apiary.Harnesses.Reader do
   end
 
   # The first pass: the parser's tokens alone, with no node built. A throw of this
-  # module's tag leaves the parser, which catches only its own errors.
+  # module's tag leaves the parser, which catches only `yamerl_parsing_error` records.
   defp scan(bytes) do
     _parser = :yamerl_parser.string(bytes, token_fun: token_fun(0, 0))
     :ok
