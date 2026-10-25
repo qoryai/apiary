@@ -523,8 +523,14 @@ defmodule Apiary.Access do
          "an adapter's end of a connection is kept on the connection, its end and its reason, not in the audit trail"}
     ),
     # The grants of an organisation's connection (`Apiary.Adapters.Grants`): the adapter's
-    # report of one, in the trail of the instance's organisation, and its read of them all.
+    # report of one, and its report that the source no longer covers one, each in the
+    # trail of the instance's organisation, and its read of them all.
     Action.new(:"adapter.report_grant", "report a grant of a connection of the adapter",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.end_grant", "end a grant of a connection of the adapter",
       feature: :factory,
       roles: [:adapter_key],
       asked_of: :organisation

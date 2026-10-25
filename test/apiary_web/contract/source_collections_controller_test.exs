@@ -29,6 +29,8 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
     workspace_fixture(scope.organisation)
     %{adapter: adapter, access_key: key, pair: pair} = connectable_adapter_fixture()
     {connection, _nonce} = connection_fixture(scope, adapter, :connected)
+    # The grant of each collection in the contract's listings.
+    "G_1" = listing_grant(connection, "G_1")
     %{scope: scope, adapter: adapter, key: key, seed: pair.secret, connection: connection}
   end
 
@@ -401,12 +403,20 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
       %{scope: second} = sign_up_fixture()
       {pending, _nonce} = connection_fixture(second, ctx.adapter, :pending)
       listing = fixture("source-collections/code-host.json")
+      ref = listing_grant(theirs)
+
+      collections =
+        for collection <- listing["collections"], do: Map.put(collection, "grant_ref", ref)
 
       conn =
         send_post(
           ctx,
           @listing,
-          Map.merge(listing, %{"time" => now_time(), "connection_id" => theirs.public_id})
+          Map.merge(listing, %{
+            "time" => now_time(),
+            "connection_id" => theirs.public_id,
+            "collections" => collections
+          })
         )
 
       assert conn.status == 204

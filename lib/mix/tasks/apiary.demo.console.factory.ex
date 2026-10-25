@@ -17,8 +17,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #   * Dana, an instance admin who signed in a minute ago, makes each adapter and its
   #     enrolment code (`Apiary.Adapters.create_adapter/2`, `create_code/2`); the adapter
   #     enrols its key with that code (`Apiary.AccessKeys.enrol/2`);
-  #   * the adapter declares itself (`Apiary.Adapters.declare/3`), lists its
-  #     collections (`Apiary.Adapters.Collections.post_listing/2`), and posts their
+  #   * the adapter declares itself (`Apiary.Adapters.declare/3`), reports the grant of
+  #     Acme's external account once Dana's return connects it
+  #     (`Apiary.Adapters.Grants.report/2`), lists its collections under that grant
+  #     (`Apiary.Adapters.Collections.post_listing/2`), and posts their
   #     tickets and comments (`Apiary.Sources.post_items/2`, `post_comments/2`), each body
   #     read by the contract's wire module first and each request recorded as a use of
   #     its key, as the adapter's signed requests would be;
@@ -49,7 +51,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   alias Apiary.{AccessKeys, Adapters, Organisations, Repo, Sources, Stacks}
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{Collection, Collections, Connections}
+  alias Apiary.Adapters.{Collection, Collections, Connections, Grants}
   alias Apiary.Adapters.Wire, as: AdapterWire
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Sources.Backlog
@@ -63,6 +65,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   @helpdesk_host "https://helpdesk.example.com"
   # The code host the repositories' runs would clone from.
   @code_host "git.example.com"
+  # The adapter's ref to the grant of Acme's external account, under which it lists every
+  # collection.
+  @grant_ref "G_acme"
 
   # The workflow of Main's explore runs, and its harness document: it extends the stack
   # `examples/hello` of qory's repository at one commit.
@@ -424,11 +429,25 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
   ## The connection
 
-  # Dana presses Install, and comes back with the adapter's return, which says it linked.
-  defp connect!(main, adapter, {_key, secret}) do
+  # Dana presses Install, and comes back with the adapter's linked return;
+  # the adapter then reports the grant of Acme's external account under that pass.
+  defp connect!(main, adapter, {key, secret}) do
     {:ok, _url, {connection_id, nonce}} = Adapters.connect(main, adapter)
     token = return_token(secret, connection_id, nonce)
     {:ok, :linked} = Connections.complete_return(main, connection_id, token, nonce)
+
+    body = %{
+      "version" => 1,
+      "time" => time(DateTime.utc_now()),
+      "connection_id" => connection_id,
+      "grant_ref" => @grant_ref,
+      "account" => %{"ref" => "1001", "title" => "acme"},
+      "pass_nonce" => nonce
+    }
+
+    {:ok, decoded} = body |> Jason.encode!() |> AdapterWire.decode()
+    {:ok, report} = AdapterWire.grant_report(decoded)
+    {:ok, _grant} = Grants.report(key_scope(key), report)
     Map.fetch!(Connections.live_by_adapter(main), adapter.id)
   end
 
@@ -462,7 +481,12 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
       "connection_id" => connection.public_id,
       "collections" =>
         for path <- paths do
-          collection = %{"ref" => path, "url" => "#{host}/#{path}", "title" => path}
+          collection = %{
+            "ref" => path,
+            "url" => "#{host}/#{path}",
+            "title" => path,
+            "grant_ref" => @grant_ref
+          }
 
           if path in @queues,
             do: collection,

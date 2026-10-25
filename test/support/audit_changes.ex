@@ -130,6 +130,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.app_values_set",
       :"adapter.app_values_seal",
       :"adapter.report_grant",
+      :"adapter.end_grant",
       :"harness.assigned",
       :"harness.unassigned",
       :"collection.assign",
@@ -659,7 +660,39 @@ defmodule Apiary.AuditChanges do
       Adapters.Grants.report(key_scope, %{
         connection_id: connection.public_id,
         grant_ref: "G_audited",
+        account: %{ref: "1001", title: "acme"},
         pass_nonce: connection.pass_nonce
+      })
+
+    %{
+      scope: key_scope,
+      subject: {"node", connection.adapter_id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: nonce
+    }
+  end
+
+  # An adapter's key reports that the source no longer covers a grant of a connection, in
+  # the trail of the instance's organisation, about the adapter; the entry's actor is the
+  # key, and the entry keeps neither the grant's ref nor the pass's nonce.
+  def make(:"adapter.end_grant", %{scope: scope}) do
+    {connection, nonce, key_scope, key} = granting(scope)
+
+    {:ok, _grant} =
+      Adapters.Grants.report(key_scope, %{
+        connection_id: connection.public_id,
+        grant_ref: "G_audited",
+        account: %{ref: "1001", title: "acme"},
+        pass_nonce: connection.pass_nonce
+      })
+
+    before = entries()
+
+    {:ok, _ended} =
+      Adapters.Grants.end_grant(key_scope, %{
+        connection_id: connection.public_id,
+        grant_ref: "G_audited"
       })
 
     %{
@@ -1094,7 +1127,20 @@ defmodule Apiary.AuditChanges do
      Adapters.Grants.report(key_scope, %{
        connection_id: connection.public_id,
        grant_ref: "G_audited",
+       account: %{ref: "1001", title: "acme"},
        pass_nonce: :crypto.strong_rand_bytes(16)
+     })}
+  end
+
+  # A grant end of a ref the connection has no live grant with ends nothing.
+  def refuse(:"adapter.end_grant", %{scope: scope}) do
+    {connection, _nonce, key_scope, _key} = granting(scope)
+    before = entries()
+
+    {before,
+     Adapters.Grants.end_grant(key_scope, %{
+       connection_id: connection.public_id,
+       grant_ref: "G_audited"
      })}
   end
 
@@ -1156,7 +1202,13 @@ defmodule Apiary.AuditChanges do
       time: DateTime.utc_now(:second),
       connection_id: connection.public_id,
       collections: [
-        %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+        %{
+          ref: "TRK",
+          url: "https://tracker.acme.example/TRK",
+          title: "Tracker",
+          grant_ref: listing_grant(connection),
+          target: nil
+        }
       ],
       listing: %{id: id, part: 1, started_at: DateTime.utc_now(:second), complete: true}
     }
@@ -1265,7 +1317,13 @@ defmodule Apiary.AuditChanges do
         time: DateTime.utc_now(:second),
         connection_id: connection.public_id,
         collections: [
-          %{ref: "TRK", url: "https://tracker.acme.example/TRK", title: "Tracker", target: nil}
+          %{
+            ref: "TRK",
+            url: "https://tracker.acme.example/TRK",
+            title: "Tracker",
+            grant_ref: listing_grant(connection),
+            target: nil
+          }
         ],
         listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
       })
@@ -1321,6 +1379,7 @@ defmodule Apiary.AuditChanges do
             ref: "SHOP",
             url: "https://tracker.acme.example/SHOP",
             title: "acme/shop",
+            grant_ref: listing_grant(connection),
             target: %{system: "code.example.com", path: "acme/shop"}
           }
         ],

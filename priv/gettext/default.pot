@@ -6414,6 +6414,11 @@ msgstr ""
 msgid "Ended"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Ended a grant"
+msgstr ""
+
 #: lib/apiary/runs/filters.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format

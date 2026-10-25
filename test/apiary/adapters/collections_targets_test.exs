@@ -65,7 +65,13 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
       connection_id: ctx.connection.public_id,
       collections:
         for {ref, target} <- collections do
-          %{ref: ref, url: "https://tracker.acme.example/" <> ref, title: ref, target: target}
+          %{
+            ref: ref,
+            url: "https://tracker.acme.example/" <> ref,
+            title: ref,
+            grant_ref: listing_grant(ctx.connection),
+            target: target
+          }
         end,
       listing: %{
         id: Keyword.get(opts, :id, "listing-1"),

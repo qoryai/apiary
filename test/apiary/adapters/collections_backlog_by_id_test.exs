@@ -76,6 +76,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
             ref: ref,
             url: "https://tracker.acme.example/" <> ref,
             title: "Title of " <> ref,
+            grant_ref: listing_grant(ctx.connection),
             target: target,
             items: items
           }

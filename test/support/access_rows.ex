@@ -158,6 +158,7 @@ defmodule Apiary.AccessRows do
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.report_grant", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.end_grant", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.read_grants", yes: [:adapter_key, :hidden], on: :adapter},
       {:"harness.save", yes: @owners ++ [:admin]},
       {:"harness.assigned", yes: []},

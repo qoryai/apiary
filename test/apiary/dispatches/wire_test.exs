@@ -107,7 +107,7 @@ defmodule Apiary.Dispatches.WireTest do
     for {dir, ref} <- [
           {"provisioner/v1", "1774020bb474b73913e8a9f0245bd466709e3d35"},
           {"run/v1", "d7d40949e55bc7f4584466332088c58d082c937a"},
-          {"integration/v1", "1774020bb474b73913e8a9f0245bd466709e3d35"},
+          {"integration/v1", "d7d40949e55bc7f4584466332088c58d082c937a"},
           {"explore/v1", "1774020bb474b73913e8a9f0245bd466709e3d35"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir

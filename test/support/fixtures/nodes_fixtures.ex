@@ -263,6 +263,44 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  The ref of a live grant of `connection`, as a listing of its collections gives it in
+  each collection's `grant_ref`: `ref`, else `G_` and the connection's public id, so that
+  the grants of two connections of one adapter differ. The grant is made as an accepted
+  report makes one, for the external account `1001`, `acme`, with a nonce of no pass,
+  unless the connection has a live grant with that ref already. It writes no feed entry
+  and no trail entry.
+  """
+  def listing_grant(%Apiary.Adapters.Connection{} = connection, ref \\ nil) do
+    alias Apiary.Adapters.Grant
+
+    ref = ref || "G_" <> connection.public_id
+
+    live =
+      Repo.one(
+        from g in Grant,
+          where: g.connection_id == ^connection.id and g.grant_ref == ^ref,
+          where: is_nil(g.ended_at)
+      )
+
+    if is_nil(live) do
+      Repo.insert!(%Grant{
+        public_id: Apiary.PublicId.generate(Grant.prefix()),
+        organisation_id: connection.organisation_id,
+        adapter_id: connection.adapter_id,
+        connection_id: connection.id,
+        grant_ref: ref,
+        account_ref: "1001",
+        account_title: "acme",
+        state: :live,
+        pass_nonce: :crypto.strong_rand_bytes(16),
+        granted_at: DateTime.utc_now()
+      })
+    end
+
+    ref
+  end
+
+  @doc """
   Sets the expiry kept for the latest connect pass of the pending connection `public_id`
   to `validity/0` seconds less a minute after now, truncated to the second, which is when
   a pass made a minute before now expires, so the next press of Install takes the same

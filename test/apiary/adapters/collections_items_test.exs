@@ -76,6 +76,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
             ref: ref,
             url: "https://tracker.acme.example/" <> ref,
             title: ref,
+            grant_ref: listing_grant(ctx.connection),
             target: target,
             items: items != false
           }

@@ -54,7 +54,8 @@ defmodule Apiary.Adapters.Wire do
   # `listing/1` reads the body of `POST /v1/source-collections`
   # (`source-collections.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters), `collections`, at most 100, each exactly `ref`,
-  # `url` and `title`, `target` when given, which holds exactly `system` and `path`, and
+  # `url`, `title` and `grant_ref`, a ref, the grant of the same connection that covers
+  # it, `target` when given, which has exactly `system` and `path`, and
   # `items` when given, which is `false` (`items: true` when it is not given), and
   # `environment_ref` when given, 1 to 200 characters like a ref (nil when absent: the
   # collection has no environment definition); and `listing`, exactly `id`, `part`,
@@ -68,6 +69,13 @@ defmodule Apiary.Adapters.Wire do
   # `source_disconnect/1` reads the body of `POST /v1/sources/disconnect`
   # (`sources-disconnect.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters, as a listing names it) and `collection_ref`.
+  #
+  # `grant_report/1` reads the body of `POST /v1/grants` (`grant.schema.json`): exactly
+  # `version` (1), `time`, `connection_id`, `grant_ref`, `account` (an object of exactly
+  # `ref` and `title`) and `pass_nonce`.
+  #
+  # `grant_end/1` reads the body of `POST /v1/grants/end` (`grant-end.schema.json`):
+  # exactly `version` (1), `time`, `connection_id` and `grant_ref`.
   #
   # Their text is counted in code points, as the contract's lengths are, and none of it
   # may hold U+0000, which the database cannot keep. A part numbered past `max_part/0`,
@@ -107,16 +115,22 @@ defmodule Apiary.Adapters.Wire do
   @sync_keys ~w(default_interval minimum_interval sends_changes)
   @listing_body_keys ~w(collections connection_id listing time version)
   @listing_keys ~w(complete id part started_at)
-  @collection_keys ~w(ref title url)
+  @collection_keys ~w(grant_ref ref title url)
   @target_keys ~w(path system)
   @disconnect_keys ~w(collection_ref connection_id time version)
-  @grant_report_keys ~w(connection_id grant_ref pass_nonce time version)
+  @grant_report_keys ~w(account connection_id grant_ref pass_nonce time version)
+  @account_keys ~w(ref title)
+  @grant_end_keys ~w(connection_id grant_ref time version)
   @secrets_upload_keys ~w(sealed time version)
   @max_collections 100
   @max_part 10_000
   @max_title 1024
   @max_ref 200
   @system ~r/\A[a-z0-9.-]{1,253}\z/
+  # What an account's title refuses, as `grant.schema.json` writes it: the control
+  # characters, so no line feed or carriage return, the bidirectional controls and the
+  # format characters that are usually not shown.
+  @not_in_line ~r/[\x{0}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
 
   @type declaration :: %{
           time: DateTime.t(),
@@ -135,6 +149,7 @@ defmodule Apiary.Adapters.Wire do
           ref: String.t(),
           url: String.t(),
           title: String.t(),
+          grant_ref: String.t(),
           target: target | nil,
           items: boolean,
           environment_ref: String.t() | nil
@@ -156,7 +171,14 @@ defmodule Apiary.Adapters.Wire do
           time: DateTime.t(),
           connection_id: String.t(),
           grant_ref: String.t(),
+          account: %{ref: String.t(), title: String.t()},
           pass_nonce: <<_::128>>
+        }
+
+  @type grant_end :: %{
+          time: DateTime.t(),
+          connection_id: String.t(),
+          grant_ref: String.t()
         }
 
   @type source_disconnect :: %{
@@ -504,12 +526,14 @@ defmodule Apiary.Adapters.Wire do
              @collection_keys,
          true <- text?(item["ref"], 1, @max_ref),
          true <- url?(item["url"]),
-         true <- text?(item["title"], 1, @max_title) do
+         true <- text?(item["title"], 1, @max_title),
+         true <- text?(item["grant_ref"], 1, @max_ref) do
       {:ok,
        %{
          ref: item["ref"],
          url: item["url"],
          title: item["title"],
+         grant_ref: item["grant_ref"],
          target: target,
          items: items,
          environment_ref: environment_ref
@@ -593,8 +617,9 @@ defmodule Apiary.Adapters.Wire do
   def source_disconnect(_body), do: :error
 
   # The body of `POST /v1/grants` (`grant.schema.json`), decoded (`decode/1`): exactly
-  # `version` (1), `time`, `connection_id`, `grant_ref`, a ref, and `pass_nonce`, 16 bytes
-  # in base64url without padding, decoded strictly. `{:ok, report}` or `:error`.
+  # `version` (1), `time`, `connection_id`, `grant_ref`, a ref, `account`, exactly `ref`,
+  # a ref, and `title`, 1 to 1,024 code points in one line (`line?/1`), and `pass_nonce`,
+  # 16 bytes in base64url without padding, decoded strictly. `{:ok, report}` or `:error`.
   @doc false
   @spec grant_report(term) :: {:ok, grant_report} | :error
   def grant_report(%{} = body) do
@@ -603,12 +628,14 @@ defmodule Apiary.Adapters.Wire do
          {:ok, time} <- time(body["time"]),
          true <- Apiary.Adapters.Connection.public_id?(body["connection_id"]),
          true <- text?(body["grant_ref"], 1, @max_ref),
+         {:ok, account} <- account(body["account"]),
          {:ok, nonce} <- Apiary.Contract.Ed25519.decode(body["pass_nonce"], 16) do
       {:ok,
        %{
          time: time,
          connection_id: body["connection_id"],
          grant_ref: body["grant_ref"],
+         account: account,
          pass_nonce: nonce
        }}
     else
@@ -617,6 +644,39 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def grant_report(_body), do: :error
+
+  # A grant report's `account`: `{:ok, %{ref: ref, title: title}}` or `:error`.
+  defp account(%{} = account) do
+    with true <- Enum.sort(Map.keys(account)) == @account_keys,
+         true <- text?(account["ref"], 1, @max_ref),
+         true <- text?(account["title"], 1, @max_title),
+         true <- line?(account["title"]) do
+      {:ok, %{ref: account["ref"], title: account["title"]}}
+    else
+      _ -> :error
+    end
+  end
+
+  defp account(_account), do: :error
+
+  # The body of `POST /v1/grants/end` (`grant-end.schema.json`), decoded (`decode/1`):
+  # exactly `version` (1), `time`, `connection_id` and `grant_ref`, a ref.
+  # `{:ok, grant_end}` or `:error`.
+  @doc false
+  @spec grant_end(term) :: {:ok, grant_end} | :error
+  def grant_end(%{} = body) do
+    with true <- Enum.sort(Map.keys(body)) == @grant_end_keys,
+         true <- body["version"] === 1,
+         {:ok, time} <- time(body["time"]),
+         true <- Apiary.Adapters.Connection.public_id?(body["connection_id"]),
+         true <- text?(body["grant_ref"], 1, @max_ref) do
+      {:ok, %{time: time, connection_id: body["connection_id"], grant_ref: body["grant_ref"]}}
+    else
+      _ -> :error
+    end
+  end
+
+  def grant_end(_body), do: :error
 
   # The raw body of `POST /v1/adapter/secrets` (`adapter-secrets.schema.json`), decoded as
   # `decode/1` decodes it: exactly `version` (1), `time` and `sealed`, an object, whose
@@ -647,4 +707,8 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def text?(_value, _min, _max), do: false
+
+  # Whether the string `value` is one line as `grant.schema.json` writes an account's
+  # title: no character that `@not_in_line` matches.
+  defp line?(value) when is_binary(value), do: not Regex.match?(@not_in_line, value)
 end

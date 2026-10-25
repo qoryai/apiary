@@ -29,12 +29,14 @@ defmodule Apiary.Adapters.GrantsTest do
     }
   end
 
-  # A report of `ref` under the 16 bytes `nonce`, for the connection.
-  defp report(ctx, connection, ref, nonce),
+  # A report of `ref` under the 16 bytes `nonce`, for the connection, for the external
+  # account `account`, `1001`, `acme` unless given.
+  defp report(ctx, connection, ref, nonce, account \\ %{ref: "1001", title: "acme"}),
     do:
       Grants.report(ctx.key_scope, %{
         connection_id: connection.public_id,
         grant_ref: ref,
+        account: account,
         pass_nonce: nonce
       })
 
@@ -311,6 +313,7 @@ defmodule Apiary.Adapters.GrantsTest do
                Grants.report(key_scope(second.access_key), %{
                  connection_id: mine.public_id,
                  grant_ref: "G_1",
+                 account: %{ref: "1001", title: "acme"},
                  pass_nonce: mine.pass_nonce
                })
     end
@@ -324,6 +327,7 @@ defmodule Apiary.Adapters.GrantsTest do
       assert Grants.report(key_scope(node_key), %{
                connection_id: connection.public_id,
                grant_ref: "G_1",
+               account: %{ref: "1001", title: "acme"},
                pass_nonce: connection.pass_nonce
              }) == {:error, :forbidden}
 
@@ -331,6 +335,7 @@ defmodule Apiary.Adapters.GrantsTest do
       assert Grants.report(key_scope(other.access_key), %{
                connection_id: connection.public_id,
                grant_ref: "G_1",
+               account: %{ref: "1001", title: "acme"},
                pass_nonce: connection.pass_nonce
              }) == {:error, :unknown}
 
@@ -341,6 +346,7 @@ defmodule Apiary.Adapters.GrantsTest do
         assert Grants.report(ctx.key_scope, %{
                  connection_id: id,
                  grant_ref: "G_1",
+                 account: %{ref: "1001", title: "acme"},
                  pass_nonce: pending.pass_nonce
                }) == {:error, :unknown}
       end
@@ -374,7 +380,13 @@ defmodule Apiary.Adapters.GrantsTest do
           time: DateTime.utc_now(:second),
           connection_id: connection.public_id,
           collections: [
-            %{ref: "TRK", url: "https://tracker.example.com/TRK", title: "Tracker", target: nil}
+            %{
+              ref: "TRK",
+              url: "https://tracker.example.com/TRK",
+              title: "Tracker",
+              grant_ref: "G_1",
+              target: nil
+            }
           ],
           listing: %{id: "l1", part: 1, started_at: DateTime.utc_now(:second), complete: true}
         })
@@ -448,6 +460,7 @@ defmodule Apiary.Adapters.GrantsTest do
         Grants.report(key_scope(second.access_key), %{
           connection_id: elsewhere.public_id,
           grant_ref: "G_5",
+          account: %{ref: "1001", title: "acme"},
           pass_nonce: elsewhere.pass_nonce
         })
 

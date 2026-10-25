@@ -91,6 +91,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"adapter.setup"), do: gettext("Adapter set-up started")
   def label(:"adapter.app_values_set"), do: gettext("Adapter secrets stored")
   def label(:"adapter.app_values_seal"), do: gettext("Adapter secrets sent")
+  def label(:"adapter.end_grant"), do: gettext("Ended a grant")
   def label(:"run_credential.issue"), do: gettext("Run access sent or refused")
   def label(_action), do: nil
 
@@ -130,8 +131,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # run, the choosing of what a target's runs also read, the setting of a model choice or
   # a time limit of a workspace or a target, a build of a target's environment asked for,
   # the installing of an adapter, the start of its set-up, the storing and sending of
-  # its secrets and a run's access sent or refused have labels yet, so the filter offers
-  # those alone, where the reader is shown the feature (the page asks it); the others'
+  # its secrets, the end of a grant and a run's access sent or refused have labels yet,
+  # so the filter offers those alone, where the reader is shown the feature (the page
+  # asks it); the others'
   # entries show as any change. The filter offers `connection.write` alone of the three
   # actions that split it (`@connection_writes`), and its entries are those of the three
   # (`Apiary.Audit.list_entries/3`). Nothing writes `dispatch.handover` or
@@ -165,6 +167,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"adapter.setup",
           :"adapter.app_values_set",
           :"adapter.app_values_seal",
+          :"adapter.end_grant",
           :"run_credential.issue"
         ]
 
@@ -461,6 +464,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
          gettext("Sent an adapter its secrets, sealed to its access key, revision %{revision}",
            revision: revision
          )
+
+  defp said(:"adapter.end_grant", _details, _actor), do: gettext("Ended a grant")
 
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
 

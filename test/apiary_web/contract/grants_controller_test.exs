@@ -114,7 +114,10 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
       {connection, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
 
       for path <- ~w(invalid/grant-without-pass-nonce.json
-                     invalid/grant-pass-nonce-21-characters.json) do
+                     invalid/grant-pass-nonce-21-characters.json
+                     invalid/grant-without-account.json
+                     invalid/grant-account-without-ref.json
+                     invalid/grant-account-title-line-feed.json) do
         written = fixture(path)
 
         overrides =
@@ -133,6 +136,7 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
       for overrides <- [
             %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODx"},
             %{"grant_ref" => ""},
+            %{"account" => %{"ref" => "1001", "title" => "ac\u2028me"}},
             %{"connection_id" => "ac_x"},
             %{"title" => "Acme"}
           ] do
