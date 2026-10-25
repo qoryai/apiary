@@ -154,7 +154,7 @@ defmodule Apiary.Stacks.ResolutionTest do
       instance_owned = at(:workspace, harness: @document, owner_organisation_id: @instance)
       assert resolved(input([instance_owned])).harness_hidden
 
-      # A run of the instance's organisation, at a row of its own workspace.
+      # A run of the instance's organisation, at a row of the run's workspace.
       in_instance = %{instance_owned | organisation_id: @instance}
       refute resolved(input([in_instance], organisation_id: @instance)).harness_hidden
     end

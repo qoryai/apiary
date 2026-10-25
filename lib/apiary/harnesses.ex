@@ -27,11 +27,13 @@ defmodule Apiary.Harnesses do
   #
   # ## Writes
   #
-  # An instance admin (`Apiary.Access.instance_admin?/1`) on an instance with the feature
-  # `factory` creates one (`assign/3`, `harness.assigned`) and deletes one (`unassign/2`,
+  # An instance admin (`Apiary.Access.instance_admin?/1`) who signed in recently
+  # (`Apiary.Accounts.sudo_mode?/2`), on an instance with the feature `factory`, creates
+  # one (`assign/3`, `harness.assigned`) and deletes one (`unassign/2`,
   # `harness.unassigned`), whatever organisation the scope carries; no role takes either
-  # action. Where the feature is off, both are `{:error, :not_found}`; for anyone else,
-  # `{:error, :forbidden}`. Each change writes its entry, in its transaction, in the trail
+  # action. Both ask `Apiary.Adapters.authorize_instance/2` with `sudo: true`. Where the
+  # feature is off, both are `{:error, :not_found}`; for an instance admin who did not
+  # sign in recently, `{:error, :sudo}`; for anyone else, `{:error, :forbidden}`. Each change writes its entry, in its transaction, in the trail
   # of the instance's organisation, with the source and the organisation it covers. No
   # route or page calls either.
   #
@@ -50,7 +52,7 @@ defmodule Apiary.Harnesses do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Adapters, Audit, Edition, Features, Repo}
+  alias Apiary.{Adapters, Audit, Edition, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Harnesses.Assignment
   alias Apiary.Organisations.Organisation
@@ -73,7 +75,8 @@ defmodule Apiary.Harnesses do
   # allowed?/3 says whether a run of the organisation `run_organisation_id` may use a link
   # whose owner is the organisation `owner_organisation_id` for the harness source
   # `source`, by the rule of the moduledoc. Reads the assignments without a lock.
-  @spec allowed?(Ecto.UUID.t(), Ecto.UUID.t(), source) :: boolean
+  # False for a nil run organisation, a nil owner or a source that is no map.
+  @spec allowed?(Ecto.UUID.t() | nil, Ecto.UUID.t() | nil, source) :: boolean
   def allowed?(run_organisation_id, owner_organisation_id, source)
       when is_binary(run_organisation_id) and is_binary(owner_organisation_id) and
              is_map(source) do
@@ -89,6 +92,8 @@ defmodule Apiary.Harnesses do
         Edition.harness_source_allowed?(run_organisation_id, owner_organisation_id, source)
     end
   end
+
+  def allowed?(_run_organisation_id, _owner_organisation_id, _source), do: false
 
   # Whether an instance assignment of the run's organisation, or of every organisation,
   # covers `source`.
@@ -121,9 +126,11 @@ defmodule Apiary.Harnesses do
   # assign/3 lets the runs of `organisation`, or of every organisation for `:every`, use
   # the instance's links for `source` (`harness.assigned`, an instance admin; the
   # moduledoc). `{:ok, assignment}`, `{:error, changeset}` with the reason on `source`,
-  # `{:error, :forbidden}`, or `{:error, :not_found}` where the feature is off.
+  # `{:error, :forbidden}`, `{:error, :sudo}`, or `{:error, :not_found}` where the feature
+  # is off.
   @spec assign(Scope.t() | nil, source, Organisation.t() | :every) ::
-          {:ok, Assignment.t()} | {:error, Ecto.Changeset.t() | :forbidden | :not_found}
+          {:ok, Assignment.t()}
+          | {:error, Ecto.Changeset.t() | :forbidden | :sudo | :not_found}
   def assign(scope, source, organisation) do
     {organisation_id, every} =
       case organisation do
@@ -132,7 +139,7 @@ defmodule Apiary.Harnesses do
       end
 
     Repo.transact(fn ->
-      with :ok <- authorize(scope),
+      with :ok <- Adapters.authorize_instance(scope, sudo: true),
            {:ok, recorder} <- Adapters.instance_scope(scope),
            {:ok, assignment} <-
              %Assignment{
@@ -154,13 +161,13 @@ defmodule Apiary.Harnesses do
   @doc false
   # unassign/2 deletes `assignment` (`harness.unassigned`, an instance admin; the
   # moduledoc), with its row held `FOR UPDATE`. `{:ok, assignment}`, as it was;
-  # `{:error, :not_found}` for one already deleted, or where the feature is off; or
-  # `{:error, :forbidden}`.
+  # `{:error, :not_found}` for one already deleted, or where the feature is off;
+  # `{:error, :sudo}`; or `{:error, :forbidden}`.
   @spec unassign(Scope.t() | nil, Assignment.t()) ::
-          {:ok, Assignment.t()} | {:error, :forbidden | :not_found}
+          {:ok, Assignment.t()} | {:error, :forbidden | :sudo | :not_found}
   def unassign(scope, %Assignment{id: id}) do
     Repo.transact(fn ->
-      with :ok <- authorize(scope),
+      with :ok <- Adapters.authorize_instance(scope, sudo: true),
            {:ok, recorder} <- Adapters.instance_scope(scope),
            %Assignment{} = current <-
              Repo.one(from a in Assignment, where: a.id == ^id, lock: "FOR UPDATE") ||
@@ -173,15 +180,6 @@ defmodule Apiary.Harnesses do
         {:ok, deleted}
       end
     end)
-  end
-
-  # An instance admin on an instance with the feature `factory`.
-  defp authorize(scope) do
-    cond do
-      not Features.on?(:factory) -> {:error, :not_found}
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      true -> :ok
-    end
   end
 
   # What an assignment's entry has: the source, and the organisation it covers.

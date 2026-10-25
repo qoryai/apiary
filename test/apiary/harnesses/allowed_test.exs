@@ -143,6 +143,18 @@ defmodule Apiary.Harnesses.AllowedTest do
     end
   end
 
+  describe "an organisation that is nil" do
+    test "is refused, with no edition asked", ctx do
+      :ok = Edition.put_test_stub(Apiary.EditionStubs.HarnessSourceAllowed)
+      assign!(@root, nil)
+
+      refute Harnesses.allowed?(ctx.run, nil, @root)
+      refute Harnesses.allowed?(nil, ctx.instance, @root)
+      refute Harnesses.allowed?(nil, nil, @root)
+      refute_received {:harness_source_allowed?, _run, _owner, _source}
+    end
+  end
+
   describe "(c) the edition" do
     test "the core refuses any other link", ctx do
       refute allowed?(ctx, ctx.other, @root)

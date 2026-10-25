@@ -12,16 +12,18 @@ defmodule Apiary.Stacks.Resolution do
   # document at any level resolves to `:none`.
   #
   # **The owner.** A document's owner is its row's owner organisation, which the edition
-  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`): in the
-  # core, the organisation of a member who saved it there, or the instance's organisation
-  # for a document an instance admin saved. It is nil once that organisation is deleted.
+  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`). In the
+  # core, that is the organisation of a member who saved it there through that membership
+  # (`Apiary.Stacks.saved_by/1`). For an instance admin who saved it with no such
+  # membership, it is the instance's organisation. It is nil once that organisation is
+  # deleted.
   #
   # **Hidden.** `harness_hidden` is true when the run's organisation is operated
   # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation. A
-  # document the instance's organisation owns, as one an instance admin saves, is the run's
-  # organisation's only for a run of the instance's organisation: a run of any other
-  # organisation hides it, whether the instance has one organisation or several. A nil
-  # owner is never the run's organisation.
+  # document the instance's organisation owns is the run's organisation's only for a run
+  # of the instance's organisation: a run of any other organisation hides it, whether the
+  # instance has one organisation or several. A nil owner is never the run's
+  # organisation.
   @moduledoc false
 
   alias Apiary.Stacks.Stack

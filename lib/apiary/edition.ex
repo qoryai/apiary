@@ -189,9 +189,9 @@ defmodule Apiary.Edition do
   # organisation `run_organisation_id` may use a link of the organisation
   # `owner_organisation_id` for `source`, a harness source as it is in a harness document
   # (`Apiary.Harnesses.allowed?/3`). Asked only after the core's checks refuse it: the
-  # link is not the run's organisation's, and no instance assignment covers the source
-  # for the run's organisation. Asked without a lock. The core has no operator and
-  # answers false.
+  # link is not the run's organisation's, and the link is not the instance's
+  # organisation's under an instance assignment that covers the source for the run's
+  # organisation. Asked without a lock. The core has no operator and answers false.
   @doc false
   @callback harness_source_allowed?(
               run_organisation_id :: Ecto.UUID.t(),

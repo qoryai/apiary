@@ -20,6 +20,13 @@ defmodule Apiary.HarnessesTest do
     %{scope: scope, admin: instance_admin_scope()}
   end
 
+  # The scope of `admin`, last signed in `minutes` ago: a sign-in counts as recent for 20
+  # minutes (`Apiary.Accounts.sudo_mode?/2`).
+  defp signed_in_minutes_ago(admin, minutes) do
+    at = DateTime.add(DateTime.utc_now(:second), -minutes, :minute)
+    %{admin | user: %{admin.user | authenticated_at: at}}
+  end
+
   defp entries(action),
     do: Repo.all(from e in Entry, where: e.action == ^action, order_by: [asc: e.inserted_at])
 
@@ -89,6 +96,16 @@ defmodule Apiary.HarnessesTest do
 
       refute Repo.exists?(Assignment)
       assert entries("harness.assigned") == []
+    end
+
+    test "refuses an instance admin who did not sign in recently, until they do", ctx do
+      stale = signed_in_minutes_ago(ctx.admin, 21)
+      assert Harnesses.assign(stale, @root, :every) == {:error, :sudo}
+      refute Repo.exists?(Assignment)
+      assert entries("harness.assigned") == []
+
+      recent = signed_in_minutes_ago(ctx.admin, 19)
+      assert {:ok, _assignment} = Harnesses.assign(recent, @root, :every)
     end
 
     test "is not found where the feature factory is off, for an instance admin too", ctx do
@@ -184,6 +201,16 @@ defmodule Apiary.HarnessesTest do
       assert {:ok, _} = Harnesses.unassign(ctx.admin, ctx.assignment)
       assert Harnesses.unassign(ctx.admin, ctx.assignment) == {:error, :not_found}
       assert length(entries("harness.unassigned")) == 1
+    end
+
+    test "refuses an instance admin who did not sign in recently, until they do", ctx do
+      stale = signed_in_minutes_ago(ctx.admin, 21)
+      assert Harnesses.unassign(stale, ctx.assignment) == {:error, :sudo}
+      assert Repo.exists?(Assignment)
+      assert entries("harness.unassigned") == []
+
+      recent = signed_in_minutes_ago(ctx.admin, 19)
+      assert {:ok, _deleted} = Harnesses.unassign(recent, ctx.assignment)
     end
 
     test "refuses anyone but an instance admin, and deletes nothing", ctx do
