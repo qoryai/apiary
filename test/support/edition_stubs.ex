@@ -55,6 +55,19 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule WritesOperatorChain do
+    @moduledoc """
+    A person of the scope writes the operator's chain of model providers and choices in
+    the scope's organisation (`c:Apiary.Edition.operator_chain_writer?/1`). `writer/1`
+    sets the answer for the test's process, true until it does.
+    """
+
+    @doc "writer/1 sets the answer of `operator_chain_writer?/1` for the test's process."
+    def writer(answer) when is_boolean(answer), do: Process.put(:operator_chain_writer, answer)
+
+    def operator_chain_writer?(_scope), do: Process.get(:operator_chain_writer, true)
+  end
+
   defmodule Operated do
     @moduledoc """
     Every organisation is a client that an operator runs work for
@@ -925,8 +938,9 @@ defmodule Apiary.EditionStubs do
     @moduledoc """
     `ServesAcross`, with the chain of model choices of every organisation
     (`c:Apiary.Edition.model_choice_chain/1`) that the test sets with `chain/1`:
-    "organisation" until it does, as the core's edition returns; and the operator's
-    organisation of that chain, which the test may set with `operator/1`.
+    "organisation" until it does, as the core's edition returns; the operator's
+    organisation of that chain, which the test may set with `operator/1`; and whether a
+    scope writes the operator's chain, which the test may set with `writer/1`.
     """
 
     @doc "chain/1 sets the chain of model choices for the test's process."
@@ -948,6 +962,15 @@ defmodule Apiary.EditionStubs do
         nil -> List.first(ServesAcross.serving_organisations(id))
       end
     end
+
+    @doc """
+    writer/1 sets whether a scope writes the operator's chain
+    (`c:Apiary.Edition.operator_chain_writer?/1`) for the test's process; false until it does,
+    as the core answers.
+    """
+    def writer(answer) when is_boolean(answer), do: Process.put(:operator_chain_writer, answer)
+
+    def operator_chain_writer?(_scope), do: Process.get(:operator_chain_writer, false)
 
     def serving_organisations(id), do: ServesAcross.serving_organisations(id)
     def served_organisations(id), do: ServesAcross.served_organisations(id)

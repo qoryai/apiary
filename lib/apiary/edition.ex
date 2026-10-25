@@ -155,6 +155,17 @@ defmodule Apiary.Edition do
   @callback operator_chain_organisation(organisation_id :: Ecto.UUID.t()) ::
               Ecto.UUID.t() | nil
 
+  # With the `factory` feature, which the documentation leaves out: whether the person of
+  # `scope` writes the operator's chain of model providers and choices in the scope's
+  # organisation, the organisation whose rows are the chain of the clients it runs work for
+  # (`c:operator_chain_organisation/1`). When true, the scope's organisation's providers
+  # and choices of the chain "operator" are read, created, changed and deleted by that
+  # person, under the access check of `provider.write`; their audit entries go to the
+  # organisation's trail. Asked inside the write, with the scope read again. The core
+  # has no operator and answers false.
+  @doc false
+  @callback operator_chain_writer?(Scope.t()) :: boolean
+
   # With the `factory` feature, which the documentation leaves out: whether `organisation`
   # is a client that an operator runs work for. A run of such an organisation hides the
   # text of its stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`).
@@ -601,6 +612,7 @@ defmodule Apiary.Edition do
     above_workspace: 1,
     model_choice_chain: 1,
     operator_chain_organisation: 1,
+    operator_chain_writer?: 1,
     operated?: 1,
     client_reads: 4,
     organisation_secrets: 2,

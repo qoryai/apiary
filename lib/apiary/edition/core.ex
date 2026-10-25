@@ -61,6 +61,10 @@ defmodule Apiary.Edition.Core do
   @impl true
   def operator_chain_organisation(_organisation_id), do: nil
 
+  # The core has no operator: no person writes an operator's chain.
+  @impl true
+  def operator_chain_writer?(_scope), do: false
+
   # The core has no operator: no organisation is a client of one.
   @impl true
   def operated?(_organisation), do: false
