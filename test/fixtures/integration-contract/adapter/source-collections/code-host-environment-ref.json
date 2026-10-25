@@ -7,6 +7,7 @@
       "ref": "C_2001",
       "url": "https://code.example.com/acme/shop",
       "title": "acme/shop",
+      "grant_ref": "G_1",
       "target": {
         "system": "code.example.com",
         "path": "acme/shop"
@@ -17,6 +18,7 @@
       "ref": "C_2002",
       "url": "https://code.example.com/acme/docs",
       "title": "acme/docs",
+      "grant_ref": "G_1",
       "target": {
         "system": "code.example.com",
         "path": "acme/docs"

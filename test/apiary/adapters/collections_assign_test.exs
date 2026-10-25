@@ -49,7 +49,13 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       connection_id: connection.public_id,
       collections:
         for {ref, title} <- collections do
-          %{ref: ref, url: "https://tracker.acme.example/" <> ref, title: title, target: nil}
+          %{
+            ref: ref,
+            url: "https://tracker.acme.example/" <> ref,
+            title: title,
+            grant_ref: listing_grant(connection),
+            target: nil
+          }
         end,
       listing: %{
         id: Keyword.get(opts, :id, "listing-1"),

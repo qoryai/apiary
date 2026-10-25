@@ -30,6 +30,7 @@ defmodule Apiary.AdaptersTest do
     :"adapter.app_values_seal",
     :"adapter.disconnect",
     :"adapter.report_grant",
+    :"adapter.end_grant",
     :"adapter.read_grants"
   ]
 

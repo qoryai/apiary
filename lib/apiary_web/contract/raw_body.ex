@@ -35,7 +35,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   # The integration contract's signed paths served here, read the same way where
   # `served?/1` holds, as below: `POST /v1/adapter`, `POST /v1/source-collections`,
   # `POST /v1/source-items`, `POST /v1/sources/disconnect`,
-  # `POST /v1/source-items/comments`, `POST /v1/adapter/secrets` and `POST /v1/grants`.
+  # `POST /v1/source-items/comments`, `POST /v1/adapter/secrets`, `POST /v1/grants` and
+  # `POST /v1/grants/end`.
   @adapter_paths [
     ["v1", "adapter"],
     ["v1", "source-collections"],
@@ -45,7 +46,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   @adapter_three_paths [
     ["v1", "sources", "disconnect"],
     ["v1", "source-items", "comments"],
-    ["v1", "adapter", "secrets"]
+    ["v1", "adapter", "secrets"],
+    ["v1", "grants", "end"]
   ]
   # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and

@@ -257,6 +257,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
             ref: "NEW",
             url: "https://tracker.acme.example/NEW",
             title: "New",
+            grant_ref: listing_grant(connection),
             target: %{system: "code.example.com", path: "acme/new"}
           }
         ],
@@ -304,6 +305,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
               ref: "NEW",
               url: "https://tracker.acme.example/NEW",
               title: "New",
+              grant_ref: listing_grant(connection),
               target: %{system: "code.example.com", path: path}
             }
           ],

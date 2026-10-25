@@ -57,6 +57,7 @@ defmodule Apiary.EnvironmentsTest do
           ref: "SHOP",
           url: "https://code.example.com/acme/shop",
           title: "shop",
+          grant_ref: listing_grant(ctx.connection),
           target: %{system: "code.example.com", path: "acme/shop"}
         },
         item

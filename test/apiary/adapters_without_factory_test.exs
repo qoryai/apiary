@@ -211,6 +211,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
           :"work_item.read_changes",
           :"adapter.disconnect",
           :"adapter.report_grant",
+          :"adapter.end_grant",
           :"adapter.read_grants"
         ] do
       assert Access.authorize(key_scope, action, adapter) == {:error, :not_found}

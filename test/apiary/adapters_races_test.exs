@@ -380,6 +380,7 @@ defmodule Apiary.AdaptersRacesTest do
           Grants.report(key_scope(key), %{
             connection_id: connection.public_id,
             grant_ref: "G_raced",
+            account: %{ref: "1001", title: "acme"},
             pass_nonce: connection.pass_nonce
           })
         end
@@ -417,6 +418,7 @@ defmodule Apiary.AdaptersRacesTest do
           Grants.report(key_scope(key), %{
             connection_id: connection.public_id,
             grant_ref: ref,
+            account: %{ref: "1001", title: "acme"},
             pass_nonce: connection.pass_nonce
           })
         end
@@ -455,6 +457,7 @@ defmodule Apiary.AdaptersRacesTest do
           Grants.report(key_scope(key), %{
             connection_id: connection.public_id,
             grant_ref: "G_late",
+            account: %{ref: "1001", title: "acme"},
             pass_nonce: connection.pass_nonce
           })
         end)

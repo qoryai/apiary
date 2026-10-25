@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "connection_id": "ac_c0deh0st00000000",
+  "collections": [
+    {
+      "ref": "R_1001",
+      "url": "https://github.com/acme/shop",
+      "title": "acme/shop",
+      "target": {
+        "system": "github.com",
+        "path": "acme/shop"
+      }
+    }
+  ],
+  "listing": {
+    "id": "collections-7",
+    "part": 1,
+    "started_at": "2026-10-15T11:59:58Z",
+    "complete": true
+  }
+}

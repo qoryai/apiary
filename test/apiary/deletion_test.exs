@@ -324,7 +324,13 @@ defmodule Apiary.DeletionTest do
           connection_id: connection.public_id,
           collections:
             for ref <- ["GOES", "STAYS"] do
-              %{ref: ref, url: "https://tracker.acme.example/" <> ref, title: ref, target: nil}
+              %{
+                ref: ref,
+                url: "https://tracker.acme.example/" <> ref,
+                title: ref,
+                grant_ref: Apiary.NodesFixtures.listing_grant(connection),
+                target: nil
+              }
             end,
           listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
         })

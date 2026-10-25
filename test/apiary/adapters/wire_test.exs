@@ -896,6 +896,7 @@ defmodule Apiary.Adapters.WireTest do
                     ref: "R_1001",
                     url: "https://github.com/acme/shop",
                     title: "acme/shop",
+                    grant_ref: "G_1",
                     target: %{system: "github.com", path: "acme/shop"},
                     items: true
                   }
@@ -935,6 +936,8 @@ defmodule Apiary.Adapters.WireTest do
         assert listing("invalid/source-collections-environment-ref-#{name}.json") == :error,
                name
       end
+
+      assert listing("invalid/source-collections-without-grant-ref.json") == :error
 
       assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
       assert source_disconnect("invalid/sources-disconnect-without-connection-id.json") == :error
@@ -992,12 +995,28 @@ defmodule Apiary.Adapters.WireTest do
       twice =
         Map.put(body, "collections", [
           one,
-          %{"ref" => "B", "url" => "https://b.example", "title" => "B"},
+          %{"ref" => "B", "url" => "https://b.example", "title" => "B", "grant_ref" => "G_2"},
           Map.put(one, "title", "renamed")
         ])
 
       assert {:ok, %{collections: [%{ref: "B"}, %{ref: "R_1001", title: "renamed"}]}} =
                Wire.listing(twice)
+    end
+
+    test "a collection's grant_ref is required, and is a ref" do
+      {:ok, body} = Wire.decode(fixture("source-collections/code-host.json"))
+      [one] = body["collections"]
+      with_ref = &Map.put(body, "collections", [Map.put(one, "grant_ref", &1)])
+
+      assert Wire.listing(Map.put(body, "collections", [Map.delete(one, "grant_ref")])) == :error
+
+      for ref <- ["g", String.duplicate("😀", 200)] do
+        assert {:ok, %{collections: [%{grant_ref: ^ref}]}} = Wire.listing(with_ref.(ref))
+      end
+
+      for ref <- ["", String.duplicate("😀", 201), "G" <> <<0>>, nil, 1, ["G_1"]] do
+        assert Wire.listing(with_ref.(ref)) == :error, inspect(ref)
+      end
     end
 
     test "a disconnect's connection_id is required, and is a connection's public id" do
@@ -1048,11 +1067,16 @@ defmodule Apiary.Adapters.WireTest do
                   time: ~U[2026-10-15 12:00:00Z],
                   connection_id: "ac_f1xt0re000000000",
                   grant_ref: "G_1",
+                  account: %{ref: "1001", title: "acme"},
                   pass_nonce: Base.decode16!("000102030405060708090A0B0C0D0E0F")
                 }}
 
-      assert grant_report("invalid/grant-without-pass-nonce.json") == :error
-      assert grant_report("invalid/grant-pass-nonce-21-characters.json") == :error
+      for name <- ~w(grant-without-pass-nonce grant-pass-nonce-21-characters
+                     grant-without-account grant-account-without-ref
+                     grant-account-title-line-feed) do
+        assert grant_report("invalid/#{name}.json") == :error, name
+      end
+
       assert Wire.grant_report(nil) == :error
     end
 
@@ -1073,17 +1097,85 @@ defmodule Apiary.Adapters.WireTest do
             %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODx"},
             %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODw=="},
             %{"pass_nonce" => "AAECAwQFBgcICQoLDA0ODwAA"},
-            %{"title" => "Acme"}
+            %{"title" => "Acme"},
+            %{"account" => nil},
+            %{"account" => "acme"},
+            %{"account" => %{"ref" => "1001"}},
+            %{"account" => %{"title" => "acme"}},
+            %{"account" => %{"ref" => "1001", "title" => "acme", "url" => "https://a.example"}},
+            %{"account" => %{"ref" => "", "title" => "acme"}},
+            %{"account" => %{"ref" => String.duplicate("r", 201), "title" => "acme"}},
+            %{"account" => %{"ref" => 1001, "title" => "acme"}},
+            %{"account" => %{"ref" => "1001", "title" => ""}},
+            %{"account" => %{"ref" => "1001", "title" => String.duplicate("t", 1025)}},
+            %{"account" => %{"ref" => "1001", "title" => "ac\rme"}},
+            %{"account" => %{"ref" => "1001", "title" => "ac\tme"}},
+            %{"account" => %{"ref" => "1001", "title" => "acme\u202E"}},
+            %{"account" => %{"ref" => "1001", "title" => "ac\u200Bme"}},
+            %{"account" => %{"ref" => "1001", "title" => "ac\u0085me"}}
           ] do
         assert Wire.grant_report(Map.merge(body, change)) == :error, inspect(change)
       end
 
-      for member <- ~w(version time connection_id grant_ref pass_nonce) do
+      for member <- ~w(version time connection_id grant_ref account pass_nonce) do
         assert Wire.grant_report(Map.delete(body, member)) == :error, member
+      end
+
+      # A title of 1,024 code points, in any script, with spaces inside it.
+      for title <- [String.duplicate("😀", 1024), "Acme Corp", "Ünïcödé gröup"] do
+        assert {:ok, %{account: %{title: ^title}}} =
+                 Wire.grant_report(Map.put(body, "account", %{"ref" => "1001", "title" => title}))
       end
 
       assert {:ok, %{grant_ref: ref}} =
                Wire.grant_report(Map.put(body, "grant_ref", String.duplicate("😀", 200)))
+
+      assert ref == String.duplicate("😀", 200)
+    end
+  end
+
+  describe "a grant end" do
+    defp grant_end(path),
+      do: with({:ok, body} <- Wire.decode(fixture(path)), do: Wire.grant_end(body))
+
+    test "the contract's grant end is read as written; its invalid ones are refused" do
+      assert grant_end("grant-end/ended.json") ==
+               {:ok,
+                %{
+                  time: ~U[2026-10-15 12:00:00Z],
+                  connection_id: "ac_f1xt0re000000000",
+                  grant_ref: "G_1"
+                }}
+
+      assert grant_end("invalid/grant-end-without-grant-ref.json") == :error
+      assert grant_end("invalid/grant-end-with-pass-nonce.json") == :error
+      assert Wire.grant_end(nil) == :error
+    end
+
+    test "each member is held to the contract" do
+      {:ok, body} = Wire.decode(fixture("grant-end/ended.json"))
+
+      for change <- [
+            %{"version" => 2},
+            %{"version" => 1.0},
+            %{"time" => "2026-10-15T12:00:00.5Z"},
+            %{"connection_id" => "ac_f1xt0re00000000u"},
+            %{"connection_id" => "ag_f1xt0re000000000"},
+            %{"grant_ref" => ""},
+            %{"grant_ref" => String.duplicate("g", 201)},
+            %{"grant_ref" => "G" <> <<0>>},
+            %{"grant_ref" => 1},
+            %{"reason" => "uninstalled"}
+          ] do
+        assert Wire.grant_end(Map.merge(body, change)) == :error, inspect(change)
+      end
+
+      for member <- ~w(version time connection_id grant_ref) do
+        assert Wire.grant_end(Map.delete(body, member)) == :error, member
+      end
+
+      assert {:ok, %{grant_ref: ref}} =
+               Wire.grant_end(Map.put(body, "grant_ref", String.duplicate("😀", 200)))
 
       assert ref == String.duplicate("😀", 200)
     end
