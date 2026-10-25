@@ -16,14 +16,20 @@ defmodule Apiary.Harnesses.Reader do
       nor in a text the file escapes, `:control_character`;
     * at most 16 nested mappings and sequences, `:too_deep`;
     * no anchor and no alias, `:alias`;
-    * at most 2 seconds of wall-clock time, or less with the `:time_limit` option, and
-      32 MiB of heap for the parse, `:too_complex`.
+    * at most 30 million reductions and 64 MiB of heap for the parse, with 10 seconds of
+      wall-clock time as a backstop, `:too_complex`. A reduction is the runtime's unit of
+      a process's work. On OTP 29 the same parse repeated its count within 1.4 %, on an
+      idle and on a busy machine. The reductions are read every 50 ms, and the parse
+      may do up to about 5 million reductions between two reads on an idle machine. So
+      a file whose parse does within about 5 million reductions of the budget may get
+      a different answer on another read, and so may a read that runs past the
+      backstop on a busy machine. Any other file gets the same answer on every read.
 
   The parser, yamerl, holds back its tokens while a flow collection could still turn out
   to be a key, and reverses that queue for each token it adds, so a long flow collection
   at the top level or in a block sequence costs time that grows with the square of its
-  length. Both passes therefore run in a separate process with a heap limit, which
-  is killed when either limit is reached, also when the caller exits first.
+  length. Both passes therefore run in another process under `Apiary.Kinds.Budget`,
+  which kills the process when it passes a limit, and at once when the caller exits.
 
   The first pass reads the parser's tokens only, and stops at the first anchor, alias or
   collection that nests too deep. No node is built in that pass, so an alias never
@@ -38,13 +44,23 @@ defmodule Apiary.Harnesses.Reader do
   An empty file is a file with no value: `harness/1` and `exports/1` read it as `:none`.
   """
 
+  alias Apiary.Kinds.Budget
+
   @max_bytes 65_536
   @max_depth 16
 
-  # The parse's limits, far above what a harness document takes: a 64 KiB document of
-  # ordinary YAML parses in well under 200 ms and a few MiB of heap.
-  @time_limit_ms 2_000
-  @max_heap_words div(32 * 1024 * 1024, :erlang.system_info(:wordsize))
+  # The parse's limits. Measured on OTP 29: a 64 KiB document of ordinary YAML does
+  # 2.3 to 9.1 million reductions and needs 10 to 25 MiB of heap, counted as the budget
+  # counts it; each slow input of the tests passes 30 million reductions within 3 s on
+  # an idle machine. The reductions are read every 50 ms.
+  @max_reductions 30_000_000
+  @max_heap_words div(64 * 1024 * 1024, :erlang.system_info(:wordsize))
+  @budget [
+    reductions: @max_reductions,
+    heap_words: @max_heap_words,
+    ms: 10_000,
+    poll_ms: 50
+  ]
 
   # The control characters a file and its texts may not contain: C0 but tab, line feed
   # and carriage return, DEL, and C1.
@@ -61,9 +77,6 @@ defmodule Apiary.Harnesses.Reader do
     schema: :core,
     node_mods: []
   ]
-
-  @typedoc "An option of `parse/2`: the parse's wall-clock limit in milliseconds."
-  @type option :: {:time_limit, pos_integer}
 
   @typedoc "Why a file is refused."
   @type reason ::
@@ -95,6 +108,11 @@ defmodule Apiary.Harnesses.Reader do
   @doc "The most bytes a file may have."
   @spec max_bytes() :: pos_integer
   def max_bytes, do: @max_bytes
+
+  @doc false
+  # max_reductions/0 is the most reductions a parse may do.
+  @spec max_reductions() :: pos_integer
+  def max_reductions, do: @max_reductions
 
   @doc "The deepest a file's mappings and sequences may nest."
   @spec max_depth() :: pos_integer
@@ -130,13 +148,12 @@ defmodule Apiary.Harnesses.Reader do
   defp section(_other), do: {:error, :invalid_harness}
 
   @doc """
-  document/2 is a harness document as a settings row keeps it, the contents of a
-  harness section written in YAML: `{:ok, section}` or `{:error, reason}`. `opts` are
-  those of `parse/2`.
+  document/1 is a harness document as a settings row keeps it, the contents of a
+  harness section written in YAML: `{:ok, section}` or `{:error, reason}`.
   """
-  @spec document(binary, [option]) :: {:ok, map} | {:error, reason}
-  def document(bytes, opts \\ []) when is_binary(bytes) do
-    case parse(bytes, opts) do
+  @spec document(binary) :: {:ok, map} | {:error, reason}
+  def document(bytes) when is_binary(bytes) do
+    case parse(bytes) do
       {:ok, %{} = section} -> {:ok, section}
       {:ok, _other} -> {:error, :not_a_mapping}
       {:error, reason} -> {:error, reason}
@@ -241,58 +258,36 @@ defmodule Apiary.Harnesses.Reader do
   end
 
   @doc """
-  parse/2 is the value of one YAML file under the limits of the moduledoc: `{:ok,
+  parse/1 is the value of one YAML file under the limits of the moduledoc: `{:ok,
   value}`, nil for an empty file, or `{:error, reason}`. Mappings are maps with text
   keys.
-
-  `time_limit: ms` sets the parse's wall-clock limit, at most the default of
-  #{@time_limit_ms} ms.
   """
-  @spec parse(binary, [option]) :: {:ok, term} | {:error, reason}
-  def parse(bytes, opts \\ []) when is_binary(bytes) do
-    limit = min(Keyword.get(opts, :time_limit, @time_limit_ms), @time_limit_ms)
-
+  @spec parse(binary) :: {:ok, term} | {:error, reason}
+  def parse(bytes) when is_binary(bytes) do
     cond do
       byte_size(bytes) > @max_bytes -> {:error, :too_large}
       not String.valid?(bytes) -> {:error, :invalid_yaml}
       Regex.match?(@control, bytes) -> {:error, :control_character}
-      true -> isolated(bytes, limit)
+      true -> isolated(bytes)
     end
   end
 
-  # Both passes in a process with a heap limit, killed at the time limit. The result
-  # comes back as the process's exit reason. The process kills itself at the time limit
-  # too, so it ends at the limit even when the caller exits first.
-  defp isolated(bytes, limit) do
-    {pid, ref} =
-      :erlang.spawn_opt(
-        fn ->
-          {:ok, timer} = :timer.kill_after(limit)
-          result = read(bytes)
-          :timer.cancel(timer)
-          exit({__MODULE__, result})
-        end,
-        [
-          :monitor,
-          {:max_heap_size, %{size: @max_heap_words, kill: true, error_logger: false}}
-        ]
-      )
-
-    receive do
-      {:DOWN, ^ref, :process, ^pid, {__MODULE__, result}} -> result
-      {:DOWN, ^ref, :process, ^pid, :killed} -> {:error, :too_complex}
-      {:DOWN, ^ref, :process, ^pid, _crash} -> {:error, :invalid_yaml}
-    after
-      limit ->
-        Process.exit(pid, :kill)
-        receive do: ({:DOWN, ^ref, :process, ^pid, _reason} -> :ok)
-        {:error, :too_complex}
-    end
-  end
-
-  # Any exception yamerl raises, such as on a character it has no clause for, is a
+  # Both passes in another process under the budget. A crash of the process is a
   # refusal, never a crash of the caller.
-  defp read(bytes) do
+  defp isolated(bytes) do
+    case Budget.run(fn -> read(bytes) end, @budget) do
+      {:ok, result} -> result
+      {:error, :crashed} -> {:error, :invalid_yaml}
+      {:error, _reductions_heap_or_time} -> {:error, :too_complex}
+    end
+  end
+
+  @doc false
+  # read/1 is both passes of `parse/1` in the calling process, with no limit on their
+  # work: for the tests that count its reductions. Any exception yamerl raises, such as
+  # on a character it has no clause for, is a refusal.
+  @spec read(binary) :: {:ok, term} | {:error, reason}
+  def read(bytes) do
     with :ok <- scan(bytes), do: build(bytes)
   rescue
     _exception -> {:error, :invalid_yaml}
