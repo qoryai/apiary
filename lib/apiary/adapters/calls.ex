@@ -50,7 +50,7 @@ defmodule Apiary.Adapters.Calls do
 
   alias Apiary.{AccessKeys, SigningKey}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{CallAddress, CallFailure, Wire}
+  alias Apiary.Adapters.{CallAddress, CallFailure, CallWire, RunCredential, Wire}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Integrations.Fetch.Address
@@ -88,26 +88,97 @@ defmodule Apiary.Adapters.Calls do
       end
 
     case result do
-      {:ok, body} ->
-        {:ok, body}
+      {:ok, body} -> {:ok, body}
+      {:error, cause, details} -> {:error, failure(adapter, path, cause, details, started)}
+    end
+  end
 
-      {:error, cause, details} ->
-        Logger.warning(
-          "a call to an adapter failed adapter=#{adapter.public_id} path=#{path} " <>
-            "cause=#{cause} duration_ms=#{now() - started}"
-        )
+  # The failure of the call, with its one log line.
+  defp failure(adapter, path, cause, details, started) do
+    Logger.warning(
+      "a call to an adapter failed adapter=#{adapter.public_id} path=#{path} " <>
+        "cause=#{cause} duration_ms=#{now() - started}"
+    )
 
-        {:error,
-         struct!(
-           CallFailure,
-           Map.merge(details, %{
-             adapter_id: adapter.id,
-             adapter_public_id: adapter.public_id,
-             adapter_name: adapter.name,
-             path: path,
-             cause: cause
-           })
-         )}
+    struct!(
+      CallFailure,
+      Map.merge(details, %{
+        adapter_id: adapter.id,
+        adapter_public_id: adapter.public_id,
+        adapter_name: adapter.name,
+        path: path,
+        cause: cause
+      })
+    )
+  end
+
+  @doc false
+  # run_credential/3 asks `adapter` for a credential for one run (`run-credential`):
+  # under the grant `grant_ref`, for `resources`, with `access` (`"read"` or `"write"`)
+  # and `purpose` (`"harness"` or `"work"`). `{:ok, %RunCredential{}}`, whose `inspect`
+  # shows no token, or `{:error, %CallFailure{}}`.
+  @spec run_credential(Node.t(), map, keyword) ::
+          {:ok, RunCredential.t()} | {:error, CallFailure.t()}
+  def run_credential(adapter, request, opts \\ []) do
+    %{grant_ref: grant_ref, resources: resources, access: access, purpose: purpose} = request
+
+    members = [
+      {"grant_ref", grant_ref},
+      {"resources", resources},
+      {"access", to_string(access)},
+      {"purpose", to_string(purpose)}
+    ]
+
+    with {:ok, credential} <- typed(adapter, "run-credential", members, opts) do
+      {:ok, RunCredential.new(credential)}
+    end
+  end
+
+  @doc false
+  # resolve/3 asks `adapter` which of its grants and resources cover `addresses`
+  # (`resolve`). `{:ok, results}`, one for each address, in order: `%{address:,
+  # grant_ref:, resource_ref:}`, or `%{address:, covered: false}`; or
+  # `{:error, %CallFailure{}}`. Whether the run may use a grant is the caller's to check
+  # (`Apiary.Adapters.Grants.live_for_organisation/3`).
+  @spec resolve(Node.t(), [String.t()], keyword) :: {:ok, [map]} | {:error, CallFailure.t()}
+  def resolve(adapter, addresses, opts \\ []) when is_list(addresses),
+    do: typed(adapter, "resolve", [{"addresses", addresses}], opts)
+
+  @doc false
+  # read_document/3 asks `adapter` for the document at `path` in the resource
+  # `resource_ref`, under the grant `grant_ref`, at the version `at` (`read`).
+  # `{:ok, %{resolved_at:, content:, found:}}`, `content` nil where the resource has no
+  # document at the path; or `{:error, %CallFailure{}}`.
+  @spec read_document(Node.t(), map, keyword) :: {:ok, map} | {:error, CallFailure.t()}
+  def read_document(adapter, request, opts \\ []) do
+    %{grant_ref: grant_ref, resource_ref: resource_ref, path: path, at: at} = request
+
+    members = [
+      {"grant_ref", grant_ref},
+      {"resource_ref", resource_ref},
+      {"path", path},
+      {"at", at}
+    ]
+
+    typed(adapter, "read", members, opts)
+  end
+
+  # A call whose body its schema allows (`Apiary.Adapters.CallWire.call?/2`), else an
+  # `ArgumentError` that shows no value; and its answer, read to its schema, else
+  # `:invalid_answer`.
+  defp typed(adapter, path, members, opts) do
+    body = Map.merge(Map.new(members), %{"version" => 1, "time" => "2026-01-01T00:00:00Z"})
+
+    unless CallWire.call?(path, body),
+      do: raise(ArgumentError, "a call to #{path} outside its schema")
+
+    started = now()
+
+    with {:ok, answer} <- call(adapter, path, members, opts) do
+      case CallWire.answer(path, answer, Map.new(members)) do
+        {:ok, read} -> {:ok, read}
+        :error -> {:error, failure(adapter, path, :invalid_answer, %{status: 200}, started)}
+      end
     end
   end
 

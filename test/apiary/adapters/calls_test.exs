@@ -13,7 +13,7 @@ defmodule Apiary.Adapters.CallsTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.Adapters.{CallFailure, Calls}
+  alias Apiary.Adapters.{CallFailure, Calls, RunCredential}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.{FetchStub, SigningKey}
@@ -396,6 +396,142 @@ defmodule Apiary.Adapters.CallsTest do
     refute log =~ body
     refute log =~ signature
     refute log =~ "instance-1"
+  end
+
+  describe "the typed calls" do
+    @contract Path.expand("../../fixtures/integration-contract/adapter", __DIR__)
+
+    # The contract's fixture at `path`, compact.
+    defp compact(path),
+      do: @contract |> Path.join(path) |> File.read!() |> Jason.decode!() |> Jason.encode!()
+
+    # A stub that answers each call with `body`, signed, and tells the test of the call.
+    defp answering(body, seed) do
+      stub(fn conn ->
+        {conn, _body} = tell(conn)
+        answer(conn, 200, body, seed)
+      end)
+    end
+
+    defp sent do
+      assert [{conn, body}] = calls()
+      {conn.request_path, Jason.decode!(body)}
+    end
+
+    test "run_credential/3 sends the grant, the resources, the access and the purpose, and keeps the token out of inspect",
+         %{adapter: adapter, seed: seed} do
+      answer = compact("run-credential-answer/write-without-expiry.json")
+      answering(answer, seed)
+
+      assert {:ok, %RunCredential{expires_at: nil, document: document} = credential} =
+               Calls.run_credential(adapter, %{
+                 grant_ref: "G_1",
+                 resources: ["R_1001"],
+                 access: :write,
+                 purpose: :work
+               })
+
+      assert document == Jason.decode!(answer)["credential"]
+      refute inspect(credential) =~ "fixture-access-token"
+
+      assert {"/calls/run-credential",
+              %{
+                "grant_ref" => "G_1",
+                "resources" => ["R_1001"],
+                "access" => "write",
+                "purpose" => "work"
+              }} =
+               sent()
+    end
+
+    test "run_credential/3 reads expires_at; one not later than now is :invalid_answer",
+         %{adapter: adapter, seed: seed} do
+      later = DateTime.utc_now() |> DateTime.add(3600) |> DateTime.truncate(:second)
+
+      body =
+        "run-credential-answer/read.json"
+        |> compact()
+        |> String.replace("2026-10-15T13:00:00Z", DateTime.to_iso8601(later))
+
+      answering(body, seed)
+      request = %{grant_ref: "G_1", resources: ["R_1001"], access: "read", purpose: "harness"}
+      assert {:ok, %RunCredential{expires_at: ^later}} = Calls.run_credential(adapter, request)
+
+      answering(compact("run-credential-answer/read.json"), seed)
+
+      assert {:error, %CallFailure{cause: :invalid_answer, status: 200, path: "run-credential"}} =
+               Calls.run_credential(adapter, request)
+    end
+
+    test "resolve/3 sends the addresses and reads one result for each, in order",
+         %{adapter: adapter, seed: seed} do
+      answering(compact("resolve-answer/one-covered.json"), seed)
+      addresses = ["https://code.example.com/acme/harness", "reader@code.example.com:acme/tools"]
+
+      assert {:ok,
+              [
+                %{grant_ref: "G_1", resource_ref: "R_1001"},
+                %{address: "reader@code.example.com:acme/tools", covered: false}
+              ]} = Calls.resolve(adapter, addresses)
+
+      assert {"/calls/resolve", %{"addresses" => ^addresses}} = sent()
+
+      # The same answer to the addresses in the other order is not theirs.
+      answering(compact("resolve-answer/one-covered.json"), seed)
+
+      assert {:error, %CallFailure{cause: :invalid_answer}} =
+               Calls.resolve(adapter, Enum.reverse(addresses))
+    end
+
+    test "read_document/3 sends the grant, the resource, the path and the version, and reads the document",
+         %{adapter: adapter, seed: seed} do
+      request = %{grant_ref: "G_1", resource_ref: "R_1001", path: "qory.yaml", at: "main"}
+
+      answering(compact("read-answer/at-a-fixed-version.json"), seed)
+
+      assert {:ok, %{found: true, content: "harness:\n  extends:\n    ref: v1\n"}} =
+               Calls.read_document(adapter, request)
+
+      assert {"/calls/read",
+              %{
+                "grant_ref" => "G_1",
+                "resource_ref" => "R_1001",
+                "path" => "qory.yaml",
+                "at" => "main"
+              }} =
+               sent()
+
+      answering(compact("read-answer/no-document.json"), seed)
+      assert {:ok, %{found: false, content: nil}} = Calls.read_document(adapter, request)
+    end
+
+    test "a call outside its schema raises, without its values, and is not sent",
+         %{adapter: adapter} do
+      stub(fn conn -> flunk("sent #{conn.request_path}") end)
+
+      for {fun, message} <- [
+            {fn -> Calls.resolve(adapter, []) end, "a call to resolve outside its schema"},
+            {fn -> Calls.resolve(adapter, ["a b"]) end, "a call to resolve outside its schema"},
+            {fn ->
+               Calls.read_document(adapter, %{
+                 grant_ref: "G_1",
+                 resource_ref: "R_1001",
+                 path: "../secret",
+                 at: "main"
+               })
+             end, "a call to read outside its schema"},
+            {fn ->
+               Calls.run_credential(adapter, %{
+                 grant_ref: "G_1",
+                 resources: ["R_1001"],
+                 access: :admin,
+                 purpose: :work
+               })
+             end, "a call to run-credential outside its schema"}
+          ] do
+        assert_raise ArgumentError, message, fun
+      end
+    end
   end
 
   describe "record_failure/3" do
