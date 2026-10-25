@@ -201,12 +201,7 @@ defmodule Apiary.NodesFixtures do
     connection = Repo.get_by!(Connection, public_id: public_id)
     now = DateTime.utc_now()
 
-    connected = [
-      state: :connected,
-      connected_at: now,
-      pass_nonce_used_at: now,
-      linked_nonce: connection.pass_nonce
-    ]
+    connected = [state: :connected, connected_at: now, pass_nonce_used_at: now]
 
     connection =
       case state do
@@ -221,6 +216,11 @@ defmodule Apiary.NodesFixtures do
           |> Ecto.Changeset.change([listed_at: now] ++ connected)
           |> Repo.update!()
       end
+
+    # A connected connection's pass came back linked, so a grant report may name its nonce.
+    if state != :pending do
+      {:ok, _pass} = Apiary.Adapters.LinkedPass.insert(connection, connection.pass_nonce, now)
+    end
 
     {connection, nonce}
   end

@@ -124,6 +124,7 @@ defmodule Apiary.AuditChanges do
       :"adapter.declare",
       :"adapter.app_values_set",
       :"adapter.app_values_seal",
+      :"adapter.report_grant",
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
@@ -601,6 +602,29 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # An adapter's key reports a grant of a connection, in the trail of the instance's
+  # organisation, about the adapter; the entry's actor is the key, and the entry keeps
+  # neither the pass's nonce nor the grant's ref.
+  def make(:"adapter.report_grant", %{scope: scope}) do
+    {connection, nonce, key_scope, key} = granting(scope)
+    before = entries()
+
+    {:ok, _grant} =
+      Adapters.Grants.report(key_scope, %{
+        connection_id: connection.public_id,
+        grant_ref: "G_audited",
+        pass_nonce: connection.pass_nonce
+      })
+
+    %{
+      scope: key_scope,
+      subject: {"node", connection.adapter_id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: nonce
+    }
+  end
+
   # A gateway's secrets request seals a run's model key to its access key, in the trail of
   # the gateway's organisation, about the run; the entry's actor is the gateway's key, and
   # the entry keeps nothing of the key's value.
@@ -971,6 +995,19 @@ defmodule Apiary.AuditChanges do
     {before, Adapters.seal_app_values(key_scope, adapter, key, 1)}
   end
 
+  # A report under a nonce of no linked pass of the connection adds nothing.
+  def refuse(:"adapter.report_grant", %{scope: scope}) do
+    {connection, _nonce, key_scope, _key} = granting(scope)
+    before = entries()
+
+    {before,
+     Adapters.Grants.report(key_scope, %{
+       connection_id: connection.public_id,
+       grant_ref: "G_audited",
+       pass_nonce: :crypto.strong_rand_bytes(16)
+     })}
+  end
+
   # A request with a credential the run does not have seals nothing.
   def refuse(:"secret.seal", %{scope: scope}) do
     {ctx, key, now} = sealed_run(scope)
@@ -1033,6 +1070,15 @@ defmodule Apiary.AuditChanges do
       sends_changes: false,
       description: Apiary.DescriptionFixtures.read_description()
     }
+  end
+
+  # A connected connection of the scope's organisation, the nonce of the pass that
+  # connected it in base64url, its adapter's key's scope, and the key.
+  defp granting(scope) do
+    %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
+    {connection, nonce} = connection_fixture(scope, adapter, :connected)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    {connection, nonce, Scope.for_access_key(key), key}
   end
 
   # An adapter whose description lists the secret `signing-key`, and its key's scope.

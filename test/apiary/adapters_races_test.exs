@@ -13,7 +13,8 @@ defmodule Apiary.AdaptersRacesTest do
   # The rules under test (`Apiary.Adapters.Connections`): one connection that has not
   # ended per organisation and adapter, the second insert waiting on the first's; a press
   # on a connected connection, not yet listed, replacing it; and the lock order, the
-  # adapter's row, then its connections.
+  # adapter's row, then its connections. And two organisations' reports of one grant at
+  # once: one wins (`Apiary.Adapters.Grants.report/2`).
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -24,7 +25,7 @@ defmodule Apiary.AdaptersRacesTest do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{ConnectPass, Connection, Connections}
+  alias Apiary.Adapters.{ConnectPass, Connection, Connections, Grant, Grants}
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
   alias Ecto.Adapters.SQL.Sandbox
@@ -68,6 +69,7 @@ defmodule Apiary.AdaptersRacesTest do
 
   defp delete_adapters(query) do
     ids = Repo.all(select(query, [n], n.id))
+    Repo.delete_all(from g in Grant, where: g.adapter_id in ^ids)
     Repo.delete_all(from c in Connection, where: c.adapter_id in ^ids)
     Repo.delete_all(from k in AccessKey, where: k.node_id in ^ids)
     Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^ids)
@@ -365,6 +367,45 @@ defmodule Apiary.AdaptersRacesTest do
     end
   end
 
+  describe "two organisations' reports of one grant" do
+    test "the first holds the ref; the second waits on the live index, then is refused" do
+      %{scope: mine} = sign_up()
+      %{scope: theirs} = sign_up()
+      %{adapter: adapter, access_key: key} = adapter()
+      {first_connection, _nonce} = connection_fixture(mine, adapter, :connected)
+      {second_connection, _nonce} = connection_fixture(theirs, adapter, :connected)
+
+      report = fn connection ->
+        fn ->
+          Grants.report(key_scope(key), %{
+            connection_id: connection.public_id,
+            grant_ref: "G_raced",
+            pass_nonce: connection.pass_nonce
+          })
+        end
+      end
+
+      {first, first_pid} = hold(report.(first_connection))
+      assert {:ok, %Grant{}} = first.result
+
+      second = start(report.(second_connection))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :grant_taken}
+
+      assert Repo.all(
+               from g in Grant,
+                 where: g.adapter_id == ^adapter.id and g.state == :live,
+                 select: g.connection_id
+             ) == [first_connection.id]
+
+      # The second's pass is not spent: once the first's connection ends, it reports.
+      {:ok, _} = Connections.end_connection(key_scope(key), first_connection.public_id)
+      assert {:ok, %Grant{}} = report.(second_connection).()
+    end
+  end
+
   describe "a linked return and a press of Install" do
     test "the return first: the press waits, then gives the connection it connected a new pass" do
       %{scope: scope} = sign_up()
@@ -390,11 +431,18 @@ defmodule Apiary.AdaptersRacesTest do
                state: :connected,
                connected_at: %DateTime{},
                pass_nonce_used_at: nil,
-               pass_nonce: kept,
-               linked_nonce: linked
+               pass_nonce: kept
              } = Repo.get!(Connection, connection.id)
 
       assert Apiary.Contract.Ed25519.encode(kept) == next
+
+      assert [linked] =
+               Repo.all(
+                 from p in Apiary.Adapters.LinkedPass,
+                   where: p.connection_id == ^connection.id,
+                   select: p.nonce
+               )
+
       assert Apiary.Contract.Ed25519.encode(linked) == nonce
     end
 
@@ -490,7 +538,7 @@ defmodule Apiary.AdaptersRacesTest do
       assert by == ctx.other.id
       assert Apiary.Contract.Ed25519.encode(kept) == nonce
 
-      fields = [:connected_at, :created_by_id, :linked_nonce]
+      fields = [:connected_at, :created_by_id]
       assert Map.take(taken, fields) == Map.take(ctx.connection, fields)
     end
 

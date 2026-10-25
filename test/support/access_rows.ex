@@ -153,6 +153,8 @@ defmodule Apiary.AccessRows do
       {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.report_grant", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"adapter.read_grants", yes: [:adapter_key, :hidden], on: :adapter},
       {:"dispatch.claim", yes: [:pool_key, :hidden]},
       {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
       {:"dispatch.release", yes: [:pool_key, :hidden]},

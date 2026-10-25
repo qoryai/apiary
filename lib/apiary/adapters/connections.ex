@@ -14,7 +14,7 @@ defmodule Apiary.Adapters.Connections do
   # whose pass is its first. The person comes back with a return
   # (`Apiary.Adapters.ReturnToken`), which `complete_return/4` checks, every check before
   # any change; a return that says the adapter linked makes the connection connected, and
-  # keeps its nonce as the one a grant report may name (`linked_nonce`).
+  # keeps its nonce as one a grant report may name (`Apiary.Adapters.LinkedPass`).
   # The adapter's first listing that names it is recorded as it is accepted
   # (`mark_listed/1`, `listed_at`). A connected connection takes a new pass for each
   # external account a person adds to it: a press of Install gives it one, as it gives a
@@ -32,9 +32,10 @@ defmodule Apiary.Adapters.Connections do
   # and when the organisation's purge starts (`end_for_organisation/1`,
   # `Apiary.Deletion`). While the organisation is marked for deletion, or out of use, its
   # connections are suspended instead, and come back with it. Each end ends the
-  # connection's live collections in the same transaction
-  # (`Apiary.Adapters.Collections.end_for_connections/2`), with the feed's `unlinked`
-  # entry for each one linked (`Apiary.Adapters.Collection.linked?/1`).
+  # connection's grants (`Apiary.Adapters.Grants.end_for_connections/2`) and its live
+  # collections (`Apiary.Adapters.Collections.end_for_connections/2`) in the same
+  # transaction, with the feed's `unlinked` entry for each collection linked
+  # (`Apiary.Adapters.Collection.linked?/1`) and for each grant.
   #
   # The lock order: the adapter's row, then its connections.
   #
@@ -68,7 +69,9 @@ defmodule Apiary.Adapters.Connections do
   #     `FOR SHARE`, by id, then the collections (`set_backlog/3`, `unlink_workspace/2`
   #     there). An end (`end_connection/2`,
   #     `end_for_organisation/1`) holds the connection, or all of the organisation's,
-  #     then its collections, then the adapter's feed counter.
+  #     then its grants, then its collections, then the adapter's feed counter. A grant
+  #     report holds the connection `FOR UPDATE`, then its linked pass, then the grant,
+  #     then the feed counter (`Apiary.Adapters.Grants.report/2`).
   #
   # Once each change commits, the organisation hears of it on its topic
   # (`Apiary.Adapters.Collections.broadcast_connection/1`): a press of Install, for the
@@ -83,7 +86,7 @@ defmodule Apiary.Adapters.Connections do
   alias Apiary.{Access, AccessKeys, Features, Organisations, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{Collections, ConnectPass, Connection, ReturnToken}
+  alias Apiary.Adapters.{Collections, ConnectPass, Connection, Grants, LinkedPass, ReturnToken}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
@@ -171,7 +174,7 @@ defmodule Apiary.Adapters.Connections do
   # (`pass_started_by_id`, and `created_by_id` while it is pending). One connected
   # (`complete_return/4`) takes the new pass in the same way, for an external account the
   # person adds to it, and keeps its state, the time it connected, the person whose pass
-  # connected it and the nonce a grant report may name (`linked_nonce`). One pending is
+  # connected it and the nonces a grant report may name. One pending is
   # replaced when its next pass would expire too far ahead, below.
   # `{:ok, connection, pass, replaced}`, `replaced` the connection this press ended in its
   # place, or nil;
@@ -382,7 +385,7 @@ defmodule Apiary.Adapters.Connections do
   #
   # Then a return that says `linked` makes a pending connection connected, now, leaves a
   # connected one connected, and keeps the nonce as the one a grant report may name
-  # (`linked_nonce`); `refused` and `cancelled` change nothing but the nonce, which is used
+  # (`Apiary.Adapters.LinkedPass`); `refused` and `cancelled` change nothing but the nonce, which is used
   # either way. `{:ok, :linked}`,
   # `{:ok, {:refused, reason}}`, `{:ok, :cancelled}`; `{:error, :wrong_person}` for 7;
   # `{:error, :not_found}` for every other refusal, one answer for a token that is bad,
@@ -484,10 +487,9 @@ defmodule Apiary.Adapters.Connections do
 
     with {:ok, connected} <-
            connection
-           |> Ecto.Changeset.change(
-             connects ++ [pass_nonce_used_at: now, linked_nonce: nonce, updated_at: now]
-           )
+           |> Ecto.Changeset.change(connects ++ [pass_nonce_used_at: now, updated_at: now])
            |> Repo.update(),
+         {:ok, _pass} <- LinkedPass.insert(connected, nonce, now),
          do: {:ok, {:linked, connected}}
   end
 
@@ -715,9 +717,18 @@ defmodule Apiary.Adapters.Connections do
              updated_at: now
            )
            |> Repo.update() do
-      _count = Collections.end_for_connections([ended.id], now)
+      :ok = end_with([ended.id], now)
       {:ok, ended}
     end
+  end
+
+  # Ends the grants and the live collections of the connections `connection_ids`, which
+  # the caller's transaction ended and holds, in the lock order: the grants, the
+  # collections with their `unlinked` entries, then the grants' `unlinked` entries.
+  defp end_with(connection_ids, now) do
+    grants = Grants.end_for_connections(connection_ids, now)
+    _count = Collections.end_for_connections(connection_ids, now)
+    Grants.tell_unlinked(grants)
   end
 
   @doc false
@@ -736,7 +747,7 @@ defmodule Apiary.Adapters.Connections do
         set: [state: :ended, ended_at: now, ended_reason: :integration_deleted, updated_at: now]
       )
 
-    _count = Collections.end_for_connections(Enum.map(ended, &elem(&1, 0)), now)
+    :ok = end_with(Enum.map(ended, &elem(&1, 0)), now)
     ended |> Enum.map(&elem(&1, 1)) |> Enum.sort()
   end
 
@@ -778,7 +789,7 @@ defmodule Apiary.Adapters.Connections do
             ]
           )
 
-        _collections = Collections.end_for_connections(Enum.map(ended, & &1.id), now)
+        :ok = end_with(Enum.map(ended, & &1.id), now)
         {:ok, ended}
       end)
 

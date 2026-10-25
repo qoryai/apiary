@@ -475,6 +475,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"source_item.post",
         :"work_item.read_changes",
         :"adapter.disconnect",
+        :"adapter.report_grant",
+        :"adapter.read_grants",
         :"dispatch.claim",
         :"dispatch.dispatched",
         :"dispatch.release",

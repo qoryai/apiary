@@ -505,6 +505,19 @@ defmodule Apiary.Access do
         {:not,
          "an adapter's end of a connection is kept on the connection, its end and its reason, not in the audit trail"}
     ),
+    # The grants of an organisation's connection (`Apiary.Adapters.Grants`): the adapter's
+    # report of one, in the trail of the instance's organisation, and its read of them all.
+    Action.new(:"adapter.report_grant", "report a grant of a connection of the adapter",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation
+    ),
+    Action.new(:"adapter.read_grants", "read the grants of the adapter's connections",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
     # A node pool's key at the server contract, on the runs dispatched to its workspace:
     # one queue per workspace, which any pool of the workspace claims from. Asked of the
     # workspace, its queue, or of a dispatch of it the key's pool claimed (`key_subject/4`).

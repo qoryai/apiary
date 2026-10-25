@@ -20,8 +20,8 @@ defmodule Apiary.Adapters.Connection do
   # bytes of the nonce of the latest connect pass made for it, `pass_nonce_used_at` when a
   # return under that nonce came back, and `pass_started_by_id` the person who started that
   # pass, nil for a pass made before it was kept, whose person is `created_by_id`.
-  # `linked_nonce` is the nonce of the latest pass whose return came back linked, which a
-  # grant report may name once, nil while none did.
+  # Each pass whose return came back linked is kept as a row of `adapter_linked_passes`
+  # (`Apiary.Adapters.LinkedPass`), whose nonce a grant report may name once.
   # `pass_expires_at` is when the latest pass expires, to the second, as the pass says
   # (`Apiary.Adapters.ConnectPass`), or `nil` for a connection made before it was kept;
   # each new pass of the connection expires strictly later than it, and no more than
@@ -29,9 +29,8 @@ defmodule Apiary.Adapters.Connection do
   # `created_by_id` is the person who pressed Install for the latest pass while the
   # connection is pending, and the person whose pass connected it once it is connected. A
   # connected connection takes a new pass for each external account a person adds to it:
-  # `pass_nonce`, `pass_nonce_used_at`, `pass_expires_at`, `pass_started_by_id` and
-  # `linked_nonce` change with its passes; `created_by_id` and `connected_at` stay as they
-  # are.
+  # `pass_nonce`, `pass_nonce_used_at`, `pass_expires_at` and `pass_started_by_id` change
+  # with its passes; `created_by_id` and `connected_at` stay as they are.
   #
   # `public_id` is its name outside the database: `ac_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`).
@@ -65,7 +64,6 @@ defmodule Apiary.Adapters.Connection do
     field :pass_nonce, :binary, redact: true
     field :pass_nonce_used_at, :utc_datetime_usec
     field :pass_expires_at, :utc_datetime
-    field :linked_nonce, :binary, redact: true
     field :connected_at, :utc_datetime_usec
     field :listed_at, :utc_datetime_usec
     field :listing_completed_at, :utc_datetime_usec
