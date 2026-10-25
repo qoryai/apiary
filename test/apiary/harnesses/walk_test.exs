@@ -515,6 +515,49 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:failed, %{failure: :not_covered, source: nil}} = Walk.run(ctx.input)
     end
 
+    test "a hidden harness's save-check message has no name, key, place or schema rule",
+         ctx do
+      admin = %{
+        instance_admin_scope()
+        | organisation: ctx.scope.organisation,
+          workspace: ctx.scope.workspace
+      }
+
+      base = "extends: {git: \"#{@harness}\", ref: v1}\n"
+      schema = "modules:\n  - source: {git: \"#{@tools}\", ref: v2, bogus: x}\n"
+      repeated = "modules: []\nmodules: []\n"
+
+      walk = fn stack ->
+        serve([ctx.run],
+          covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+          files: %{{"R_harness", "qory-stack.yaml"} => stack}
+        )
+
+        assert {:failed, %{failure: :invalid, rule: rule}} = Walk.run(ctx.input)
+        rule
+      end
+
+      # Shown: the place and the rule, and the repeated key.
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "explore"}, base)
+
+      assert %{"message" => "does not follow the harness format at %{place}: %{rule}"} =
+               walk.(schema)
+
+      assert %{"message" => "repeats the key %{key}", "message_values" => %{"key" => "modules"}} =
+               walk.(repeated)
+
+      # Hidden: none of them.
+      {:ok, _stack} = Stacks.put_stack(admin, {:workspace, ctx.scope.workspace, "explore"}, base)
+
+      assert walk.(schema) == %{
+               "message" => "has a value the harness format does not take",
+               "values" => %{}
+             }
+
+      assert %{"message" => "repeats a key", "message_values" => %{}} = walk.(repeated)
+    end
+
     test "a hidden harness's rule has no path, ref or stack name", ctx do
       admin = %{
         instance_admin_scope()

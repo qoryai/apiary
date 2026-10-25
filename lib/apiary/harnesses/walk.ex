@@ -881,8 +881,11 @@ defmodule Apiary.Harnesses.Walk do
     %{"rule" => name, "values" => Map.new(values, fn {k, v} -> {to_string(k), v} end)}
   end
 
-  # A rule of the save check, in its words. A hidden harness shows no source in it.
+  # A rule of the save check, in its words. A hidden harness shows no source in it, and
+  # no name, key, place or schema rule (`hidden/2`).
   defp message(message, values) do
+    {message, values} = hidden(message, values)
+
     values =
       Map.new(values, fn
         {:source, _source} -> {"source", if(get(:hidden), do: nil, else: values[:source])}
@@ -892,9 +895,36 @@ defmodule Apiary.Harnesses.Walk do
     %{"message" => message, "values" => values}
   end
 
+  # A save check's message with a value that is part of a hidden harness, the base's
+  # stack name, a key, or the place in the document and the rule there: in words without
+  # the value, for a hidden harness.
+  @hidden_values [:name, :key, :place, :rule]
+  @hidden_messages %{
+    ("give the base %{name} as a git source and an export: " <>
+       "extends: {git: <https address>, ref: <ref>, stack: %{name}}") =>
+      "give the base as a git source and an export: " <>
+        "extends: {git: <https address>, ref: <ref>, stack: <name>}",
+    ("may not contain %{key}: a harness document takes name, description, extends, " <>
+       "modules, bind and extensions") =>
+      "may not contain one of its keys: a harness document takes name, description, " <>
+        "extends, modules, bind and extensions",
+    "repeats the key %{key}" => "repeats a key"
+  }
+  # The words of any other such message, the schema's among them.
+  @hidden_message "has a value the harness format does not take"
+
+  defp hidden(message, values) do
+    if get(:hidden) and Enum.any?(@hidden_values, &Keyword.has_key?(values, &1)),
+      do:
+        {Map.get(@hidden_messages, message, @hidden_message),
+         Keyword.drop(values, @hidden_values)},
+      else: {message, values}
+  end
+
   # A file that the reader refuses: its name, and the save check's words for why.
   defp yaml(file, reason) do
     {message, values} = Document.unreadable(reason)
+    {message, values} = hidden(message, values)
 
     %{
       "rule" => "yaml",

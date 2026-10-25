@@ -1353,6 +1353,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "Correct #{setting}, then run Explore again. It breaks the harness format: its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens."},
             {%{code: "invalid", rule: %{"rule" => "no_export", "values" => %{}}},
              "Correct #{setting}, then run Explore again. It breaks the harness format: it exports no stack of that name."},
+            {%{
+               code: "invalid",
+               rule: %{
+                 "message" => "has a value the harness format does not take",
+                 "values" => %{}
+               }
+             },
+             "Correct #{setting}, then run Explore again. It breaks the harness format: has a value the harness format does not take."},
             {%{code: "invalid", rule: %{"rule" => "no_stack_file", "values" => %{}}},
              "Correct #{setting}, then run Explore again. It breaks the harness format: it has no qory-stack.yaml at the stack's path."},
             {%{
