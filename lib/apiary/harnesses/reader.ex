@@ -18,9 +18,11 @@ defmodule Apiary.Harnesses.Reader do
     * no anchor and no alias, `:alias`;
     * at most 30 million reductions and 64 MiB of heap for the parse, with 10 seconds of
       wall-clock time as a backstop, `:too_complex`. A reduction is the runtime's unit of
-      a process's work: on OTP 29 the same parse did the same reductions within 2 % on
-      an idle and on a busy machine, so whether a file passes does not depend on the
-      machine's speed or load, short of the backstop.
+      a process's work. On OTP 29 the same parse did the same reductions within 2 % on
+      an idle and on a busy machine, and the reductions are read every 50 ms, about 0.5
+      million apart. So a file far from the budget gets the same answer on every read.
+      A file within about 2 % of the budget may get a different answer on another read,
+      and so may a read that runs past the backstop on a busy machine.
 
   The parser, yamerl, holds back its tokens while a flow collection could still turn out
   to be a key, and reverses that queue for each token it adds, so a long flow collection

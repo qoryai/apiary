@@ -64,7 +64,7 @@ defmodule Apiary.Kinds.Budget do
     reductions = Keyword.fetch!(budget, :reductions)
     words = Keyword.fetch!(budget, :heap_words)
     ms = Keyword.fetch!(budget, :ms)
-    poll_ms = Keyword.get(budget, :poll_ms, @poll_ms)
+    poll_ms = poll_ms(Keyword.get(budget, :poll_ms, @poll_ms))
     caller = self()
     ref = make_ref()
     deadline = now() + ms * 1000
@@ -100,6 +100,13 @@ defmodule Apiary.Kinds.Budget do
 
     result
   end
+
+  # A `:poll_ms` of nil, 0 or less would skip the check of the reductions or never reach
+  # it, so it is refused.
+  defp poll_ms(ms) when is_integer(ms) and ms > 0, do: ms
+
+  defp poll_ms(other),
+    do: raise(ArgumentError, "set :poll_ms to a positive integer, not #{inspect(other)}")
 
   # Kills the process when the caller dies, or at its time should the caller not be there
   # to; ends when the process does.

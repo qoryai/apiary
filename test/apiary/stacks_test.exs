@@ -552,7 +552,7 @@ defmodule Apiary.StacksTest do
 
     test "refuse a document that takes too long to read", ctx do
       expected = [
-        "takes longer to read than a harness document may: " <>
+        "takes more work to read than a harness document may: " <>
           "write long lists as block lists, with one - item per line"
       ]
 
