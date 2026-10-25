@@ -17,9 +17,9 @@ defmodule Apiary.Stacks do
   # ## Writes
   #
   # `put_stack/3` and `delete_stack/1` set and remove the stack at one place. Only tests
-  # call them, and the demo (`mix apiary.demo.console`) calls `put_stack/3`: no action,
-  # route or page does, and they check no access. The access check comes with the
-  # action. A write records the person who saved the value and, in
+  # call them, and the demo (`mix apiary.demo.console`) calls `put_stack/3`: no route or
+  # page does, and they check no access and write no audit entry. `harness.save` is the
+  # access action for a save. A write records the person who saved the value and, in
   # `owner_organisation_id`, the organisation the edition gives for the scope
   # (`Apiary.Edition.harness_owner/1`). The core gives the scope's organisation when the
   # scope reaches it through a membership there alone (`saved_by/1`), and the instance's
@@ -182,8 +182,7 @@ defmodule Apiary.Stacks do
   # owned by the organisation the edition gives for the scope
   # (`Apiary.Edition.harness_owner/1`). `{:ok, stack}`; `{:error, :forbidden}` when the
   # edition gives none; or `{:error, changeset}` with the reason on its field. Only tests
-  # and the demo call it: no action, route or page does, and it checks no access (the
-  # moduledoc).
+  # and the demo call it: no route or page does, and it checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness) do
@@ -217,7 +216,7 @@ defmodule Apiary.Stacks do
   @doc false
   # delete_stack/1 removes the stack at `place`, so the next level applies. `{:ok,
   # stack}`, as it was, or `{:error, :not_found}` for a place with none. Only tests call
-  # it: no action, route or page does, and it checks no access (the moduledoc).
+  # it: no route or page does, and it checks no access (the moduledoc).
   @spec delete_stack(place) :: {:ok, Stack.t()} | {:error, :not_found}
   def delete_stack(place) do
     columns = columns(place)

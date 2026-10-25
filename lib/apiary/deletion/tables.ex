@@ -109,6 +109,7 @@ defmodule Apiary.Deletion.Tables do
     {"adapter_connections", :organisation},
     {"nodes", :workspace},
     {"invitations", :workspace},
+    {"harness_assignments", :organisation},
     {"memberships", :organisation},
     {"audit_entries", :workspace},
     {"last_workspaces", :workspace},

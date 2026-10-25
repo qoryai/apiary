@@ -31,7 +31,9 @@ defmodule Apiary.AccessRows do
   an instance admin's too, as `Apiary.ProductName.rename/2` asks, nor for changing the
   instance's settings, an instance admin's after a recent sign-in, as
   `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
-  the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks.
+  the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks,
+  nor for creating and deleting an instance assignment of a harness source, an instance
+  admin's, as `Apiary.Harnesses` asks.
   Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
   let a signed-in person create one. Creating, deleting and restoring a workspace are
   asked of the organisation: an owner creates one, an owner or an admin deletes any
@@ -156,6 +158,9 @@ defmodule Apiary.AccessRows do
       {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.report_grant", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.read_grants", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"harness.save", yes: @owners ++ [:admin]},
+      {:"harness.assigned", yes: []},
+      {:"harness.unassigned", yes: []},
       {:"dispatch.claim", yes: [:pool_key, :hidden]},
       {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
       {:"dispatch.release", yes: [:pool_key, :hidden]},
