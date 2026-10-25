@@ -6,8 +6,8 @@ defmodule Apiary.Adapters.CallWire do
   # not define is refused.
   #
   #   * `run-credential` (`run-credential.schema.json`): `resources`, refs, each once,
-  #     `access` (`read` or `write`) and `purpose`: for `harness`, 1 to 64 resources and
-  #     `grant_ref`; for `work`, exactly one resource, the ref of the target's collection,
+  #     `access` (`read` or `write`) and `purpose`: for `harness`, 1 to 64 resources,
+  #     `grant_ref` and the access `read`; for `work`, exactly one resource, the ref of the target's collection,
   #     and `connection_id`, that collection's connection, with no `grant_ref`.
   #     Its answer is `credential`, the Forager contract's credential document as the
   #     integration contract narrows it (`run-credential-answer.schema.json`): `version` 1,
@@ -58,11 +58,12 @@ defmodule Apiary.Adapters.CallWire do
 
   def call?(_path, _body), do: false
 
-  # A harness credential is under the grant `grant_ref`; a work credential, for the run's
-  # target alone, names one resource and the connection of the target's collection.
+  # A harness credential is read only, under the grant `grant_ref`; a work credential,
+  # for the run's target alone, names one resource and the connection of the target's
+  # collection.
   defp call_members?("run-credential", %{"purpose" => "harness"} = body) do
     keys?(body, ~w(access grant_ref purpose resources)) and ref?(body["grant_ref"]) and
-      run_credential?(body)
+      run_credential?(body) and body["access"] == "read"
   end
 
   defp call_members?("run-credential", %{"purpose" => "work"} = body) do
