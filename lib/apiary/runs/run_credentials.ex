@@ -137,23 +137,33 @@ defmodule Apiary.Runs.RunCredentials do
 
   @doc false
   # work/1 is the work entry of `run` (a run, or a map with its `id`), as the run's run
-  # configuration lists it: `%{name:, entry:, hosts:}`, the entry a host credential of the
-  # Forager contract (`name`, `purpose` `work`, `apply`, and `placeholders` where it has
-  # some) and the hosts of its apply items, each once, in their order. Nil for none.
+  # configuration lists it: `%{name:, entry:, hosts:, row:}`, the entry a host credential
+  # of the Forager contract (`name`, `purpose` `work`, `apply`, and `placeholders` where it
+  # has some), the hosts of its apply items, each once, in their order, and the stored row
+  # (`Apiary.Runs.RunCredential`), which the secrets request issues the entry's value
+  # from (`Apiary.Runs.WorkCredential`). Nil for none.
   @spec work(map | nil) ::
-          %{name: String.t(), entry: Jason.OrderedObject.t(), hosts: [String.t()]} | nil
+          %{
+            name: String.t(),
+            entry: Jason.OrderedObject.t(),
+            hosts: [String.t()],
+            row: RunCredential.t()
+          }
+          | nil
   def work(%{id: run_id}) when is_binary(run_id) do
-    query =
-      from c in RunCredential,
-        where: c.run_id == ^run_id and c.purpose == :work,
-        select: %{name: c.name, apply: c.apply, placeholders: c.placeholders}
+    query = from c in RunCredential, where: c.run_id == ^run_id and c.purpose == :work
 
     case Repo.one(query) do
       nil ->
         nil
 
-      %{} = row ->
-        %{name: row.name, entry: work_entry(row), hosts: ApplyTemplates.hosts(row.apply)}
+      %RunCredential{} = row ->
+        %{
+          name: row.name,
+          entry: work_entry(row),
+          hosts: ApplyTemplates.hosts(row.apply),
+          row: row
+        }
     end
   end
 

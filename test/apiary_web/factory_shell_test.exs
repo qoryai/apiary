@@ -411,6 +411,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"adapter.setup", "Adapter set-up started"} in options
       assert {"adapter.app_values_set", "Adapter secrets stored"} in options
       assert {"adapter.app_values_seal", "Adapter secrets sent"} in options
+      assert {"run_credential.issue", "Run access sent or refused"} in options
       assert {"model_choice.write", "Model choice changed"} in options
       assert {"time_limit.edit", "Time limit changed"} in options
 
@@ -437,6 +438,7 @@ defmodule ApiaryWeb.FactoryShellTest do
             :"adapter.setup",
             :"adapter.app_values_set",
             :"adapter.app_values_seal",
+            :"run_credential.issue",
             :"model_choice.write",
             :"time_limit.edit"
           ],

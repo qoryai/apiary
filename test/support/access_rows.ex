@@ -126,6 +126,7 @@ defmodule Apiary.AccessRows do
       {:"run.post_events", yes: [:access_key, :pool_key, :hidden]},
       {:"run_configuration.fetch", yes: [:access_key, :pool_key, :hidden]},
       {:"secret.seal", yes: [:access_key, :hidden]},
+      {:"run_credential.issue", yes: [:access_key, :hidden]},
       {:"adapter.read", yes: @owners ++ [:member, :admin]},
       {:"adapter.create", yes: []},
       {:"adapter.edit", yes: []},

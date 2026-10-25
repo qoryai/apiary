@@ -9,10 +9,10 @@ defmodule Apiary.Runs.SecretsRequest do
   # and at a renewal only the ones whose values expire. The credentials Qory writes are a
   # run's model key (`Apiary.Runs.ProviderCredential`), with the `registry` feature, its
   # registry credential (`Apiary.Registry.Credential`), and the work entry its claim
-  # recorded (`Apiary.Runs.RunCredentials`), whose value no request receives yet. A request
-  # reveals the model key
-  # only when it names it. It makes a registry secret only when it names `registry`, and
-  # the run's row keeps the SHA-256 of the one sealed last.
+  # recorded (`Apiary.Runs.RunCredentials`), whose value the entry's adapter issues anew
+  # for each request that names it (`Apiary.Runs.WorkCredential`). A request reveals the
+  # model key only when it names it. It makes a registry secret only when it names
+  # `registry`, and the run's row keeps the SHA-256 of the one sealed last.
   # `ApiaryWeb.Contract.SecretsController` verifies the request and answers it.
   #
   # The refusals, in order, after the request verified under the access key:
@@ -44,7 +44,7 @@ defmodule Apiary.Runs.SecretsRequest do
   #     credential names of that run configuration, in its order (the schema already
   #     refuses an empty list or a name twice); then `:secrets_not_allowed` for a key not
   #     allowed stored secrets, of a request that names the run's model key or its work
-  #     entry; then `:credential_unavailable` for a request that names the work entry;
+  #     entry;
   #  8. `{:error, :credential_unavailable}`, a key Qory may not seal for the gateway (the
   #     checks of the provider apply to a request that names the model key): the
   #     provider's row, its secret or the value fails its integrity check or is gone; the
@@ -60,9 +60,18 @@ defmodule Apiary.Runs.SecretsRequest do
   #     chain than "operator" for the run's organisation
   #     (`c:Apiary.Edition.model_choice_chain/1`) or names no operator
   #     (`c:Apiary.Edition.operator_chain_organisation/1`); the instance's gateway may
-  #     receive a key of either chain; the access key's public key fails a key
-  #     check (`Apiary.Contract.Ed25519.check_public_key/1`); the value does not fit the
-  #     plaintext's schema.
+  #     receive a key of either chain; for a request that names the work entry, a gateway
+  #     that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`):
+  #     a gateway of another organisation whose gateways do not serve the run's; the
+  #     access key's public key fails a key check
+  #     (`Apiary.Contract.Ed25519.check_public_key/1`);
+  #  9. for a request that names the work entry, its credential is not issued
+  #     (`Apiary.Runs.WorkCredential.issue/4`): `{:error, :unavailable}` for a call to the
+  #     adapter that timed out or reached no one, `{:error, :credential_unavailable}` for
+  #     every other cause. Each attempt writes its `run_credential.issue` Activity entry,
+  #     and no database transaction is open during the call;
+  # 10. `{:error, :credential_unavailable}`, a value that does not fit the plaintext's
+  #     schema.
   #
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
   # audit entry fails. A seal of a model key is recorded as `secret.seal`, by the access
@@ -74,7 +83,8 @@ defmodule Apiary.Runs.SecretsRequest do
   #
   # The value goes into the seal and nowhere else: no log line, error, exception message
   # or audit entry has it, nor the plaintext, the sealed bytes or a key. A log line has
-  # the run's id, the provider's public id and a refusal's atom at most.
+  # the run's id, the provider's, connection's and adapter's public ids and a refusal's
+  # atom at most.
 
   require Logger
 
@@ -84,7 +94,17 @@ defmodule Apiary.Runs.SecretsRequest do
   alias Apiary.Contract.Ed25519
   alias Apiary.Organisations.Organisation
   alias Apiary.Registry.{Credential, RunAccess}
-  alias Apiary.Runs.{ProviderCredential, Registration, Run, RunCredentials, RunKey, Sender}
+
+  alias Apiary.Runs.{
+    ProviderCredential,
+    Registration,
+    Run,
+    RunCredentials,
+    RunKey,
+    Sender,
+    WorkCredential
+  }
+
   alias Apiary.Secrets.Sealing
 
   @members ~w(version run_id run_configuration credentials timestamp)
@@ -133,10 +153,12 @@ defmodule Apiary.Runs.SecretsRequest do
          {:ok, credentials} <- credentials,
          {:ok, %{model: model, work: work} = credentials} <- named(request, credentials),
          :ok <- stored_allowed(model || work, access_key),
-         :ok <- work_issued(work),
          :ok <- sealable(run, model, access_key),
+         :ok <- work_sealable(run, work, access_key),
          {:ok, public_key} <- recipient_key(run, access_key),
-         {:ok, body, secret} <- sealed(run, credentials, access_key, public_key, digest, now),
+         {:ok, issued} <- issued(run, work, access_key, now),
+         {:ok, body, secret} <-
+           sealed(run, credentials, issued, access_key, public_key, digest, now),
          :ok <- record(access_key, run, model) do
       # The registry credential's secret counts from here: the seal and its size check
       # succeeded, and so did the seal's audit entry, which only a request that names the
@@ -199,10 +221,6 @@ defmodule Apiary.Runs.SecretsRequest do
   defp allowed(%AccessKey{}) do
     if Features.on?(:registry), do: :ok, else: {:error, :secrets_not_allowed}
   end
-
-  # No value of a work entry is issued yet, so a request that names one is refused.
-  defp work_issued(nil), do: :ok
-  defp work_issued(%{}), do: {:error, :credential_unavailable}
 
   defp stored_allowed(nil, _access_key), do: :ok
   defp stored_allowed(_model, %AccessKey{allow_secrets: true}), do: :ok
@@ -345,6 +363,30 @@ defmodule Apiary.Runs.SecretsRequest do
   defp provider_organisation(_provider, %Run{organisation_id: organisation_id}),
     do: organisation_id
 
+  # The work entry's credential may be sealed for the gateway as a model key of the
+  # organisation's chain may (`Apiary.Runs.WorkCredential.sealable_to?/2`).
+  defp work_sealable(_run, nil, _access_key), do: :ok
+
+  defp work_sealable(%Run{} = run, %{}, %AccessKey{node: node}) do
+    if WorkCredential.sealable_to?(node, run.organisation_id) do
+      :ok
+    else
+      Logger.warning(
+        "a secrets request for the run #{run.node_run_id} was refused: its work " <>
+          "credential may not be sealed for its gateway"
+      )
+
+      {:error, :credential_unavailable}
+    end
+  end
+
+  # The work entry's credential, from its adapter (`Apiary.Runs.WorkCredential.issue/4`),
+  # nil where the request does not name the entry.
+  defp issued(_run, nil, _access_key, _now), do: {:ok, nil}
+
+  defp issued(run, %{row: row}, access_key, now),
+    do: WorkCredential.issue(run, row, access_key, now)
+
   defp recipient_key(run, %AccessKey{public_key: public_key}) do
     case Ed25519.check_public_key(public_key) do
       :ok ->
@@ -371,8 +413,8 @@ defmodule Apiary.Runs.SecretsRequest do
 
   ## The seal
 
-  defp sealed(run, credentials, access_key, public_key, digest, now) do
-    case values(run, credentials) do
+  defp sealed(run, credentials, issued, access_key, public_key, digest, now) do
+    case values(run, credentials, issued) do
       {:ok, values, secret} ->
         values = Enum.sort_by(values, & &1["credential"])
 
@@ -400,16 +442,19 @@ defmodule Apiary.Runs.SecretsRequest do
   end
 
   # The value of each credential, and the registry credential's secret, nil for none:
-  # the model key's, read for sealing, and the registry credential's, made now
-  # (`Apiary.Registry.Credential.new_secret/0`) and stored only once the seal succeeded.
-  defp values(run, %{model: model, registry: registry}) do
+  # the model key's, read for sealing, the registry credential's, made now
+  # (`Apiary.Registry.Credential.new_secret/0`) and stored only once the seal succeeded,
+  # and the work entry's, `issued` (`Apiary.Runs.WorkCredential.value/2`).
+  defp values(run, %{model: model, registry: registry, work: work}, issued) do
     with {:ok, model_values} <- model_value(run, model) do
       secret = if registry, do: Credential.new_secret()
 
       registry_values =
         if secret, do: [%{"credential" => Credential.name(), "value" => secret}], else: []
 
-      {:ok, model_values ++ registry_values, secret}
+      work_values = if issued, do: [WorkCredential.value(work.name, issued)], else: []
+
+      {:ok, model_values ++ registry_values ++ work_values, secret}
     end
   end
 
@@ -446,8 +491,7 @@ defmodule Apiary.Runs.SecretsRequest do
           )
         else
           Logger.error(
-            "the registry credential for the run #{run.node_run_id} could not be sealed " <>
-              "(#{refusal})"
+            "the credentials for the run #{run.node_run_id} could not be sealed (#{refusal})"
           )
         end
 

@@ -811,4 +811,41 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
     assert Repo.one!(from s in "instance_settings", select: s.registry_instance) == name
   end
+
+  describe "a run of the queue with a work entry" do
+    @apply [
+      %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/{target.path}/*"]}
+    ]
+    @entry_apply [
+      %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/acme/shop/*"]}
+    ]
+
+    setup %{scope: scope} do
+      :ok = target_row(scope, "forge.example.com", "acme/shop")
+      sealed_run_fixture(scope, work: @apply)
+    end
+
+    test "keeps its registry secret at a renewal of work-1 alone", ctx do
+      credential = &Apiary.WorkCredentialStub.credential(&1, @entry_apply)
+      Apiary.WorkCredentialStub.issue(ctx.adapter_seed, credential.("fixture-work-token-start"))
+      credentials = [ctx.provider.public_id, "registry", "work-1"]
+      conn = seal(ctx, credentials)
+      assert conn.status == 200, conn.resp_body
+      assert Enum.map(open(ctx, conn)["values"], & &1["credential"]) == Enum.sort(credentials)
+      hash = Repo.get!(Run, ctx.run.id).registry_credential_sha256
+      assert is_binary(hash)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "running"])
+
+      Apiary.WorkCredentialStub.issue(ctx.adapter_seed, credential.("fixture-work-token-renewed"))
+      conn = seal(ctx, ["work-1"])
+      assert conn.status == 200, conn.resp_body
+
+      assert [%{"credential" => "work-1", "value" => "fixture-work-token-renewed"}] =
+               open(ctx, conn)["values"]
+
+      assert Repo.get!(Run, ctx.run.id).registry_credential_sha256 == hash
+    end
+  end
 end

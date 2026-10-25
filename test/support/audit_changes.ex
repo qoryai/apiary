@@ -138,7 +138,8 @@ defmodule Apiary.AuditChanges do
       :"dispatch.release",
       :"target.set_further_repositories",
       :"target.rebuild_environment",
-      :"secret.seal"
+      :"secret.seal",
+      :"run_credential.issue"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -694,6 +695,43 @@ defmodule Apiary.AuditChanges do
     }
   end
 
+  # The adapter's apply items, the work entry's with the target's path filled, and the
+  # token the stub adapter issues.
+  @work_apply [
+    %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/{target.path}/*"]}
+  ]
+  @work_entry_apply [
+    %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/acme/shop/*"]}
+  ]
+  @work_token "fixture-audited-work-token-5c1e"
+
+  # A gateway's secrets request for a run's work entry: the stub adapter issues the
+  # credential, sealed to the gateway's key, in the trail of the run's organisation, about
+  # the run; the entry's actor is the gateway's key, and the entry keeps nothing of the
+  # token.
+  def make(:"run_credential.issue", %{scope: scope}) do
+    {ctx, key, now} = work_run(scope)
+
+    Apiary.WorkCredentialStub.issue(
+      ctx.adapter_seed,
+      Apiary.WorkCredentialStub.credential(@work_token, @work_entry_apply)
+    )
+
+    body = secrets_request(ctx.run, ctx.attached.digest, ["work-1"], now)
+    before = entries()
+
+    {:ok, _answer} =
+      Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"run", ctx.run.id},
+      before: before,
+      actor: {:access_key, key.id},
+      secret: @work_token
+    }
+  end
+
   # A node pool's starter gives back the run of a dispatch its pool claimed, before its
   # handover, in the trail of the workspace's organisation, about the pool; the entry's
   # actor is the pool's key.
@@ -1064,6 +1102,18 @@ defmodule Apiary.AuditChanges do
   def refuse(:"secret.seal", %{scope: scope}) do
     {ctx, key, now} = sealed_run(scope)
     body = secrets_request(ctx.run, ctx.attached.digest, ["forge"], now)
+    before = entries()
+
+    {before,
+     Apiary.Runs.SecretsRequest.answer(key, body, Apiary.ContractFixtures.instance_id(), now)}
+  end
+
+  # A request whose names are out of the run configuration's order asks the adapter for
+  # nothing, and records nothing.
+  def refuse(:"run_credential.issue", %{scope: scope}) do
+    {ctx, key, now} = work_run(scope)
+    names = ["work-1", ctx.provider.public_id]
+    body = secrets_request(ctx.run, ctx.attached.digest, names, now)
     before = entries()
 
     {before,
@@ -1607,6 +1657,12 @@ defmodule Apiary.AuditChanges do
 
   defp sealed_run(scope) do
     ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
+    {key, _seed} = ctx.secrets_key
+    {ctx, key, ApiaryWeb.Contract.SignedRequest.now()}
+  end
+
+  defp work_run(scope) do
+    ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope, work: @work_apply)
     {key, _seed} = ctx.secrets_key
     {ctx, key, ApiaryWeb.Contract.SignedRequest.now()}
   end

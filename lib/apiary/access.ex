@@ -348,6 +348,16 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: [:access_key]
     ),
+    # A gateway's secrets request for a run's work entry: a credential the entry's adapter
+    # issues for the run, sealed to the gateway's access key (`Apiary.Runs.WorkCredential`).
+    # Each attempt is recorded, issued or refused. No other rule applies here, as for
+    # `secret.seal`.
+    Action.new(
+      :"run_credential.issue",
+      "issue a run's work credential from its adapter and seal it to the gateway's access key",
+      feature: :factory,
+      roles: [:access_key]
+    ),
     # The instance's adapters: an organisation's people read them and connect them; an
     # instance admin makes, renames and deletes them and sets how often they pull, which no
     # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`). The
