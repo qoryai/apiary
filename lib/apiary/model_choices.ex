@@ -180,30 +180,54 @@ defmodule Apiary.ModelChoices do
   defp input(%Workspace{} = workspace, target, workflow) do
     input = choices_for(workspace, target, workflow)
     ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
+    {chain, owner} = chain_owner(workspace.organisation_id)
 
     providers =
-      Repo.all(
-        from c in Connection,
-          where:
-            c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
-              not is_nil(c.provider_kind),
-          preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
-      )
-      |> Map.new(&{&1.id, resolution_provider(&1)})
+      if ids == [] do
+        %{}
+      else
+        Repo.all(
+          from c in Connection,
+            where:
+              c.id in ^ids and c.organisation_id == ^owner and not is_nil(c.provider_kind) and
+                c.chain == ^chain,
+            preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
+        )
+        |> Map.new(&{&1.id, resolution_provider(&1)})
+      end
 
     Map.put(input, :providers, providers)
   end
 
   @doc false
+  # chain_owner/1 is `{chain, organisation_id}`: the chain of model choices that the runs of
+  # the organisation `organisation_id` use (`c:Apiary.Edition.model_choice_chain/1`), and the
+  # organisation whose rows it is made of: the organisation itself for the chain
+  # "organisation", and for the chain "operator" the operator's organisation
+  # (`c:Apiary.Edition.operator_chain_organisation/1`), nil where the edition names none.
+  # Read without a lock.
+  @spec chain_owner(Ecto.UUID.t()) :: {String.t(), Ecto.UUID.t() | nil}
+  def chain_owner(organisation_id) do
+    case Edition.model_choice_chain(organisation_id) do
+      "operator" -> {"operator", Edition.operator_chain_organisation(organisation_id)}
+      chain -> {chain, organisation_id}
+    end
+  end
+
+  @doc false
   # choices_for/3 is what a resolution reads of the choices for the runs of `workflow` of
-  # `workspace` at `target`, nil for none, without the providers: the choices of the
-  # organisation's chain that may reach them, read without a lock, as
-  # `Apiary.ModelChoices.Resolution.resolve/1` takes them. A `workflow` of nil, for a run
-  # with none, reaches no choice of levels 2 and 4. `Apiary.Dispatches.RunSettings` reads
-  # the providers itself, once it holds their rows.
+  # `workspace` at `target`, nil for none, without the providers: the choices of the run's
+  # chain that may reach them, read without a lock, as
+  # `Apiary.ModelChoices.Resolution.resolve/1` takes them (`chain_owner/1`). The
+  # organisation's chain is read at all five levels. The operator's is read from the
+  # operator's organisation at its default alone, since a workspace or a target belongs to
+  # the organisation of its row: the choices of the run's workspace and target are not
+  # read, and an operator the edition does not name leaves no choice. A `workflow` of nil,
+  # for a run with none, reaches no choice of levels 2 and 4. `Apiary.Dispatches.RunSettings`
+  # reads the providers itself, once it holds their rows.
   @spec choices_for(Workspace.t(), Target.t() | nil, String.t() | nil) :: map
   def choices_for(%Workspace{} = workspace, target, workflow) do
-    chain = Edition.model_choice_chain(workspace.organisation_id)
+    {chain, owner} = chain_owner(workspace.organisation_id)
     target_id = target && target.id
 
     # The rows of the workspace, and of its target where the run has one.
@@ -218,15 +242,29 @@ defmodule Apiary.ModelChoices do
         else: dynamic([c], c.workspace_id == ^workspace.id and is_nil(c.target_id))
 
     choices =
-      Repo.all(
-        from c in ModelChoice,
-          where:
-            ^dynamic(
-              [c],
-              c.organisation_id == ^workspace.organisation_id and c.chain == ^chain and
-                (is_nil(c.workspace_id) or ^in_place)
-            )
-      )
+      case {chain, owner} do
+        {_chain, nil} ->
+          []
+
+        {"operator", operator_id} ->
+          Repo.all(
+            from c in ModelChoice,
+              where:
+                c.organisation_id == ^operator_id and c.chain == "operator" and
+                  is_nil(c.workspace_id)
+          )
+
+        {chain, organisation_id} ->
+          Repo.all(
+            from c in ModelChoice,
+              where:
+                ^dynamic(
+                  [c],
+                  c.organisation_id == ^organisation_id and c.chain == ^chain and
+                    (is_nil(c.workspace_id) or ^in_place)
+                )
+          )
+      end
 
     %{choices: choices, workspace_id: workspace.id, target_id: target_id, workflow: workflow}
   end

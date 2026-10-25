@@ -72,7 +72,7 @@ defmodule Apiary.Dispatches.RunSettings do
 
   require Logger
 
-  alias Apiary.{Connections, Edition, Features, ModelChoices, Repo, Stacks, TimeLimits}
+  alias Apiary.{Connections, Features, ModelChoices, Repo, Stacks, TimeLimits}
   alias Apiary.Connections.{Connection, ProviderModel}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime, Runtimes}
@@ -265,20 +265,26 @@ defmodule Apiary.Dispatches.RunSettings do
   # The providers the choices name, as they are now: with their models, the workspaces
   # they apply to and their keys' secret's value ids, by row id.
   defp providers(%{organisation: organisation, input: input}) do
-    chain = Edition.model_choice_chain(organisation.id)
+    {chain, owner} = ModelChoices.chain_owner(organisation.id)
     ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
 
-    from(c in Connection,
-      where: c.id in ^ids and c.organisation_id == ^organisation.id,
-      where: not is_nil(c.provider_kind) and c.chain == ^chain,
-      preload: [
-        models: ^from(m in ProviderModel, order_by: [asc: m.position]),
-        workspaces: [],
-        secret: [values: ^from(v in Value, select: struct(v, [:id, :value_id]))]
-      ]
-    )
-    |> Repo.all()
-    |> Map.new(&{&1.id, &1})
+    # The providers of the run's chain are the rows of the organisation that chain is made
+    # of: the run's organisation, or, on the operator's chain, the operator's.
+    if ids == [] or is_nil(owner) do
+      %{}
+    else
+      from(c in Connection,
+        where: c.id in ^ids and c.organisation_id == ^owner,
+        where: not is_nil(c.provider_kind) and c.chain == ^chain,
+        preload: [
+          models: ^from(m in ProviderModel, order_by: [asc: m.position]),
+          workspaces: [],
+          secret: [values: ^from(v in Value, select: struct(v, [:id, :value_id]))]
+        ]
+      )
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+    end
   end
 
   # The provider's row as it was written, or the run ends `provider_gone`: the row's
