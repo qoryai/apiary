@@ -169,9 +169,12 @@ defmodule Apiary.Dispatches do
   #
   # A claim held while its pool can claim nothing listens on its workspace's topic: a run
   # queued there, a run back in its queue, or a slot of its pools freed is told there as
-  # `{Apiary.Dispatches, :changed}`, and the holder tries again. A run queued inside a
-  # transaction is told before that transaction commits, so a holder may find nothing
-  # when told; it tries again at its next poll (`ApiaryWeb.Contract.PoolClaimController`).
+  # `{Apiary.Dispatches, :changed}`, and the holder tries again. The instance's pool has
+  # no workspace: its claim listens on the instance's topic, where every such change of
+  # any workspace is told too, and tries again, as its claim reads the queues of every
+  # workspace it serves. A run queued inside a transaction is told before that
+  # transaction commits, so a holder may find nothing when told; it tries again at its
+  # next poll (`ApiaryWeb.Contract.PoolClaimController`).
   #
   # ## The sweep: `sweep/1`
   #
@@ -1222,23 +1225,25 @@ defmodule Apiary.Dispatches do
 
   ## The wake
 
-  # subscribe/1 listens for the changes of the queue and the slots of `workspace_id`.
+  # subscribe/1 listens for the changes of the queue and the slots of `workspace_id`, or,
+  # with `:instance`, of every workspace.
   @doc false
-  @spec subscribe(Ecto.UUID.t()) :: :ok | {:error, term}
-  def subscribe(workspace_id) when is_binary(workspace_id),
+  @spec subscribe(Ecto.UUID.t() | :instance) :: :ok | {:error, term}
+  def subscribe(workspace_id) when is_binary(workspace_id) or workspace_id == :instance,
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id))
 
-  # unsubscribe/1 stops listening on `workspace_id`.
+  # unsubscribe/1 stops listening on `workspace_id`, or on `:instance`.
   @doc false
-  @spec unsubscribe(Ecto.UUID.t()) :: :ok
-  def unsubscribe(workspace_id) when is_binary(workspace_id),
+  @spec unsubscribe(Ecto.UUID.t() | :instance) :: :ok
+  def unsubscribe(workspace_id) when is_binary(workspace_id) or workspace_id == :instance,
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id))
 
   # broadcast/1 tells each workspace whose id `told` holds that its queue or its slots
-  # changed, and each work item `told` names as `{:work_item, workspace_id, public_id}`,
-  # whose run settled (`Apiary.Dispatches.Settle`), that it changed, on the topic of the
-  # work items of its workspace (`Apiary.WorkItems.topic/1`): `{:work_items_changed, ids}`,
-  # public ids only, one message per workspace.
+  # changed, and the instance's topic once when `told` has any workspace id, and each
+  # work item `told` names as `{:work_item, workspace_id, public_id}`, whose run settled
+  # (`Apiary.Dispatches.Settle`), that it changed, on the topic of the work items of its
+  # workspace (`Apiary.WorkItems.topic/1`): `{:work_items_changed, ids}`, public ids
+  # only, one message per workspace.
   @doc false
   @spec broadcast([Ecto.UUID.t() | Settle.told()]) :: :ok
   def broadcast(told) when is_list(told) do
@@ -1246,6 +1251,9 @@ defmodule Apiary.Dispatches do
 
     for workspace_id <- workspace_ids,
         do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(workspace_id), {__MODULE__, :changed})
+
+    if workspace_ids != [],
+      do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(:instance), {__MODULE__, :changed})
 
     for {workspace_id, ids} <-
           Enum.group_by(work_items, &elem(&1, 1), &elem(&1, 2)) do
@@ -1259,6 +1267,7 @@ defmodule Apiary.Dispatches do
     :ok
   end
 
+  defp topic(:instance), do: "dispatches:instance"
   defp topic(workspace_id), do: "dispatches:" <> workspace_id
 
   defp in_transaction!(what) do

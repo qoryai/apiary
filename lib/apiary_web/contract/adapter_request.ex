@@ -32,9 +32,10 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   # kind, with the same `401` as an unknown key, verified under a fixed public key so it
   # costs what a known one does. With `kind: :pool`, only an active key of a node pool
   # verifies (of a workspace, and an organisation in use, as
-  # `Apiary.AccessKeys.fetch_for_verification/1` holds a pool's key), and every other
-  # kind's is refused the same way. Which key may take which action is
-  # `Apiary.Access`'s to decide, not this plug's.
+  # `Apiary.AccessKeys.fetch_for_verification/1` holds a pool's key, or of the instance's
+  # node pool, with no workspace and no organisation), and every other kind's is refused
+  # the same way. Which key may take which action is `Apiary.Access`'s to decide, not
+  # this plug's.
   #
   # **Freshness and replay.** A request is fresh when its time is within 300 seconds of
   # the contract's clock (`ApiaryWeb.Contract.SignedRequest.now/0`), either way: a GET's
@@ -327,10 +328,12 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
   end
 
   # For `:adapter`, an adapter's key, of the instance, and no other kind's. For `:pool`,
-  # a node pool's key, of its workspace and organisation, and no other kind's: one
+  # a node pool's key, of its workspace and organisation, or the instance's node pool's
+  # key, with no workspace and no organisation, and no other kind's: one
   # `Apiary.AccessKeys.fetch_for_verification/1` answers with, so neither revoked, nor of
   # a pool deleted, nor of a workspace or an organisation marked for deletion or out of
-  # use.
+  # use. The instance's pool's claim holds each run to the run's place
+  # (`Apiary.Dispatches.in_use_place/0`).
   defp lookup(key_id, kind) do
     case AccessKeys.fetch_for_verification(key_id) do
       {:ok, %AccessKey{public_key: <<_::binary-size(32)>> = public_key} = key} ->
@@ -356,6 +359,16 @@ defmodule ApiaryWeb.Contract.AdapterRequest do
          :pool
        )
        when is_binary(organisation_id) and is_binary(workspace_id),
+       do: true
+
+  defp of_kind?(
+         %AccessKey{
+           organisation_id: nil,
+           workspace_id: nil,
+           node: %Node{kind: :pool, organisation_id: nil, workspace_id: nil}
+         },
+         :pool
+       ),
        do: true
 
   defp of_kind?(_key, _kind), do: false
