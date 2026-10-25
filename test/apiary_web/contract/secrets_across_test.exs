@@ -3,7 +3,10 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   # a key of a provider of the organisation's chain goes only to a gateway of the run's
   # organisation or to the instance's gateway, and a key of a provider of an operator's
   # chain only to a gateway of an operator that serves the run's organisation or to the
-  # instance's gateway, at the claim and at the secrets request. The edition's seams are `Apiary.EditionStubs.ServesAcrossWithChain`: the
+  # instance's gateway, at the claim and at the secrets request. A run's work credential
+  # goes to the run's gateway as a key of the organisation's chain does, and also to the
+  # gateway of an organisation that serves the run's (`Apiary.Runs.WorkCredential`). The
+  # edition's seams are `Apiary.EditionStubs.ServesAcrossWithChain`: the
   # operator's organisation-level gateways serve the client's workspaces. Not async, as the
   # other contract tests of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -18,7 +21,17 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   import Apiary.SealedRunsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{AccessKeys, Connections, Dispatches, Edition, EditionStubs, ModelChoices, Repo}
+  alias Apiary.{
+    AccessKeys,
+    Connections,
+    Dispatches,
+    Edition,
+    EditionStubs,
+    ModelChoices,
+    Repo,
+    WorkCredentialStub
+  }
+
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.ModelChoices.ModelChoice
@@ -76,13 +89,20 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   # and an explore run of a fresh work item claimed by its key: `{:ok, %{run: run,
   # run_key: run_key}}`, the registered run and the run key its code was redeemed for, or
   # `{:error, :gone}` for a run the claim ended; and the run of the queue.
-  defp hand_over(%{client: client}), do: hand_over(client)
+  #
+  # With `apply`, the work item's adapter declares those apply items, so the run has the
+  # work entry `work-1`, and the map also has `adapter_seed`, to sign the stub adapter's
+  # answers with (`Apiary.SealedRunsFixtures.callable_adapter_fixture/2`).
+  defp hand_over(ctx_or_scope, apply \\ nil)
 
-  defp hand_over(scope) do
+  defp hand_over(%{client: client}, apply), do: hand_over(client, apply)
+
+  defp hand_over(scope, apply) do
     pool = pool_fixture(scope)
     :default = pool.gateway_choice
     %{access_key: pool_key} = enrolled_key_fixture(scope, pool)
     work_item = work_item_fixture(scope)
+    adapter = if apply, do: callable_adapter_fixture(work_item.adapter_id, apply), else: %{}
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     case Dispatches.claim(pool_key, Dispatches.now()) do
@@ -91,7 +111,8 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
 
       {:ok, claimed} ->
         run_key = redeemed_run_key!(claimed.run_code)
-        {{:ok, %{run: claimed.registered, run_key: run_key}}, queued}
+        handed = %{run: claimed.registered, run_key: run_key}
+        {{:ok, Map.merge(handed, Map.take(adapter, [:adapter_seed]))}, queued}
     end
   end
 
@@ -345,6 +366,86 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
       assert code(conn) == "credential_unavailable"
       assert log =~ "#{provider.public_id} may not be sealed for its gateway (organisation)"
       assert seals() == []
+    end
+  end
+
+  @apply [
+    %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/{target.path}/*"]}
+  ]
+  @entry_apply [
+    %{"hosts" => ["git.example.com"], "scheme" => "bearer", "paths" => ["/acme/shop/*"]}
+  ]
+  @token "fixture-work-token-across-0001"
+
+  defp issues, do: Repo.all(from e in Entry, where: e.action == "run_credential.issue")
+
+  # The secrets request for the run's work entry alone, its credential issued by the stub
+  # adapter.
+  defp post_work({key, seed}, handed, run, digest) do
+    WorkCredentialStub.issue(
+      handed.adapter_seed,
+      WorkCredentialStub.credential(@token, @entry_apply)
+    )
+
+    body = secrets_request(run, digest, ["work-1"], SignedRequest.now())
+
+    signed_post(build_conn(), key.key_id, seed, body,
+      target: "/v1/secrets",
+      content_type: "application/json",
+      delivery: nil
+    )
+  end
+
+  describe "a run's work credential" do
+    test "is sealed for an operator's gateway that serves the client, in the client's trail",
+         ctx do
+      gateway_key = operator_gateway(ctx)
+      {{:ok, handed}, _queued} = hand_over(ctx, @apply)
+      run = attach!(gateway_key, handed)
+
+      conn = post_work(gateway_key, handed, run, digest(gateway_key, run))
+      assert conn.status == 200, conn.resp_body
+      assert signed_answer?(conn)
+
+      # In the run's organisation's trail, about the run, by the operator's gateway's key.
+      {key, _seed} = gateway_key
+      assert [%Entry{} = entry] = issues()
+      assert entry.organisation_id == ctx.client.organisation.id
+      assert {entry.subject_kind, entry.subject_id} == {"run", run.id}
+      assert {entry.actor_kind, entry.actor_id} == {:access_key, key.id}
+      assert entry.details["outcome"] == "issued"
+      assert seals() == []
+    end
+
+    test "is sealed for the instance's gateway, in the run's organisation's trail", ctx do
+      gateway_key = instance_gateway()
+      {{:ok, handed}, _queued} = hand_over(ctx, @apply)
+      run = attach!(gateway_key, handed)
+
+      conn = post_work(gateway_key, handed, run, digest(gateway_key, run))
+      assert conn.status == 200, conn.resp_body
+
+      {key, _seed} = gateway_key
+      assert [%Entry{} = entry] = issues()
+      assert entry.organisation_id == ctx.client.organisation.id
+      assert entry.workspace_id == ctx.client.workspace.id
+      assert {entry.subject_kind, entry.subject_id} == {"run", run.id}
+      assert {entry.actor_kind, entry.actor_id} == {:access_key, key.id}
+    end
+
+    test "is refused once the operator no longer serves the client, before any call", ctx do
+      gateway_key = operator_gateway(ctx)
+      {{:ok, handed}, _queued} = hand_over(ctx, @apply)
+      run = attach!(gateway_key, handed)
+      digest = digest(gateway_key, run)
+
+      EditionStubs.ServesAcross.switch(:off)
+
+      conn = post_work(gateway_key, handed, run, digest)
+      assert conn.status == 410
+      assert code(conn) == "workspace_not_served"
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
     end
   end
 
