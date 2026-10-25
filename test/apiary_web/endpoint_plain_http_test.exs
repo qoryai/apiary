@@ -53,7 +53,7 @@ defmodule ApiaryWeb.EndpointPlainHttpTest do
       assert length(String.split(log, @fix)) == 2
 
       assert log =~
-               "Browsers keep the sign-in cookies over plain http only on localhost; " <>
+               "Browsers keep the sign-in cookies over plain http only on localhost and loopback addresses; " <>
                  "PUBLIC_URL is http://192.168.1.20:4100."
     end
 

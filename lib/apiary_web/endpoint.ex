@@ -163,7 +163,7 @@ defmodule ApiaryWeb.Endpoint do
 
       Logger.warning("""
       Set PUBLIC_URL to an https:// address, or nobody can sign in.
-      Browsers keep the sign-in cookies over plain http only on localhost; PUBLIC_URL is #{public_url}.\
+      Browsers keep the sign-in cookies over plain http only on localhost and loopback addresses; PUBLIC_URL is #{public_url}.\
       """)
     end
 
