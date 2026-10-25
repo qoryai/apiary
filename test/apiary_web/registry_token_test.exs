@@ -14,6 +14,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
   alias Apiary.{InstanceConfig, Policy, Registry, Repo, SealedOpen, SigningKey}
   alias Apiary.Adapters.Collection
+  alias Apiary.Contract.Ed25519
   alias Apiary.Environments.Record
   alias Apiary.Registry.{Credential, Names, RunAccess}
   alias Apiary.Runs.{Attach, RateLimit, Run, Target}
@@ -287,6 +288,36 @@ defmodule ApiaryWeb.RegistryTokenTest do
       conn = seal(%{ctx | secrets_key: {plain, seed}}, [ctx.provider.public_id, "registry"])
       assert {conn.status, Jason.decode!(conn.resp_body)["error"]} == {404, "not_found"}
       assert Credential.verify(ctx.run.public_id, ctx.secret) |> elem(0) == :ok
+    end
+
+    test "is sealed the registry credential alone for a listed key not allowed stored secrets",
+         ctx do
+      # The claim ends a run with a model key whose gateway has such a key, so the test
+      # writes the run's run key to list one.
+      %{access_key: plain, secret: seed} =
+        Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      refute plain.allow_secrets
+      payload = Jason.decode!(ctx.run.run_key_payload)
+      keys = [%{"alg" => "ed25519", "public_key" => Ed25519.encode(plain.public_key)}]
+      listed = Jason.encode!(%{payload | "gateway_public_key" => keys})
+
+      {1, _} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [run_key_payload: listed]
+        )
+
+      ctx = %{ctx | secrets_key: {plain, seed}}
+
+      conn = seal(ctx, [ctx.provider.public_id, "registry"])
+      assert {conn.status, Jason.decode!(conn.resp_body)["error"]} == {409, "secrets_not_allowed"}
+
+      conn = seal(ctx, ["registry"])
+      assert conn.status == 200, conn.resp_body
+      plaintext = open(ctx, conn)
+      assert [%{"credential" => "registry"}] = plaintext["values"]
+      refute Jason.encode!(plaintext) =~ model_key()
+      assert {:ok, _run} = Credential.verify(ctx.run.public_id, registry_value(plaintext))
     end
 
     test "has its target's image name, to pull, and a run without a gateway has nothing",

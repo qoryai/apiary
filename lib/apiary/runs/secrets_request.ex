@@ -20,7 +20,8 @@ defmodule Apiary.Runs.SecretsRequest do
   #  2. `{:error, :unauthorized}`, a `timestamp` more than 300 seconds from the server's
   #     clock, either way;
   #  3. `{:error, :secrets_not_allowed}`, a key not allowed stored secrets, here where
-  #     the `registry` feature is off, else at step 7, for a run with a model key;
+  #     the `registry` feature is off, else at step 7, for a request that names the
+  #     run's model key;
   #  4. as a reload of the run is refused (`Apiary.Runs.Registration.fetch/3`):
   #     `{:error, :not_found}` for a run that does not go through a gateway, since only a
   #     gateway seals, for a run whose run key does not list the access key among the
@@ -187,8 +188,8 @@ defmodule Apiary.Runs.SecretsRequest do
   end
 
   # A key not allowed stored secrets is refused here, unless the `registry` feature is on:
-  # then it may receive a run's registry credential, and is refused only where the run
-  # also has a model key (`model_allowed/2`).
+  # then it may receive a run's registry credential, and is refused only where the
+  # request names the run's model key (`model_allowed/2`).
   defp allowed(%AccessKey{allow_secrets: true}), do: :ok
 
   defp allowed(%AccessKey{}) do
@@ -439,8 +440,9 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
-  # The audit entry of the seal, for a run with a model key: the answer to such a run goes
-  # out only with the entry. A run with no model key gets no entry. A key of the
+  # The audit entry of the seal, for a request that names the run's model key: the answer
+  # to such a request goes out only with the entry. A request that does not name it, such
+  # as one for `registry` alone, gets no entry. A key of the
   # organisation's chain: in the run's organisation's trail, about the run. A key of an
   # operator's chain: in the operator's organisation's trail
   # (`Apiary.Runs.ProviderCredential.operator_of/1`), about the gateway, with the run's
