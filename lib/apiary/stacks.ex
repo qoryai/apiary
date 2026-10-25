@@ -109,7 +109,8 @@ defmodule Apiary.Stacks do
   # `workspace` at `target`, the work item's `%{system, path}`, nil for none: the
   # `access` of the row `workflow/2` reads, nil where that row records none. `:read`
   # where that row's workflow is no longer `workflow`, or where no such row is left, so
-  # a change after the run was queued never raises its level. Read without a lock.
+  # a row of another workflow, or none, never gives this run's level. Read without a
+  # lock, when the walk runs.
   @spec recorded_access(
           Workspace.t(),
           %{system: String.t(), path: String.t()} | nil,

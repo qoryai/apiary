@@ -594,7 +594,7 @@ defmodule Apiary.StacksTest do
       assert Repo.get_by!(Stack, workflow: "explore").access == nil
     end
 
-    test "write at a place without a workflow is refused", ctx do
+    test "a level at a place without a workflow is refused", ctx do
       for place <- [{:workspace, ctx.scope.workspace}, {:target, ctx.target}],
           level <- [:read, :write] do
         assert {:error, changeset} =

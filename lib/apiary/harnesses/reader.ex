@@ -3,8 +3,9 @@ defmodule Apiary.Harnesses.Reader do
   Reads the YAML files of qory's harness format, version 1: the harness section of a
   `qory.yaml` or `harness.yaml`, the modules and the `workflows` of a `qory-stack.yaml`,
   the `exports` of a root file, and a harness document as a settings row keeps it. Pure:
-  bytes in, a value or a reason out. It reads the source keys and a workflow's access
-  level and nothing else, and it splits no URL.
+  bytes in, a value or a reason out. Of a harness section and a stack's modules it reads
+  the source keys and nothing else; a stack's `workflows` it returns as written, and of
+  a workflow it reads the access level alone (`workflow_access/2`). It splits no URL.
 
   ## Limits
 
