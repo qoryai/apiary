@@ -35,8 +35,11 @@ defmodule Apiary.Harnesses.Walk do
   # a host with a percent-encoding, an address longer than a call takes, a `ref` that is
   # no version a read takes, a host that is an IP address in any notation or a local
   # name (`localhost`, `*.localhost`, each also with a final `.`), and a `path` that is
-  # absolute or leads out of its source with `..`. A file's base
-  # given by name alone, `{stack: <name>}`, fails `invalid` with the save rule's words.
+  # absolute, leads out of its source with `..`, or has a `\` or a `%`, which could
+  # spell `..` another way. Every other `path` the walk reads is checked the same way: a
+  # local path of the target's file, an export's stack file, and a local module of a
+  # level-2 base's `qory-stack.yaml`. A file's base given by name alone, `{stack: <name>}`,
+  # fails `invalid` with the save rule's words.
   #
   # Each level's addresses are resolved at every adapter with a `call_url`, in the order
   # of their names. A result counts under a live grant of a connected connection: its
@@ -333,19 +336,24 @@ defmodule Apiary.Harnesses.Walk do
     remote = remote(base, :base, target) ++ Enum.flat_map(modules, &remote(&1, :module, target))
     allowed = authorise(remote, organisation)
 
-    listed =
+    {listed, listed_by} =
       case {base, allowed} do
         {%{"git" => _git}, [{_source, base_location} | _]} ->
-          base_modules(base, base_location, base["ref"])
+          {base_modules(base, base_location, base["ref"]), base_location.source}
 
         {%{"path" => path} = base, _allowed} when is_binary(path) ->
-          base_modules(base, %{target | prefix: inside!(path, target)}, target_version(target))
+          location = %{target | prefix: inside!(path, target)}
+          {base_modules(base, location, target_version(target)), location.source}
 
         _none ->
-          []
+          {[], nil}
       end
 
     for {source, location} <- tl_or_all(base, allowed), do: pin(source, location)
+
+    for %{"path" => path} = module <- listed, is_binary(path), not is_map_key(module, "git") do
+      if refusal = path_refusal(path), do: fail(:invalid, listed_by, refusal)
+    end
 
     second = Enum.flat_map(listed, &remote(&1, :module, nil))
     for {source, location} <- authorise(second, organisation), do: pin(source, location)
@@ -438,8 +446,8 @@ defmodule Apiary.Harnesses.Walk do
       local_host?(git) ->
         fail(:invalid, shown, rule("host"))
 
-      is_binary(source["path"]) and parts(source["path"]) == :leaves ->
-        fail(:invalid, shown, rule("path", path: source["path"]))
+      refusal = is_binary(source["path"]) && path_refusal(source["path"]) ->
+        fail(:invalid, shown, refusal)
 
       true ->
         :ok
@@ -462,32 +470,45 @@ defmodule Apiary.Harnesses.Walk do
       host == "localhost" or String.ends_with?(host, ".localhost") or host == ""
   end
 
-  # The parts of `path` inside its source, `..` taken back, or `:leaves` for a path
-  # that is absolute or leads out with `..`.
+  # The parts of `path` inside its source, `..` taken back; `:form` for a path with a
+  # `\` or a `%`, and `:leaves` for one that is absolute or leads out with `..`.
   defp parts(path) when is_binary(path) do
-    if String.starts_with?(path, "/") do
-      :leaves
-    else
-      path
-      |> String.split("/")
-      |> Enum.reduce_while([], fn
-        part, parts when part in ["", "."] -> {:cont, parts}
-        "..", [] -> {:halt, :leaves}
-        "..", [_part | parts] -> {:cont, parts}
-        part, parts -> {:cont, [part | parts]}
-      end)
-      |> case do
-        :leaves -> :leaves
-        parts -> Enum.reverse(parts)
-      end
+    cond do
+      String.contains?(path, ["\\", "%"]) -> :form
+      String.starts_with?(path, "/") -> :leaves
+      true -> inside(path)
+    end
+  end
+
+  defp inside(path) do
+    path
+    |> String.split("/")
+    |> Enum.reduce_while([], fn
+      part, parts when part in ["", "."] -> {:cont, parts}
+      "..", [] -> {:halt, :leaves}
+      "..", [_part | parts] -> {:cont, parts}
+      part, parts -> {:cont, [part | parts]}
+    end)
+    |> case do
+      :leaves -> :leaves
+      parts -> Enum.reverse(parts)
+    end
+  end
+
+  # The rule `path` breaks, nil for a path that stays inside its source.
+  defp path_refusal(path) do
+    case parts(path) do
+      :form -> rule("path_form", path: path)
+      :leaves -> rule("path", path: path)
+      _parts -> nil
     end
   end
 
   # The parts of a local `path` of the target's file, which must stay in the target.
   defp inside!(path, target) do
     case parts(path) do
-      :leaves -> fail(:invalid, label(target), rule("path", path: path))
-      parts -> parts
+      parts when is_list(parts) -> parts
+      _refused -> fail(:invalid, label(target), path_refusal(path))
     end
   end
 
@@ -650,12 +671,12 @@ defmodule Apiary.Harnesses.Walk do
     path = Reader.stack_file(exports, name)
 
     case parts(path) do
-      :leaves ->
-        fail(:invalid, location.source, rule("path", path: path))
-
-      parts ->
+      parts when is_list(parts) ->
         {_version, modules} = stack_at(location, Enum.drop(parts, -1), version)
         {version, modules}
+
+      _refused ->
+        fail(:invalid, location.source, path_refusal(path))
     end
   end
 

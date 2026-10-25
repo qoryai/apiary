@@ -584,6 +584,59 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:failed, %{failure: :invalid, source: @target, rule: %{"rule" => "path"}}} =
                Walk.run(ctx.input)
     end
+
+    test "a path with a backslash or a percent sign fails invalid, which could spell ..",
+         ctx do
+      for path <- ["..\\..\\x", "%2e%2e/x", "%2E%2E%2Fx", "a\\b"] do
+        calls()
+
+        file =
+          "harness:\n  extends: {git: \"#{@harness}\", ref: v1, path: '#{path}'}\n"
+
+        serve([ctx.run], covered: covering(ctx), files: %{{"R_app", "harness.yaml"} => file})
+
+        assert {:failed, %{failure: :invalid, rule: rule}} = Walk.run(ctx.input), path
+        assert rule["rule"] == "path_form", path
+        assert resolves(calls()) == [[@target]]
+
+        file = "harness:\n  extends: {path: '#{path}'}\n"
+        serve([ctx.run], covered: covering(ctx), files: %{{"R_app", "harness.yaml"} => file})
+
+        assert {:failed, %{failure: :invalid, source: @target, rule: %{"rule" => "path_form"}}} =
+                 Walk.run(ctx.input),
+               path
+      end
+    end
+
+    test "a local module of a level-2 base that leaves the base fails invalid", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@harness}\", ref: v1}\n")
+
+      for {path, name} <- [{"../../x", "path"}, {"/etc", "path"}, {"%2e%2e/x", "path_form"}] do
+        stack = "modules:\n  - source: {path: '#{path}'}\n"
+
+        serve([ctx.run],
+          covered: covering(ctx),
+          files: %{{"R_harness", "qory-stack.yaml"} => stack}
+        )
+
+        assert {:failed,
+                %{
+                  failure: :invalid,
+                  source: @harness,
+                  rule: %{"rule" => ^name, "values" => %{"path" => ^path}}
+                }} = Walk.run(ctx.input),
+               path
+      end
+
+      stack = "modules:\n  - source: {path: lint}\n"
+
+      serve([ctx.run],
+        covered: covering(ctx),
+        files: %{{"R_harness", "qory-stack.yaml"} => stack}
+      )
+
+      assert {:ok, _walked} = Walk.run(ctx.input)
+    end
   end
 
   ## Calls and limits

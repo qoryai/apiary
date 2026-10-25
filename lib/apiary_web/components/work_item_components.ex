@@ -2848,6 +2848,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp walk_rule_words("path", values),
     do: gettext("the path %{path} leads out of its source", path: values["path"])
 
+  defp walk_rule_words("path_form", values),
+    do:
+      gettext(
+        "the path %{path} has a backslash or a percent sign: write it with / and no percent-encoding",
+        path: values["path"]
+      )
+
   defp walk_rule_words("ref", values),
     do:
       gettext(
