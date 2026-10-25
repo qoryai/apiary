@@ -356,27 +356,41 @@ defmodule ApiaryWeb.UserSessionControllerTest do
       assert conn |> recycle() |> get(home) |> redirected_to() == ~p"/users/log-in"
     end
 
-    test "a request with the cookies under their old names is not signed in", %{
+    test "a request with a cookie under its old name is not signed in", %{
       conn: conn,
       user: user,
       home: home
     } do
       conn = log_in_with_password(conn, user, "true")
       %{value: session} = conn.resp_cookies[@session_cookie]
-      %{value: remembered} = conn.resp_cookies[@remember_me_cookie]
+      token = conn.cookies[@remember_me_cookie]
 
-      old_names =
-        build_conn()
-        |> put_req_cookie("_apiary_key", session)
-        |> put_req_cookie("_apiary_web_user_remember_me", remembered)
-        |> get(home)
+      # The session cookie's value is signed with the signing salt alone, so it is valid
+      # under either name. Plug signs a cookie with the salt `<name>_cookie`, so the
+      # remember-me token is signed for each name.
+      sign = fn name ->
+        Plug.Crypto.sign(conn.secret_key_base, name <> "_cookie", token, keys: Plug.Keys)
+      end
 
-      assert redirected_to(old_names) == ~p"/users/log-in"
+      old_names = [
+        {"_apiary_key", session},
+        {"_apiary_web_user_remember_me", sign.("_apiary_web_user_remember_me")}
+      ]
 
-      assert build_conn()
-             |> put_req_cookie(@session_cookie, session)
-             |> get(home)
-             |> html_response(200) =~ user.email
+      new_names = [
+        {@session_cookie, session},
+        {@remember_me_cookie, sign.(@remember_me_cookie)}
+      ]
+
+      for {name, value} <- old_names do
+        conn = build_conn() |> put_req_cookie(name, value) |> get(home)
+        assert redirected_to(conn) == ~p"/users/log-in", name
+      end
+
+      for {name, value} <- new_names do
+        conn = build_conn() |> put_req_cookie(name, value) |> get(home)
+        assert html_response(conn, 200) =~ user.email, name
+      end
     end
   end
 
