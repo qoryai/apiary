@@ -965,8 +965,13 @@ defmodule Apiary.Adapters do
   # Each start also stores what its description's source role says
   # (`Apiary.Nodes.Node.source_role_changeset/2`): its words for its items, whether it
   # reports items, its words for its collections, and its line on how to change which
-  # collections it reaches, each replacing what the start before said; a description with
-  # no source role stores the defaults, no words, items and no line. Each start also
+  # collections it reaches, and the apply items of each run's work credential from it with
+  # its description's exact `egress_hosts`, each replacing what the start before said; a
+  # description with no source role stores the defaults, no words, items, no line and no
+  # apply items. A description whose apply items name a host that is not an entry of its
+  # `egress_hosts`, or a path template that a target path could fill to a path out of
+  # Forager's path grammar, never reaches here: the start's body is refused as it is read
+  # (`Apiary.Integrations.Description.parse/1`). Each start also
   # stores the domains its description lists, nil for none
   # (`Apiary.Nodes.Node.domains_changeset/2`); a start that narrows them leaves every
   # collection assigned as it was. They are no part of the trail's entry. A start that

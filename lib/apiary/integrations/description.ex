@@ -19,7 +19,10 @@ defmodule Apiary.Integrations.Description do
 
     * every secret, a top-level property marked `writeOnly`, has a `<name>_file` beside
       it, and no secret is nested in another setting;
-    * the credential role's `argument` compiles.
+    * the credential role's `argument` compiles;
+    * each host of the source role's `apply` items has an equal entry in
+      `egress_hosts`, and each path template of them stays in Forager's path grammar
+      whatever target path fills it.
 
   A role other than `credential` is read as it is: the `source` and `model_provider`
   roles once the schema has checked their shapes, and, in the program form, a role the
@@ -73,6 +76,7 @@ defmodule Apiary.Integrations.Description do
     SettingsResolver
   }
 
+  alias Apiary.Integrations.ApplyTemplates
   alias Apiary.Policy.Grammar
 
   @enforce_keys [:name, :title, :program_version, :document]
@@ -265,7 +269,12 @@ defmodule Apiary.Integrations.Description do
           match?({:error, _}, Pattern.compile(pattern)),
           do: {:argument_invalid, "credential"}
 
-    without_file ++ nested ++ argument
+    apply =
+      document
+      |> get_in(["roles", "source", "apply"])
+      |> ApplyTemplates.problems(egress_host_entries(document))
+
+    without_file ++ nested ++ argument ++ apply
   end
 
   defp nested_secret?(%{} = schema) do
@@ -353,6 +362,32 @@ defmodule Apiary.Integrations.Description do
       [_ | _] = names -> Enum.sort(names)
       _none -> nil
     end
+  end
+
+  @doc false
+  # source_apply/1 is the source role's `apply` items, the templates of the run's work
+  # credential from this adapter, as decoded, or nil for a description with none
+  # (`Apiary.Integrations.ApplyTemplates`).
+  @spec source_apply(t) :: [map] | nil
+  def source_apply(%__MODULE__{document: document}),
+    do: get_in(document, ["roles", "source", "apply"])
+
+  @doc false
+  # exact_egress_hosts/1 is the entries of `egress_hosts` that are hosts, each exact, in
+  # their order, without the entries of a setting; nil for none.
+  @spec exact_egress_hosts(t) :: [String.t()] | nil
+  def exact_egress_hosts(%__MODULE__{document: document}) do
+    case egress_host_entries(document) do
+      [] -> nil
+      hosts -> hosts
+    end
+  end
+
+  defp egress_host_entries(document) do
+    for host <- List.wrap(document["egress_hosts"]),
+        is_binary(host),
+        Grammar.exact_host?(host),
+        do: host
   end
 
   defp title(%{"title" => title}, name) when is_binary(title),
