@@ -3,7 +3,7 @@ defmodule Apiary.Runs.RunCredential do
   # an adapter answers for the run may reach, recorded once at the run's claim and never
   # changed, so a later start of the adapter or a change at its source changes no live
   # run. It has no value. The table and its rules are
-  # `20261025180100_keep_each_run_s_credential_entries`'s.
+  # `20261025160500_keep_each_run_s_credential_entries`'s.
   #
   #   * `name`: `work-1` for the run's work entry; the run configuration lists the entry
   #     under it (`Apiary.Policy.ComposedConfiguration`). Names say nothing of the target.

@@ -11,7 +11,7 @@ defmodule Apiary.Nodes.SourceApplyMigrationTest do
 
   import Apiary.NodesFixtures
 
-  @version 20_261_025_180_000
+  @version 20_261_025_160_400
   @migration Apiary.Repo.Migrations.KeepTheApplyItemsAnAdapterDeclares
 
   setup_all do

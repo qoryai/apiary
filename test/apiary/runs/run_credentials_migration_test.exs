@@ -8,7 +8,7 @@ defmodule Apiary.Runs.RunCredentialsMigrationTest do
   @moduletag :capture_log
   @moduletag needs: :factory
 
-  @version 20_261_025_180_100
+  @version 20_261_025_160_500
   @migration Apiary.Repo.Migrations.KeepEachRunSCredentialEntries
 
   setup_all do
