@@ -16,7 +16,7 @@ defmodule Apiary.Harnesses.WalkTest do
   alias Apiary.Adapters.{Calls, Collection, Grant}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Harnesses.{Assignment, RunHarness, Walk, WalkJob}
+  alias Apiary.Harnesses.{Assignment, Reader, RunHarness, Walk, WalkJob}
   alias Apiary.Nodes.Node
   alias Apiary.Policy.ComposedConfiguration
 
@@ -110,6 +110,18 @@ defmodule Apiary.Harnesses.WalkTest do
   end
 
   @setting "extends: {git: \"#{@harness}\", ref: v1, stack: web}\n"
+
+  # Sends `test` each call that the trace reports, until `{:done, test}`.
+  defp forward(test) do
+    receive do
+      {:trace, _pid, :call, {Reader, :document, [text]}} ->
+        send(test, {:forwarded, {:read, text}})
+        forward(test)
+
+      {:done, ^test} ->
+        send(test, {:forwarded, :done})
+    end
+  end
 
   ## The stub adapters
 
@@ -279,6 +291,41 @@ defmodule Apiary.Harnesses.WalkTest do
       assert walked.document == %{
                "extends" => %{"git" => @harness, "ref" => "v1", "stack" => "web"}
              }
+    end
+
+    test "the document is read once, so its check and its section come from one read", ctx do
+      # A second read of a document near the reader's budget of reductions could refuse
+      # what the first took. The calls to Reader.document/1 that this process makes are
+      # traced to `forward`, which sends them on. The pattern is global, but only this
+      # process is traced.
+      setting(ctx.scope, @setting)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      test = self()
+      forward = spawn_link(fn -> forward(test) end)
+      traced = {Reader, :document, 1}
+      Code.ensure_loaded!(Reader)
+      assert :erlang.trace_pattern(traced, true, [:global]) > 0
+      on_exit(fn -> :erlang.trace_pattern(traced, false, [:global]) end)
+      :erlang.trace(self(), true, [:call, {:tracer, forward}])
+
+      assert {:ok, %{origin: :setting}} = Walk.run(ctx.input)
+
+      :erlang.trace(self(), false, [:call])
+      ref = :erlang.trace_delivered(self())
+      assert_receive {:trace_delivered, _pid, ^ref}
+      send(forward, {:done, test})
+      assert_receive {:forwarded, :done}
+
+      reads =
+        for {:forwarded, {:read, @setting}} <- Process.info(self(), :messages) |> elem(1),
+            do: :read
+
+      assert reads == [:read]
     end
 
     test "a file with machine keys alone, or whose section has neither extends nor modules, takes the document",
@@ -1203,7 +1250,7 @@ defmodule Apiary.Harnesses.WalkTest do
       # Two items of 20,000 backslashes each: about 40 KB of YAML, and 80 KB of JSON as
       # stored, which escapes each backslash as two. A block list of two long items
       # reads in about 3 ms; a flow list of 20,000 items read in about 60 ms locally
-      # and hit the save check's 200 ms limit on CI.
+      # and hit the save check's former limit of 200 ms on CI.
       item = String.duplicate("\\", 20_000)
       setting(ctx.scope, @setting <> "extensions:\n  n:\n    - #{item}\n    - #{item}\n")
       serve([ctx.run], covered: covering(ctx), files: @base_files)

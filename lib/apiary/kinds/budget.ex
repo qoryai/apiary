@@ -23,7 +23,7 @@ defmodule Apiary.Kinds.Budget do
   starts.
 
   `run/2` starts the process unlinked and monitored, with a `max_heap_size`, and waits for
-  its answer, reading the process's reductions every few milliseconds:
+  its answer, reading the process's reductions every 2 milliseconds, or every `:poll_ms`:
 
     * `{:ok, value}`, the function's value, when it returns within the budget;
     * `{:error, :reductions}` when its reductions pass the budget, the process then
@@ -38,15 +38,23 @@ defmodule Apiary.Kinds.Budget do
   the caller. Should the caller die while it waits, a watcher kills the process at once.
   """
 
-  # How often the process's reductions are read, in milliseconds.
+  # How often the process's reductions are read, in milliseconds, unless `:poll_ms` is
+  # given.
   @poll_ms 2
 
   @typedoc """
   The budget: `:reductions`, the most reductions the function may do; `:heap_words`, the
   most words its process's heap and the binaries it refers to may hold; `:ms`, the most
-  milliseconds it may take.
+  milliseconds it may take; and, optional, `:poll_ms`, how often the reductions are read,
+  in milliseconds. The process may pass `:reductions` by the work it does between two
+  reads.
   """
-  @type budget :: [reductions: pos_integer, heap_words: pos_integer, ms: pos_integer]
+  @type budget :: [
+          reductions: pos_integer,
+          heap_words: pos_integer,
+          ms: pos_integer,
+          poll_ms: pos_integer
+        ]
 
   @doc "run/2 calls `fun` in another process within `budget` (see the module's documentation)."
   @spec run((-> value), budget) ::
@@ -56,6 +64,7 @@ defmodule Apiary.Kinds.Budget do
     reductions = Keyword.fetch!(budget, :reductions)
     words = Keyword.fetch!(budget, :heap_words)
     ms = Keyword.fetch!(budget, :ms)
+    poll_ms = poll_ms(Keyword.get(budget, :poll_ms, @poll_ms))
     caller = self()
     ref = make_ref()
     deadline = now() + ms * 1000
@@ -81,7 +90,8 @@ defmodule Apiary.Kinds.Budget do
     {watcher, watcher_monitor} = spawn_monitor(fn -> watch(caller, pid, ms) end)
     send(pid, {ref, :go})
 
-    result = wait(%{pid: pid, monitor: monitor, ref: ref, deadline: deadline}, reductions)
+    run = %{pid: pid, monitor: monitor, ref: ref, deadline: deadline, poll_ms: poll_ms}
+    result = wait(run, reductions)
 
     # The watcher ends once the process has.
     receive do
@@ -90,6 +100,15 @@ defmodule Apiary.Kinds.Budget do
 
     result
   end
+
+  # `:poll_ms` is the timeout of a `receive`, so it must be a positive integer: with nil
+  # the reductions would never be read, and the run would end at the deadline as
+  # `:time`; with 0 they would be read without pause, and a negative value or a float
+  # would crash the `receive`.
+  defp poll_ms(ms) when is_integer(ms) and ms > 0, do: ms
+
+  defp poll_ms(other),
+    do: raise(ArgumentError, "set :poll_ms to a positive integer, not #{inspect(other)}")
 
   # Kills the process when the caller dies, or at its time should the caller not be there
   # to; ends when the process does.
@@ -118,7 +137,7 @@ defmodule Apiary.Kinds.Budget do
       {:DOWN, ^monitor, :process, ^pid, _reason} ->
         {:error, :crashed}
     after
-      min(@poll_ms, left(deadline)) ->
+      min(run.poll_ms, left(deadline)) ->
         cond do
           now() >= deadline -> stop(run, :time)
           reductions(pid) > most -> stop(run, :reductions)
