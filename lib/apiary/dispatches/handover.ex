@@ -66,7 +66,7 @@ defmodule Apiary.Dispatches.Handover do
   #      last, with the features `factory` and `secrets` on, an explore run whose model
   #      choice has a provider, while one of the gateway's active keys the run key lists
   #      was made without the stored-secrets flag (`allow_secrets`), or the provider's key
-  #      may not be sealed for a gateway of the gateway's organisation
+  #      may not be sealed for the gateway
   #      (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as such
   #      a gateway never receives the run's model key, and the run never starts on a model
   #      nobody chose;
@@ -164,7 +164,7 @@ defmodule Apiary.Dispatches.Handover do
 
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.Workspace
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunCode, RunVariables, Target}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
@@ -256,6 +256,11 @@ defmodule Apiary.Dispatches.Handover do
         |> register_held()
     end
   end
+
+  # The instance's pool's run is in the run's workspace, read here for its grant, its
+  # documents and its seal.
+  defp register_held(%{gateway: {gateway, nil}, run: %DispatchRun{workspace_id: id}} = locked),
+    do: register_held(%{locked | gateway: {gateway, Repo.get!(Workspace, id)}})
 
   defp register_held(%{gateway: {gateway, workspace}, keys: keys} = locked) do
     pool = locked.key.node
@@ -531,17 +536,19 @@ defmodule Apiary.Dispatches.Handover do
   # to now (`Apiary.Gateways.resolve/1`), read `FOR SHARE` as its deletion holds it
   # `FOR UPDATE`, with its workspace and its active keys, at most two, oldest first; or
   # `{:error, :no_gateway}`: the choice is direct, no default gateway resolves, a named
-  # gateway may not serve the workspace, or the gateway has no active key. Inside the
-  # claim's transaction.
+  # gateway may not serve the workspace, or the gateway has no active key. The instance's
+  # pool has no workspace: its gateway is the instance's, which serves every workspace,
+  # and the workspace is nil until `register/2` reads the run's. Inside the claim's
+  # transaction.
   @doc false
   @spec gateway(Node.t()) ::
-          {:ok, {Node.t(), Workspace.t()}, [AccessKey.t()]} | {:error, :no_gateway}
+          {:ok, {Node.t(), Workspace.t() | nil}, [AccessKey.t()]} | {:error, :no_gateway}
   def gateway(%Node{} = pool) do
-    workspace = Repo.get!(Workspace, pool.workspace_id)
+    workspace = pool.workspace_id && Repo.get!(Workspace, pool.workspace_id)
 
     with {:gateway, %Node{id: id}} <- Gateways.resolve(%{pool | workspace: workspace}),
          %Node{} = gateway <- Repo.one(from n in Node, where: n.id == ^id, lock: "FOR SHARE"),
-         true <- Gateways.may_serve?(gateway, workspace),
+         true <- serves?(gateway, workspace),
          [_ | _] = keys <- AccessKeys.active_keys(gateway) do
       {:ok, {gateway, workspace}, Enum.take(keys, 2)}
     else
@@ -549,21 +556,30 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
+  # serves?/2 says whether `gateway`, as `gateway/1` read it `FOR SHARE`, may serve the
+  # claim's workspace: for the instance's pool, whose workspace is nil until
+  # `register/2`, only the instance's gateway not deleted.
+  @doc false
+  @spec serves?(Node.t(), Workspace.t() | nil) :: boolean
+  def serves?(%Node{deleted_at: nil} = gateway, nil), do: Gateways.level(gateway) == :instance
+  def serves?(%Node{}, nil), do: false
+  def serves?(gateway, workspace), do: Gateways.may_serve?(gateway, workspace)
+
   # A run formed with a model provider, with the features under which it is given its
   # credential (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed`
   # when one of `keys`, the gateway's keys its run key lists, was made without
   # `allow_secrets`, as either key may attach the run; or when the provider's key may not
-  # be sealed for the gateway's organisation.
+  # be sealed for the gateway (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
   defp sealable(
          {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
-         %Node{organisation_id: gateway_organisation_id},
+         %Node{} = gateway,
          %Workspace{organisation_id: organisation_id},
          keys
        ) do
     cond do
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
-      ProviderCredential.sealable_to?(chain, gateway_organisation_id, organisation_id) -> ok
+      ProviderCredential.sealable_to?(chain, gateway, organisation_id) -> ok
       true -> {:end, :secrets_not_allowed}
     end
   end
@@ -639,10 +655,18 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # The stack, the workflow and `harness_hidden` of an explore run of `workspace`, the
-  # key's workspace, in the key's organisation, at `target` (`Apiary.Stacks.for_run/3`);
-  # nil for none.
-  defp stack(%AccessKey{organisation: organisation}, %Workspace{} = workspace, target),
-    do: Stacks.for_run(organisation, workspace, target)
+  # run's workspace, in its organisation, at `target` (`Apiary.Stacks.for_run/3`); nil
+  # for none. The key of a workspace's pool carries that organisation; the instance's
+  # pool's key has none.
+  defp stack(
+         %AccessKey{organisation: %Organisation{id: id} = organisation},
+         %Workspace{organisation_id: id} = workspace,
+         target
+       ),
+       do: Stacks.for_run(organisation, workspace, target)
+
+  defp stack(%AccessKey{}, %Workspace{organisation_id: organisation_id} = workspace, target),
+    do: Stacks.for_run(Repo.get!(Organisation, organisation_id), workspace, target)
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
@@ -804,8 +828,8 @@ defmodule Apiary.Dispatches.Handover do
   defp insert_run(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do
     %Run{
       public_id: Run.new_public_id(),
-      organisation_id: key.organisation_id,
-      workspace_id: key.workspace_id,
+      organisation_id: dispatch_run.organisation_id,
+      workspace_id: dispatch_run.workspace_id,
       node_run_id: dispatch_run.run_id,
       access_key_id: key.id,
       state: "pending",

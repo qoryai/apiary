@@ -1,0 +1,3 @@
+# A checkout that extends the stack at the root of a remote source.
+harness:
+  extends: {git: https://code.example.com/example-org/harness, ref: main}

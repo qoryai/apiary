@@ -40,11 +40,19 @@ defmodule ApiaryWeb.NodeLive.Index do
   250 ms, and every 15 seconds, since an instance stops running without an event when its
   runs fall silent.
   """
+
+  # Where the instance has a node pool and a gateway (`Apiary.Nodes.Installed`), with the
+  # feature `factory`, which the documentation does not show, the list has the instance's
+  # gateway, and the instance's pool while the workspace has no node pool in use, with a
+  # sentence saying so. The pool's row has this workspace's running instances alone, and
+  # no limit. Only an instance admin sees their names as links, to Instance settings ›
+  # Nodes.
+
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
 
-  alias Apiary.{Access, Gateways, Nodes, Repo, Runs}
-  alias Apiary.Nodes.Node
+  alias Apiary.{Access, Adapters, Features, Gateways, Nodes, Repo, Runs}
+  alias Apiary.Nodes.{Installed, Node}
   alias Apiary.Runs.Run
   alias ApiaryWeb.NodeComponents
 
@@ -72,6 +80,7 @@ defmodule ApiaryWeb.NodeLive.Index do
        may_create: Access.can?(scope, :"node.create", scope.workspace),
        may_set_limit: Access.can?(scope, :"node.set_limit", scope.workspace),
        may_runs: may_runs,
+       instance_admin: Adapters.authorize_instance(scope) == :ok,
        reload_scheduled: false,
        form: nil,
        kind: nil,
@@ -160,13 +169,17 @@ defmodule ApiaryWeb.NodeLive.Index do
     now = DateTime.utc_now()
     narrowing = Map.take(filters, [:q, :kind])
 
+    instance = instance_nodes(scope)
+    listed_instance = Enum.filter(instance, &narrowed_in?(&1, narrowing))
+
     nodes =
       Enum.sort_by(
-        Nodes.list_nodes(scope, narrowing) ++ organisation_gateways(scope, narrowing),
+        Nodes.list_nodes(scope, narrowing) ++
+          organisation_gateways(scope, narrowing) ++ listed_instance,
         &{&1.name, &1.id}
       )
 
-    activity = Nodes.activity(scope, nodes, now)
+    activity = scope |> Nodes.activity(nodes, now) |> with_keys_used(listed_instance, now)
     running? = &(activity[&1.id].running != [])
     shown = Enum.filter(nodes, &in_view?(filters.view, running?.(&1)))
 
@@ -180,11 +193,10 @@ defmodule ApiaryWeb.NodeLive.Index do
         idle: Enum.count(nodes, &(not running?.(&1)))
       },
       counts:
-        Map.update!(
-          Nodes.count_nodes(scope),
-          :gateway,
-          &(&1 + length(organisation_gateways(scope, %{})))
-        ),
+        scope
+        |> Nodes.count_nodes()
+        |> Map.update!(:gateway, &(&1 + length(organisation_gateways(scope, %{}))))
+        |> Map.merge(Enum.frequencies_by(instance, & &1.kind), fn _kind, a, b -> a + b end),
       default_id:
         case Gateways.default_gateway_for(scope.workspace) do
           nil -> nil
@@ -200,6 +212,44 @@ defmodule ApiaryWeb.NodeLive.Index do
     scope
     |> Nodes.list_serving_gateways(narrowing)
     |> Enum.filter(&(&1.organisation_id == scope.organisation.id))
+  end
+
+  # The instance's pool, while it takes the workspace's runs, and the instance's gateway
+  # (`Apiary.Nodes.Installed.serving/1`), where the instance has them. The pool's row
+  # counts only this workspace's runs, so it shows no limit: its limit is over every
+  # workspace it serves.
+  defp instance_nodes(scope) do
+    if Features.on?(:factory) do
+      %{pool: pool, gateway: gateway} = Installed.serving(scope.workspace)
+      Enum.reject([pool && %{pool | instance_limit: nil}, gateway], &is_nil/1)
+    else
+      []
+    end
+  end
+
+  # Whether an instance's node is under the search and the kind, as
+  # `Apiary.Nodes.list_nodes/2` narrows the workspace's.
+  defp narrowed_in?(node, narrowing) do
+    q = narrowing[:q] && String.downcase(String.trim(narrowing[:q]))
+
+    (is_nil(narrowing[:kind]) or node.kind == narrowing[:kind]) and
+      (is_nil(q) or String.contains?(String.downcase(node.name), q) or
+         String.contains?(String.downcase(node.public_id), q))
+  end
+
+  # The instance's nodes' activity under the workspace's scope has this workspace's runs
+  # alone, and none of their instances' rows or keys, which have no organisation: when
+  # their keys were last used comes from the instance's, so the row says when the node
+  # was last seen. `instance` is the instance's nodes in the list, under its search and
+  # kind, each of which has a row in `activity`.
+  defp with_keys_used(activity, [], _now), do: activity
+
+  defp with_keys_used(activity, instance, now) do
+    used = Nodes.activity(:instance, instance, now)
+
+    Enum.reduce(instance, activity, fn node, acc ->
+      Map.update!(acc, node.id, &%{&1 | used: used[node.id].used})
+    end)
   end
 
   defp in_view?(:running, running?), do: running?
@@ -408,9 +458,16 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp row_id({:more, node, _more}), do: "node-#{node.public_id}-more"
 
   # A node's page: the workspace's under its Nodes, an organisation's gateway's under the
-  # organisation's Gateways.
+  # organisation's Gateways, the instance's under Instance settings › Nodes, which only an
+  # instance admin is shown.
+  defp node_path(_scope, %Node{organisation_id: nil} = node),
+    do: ApiaryWeb.InstanceLive.Node.paths(node).overview
+
   defp node_path(scope, node),
     do: NodeComponents.gateway_path(scope, node)
+
+  # The instance's pool or gateway, which no organisation has.
+  defp instance?(%Node{organisation_id: organisation_id}), do: is_nil(organisation_id)
 
   # Forager's version a node's line says: its running instance's, else the last seen's.
   defp forager_version(%{running: [%{forager_version: version} | _]}) when is_binary(version),
@@ -688,15 +745,34 @@ defmodule ApiaryWeb.NodeLive.Index do
               <% {:node, node} -> %>
                 <span class="q-nm">
                   <.link
+                    :if={!instance?(node) or @instance_admin}
+                    id={"node-#{node.public_id}-link"}
                     navigate={node_path(@current_scope, node)}
                     class="q-title q-cut hover:underline"
                     title={node.name}
                   >
                     {node.name}
                   </.link>
+                  <span
+                    :if={instance?(node) and !@instance_admin}
+                    id={"node-#{node.public_id}-name"}
+                    class="q-title q-cut"
+                    title={node.name}
+                  >
+                    {node.name}
+                  </span>
                   <span class="q-side q-mono" title={node.public_id}>{node.public_id}</span>
                   <.side_words
-                    :if={is_nil(node.workspace_id)}
+                    :if={instance?(node) and node.kind == :pool}
+                    id={"node-#{node.public_id}-level"}
+                    text={
+                      gettext(
+                        "Instance pool: takes this workspace's runs while it has no node pool in use."
+                      )
+                    }
+                  />
+                  <.side_words
+                    :if={is_nil(node.workspace_id) and !instance?(node)}
                     id={"node-#{node.public_id}-level"}
                     text={
                       gettext("Set for %{organisation}",
@@ -727,6 +803,7 @@ defmodule ApiaryWeb.NodeLive.Index do
                 </span>
               <% {:more, node, more} -> %>
                 <.link
+                  :if={!instance?(node) or @instance_admin}
                   id={"node-#{node.public_id}-more-link"}
                   navigate={node_path(@current_scope, node)}
                   class="pl-5 text-[12.5px] font-normal text-accent hover:underline"
@@ -735,6 +812,15 @@ defmodule ApiaryWeb.NodeLive.Index do
                     number: Format.number(more)
                   )}
                 </.link>
+                <span
+                  :if={instance?(node) and !@instance_admin}
+                  id={"node-#{node.public_id}-more"}
+                  class="pl-5 text-[12.5px] font-normal text-muted"
+                >
+                  {ngettext("and %{number} more", "and %{number} more", more,
+                    number: Format.number(more)
+                  )}
+                </span>
             <% end %>
           </:col>
           <:col :let={row} label={gettext("Kind")} from="sm">

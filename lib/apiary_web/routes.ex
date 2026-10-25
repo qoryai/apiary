@@ -503,6 +503,17 @@ defmodule ApiaryWeb.Routes do
                  InstanceLive.Adapter,
                  :remove
 
+            # Instance settings › Nodes, with the `factory` feature, for the instance's
+            # admins: the instance's node pool and gateway, which Qory Apiary makes from its
+            # settings, and each node's tabs, Overview, Access key (`…/keys`) and Settings, by
+            # its public id. Revoke is the one act on a key: the next code comes from Qory
+            # Apiary, never from a person.
+            live "/instance/nodes", InstanceLive.Nodes, :index
+            live "/instance/nodes/:node_id", InstanceLive.Node, :overview
+            live "/instance/nodes/:node_id/keys", InstanceLive.Node, :access_key
+            live "/instance/nodes/:node_id/keys/:key_id/revoke", InstanceLive.Node, :revoke
+            live "/instance/nodes/:node_id/settings", InstanceLive.Node, :settings
+
             unquote(@block)
           end
         end

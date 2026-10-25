@@ -1,0 +1,3 @@
+# The second name of the file, read exactly as qory.yaml.
+harness:
+  extends: {git: https://code.example.com/example-org/harness, ref: v2.4.0, stack: web}

@@ -5,7 +5,7 @@ defmodule ApiaryWeb.UserLive.LoginTest do
   import Apiary.AccountsFixtures
   import Ecto.Query, only: [from: 2]
 
-  @remember_me_cookie "_apiary_web_user_remember_me"
+  @remember_me_cookie "__Host-_apiary_web_user_remember_me"
 
   # An element's text as read: its tags gone, its runs of white space one space.
   defp visible_text(html) do

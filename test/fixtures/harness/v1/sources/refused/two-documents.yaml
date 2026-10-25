@@ -1,0 +1,6 @@
+# Two documents in one file.
+harness:
+  extends: {git: https://code.example.com/example-org/harness, ref: v2.4.0}
+---
+harness:
+  extends: {git: https://other.example.com/example-org/harness, ref: v2.4.0}

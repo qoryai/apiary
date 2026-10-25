@@ -84,6 +84,43 @@ defmodule Apiary.NodesFixtures do
     adapter
   end
 
+  @doc """
+  The instance's node pool, with no organisation and no workspace, written straight into
+  the table, on `:default` unless `attrs` gives its `gateway_choice`. The instance has
+  one in use at most, so a test that makes it is not async.
+  """
+  def instance_pool_fixture(attrs \\ %{}) do
+    Repo.insert!(%Node{
+      kind: :pool,
+      public_id: Apiary.PublicId.generate("np"),
+      name: Map.get(Map.new(attrs), :name, unique_node_name()),
+      organisation_id: nil,
+      workspace_id: nil,
+      instance_limit: Map.get(Map.new(attrs), :instance_limit),
+      gateway_choice: Map.get(Map.new(attrs), :gateway_choice, :default),
+      gateway_id: Map.get(Map.new(attrs), :gateway_id),
+      installed_as: Map.get(Map.new(attrs), :installed_as)
+    })
+  end
+
+  @doc """
+  The instance's gateway, with no organisation and no workspace, at
+  `https://gateway.example` unless `attrs` gives its `url`, written straight into the
+  table. The instance has one in use at most, so a test that makes it is not async.
+  """
+  def instance_gateway_fixture(attrs \\ %{}) do
+    Repo.insert!(%Node{
+      kind: :gateway,
+      public_id: Apiary.PublicId.generate("ng"),
+      name: Map.get(Map.new(attrs), :name, unique_node_name()),
+      organisation_id: nil,
+      workspace_id: nil,
+      url: Map.get(Map.new(attrs), :url, "https://gateway.example"),
+      gateway_choice: :direct,
+      installed_as: Map.get(Map.new(attrs), :installed_as)
+    })
+  end
+
   @descriptions Path.expand("../../fixtures/integration-contract", __DIR__)
 
   @doc """

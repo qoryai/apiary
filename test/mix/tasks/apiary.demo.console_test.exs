@@ -307,11 +307,20 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert [%Stacks.Stack{} = stack] = Repo.all(Stacks.Stack)
     assert {stack.workspace_id, stack.target_id, stack.workflow} == {main.id, nil, "hello"}
 
-    assert stack.stack ==
+    assert {:ok, %{"extends" => base}} = Apiary.Harnesses.Reader.document(stack.harness)
+
+    assert base == %{
+             "git" => "https://github.com/qoryai/qory",
+             "ref" => "2e3af09033548e2155b7911b9adae473136e21cf",
+             "path" => "examples/hello"
+           }
+
+    assert Stacks.Document.errors(stack.harness) == []
+
+    assert Stacks.Document.reference(stack.harness) ==
              "https://github.com/qoryai/qory#2e3af09033548e2155b7911b9adae473136e21cf:" <>
                "examples/hello"
 
-    assert Apiary.Contract.Stack.valid?(stack.stack)
     assert Stacks.workflow(main, nil) == "hello"
 
     # Spread across members, seven people own the live ones.

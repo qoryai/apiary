@@ -65,6 +65,10 @@ defmodule Apiary.MixProject do
       # too, where every story is rendered. Never in a release.
       {:phoenix_storybook, "~> 1.5", only: [:dev, :test]},
       {:jsv, "~> 0.23"},
+      # YAML, read for harness documents only (Apiary.Harnesses.Reader): yamerl, the parser
+      # under yaml_elixir, called directly, so that the reader refuses anchors and aliases
+      # from the parser's tokens before any node is built, and refuses a repeated key.
+      {:yamerl, "~> 0.10.0"},
       # A ticket's Markdown, parsed, rendered and sanitised (Apiary.Sources.Body): GitHub
       # Flavored Markdown, and an allowlist sanitiser. A precompiled NIF, so no build
       # needs Rust.

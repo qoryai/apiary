@@ -1,0 +1,3 @@
+# A root file with no harness section.
+worktree:
+  copy: [.env.example]

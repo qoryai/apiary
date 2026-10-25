@@ -126,6 +126,9 @@ Links the application generates, magic links and invitations, are built for
 another name, set `PHX_HOST` (or a full `PUBLIC_URL`) in `mise.local.toml`, which is not
 tracked, or in the shell. Emails in development go to `http://localhost:4100/dev/mailbox`.
 
+Sign in over https, or over http://localhost in Chrome or Firefox. Safari keeps the sign-in
+cookies only over https.
+
 ## Architecture, access and conventions
 
 How the application is built and the rules its code follows are under [docs/](docs/):

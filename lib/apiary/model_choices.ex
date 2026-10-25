@@ -34,8 +34,8 @@ defmodule Apiary.ModelChoices do
   #
   # A save is checked, each refusal a changeset error on its field:
   #
-  #   * `provider`: a model provider of the organisation's chain (`is invalid` otherwise),
-  #     that applies to the workspace, and that serves the runtime of the runs
+  #   * `provider`: a model provider of the chain the choice is set on (`is invalid`
+  #     otherwise), that applies to the workspace, and that serves the runtime of the runs
   #     (`Apiary.Kinds.Providers.serve/2`). A deny rule of the security policy is not
   #     asked: it never blocks a host of an integration;
   #   * `key`: a value id of the provider's keys;
@@ -52,8 +52,12 @@ defmodule Apiary.ModelChoices do
   # The organisation's default has no workspace, so the workspace is not asked of it: a
   # run whose workspace the default's provider does not reach is ended at its claim.
   #
-  # Only the organisation's chain is written here; an edition writes the operator's chain
-  # (`c:Apiary.Edition.model_choice_chain/1`).
+  # The organisation's chain is written by anyone who may. The operator's chain
+  # (`c:Apiary.Edition.model_choice_chain/1`) is written only at the organisation's
+  # default, and only by a scope that the edition says writes it
+  # (`c:Apiary.Edition.operator_chain_writer?/1`), with the same access check. The rows of
+  # the operator's chain are read from the operator's organisation by the runs of its
+  # clients, at that level alone (`choices_for/3`).
   #
   # ## Locks
   #
@@ -120,17 +124,20 @@ defmodule Apiary.ModelChoices do
   ## Reading
 
   @doc false
-  # list_choices/1 is the choices of the organisation's chain at the organisation's default
+  # list_choices/2 is the choices of the organisation's chain at the organisation's default
   # and, where the scope has a workspace, at the workspace and its targets, each with its
   # provider and its target: `{:ok, choices}` for a reader who may `connection.read`; else
-  # `{:error, reason}`.
-  @spec list_choices(Scope.t()) :: {:ok, [ModelChoice.t()]} | {:error, Access.reason()}
-  def list_choices(%Scope{} = scope) do
+  # `{:error, reason}`. Given `chain` "operator", the choices of the operator's chain, for a
+  # scope that writes it; else `{:error, :not_found}`.
+  @spec list_choices(Scope.t(), String.t()) ::
+          {:ok, [ModelChoice.t()]} | {:error, Access.reason()}
+  def list_choices(%Scope{} = scope, chain \\ "organisation") do
     with :ok <- shown(scope),
+         :ok <- chain_readable(scope, chain),
          {:ok, organisation} <- may_read(scope) do
       query =
         from c in ModelChoice,
-          where: c.organisation_id == ^organisation.id and c.chain == "organisation",
+          where: c.organisation_id == ^organisation.id and c.chain == ^chain,
           order_by: [asc: c.workspace_id, asc: c.target_id, asc: c.workflow, asc: c.id],
           preload: [:connection, :target]
 
@@ -168,35 +175,59 @@ defmodule Apiary.ModelChoices do
   def resolve(%Scope{}, _holder, _workflow), do: {:error, :not_found}
 
   # What a resolution reads for the runs of `workflow` of `workspace` at `target`, nil for
-  # none: the choices of the organisation's chain that may reach them, and the providers
-  # those name. Read without a lock.
+  # none: the choices of the run's chain that may reach them, read from the organisation
+  # that `chain_owner/1` names, and the providers those name. Read without a lock.
   defp input(%Workspace{} = workspace, target, workflow) do
     input = choices_for(workspace, target, workflow)
     ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
+    {chain, owner} = chain_owner(workspace.organisation_id)
 
     providers =
-      Repo.all(
-        from c in Connection,
-          where:
-            c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
-              not is_nil(c.provider_kind),
-          preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
-      )
-      |> Map.new(&{&1.id, resolution_provider(&1)})
+      if ids == [] do
+        %{}
+      else
+        Repo.all(
+          from c in Connection,
+            where:
+              c.id in ^ids and c.organisation_id == ^owner and not is_nil(c.provider_kind) and
+                c.chain == ^chain,
+            preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
+        )
+        |> Map.new(&{&1.id, resolution_provider(&1)})
+      end
 
     Map.put(input, :providers, providers)
   end
 
   @doc false
+  # chain_owner/1 is `{chain, organisation_id}`: the chain of model choices that the runs of
+  # the organisation `organisation_id` use (`c:Apiary.Edition.model_choice_chain/1`), and the
+  # organisation whose rows it is made of: the organisation itself for the chain
+  # "organisation", and for the chain "operator" the operator's organisation
+  # (`c:Apiary.Edition.operator_chain_organisation/1`), nil where the edition names none.
+  # Read without a lock.
+  @spec chain_owner(Ecto.UUID.t()) :: {String.t(), Ecto.UUID.t() | nil}
+  def chain_owner(organisation_id) do
+    case Edition.model_choice_chain(organisation_id) do
+      "operator" -> {"operator", Edition.operator_chain_organisation(organisation_id)}
+      chain -> {chain, organisation_id}
+    end
+  end
+
+  @doc false
   # choices_for/3 is what a resolution reads of the choices for the runs of `workflow` of
-  # `workspace` at `target`, nil for none, without the providers: the choices of the
-  # organisation's chain that may reach them, read without a lock, as
-  # `Apiary.ModelChoices.Resolution.resolve/1` takes them. A `workflow` of nil, for a run
-  # with none, reaches no choice of levels 2 and 4. `Apiary.Dispatches.RunSettings` reads
-  # the providers itself, once it holds their rows.
+  # `workspace` at `target`, nil for none, without the providers: the choices of the run's
+  # chain that may reach them, read without a lock, as
+  # `Apiary.ModelChoices.Resolution.resolve/1` takes them (`chain_owner/1`). The
+  # organisation's chain is read at all five levels. The operator's is read from the
+  # operator's organisation at its default alone, since a workspace or a target belongs to
+  # the organisation of its row: the choices of the run's workspace and target are not
+  # read, and an operator the edition does not name leaves no choice. A `workflow` of nil,
+  # for a run with none, reaches no choice of levels 2 and 4. `Apiary.Dispatches.RunSettings`
+  # reads the providers itself, once it holds their rows.
   @spec choices_for(Workspace.t(), Target.t() | nil, String.t() | nil) :: map
   def choices_for(%Workspace{} = workspace, target, workflow) do
-    chain = Edition.model_choice_chain(workspace.organisation_id)
+    {chain, owner} = chain_owner(workspace.organisation_id)
     target_id = target && target.id
 
     # The rows of the workspace, and of its target where the run has one.
@@ -211,15 +242,29 @@ defmodule Apiary.ModelChoices do
         else: dynamic([c], c.workspace_id == ^workspace.id and is_nil(c.target_id))
 
     choices =
-      Repo.all(
-        from c in ModelChoice,
-          where:
-            ^dynamic(
-              [c],
-              c.organisation_id == ^workspace.organisation_id and c.chain == ^chain and
-                (is_nil(c.workspace_id) or ^in_place)
-            )
-      )
+      case {chain, owner} do
+        {_chain, nil} ->
+          []
+
+        {"operator", operator_id} ->
+          Repo.all(
+            from c in ModelChoice,
+              where:
+                c.organisation_id == ^operator_id and c.chain == "operator" and
+                  is_nil(c.workspace_id)
+          )
+
+        {chain, organisation_id} ->
+          Repo.all(
+            from c in ModelChoice,
+              where:
+                ^dynamic(
+                  [c],
+                  c.organisation_id == ^organisation_id and c.chain == ^chain and
+                    (is_nil(c.workspace_id) or ^in_place)
+                )
+          )
+      end
 
     %{choices: choices, workspace_id: workspace.id, target_id: target_id, workflow: workflow}
   end
@@ -253,14 +298,17 @@ defmodule Apiary.ModelChoices do
   # keys, `model`, a model id of its list, `effort`, one of that model's effort values,
   # `tiers`, a map of tiers, and, at the workspace, `locked`. Each but `provider` and
   # `tiers` may be left out; one of those two is needed. `{:ok, choice}`, or
-  # `{:error, refusal}`: a changeset with the reason on its field (the moduledoc).
-  @spec put_choice(Scope.t(), place, map) ::
+  # `{:error, refusal}`: a changeset with the reason on its field (the moduledoc). `chain`
+  # is "organisation" by default; "operator" sets the operator's choice at `:organisation`
+  # alone, for a scope that writes that chain, with a provider of that chain; any other
+  # place or scope is `{:error, :not_found}`.
+  @spec put_choice(Scope.t(), place, map, String.t()) ::
           {:ok, ModelChoice.t()} | {:error, Access.reason() | Ecto.Changeset.t()}
-  def put_choice(%Scope{} = scope, place, attrs) when is_map(attrs) do
-    write(scope, place, fn scope, at ->
+  def put_choice(%Scope{} = scope, place, attrs, chain \\ "organisation") when is_map(attrs) do
+    write(scope, place, chain, fn scope, at ->
       changeset = input(attrs, at)
 
-      with {:ok, provider} <- hold_provider(changeset, at.organisation),
+      with {:ok, provider} <- hold_provider(changeset, at.organisation, at.chain),
            {:ok, values} <- checked(changeset, provider, Map.put(at, :scope, scope)) do
         current = lock_choice_row(at)
         save(scope, at, current, provider, values)
@@ -281,7 +329,7 @@ defmodule Apiary.ModelChoices do
   def unlock_choice(%Scope{} = scope, place), do: set_locked(scope, place, false)
 
   defp set_locked(scope, place, locked) do
-    write(scope, place, fn scope, at ->
+    write(scope, place, "organisation", fn scope, at ->
       case {at.level in [4, 5], lock_choice_row(at)} do
         {true, %ModelChoice{locked: ^locked} = current} ->
           {:ok, current}
@@ -309,10 +357,11 @@ defmodule Apiary.ModelChoices do
   @doc false
   # delete_choice/2 removes the choice at `place` (`model_choice.write`; `provider.write`
   # for the organisation's default): `{:ok, choice}`, as it was, or `{:error, reason}`,
-  # `:not_found` for a place with no choice.
-  @spec delete_choice(Scope.t(), place) :: {:ok, ModelChoice.t()} | {:error, Access.reason()}
-  def delete_choice(%Scope{} = scope, place) do
-    write(scope, place, fn scope, at ->
+  # `:not_found` for a place with no choice. `chain` is as `put_choice/4` takes it.
+  @spec delete_choice(Scope.t(), place, String.t()) ::
+          {:ok, ModelChoice.t()} | {:error, Access.reason()}
+  def delete_choice(%Scope{} = scope, place, chain \\ "organisation") do
+    write(scope, place, chain, fn scope, at ->
       case lock_choice_row(at) do
         %ModelChoice{} = current ->
           with {:ok, deleted} <- Repo.delete(current),
@@ -327,19 +376,33 @@ defmodule Apiary.ModelChoices do
   end
 
   # A write at one place, in one transaction under the locks of the moduledoc: `fun` of
-  # the scope, read again, and the place, `at`, once the scope may write there.
-  defp write(scope, place, fun) do
+  # the scope, read again, and the place, `at`, once the scope may write there. The
+  # operator's chain has the organisation's default alone.
+  defp write(scope, place, chain, fun) do
     with :ok <- shown(scope),
-         {:ok, holder, workflow} <- place(place) do
+         {:ok, holder, workflow} <- place(place),
+         :ok <- chain_place(chain, holder) do
       Repo.transact(fn ->
         :ok = Access.lock_places(scope)
 
-        with {:ok, scope, at} <- hold_place(scope, holder, workflow) do
+        with {:ok, scope, at} <- hold_place(scope, holder, workflow, chain) do
           fun.(scope, at)
         end
       end)
     end
   end
+
+  defp chain_place("organisation", _holder), do: :ok
+  defp chain_place("operator", :organisation), do: :ok
+  defp chain_place(_chain, _holder), do: {:error, :not_found}
+
+  # The operator's chain is read only by a scope that the edition says writes it.
+  defp chain_readable(_scope, "organisation"), do: :ok
+
+  defp chain_readable(scope, "operator"),
+    do: if(Edition.operator_chain_writer?(scope), do: :ok, else: {:error, :not_found})
+
+  defp chain_readable(_scope, _other), do: {:error, :not_found}
 
   defp place({holder, workflow}) when holder != :organisation and is_binary(workflow) do
     if workflow?(workflow), do: {:ok, holder, workflow}, else: {:error, :not_found}
@@ -353,16 +416,19 @@ defmodule Apiary.ModelChoices do
   defp hold_place(
          %Scope{organisation: %Organisation{} = organisation} = scope,
          :organisation,
-         nil
+         nil,
+         chain
        ) do
     scope = Access.reload(scope, lock: :share)
 
-    with :ok <- Access.check(scope, :"provider.write", organisation) do
+    with :ok <- Access.check(scope, :"provider.write", organisation),
+         :ok <- chain_writable(scope, chain) do
       :ok = Connections.lock(organisation.id)
 
       {:ok, scope,
        %{
          level: 6,
+         chain: chain,
          organisation: organisation,
          workspace: nil,
          target: nil,
@@ -372,7 +438,7 @@ defmodule Apiary.ModelChoices do
     end
   end
 
-  defp hold_place(%Scope{workspace: %Workspace{id: id}} = scope, holder, workflow)
+  defp hold_place(%Scope{workspace: %Workspace{id: id}} = scope, holder, workflow, "organisation")
        when holder != :organisation do
     case Repo.one(
            from w in Workspace,
@@ -387,6 +453,7 @@ defmodule Apiary.ModelChoices do
           {:ok, scope,
            %{
              level: level(target, workflow),
+             chain: "organisation",
              organisation: scope.organisation,
              workspace: workspace,
              target: target,
@@ -400,7 +467,13 @@ defmodule Apiary.ModelChoices do
     end
   end
 
-  defp hold_place(_scope, _holder, _workflow), do: {:error, :not_found}
+  defp hold_place(_scope, _holder, _workflow, _chain), do: {:error, :not_found}
+
+  # The scope, read again under the locks, writes the chain.
+  defp chain_writable(_scope, "organisation"), do: :ok
+
+  defp chain_writable(scope, "operator"),
+    do: if(Edition.operator_chain_writer?(scope), do: :ok, else: {:error, :not_found})
 
   defp level(nil, nil), do: 5
   defp level(nil, _workflow), do: 4
@@ -415,7 +488,7 @@ defmodule Apiary.ModelChoices do
   defp at_place(at) do
     query =
       from c in ModelChoice,
-        where: c.organisation_id == ^at.organisation.id and c.chain == "organisation"
+        where: c.organisation_id == ^at.organisation.id and c.chain == ^at.chain
 
     query =
       case at.workspace do
@@ -451,7 +524,7 @@ defmodule Apiary.ModelChoices do
         workspace_id: at.workspace && at.workspace.id,
         target_id: at.target && at.target.id,
         workflow: at.workflow,
-        chain: "organisation",
+        chain: at.chain,
         connection_id: provider && provider.id,
         updated_by_id: scope.user && scope.user.id
       })
@@ -630,14 +703,14 @@ defmodule Apiary.ModelChoices do
         "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."
       )
 
-  # The provider `changeset` names, a model provider of the organisation's chain, read
+  # The provider `changeset` names, a model provider of the chain `chain`, read
   # with its models and its keys' value ids, its row locked `FOR SHARE`:
   # `{:ok, provider}`, `{:ok, nil}` for none named, or the changeset with the reason on
   # `provider`.
-  defp hold_provider(%Ecto.Changeset{valid?: false} = changeset, _organisation),
+  defp hold_provider(%Ecto.Changeset{valid?: false} = changeset, _organisation, _chain),
     do: {:error, changeset}
 
-  defp hold_provider(changeset, %Organisation{id: organisation_id}) do
+  defp hold_provider(changeset, %Organisation{id: organisation_id}, chain) do
     case get_field(changeset, :provider) do
       nil ->
         {:ok, nil}
@@ -647,7 +720,7 @@ defmodule Apiary.ModelChoices do
           from c in Connection,
             where:
               c.organisation_id == ^organisation_id and c.public_id == ^public_id and
-                not is_nil(c.provider_kind) and c.chain == "organisation",
+                not is_nil(c.provider_kind) and c.chain == ^chain,
             lock: "FOR SHARE"
 
         case Repo.one(query) do

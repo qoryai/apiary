@@ -429,6 +429,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("node_id", "/:org/gateways/" <> _, p), do: p.gateway_id
   defp value_of("key_id", "/:org/gateways/" <> _, p), do: p.gateway_key_id
   defp value_of("code_id", "/:org/gateways/" <> _, p), do: p.gateway_code_id
+  # The instance's pool's pages, and its key's.
+  defp value_of("node_id", "/instance/nodes/" <> _, p), do: p.instance_node_id
+  defp value_of("key_id", "/instance/nodes/" <> _, p), do: p.instance_key_id
   defp value_of("node_id", _path, p), do: p.node_id
   # An adapter's key and waiting code, on its Access key tab.
   defp value_of("key_id", "/instance/adapters/" <> _, p), do: p.adapter_key_id
@@ -601,10 +604,16 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       %{access_key: adapter_key} = enrolled_key_fixture(admin, adapter)
       {:ok, adapter_code, _code} = Apiary.Adapters.create_code(admin, adapter)
 
+      # The instance's pool, with a key, for Instance settings › Nodes.
+      pool = instance_pool_fixture(%{installed_as: "pool"})
+      %{access_key: pool_key} = installed_key_fixture(pool)
+
       %{
         adapter_id: adapter.public_id,
         adapter_key_id: adapter_key.key_id,
         adapter_code_id: adapter_code.id,
+        instance_node_id: pool.public_id,
+        instance_key_id: pool_key.key_id,
         work_item_number: work_item.number
       }
     else
@@ -612,6 +621,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         adapter_id: "na_x",
         adapter_key_id: "x1",
         adapter_code_id: Ecto.UUID.generate(),
+        instance_node_id: "np_x",
+        instance_key_id: "x1",
         work_item_number: 1
       }
     end

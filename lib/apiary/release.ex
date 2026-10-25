@@ -614,7 +614,7 @@ defmodule Apiary.Release do
   True when `PUBLIC_URL` is plain `http://`.
 
   `config/prod.exs` passes this to `Plug.SSL` as an `:exclude` condition, so an
-  instance published over plain HTTP (a LAN, a trial on one machine) is not redirected
+  instance published over plain HTTP (a trial on one machine) is not redirected
   to an HTTPS address that does not exist. With an `https://` public URL every request
   is redirected unless the reverse proxy sends `X-Forwarded-Proto: https`.
   """

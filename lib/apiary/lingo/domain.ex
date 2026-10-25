@@ -15,9 +15,10 @@ defmodule Apiary.Lingo.Domain do
 
   A domain also sets the rules of a work item's target: whether a work item needs one
   (`c:target_required?/0`), what a target's path may be (`c:check_target/1`), the run
-  variables a run of the target gets (`c:run_variables/2`), and whether its collections'
-  environments are prebuilt (`c:prebuilds?/0`). Code that applies one of these rules asks
-  here, through the workspace (`check_target/2`, `run_variables/3`, `prebuilds?/1`).
+  variables a run of the target gets (`c:run_variables/2`), whether its collections'
+  environments are prebuilt (`c:prebuilds?/0`), and whether a target may have a harness
+  file (`c:harness_file?/0`). Code that applies one of these rules asks here, through the
+  workspace (`check_target/2`, `run_variables/3`, `prebuilds?/1`, `harness_file?/1`).
   """
 
   alias Apiary.Organisations.Workspace
@@ -119,6 +120,14 @@ defmodule Apiary.Lingo.Domain do
   """
   @callback prebuilds?() :: boolean
 
+  @doc """
+  Whether a target of the domain may have a harness file, a `qory.yaml` or `harness.yaml`
+  of qory's format at its root. False means that a target of the domain has no harness
+  file, so a run of the domain takes its harness document from the workspace's settings
+  alone.
+  """
+  @callback harness_file?() :: boolean
+
   @doc "The domains there are, by name."
   @spec domains() :: %{String.t() => module}
   def domains, do: @domains
@@ -213,6 +222,10 @@ defmodule Apiary.Lingo.Domain do
   @doc "Whether the workspace's collections are prebuilt: `c:prebuilds?/0` of its domain."
   @spec prebuilds?(%Workspace{} | nil) :: boolean
   def prebuilds?(workspace), do: for_workspace(workspace).prebuilds?()
+
+  @doc "Whether the workspace's targets may have a harness file: `c:harness_file?/0` of its domain."
+  @spec harness_file?(%Workspace{} | nil) :: boolean
+  def harness_file?(workspace), do: for_workspace(workspace).harness_file?()
 
   @doc """
   Whether an adapter that lists `domains` in its description, nil for none, serves the

@@ -207,13 +207,19 @@ defmodule Apiary.Runs.Sender do
   The query of the run `run_id` as `access_key` names it, its row locked when `lock` is
   given: a gateway's key names a run that goes through it, by the gateway and the run's
   id, wherever the run's workspace is (a run id names at most one run through a
-  gateway); any other key a run of the key's workspace.
+  gateway); the key of the instance's pool, which has no workspace, a run its pool is
+  bound to; any other key a run of the key's workspace.
   """
   @spec run_query(AccessKey.t(), Ecto.UUID.t(), keyword) :: Ecto.Query.t()
   def run_query(access_key, run_id, opts \\ [])
 
   def run_query(%AccessKey{node: %Node{kind: :gateway, id: id}}, run_id, opts) do
     from(r in Run, where: r.gateway_id == ^id and r.node_run_id == ^run_id) |> lock(opts)
+  end
+
+  def run_query(%AccessKey{workspace_id: nil, node_id: node_id}, run_id, opts)
+      when is_binary(node_id) do
+    from(r in Run, where: r.node_id == ^node_id and r.node_run_id == ^run_id) |> lock(opts)
   end
 
   def run_query(%AccessKey{workspace_id: workspace_id}, run_id, opts) do

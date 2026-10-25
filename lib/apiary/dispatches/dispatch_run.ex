@@ -1,6 +1,7 @@
 defmodule Apiary.Dispatches.DispatchRun do
   # A run of the provisioner contract, waiting in its workspace's queue: one queue per
-  # workspace, which any node pool of the workspace may claim from.
+  # workspace, which any node pool of the workspace may claim from, or, while the
+  # workspace has no node pool in use, the instance's pool.
   #
   # `run_id` is the run's id, a UUID Qory gives it when it queues the run, unique on the
   # instance: the `run_id` the contract carries, and, once the run is claimed, the run id
@@ -15,7 +16,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   #
   # A run for the step `prebuild` (`prebuild_changeset/2`) has no work item and no take
   # in: it builds the environment of a collection's target (`source_collection_id`) for
-  # one node pool of its workspace, `pool_id`, which alone may claim it, and names the
+  # one node pool of its workspace, or the instance's pool, `pool_id`, which alone may
+  # claim it, and names the
   # collection's `environment_ref` it was queued for. At most one waits per collection,
   # pool and `environment_ref` (`Apiary.Dispatches.queue_prebuild/3`). `environment_ref_at`
   # is when it was queued for that `environment_ref`, which no write changes since. Every
@@ -218,6 +220,7 @@ defmodule Apiary.Dispatches.DispatchRun do
       name: :dispatch_runs_source_collection_id_fkey
     )
     |> foreign_key_constraint(:pool_id, name: :dispatch_runs_pool_id_fkey)
+    |> check_constraint(:pool_id, name: :pool_place_matches, message: "does not exist")
   end
 
   # At most `of`, in the words Ecto gives a bound.

@@ -18,6 +18,10 @@ defmodule Apiary.Adapters.Installer do
   # - For each adapter in use installed as a name no longer listed: its outstanding codes
   #   cancelled and its file deleted (`Apiary.AccessKeys.cancel_installed_codes/2`); the
   #   adapter, its keys and its connections stay.
+  # - Then the instance's node pool and gateway (`Apiary.Nodes.Installed`), alike: each
+  #   one declared, found or made (`Apiary.Nodes.Installed.install/2`), then a code while
+  #   it needs one; each one in use whose kind is no longer declared, its codes cancelled
+  #   and its file deleted. Their failures are named `{kind, name}`.
   #
   # All as the instance, by itself, in the instance's organisation
   # (`Apiary.Accounts.Scope.for_instance/2`). A name whose pass fails is said in the log
@@ -44,6 +48,7 @@ defmodule Apiary.Adapters.Installer do
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Installed
   alias Apiary.Adapters.Installed.CodeFile
+  alias Apiary.Nodes.Installed, as: NodesInstalled
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
 
@@ -102,9 +107,26 @@ defmodule Apiary.Adapters.Installer do
       Enum.flat_map(names, fn name -> failed(name, install(scope, name)) end) ++
         Enum.flat_map(unlisted(names), fn adapter ->
           failed(adapter.installed_as, unlist(scope, adapter))
+        end) ++
+        Enum.flat_map([:pool, :gateway], fn kind ->
+          case NodesInstalled.name(kind) do
+            nil -> []
+            name -> failed({kind, name}, install_node(scope, kind))
+          end
+        end) ++
+        Enum.flat_map(NodesInstalled.undeclared(), fn node ->
+          failed({node.kind, node.installed_as}, unlist(scope, node))
         end)
 
     {:ok, failures}
+  end
+
+  defp install_node(scope, kind) do
+    guarded(fn ->
+      with {:ok, node} <- NodesInstalled.install(scope, kind),
+           {:ok, _state} <- AccessKeys.issue_installed_code(scope, node),
+           do: :ok
+    end)
   end
 
   defp instance_scope do
@@ -159,6 +181,13 @@ defmodule Apiary.Adapters.Installer do
   # What the log says of a pass: once that it waits, until it no longer does; once that a
   # name failed, until it passes again.
   defp said(:waiting, %{waiting_said: false} = state) do
+    if NodesInstalled.names() != [] do
+      Logger.info(
+        "QORY_INSTALLED_POOL or QORY_INSTALLED_GATEWAY declares a node of the instance: " <>
+          "it is installed once Qory Apiary is set up"
+      )
+    end
+
     if Installed.names() != [] do
       Logger.info(
         "QORY_INSTALLED_ADAPTERS names adapters: they are installed once Qory Apiary is set up"
@@ -191,11 +220,31 @@ defmodule Apiary.Adapters.Installer do
 
   @doc false
   # The line that says a name's pass failed, with its reason alone.
-  @spec failure_line(String.t(), term) :: String.t()
+  @spec failure_line(String.t() | {:pool | :gateway, String.t()}, term) :: String.t()
+  def failure_line({kind, name}, {:code_file, reason}),
+    do:
+      "could not write the one-time code of the instance's #{NodesInstalled.noun(kind)} " <>
+        "#{name} to #{CodeFile.folder(name)}: #{CodeFile.format_error(reason)}; trying again"
+
+  def failure_line({kind, name}, {:caught, kind_caught}),
+    do:
+      "could not install the instance's #{NodesInstalled.noun(kind)} #{name}: " <>
+        "#{inspect(kind_caught)}; trying again"
+
+  def failure_line({kind, name}, %Ecto.Changeset{}),
+    do:
+      "could not install the instance's #{NodesInstalled.noun(kind)} #{name}: " <>
+        "it was not valid; trying again"
+
+  def failure_line({kind, name}, reason),
+    do:
+      "could not install the instance's #{NodesInstalled.noun(kind)} #{name}: " <>
+        "#{inspect(reason)}; trying again"
+
   def failure_line(name, {:code_file, reason}),
     do:
       "could not write the one-time code of the installed adapter #{name} to " <>
-        "#{CodeFile.folder(name)}: #{:file.format_error(reason)}; trying again"
+        "#{CodeFile.folder(name)}: #{CodeFile.format_error(reason)}; trying again"
 
   def failure_line(name, {:caught, kind}),
     do: "could not install the adapter #{name}: #{inspect(kind)}; trying again"

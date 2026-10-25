@@ -36,7 +36,7 @@ newline='
 fail() {
   rm -f "$file.tmp" "$password_file.tmp" "$registry_key.tmp" 2>/dev/null || true
   reason=${1##*: }
-  printf 'Cannot write %s: %s. The volume keys has to be writable by the user nobody.\n' \
+  printf 'Cannot write %s: %s. The volume keys has to be writable by the user 65532.\n' \
     "$dir" "${reason:-the write did not complete}" >&2
   exit 1
 }
@@ -130,7 +130,7 @@ elif [ -n "$kept" ]; then
 fi
 
 # postgres-password is mode 0644, not 0600: the postgres container reads it as its own user,
-# uid 999, not the user nobody who writes it. It holds only the database password, which
+# uid 999, not the user 65532 who writes it. It holds only the database password, which
 # that container holds already. On the host the volume is reachable only by root, under
 # /var/lib/docker. A group shared with postgres would tie this script to the postgres
 # image's gid. When DATABASE_PASSWORD is set in the environment, that value is the one
@@ -157,7 +157,7 @@ if [ -n "${QORY_REGISTRY:-}" ]; then
     cert_fail() {
       rm -f "$cert_dir/registry-token.crt.tmp" 2>/dev/null || true
       reason=${1##*: }
-      printf 'Make %s writable by the user nobody, or set APIARY_REGISTRY_CERT_DIR to a directory that the user nobody can write. Writing failed: %s.\n' \
+      printf 'Make %s writable by the user 65532, or set APIARY_REGISTRY_CERT_DIR to a directory that the user 65532 can write. Writing failed: %s.\n' \
         "$cert_dir" "${reason:-the write did not complete}" >&2
       exit 1
     }
