@@ -1286,19 +1286,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a run that stopped at a call to an adapter says which, what for and what to do, beside its end words" do
       for {failure, line} <- [
             {%{cause: :timeout, call: "run-credential", code: nil},
-             "Ask an instance admin to check that code-host is running. The run stopped before it started: the call to code-host for the run's credentials had no answer within 10 seconds."},
+             "Ask an instance admin to check that code-host is running. The run stopped before it started: the call to code-host for the run's credentials had no answer in time."},
             {%{cause: :unreachable, call: "resolve", code: nil},
-             "Ask an instance admin to check that code-host is running. The run stopped before it started: the call to code-host for the harness sources could not connect."},
+             "Ask an instance admin to check that code-host is running and that its host name resolves. The run stopped before it started: the call to code-host for the harness sources did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504."},
             {%{cause: :refused, call: "read", code: "grant_unknown"},
              "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness files returned the error grant_unknown."},
             {%{cause: :refused, call: "read", code: nil},
              "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness files returned the error unauthorized."},
             {%{cause: :invalid_answer, call: "resolve", code: nil},
-             "Ask an instance admin to check code-host. The run stopped before it started: the answer of code-host to the call for the harness sources failed its signature check or its format check."},
+             "Ask an instance admin to check code-host. The run stopped before it started: the answer of code-host to the call for the harness sources failed its signature check or its format check, or was over 1 MiB."},
             {%{cause: :no_address, call: "resolve", code: nil},
              "Ask an instance admin to check the call address of code-host. The run stopped before it started: code-host declares no call address, so Qory Apiary could not call it for the harness sources."},
             {%{cause: :not_allowed, call: "resolve", code: nil},
-             "Ask an instance admin to check the call address of code-host. The run stopped before it started: the call address is not at the adapter's name under the instance's name, or it leads to a loopback, link-local or metadata address."},
+             "Ask an instance admin to check the call address of code-host and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to a loopback, link-local, metadata, unspecified, multicast or broadcast address, or the instance's public address has no host name."},
             {%{cause: :too_large, call: "resolve", code: nil},
              "Remove harness sources or files, then start the run again. The run stopped before it started: the call to code-host for the harness sources was over 256 KiB."}
           ] do

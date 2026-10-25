@@ -2675,14 +2675,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     case cause do
       :timeout ->
         gettext(
-          "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} had no answer within 10 seconds.",
+          "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} had no answer in time.",
           adapter: adapter,
           what: what
         )
 
       :unreachable ->
         gettext(
-          "Ask an instance admin to check that %{adapter} is running. The run stopped before it started: the call to %{adapter} for %{what} could not connect.",
+          "Ask an instance admin to check that %{adapter} is running and that its host name resolves. The run stopped before it started: the call to %{adapter} for %{what} did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504.",
           adapter: adapter,
           what: what
         )
@@ -2697,7 +2697,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       :invalid_answer ->
         gettext(
-          "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check.",
+          "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB.",
           adapter: adapter,
           what: what
         )
@@ -2711,7 +2711,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       :not_allowed ->
         gettext(
-          "Ask an instance admin to check the call address of %{adapter}. The run stopped before it started: the call address is not at the adapter's name under the instance's name, or it leads to a loopback, link-local or metadata address.",
+          "Ask an instance admin to check the call address of %{adapter} and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to a loopback, link-local, metadata, unspecified, multicast or broadcast address, or the instance's public address has no host name.",
           adapter: adapter
         )
 
