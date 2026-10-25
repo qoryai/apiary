@@ -5,10 +5,13 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # or on the place of a node (`@linked_passes`, `@linked_pass`, `@grants`, `@instance`,
   # `@hold`, `@prebuilds`, `@environments`, `@environment_ref`, `@left_out`, `@listed`,
   # `@listing`, `@again`, `@items`, `@collections`, then `@ticket`), down first and up
-  # last; `@hold`, `@grants`, `@linked_pass` and `@linked_passes` stay down, as the
-  # migrations between `@hold` and `@prebuilds` that it changes do not run again. They
-  # change `nodes`, `access_keys` and `access_key_enrolment_codes` under every other test,
-  # so this is not async.
+  # last. `@hold` stays down, as the migrations between it and `@prebuilds` that it
+  # changes do not run again. `@grants` and `@linked_passes` run down because their foreign
+  # keys rest on the index of `adapter_connections` on `id`, `organisation_id` and
+  # `adapter_id`, which `@collections` drops; `@linked_pass` runs down between them. The
+  # three stay down, as the test checks nothing of theirs, and the rollback restores them.
+  # The migrations change `nodes`, `access_keys` and `access_key_enrolment_codes` under
+  # every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration up again while later ones are applied makes Ecto warn that an

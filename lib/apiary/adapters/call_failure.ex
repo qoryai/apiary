@@ -5,9 +5,11 @@ defmodule Apiary.Adapters.CallFailure do
   #   * `:no_address`: the adapter declares no `call_url`;
   #   * `:not_allowed`: its `call_url`, or an address its host resolves to, is one Qory
   #     Apiary does not call (`Apiary.Adapters.CallAddress`);
-  #   * `:unreachable`: the host resolved to no address, or no connection was made, or it
-  #     broke before an answer, or a proxy answered 502, 503 or 504 unsigned;
-  #   * `:timeout`: no answer within the call's time;
+  #   * `:unreachable`: the host resolved to no address, or the lookup of the host crashed,
+  #     or no connection was made, or it broke before an answer, or a proxy answered 502,
+  #     503 or 504 unsigned;
+  #   * `:timeout`: no answer within the call's time, or the lookup of the host still ran
+  #     when that time ended;
   #   * `:refused`: the adapter answered a signed refusal, its code in `code` and its
   #     status in `status`, or an unsigned 401;
   #   * `:invalid_answer`: an answer that is unsigned, signed under no key of the adapter,

@@ -78,10 +78,12 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://apiary@postgres/apiary}
       # The adapters installed with Qory Apiary, from .env; none unless .env names them.
       QORY_INSTALLED_ADAPTERS: ${QORY_INSTALLED_ADAPTERS:-}
-    # Qory Apiary calls an adapter at <adapter name>.<host of PUBLIC_URL>, through the
+    # Qory Apiary calls the github adapter at github.<host of PUBLIC_URL>, through the
     # reverse proxy on this machine. Set PUBLIC_HOST in .env to the host of PUBLIC_URL.
-    # Never set it to localhost: inside the container, localhost would then lead to this
-    # machine instead of the container.
+    # Never set it to localhost: the mapping would give localhost inside the container a
+    # second address, this machine's.
+    # Another adapter needs a line of the same form under extra_hosts:
+    #   - "<adapter name>.${PUBLIC_HOST:-public-host.invalid}:host-gateway"
     # The host of PUBLIC_URL is mapped too, so a request from the container to PUBLIC_URL
     # reaches the reverse proxy here, not the public address, which a machine behind NAT
     # often cannot reach from inside.
