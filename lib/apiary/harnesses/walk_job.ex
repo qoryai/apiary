@@ -7,7 +7,9 @@ defmodule Apiary.Harnesses.WalkJob do
   # origin `:none` and no job: nothing is read for it.
   #
   # The job walks the run's harness while the row is pending and the run waits, and
-  # writes the result on the row, the row held `FOR UPDATE`. A walk that timed out or
+  # writes the result on the row, the row held `FOR UPDATE`. A walk that failed ends the
+  # run before it starts, `harness_unresolved` (`fail/3`); a claim takes no run whose walk
+  # has not resolved (`Apiary.Dispatches.waiting_query/1`). A walk that timed out or
   # reached no adapter is tried again after 10 seconds, then after 30; after the third
   # attempt it fails `adapter_unavailable`. A refusal is not tried again. Run twice, the
   # second finds the row no longer pending and does nothing.
@@ -28,7 +30,8 @@ defmodule Apiary.Harnesses.WalkJob do
 
   alias Apiary.{Dispatches, Repo, Stacks}
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Adapters.Calls
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle}
   alias Apiary.Harnesses.{RunHarness, Walk}
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
@@ -89,10 +92,10 @@ defmodule Apiary.Harnesses.WalkJob do
             write(id, resolved(walked, job.attempt))
 
           {:failed, failure} ->
-            write(id, failed(failure, job.attempt))
+            fail(id, failure, job.attempt)
 
           {:retry, failure} when job.attempt >= job.max_attempts ->
-            write(id, failed(failure, job.attempt))
+            fail(id, failure, job.attempt)
 
           {:retry, _failure} ->
             write(id, attempts: job.attempt)
@@ -152,34 +155,85 @@ defmodule Apiary.Harnesses.WalkJob do
   end
 
   # `changes` on the run's row, held `FOR UPDATE`, while it is pending; the workspace is
-  # told of a walk that ended.
+  # told of a walk that resolved.
   defp write(id, changes) do
     Repo.transact(fn ->
-      case Repo.one(
-             from h in RunHarness,
-               where: h.dispatch_run_id == ^id and h.state == :pending,
-               lock: "FOR UPDATE"
-           ) do
-        nil ->
-          {:ok, nil}
-
-        row ->
-          row |> Ecto.Changeset.change(changes) |> Repo.update()
+      case pending_row(id) do
+        nil -> {:ok, nil}
+        row -> row |> Ecto.Changeset.change(changes) |> Repo.update()
       end
     end)
     |> case do
-      {:ok, %RunHarness{state: state, dispatch_run_id: run_id}} when state != :pending ->
-        told(run_id)
+      {:ok, %RunHarness{state: :resolved, dispatch_run_id: run_id}} ->
+        case Repo.one(from r in DispatchRun, where: r.id == ^run_id, select: r.workspace_id) do
+          nil -> :ok
+          workspace_id -> Dispatches.broadcast([workspace_id])
+        end
 
       _pending_or_gone ->
         :ok
     end
   end
 
-  defp told(run_id) do
-    case Repo.one(from r in DispatchRun, where: r.id == ^run_id, select: r.workspace_id) do
-      nil -> :ok
-      workspace_id -> Dispatches.broadcast([workspace_id])
+  # The walk failed: its row written failed and, while the run waits, the run ended
+  # `harness_unresolved` with the outcome `error` and the failure code as `end_detail`,
+  # with any stale dispatch of it (`run_ended`), and the call it stopped at
+  # (`Apiary.Adapters.Calls.record_failure/3`), in one transaction that holds the run,
+  # then the row, `FOR UPDATE`. The workspace and the work item are told.
+  defp fail(id, failure, attempt) do
+    now = DateTime.utc_now()
+
+    Repo.transact(fn ->
+      run = Repo.one(from r in DispatchRun, where: r.id == ^id, lock: "FOR UPDATE")
+
+      case {run, pending_row(id)} do
+        {%DispatchRun{} = run, %RunHarness{} = row} ->
+          {:ok, _row} = row |> Ecto.Changeset.change(failed(failure, attempt)) |> Repo.update()
+          {:ok, end_run(run, failure, now)}
+
+        _gone ->
+          {:ok, []}
+      end
+    end)
+    |> case do
+      {:ok, told} -> Dispatches.broadcast(told)
     end
+  end
+
+  defp end_run(%DispatchRun{state: :waiting} = run, failure, now) do
+    {:ok, _run} =
+      run
+      |> Ecto.Changeset.change(
+        state: :ended,
+        end_cause: :harness_unresolved,
+        end_detail: to_string(failure.failure),
+        result_outcome: :error,
+        updated_at: now
+      )
+      |> Repo.update()
+
+    {_count, _rows} =
+      Repo.update_all(
+        from(d in Dispatch,
+          where: d.dispatch_run_id == ^run.id,
+          where: not is_nil(d.stale_at) and is_nil(d.ended_at)
+        ),
+        set: [ended_at: now, end_cause: :run_ended, updated_at: now]
+      )
+
+    if failure.call_failure, do: :ok = Calls.record_failure(Repo, run, failure.call_failure)
+
+    [run.workspace_id | Settle.told(run.work_item_id)]
+  end
+
+  # A run that no longer waits keeps its end; only its row records the failure.
+  defp end_run(%DispatchRun{workspace_id: workspace_id}, _failure, _now), do: [workspace_id]
+
+  defp pending_row(id) do
+    Repo.one(
+      from h in RunHarness,
+        where: h.dispatch_run_id == ^id and h.state == :pending,
+        lock: "FOR UPDATE"
+    )
   end
 end

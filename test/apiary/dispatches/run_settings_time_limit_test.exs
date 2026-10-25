@@ -34,7 +34,8 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   # the run's documents are made from, with the registered run as `run`.
   defp claim!(%{scope: scope}, place) do
     work_item = work_item_fixture(scope)
-    {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    walk_resolved!(queued)
 
     {:ok, %{registered: run, documents: documents}} =
       Dispatches.claim(place.key, Dispatches.now(), @body)

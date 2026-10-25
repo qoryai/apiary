@@ -82,6 +82,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   use ApiaryWeb, :html
 
   alias Apiary.ExternalText
+  alias Apiary.Harnesses.Walk
   alias ApiaryWeb.BacklogComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
@@ -91,9 +92,20 @@ defmodule ApiaryWeb.WorkItemComponents do
   @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
   @no_result [:no_result, :lost, :cancelled]
   # The end causes of a run that ended before it started: at its claim, because the claim
-  # could not form what the run is made from (`Apiary.Dispatches.Handover`), or while it
-  # waited for its environment image's build, which failed (`Apiary.Environments`).
+  # could not form what the run is made from (`Apiary.Dispatches.Handover`), while it
+  # waited for its environment image's build, which failed (`Apiary.Environments`), or
+  # because its harness walk failed (`Apiary.Harnesses.WalkJob`).
   @unstarted [:variables_invalid, :ticket_gone, :inputs_invalid, :build_failed]
+  # The values a save check's message has (`Apiary.Stacks.Document`), by their name in a
+  # failed walk's rule.
+  @rule_values %{
+    "source" => :source,
+    "name" => :name,
+    "key" => :key,
+    "place" => :place,
+    "rule" => :rule,
+    "limit" => :limit
+  }
   @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
   @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]
 
@@ -1756,8 +1768,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       the last run;
     * no result, lost or cancelled: what happened, and the run's page; for a run that
       ended at its claim, before it started (`:end_cause` `:variables_invalid`,
-      `:ticket_gone` or `:inputs_invalid`), or while it waited for its environment
-      image's build, which failed (`:build_failed`), what a member fixes and why;
+      `:ticket_gone` or `:inputs_invalid`), while it waited for its environment
+      image's build, which failed (`:build_failed`), or because its harness walk failed
+      (`:harness_unresolved`, with `:harness_failure`), what a member fixes and why;
     * Confirm: Qory's proposal; Shape: the proposal confirmed, who confirmed it and when
       (`:confirmed_by`, `:confirmed_at`), and each section a member changed (`changes`)
       with Qory's words under Show Qory's words;
@@ -2615,7 +2628,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       <.icon name={@icon} class="q-xp-bad-i size-4" />
       <div>
         <p id={"#{@id}-h"}><b>{@heading}</b></p>
-        <p>{@body}</p>
+        <p :if={@body}>{@body}</p>
         <p :if={@run[:adapter_failure]} id={"#{@id}-adapter"}>
           {adapter_failure_words(@run.adapter_failure)}
         </p>
@@ -2640,6 +2653,11 @@ defmodule ApiaryWeb.WorkItemComponents do
        gettext(
          "It was cancelled before it ended. There is nothing for Qory to show or for a member to confirm."
        )}
+
+  defp no_result_words(%{end_cause: :harness_unresolved} = run),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
+       harness_failure_words(run[:harness_failure])}
 
   defp no_result_words(%{end_cause: cause}) when cause in @unstarted,
     do:
@@ -2727,6 +2745,135 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp adapter_call_words("run-credential"), do: gettext("the run's credentials")
   defp adapter_call_words("resolve"), do: gettext("the harness sources")
   defp adapter_call_words("read"), do: gettext("the harness files")
+
+  # What a member does about a run whose harness walk failed, and why it failed, by the
+  # walk's failure code (`Apiary.Harnesses.Walk`). nil for a call to an adapter that
+  # failed, which the adapter's line words (`adapter_failure_words/1`). A source is
+  # shown as the walk wrote it, or as the workspace's harness setting where the walk
+  # wrote none: the stacks' document, or a hidden harness.
+  defp harness_failure_words(%{code: code} = failure) do
+    source = failure.source || gettext("the workspace's harness setting")
+
+    case code do
+      "no_harness" ->
+        gettext(
+          "Add a harness file to the target, or set a harness in the workspace's settings, then run Explore again. The run has neither."
+        )
+
+      "invalid" ->
+        gettext(
+          "Correct %{source}, then run Explore again. It breaks the harness format: %{rule}.",
+          source: source,
+          rule: harness_rule_words(failure.rule)
+        )
+
+      "not_covered" ->
+        gettext(
+          "Connect the account that holds %{source} to this organisation, then run Explore again. No connection of this organisation reaches that harness source.",
+          source: source
+        )
+
+      "not_allowed" ->
+        gettext(
+          "Ask the owner of %{source} to assign it to this organisation, then run Explore again. Another owner keeps that harness source and has not assigned it here.",
+          source: source
+        )
+
+      "scp_form" ->
+        gettext(
+          "Write %{source} as an https address, then run Explore again. Qory Apiary fetches harness sources over https only, and %{source} has the form user@host:path.",
+          source: source
+        )
+
+      "credential_in_address" ->
+        gettext(
+          "Remove the user name and password from %{source}, then run Explore again. A harness source address may not contain a credential.",
+          source: source
+        )
+
+      "too_many" ->
+        gettext(
+          "Take the harness sources from at most %{n} accounts, then run Explore again. A run takes %{n} harness credentials at most.",
+          n: Walk.max_links()
+        )
+
+      "adapter_unavailable" ->
+        gettext(
+          "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. The adapter did not answer three times.",
+          adapter: failure.adapter
+        )
+
+      _adapter_failed ->
+        nil
+    end
+  end
+
+  defp harness_failure_words(nil), do: nil
+
+  # The harness format rule a source breaks: one of the walk's, or one of the save check's
+  # (`Apiary.Stacks.Document`), in its words.
+  defp harness_rule_words(%{"rule" => "yaml", "values" => %{"file" => file}} = rule),
+    do:
+      gettext("%{file} %{problem}",
+        file: file,
+        problem: saved_rule_words(rule["message"], rule["message_values"])
+      )
+
+  defp harness_rule_words(%{"rule" => name, "values" => values}),
+    do: walk_rule_words(name, values)
+
+  defp harness_rule_words(%{"message" => message, "values" => values}),
+    do: saved_rule_words(message, values)
+
+  defp harness_rule_words(_rule), do: ""
+
+  defp saved_rule_words(message, values) when is_binary(message) do
+    values =
+      for {key, value} <- values || %{}, atom = @rule_values[key], atom != nil do
+        {atom, value || gettext("the workspace's harness setting")}
+      end
+
+    ApiaryWeb.CoreComponents.translate_error({message, values})
+  end
+
+  defp walk_rule_words("both_files", _values),
+    do: gettext("the target has both harness.yaml and qory.yaml: keep one")
+
+  defp walk_rule_words("host", _values),
+    do: gettext("its host is an IP address or a local name: give a public host name")
+
+  defp walk_rule_words("path", values),
+    do: gettext("the path %{path} leads out of its source", path: values["path"])
+
+  defp walk_rule_words("ref", values),
+    do:
+      gettext(
+        "the ref %{ref} is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens",
+        ref: to_string(values["ref"])
+      )
+
+  defp walk_rule_words("no_export", values),
+    do: gettext("it exports no stack %{name}", name: values["name"])
+
+  defp walk_rule_words("no_stack_file", values),
+    do: gettext("it has no %{path}", path: values["path"])
+
+  defp walk_rule_words("no_stack", _values),
+    do: gettext("its root has no qory-stack.yaml and no harness section")
+
+  defp walk_rule_words("version", _values),
+    do: gettext("its ref is no version of its repository")
+
+  defp walk_rule_words("not_text", _values),
+    do: gettext("one of its harness files is not text")
+
+  defp walk_rule_words("calls", values),
+    do: gettext("reading it takes more than %{n} calls", n: values["n"])
+
+  defp walk_rule_words("extends", _values),
+    do: gettext("extends is not a source")
+
+  defp walk_rule_words(name, _values), do: to_string(name)
 
   # What a member does about a run that ended before it started, at its claim or while it
   # waited for its environment image's build, and why it ended.

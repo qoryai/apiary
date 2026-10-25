@@ -9,7 +9,7 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
-  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1]
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, walk_resolved!: 1]
   import Apiary.NodesFixtures, only: [collection_fixture: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -136,7 +136,8 @@ defmodule ApiaryWeb.Contract.ClaimStackTest do
 
   defp explore!(ctx) do
     work_item = work_item_fixture(ctx.scope, %{target_system: "tickets.example.com"})
-    {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    walk_resolved!(run)
     work_item
   end
 

@@ -226,8 +226,8 @@ defmodule Apiary.Dispatches.SchemaTest do
         assert %{num_rows: 1} = update!("dispatch_runs", run.id, "state = $2", [state])
       end
 
-      # A cause its handover gives, and `build_failed`, come with the outcome error
-      # (`result_outcome`).
+      # A cause its handover gives, `build_failed` and `harness_unresolved` come with the
+      # outcome error (`result_outcome`).
       for cause <- DispatchRun.end_causes() do
         assert %{num_rows: 1} =
                  update!(
@@ -236,7 +236,7 @@ defmodule Apiary.Dispatches.SchemaTest do
                    "state = 'ended', end_cause = $2, result_outcome = CASE WHEN $2 IN " <>
                      "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
                      "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed', " <>
-                     "'build_failed') " <>
+                     "'build_failed', 'harness_unresolved') " <>
                      "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )

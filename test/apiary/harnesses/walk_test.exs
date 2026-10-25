@@ -10,10 +10,12 @@ defmodule Apiary.Harnesses.WalkTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
+  import Apiary.DispatchedRunsFixtures
 
   alias Apiary.{Dispatches, Harnesses, Stacks}
   alias Apiary.Adapters.{Calls, Collection, Grant}
   alias Apiary.Contract.{Ed25519, SignedMessage}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.{Assignment, RunHarness, Walk, WalkJob}
   alias Apiary.Nodes.Node
 
@@ -129,7 +131,7 @@ defmodule Apiary.Harnesses.WalkTest do
         opts[:down] ->
           Req.Test.transport_error(conn, :econnrefused)
 
-        path == "resolve" ->
+        path == "resolve" and is_nil(opts[:refuse_resolve]) ->
           by_address = Map.get(covered, adapter.adapter.id, %{})
 
           results =
@@ -148,6 +150,10 @@ defmodule Apiary.Harnesses.WalkTest do
             end
 
           answer(conn, 200, %{"version" => 1, "revision" => 1, "results" => results}, adapter)
+
+        path == "resolve" and opts[:refuse_resolve] ->
+          {status, code} = opts[:refuse_resolve]
+          answer(conn, status, %{"error" => code}, adapter)
 
         refusal = opts[:refuse] ->
           {status, code} = refusal
@@ -694,7 +700,8 @@ defmodule Apiary.Harnesses.WalkTest do
       assert row.failure_adapter == ctx.run.adapter.name
     end
 
-    test "a refusal fails the walk on the first attempt", ctx do
+    test "a refusal fails the walk on the first attempt and ends the run harness_unresolved",
+         ctx do
       setting(ctx.scope, @setting)
       run = queued(ctx)
 
@@ -703,6 +710,59 @@ defmodule Apiary.Harnesses.WalkTest do
 
       assert %RunHarness{state: :failed, failure: "not_covered", failed_source: @tools} =
                Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      assert %DispatchRun{
+               state: :ended,
+               end_cause: :harness_unresolved,
+               end_detail: "not_covered",
+               result_outcome: :error,
+               adapter_failure: nil
+             } = Repo.get!(DispatchRun, run.id)
+    end
+
+    test "a call that fails otherwise ends the run adapter_failed, with the call it stopped at",
+         ctx do
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+
+      serve([ctx.run], refuse_resolve: {400, "invalid_request"})
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :failed, failure: "adapter_failed", failed_source: nil} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      adapter_id = ctx.run.adapter.id
+
+      assert %DispatchRun{
+               end_cause: :harness_unresolved,
+               end_detail: "adapter_failed",
+               adapter_failure_id: ^adapter_id,
+               adapter_failure: :refused,
+               adapter_failure_call: "resolve",
+               adapter_failure_code: "invalid_request"
+             } = Repo.get!(DispatchRun, run.id)
+    end
+
+    test "a claim takes no run whose walk is pending, and takes it once the walk resolved",
+         ctx do
+      %{key: key} = handover_place_fixture(ctx.scope)
+      setting(ctx.scope, @setting)
+
+      # A target no collection has, so no build holds the run: the walk reads no file.
+      work_item = work_item_fixture(ctx.scope)
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      waiting = fn -> Repo.one(Dispatches.waiting_query(key)) end
+
+      assert waiting.() == nil
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      assert :ok = job(run)
+      assert %DispatchRun{id: id} = waiting.()
+      assert id == run.id
     end
   end
 end
