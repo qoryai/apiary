@@ -85,7 +85,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # lost twice, while no node pool had an image for its target (`Apiary.Environments`),
   # with the outcome `error`; `harness_unresolved`, a waiting explore run whose harness
   # walk failed (`Apiary.Harnesses.WalkJob`), with the outcome `error` and the walk's
-  # failure code kept as `end_detail`.
+  # failure code kept as `end_detail`; `target_access_gone`, a claimed run that could not
+  # be given access to its target, because the integration that brings in the target no
+  # longer reaches it, with the outcome `error`, which no code gives yet.
   @end_causes [
     :released,
     :closed,
@@ -105,7 +107,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :secrets_not_allowed,
     :run_refused,
     :build_failed,
-    :harness_unresolved
+    :harness_unresolved,
+    :target_access_gone
   ]
 
   # What a run gave (`Apiary.Explore.Result.outcome/1`).

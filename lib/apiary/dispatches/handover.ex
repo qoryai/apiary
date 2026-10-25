@@ -172,7 +172,7 @@ defmodule Apiary.Dispatches.Handover do
   @prebuild DispatchRun.prebuild()
   # The causes a claimed run ends for when the claim cannot form what it is made from.
   @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++
-              RunSettings.causes() ++ [:secrets_not_allowed]
+              RunSettings.causes() ++ [:secrets_not_allowed, :target_access_gone]
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
