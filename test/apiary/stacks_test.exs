@@ -552,15 +552,15 @@ defmodule Apiary.StacksTest do
 
     test "refuse a document that takes too long to read", ctx do
       expected = [
-        "takes longer to read than a harness document may: " <>
+        "takes more work to read than a harness document may: " <>
           "write long lists as block lists, with one - item per line"
       ]
 
-      # The reader's heap limit stops this input too, but only after seconds of parsing
-      # (4.4 s in one measured run); the save check's limit of 200 ms stops it first.
+      # The read passes the reader's budget of 30 million reductions within 3 s on an
+      # idle machine; the reader's backstop of 10 s bounds it on a busy one.
       slow = "modules:\n- [" <> String.duplicate("a,", 32_000) <> "a]\n"
       assert {time, ^expected} = :timer.tc(fn -> refused(ctx, slow) end)
-      assert time < 1_000_000
+      assert time < 12_000_000
     end
 
     test "refuse what the run contract's harness section refuses", ctx do

@@ -83,6 +83,28 @@ defmodule Apiary.Kinds.BudgetTest do
     assert monitors() == before
   end
 
+  test "reads the reductions every :poll_ms, and refuses a :poll_ms that is not positive" do
+    {result, pid} =
+      run(fn -> Stream.run(Stream.repeatedly(&make_ref/0)) end,
+        reductions: 1_000_000,
+        heap_words: 100_000,
+        ms: 10_000,
+        poll_ms: 50
+      )
+
+    assert result == {:error, :reductions}
+    gone(pid)
+    before = monitors()
+
+    for poll_ms <- [nil, 0, -1, 1.5] do
+      assert_raise ArgumentError, ~r/:poll_ms/, fn ->
+        Budget.run(fn -> :ok end, Keyword.put(@budget, :poll_ms, poll_ms))
+      end
+    end
+
+    assert monitors() == before
+  end
+
   test "is the value of a function within its reductions, however long it takes" do
     {result, pid} =
       run(fn -> Process.sleep(300) end, reductions: 10_000, heap_words: 100_000, ms: 10_000)

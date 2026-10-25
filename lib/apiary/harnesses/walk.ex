@@ -23,7 +23,8 @@ defmodule Apiary.Harnesses.Walk do
   #
   # The harness document of the most specific level for the run's workflow
   # (`Apiary.Stacks.resolve_for/4`), origin `:setting`: none fails `no_harness`. It is
-  # checked again by the save rules (`Apiary.Stacks.Document.errors/1`), else `invalid`.
+  # read once and checked again by the save rules (`Apiary.Stacks.Document.check/1`),
+  # else `invalid`.
   #
   # ## The sources, two levels
   #
@@ -256,14 +257,12 @@ defmodule Apiary.Harnesses.Walk do
       {:ok, %Resolution{} = resolution} ->
         put(:hidden, resolution.harness_hidden)
 
+        # One read: a second read of a document near the reader's budget could refuse
+        # what the first took.
         section =
-          case Document.errors(resolution.harness) do
-            [] ->
-              {:ok, section} = Reader.document(resolution.harness)
-              section
-
-            [{message, values} | _] ->
-              fail(:invalid, nil, message(message, values))
+          case Document.check(resolution.harness) do
+            {:ok, section} -> section
+            {:error, {message, values}} -> fail(:invalid, nil, message(message, values))
           end
 
         if stored_bytes(section) > @max_document,
