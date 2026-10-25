@@ -544,9 +544,26 @@ defmodule Apiary.Harnesses.WalkTest do
             "https://127.1/r",
             "https://0x7f.1/r",
             "https://localhost/r",
-            "https://adapter.localhost/r"
+            "https://adapter.localhost/r",
+            "https://localhost./r",
+            "https://a.localhost./r",
+            "https://127.0.0.1./r"
           ] do
         assert {:failed, %{failure: :invalid, rule: %{"rule" => "host"}}} = walk_file(ctx, git),
+               git
+      end
+    end
+
+    test "a host with a percent-encoding fails invalid: decoded, it may be a local name",
+         ctx do
+      # A fullwidth "l" (U+FF4C) before "ocalhost", and fullwidth digits for 127.
+      for git <- [
+            "https://%EF%BD%8Cocalhost/r",
+            "https://%EF%BC%91%EF%BC%92%EF%BC%97.0.0.1/r",
+            "https://code%C3%A9.example.com/r"
+          ] do
+        assert {:failed, %{failure: :invalid, rule: %{"rule" => "host_encoded"}}} =
+                 walk_file(ctx, git),
                git
       end
     end

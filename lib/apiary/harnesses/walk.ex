@@ -32,9 +32,10 @@ defmodule Apiary.Harnesses.Walk do
   # (one with `git`) is checked, in this order: the form `<user>@<host>:<path>` fails
   # `scp_form`; an address with a user name fails `credential_in_address`; then
   # `invalid` for the save rules of a source (`Apiary.Stacks.Document.source_error/2`),
-  # an address longer than a call takes, a `ref` that is no version a read takes, a host
-  # that is an IP address in any notation or a local name (`localhost`, `*.localhost`),
-  # and a `path` that is absolute or leads out of its source with `..`. A file's base
+  # a host with a percent-encoding, an address longer than a call takes, a `ref` that is
+  # no version a read takes, a host that is an IP address in any notation or a local
+  # name (`localhost`, `*.localhost`, each also with a final `.`), and a `path` that is
+  # absolute or leads out of its source with `..`. A file's base
   # given by name alone, `{stack: <name>}`, fails `invalid` with the save rule's words.
   #
   # Each level's addresses are resolved at every adapter with a `call_url`, in the order
@@ -417,6 +418,9 @@ defmodule Apiary.Harnesses.Walk do
         {message, values} = error
         fail(:invalid, shown, message(message, values))
 
+      is_binary(git) and String.contains?(host(git), "%") ->
+        fail(:invalid, shown, rule("host_encoded"))
+
       not CallWire.address?(git) ->
         fail(
           :invalid,
@@ -442,10 +446,15 @@ defmodule Apiary.Harnesses.Walk do
     end
   end
 
+  # The host of `git` as written, percent-encodings kept; "" for none.
+  defp host(git), do: git |> URI.parse() |> Map.get(:host) |> to_string()
+
   # A host that is an IP address in any notation, such as `[::1]`, `127.0.0.1`, `127.1`
-  # or `0x7f.1`, or a local name.
+  # or `0x7f.1`, or a local name, with or without one final `.`, such as `localhost.`.
+  # A host with a percent-encoding never gets here: decoded, a fullwidth letter or digit
+  # can map to `localhost` or `127.0.0.1`.
   defp local_host?(git) do
-    host = git |> URI.parse() |> Map.get(:host) |> to_string() |> String.downcase()
+    host = git |> host() |> String.downcase() |> String.replace_suffix(".", "")
     bare = host |> String.trim_leading("[") |> String.trim_trailing("]")
 
     match?({:ok, _address}, :inet.parse_address(String.to_charlist(bare))) or

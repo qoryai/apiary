@@ -2842,6 +2842,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp walk_rule_words("host", _values),
     do: gettext("its host is an IP address or a local name: give a public host name")
 
+  defp walk_rule_words("host_encoded", _values),
+    do: gettext("its host has a percent-encoding: write the host name without one")
+
   defp walk_rule_words("path", values),
     do: gettext("the path %{path} leads out of its source", path: values["path"])
 

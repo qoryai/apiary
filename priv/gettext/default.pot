@@ -18114,6 +18114,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "its host has a percent-encoding: write the host name without one"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "its host is an IP address or a local name: give a public host name"
 msgstr ""
 
