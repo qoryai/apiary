@@ -234,7 +234,7 @@ defmodule Apiary.WorkItemsFixtures do
   `dev.qory.runtime.result` event: a map is the result document, given as its JSON with
   `is_error` false; `{:data, data}` is the event's data as given; nil, the default, is no
   event. A run ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
-  `inputs_invalid`) has the outcome `:error`, as the handover writes it; any other has none
+  `inputs_invalid`, `target_access_gone`) has the outcome `:error`, as the handover writes it; any other has none
   stored. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
@@ -326,6 +326,7 @@ defmodule Apiary.WorkItemsFixtures do
               :variables_invalid,
               :ticket_gone,
               :inputs_invalid,
+              :target_access_gone,
               :build_failed,
               :harness_unresolved
             ],
