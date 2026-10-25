@@ -145,7 +145,6 @@ defmodule Apiary.Dispatches.Handover do
     PublicId,
     Repo,
     Runs,
-    Stacks,
     Targets
   }
 
@@ -162,9 +161,10 @@ defmodule Apiary.Dispatches.Handover do
     Slots
   }
 
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{About, ProviderCredential, Registration, Run, RunCode, RunVariables, Target}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
@@ -600,7 +600,8 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # An explore run has its work item's target, nil for none; a work item without one in
-  # a domain that requires a target ends `inputs_invalid`. Its run settings come next
+  # a domain that requires a target ends `inputs_invalid`. Its harness members come from
+  # its harness walk (`harness/2`). Its run settings come next
   # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
   # `RunSettings.causes/0` lists, or refuse the claim. The run's documents and the input
   # get the same target and the same domain, and the input the bytes of the documents'
@@ -608,11 +609,11 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
-    stack = stack(locked.key, workspace, target)
+    harness = harness(dispatch_run, target)
 
     with false <- is_nil(target) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
-      formed(dispatch_run, workspace, target, work_item, settings, stack, fn domain ->
+      formed(dispatch_run, workspace, target, work_item, settings, harness, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
           documents_limit: locked.documents_limit,
@@ -620,7 +621,7 @@ defmodule Apiary.Dispatches.Handover do
           target: target,
           work_item: work_item,
           run_settings: settings && settings.wire,
-          stack: stack
+          harness: harness
         }
 
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
@@ -654,23 +655,30 @@ defmodule Apiary.Dispatches.Handover do
     |> Keyword.get(:answer_limit, @answer_bytes)
   end
 
-  # The stack, the workflow and `harness_hidden` of an explore run of `workspace`, the
-  # run's workspace, in its organisation, at `target` (`Apiary.Stacks.for_run/3`); nil
-  # for none. The key of a workspace's pool carries that organisation; the instance's
-  # pool's key has none.
-  defp stack(
-         %AccessKey{organisation: %Organisation{id: id} = organisation},
-         %Workspace{organisation_id: id} = workspace,
-         target
-       ),
-       do: Stacks.for_run(organisation, workspace, target)
+  # The harness members of an explore run's documents, from its harness walk, which a
+  # claim takes only once resolved (`Apiary.Harnesses.WalkJob`): `target_version`, the
+  # version at which the walk read the target's harness file, while the run has its
+  # target; `workflow` and `harness_hidden`; and `harness`, the stacks' document, for a
+  # walk whose document came from them (`:setting`). nil for a run with no workflow, and
+  # for a run with no walk, queued before walks were kept.
+  defp harness(%DispatchRun{id: id}, target) do
+    case Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id) do
+      %RunHarness{state: :resolved, origin: origin} = walk when origin in [:file, :setting] ->
+        %{
+          target_version: if(target, do: walk.target_version),
+          workflow: walk.workflow,
+          harness_hidden: walk.harness_hidden,
+          harness: if(origin == :setting, do: walk.document)
+        }
 
-  defp stack(%AccessKey{}, %Workspace{organisation_id: organisation_id} = workspace, target),
-    do: Stacks.for_run(Repo.get!(Organisation, organisation_id), workspace, target)
+      _none ->
+        nil
+    end
+  end
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
-  defp formed(dispatch_run, workspace, target, work_item, settings, stack, inputs) do
+  defp formed(dispatch_run, workspace, target, work_item, settings, harness, inputs) do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
@@ -694,7 +702,7 @@ defmodule Apiary.Dispatches.Handover do
            target: target,
            work_item: work_item,
            run_settings: settings && settings.wire,
-           stack: stack,
+           harness: harness,
            inputs: inputs
          }
        }}

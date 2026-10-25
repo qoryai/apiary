@@ -4,15 +4,13 @@ defmodule Apiary.Stacks do
   # (`Apiary.Stacks.Document`), set at five levels and resolved for each run by
   # `Apiary.Stacks.Resolution`. A row may set only the workflow.
   #
-  # ## The run's stack
+  # ## A run's harness
   #
-  # `for_run/3` is the `stack`, `workflow` and `harness_hidden` of an explore run's
-  # documents. The run's workflow is the workflow of the one row with a workflow at the
-  # run's places, its workspace and its target (`workflow/2`). With no such row, or two
-  # or more, the run has no workflow, so it has no stack, whatever the levels have. The
-  # run's `stack` is the stack reference of the document that resolves
-  # (`Apiary.Stacks.Document.reference/1`): a run whose document is not a base alone, or
-  # with no document at any level, has no stack and no workflow.
+  # An explore run's workflow is the workflow of the one row with a workflow at the run's
+  # places, its workspace and its target (`workflow_for/2`). With no such row, or two or
+  # more, the run has no workflow and no harness, whatever the levels have. A run with a
+  # workflow takes the document that resolves for it (`resolve_for/4`) where its
+  # target's harness file does not apply (`Apiary.Harnesses.Walk`).
   #
   # ## Writes
   #
@@ -63,37 +61,33 @@ defmodule Apiary.Stacks do
           | {:target, Target.t()}
           | {:target, Target.t(), String.t()}
 
-  @typedoc "The `stack`, `workflow` and `harness_hidden` of a run's documents."
-  @type run_stack :: %{stack: String.t(), workflow: String.t(), harness_hidden: boolean}
-
   ## Reading
 
   @doc false
-  # for_run/3 is the stack of an explore run of `workspace` in `organisation`, at
-  # `target`, the work item's `%{system, path}`, nil for none: the stack reference of the
-  # resolution's document (`Apiary.Stacks.Document.reference/1`), the run's workflow
-  # (`workflow/2`) and `harness_hidden`; or nil for a run without a workflow, without a
-  # document at any level, or whose document has no stack reference. A target no row of
-  # the workspace has counts as none.
-  @spec for_run(Organisation.t(), Workspace.t(), %{system: String.t(), path: String.t()} | nil) ::
-          run_stack | nil
-  def for_run(%Organisation{} = organisation, %Workspace{} = workspace, target) do
-    target = target_row(workspace, target)
+  # workflow_for/2 is the workflow of an explore run of `workspace` at `target`, the work
+  # item's `%{system, path}`, nil for none (`workflow/2`). A target no row of the
+  # workspace has counts as none.
+  @spec workflow_for(Workspace.t(), %{system: String.t(), path: String.t()} | nil) ::
+          String.t() | nil
+  def workflow_for(%Workspace{} = workspace, target),
+    do: workflow(workspace, target_row(workspace, target))
 
-    with workflow when is_binary(workflow) <- workflow(workspace, target),
-         {:ok, %Resolution{} = resolution} <-
-           organisation
-           |> input_for(workspace, target, workflow)
-           |> Resolution.resolve(),
-         stack when is_binary(stack) <- Document.reference(resolution.harness) do
-      %{
-        stack: stack,
-        workflow: resolution.workflow,
-        harness_hidden: resolution.harness_hidden
-      }
-    else
-      _none -> nil
-    end
+  @doc false
+  # resolve_for/4 is what the stacks of `organisation` come to for an explore run of
+  # `workflow` of `workspace` at `target`, the work item's `%{system, path}`, nil for
+  # none (`Apiary.Stacks.Resolution.resolve/1`): `{:ok, resolution}`, or `:none` where no
+  # level has a harness document. Read without a lock.
+  @spec resolve_for(
+          Organisation.t(),
+          Workspace.t(),
+          %{system: String.t(), path: String.t()} | nil,
+          String.t()
+        ) :: {:ok, Resolution.t()} | :none
+  def resolve_for(%Organisation{} = organisation, %Workspace{} = workspace, target, workflow)
+      when is_binary(workflow) do
+    organisation
+    |> input_for(workspace, target_row(workspace, target), workflow)
+    |> Resolution.resolve()
   end
 
   @doc false

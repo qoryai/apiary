@@ -1330,6 +1330,129 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "#work-item-explore-none-adapter") == 0
     end
 
+    test "a run whose harness walk failed: what to fix, with the source, beside its end words" do
+      harness = "https://code.example.com/acme/harness"
+      setting = "the workspace's harness setting"
+
+      for {failure, line} <- [
+            # A software workspace's word for the target.
+            {%{code: "no_harness"},
+             "Add a harness file to the repository, or set a harness in the workspace's settings, then run Explore again. The run has neither."},
+            {%{
+               code: "invalid",
+               source: harness,
+               rule: %{"rule" => "path", "values" => %{"path" => "../x"}}
+             },
+             "Correct #{harness}, then run Explore again. It breaks the harness format: the path ../x leads out of its source."},
+            # A hidden harness: no source, and no path, ref or stack name in the rule.
+            {%{code: "invalid", rule: %{"rule" => "path", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: a path leads out of its source."},
+            {%{code: "invalid", rule: %{"rule" => "path_form", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: a path has a backslash or a percent sign: write it with / and no percent-encoding."},
+            {%{code: "invalid", rule: %{"rule" => "ref", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens."},
+            {%{code: "invalid", rule: %{"rule" => "no_export", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: it exports no stack of that name."},
+            {%{
+               code: "invalid",
+               rule: %{
+                 "message" => "has a value the harness format does not take",
+                 "values" => %{}
+               }
+             },
+             "Correct #{setting}, then run Explore again. It breaks the harness format: has a value the harness format does not take."},
+            {%{code: "invalid", rule: %{"rule" => "no_stack_file", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: it has no qory-stack.yaml at the stack's path."},
+            {%{
+               code: "invalid",
+               source: "https://code.example.com/acme/app",
+               rule: %{"rule" => "both_files", "values" => %{}}
+             },
+             "Correct https://code.example.com/acme/app, then run Explore again. It breaks the harness format: it has both harness.yaml and qory.yaml: keep one."},
+            {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: it is larger than 65536 bytes as JSON."},
+            {%{code: "walk_error"},
+             "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."},
+            {%{
+               code: "invalid",
+               rule: %{
+                 "message" =>
+                   "give the base %{name} as a git source and an export: extends: {git: <https address>, ref: <ref>, stack: %{name}}",
+                 "values" => %{"name" => "web"}
+               }
+             },
+             "Correct #{setting}, then run Explore again. It breaks the harness format: give the base web as a git source and an export: extends: {git: <https address>, ref: <ref>, stack: web}."},
+            {%{
+               code: "invalid",
+               source: harness,
+               rule: %{
+                 "rule" => "yaml",
+                 "values" => %{"file" => "qory.yaml"},
+                 "message" => "is not valid YAML",
+                 "message_values" => %{}
+               }
+             },
+             "Correct #{harness}, then run Explore again. It breaks the harness format: qory.yaml is not valid YAML."},
+            {%{code: "not_covered", source: harness},
+             "Connect the account that holds #{harness} to this organisation, then run Explore again. No connection of this organisation reaches that harness source."},
+            {%{code: "not_allowed"},
+             "Ask the owner of #{setting} to assign it to this organisation, then run Explore again. Another owner keeps that harness source and has not assigned it here."},
+            {%{code: "scp_form", source: "code.example.com:acme/harness"},
+             "Write code.example.com:acme/harness as an https address, then run Explore again. Qory Apiary fetches harness sources over https only, and code.example.com:acme/harness has the form user@host:path."},
+            {%{code: "credential_in_address", source: harness},
+             "Remove the user name and password from #{harness}, then run Explore again. A harness source address may not contain a credential."},
+            {%{code: "too_many"},
+             "Take the harness sources from at most 5 accounts, then run Explore again. A run takes 5 harness credentials at most."},
+            {%{code: "adapter_unavailable", adapter: "code-host"},
+             "Check the adapter code-host on the instance's Integrations page, then run Explore again. The adapter did not answer three times."}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :harness_unresolved,
+            harness_failure: Map.merge(%{source: nil, rule: nil, adapter: nil}, failure),
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+
+        assert texts(html, "#work-item-explore-none p") == [
+                 "The run ended before it started.",
+                 line
+               ]
+      end
+
+      # A call that failed otherwise: the adapter's line alone says what happened.
+      r =
+        run(%{
+          id: nil,
+          path: nil,
+          state: :failed,
+          outcome: :error,
+          end_cause: :harness_unresolved,
+          harness_failure: %{code: "adapter_failed", source: nil, rule: nil, adapter: nil},
+          adapter_failure: %{adapter: "code-host", cause: :refused, call: "resolve", code: "bad"},
+          proposal: nil,
+          started_at: nil,
+          ended_at: ago(3600),
+          duration: nil
+        })
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+      assert texts(html, "#work-item-explore-none p") == [
+               "The run ended before it started.",
+               "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness sources returned the error bad."
+             ]
+    end
+
     test "a run whose last result was an error keeps its words, here and in the folds" do
       r =
         run(%{

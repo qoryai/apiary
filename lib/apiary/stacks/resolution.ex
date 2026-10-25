@@ -49,19 +49,20 @@ defmodule Apiary.Stacks.Resolution do
   @type owner :: Ecto.UUID.t() | nil
 
   @typedoc """
-  A resolution: the `harness` document, the `workflow`, the `level` and the `owner`, and
-  `harness_hidden`.
+  A resolution: the `harness` document, the id of its row (`stack_id`), the `workflow`,
+  the `level` and the `owner`, and `harness_hidden`.
   """
   @type t :: %__MODULE__{
           harness: String.t(),
+          stack_id: Ecto.UUID.t(),
           workflow: String.t(),
           level: level,
           owner: owner,
           harness_hidden: boolean
         }
 
-  @enforce_keys [:harness, :workflow, :level, :owner, :harness_hidden]
-  defstruct [:harness, :workflow, :level, :owner, :harness_hidden]
+  @enforce_keys [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden]
+  defstruct [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden]
 
   @doc false
   # resolve/1 is what `input` comes to: `{:ok, resolution}`, or `:none` where no level
@@ -78,7 +79,7 @@ defmodule Apiary.Stacks.Resolution do
       Enum.find_value(Stack.levels(), fn level ->
         Enum.find_value(stored, fn
           {^level, %Stack{harness: harness} = stack} when is_binary(harness) ->
-            {level, harness, owner(stack)}
+            {level, stack, owner(stack)}
 
           _other ->
             nil
@@ -86,10 +87,11 @@ defmodule Apiary.Stacks.Resolution do
       end)
 
     case found do
-      {level, harness, owner} ->
+      {level, stack, owner} ->
         {:ok,
          %__MODULE__{
-           harness: harness,
+           harness: stack.harness,
+           stack_id: stack.id,
            workflow: input.workflow,
            level: level,
            owner: owner,

@@ -475,7 +475,7 @@ defmodule Apiary.RuntimeConfigTest do
       # The rest of Oban's configuration is the configuration's, the suite's manual testing
       # included.
       assert oban[:repo] == Apiary.Repo
-      assert oban[:queues] == [default: 5]
+      assert oban[:queues] == [default: 5, harness: 5]
       assert oban[:testing] == :manual
     end
 

@@ -18,7 +18,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @harness "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
-  @stack "https://code.example.com/team/stacks#main:core"
+  @version "0123456789abcdef0123456789abcdef01234567"
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -30,11 +30,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     {:ok, _stack} = Stacks.put_stack(scope, {:workspace, scope.workspace, workflow}, @harness)
   end
 
-  # A fresh work item's explore run, queued and claimed under `place`'s pool key: what
-  # the run's documents are made from, with the registered run as `run`.
-  defp claim!(%{scope: scope}, place) do
+  # A fresh work item's explore run, queued, its harness walk resolved with `walk`, and
+  # claimed under `place`'s pool key: what the run's documents are made from, with the
+  # registered run as `run`.
+  defp claim!(%{scope: scope}, place, walk \\ []) do
     work_item = work_item_fixture(scope)
-    {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    walk_resolved!(queued, walk)
 
     {:ok, %{registered: run, documents: documents}} =
       Dispatches.claim(place.key, Dispatches.now(), @body)
@@ -66,9 +68,15 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       place = handover_place_fixture(ctx.scope)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
-      claimed = claim!(ctx, place)
+      section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
+      claimed = claim!(ctx, place, origin: :setting, document: section, target_version: @version)
 
-      assert claimed.stack == %{stack: @stack, workflow: "hello", harness_hidden: false}
+      assert claimed.harness == %{
+               target_version: @version,
+               workflow: "hello",
+               harness_hidden: false,
+               harness: section
+             }
 
       assert settings(claimed) == %{"runtime" => "claude", "time_limit_minutes" => 90}
       assert keys(claimed) == ~w(runtime time_limit_minutes)
@@ -168,7 +176,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
     claimed = claim!(ctx, place)
     assert settings(claimed) == %{"runtime" => "claude"}
-    assert claimed.stack == nil
+    assert claimed.harness == nil
   end
 
   test "with two stack rows with a workflow, the member is absent whatever the limits", ctx do
@@ -179,7 +187,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
     claimed = claim!(ctx, place)
     assert settings(claimed) == %{"runtime" => "claude"}
-    assert claimed.stack == nil
+    assert claimed.harness == nil
   end
 
   describe "with the feature factory off" do

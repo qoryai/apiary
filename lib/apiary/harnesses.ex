@@ -31,11 +31,12 @@ defmodule Apiary.Harnesses do
   # (`Apiary.Accounts.sudo_mode?/2`), on an instance with the feature `factory`, creates
   # one (`assign/3`, `harness.assigned`) and deletes one (`unassign/2`,
   # `harness.unassigned`), whatever organisation the scope carries; no role takes either
-  # action. Both ask `Apiary.Adapters.authorize_instance/2` with `sudo: true`. Where the
+  # action. Both call `Apiary.Adapters.authorize_instance/2` with `sudo: true`. Where the
   # feature is off, both are `{:error, :not_found}`; for an instance admin who did not
-  # sign in recently, `{:error, :sudo}`; for anyone else, `{:error, :forbidden}`. Each change writes its entry, in its transaction, in the trail
-  # of the instance's organisation, with the source and the organisation it covers. No
-  # route or page calls either.
+  # sign in recently, `{:error, :sudo}`; for anyone else, `{:error, :forbidden}`. Each
+  # change writes its entry, in its transaction, in the trail of the instance's
+  # organisation, with the source and the organisation it covers. No route or page calls
+  # either.
   #
   # ## Refused on save
   #
@@ -54,7 +55,8 @@ defmodule Apiary.Harnesses do
 
   alias Apiary.{Adapters, Audit, Edition, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Harnesses.Assignment
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.{Assignment, RunHarness}
   alias Apiary.Organisations.Organisation
   alias Apiary.Stacks.Document
 
@@ -118,6 +120,28 @@ defmodule Apiary.Harnesses do
       root when map_size(root) == 0 -> true
       narrowing -> Map.take(source, @narrowing) == narrowing
     end
+  end
+
+  ## A run's links
+
+  @doc false
+  # entries/1 is the links the run of the queue `run` reads its harness sources through,
+  # read only, as its walk resolved them (`Apiary.Harnesses.Walk`): one per link, its
+  # grant, with the resources the walk found under it. `[]` for a run whose walk has not
+  # resolved, or resolved none.
+  @spec entries(DispatchRun.t()) :: [
+          %{purpose: :harness, link_id: Ecto.UUID.t(), resources: [term], access: :read}
+        ]
+  def entries(%DispatchRun{id: id}) do
+    Repo.one(
+      from h in RunHarness,
+        where: h.dispatch_run_id == ^id and h.state == :resolved,
+        select: h.harness_links
+    )
+    |> List.wrap()
+    |> Enum.map(fn link ->
+      %{purpose: :harness, link_id: link["grant_id"], resources: link["resources"], access: :read}
+    end)
   end
 
   ## Writes

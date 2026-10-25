@@ -30,7 +30,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `end_detail` is
-  # the refusal's code of a run ended `run_refused`, nil for any other. `queued_at`
+  # the refusal's code of a run ended `run_refused`, or the failure code of a run ended
+  # `harness_unresolved`, nil for any other. `queued_at`
   # orders the queue, oldest first.
   #
   # `result_outcome` is what the run gave once Qory reads it as decided
@@ -82,7 +83,9 @@ defmodule Apiary.Dispatches.DispatchRun do
   # the refusal's code kept as `end_detail` (`Apiary.Dispatches.RunEnd.refused/1`);
   # `build_failed`, a waiting run held for its target's build, whose build failed, or was
   # lost twice, while no node pool had an image for its target (`Apiary.Environments`),
-  # with the outcome `error`.
+  # with the outcome `error`; `harness_unresolved`, a waiting explore run whose harness
+  # walk failed (`Apiary.Harnesses.WalkJob`), with the outcome `error` and the walk's
+  # failure code kept as `end_detail`.
   @end_causes [
     :released,
     :closed,
@@ -101,7 +104,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :model_gone,
     :secrets_not_allowed,
     :run_refused,
-    :build_failed
+    :build_failed,
+    :harness_unresolved
   ]
 
   # What a run gave (`Apiary.Explore.Result.outcome/1`).
@@ -135,6 +139,9 @@ defmodule Apiary.Dispatches.DispatchRun do
     # the code of the adapter's refusal for the cause `:refused`. Qory writes them
     # (`Apiary.Adapters.Calls.record_failure/3`); no changeset casts them.
     belongs_to :failed_adapter, Apiary.Nodes.Node, foreign_key: :adapter_failure_id
+    # The run's harness walk (`Apiary.Harnesses.RunHarness`), read for a run whose walk
+    # failed (`Apiary.WorkItems.Explore`).
+    has_one :harness_walk, Apiary.Harnesses.RunHarness
     field :adapter_failure, Ecto.Enum, values: Apiary.Adapters.CallFailure.causes()
     field :adapter_failure_call, :string
     field :adapter_failure_code, :string

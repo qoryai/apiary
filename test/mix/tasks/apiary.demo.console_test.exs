@@ -317,10 +317,6 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     assert Stacks.Document.errors(stack.harness) == []
 
-    assert Stacks.Document.reference(stack.harness) ==
-             "https://github.com/qoryai/qory#2e3af09033548e2155b7911b9adae473136e21cf:" <>
-               "examples/hello"
-
     assert Stacks.workflow(main, nil) == "hello"
 
     # Spread across members, seven people own the live ones.

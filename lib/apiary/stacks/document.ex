@@ -29,18 +29,10 @@ defmodule Apiary.Stacks.Document do
   #      validated with JSV: git sources and exports only, no `{path}` source, no module
   #      by name alone, no `link`. A bare `{git, ref}` source, the root of a remote
   #      source, is allowed.
-  #
-  # ## The run's stack
-  #
-  # The run contract pinned at test/fixtures/contract/run/v1 still takes a run's `stack`,
-  # a stack reference `<url>#<ref>:<path>`, and not the document. `reference/1` is the
-  # reference of a document that is a base and nothing else, `extends: {git, ref}` with
-  # an optional `path`, and nil for any other document.
   @moduledoc false
 
   @behaviour JSV.Resolver
 
-  alias Apiary.Contract
   alias Apiary.Harnesses.Reader
 
   @schema_path Path.join(__DIR__, "documents.schema.json")
@@ -56,7 +48,7 @@ defmodule Apiary.Stacks.Document do
 
   # The save check's wall-clock limit for reading a document, a tenth of the reader's
   # limit of 2 seconds: a saved document reads well inside the reader's limit when a
-  # handover reads it again for the run's stack (`reference/1`).
+  # run's harness walk reads it again (`Apiary.Harnesses.Walk`).
   @save_time_limit_ms 200
 
   @doc false
@@ -79,34 +71,38 @@ defmodule Apiary.Stacks.Document do
     {__MODULE__, error} -> [error]
   end
 
-  defp unreadable(:control_character),
+  @doc false
+  # unreadable/1 is the save check's words for a document the reader refuses
+  # (`Apiary.Harnesses.Reader`), `{message, values}`.
+  @spec unreadable(term) :: error
+  def unreadable(:control_character),
     do: {"contains a control character, which a harness document may not", []}
 
-  defp unreadable(:too_complex),
+  def unreadable(:too_complex),
     do:
       {"takes longer to read than a harness document may: " <>
          "write long lists as block lists, with one - item per line", []}
 
-  defp unreadable(:unsupported_type),
+  def unreadable(:unsupported_type),
     do:
       {"uses a YAML type a harness document does not take, such as !!binary: " <>
          "write each value as text, a number, true, false or null", []}
 
-  defp unreadable(:too_large), do: {"is larger than %{limit} bytes", limit: Reader.max_bytes()}
+  def unreadable(:too_large), do: {"is larger than %{limit} bytes", limit: Reader.max_bytes()}
 
-  defp unreadable(:too_deep),
+  def unreadable(:too_deep),
     do: {"nests more than %{limit} mappings and lists", limit: Reader.max_depth()}
 
-  defp unreadable(:alias),
+  def unreadable(:alias),
     do: {"uses a YAML anchor or alias, which a harness document may not", []}
 
-  defp unreadable(:several_documents), do: {"contains more than one YAML document", []}
-  defp unreadable(:key_not_text), do: {"has a key that is not text", []}
-  defp unreadable({:repeated_key, key}), do: {"repeats the key %{key}", key: key}
-  defp unreadable(:not_a_number), do: {"has a number that is infinite or not a number", []}
-  defp unreadable(:invalid_yaml), do: {"is not valid YAML", []}
+  def unreadable(:several_documents), do: {"contains more than one YAML document", []}
+  def unreadable(:key_not_text), do: {"has a key that is not text", []}
+  def unreadable({:repeated_key, key}), do: {"repeats the key %{key}", key: key}
+  def unreadable(:not_a_number), do: {"has a number that is infinite or not a number", []}
+  def unreadable(:invalid_yaml), do: {"is not valid YAML", []}
 
-  defp unreadable(_not_a_mapping),
+  def unreadable(_not_a_mapping),
     do: {"is not a harness section: write its keys, such as extends, at the top level", []}
 
   defp keys(section) do
@@ -207,11 +203,10 @@ defmodule Apiary.Stacks.Document do
   # An address with a scheme whose authority has `@`: user information.
   @user_information ~r{\A[A-Za-z][A-Za-z0-9+.-]*://[^/?#]*@}
 
-  # The https address a stack reference had before harness documents
-  # (`Apiary.Contract.Stack`): `https://`, a host, an optional port and an optional path,
-  # with no user information, no query and no fragment. The host is a name, which may
-  # contain the percent-encodings `%80` to `%FF` and `%25`, or an IPv6 address in
-  # brackets.
+  # The https address a stack reference had before harness documents: `https://`, a
+  # host, an optional port and an optional path, with no user information, no query and
+  # no fragment. The host is a name, which may contain the percent-encodings `%80` to
+  # `%FF` and `%25`, or an IPv6 address in brackets.
   @max_address 2560
   @dec_octet "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
   @ipv4 "#{@dec_octet}\\.#{@dec_octet}\\.#{@dec_octet}\\.#{@dec_octet}"
@@ -284,14 +279,41 @@ defmodule Apiary.Stacks.Document do
     end
   end
 
-  # An address as an error shows it, whatever its shape, with no user name, password or
-  # query: everything from its first `?` or `#` is left out, as a query may contain a
-  # credential, and so is everything before its last `@`, but a scheme at its start.
-  # When a `?` or `#` comes before the last `@`, the part after that `@` may be a query
-  # or the host after a password that contains `?` or `#`, so the error shows "the
+  @doc false
+  # source_error/2 is the refusal of `source`, a remote source of a harness file or of a
+  # `qory-stack.yaml`, which no save check reads, by the save rules of a document's
+  # sources: its `git` address as step 4 checks it, then step 5's definition of a base
+  # (`kind` `:base`, `harness_base`) or of a module's source (`:module`,
+  # `harness_source`). nil, or one `{message, values}`.
+  @spec source_error(map, :base | :module) :: error | nil
+  def source_error(%{} = source, kind) when kind in [:base, :module] do
+    case source do
+      %{"git" => git} when is_binary(git) -> address(git)
+      _other -> :ok
+    end
+
+    schema(source, if(kind == :base, do: "harness_base", else: "harness_source"))
+    nil
+  catch
+    {__MODULE__, error} -> error
+  end
+
+  @doc false
+  # user_information?/1 is whether `git` is an address with a scheme whose authority has
+  # `@`: a user name, and maybe a password.
+  @spec user_information?(String.t()) :: boolean
+  def user_information?(git) when is_binary(git), do: Regex.match?(@user_information, git)
+
+  @doc false
+  # shown/1 is `git` as an error shows it, whatever its shape, with no user name,
+  # password or query: everything from its first `?` or `#` is left out, as a query may
+  # contain a credential, and so is everything before its last `@`, but a scheme at its
+  # start. When a `?` or `#` comes before the last `@`, the part after that `@` may be a
+  # query or the host after a password that contains `?` or `#`, so the error shows "the
   # address" alone. Each control character and each whitespace but a space becomes
   # U+FFFD.
-  defp shown(git) do
+  @spec shown(String.t()) :: String.t()
+  def shown(git) do
     cut =
       case :binary.match(git, ["?", "#"]) do
         {cut, 1} -> cut
@@ -322,8 +344,8 @@ defmodule Apiary.Stacks.Document do
     Regex.replace(~r/[^\S ]|[\x{00}-\x{1F}\x{7F}-\x{9F}]/u, shown, "\u{FFFD}")
   end
 
-  defp schema(section) do
-    case JSV.validate(section, root(), cast: false) do
+  defp schema(section, definition \\ "harness_section") do
+    case JSV.validate(section, root(definition), cast: false) do
       {:ok, _section} ->
         :ok
 
@@ -340,18 +362,18 @@ defmodule Apiary.Stacks.Document do
 
   defp refuse(message, values), do: throw({__MODULE__, {message, values}})
 
-  # The validator of the run contract's harness section, built once per node: a compiled
-  # pattern cannot be kept in a module attribute.
-  defp root do
-    case :persistent_term.get(__MODULE__, nil) do
+  # The validator of a definition of the run contract, the harness section or a source,
+  # built once per node: a compiled pattern cannot be kept in a module attribute.
+  defp root(definition) do
+    case :persistent_term.get({__MODULE__, definition}, nil) do
       nil ->
         root =
-          JSV.build!(%{"$ref" => @schema_id <> "#/$defs/harness_section"},
+          JSV.build!(%{"$ref" => @schema_id <> "#/$defs/" <> definition},
             resolver: __MODULE__,
             formats: true
           )
 
-        :persistent_term.put(__MODULE__, root)
+        :persistent_term.put({__MODULE__, definition}, root)
         root
 
       root ->
@@ -362,25 +384,4 @@ defmodule Apiary.Stacks.Document do
   @impl JSV.Resolver
   def resolve(@schema_id, _opts), do: {:ok, @schema}
   def resolve(url, _opts), do: {:error, {:not_vendored, url}}
-
-  @doc false
-  # reference/1 is the stack reference of `text` for a run's `stack`: the document's
-  # base, `<git>#<ref>:<path>` with `.` for the root, when the document is that base
-  # and nothing else and the reference is valid under the run contract; nil otherwise.
-  @spec reference(String.t() | nil) :: String.t() | nil
-  def reference(text) when is_binary(text) do
-    with {:ok, %{"extends" => %{"git" => git, "ref" => ref} = base} = section}
-         when map_size(section) == 1 and is_binary(git) and is_binary(ref) <-
-           Reader.document(text),
-         [] <- Map.keys(base) -- ["git", "ref", "path"],
-         path when is_binary(path) <- Map.get(base, "path", "."),
-         reference = "#{git}##{ref}:#{path}",
-         true <- Contract.Stack.reference?(reference) do
-      reference
-    else
-      _other -> nil
-    end
-  end
-
-  def reference(nil), do: nil
 end

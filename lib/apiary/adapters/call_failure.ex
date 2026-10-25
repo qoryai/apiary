@@ -8,8 +8,9 @@ defmodule Apiary.Adapters.CallFailure do
   #   * `:unreachable`: the host resolved to no address, or the lookup of the host crashed,
   #     or no connection was made, or it broke before an answer, or a proxy answered 502,
   #     503 or 504 unsigned;
-  #   * `:timeout`: no answer within the call's time, or the lookup of the host still ran
-  #     when that time ended;
+  #   * `:timeout`: no answer within the call's time, the lookup of the host still ran
+  #     when that time ended, or the call's time ended before its `time` came within 60
+  #     seconds of the clock (`Apiary.Adapters.CallClock`);
   #   * `:refused`: the adapter answered a signed refusal, its code in `code` and its
   #     status in `status`, or an unsigned 401;
   #   * `:invalid_answer`: an answer that is unsigned, signed under no key of the adapter,

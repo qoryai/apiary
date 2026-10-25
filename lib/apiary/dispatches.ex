@@ -121,7 +121,8 @@ defmodule Apiary.Dispatches do
   #      the pool it is held for. A run held for the pool's build of its target is not
   #      taken (`Apiary.Environments.held/1`), nor one that a key change or a cleared
   #      image held again after that read (`Apiary.Environments.claim_image/2`): it
-  #      waits. An explore run is given the image its target's build made for the pool,
+  #      waits, and so does a run whose harness walk is pending
+  #      (`Apiary.Harnesses.WalkJob`). An explore run is given the image its target's build made for the pool,
   #      nil for the pool's default. A run whose work item has no target is taken as any
   #      other. A run whose work item is no longer live (closed, declined, undone, its
   #      connection ended, or gone) or no longer in the run's workspace is not handed
@@ -226,6 +227,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
+  alias Apiary.Harnesses.{RunHarness, WalkJob}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.WorkItems.WorkItem
@@ -342,19 +344,25 @@ defmodule Apiary.Dispatches do
   end
 
   # The work item `id` locked `FOR UPDATE`, as the transaction reads it: its id, its
-  # organisation and the workspace it is in now.
+  # organisation, the workspace it is in now and its target.
   defp lock_work_item!(id) do
     Repo.one!(
       from w in WorkItem,
         where: w.id == ^id,
         lock: "FOR UPDATE",
-        select: %{id: w.id, organisation_id: w.organisation_id, workspace_id: w.workspace_id}
+        select: %{
+          id: w.id,
+          organisation_id: w.organisation_id,
+          workspace_id: w.workspace_id,
+          target_system: w.target_system,
+          target_path: w.target_path
+        }
     )
   end
 
   # A waiting run of take in `take_in` of the locked work item, `attempt` of `of`, for the
-  # step `step/0`, in the work item's organisation and workspace, with `image_requeue`;
-  # the workspace is told.
+  # step `step/0`, in the work item's organisation and workspace, with `image_requeue`,
+  # and its harness walk (`Apiary.Harnesses.WalkJob.queue/2`); the workspace is told.
   defp insert_run(work_item, take_in, attempt, of, image_requeue \\ false) do
     %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
@@ -374,9 +382,18 @@ defmodule Apiary.Dispatches do
       })
       |> Repo.insert()
 
-    with {:ok, _run} <- result, do: broadcast([workspace_id])
-    result
+    with {:ok, run} <- result,
+         {:ok, _walk} <- WalkJob.queue(run, target(work_item)) do
+      broadcast([workspace_id])
+      {:ok, run}
+    end
   end
+
+  defp target(%{target_system: system, target_path: path})
+       when is_binary(system) and is_binary(path),
+       do: %{system: system, path: path}
+
+  defp target(_work_item), do: nil
 
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
   # node pool `pool` of the collection's workspace, or the instance's pool, for
@@ -539,6 +556,8 @@ defmodule Apiary.Dispatches do
             id: w.id,
             organisation_id: w.organisation_id,
             workspace_id: w.workspace_id,
+            target_system: w.target_system,
+            target_path: w.target_path,
             state: w.state,
             take_in: w.take_in
           }
@@ -1016,6 +1035,7 @@ defmodule Apiary.Dispatches do
         where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
         where: fragment("? = 'waiting'", r.state),
         where: r.step != ^@prebuild or r.pool_id == ^pool_id,
+        where: not exists(walk_unresolved()),
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
         lock: "FOR UPDATE SKIP LOCKED"
@@ -1046,9 +1066,19 @@ defmodule Apiary.Dispatches do
       where: fragment("? = 'waiting'", r.state),
       where: ^takes,
       where: ^in_use_place(),
+      where: not exists(walk_unresolved()),
       order_by: [asc: r.queued_at, asc: r.id],
       limit: 1,
       lock: "FOR UPDATE SKIP LOCKED"
+  end
+
+  # The harness walk of a run bound `:run` that has not resolved: pending, or failed, which
+  # ends the run in the transaction that writes it (`Apiary.Harnesses.WalkJob`). A run
+  # with no walk, a prebuild, has none.
+  defp walk_unresolved do
+    from h in RunHarness,
+      where: h.dispatch_run_id == parent_as(:run).id and h.state != :resolved,
+      select: 1
   end
 
   # no_pool_in_use/0 is the condition, on a row bound `:run` with a `workspace_id`, a run

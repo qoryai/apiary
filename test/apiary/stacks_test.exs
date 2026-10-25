@@ -13,10 +13,8 @@ defmodule Apiary.StacksTest do
 
   @stacks "https://code.example.com/team/stacks"
 
-  # A document that extends the stack in the folder `path` of the stacks source at
-  # main, and the stack reference a run's documents carry for it.
+  # A document that extends the stack in the folder `path` of the stacks source at main.
   defp doc(path), do: "extends: {git: #{@stacks}, ref: main, path: #{path}}\n"
-  defp ref(path), do: "#{@stacks}#main:#{path}"
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -48,14 +46,22 @@ defmodule Apiary.StacksTest do
     row
   end
 
-  defp run_stack(ctx, target \\ :target) do
+  # What resolves for an explore run at `target`, the context's target by default: the
+  # document, the run's workflow and `harness_hidden`; nil for no workflow or no document.
+  defp run_harness(ctx, target \\ :target) do
     target =
       case target do
         :target -> %{system: ctx.target.system, path: ctx.target.path}
         other -> other
       end
 
-    Stacks.for_run(ctx.scope.organisation, ctx.scope.workspace, target)
+    with workflow when is_binary(workflow) <- Stacks.workflow_for(ctx.scope.workspace, target),
+         {:ok, resolution} <-
+           Stacks.resolve_for(ctx.scope.organisation, ctx.scope.workspace, target, workflow) do
+      Map.take(resolution, [:harness, :workflow, :harness_hidden])
+    else
+      _none -> nil
+    end
   end
 
   defp places(ctx) do
@@ -116,8 +122,8 @@ defmodule Apiary.StacksTest do
 
       assert stack.owner_organisation_id == ctx.scope.organisation.id
       assert Resolution.owner(stack) == ctx.scope.organisation.id
-      assert %{stack: reference, harness_hidden: false} = run_stack(ctx)
-      assert reference == ref("core")
+      assert %{harness: harness, harness_hidden: false} = run_harness(ctx)
+      assert harness == doc("core")
     end
 
     test "the instance's organisation owns what an instance admin saves there as no member",
@@ -152,8 +158,8 @@ defmodule Apiary.StacksTest do
 
         assert stack.owner_organisation_id == instance
         assert Resolution.owner(stack) == instance
-        assert %{stack: reference, harness_hidden: true} = run_stack(ctx)
-        assert reference == ref("core")
+        assert %{harness: harness, harness_hidden: true} = run_harness(ctx)
+        assert harness == doc("core")
       end
     end
 
@@ -574,10 +580,10 @@ defmodule Apiary.StacksTest do
       workflow!(ctx)
       place = {:target, ctx.target}
       put!(ctx, place, doc("one"))
-      assert run_stack(ctx).stack == ref("one")
+      assert run_harness(ctx).harness == doc("one")
 
       assert {:ok, %Stack{}} = Stacks.delete_stack(place)
-      assert run_stack(ctx).stack == ref("standard")
+      assert run_harness(ctx).harness == doc("standard")
     end
 
     test "is not found for a place with none", ctx do
@@ -639,62 +645,57 @@ defmodule Apiary.StacksTest do
     end
   end
 
-  describe "for_run/3" do
-    test "one row with a workflow: the run has that workflow, its stack and harness_hidden",
+  describe "workflow_for/2 and resolve_for/4" do
+    test "one row with a workflow: the run has that workflow, its document and harness_hidden",
          ctx do
       workflow!(ctx)
 
-      assert run_stack(ctx) == %{
-               stack: ref("standard"),
+      assert run_harness(ctx) == %{
+               harness: doc("standard"),
                workflow: "explore",
                harness_hidden: false
              }
     end
 
-    test "the stack of a base at the root of a remote source is that root", ctx do
-      workflow!(ctx, "extends: {git: #{@stacks}, ref: main}\n")
-      assert run_stack(ctx).stack == ref(".")
-    end
-
-    test "a document that is not a base alone gives the run no stack", ctx do
+    test "a document resolves as saved, whatever its keys", ctx do
       for document <- [
             "extends: {git: #{@stacks}, ref: main, stack: web}\n",
             "extends: {git: #{@stacks}, ref: main}\nname: web\n",
             "extends: {git: #{@stacks}, ref: main}\nmodules: [{source: {git: #{@stacks}, ref: v1}}]\n"
           ] do
         workflow!(ctx, document)
-        assert run_stack(ctx) == nil, document
+        assert run_harness(ctx).harness == document
       end
     end
 
     test "a row with the workflow alone takes its document from another level", ctx do
       workflow!(ctx, nil)
-      assert run_stack(ctx) == nil
+      assert run_harness(ctx) == nil
 
       put!(ctx, {:organisation, ctx.scope.organisation}, doc("default"))
 
-      assert run_stack(ctx) == %{
-               stack: ref("default"),
+      assert run_harness(ctx) == %{
+               harness: doc("default"),
                workflow: "explore",
                harness_hidden: false
              }
     end
 
-    test "no row with a workflow: the run has no stack, whatever the levels have", ctx do
+    test "no row with a workflow: the run has no harness, whatever the levels have", ctx do
       for {level, place} <- places(ctx), level in [:target, :workspace, :organisation] do
         put!(ctx, place, doc("core"))
       end
 
-      assert run_stack(ctx) == nil
-      assert run_stack(ctx, nil) == nil
+      assert run_harness(ctx) == nil
+      assert run_harness(ctx, nil) == nil
     end
 
-    test "two rows with a workflow: the run has no stack", ctx do
+    test "two rows with a workflow: the run has no harness", ctx do
       workflow!(ctx)
       put!(ctx, {:target, ctx.target, "review"}, doc("x"))
 
-      assert run_stack(ctx) == nil
-      assert run_stack(ctx, nil).workflow == "explore"
+      assert run_harness(ctx) == nil
+      assert run_harness(ctx, nil).workflow == "explore"
     end
 
     test "a target row without a workflow wins over the workflow row at the workspace", ctx do
@@ -704,11 +705,11 @@ defmodule Apiary.StacksTest do
         put!(ctx, place, doc("at-" <> String.replace("#{level}", "_", "-")))
       end
 
-      assert run_stack(ctx).stack == ref("at-target")
-      assert run_stack(ctx, nil).stack == ref("at-workspace-workflow")
+      assert run_harness(ctx).harness == doc("at-target")
+      assert run_harness(ctx, nil).harness == doc("at-workspace-workflow")
 
       {:ok, _stack} = Stacks.delete_stack({:target, ctx.target})
-      assert run_stack(ctx).stack == ref("at-workspace-workflow")
+      assert run_harness(ctx).harness == doc("at-workspace-workflow")
     end
 
     test "a workflow row at the target wins over every other level", ctx do
@@ -716,28 +717,28 @@ defmodule Apiary.StacksTest do
         put!(ctx, place, doc("at-" <> String.replace("#{level}", "_", "-")))
       end
 
-      assert run_stack(ctx) == %{
-               stack: ref("at-target-workflow"),
+      assert run_harness(ctx) == %{
+               harness: doc("at-target-workflow"),
                workflow: "explore",
                harness_hidden: false
              }
 
-      assert run_stack(ctx, nil) == nil
+      assert run_harness(ctx, nil) == nil
     end
 
     test "a target no row of the workspace has counts as none", ctx do
       workflow!(ctx)
       put!(ctx, {:target, ctx.target}, doc("at-target"))
 
-      assert run_stack(ctx, %{system: "system.example", path: "team/elsewhere"}).stack ==
-               ref("standard")
+      assert run_harness(ctx, %{system: "system.example", path: "team/elsewhere"}).harness ==
+               doc("standard")
     end
   end
 
   describe "harness_hidden" do
     test "is false for a document saved by the run's organisation", ctx do
       workflow!(ctx, doc("core"))
-      assert %{harness_hidden: false} = run_stack(ctx)
+      assert %{harness_hidden: false} = run_harness(ctx)
     end
 
     test "is true for a document saved by another organisation", ctx do
@@ -746,13 +747,13 @@ defmodule Apiary.StacksTest do
       {:ok, _stack} =
         Stacks.put_stack(other, {:workspace, ctx.scope.workspace, "explore"}, doc("core"))
 
-      assert %{harness_hidden: true} = run_stack(ctx)
+      assert %{harness_hidden: true} = run_harness(ctx)
     end
 
     test "is true when the run's organisation is operated", ctx do
       workflow!(ctx)
       :ok = Edition.put_test_stub(Apiary.EditionStubs.Operated)
-      assert %{harness_hidden: true} = run_stack(ctx)
+      assert %{harness_hidden: true} = run_harness(ctx)
     end
   end
 end

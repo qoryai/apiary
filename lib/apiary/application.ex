@@ -110,6 +110,9 @@ defmodule Apiary.Application do
       {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
       # Each attempt of a call to an adapter, bounded in time (`Apiary.Adapters.Calls`).
       {Task.Supervisor, name: Apiary.Adapters.Calls.Supervisor},
+      # The time of each call to an adapter, later than the one before
+      # (`Apiary.Adapters.CallClock`).
+      Apiary.Adapters.CallClock,
       Apiary.Runs.RateLimit,
       Apiary.Nodes.Throttle,
       # The holds of adapters' reads of their change feeds, a few per key
