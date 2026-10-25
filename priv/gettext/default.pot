@@ -10061,11 +10061,6 @@ msgstr ""
 msgid "No session timeline"
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/node.ex
-#, elixir-autogen, elixir-format
-msgid "No setting of this instance declares this node, so Qory Apiary writes no new code after a revoke."
-msgstr ""
-
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No target active this week matches"
@@ -15553,6 +15548,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "This instance doesn't accept integrations from this source."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/node.ex
+#, elixir-autogen, elixir-format
+msgid "This instance has no setting for this node, so Qory Apiary writes no new code after a revoke."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex

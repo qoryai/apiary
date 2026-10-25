@@ -74,6 +74,9 @@ defmodule Apiary.Application do
     :ok = Apiary.Edition.boot!()
     # A database connection encrypted without its certificate checked is said once.
     Apiary.DatabaseUrl.boot()
+    # A PUBLIC_URL over plain http on a host other than localhost is said once, when the
+    # endpoint serves: browsers drop the sign-in cookies there.
+    ApiaryWeb.Endpoint.warn_plain_http()
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()
