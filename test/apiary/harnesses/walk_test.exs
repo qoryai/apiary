@@ -514,6 +514,49 @@ defmodule Apiary.Harnesses.WalkTest do
       serve([ctx.run], covered: covering(ctx), files: @base_files)
       assert {:failed, %{failure: :not_covered, source: nil}} = Walk.run(ctx.input)
     end
+
+    test "a hidden harness's rule has no path, ref or stack name", ctx do
+      admin = %{
+        instance_admin_scope()
+        | organisation: ctx.scope.organisation,
+          workspace: ctx.scope.workspace
+      }
+
+      put = fn document ->
+        {:ok, _stack} =
+          Stacks.put_stack(admin, {:workspace, ctx.scope.workspace, "explore"}, document)
+      end
+
+      put.("extends: {git: \"#{@harness}\", ref: v1, stack: api}\n")
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert {:failed,
+              %{failure: :invalid, source: nil, rule: %{"rule" => "no_export", "values" => %{}}}} =
+               Walk.run(ctx.input)
+
+      put.("extends: {git: \"#{@harness}\", ref: v1}\n")
+      stack = "modules:\n  - source: {path: ../../x}\n"
+
+      serve([ctx.run],
+        covered: covering(ctx),
+        files: %{{"R_harness", "qory-stack.yaml"} => stack}
+      )
+
+      assert {:failed,
+              %{failure: :invalid, source: nil, rule: %{"rule" => "path", "values" => %{}}}} =
+               Walk.run(ctx.input)
+
+      put.("extends: {git: \"#{@harness}\", ref: v1, path: web}\n")
+      serve([ctx.run], covered: covering(ctx), files: %{})
+
+      assert {:failed,
+              %{
+                failure: :invalid,
+                source: nil,
+                rule: %{"rule" => "no_stack_file", "values" => %{}}
+              }} =
+               Walk.run(ctx.input)
+    end
   end
 
   ## Refused before any call

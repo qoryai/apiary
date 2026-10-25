@@ -72,7 +72,8 @@ defmodule Apiary.Harnesses.Walk do
   #
   # The source as `Apiary.Stacks.Document.shown/1` writes it, with no user name, password
   # or query; nil for the stacks' document and for every source of a hidden harness.
-  # The target's address shows for a failure of the target's file.
+  # The target's address shows for a failure of the target's file. The rule of a hidden
+  # harness has no path, ref or stack name.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -853,9 +854,12 @@ defmodule Apiary.Harnesses.Walk do
 
   defp cut(label), do: label |> String.to_charlist() |> Enum.take(512) |> List.to_string()
 
-  # A rule of the walk, by its name, which the run's page words.
-  defp rule(name, values \\ []),
-    do: %{"rule" => name, "values" => Map.new(values, fn {k, v} -> {to_string(k), v} end)}
+  # A rule of the walk, by its name, which the run's page words. A hidden harness's rule
+  # has no path, ref or stack name in its values.
+  defp rule(name, values \\ []) do
+    values = if get(:hidden), do: Keyword.drop(values, [:path, :ref, :name]), else: values
+    %{"rule" => name, "values" => Map.new(values, fn {k, v} -> {to_string(k), v} end)}
+  end
 
   # A rule of the save check, in its words. A hidden harness shows no source in it.
   defp message(message, values) do

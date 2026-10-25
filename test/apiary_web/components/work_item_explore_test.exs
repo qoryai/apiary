@@ -1344,6 +1344,17 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                rule: %{"rule" => "path", "values" => %{"path" => "../x"}}
              },
              "Correct #{harness}, then run Explore again. It breaks the harness format: the path ../x leads out of its source."},
+            # A hidden harness: no source, and no path, ref or stack name in the rule.
+            {%{code: "invalid", rule: %{"rule" => "path", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: a path leads out of its source."},
+            {%{code: "invalid", rule: %{"rule" => "path_form", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: a path has a backslash or a percent sign: write it with / and no percent-encoding."},
+            {%{code: "invalid", rule: %{"rule" => "ref", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens."},
+            {%{code: "invalid", rule: %{"rule" => "no_export", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: it exports no stack of that name."},
+            {%{code: "invalid", rule: %{"rule" => "no_stack_file", "values" => %{}}},
+             "Correct #{setting}, then run Explore again. It breaks the harness format: it has no qory-stack.yaml at the stack's path."},
             {%{
                code: "invalid",
                source: "https://code.example.com/acme/app",

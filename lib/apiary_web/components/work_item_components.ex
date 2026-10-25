@@ -2850,28 +2850,46 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp walk_rule_words("host_encoded", _values),
     do: gettext("its host has a percent-encoding: write the host name without one")
 
-  defp walk_rule_words("path", values),
-    do: gettext("the path %{path} leads out of its source", path: values["path"])
+  # A hidden harness's rule has no path, ref or stack name: its words name none.
+  defp walk_rule_words("path", %{"path" => path}),
+    do: gettext("the path %{path} leads out of its source", path: path)
 
-  defp walk_rule_words("path_form", values),
+  defp walk_rule_words("path", _hidden), do: gettext("a path leads out of its source")
+
+  defp walk_rule_words("path_form", %{"path" => path}),
     do:
       gettext(
         "the path %{path} has a backslash or a percent sign: write it with / and no percent-encoding",
-        path: values["path"]
+        path: path
       )
 
-  defp walk_rule_words("ref", values),
+  defp walk_rule_words("path_form", _hidden),
+    do:
+      gettext("a path has a backslash or a percent sign: write it with / and no percent-encoding")
+
+  defp walk_rule_words("ref", %{"ref" => ref}),
     do:
       gettext(
         "the ref %{ref} is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens",
-        ref: to_string(values["ref"])
+        ref: to_string(ref)
       )
 
-  defp walk_rule_words("no_export", values),
-    do: gettext("it exports no stack %{name}", name: values["name"])
+  defp walk_rule_words("ref", _hidden),
+    do:
+      gettext(
+        "its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
+      )
 
-  defp walk_rule_words("no_stack_file", values),
-    do: gettext("it has no %{path}", path: values["path"])
+  defp walk_rule_words("no_export", %{"name" => name}),
+    do: gettext("it exports no stack %{name}", name: name)
+
+  defp walk_rule_words("no_export", _hidden), do: gettext("it exports no stack of that name")
+
+  defp walk_rule_words("no_stack_file", %{"path" => path}),
+    do: gettext("it has no %{path}", path: path)
+
+  defp walk_rule_words("no_stack_file", _hidden),
+    do: gettext("it has no qory-stack.yaml at the stack's path")
 
   defp walk_rule_words("no_stack", _values),
     do: gettext("its root has no qory-stack.yaml and no harness section")

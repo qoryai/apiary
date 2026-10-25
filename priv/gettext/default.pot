@@ -17627,6 +17627,16 @@ msgstr ""
 msgid "a connection no rule allows is denied"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "a path has a backslash or a percent sign: write it with / and no percent-encoding"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "a path leads out of its source"
+msgstr ""
+
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "access keys machines enrolment pool"
@@ -18114,12 +18124,22 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "it exports no stack of that name"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "it has both harness.yaml and qory.yaml: keep one"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "it has no %{path}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "it has no qory-stack.yaml at the stack's path"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18140,6 +18160,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "its ref is no version of its source"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
