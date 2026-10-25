@@ -872,6 +872,63 @@ defmodule Apiary.Runs.RecordTest do
       refute inspect(again) =~ "example.net"
       refute inspect(first) =~ "example.net"
     end
+
+    # The record of `applied_record/0` with a host that the model provider is read through,
+    # in `terminated` and in the hosts of a tool, beside the ones a reader may see.
+    defp terminated_record do
+      for {sequence, type, data} <- applied_record() do
+        if type == "run.policy_applied" do
+          {sequence, type,
+           Map.merge(data, %{
+             "terminated" => ["models.example.net", "files.example.com"],
+             "tools" => [
+               %{
+                 "name" => "files",
+                 "argument" => "acme/shop",
+                 "hosts" => ["files.example.com", "models.example.net"]
+               },
+               %{"name" => "models", "hosts" => ["models.example.net"]}
+             ]
+           })}
+        else
+          {sequence, type, data}
+        end
+      end
+    end
+
+    test "under the core's edition, a line shows the hosts it terminates and its tools serve", %{
+      scope: scope
+    } do
+      run = projected(scope, terminated_record())
+
+      assert [first, _again] = policy_lines(scope, run)
+      assert first.terminated == ["models.example.net", "files.example.com"]
+      assert first.terminated_count == 2
+
+      assert [%{hosts: ["files.example.com", "models.example.net"]}, %{hosts: hosts}] =
+               first.tools
+
+      assert hosts == ["models.example.net"]
+    end
+
+    test "under an edition that narrows the policy, the line leaves out its hosts of the tools and terminated",
+         %{scope: scope} do
+      run = projected(scope, terminated_record())
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NarrowsRunPolicy)
+
+      assert [first, again] = policy_lines(scope, run)
+
+      for line <- [first, again] do
+        assert line.terminated == ["files.example.com"]
+        assert line.terminated_count == 1
+
+        # The tools stay, and so do the hosts that are not the model provider's.
+        assert [%{name: "files", hosts: ["files.example.com"]}, %{name: "models", hosts: []}] =
+                 line.tools
+
+        refute inspect(line) =~ "example.net"
+      end
+    end
   end
 
   describe "read budgets" do
