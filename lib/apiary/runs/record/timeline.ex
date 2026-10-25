@@ -716,7 +716,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   `scope:` and `run:`, given together, are the reader and the run: the policy of each
   `policy.applied` line, and the previous one the delta is taken from, is first read
-  through `Apiary.Edition.client_reads/4`, so the counts and the delta are of what the
+  through `client_reads/4`, so the counts and the delta are of what the
   edition leaves the reader. Without them, no policy is narrowed.
   """
   def build(light, events, opts \\ []) when is_list(light) do
