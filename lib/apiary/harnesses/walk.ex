@@ -13,10 +13,11 @@ defmodule Apiary.Harnesses.Walk do
   # connection of the run's organisation, else the walk fails `not_covered`. Then
   # `harness.yaml` is read at the target's head (`HEAD`), and `qory.yaml` at the version
   # that read returned, which is the run's `target_version`. Both found fail `invalid`.
-  # A file whose harness section has `extends` applies, origin `:file`. Any other case,
-  # a file with no harness section, one with the machine's keys alone, one whose section
-  # has no `extends`, or no file, takes the stacks' document. A target no collection has,
-  # or a domain without harness files, is not read and has no `target_version`.
+  # A file whose harness section has `extends`, or has no `extends` and lists modules,
+  # applies, origin `:file`. Any other case, a file with no harness section, one with the
+  # machine's keys alone, one whose section has neither `extends` nor modules, or no
+  # file, takes the stacks' document. A target no collection has, or a domain without
+  # harness files, is not read and has no `target_version`.
   #
   # ## The stacks' document
   #
@@ -28,7 +29,8 @@ defmodule Apiary.Harnesses.Walk do
   #
   # Level 1 is the document's `extends` and its modules' sources. Level 2 is the git
   # sources of the modules the base lists. Nothing is followed further: a base never
-  # extends another, and a module lists no sources. Before any call, each remote source
+  # extends another, and a module lists no sources. A section without `extends` has
+  # level 1 alone, its modules' sources. Before any call, each remote source
   # (one with `git`) is checked, in this order: the form `<user>@<host>:<path>` fails
   # `scp_form`; an address with a user name fails `credential_in_address`; then
   # `invalid` for the save rules of a source (`Apiary.Stacks.Document.source_error/2`),
@@ -71,18 +73,17 @@ defmodule Apiary.Harnesses.Walk do
   # ## The access level
   #
   # What the run may do on its target, `:read` or `:write`, with `:read` < `:write`. The
-  # walk never raises a level. Where the stacks' document applies, it is the lower of
-  # two levels:
+  # walk never raises a level. Whether the target's harness file or the stacks' document
+  # applies, it is the lower of two levels:
   #
-  #   * declared: `workflows.<workflow>.access` of the base's `qory-stack.yaml`, read for
-  #     the run's workflow (`Apiary.Harnesses.Reader.workflow_access/2`). A value other
-  #     than `write`, an absent key, an absent `workflows` entry, a document with no base,
-  #     a base with no link, which is not read, and a base read from a harness file's
-  #     section, which has no `workflows`, declare `:read`;
+  #   * declared: `workflows.<workflow>.access`, read for the run's workflow
+  #     (`Apiary.Harnesses.Reader.workflow_access/2`), of the base's `qory-stack.yaml`
+  #     for a section with `extends`, and of the section's `workflows` for one without.
+  #     A value other than `write`, an absent key, an absent `workflows` entry, a base
+  #     with no link, which is not read, and a base read from a harness file's section
+  #     declare `:read`;
   #   * recorded: the access level of the stack row with the run's workflow
   #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
-  #
-  # Where the target's harness file applies, the level is `:read`.
   #
   # ## Limits
   #
@@ -221,7 +222,7 @@ defmodule Apiary.Harnesses.Walk do
 
         walked(%{
           origin: :file,
-          access_level: :read,
+          access_level: access_level(input),
           target_version: version,
           document: nil,
           stack_id: nil,
@@ -270,18 +271,21 @@ defmodule Apiary.Harnesses.Walk do
 
         sources(section, input.organisation, nil)
 
-        recorded =
-          Stacks.recorded_access(input.workspace, input.target, input.workflow)
-
         walked(%{
           origin: :setting,
-          access_level: lower(get(:declared), recorded),
+          access_level: access_level(input),
           target_version: version,
           document: section,
           stack_id: resolution.stack_id,
           owner_organisation_id: resolution.owner
         })
     end
+  end
+
+  # The run's access level, once the sources are walked (the moduledoc).
+  defp access_level(input) do
+    recorded = Stacks.recorded_access(input.workspace, input.target, input.workflow)
+    lower(get(:declared), recorded)
   end
 
   # The lower of the declared level and the recorded one, nil for none recorded.
@@ -311,6 +315,10 @@ defmodule Apiary.Harnesses.Walk do
         {file, content} ->
           case Reader.harness(content) do
             {:ok, %{"extends" => _base} = section} ->
+              {version, {:file, section, Map.put(location, :version, version)}}
+
+            # A section that defines a stack, with no base.
+            {:ok, %{"modules" => [_ | _]} = section} ->
               {version, {:file, section, Map.put(location, :version, version)}}
 
             {:ok, _no_base} ->
@@ -382,12 +390,23 @@ defmodule Apiary.Harnesses.Walk do
 
   # Level 1, the section's base and its modules' sources, then level 2, the git sources
   # of the modules the base lists. `target` is the target's location for a file's
-  # section, nil for a setting's.
+  # section, nil for a setting's. A section without `extends` defines a stack: it
+  # declares the run's level in its `workflows`, and has no level 2.
   defp sources(section, organisation, target) do
     base = Map.get(section, "extends")
     modules = module_sources(section)
 
-    remote = remote(base, :base, target) ++ Enum.flat_map(modules, &remote(&1, :module, target))
+    based =
+      case Map.fetch(section, "extends") do
+        {:ok, base} ->
+          remote(base, :base, target)
+
+        :error ->
+          put(:declared, Reader.workflow_access(section_workflows(section), get(:workflow)))
+          []
+      end
+
+    remote = based ++ Enum.flat_map(modules, &remote(&1, :module, target))
     allowed = authorise(remote, organisation)
 
     {{listed, folder}, listed_by} =
@@ -427,6 +446,9 @@ defmodule Apiary.Harnesses.Walk do
       _none -> []
     end
   end
+
+  defp section_workflows(%{"workflows" => %{} = workflows}), do: workflows
+  defp section_workflows(_section), do: %{}
 
   # The allowed sources other than a remote base, which `base_modules/3` read and pinned.
   defp tl_or_all(%{"git" => _git}, [_base | rest]), do: rest

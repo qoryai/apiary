@@ -281,13 +281,14 @@ defmodule Apiary.Harnesses.WalkTest do
              }
     end
 
-    test "a file with machine keys alone, or whose section has no extends, takes the document",
+    test "a file with machine keys alone, or whose section has neither extends nor modules, takes the document",
          ctx do
       setting(ctx.scope, @setting)
 
       for file <- [
             "harness:\n  runtime: claude\n",
-            "harness:\n  name: app\n  modules:\n    - source: {git: \"#{@lint}\", ref: v1}\n",
+            "harness:\n  name: app\n",
+            "harness:\n  name: app\n  modules: []\n",
             "git:\n  user: someone\n"
           ] do
         serve([ctx.run],
@@ -296,7 +297,58 @@ defmodule Apiary.Harnesses.WalkTest do
         )
 
         assert {:ok, %{origin: :setting, target_version: "c-R_app"}} = Walk.run(ctx.input), file
-        refute Enum.any?(resolves(calls()), &(@lint in &1))
+      end
+    end
+
+    test "a file whose section lists modules without extends applies over every level, with its modules' sources alone",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      section =
+        "harness:\n  name: app\n  modules:\n" <>
+          "    - source: {git: \"#{@tools}\", ref: v2}\n" <>
+          "    - source: {path: harness/local}\n"
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: %{
+          {"R_app", "harness.yaml"} => section,
+          {"R_tools", "qory-stack.yaml"} => "modules:\n  - source: {git: \"#{@lint}\", ref: v3}\n"
+        }
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert %{origin: :file, document: nil, stack_id: nil, target_version: "c-R_app"} = walked
+      assert walked.pins == [%{"git" => @tools, "ref" => "v2", "at" => "c-R_tools"}]
+      assert [%{"grant_ref" => "G_run", "resources" => ["R_tools"]}] = walked.harness_links
+
+      # The setting's base is never resolved, and the module's stack is not followed.
+      calls = calls()
+      assert resolves(calls) == [[@target], [@tools]]
+
+      assert reads(calls) == [
+               {"R_app", "harness.yaml", "HEAD"},
+               {"R_app", "qory.yaml", "c-R_app"},
+               {"R_tools", "harness.yaml", "v2"}
+             ]
+    end
+
+    test "a file that lists modules without extends has its sources checked by the same rules",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      for {module, failure, source} <- [
+            {"{git: \"#{@lint}\", ref: v3}", :not_covered, @lint},
+            {"{git: \"git@code.example.com:acme/lint\", ref: v3}", :scp_form,
+             "code.example.com:acme/lint"},
+            {"{path: ../outside}", :invalid, @target}
+          ] do
+        serve([ctx.run],
+          covered: covering(ctx),
+          files: %{{"R_app", "harness.yaml"} => "harness:\n  modules:\n    - source: #{module}\n"}
+        )
+
+        assert {:failed, %{failure: ^failure, source: ^source}} = Walk.run(ctx.input), module
       end
     end
 
@@ -434,18 +486,53 @@ defmodule Apiary.Harnesses.WalkTest do
       assert level(ctx, "  explore: {access: admin}\n", nil) == :read
     end
 
-    test "where the target's harness file applies: read", ctx do
-      recording(ctx, "explore", nil)
+    # The level of a walk whose target's file `section` applies, with the workspace's row
+    # for `explore` recording `recorded`, and the base's stack declaring `declared`.
+    defp file_level(ctx, section, declared, recorded) do
+      recording(ctx, "explore", recorded)
 
       serve([ctx.run],
         covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
-        files:
-          "  explore: {access: write}\n"
-          |> declaring()
-          |> Map.put({"R_app", "harness.yaml"}, @file_section)
+        files: declared |> declaring() |> Map.put({"R_app", "harness.yaml"}, section)
       )
 
-      assert {:ok, %{origin: :file, access_level: :read}} = Walk.run(ctx.input)
+      assert {:ok, %{origin: :file, access_level: level}} = Walk.run(ctx.input)
+      level
+    end
+
+    test "a target's file with extends: the base's declared level, lowered by the recorded one",
+         ctx do
+      write = "  explore: {access: write}\n"
+
+      assert file_level(ctx, @file_section, write, nil) == :write
+      assert file_level(ctx, @file_section, write, :write) == :write
+      assert file_level(ctx, @file_section, write, :read) == :read
+      assert file_level(ctx, @file_section, nil, :write) == :read
+
+      # The section's own workflows declare nothing where it has a base.
+      section = @file_section <> "  workflows:\n    explore: {access: write}\n"
+      assert file_level(ctx, section, nil, nil) == :read
+    end
+
+    test "a target's file that lists modules without extends: its own workflows, lowered by the recorded one",
+         ctx do
+      section = fn workflows ->
+        "harness:\n  modules:\n    - source: {git: \"#{@tools}\", ref: v2}\n" <> workflows
+      end
+
+      write = section.("  workflows:\n    explore: {access: write}\n")
+
+      assert file_level(ctx, write, nil, nil) == :write
+      assert file_level(ctx, write, nil, :write) == :write
+      assert file_level(ctx, write, nil, :read) == :read
+
+      for workflows <- [
+            "",
+            "  workflows:\n    explore: {time_limit: 45m}\n",
+            "  workflows:\n    review: {access: write}\n"
+          ] do
+        assert file_level(ctx, section.(workflows), nil, nil) == :read, workflows
+      end
     end
 
     test "a base read from a harness file's section declares nothing: read", ctx do
