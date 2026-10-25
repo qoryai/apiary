@@ -161,6 +161,46 @@ defmodule Apiary.Stacks.Document do
     base ++ modules
   end
 
+  @doc false
+  # harness_sources/1 is the harness sources `text` refers to, in document order: the base
+  # (`extends`), then the `source` of each module. Each is a map with the keys the
+  # document writes among `git`, `ref` and one of `path`, `stack` and `module`, as text
+  # and unchanged (`Apiary.Harnesses.source()`). An entry without text `git` and `ref`,
+  # with more than one of the three narrowing keys, or with a narrowing key that is not
+  # text, is left out. `[]` for nil, for text that does not read and for a document that
+  # is not a mapping. The sources are read as written, not checked: `errors/1` checks.
+  @spec harness_sources(String.t() | nil) :: [Apiary.Harnesses.source()]
+  def harness_sources(text) when is_binary(text) do
+    with {:ok, section} when is_map(section) <- Reader.document(text) do
+      modules =
+        case section do
+          %{"modules" => modules} when is_list(modules) ->
+            for %{"source" => source} <- modules, do: source
+
+          _other ->
+            []
+        end
+
+      [Map.get(section, "extends") | modules]
+      |> Enum.flat_map(&harness_source/1)
+    else
+      _unreadable -> []
+    end
+  end
+
+  def harness_sources(_not_text), do: []
+
+  defp harness_source(%{"git" => git, "ref" => ref} = source)
+       when is_binary(git) and is_binary(ref) do
+    narrowing = Map.take(source, ["path", "stack", "module"])
+
+    if map_size(narrowing) <= 1 and Enum.all?(narrowing, fn {_key, value} -> is_binary(value) end),
+      do: [Map.merge(narrowing, %{"git" => git, "ref" => ref})],
+      else: []
+  end
+
+  defp harness_source(_other), do: []
+
   # Any whitespace or control character: a git address has none.
   @space_or_control ~r/[\s\x{00}-\x{1F}\x{7F}-\x{9F}]/u
 
