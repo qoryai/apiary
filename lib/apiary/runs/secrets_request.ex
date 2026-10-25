@@ -41,7 +41,10 @@ defmodule Apiary.Runs.SecretsRequest do
   #  8. `{:error, :credential_unavailable}`, a key Qory may not seal for the gateway: the
   #     provider's row, its secret or the value fails its integrity check or is gone; the
   #     provider's secret or chain differs from the run's; the provider's organisation is
-  #     not the run's; the gateway may not receive the key
+  #     not the one its chain is made of (`provider_organisation/2`): the run's for a
+  #     provider of the organisation's chain, the operator's for a provider of an operator's
+  #     chain (a provider of that chain is left to the gateway check where the edition names
+  #     no operator); the gateway may not receive the key
   #     (`Apiary.Runs.ProviderCredential.sealable_to?/3`): for a provider of the
   #     organisation's chain, a gateway of another organisation, and for a provider of an
   #     operator's chain, a gateway of an organisation other than the operator's or whose
@@ -287,7 +290,7 @@ defmodule Apiary.Runs.SecretsRequest do
       provider.chain != run.provider_chain ->
         refused(run, provider, :chain)
 
-      provider.organisation_id != run.organisation_id ->
+      provider.organisation_id != provider_organisation(provider, run) ->
         refused(run, provider, :organisation)
 
       not ProviderCredential.sealable_to?(provider.chain, node, run.organisation_id) ->
@@ -297,6 +300,17 @@ defmodule Apiary.Runs.SecretsRequest do
         :ok
     end
   end
+
+  # The organisation whose providers make up the chain of `provider` for the run: the run's
+  # organisation for the organisation's chain, and for an operator's chain the operator's
+  # (`Apiary.Runs.ProviderCredential.operator_of/1`). Where the edition names no operator,
+  # the provider's organisation is taken, so that the gateway check refuses the key
+  # (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
+  defp provider_organisation(%{chain: "operator"} = provider, %Run{} = run),
+    do: ProviderCredential.operator_of(run.organisation_id) || provider.organisation_id
+
+  defp provider_organisation(_provider, %Run{organisation_id: organisation_id}),
+    do: organisation_id
 
   defp recipient_key(run, %AccessKey{public_key: public_key}) do
     case Ed25519.check_public_key(public_key) do

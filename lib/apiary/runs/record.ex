@@ -382,7 +382,7 @@ defmodule Apiary.Runs.Record do
         slim(scope, run, Timeline.needed(whole), Timeline.full_limit())
       )
 
-    Timeline.build(light, events, full: MapSet.to_list(full))
+    Timeline.build(light, events, full: MapSet.to_list(full), scope: scope, run: run)
   end
 
   # The columns of the statement below, by name: its own names, never an event's.
@@ -401,7 +401,7 @@ defmodule Apiary.Runs.Record do
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
-    #{Enum.map_join(~w(allow deny), ",\n  ", fn list -> """
+    #{Enum.map_join(~w(allow allow_first deny), ",\n  ", fn list -> """
     CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN jsonb_array_length(e.data -> '#{list}') ELSE 0 END AS #{list}_count,
     CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN
       (SELECT coalesce(jsonb_agg(left(v #>> '{}', 255)), '[]'::jsonb)
@@ -413,6 +413,7 @@ defmodule Apiary.Runs.Record do
              WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT 5) q) AS terminated,
     CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN jsonb_array_length(e.data -> 'terminated') ELSE 0 END AS terminated_count,
     CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts |> String.replace("%DATA%", "e.data") |> String.replace("%KEY%", "tools") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS tools,
+    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts |> String.replace("%DATA%", "e.data") |> String.replace("%KEY%", "credentials") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS credentials,
     #{Enum.map_join(~w(command file_path pattern path url description), ",\n  ", &"CASE WHEN jsonb_typeof(x.i -> '#{&1}') = 'string' THEN left(x.i ->> '#{&1}', 400) END AS input_#{&1}")},
     (SELECT left(value #>> '{}', 400) FROM jsonb_each(CASE WHEN jsonb_typeof(x.i) = 'object' THEN x.i ELSE '{}'::jsonb END)
        WHERE jsonb_typeof(value) = 'string' AND value #>> '{}' <> '' ORDER BY key COLLATE "C" LIMIT 1) AS input_first,
@@ -472,8 +473,10 @@ defmodule Apiary.Runs.Record do
     |> Map.update!(:time, &utc/1)
     |> Map.update!(:terminated, &(&1 || []))
     |> Map.update!(:allow, &(&1 || []))
+    |> Map.update!(:allow_first, &(&1 || []))
     |> Map.update!(:deny, &(&1 || []))
     |> Map.update!(:tools, &(&1 || []))
+    |> Map.update!(:credentials, &(&1 || []))
     |> Map.put(:summary, Timeline.tool_summary(row.tool, input, row.input_first))
     |> Map.take(Timeline.slim_keys())
     |> Map.new(fn
