@@ -3,9 +3,10 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   # harness members of the run's documents, from the run's harness walk
   # (`Apiary.Harnesses.WalkJob`): `target_version`, `workflow`, `harness_hidden` and,
   # for a walk whose document came from the stacks, `harness`. None of the four for a
-  # run with no workflow and for a prebuild. Each answer and each documents object is
-  # valid under the vendored schemas, so the module is tagged `:contract`. Not async: the
-  # features are the whole node's.
+  # run with no workflow and for a prebuild. The run's `access` is the level its walk
+  # resolved, and `read` for a run with no workflow and for a prebuild. Each answer and
+  # each documents object is valid under the vendored schemas, so the module is tagged
+  # `:contract`. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
@@ -169,6 +170,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                "harness_hidden" => false
              }
 
+      assert documents["access"] == "read"
       valid!(documents)
     end
 
@@ -231,6 +233,32 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert members(claim) == @claim ++ @code
       documents = documents(claim)
       assert Map.take(documents, @harness) == %{}
+      assert documents["access"] == "read"
+      valid!(documents)
+    end
+  end
+
+  describe "the run's access" do
+    test "is write where the walk resolved write", ctx do
+      workflow!(ctx)
+
+      explore!(ctx,
+        origin: :setting,
+        document: section(),
+        target_version: @version,
+        access_level: :write
+      )
+
+      documents = documents(claim(ctx))
+      assert %{"access" => "write", "workflow" => "hello"} = documents
+      valid!(documents)
+    end
+
+    test "is read where the walk resolved read", ctx do
+      workflow!(ctx)
+      explore!(ctx, origin: :setting, document: section(), target_version: @version)
+      documents = documents(claim(ctx))
+      assert %{"access" => "read", "workflow" => "hello"} = documents
       valid!(documents)
     end
   end
@@ -247,6 +275,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert members(claim) == @claim ++ @code
       documents = documents(claim)
       assert Map.take(documents, @harness) == %{}
+      assert documents["access"] == "read"
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end
   end

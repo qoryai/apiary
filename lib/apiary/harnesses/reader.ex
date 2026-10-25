@@ -1,10 +1,10 @@
 defmodule Apiary.Harnesses.Reader do
   @moduledoc """
   Reads the YAML files of qory's harness format, version 1: the harness section of a
-  `qory.yaml` or `harness.yaml`, the modules of a `qory-stack.yaml`, the `exports` of a
-  root file, and a harness document as a settings row keeps it. Pure: bytes in, a
-  value or a reason out. It reads the source keys and nothing else, and it splits no
-  URL.
+  `qory.yaml` or `harness.yaml`, the modules and the `workflows` of a `qory-stack.yaml`,
+  the `exports` of a root file, and a harness document as a settings row keeps it. Pure:
+  bytes in, a value or a reason out. It reads the source keys and a workflow's access
+  level and nothing else, and it splits no URL.
 
   ## Limits
 
@@ -148,16 +148,43 @@ defmodule Apiary.Harnesses.Reader do
   """
   @spec stack_modules(binary) :: {:ok, [map]} | {:error, reason}
   def stack_modules(bytes) when is_binary(bytes) do
+    with {:ok, %{modules: modules}} <- stack(bytes), do: {:ok, modules}
+  end
+
+  @doc """
+  stack/1 is a `qory-stack.yaml`: `{:ok, %{modules: modules, workflows: workflows}}` or
+  `{:error, reason}`. `modules` is as `stack_modules/1` reads it, and `workflows` is the
+  file's `workflows` mapping as written, an empty map for none or for a value that is
+  not a mapping.
+  """
+  @spec stack(binary) :: {:ok, %{modules: [map], workflows: map}} | {:error, reason}
+  def stack(bytes) when is_binary(bytes) do
     with {:ok, file} <- parse(bytes) do
       case file do
         %{"modules" => [_ | _] = modules} ->
           if Enum.all?(modules, &is_map/1),
-            do: {:ok, modules},
+            do: {:ok, %{modules: modules, workflows: workflows(file)}},
             else: {:error, :invalid_stack}
 
         _other ->
           {:error, :invalid_stack}
       end
+    end
+  end
+
+  defp workflows(%{"workflows" => %{} = workflows}), do: workflows
+  defp workflows(_file), do: %{}
+
+  @doc """
+  workflow_access/2 is the access level a stack's `workflows` declare for the workflow
+  `name`, `workflows.<name>.access`: `:write` for `write`, and `:read` for `read`, for
+  any other value, and where the key or the workflow is absent.
+  """
+  @spec workflow_access(map, String.t()) :: :read | :write
+  def workflow_access(workflows, name) when is_map(workflows) and is_binary(name) do
+    case workflows do
+      %{^name => %{"access" => "write"}} -> :write
+      _read_or_none -> :read
     end
   end
 

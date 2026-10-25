@@ -13,6 +13,8 @@ defmodule Apiary.Harnesses.RunHarness do
   #     workflow, for which nothing is read.
   #   * `workflow` and `harness_hidden`: the run's workflow and whether its harness is
   #     hidden.
+  #   * `access_level`: what the run may do on its target, `:read` or `:write`, the level
+  #     the walk resolved; `:read` until it resolves, and for a run with no workflow.
   #   * `target_version`: the version at which the walk read the target's harness file, nil
   #     where it read none.
   #   * `pins`: one `%{"git", "ref", "at"}` per remote source, `at` the version its read
@@ -38,6 +40,7 @@ defmodule Apiary.Harnesses.RunHarness do
     field :state, Ecto.Enum, values: [:pending, :resolved, :failed]
     field :origin, Ecto.Enum, values: [:file, :setting, :none]
     field :workflow, :string
+    field :access_level, Ecto.Enum, values: [:read, :write], default: :read
     field :target_version, :string
     field :document, :map
     field :pins, {:array, :map}, default: []
