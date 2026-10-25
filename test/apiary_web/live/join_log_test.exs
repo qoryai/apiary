@@ -4,8 +4,9 @@ defmodule ApiaryWeb.JoinLogTest do
   sends it (`Phoenix.LiveView.Socket`'s connect, init and handle_in, in a process standing
   in for the web server's handler): no log line, of the socket's process or of the
   LiveView's, holds what the frame carried, the endpoint's secret key base, the LiveView
-  signing salt or a person's session token; the join that failed is still logged, at error,
-  with the call it failed in (`Apiary.SecretLogFilter`).
+  signing salt or a person's session token. A join whose session or static token is not a
+  binary is refused as stale and logs nothing; any other join that failed is still logged,
+  at error, with the call it failed in (`Apiary.SecretLogFilter`).
   """
   # Not async: the log handler reads every event logged while a frame is handled.
   use ApiaryWeb.ConnCase, async: false
@@ -53,9 +54,18 @@ defmodule ApiaryWeb.JoinLogTest do
     @impl true
     def handle_call({:frame, frame}, _from, state) do
       case Phoenix.LiveView.Socket.handle_in({frame, opcode: :text}, state) do
-        {:reply, status, _reply, state} -> {:reply, status, state}
-        {:ok, state} -> {:reply, :ok, state}
-        {:push, _push, state} -> {:reply, :ok, state}
+        {:reply, status, reply, state} -> {:reply, {status, reason(reply)}, state}
+        {:ok, state} -> {:reply, {:ok, nil}, state}
+        {:push, _push, state} -> {:reply, {:ok, nil}, state}
+      end
+    end
+
+    # The reason in the reply's response: "stale" for a join refused, "join crashed" for
+    # one whose process failed.
+    defp reason({:text, json}) do
+      case JSON.decode!(IO.iodata_to_binary(json)) do
+        [_join_ref, _ref, _topic, "phx_reply", %{"response" => %{"reason" => reason}}] -> reason
+        _other -> nil
       end
     end
 
@@ -78,15 +88,15 @@ defmodule ApiaryWeb.JoinLogTest do
   end
 
   # The frame `[join_ref, ref, topic, "phx_join", payload]`, handled by a socket opened
-  # with `session`: the reply's status and every event logged meanwhile.
+  # with `session`: the reply's status and reason, and every event logged meanwhile.
   defp join(session, topic, payload) do
     {:ok, pid} = GenServer.start_link(Transport, session)
     flush()
 
-    status =
+    reply =
       GenServer.call(pid, {:frame, JSON.encode!(["1", "1", topic, "phx_join", payload])})
 
-    {status, events()}
+    {reply, events()}
   end
 
   defp flush do
@@ -126,18 +136,25 @@ defmodule ApiaryWeb.JoinLogTest do
     ]
   end
 
-  defp assert_clean({status, events}, extra \\ []) do
-    assert status == :error
+  defp assert_clean({reply, events} = joined, extra \\ []) do
+    assert {:error, _reason} = reply
 
     for needle <- needles(extra), event <- events do
       refute text(event) =~ needle, "a log line holds #{inspect(String.slice(needle, 0, 12))}"
     end
 
-    events
+    joined
+  end
+
+  # A join refused for a session or static token that is not a binary: the reply's reason
+  # is "stale", so a join that crashed fails here even when nothing is logged.
+  defp assert_refused({reply, events}) do
+    assert reply == {:error, "stale"}
+    assert events == []
   end
 
   # The join that failed is logged at error by the socket's process, its call named.
-  defp assert_join_logged(events) do
+  defp assert_join_logged({_reply, events}) do
     assert Enum.any?(
              events,
              &match?(
@@ -177,7 +194,7 @@ defmodule ApiaryWeb.JoinLogTest do
 
   describe "a join without a session the LiveView can read" do
     test "logs neither the secret key base nor the signing salt" do
-      %{} |> join("lv:phx-test", %{"session" => 1}) |> assert_clean() |> assert_join_logged()
+      %{} |> join("lv:phx-test", %{"session" => 1}) |> assert_clean() |> assert_refused()
     end
 
     test "logs no term of the session it sent" do
@@ -185,7 +202,7 @@ defmodule ApiaryWeb.JoinLogTest do
         %{}
         |> join("lv:phx-test", %{"session" => session})
         |> assert_clean(["987654321987"])
-        |> assert_join_logged()
+        |> assert_refused()
       end
     end
 
@@ -196,8 +213,7 @@ defmodule ApiaryWeb.JoinLogTest do
     test "logs no topic a client chose" do
       # A mount without a session, and a topic no route takes.
       for topic <- ["lv:" <> @marker, "zz:" <> @marker] do
-        {status, events} = join(%{}, topic, %{"url" => @marker})
-        assert_clean({status, events})
+        {_reply, events} = %{} |> join(topic, %{"url" => @marker}) |> assert_clean()
         assert Enum.any?(events, &match?(%{msg: {:string, "[FILTERED]"}}, &1))
       end
     end
@@ -226,17 +242,20 @@ defmodule ApiaryWeb.JoinLogTest do
          %{conn: conn} do
       %{session: session, topic: topic, payload: payload} = page(conn, "/users/log-in")
 
+      for change <- [%{"static" => 1}, %{"static" => %{"x" => @marker}}] do
+        session |> join(topic, Map.merge(payload, change)) |> assert_clean() |> assert_refused()
+      end
+
       for change <- [
-            %{"static" => 1},
-            %{"static" => %{"x" => @marker}},
             %{"url" => %{"x" => @marker}},
             %{"url" => [@marker]},
             %{"redirect" => %{"x" => @marker}},
             %{"params" => @marker}
           ] do
-        {status, events} = join(session, topic, Map.merge(payload, change))
-        assert_clean({status, events})
-        assert_join_logged(events)
+        session
+        |> join(topic, Map.merge(payload, change))
+        |> assert_clean()
+        |> assert_join_logged()
       end
     end
   end
