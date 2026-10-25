@@ -91,6 +91,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"adapter.setup"), do: gettext("Adapter set-up started")
   def label(:"adapter.app_values_set"), do: gettext("Adapter secrets stored")
   def label(:"adapter.app_values_seal"), do: gettext("Adapter secrets sent")
+  def label(:"run_credential.issue"), do: gettext("Run access sent or refused")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -128,11 +129,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # of collections, the turning of a target's Backlog on or off, the release of a claimed
   # run, the choosing of what a target's runs also read, the setting of a model choice or
   # a time limit of a workspace or a target, a build of a target's environment asked for,
-  # the installing of an adapter, the start of its set-up and the storing and sending of
-  # its secrets have labels yet, so the filter offers those alone, where the reader is
-  # shown the feature (the page asks it); the others' entries show as any change. The
-  # filter offers `connection.write` alone of the three actions that split it
-  # (`@connection_writes`), and its entries are those of the three
+  # the installing of an adapter, the start of its set-up, the storing and sending of
+  # its secrets and a run's access sent or refused have labels yet, so the filter offers
+  # those alone, where the reader is shown the feature (the page asks it); the others'
+  # entries show as any change. The filter offers `connection.write` alone of the three
+  # actions that split it (`@connection_writes`), and its entries are those of the three
   # (`Apiary.Audit.list_entries/3`). Nothing writes `dispatch.handover` or
   # `dispatch.prebuilt` any more: the filter offers neither, and their labels and words
   # stay for the entries stored before.
@@ -163,7 +164,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"adapter.install",
           :"adapter.setup",
           :"adapter.app_values_set",
-          :"adapter.app_values_seal"
+          :"adapter.app_values_seal",
+          :"run_credential.issue"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -294,6 +296,35 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def sentence(:"work_item.take_in", entry, names) do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
     gettext("Took in one of the Backlog's %{items} as a work item", items: items)
+  end
+
+  # A run's work credential, sent to its gateway or refused (`Apiary.Runs.WorkCredential`):
+  # the entry is the run's, by the gateway's key. The words come from the entry's details,
+  # which have no word of the adapter.
+  def sentence(
+        :"run_credential.issue",
+        %{details: %{"outcome" => outcome, "access" => access} = details},
+        _names
+      )
+      when is_binary(outcome) do
+    words = [access: access_word(access), target: details["target_path"] || ""]
+
+    case {outcome, details["expires_at"]} do
+      {"issued", expires_at} when is_binary(expires_at) ->
+        gettext(
+          "Received %{access} access to %{target} for the run, until %{time}",
+          words ++ [time: expiry(expires_at)]
+        )
+
+      {"issued", _none} ->
+        gettext("Received %{access} access to %{target} for the run, with no end time", words)
+
+      {cause, _expires_at} ->
+        gettext(
+          "Was refused %{access} access to %{target} for the run: %{cause}",
+          words ++ [cause: refusal_cause(cause)]
+        )
+    end
   end
 
   # A time limit (`Apiary.TimeLimits`), by the change in the entry's details, under
@@ -536,6 +567,58 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Changed an integration")
 
   defp said(_action, _details, _actor), do: nil
+
+  defp access_word("write"), do: gettext("write")
+  defp access_word(_read), do: gettext("read")
+
+  # The expiry in UTC, to the minute.
+  defp expiry(expires_at) do
+    case DateTime.from_iso8601(expires_at) do
+      {:ok, time, _offset} -> Calendar.strftime(time, "%Y-%m-%d %H:%M UTC")
+      _invalid -> expires_at
+    end
+  end
+
+  # Why a run's work credential was refused (`Apiary.Runs.WorkCredential.causes/0`), in
+  # a few groups.
+  @answer_causes Enum.map(Apiary.Runs.RunCredentialIssue.causes(), &Atom.to_string/1)
+  @wider_causes ~w(scheme_outside_entry host_outside_entry path_outside_entry)
+  @check_faults ~w(now_invalid entry_invalid)
+
+  defp refusal_cause("connection_gone"),
+    do:
+      gettext(
+        "the connection is not connected, or does not match the run's organisation and adapter"
+      )
+
+  defp refusal_cause("adapter_key_missing"),
+    do: gettext("the adapter is deleted or has no access key in use")
+
+  defp refusal_cause("timeout"), do: gettext("the call to the adapter timed out")
+  defp refusal_cause("refused"), do: gettext("the adapter returned a refusal")
+
+  defp refusal_cause(cause) when cause in @check_faults,
+    do: gettext("Qory Apiary could not check the credential from the adapter")
+
+  defp refusal_cause(cause) when cause in @wider_causes,
+    do: gettext("the credential from the adapter reaches beyond the run's access")
+
+  defp refusal_cause("apply_moved"),
+    do: gettext("the credential from the adapter differs from the one at the run's start")
+
+  defp refusal_cause(cause) when cause in ["invalid_answer" | @answer_causes],
+    do: gettext("the credential from the adapter is invalid")
+
+  defp refusal_cause("run_not_live"),
+    do: gettext("the run ended before the credential could be sealed")
+
+  defp refusal_cause("seal_failed"),
+    do: gettext("the credential could not be sealed for the gateway")
+
+  defp refusal_cause("not_recorded"),
+    do: gettext("the credential could not be recorded, so it was not sent")
+
+  defp refusal_cause(_cause), do: gettext("the call to the adapter failed")
 
   defp said_secret("created"), do: gettext("Created a stored secret")
   defp said_secret("updated"), do: gettext("Changed a stored secret")

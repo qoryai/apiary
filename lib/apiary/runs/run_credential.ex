@@ -1,9 +1,10 @@
 defmodule Apiary.Runs.RunCredential do
   # A credential entry of a run (`Apiary.Runs.RunCredentials`): the most that a credential
-  # an adapter answers for the run may reach, recorded once at the run's claim and never
-  # changed, so a later start of the adapter or a change at its source changes no live
-  # run. It has no value. The table and its rules are
-  # `20261025160500_keep_each_run_s_credential_entries`'s.
+  # an adapter answers for the run may reach, recorded once at the run's claim, so a later
+  # start of the adapter or a change at its source changes no live run. Only
+  # `issued_apply` is written later, once. It has no value. The table and its rules are
+  # `20261025160500_keep_each_run_s_credential_entries`'s and
+  # `20261025160600_keep_the_apply_items_of_a_run_s_first_work_credential`'s.
   #
   #   * `name`: `work-1` for the run's work entry; the run configuration lists the entry
   #     under it (`Apiary.Policy.ComposedConfiguration`). Names say nothing of the target.
@@ -17,6 +18,10 @@ defmodule Apiary.Runs.RunCredential do
   #     work credential sends as its one resource, and the path of the run's target.
   #   * `apply`: the adapter's apply items with `{target.path}` filled
   #     (`Apiary.Integrations.ApplyTemplates`); `placeholders`: nil for none.
+  #   * `issued_apply`: the apply items of the first work credential the adapter issued
+  #     for the run and Qory Apiary sealed and recorded (`Apiary.Runs.WorkCredential`),
+  #     nil until then. A later credential whose items differ is refused, as the gateway
+  #     refuses a renewal whose items differ from those at the run's start.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -34,6 +39,7 @@ defmodule Apiary.Runs.RunCredential do
     field :resources, {:array, :map}
     field :apply, {:array, :map}
     field :placeholders, {:array, :string}
+    field :issued_apply, {:array, :map}
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation

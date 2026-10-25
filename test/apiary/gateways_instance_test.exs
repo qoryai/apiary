@@ -213,7 +213,12 @@ defmodule Apiary.GatewaysInstanceTest do
       assert Scope.key_place(scope).id == ctx.gateway.id
       assert Access.authorize(scope, :"run.post_events", Scope.key_place(scope)) == :ok
 
-      for action <- [:"run.post_events", :"run_configuration.fetch", :"secret.seal"],
+      for action <- [
+            :"run.post_events",
+            :"run_configuration.fetch",
+            :"secret.seal",
+            :"run_credential.issue"
+          ],
           subject <- [
             pool,
             adapter_fixture(),

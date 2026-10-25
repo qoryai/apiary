@@ -27,8 +27,9 @@ defmodule Apiary.PoolKeyRoleTest do
   # What a node pool's key held before it acted in `pool_key`, as a node's key does.
   @key_actions [:"run.post_events", :"run_configuration.fetch"]
 
-  # The action of a gateway's key alone: the secrets request, which seals to a gateway's key.
-  @gateway_actions [:"secret.seal"]
+  # The actions of a gateway's key alone: the secrets request, which seals to a gateway's
+  # key, and the work credential it is issued for a run.
+  @gateway_actions [:"secret.seal", :"run_credential.issue"]
 
   # Every feature but `factory`, and those that need it.
   @without_factory Enum.reject(

@@ -1,20 +1,23 @@
 defmodule ApiaryWeb.Contract.SecretsControllerTest do
   # The secrets request (`POST /v1/secrets`): a run's model key, sealed to the gateway's
   # access key, and each refusal in the order of the contract and
-  # `Apiary.Runs.SecretsRequest`. Not async, as the other contract tests of a
-  # pool: the features are the whole node's.
+  # `Apiary.Runs.SecretsRequest`; and a run's work entry, whose credential the stub
+  # adapter issues (`Apiary.Runs.WorkCredential`). Not async, as the other contract tests
+  # of a pool: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
-  import ExUnit.CaptureLog, only: [capture_log: 1, with_log: 1]
+  import ExUnit.CaptureLog, only: [capture_log: 1, capture_log: 2, with_log: 1]
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
 
-  alias Apiary.{Policy, Repo, SealedOpen, SigningKey}
+  alias Apiary.{Policy, Repo, SealedOpen, SigningKey, WorkCredentialStub}
+  alias Apiary.Adapters.Collection
   alias Apiary.Audit.Entry
   alias Apiary.Connections.Connection
-  alias Apiary.Runs.Run
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Runs.{Run, RunCredential}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Contract.SignedRequest
 
@@ -23,10 +26,33 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   # covers: the features are the whole node's, so the module is not async.
   setup {Apiary.DataCase, :without_registry}
 
-  setup do
+  # The apply items the work item's adapter declares for a test tagged `work`, and the
+  # work entry's items they fill with the target's path, `acme/shop`.
+  @apply [
+    %{
+      "hosts" => ["git.example.com"],
+      "scheme" => "basic",
+      "username" => "x-access",
+      "paths" => ["/{target.path}.git/*", "/{target.path}/*"]
+    }
+  ]
+
+  @entry_apply [
+    %{
+      "hosts" => ["git.example.com"],
+      "scheme" => "basic",
+      "username" => "x-access",
+      "paths" => ["/acme/shop.git/*", "/acme/shop/*"]
+    }
+  ]
+
+  @token "fixture-work-token-for-tests-only-7f3a"
+
+  setup ctx do
     %{scope: scope} = sign_up_fixture()
     {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
-    scope |> sealed_run_fixture() |> Map.put(:scope, scope)
+    opts = if ctx[:work], do: [work: @apply], else: []
+    scope |> sealed_run_fixture(opts) |> Map.put(:scope, scope)
   end
 
   defp post_secrets(ctx, body, opts \\ []) do
@@ -340,6 +366,399 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert log =~ "fails the key check fixture"
       assert seals() == []
     end
+  end
+
+  describe "a request that names the work entry" do
+    @describetag :work
+
+    test "at the run's start, is answered the adapter's credential beside the model key",
+         ctx do
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+
+      assert conn.status == 200, conn.resp_body
+      assert signed_answer?(conn)
+      {bytes, plaintext} = opened(ctx, conn)
+      assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
+      assert plaintext["credentials"] == Enum.sort(names(ctx))
+      assert %{"value" => model} = value(plaintext, ctx.provider.public_id)
+      assert model == model_key()
+      work = value(plaintext, "work-1")
+      assert Map.keys(work) == ~w(apply credential expires_at value)
+      assert %{"value" => @token, "apply" => @entry_apply} = work
+
+      # The call: the entry's connection, its one collection, its access, for the work.
+      row = work_row(ctx)
+      connection = Repo.get!(Apiary.Adapters.Connection, row.connection_id)
+      [%{"external_ref" => ref, "collection_id" => collection_id}] = row.resources
+      assert [{"/calls/run-credential", body}] = WorkCredentialStub.calls()
+
+      assert Map.delete(body, "time") == %{
+               "version" => 1,
+               "connection_id" => connection.public_id,
+               "resources" => [ref],
+               "access" => "read",
+               "purpose" => "work"
+             }
+
+      # The first credential's items are kept; nothing of the token is.
+      assert row.issued_apply == @entry_apply
+
+      {key, _seed} = ctx.secrets_key
+      assert [entry] = issues()
+      assert entry.organisation_id == ctx.scope.organisation.id
+      assert {entry.subject_kind, entry.subject_id} == {"run", ctx.run.id}
+      assert {entry.actor_kind, entry.actor_id} == {:access_key, key.id}
+
+      assert entry.details == %{
+               "run_id" => ctx.run.node_run_id,
+               "connection_id" => connection.public_id,
+               "adapter_id" => ctx.adapter.public_id,
+               "collection_id" => Repo.get!(Collection, collection_id).public_id,
+               "target_path" => "acme/shop",
+               "access" => "read",
+               "purpose" => "work",
+               "credential" => "work-1",
+               "expires_at" => work["expires_at"],
+               "outcome" => "issued"
+             }
+
+      assert length(seals()) == 1
+      refute log =~ @token
+    end
+
+    test "at a renewal of work-1 alone, is answered a new credential and no model key", ctx do
+      issued!(ctx)
+      running!(ctx)
+      seals = seals()
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential("fixture-work-token-renewed-0002", @entry_apply)
+      )
+
+      conn = post_secrets(ctx, request(ctx, credentials: ["work-1"]))
+      assert conn.status == 200, conn.resp_body
+      {_bytes, plaintext} = opened(ctx, conn)
+      assert plaintext["credentials"] == ["work-1"]
+
+      assert [%{"credential" => "work-1", "value" => "fixture-work-token-renewed-0002"}] =
+               plaintext["values"]
+
+      # The model key is neither revealed nor sealed again.
+      assert seals() == seals
+      assert ["issued", "issued"] = Enum.map(issues(), & &1.details["outcome"])
+    end
+
+    test "at a renewal, an answer whose apply items differ from the start's is refused",
+         ctx do
+      issued!(ctx)
+      running!(ctx)
+      narrower = [%{hd(@entry_apply) | "paths" => ["/acme/shop.git/*"]}]
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential("fixture-work-token-moved-0003", narrower)
+      )
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["work-1"])) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert work_row(ctx).issued_apply == @entry_apply
+      assert ["issued", "apply_moved"] = Enum.map(issues(), & &1.details["outcome"])
+      assert log =~ "cause=apply_moved"
+      refute log =~ "fixture-work-token-moved-0003"
+      # A running run's failure is a log line only.
+      assert %DispatchRun{adapter_failure: nil} = Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
+    end
+
+    test "410 for a run that ended during the call: nothing sealed, kept or said received",
+         ctx do
+      end_run = fn ->
+        {1, _rows} =
+          Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+      end
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply),
+        end_run
+      )
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+      assert conn.status == 410
+      assert conn.resp_body == ""
+      assert [{"/calls/run-credential", _body}] = WorkCredentialStub.calls()
+      assert [%Entry{details: %{"outcome" => "run_not_live"}} = entry] = issues()
+      assert work_row(ctx).issued_apply == nil
+      assert seals() == []
+      refute log =~ @token
+
+      sentence =
+        Enum.find_value(
+          ApiaryWeb.Activity.Describer.describers(),
+          & &1.sentence(:"run_credential.issue", entry, %{})
+        )
+
+      assert sentence =~ "Was refused read access to acme/shop for the run: the run ended"
+      refute sentence =~ "Received"
+    end
+
+    test "409 credentials_differ for its names out of order, before any call", ctx do
+      conn = post_secrets(ctx, request(ctx, credentials: Enum.reverse(names(ctx))))
+      assert conn.status == 409
+      assert code(conn) == "credentials_differ"
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+    end
+
+    test "410 run_configuration_superseded for a superseded digest, before any call", ctx do
+      stale =
+        request(ctx, credentials: names(ctx), digest: "sha256=" <> String.duplicate("0", 64))
+
+      conn = post_secrets(ctx, stale)
+      assert conn.status == 410
+      assert code(conn) == "run_configuration_superseded"
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+    end
+
+    test "409 secrets_not_allowed for a key not allowed stored secrets, before any call", ctx do
+      %{access_key: plain, secret: seed} =
+        Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      list_key!(ctx.run, plain.public_key)
+      conn = post_secrets(ctx, request(ctx, credentials: ["work-1"]), key: {plain, seed})
+      assert conn.status == 409
+      assert code(conn) == "secrets_not_allowed"
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+    end
+
+    test "503 for a call that timed out, written on the pending run's queue entry", ctx do
+      fast_calls!()
+      WorkCredentialStub.slow(300)
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+      assert conn.status == 503
+      assert code(conn) == "unavailable"
+      assert [%Entry{details: %{"outcome" => "timeout"}}] = issues()
+      assert log =~ "cause=timeout"
+      assert seals() == []
+
+      assert %DispatchRun{adapter_failure: :timeout, adapter_failure_call: "run-credential"} =
+               Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
+    end
+
+    test "503 for a call that reached no one", ctx do
+      fast_calls!()
+      WorkCredentialStub.slow(0)
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 503
+      assert [%Entry{details: %{"outcome" => "unreachable"}}] = issues()
+    end
+
+    test "409 credential_unavailable for a refusal of the adapter, with none of its words",
+         ctx do
+      WorkCredentialStub.answer(ctx.adapter_seed, 403, ~s({"error":"resource_not_covered"}))
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+      assert conn.status == 409
+      assert conn.resp_body == ~s({"error":"credential_unavailable"})
+      assert [%Entry{details: %{"outcome" => "refused"} = details}] = issues()
+      refute inspect(details) =~ "resource_not_covered"
+      refute log =~ "resource_not_covered"
+      assert seals() == []
+
+      assert %DispatchRun{adapter_failure: :refused, adapter_failure_code: "resource_not_covered"} =
+               Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
+    end
+
+    test "409 credential_unavailable for an answer wider than the entry", ctx do
+      wider = [%{hd(@entry_apply) | "hosts" => ["git.example.com", "other.example.com"]}]
+      WorkCredentialStub.issue(ctx.adapter_seed, WorkCredentialStub.credential(@token, wider))
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert [%Entry{details: %{"outcome" => "host_outside_entry"}}] = issues()
+      assert work_row(ctx).issued_apply == nil
+      refute log =~ @token
+
+      assert %DispatchRun{adapter_failure: :invalid_answer} =
+               Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
+    end
+
+    test "409 credential_unavailable, with no call, for a connection no longer connected",
+         ctx do
+      row = work_row(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(c in Apiary.Adapters.Connection, where: c.id == ^row.connection_id),
+          set: [state: :ended, ended_at: DateTime.utc_now(), ended_reason: :adapter_reported]
+        )
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert WorkCredentialStub.calls() == []
+      assert [%Entry{details: %{"outcome" => "connection_gone"}}] = issues()
+    end
+
+    test "409 credential_unavailable, with no call, for an adapter with no key in use", ctx do
+      {_count, _rows} =
+        Repo.update_all(
+          from(k in Apiary.AccessKeys.AccessKey, where: k.node_id == ^ctx.adapter.id),
+          set: [revoked_at: DateTime.utc_now()]
+        )
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 409
+      assert WorkCredentialStub.calls() == []
+      assert [%Entry{details: %{"outcome" => "adapter_key_missing"}}] = issues()
+    end
+
+    test "leaves the token in no table, no log line at any level and no Activity entry",
+         ctx do
+      level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: level) end)
+
+      issued = WorkCredentialStub.credential(@token, @entry_apply)
+      seed = ctx.adapter_seed
+
+      answers = [
+        # Issued and sealed.
+        {200, fn -> WorkCredentialStub.issue(seed, issued) end},
+        # A member the answer's schema does not define, beside the token.
+        {409, fn -> WorkCredentialStub.issue(seed, Map.put(issued, "note", @token)) end},
+        # A token outside the check's form, which the call's schema takes: a control
+        # character in it.
+        {409,
+         fn -> WorkCredentialStub.issue(seed, %{issued | "token" => @token <> "\u0001x"}) end},
+        # A body that is not JSON.
+        {409,
+         fn ->
+           WorkCredentialStub.answer(seed, 200, ~s({"version":1,"credential":{"token":"#{@token}))
+         end}
+      ]
+
+      for {status, stub} <- answers do
+        stub.()
+
+        log =
+          capture_log([level: :debug], fn ->
+            conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+            assert conn.status == status, conn.resp_body
+          end)
+
+        refute log =~ @token
+      end
+
+      assert Enum.map(issues(), & &1.details["outcome"]) ==
+               ["issued", "invalid_answer", "token_control_character", "invalid_answer"]
+
+      refute inspect(Repo.all(Entry)) =~ @token
+      # The scan's queries have the token as a parameter: their log lines are left out.
+      capture_log(fn -> assert columns_with(@token) == [] end)
+    end
+  end
+
+  # The credential names of a run with a model key and a work entry, in the run
+  # configuration's order.
+  defp names(ctx), do: [ctx.provider.public_id, "work-1"]
+
+  defp value(plaintext, name), do: Enum.find(plaintext["values"], &(&1["credential"] == name))
+
+  defp issues,
+    do:
+      Repo.all(
+        from e in Entry,
+          where: e.action == "run_credential.issue",
+          order_by: [asc: e.inserted_at, asc: e.id]
+      )
+
+  defp work_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :work)
+
+  # The plaintext of an answer, as the gateway opens it: its bytes and as decoded.
+  defp opened(ctx, conn) do
+    {key, seed} = ctx.secrets_key
+
+    expected = %{
+      access_key_id: key.key_id,
+      run_id: ctx.run.node_run_id,
+      run_configuration: ctx.attached.digest,
+      signing_public_key: SigningKey.current().public_key,
+      x25519_private_key: SealedOpen.x25519_private_key(seed)
+    }
+
+    assert {:ok, plaintext, _sealed} = SealedOpen.open(conn.resp_body, expected)
+    {plaintext, Jason.decode!(plaintext)}
+  end
+
+  # The run's start: the model key and the work entry's first credential, sealed.
+  defp issued!(ctx) do
+    WorkCredentialStub.issue(
+      ctx.adapter_seed,
+      WorkCredentialStub.credential(@token, @entry_apply)
+    )
+
+    assert post_secrets(ctx, request(ctx, credentials: names(ctx))).status == 200
+    [_call] = WorkCredentialStub.calls()
+  end
+
+  defp running!(ctx) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "running"])
+  end
+
+  # Calls to an adapter with short times, so a timeout takes milliseconds, until the test
+  # ends.
+  defp fast_calls! do
+    saved = Application.get_env(:apiary, Apiary.Adapters.Calls)
+    on_exit(fn -> Application.put_env(:apiary, Apiary.Adapters.Calls, saved) end)
+
+    Application.put_env(
+      :apiary,
+      Apiary.Adapters.Calls,
+      Keyword.merge(saved, attempt: 100, total: 250, retry_wait: {1, 2})
+    )
+  end
+
+  # Every column of a text, bytea, JSON or array type, of every table and view, that
+  # contains `needle`, as `{table, column}`.
+  defp columns_with(needle) do
+    %{rows: columns} =
+      Repo.query!("""
+      SELECT table_name, column_name, data_type FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND data_type IN ('text', 'character varying', 'character', 'bytea', 'jsonb',
+                          'json', 'ARRAY')
+      """)
+
+    for [table, column, type] <- columns,
+        contains?(table, column, type, needle),
+        do: {table, column}
+  end
+
+  defp contains?(table, column, "bytea", needle),
+    do:
+      count(
+        ~s|SELECT count(*) FROM "#{table}" WHERE position($1::bytea in "#{column}") > 0|,
+        needle
+      )
+
+  defp contains?(table, column, _type, needle),
+    do: count(~s|SELECT count(*) FROM "#{table}" WHERE strpos("#{column}"::text, $1) > 0|, needle)
+
+  defp count(sql, needle) do
+    %{rows: [[count]]} = Repo.query!(sql, [needle])
+    count > 0
   end
 
   # The run's run key payload with `public_key` added to the gateway's keys it lists, as
