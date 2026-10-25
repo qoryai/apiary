@@ -102,8 +102,9 @@ defmodule Apiary.Kinds.Budget do
   end
 
   # `:poll_ms` is the timeout of a `receive`, so it must be a positive integer: with nil
-  # the reductions would be read only at the deadline, with 0 without pause, and a
-  # negative value or a float would crash the `receive`.
+  # the reductions would never be read, and the run would end at the deadline as
+  # `:time`; with 0 they would be read without pause, and a negative value or a float
+  # would crash the `receive`.
   defp poll_ms(ms) when is_integer(ms) and ms > 0, do: ms
 
   defp poll_ms(other),
