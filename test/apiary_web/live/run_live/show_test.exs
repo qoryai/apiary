@@ -723,18 +723,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "ol#timeline[data-target='e-59']")
 
-      # what is not valid is dropped: the page is the plain one, and its links carry none of it
+      # what is not valid is dropped: the page is the plain one, and its links carry none of it.
+      # The unknown sequence has 10 digits, the most the page parses: a short one such as 99999
+      # can occur in the page's generated numbers (fixture names, user emails, microseconds).
       {:ok, lv, html} =
         live(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=99999&lane=nobody&cx=7&x=1"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}?seq=8642097531&lane=nobody&cx=7&x=1"
         )
 
       refute has_element?(lv, "ol#timeline[data-target]")
       refute has_element?(lv, "ol#timeline[data-isolate]")
       assert has_element?(lv, "ol#timeline[data-cx='1']")
       refute html =~ "nobody"
-      refute html =~ "99999"
+      refute html =~ "8642097531"
 
       # a valid one among them is kept
       {:ok, lv, _html} =
