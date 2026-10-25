@@ -67,6 +67,11 @@ defmodule Apiary.SecretLogFilter do
   return path inside another parameter). A value of another shape, an invitation's id
   among them (`invitation=<uuid>` in a line the app writes), is left as it is.
 
+  A token, in a path or in a query, is replaced before a secret's prefix is looked for. A
+  token that contains `qak_` or a code's prefix, as a random one now and then does, so
+  becomes `:token` whole, and a secret or a code in a route's token segment becomes
+  `:token` too.
+
   **A page's lines at debug.** The lines a LiveView logs as it mounts, as it handles the
   parameters of its URL and as it handles an event (`MOUNT`, `HANDLE PARAMS` and
   `HANDLE EVENT`) are `ApiaryWeb.LiveViewLog`'s, in place of `Phoenix.LiveView.Logger`'s:
@@ -770,20 +775,23 @@ defmodule Apiary.SecretLogFilter do
       :binary.match(binary, @path_marks ++ @query_marks) != :nomatch
   end
 
+  # A token's path and query first: a random token contains `qak_` or a code's prefix now
+  # and then, and the prefix's regex, run first, would take part of the token, so the
+  # token's regex would no longer match and the characters before the prefix would stay.
   defp replace(binary) do
-    binary =
-      if :binary.match(binary, @prefix_marks) == :nomatch,
-        do: binary,
-        else: Regex.replace(regex(:prefix, @prefix_source), binary, "[FILTERED]")
-
     binary =
       if :binary.match(binary, @path_marks) == :nomatch,
         do: binary,
         else: Regex.replace(regex(:path, @path_source), binary, &redact_token/4)
 
-    if :binary.match(binary, @query_marks) == :nomatch,
+    binary =
+      if :binary.match(binary, @query_marks) == :nomatch,
+        do: binary,
+        else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
+
+    if :binary.match(binary, @prefix_marks) == :nomatch,
       do: binary,
-      else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
+      else: Regex.replace(regex(:prefix, @prefix_source), binary, "[FILTERED]")
   end
 
   # A regex compiled once and kept in `:persistent_term`: a compiled regex cannot be a
