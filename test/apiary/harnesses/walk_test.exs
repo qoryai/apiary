@@ -368,6 +368,121 @@ defmodule Apiary.Harnesses.WalkTest do
     end
   end
 
+  ## The access level
+
+  describe "the access level" do
+    # The base's stack, declaring `workflows` as `declared` writes them, nil for none.
+    defp declaring(declared) do
+      stack =
+        "modules:\n  - source: {git: \"#{@tools}\", ref: v2}\n" <>
+          if(declared, do: "workflows:\n#{declared}", else: "")
+
+      Map.put(@base_files, {"R_harness", "stacks/web/qory-stack.yaml"}, stack)
+    end
+
+    # The workspace's row for `workflow`, with `@setting`, recording `recorded`.
+    defp recording(ctx, workflow, recorded) do
+      {:ok, stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, workflow}, @setting,
+          access: recorded
+        )
+
+      stack
+    end
+
+    # The level of a walk whose stacks' document applies, with the workspace's row for
+    # `explore` recording `recorded`, and the base's stack declaring `declared`.
+    defp level(ctx, declared, recorded) do
+      recording(ctx, "explore", recorded)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring(declared)
+      )
+
+      assert {:ok, %{origin: :setting, access_level: level}} = Walk.run(ctx.input)
+      level
+    end
+
+    test "declared write, recorded null: write", ctx do
+      assert level(ctx, "  explore: {access: write}\n", nil) == :write
+    end
+
+    test "declared read, recorded write: read", ctx do
+      assert level(ctx, "  explore: {access: read}\n", :write) == :read
+    end
+
+    test "no declaration, recorded write: read", ctx do
+      for declared <- [nil, "  explore: {time_limit: 45m}\n", "  review: {access: write}\n"] do
+        assert level(ctx, declared, :write) == :read, inspect(declared)
+      end
+    end
+
+    test "no declaration, recorded null: read", ctx do
+      for declared <- [nil, "  explore: {time_limit: 45m}\n", "  review: {access: write}\n"] do
+        assert level(ctx, declared, nil) == :read, inspect(declared)
+      end
+    end
+
+    test "declared write, recorded write: write; a value other than write declares read",
+         ctx do
+      assert level(ctx, "  explore: {access: write}\n", :write) == :write
+      assert level(ctx, "  explore: {access: admin}\n", nil) == :read
+    end
+
+    test "where the target's harness file applies: read", ctx do
+      recording(ctx, "explore", nil)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files:
+          "  explore: {access: write}\n"
+          |> declaring()
+          |> Map.put({"R_app", "harness.yaml"}, @file_section)
+      )
+
+      assert {:ok, %{origin: :file, access_level: :read}} = Walk.run(ctx.input)
+    end
+
+    test "a base read from a harness file's section declares nothing: read", ctx do
+      {:ok, _stack} =
+        Stacks.put_stack(
+          ctx.scope,
+          {:workspace, ctx.scope.workspace, "explore"},
+          "extends: {git: \"#{@harness}\", ref: v1}\n"
+        )
+
+      section =
+        "harness:\n  modules:\n    - source: {git: \"#{@tools}\", ref: v2}\n" <>
+          "workflows:\n  explore: {access: write}\n"
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: %{{"R_harness", "harness.yaml"} => section}
+      )
+
+      assert {:ok, %{origin: :setting, access_level: :read}} = Walk.run(ctx.input)
+    end
+
+    test "a run whose workflow no row has any longer gets read", ctx do
+      {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring("  explore: {access: write}\n")
+      )
+
+      recording(ctx, "explore", nil)
+      assert {:ok, %{access_level: :write}} = Walk.run(ctx.input)
+
+      {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace, "explore"})
+      assert {:ok, %{access_level: :read}} = Walk.run(ctx.input)
+
+      recording(ctx, "review", :write)
+      assert {:ok, %{access_level: :read}} = Walk.run(ctx.input)
+    end
+  end
+
   ## The sources
 
   describe "the sources" do
@@ -902,6 +1017,7 @@ defmodule Apiary.Harnesses.WalkTest do
                row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
 
       assert row.target_version == "c-R_app"
+      assert row.access_level == :read
       assert length(row.pins) == 2
 
       grant_id = ctx.grant.id
@@ -919,6 +1035,22 @@ defmodule Apiary.Harnesses.WalkTest do
       calls()
       assert :ok = job(run)
       assert calls() == []
+    end
+
+    test "the job writes the access level the walk resolved", ctx do
+      recording(ctx, "explore", nil)
+      run = queued(ctx)
+      assert Repo.get_by!(RunHarness, dispatch_run_id: run.id).access_level == :read
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring("  explore: {access: write}\n")
+      )
+
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :resolved, access_level: :write} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
     end
 
     test "an adapter that answers no one is tried again, then fails adapter_unavailable", ctx do

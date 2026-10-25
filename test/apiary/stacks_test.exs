@@ -575,6 +575,70 @@ defmodule Apiary.StacksTest do
     end
   end
 
+  describe "the access level" do
+    test "is nil by default", ctx do
+      for {_level, place} <- places(ctx) do
+        assert {:ok, %Stack{access: nil}} = Stacks.put_stack(ctx.scope, place, doc("one"))
+      end
+    end
+
+    test "is recorded at a place with a workflow, and replaced by the next save", ctx do
+      for place <- [{:workspace, ctx.scope.workspace, "explore"}, {:target, ctx.target, "x"}],
+          level <- [:read, :write] do
+        assert {:ok, %Stack{access: ^level}} =
+                 Stacks.put_stack(ctx.scope, place, doc("one"), access: level)
+      end
+
+      place = {:workspace, ctx.scope.workspace, "explore"}
+      assert {:ok, %Stack{access: nil}} = Stacks.put_stack(ctx.scope, place, doc("one"))
+      assert Repo.get_by!(Stack, workflow: "explore").access == nil
+    end
+
+    test "a level at a place without a workflow is refused", ctx do
+      for place <- [{:workspace, ctx.scope.workspace}, {:target, ctx.target}],
+          level <- [:read, :write] do
+        assert {:error, changeset} =
+                 Stacks.put_stack(ctx.scope, place, doc("one"), access: level)
+
+        assert errors_on(changeset)[:access] == ["is recorded only at a place with a workflow"]
+      end
+
+      refute Repo.exists?(Stack)
+    end
+
+    test "a level other than read and write is refused", ctx do
+      place = {:workspace, ctx.scope.workspace, "explore"}
+
+      assert {:error, changeset} =
+               Stacks.put_stack(ctx.scope, place, doc("one"), access: "admin")
+
+      assert errors_on(changeset)[:access] == ["is invalid"]
+    end
+
+    test "the check takes null, or read or write on a row with a workflow", ctx do
+      row = workflow!(ctx)
+      plain = put!(ctx, {:workspace, ctx.scope.workspace}, doc("core"))
+
+      for level <- [:read, :write, nil] do
+        assert {1, _rows} =
+                 Repo.update_all(from(s in Stack, where: s.id == ^row.id), set: [access: level])
+      end
+
+      for {id, level} <- [{plain.id, "write"}, {plain.id, "read"}, {row.id, "admin"}] do
+        assert_raise Postgrex.Error, ~r/stacks_access_check/, fn ->
+          Repo.transact(fn ->
+            Repo.query!("UPDATE stacks SET access = $1 WHERE id = $2", [
+              level,
+              Ecto.UUID.dump!(id)
+            ])
+
+            {:ok, nil}
+          end)
+        end
+      end
+    end
+  end
+
   describe "delete_stack/1" do
     test "removes the stack at a place, and the next level applies", ctx do
       workflow!(ctx)

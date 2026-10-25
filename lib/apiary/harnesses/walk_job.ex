@@ -146,6 +146,7 @@ defmodule Apiary.Harnesses.WalkJob do
     [
       state: :resolved,
       origin: walked.origin,
+      access_level: walked.access_level,
       target_version: walked.target_version,
       document: walked.document,
       stack_id: walked.stack_id,

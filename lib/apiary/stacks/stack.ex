@@ -20,6 +20,10 @@ defmodule Apiary.Stacks.Stack do
   # digits and hyphens. A run's workflow is read from these rows
   # (`Apiary.Stacks.workflow/2`).
   #
+  # `access` is the access level recorded for the runs of the row's workflow, `:read` or
+  # `:write`, nil for none, and only on a row with a workflow. It only lowers the level
+  # the workflow declares in its stack (`Apiary.Harnesses.Walk`).
+  #
   # Changed only through `Apiary.Stacks`.
   @moduledoc false
   use Ecto.Schema
@@ -37,6 +41,7 @@ defmodule Apiary.Stacks.Stack do
   schema "stacks" do
     field :workflow, :string
     field :harness, :string
+    field :access, Ecto.Enum, values: [:read, :write]
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

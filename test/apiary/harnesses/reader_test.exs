@@ -112,6 +112,40 @@ defmodule Apiary.Harnesses.ReaderTest do
     end
   end
 
+  describe "stack/1 and workflow_access/2" do
+    @modules "modules:\n  - source: {path: core}\n"
+
+    test "reads the workflows as written, an empty map for none or for another value" do
+      assert {:ok, %{modules: [%{"source" => %{"path" => "core"}}], workflows: workflows}} =
+               Reader.stack(@modules <> "workflows:\n  explore: {access: write}\n")
+
+      assert workflows == %{"explore" => %{"access" => "write"}}
+
+      for rest <- ["", "workflows:\n", "workflows: [explore]\n", "workflows: explore\n"] do
+        assert {:ok, %{workflows: %{}}} = Reader.stack(@modules <> rest), rest
+      end
+
+      assert Reader.stack("workflows: {}\n") == {:error, :invalid_stack}
+    end
+
+    test "a workflow declares write only with access: write, and read otherwise" do
+      workflows = %{
+        "explore" => %{"access" => "write"},
+        "review" => %{"access" => "read"},
+        "fix" => %{"time_limit" => "45m"},
+        "plan" => %{"access" => "admin"},
+        "test" => "write"
+      }
+
+      assert Reader.workflow_access(workflows, "explore") == :write
+
+      for name <- ~w(review fix plan test absent),
+          do: assert(Reader.workflow_access(workflows, name) == :read, name)
+
+      assert Reader.workflow_access(%{}, "explore") == :read
+    end
+  end
+
   describe "exports/1" do
     test "reads the stacks a root file exports, and where they are" do
       assert {:ok, %{dir: nil, stacks: ["web", "api"]} = root} =

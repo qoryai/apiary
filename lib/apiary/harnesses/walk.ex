@@ -61,6 +61,22 @@ defmodule Apiary.Harnesses.Walk do
   # More than `max_links/0` (5: the 8 credentials of a run, less the model key, the
   # registry credential and the work credential) fails `too_many`.
   #
+  # ## The access level
+  #
+  # What the run may do on its target, `:read` or `:write`, with `:read` < `:write`. The
+  # walk never raises a level. Where the stacks' document applies, it is the lower of
+  # two levels:
+  #
+  #   * declared: `workflows.<workflow>.access` of the base's `qory-stack.yaml`, read for
+  #     the run's workflow (`Apiary.Harnesses.Reader.workflow_access/2`). A value other
+  #     than `write`, an absent key, an absent `workflows` entry, a document with no base,
+  #     and a base read from a harness file's section, which has no `workflows`, declare
+  #     `:read`;
+  #   * recorded: the access level of the stack row with the run's workflow
+  #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
+  #
+  # Where the target's harness file applies, the level is `:read`.
+  #
   # ## Limits
   #
   # At most 60 seconds and 24 calls per walk. A call that times out or reaches no one,
@@ -124,6 +140,7 @@ defmodule Apiary.Harnesses.Walk do
   @typedoc "A walk that resolved."
   @type walked :: %{
           origin: :file | :setting,
+          access_level: :read | :write,
           target_version: String.t() | nil,
           document: map | nil,
           stack_id: Ecto.UUID.t() | nil,
@@ -172,6 +189,8 @@ defmodule Apiary.Harnesses.Walk do
       call_opts: Keyword.get(opts, :call_opts, []),
       hidden: false,
       label: nil,
+      workflow: input.workflow,
+      declared: :read,
       pins: %{},
       links: %{}
     })
@@ -194,6 +213,7 @@ defmodule Apiary.Harnesses.Walk do
 
         walked(%{
           origin: :file,
+          access_level: :read,
           target_version: version,
           document: nil,
           stack_id: nil,
@@ -242,8 +262,12 @@ defmodule Apiary.Harnesses.Walk do
 
         sources(section, input.organisation, nil)
 
+        recorded =
+          Stacks.recorded_access(input.workspace, input.target, input.workflow)
+
         walked(%{
           origin: :setting,
+          access_level: lower(get(:declared), recorded),
           target_version: version,
           document: section,
           stack_id: resolution.stack_id,
@@ -251,6 +275,10 @@ defmodule Apiary.Harnesses.Walk do
         })
     end
   end
+
+  # The lower of the declared level and the recorded one, nil for none recorded.
+  defp lower(:write, recorded) when recorded in [nil, :write], do: :write
+  defp lower(_declared, _recorded), do: :read
 
   # The bytes of `section` as the row stores it, JSON in Postgres' text form, which has
   # more spaces than the YAML it came from may have.
@@ -757,10 +785,16 @@ defmodule Apiary.Harnesses.Walk do
     end
   end
 
+  # The modules of the base's stack file, and the level it declares for the run's
+  # workflow.
   defp stack_modules(location, content) do
-    case Reader.stack_modules(content) do
-      {:ok, modules} -> modules
-      {:error, reason} -> fail(:invalid, location.source, yaml(@stack_file, reason))
+    case Reader.stack(content) do
+      {:ok, %{modules: modules, workflows: workflows}} ->
+        put(:declared, Reader.workflow_access(workflows, get(:workflow)))
+        modules
+
+      {:error, reason} ->
+        fail(:invalid, location.source, yaml(@stack_file, reason))
     end
   end
 

@@ -75,6 +75,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
                target_version: @version,
                workflow: "hello",
                harness_hidden: false,
+               access: :read,
                harness: section
              }
 

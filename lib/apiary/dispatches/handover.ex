@@ -658,9 +658,10 @@ defmodule Apiary.Dispatches.Handover do
   # The harness members of an explore run's documents, from its harness walk, which a
   # claim takes only once resolved (`Apiary.Harnesses.WalkJob`): `target_version`, the
   # version at which the walk read the target's harness file, while the run has its
-  # target; `workflow` and `harness_hidden`; and `harness`, the stacks' document, for a
-  # walk whose document came from them (`:setting`). nil for a run with no workflow, and
-  # for a run with no walk, queued before walks were kept.
+  # target; `workflow` and `harness_hidden`; `access`, the level the walk resolved; and
+  # `harness`, the stacks' document, for a walk whose document came from them
+  # (`:setting`). nil for a run with no workflow, and for a run with no walk, queued
+  # before walks were kept: such a run reads (`ApiaryWeb.Contract.DispatchAnswer.access/1`).
   defp harness(%DispatchRun{id: id}, target) do
     case Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id) do
       %RunHarness{state: :resolved, origin: origin} = walk when origin in [:file, :setting] ->
@@ -668,6 +669,7 @@ defmodule Apiary.Dispatches.Handover do
           target_version: if(target, do: walk.target_version),
           workflow: walk.workflow,
           harness_hidden: walk.harness_hidden,
+          access: walk.access_level,
           harness: if(origin == :setting, do: walk.document)
         }
 
