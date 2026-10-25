@@ -30,7 +30,7 @@ defmodule Apiary.Repo.Migrations.KeepTheChannelOfAConnection do
     DO $$
     BEGIN
       IF EXISTS (SELECT 1 FROM connections WHERE channel = 'stack') THEN
-        RAISE EXCEPTION 'Delete the connections of the channel stack, then roll back again: the key before this migration has no channel'
+        RAISE EXCEPTION 'Delete the connections of the channel stack, then roll back again: the key before this migration has no channel, so a stack row and a session row of one destination would break it'
           USING ERRCODE = 'check_violation';
       END IF;
     END
