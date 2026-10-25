@@ -4,7 +4,8 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   # the dispatch and the registered run in the run's workspace, counts its limit across
   # them, and leaves a run held for its build waiting until its prebuild, which it queues
   # in the run's workspace, made the image. Its release is in the trail of the run's
-  # organisation. Then the claim's query on 200 workspaces. Not async: the instance has one pool and one gateway in use.
+  # organisation. Then the gateway a claim with no workspace goes through, and the claim's
+  # query on 200 workspaces. Not async: the instance has one pool and one gateway in use.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -266,8 +267,32 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     end
   end
 
+  describe "the gateway of a claim with no workspace (`Apiary.Dispatches.Handover.serves?/2`)" do
+    alias Apiary.Dispatches.Handover
+
+    test "is the instance's gateway in use, and no other", ctx do
+      assert Handover.serves?(ctx.gateway, nil)
+      refute Handover.serves?(%{ctx.gateway | deleted_at: DateTime.utc_now()}, nil)
+
+      theirs = gateway_fixture(ctx.a)
+      refute Handover.serves?(theirs, nil)
+      refute Handover.serves?(organisation_gateway_fixture(ctx.b), nil)
+      assert Handover.serves?(theirs, ctx.a.workspace)
+    end
+  end
+
   describe "the claim's query" do
-    test "reads the waiting runs of 200 workspaces once", ctx do
+    # Postgres plans the waiting query from its statistics. Without them, as on tables
+    # filled inside a test's transaction, it may read an organisation's workspaces once
+    # for each waiting run. With them, as autovacuum keeps them in production, it reads
+    # each table once, or probes `dispatch_runs_waiting_index` once per workspace; both
+    # are plans it may choose, and each reads every run of the queue at most once. The
+    # test gives Postgres the statistics, then holds what the claim costs: each run of the
+    # queue read at most once, at most 5 rows read over the whole plan for each run and
+    # each workspace, and one query for the queue, whatever the number of workspaces.
+    test "reads each run of the queue of 200 workspaces at most once, in one query", ctx do
+      queued!(ctx.b)
+      few = claim_queries(ctx.key)
       organisation = ctx.a.organisation
 
       for n <- 1..199 do
@@ -277,20 +302,73 @@ defmodule Apiary.Dispatches.InstancePoolTest do
         queued!(scope)
       end
 
-      plan = Repo.explain(:all, Dispatches.waiting_query(ctx.key), analyze: true, format: :map)
-      scans = scans(plan, "dispatch_runs")
+      runs = Repo.aggregate(DispatchRun, :count)
+      workspaces = Repo.aggregate(Apiary.Organisations.Workspace, :count)
 
+      Repo.query!(
+        "ANALYZE dispatch_runs, workspaces, organisations, nodes, source_collections, " <>
+          "work_items, environments"
+      )
+
+      [%{"Plan" => plan}] =
+        Repo.explain(:all, Dispatches.waiting_query(ctx.key), analyze: true, format: :map)
+
+      scans = scans(plan, "dispatch_runs")
       assert scans != []
-      assert Enum.all?(scans, &(&1["Actual Loops"] == 1)), inspect(scans)
-      assert {:ok, %{run: %{}}} = claim(ctx.key)
+      assert rows_read(scans) <= runs, inspect(scans)
+      assert rows_read(nodes(plan)) <= 5 * (runs + workspaces)
+
+      many = claim_queries(ctx.key)
+      queue = Enum.filter(many, &(&1 =~ "SKIP LOCKED" and &1 =~ ~s|FROM "dispatch_runs"|))
+      assert length(queue) == 1
+      assert length(many) == length(few)
     end
   end
 
-  # The plan's nodes that read `table`.
-  defp scans([%{"Plan" => plan} | _rest], table), do: scans(plan, table)
+  # The statements a claim by `key` runs, which claims a run.
+  defp claim_queries(key) do
+    handler = "claim-queries-#{System.unique_integer([:positive])}"
+    parent = self()
 
-  defp scans(%{} = node, table) do
-    found = if node["Relation Name"] == table, do: [node], else: []
-    found ++ Enum.flat_map(Map.get(node, "Plans", []), &scans(&1, table))
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn _event, _measurements, meta, _config ->
+        if self() == parent, do: send(parent, {:claim_query, meta.query})
+      end,
+      nil
+    )
+
+    try do
+      assert {:ok, %{run: %{}}} = claim(key)
+    after
+      :telemetry.detach(handler)
+    end
+
+    collect_queries([])
   end
+
+  defp collect_queries(acc) do
+    receive do
+      {:claim_query, query} -> collect_queries([query | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
+  # The rows the plan's nodes read, over every loop: those returned and those a filter
+  # removed. EXPLAIN gives both per loop; a node never run has 0 loops.
+  defp rows_read(nodes) do
+    nodes
+    |> Enum.map(fn node ->
+      (node["Actual Rows"] + Map.get(node, "Rows Removed by Filter", 0)) * node["Actual Loops"]
+    end)
+    |> Enum.sum()
+  end
+
+  # The plan's nodes that read `table`.
+  defp scans(node, table), do: Enum.filter(nodes(node), &(&1["Relation Name"] == table))
+
+  # The plan's nodes, `node` and every node under it.
+  defp nodes(%{} = node), do: [node | Enum.flat_map(Map.get(node, "Plans", []), &nodes/1)]
 end
