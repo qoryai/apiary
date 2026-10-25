@@ -435,7 +435,7 @@ defmodule Apiary.SecretLogFilterTest do
     end
 
     test "is kept out of the production line of a LiveView that crashed", %{token: token} do
-      # A crashed LiveView's report: its join payload, the url among it.
+      # A crash report of another process: a join's payload, the url among it.
       report = %{
         label: {:gen_server, :terminate},
         last_message: %{
@@ -541,7 +541,7 @@ defmodule Apiary.SecretLogFilterTest do
         assert scrubbed.query_string == "invitation=:token"
         refute_token_in(inspect(scrubbed, limit: :infinity, printable_limit: :infinity), token)
 
-        # A crashed LiveView's report: its join payload, the url among it.
+        # A crash report of another process: a join's payload, the url among it.
         report = %{
           label: {:gen_server, :terminate},
           last_message: %{
@@ -556,6 +556,58 @@ defmodule Apiary.SecretLogFilterTest do
                }
 
         refute_token_in(inspect(scrubbed), token)
+      end
+    end
+  end
+
+  describe "a secret glued to a token" do
+    # A token of 43 base64url characters without a prefix in it.
+    @plain_token "Vb7Kp2Lm9Qx4Rt6Wz8Ny3Hc5Jd1Fg0Se7Ua2Ik4Ol6P"
+
+    test "before a route's path: the secret and the token are both replaced" do
+      t = @plain_token
+
+      for {text, redacted} <- [
+            {"qak_xxx/users/password/#{t}", "[FILTERED]/users/password/:token"},
+            {"GET /qak_xxx/users/password/#{t}", "GET /[FILTERED]/users/password/:token"},
+            {"qec_x/setup/#{t}", "[FILTERED]/setup/:code"},
+            {"qecn_#{@code_body}/invitations/#{t}/continue",
+             "[FILTERED]/invitations/:token/continue"}
+          ] do
+        filtered = filtered_text(text)
+        assert filtered == redacted
+        refute_token_in(filtered, t)
+        refute filtered =~ @code_body
+      end
+    end
+
+    test "after a query's token: the token and the secret are both replaced" do
+      t = @plain_token
+
+      for {text, redacted} <- [
+            {"GET /users/register?invitation=#{t}qak_x&lang=en",
+             "GET /users/register?invitation=:token[FILTERED]&lang=en"},
+            {"GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D#{t}qecn%5F" <>
+               @code_body,
+             "GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D:token[FILTERED]"},
+            # A token followed by another URL-encoded parameter is a token still.
+            {"GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D#{t}%26lang%3Den",
+             "GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D:token%26lang%3Den"}
+          ] do
+        filtered = filtered_text(text)
+        assert filtered == redacted
+        refute_token_in(filtered, t)
+        refute filtered =~ @code_body
+      end
+    end
+
+    test "as the end of a query's value of 43 characters before a URL-encoded `_`: " <>
+           "the code is replaced" do
+      for {before, prefix} <- [{39, "qecn%5F"}, {39, "qecn%5f"}, {40, "qec%5F"}, {40, "qec%5f"}] do
+        filler = String.duplicate("A", before)
+        filtered = filtered_text("GET /users/register?invitation=#{filler}#{prefix}#{@code_body}")
+        assert filtered == "GET /users/register?invitation=#{filler}[FILTERED]"
+        refute filtered =~ @code_body
       end
     end
   end

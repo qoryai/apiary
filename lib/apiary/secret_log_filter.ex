@@ -67,10 +67,11 @@ defmodule Apiary.SecretLogFilter do
   return path inside another parameter). A value of another shape, an invitation's id
   among them (`invitation=<uuid>` in a line the app writes), is left as it is.
 
-  A token, in a path or in a query, is replaced before a secret's prefix is looked for. A
+  A token, in a path or in a query, is replaced before a secret's prefix is replaced. A
   token that contains `qak_` or a code's prefix, as a random one now and then does, so
   becomes `:token` whole, and a secret or a code in a route's token segment becomes
-  `:token` too.
+  `:token` too. When a secret's prefix is replaced, the tokens are looked for again, so a
+  token whose path or value a secret is glued to becomes `:token` as well.
 
   **A page's lines at debug.** The lines a LiveView logs as it mounts, as it handles the
   parameters of its URL and as it handles an event (`MOUNT`, `HANDLE PARAMS` and
@@ -242,9 +243,10 @@ defmodule Apiary.SecretLogFilter do
 
   # An invitation's token as a query parameter's value, bare or URL-encoded: what
   # `:binary.match/2` looks for, and the regex that keeps the parameter's name and
-  # replaces a token's 43 base64url characters.
+  # replaces a token's 43 base64url characters. A `%5F` after them is a `_`, a token's
+  # character, so the value is longer than a token.
   @query_marks ["invitation=", "invitation%3D", "invitation%3d"]
-  @query_source "((?:^|[?&;]|%3[Ff]|%26)invitation(?:=|%3[Dd]))[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])"
+  @query_source "((?:^|[?&;]|%3[Ff]|%26)invitation(?:=|%3[Dd]))[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-]|%5[Ff])"
 
   @doc """
   token_routes/0 is the routes that carry a bearer token, or the instance's set-up code,
@@ -775,23 +777,33 @@ defmodule Apiary.SecretLogFilter do
       :binary.match(binary, @path_marks ++ @query_marks) != :nomatch
   end
 
-  # A token's path and query first: a random token contains `qak_` or a code's prefix now
-  # and then, and the prefix's regex, run first, would take part of the token, so the
-  # token's regex would no longer match and the characters before the prefix would stay.
+  # Tokens first: a random token contains `qak_` or a code's prefix now and then, and with
+  # the prefix replaced first, a query's token kept its characters before the prefix (a
+  # path's token became `:token[FILTERED]`, or `[FILTERED]` when it started with the
+  # prefix). Tokens again after a replaced prefix: a secret glued to a token's path or
+  # query stops the token's regex from matching until the secret is replaced.
   defp replace(binary) do
+    binary = replace_tokens(binary)
+
+    if :binary.match(binary, @prefix_marks) == :nomatch do
+      binary
+    else
+      filtered = Regex.replace(regex(:prefix, @prefix_source), binary, "[FILTERED]")
+      if filtered == binary, do: binary, else: replace_tokens(filtered)
+    end
+  end
+
+  # A token's path, then an invitation's token in a query. `:token`, `:code` and
+  # `[FILTERED]` start with a character outside a token's, so a second run keeps them.
+  defp replace_tokens(binary) do
     binary =
       if :binary.match(binary, @path_marks) == :nomatch,
         do: binary,
         else: Regex.replace(regex(:path, @path_source), binary, &redact_token/4)
 
-    binary =
-      if :binary.match(binary, @query_marks) == :nomatch,
-        do: binary,
-        else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
-
-    if :binary.match(binary, @prefix_marks) == :nomatch,
+    if :binary.match(binary, @query_marks) == :nomatch,
       do: binary,
-      else: Regex.replace(regex(:prefix, @prefix_source), binary, "[FILTERED]")
+      else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
   end
 
   # A regex compiled once and kept in `:persistent_term`: a compiled regex cannot be a
