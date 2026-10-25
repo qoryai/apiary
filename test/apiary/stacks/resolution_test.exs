@@ -6,6 +6,7 @@ defmodule Apiary.Stacks.ResolutionTest do
 
   @organisation "00000000-0000-0000-0000-0000000000d1"
   @other_organisation "00000000-0000-0000-0000-0000000000d2"
+  @instance "00000000-0000-0000-0000-0000000000d3"
   @workspace "00000000-0000-0000-0000-0000000000a1"
   @other_workspace "00000000-0000-0000-0000-0000000000a2"
   @target "00000000-0000-0000-0000-0000000000b1"
@@ -15,7 +16,7 @@ defmodule Apiary.Stacks.ResolutionTest do
   defp input(stacks, opts \\ []) do
     %{
       stacks: stacks,
-      organisation_id: @organisation,
+      organisation_id: Keyword.get(opts, :organisation_id, @organisation),
       workspace_id: @workspace,
       target_id: Keyword.get(opts, :target_id, @target),
       workflow: "explore",
@@ -146,6 +147,16 @@ defmodule Apiary.Stacks.ResolutionTest do
     test "is true for a document whose owner is deleted" do
       stack = at(:workspace, harness: @document, owner_organisation_id: nil)
       assert resolved(input([stack])).harness_hidden
+    end
+
+    test "on an instance of several organisations, a document the instance's organisation owns is hidden from the others' runs alone" do
+      # The run's organisation is @organisation, and the instance's is @instance.
+      instance_owned = at(:workspace, harness: @document, owner_organisation_id: @instance)
+      assert resolved(input([instance_owned])).harness_hidden
+
+      # A run of the instance's organisation, at a row of its own workspace.
+      in_instance = %{instance_owned | organisation_id: @instance}
+      refute resolved(input([in_instance], organisation_id: @instance)).harness_hidden
     end
 
     test "is true for an operated organisation, whoever owns the document" do

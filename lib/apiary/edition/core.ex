@@ -78,6 +78,12 @@ defmodule Apiary.Edition.Core do
     end
   end
 
+  # The core has no operator: a run uses another organisation's links for its harness only
+  # under an instance assignment.
+  @impl true
+  def harness_source_allowed?(_run_organisation_id, _owner_organisation_id, _source),
+    do: false
+
   @impl true
   def client_reads(_scope, _kind, _run, subject), do: subject
 

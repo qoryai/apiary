@@ -185,6 +185,20 @@ defmodule Apiary.Edition do
   @doc false
   @callback harness_owner(Scope.t()) :: Ecto.UUID.t() | nil
 
+  # With the `factory` feature, which the documentation leaves out: whether a run of the
+  # organisation `run_organisation_id` may use a link of the organisation
+  # `owner_organisation_id` for `source`, a harness source as it is in a harness document
+  # (`Apiary.Harnesses.allowed?/3`). Asked only after the core's checks refuse it: the
+  # link is not the run's organisation's, and no instance assignment covers the source
+  # for the run's organisation. Asked without a lock. The core has no operator and
+  # answers false.
+  @doc false
+  @callback harness_source_allowed?(
+              run_organisation_id :: Ecto.UUID.t(),
+              owner_organisation_id :: Ecto.UUID.t(),
+              source :: Apiary.Harnesses.source()
+            ) :: boolean
+
   # With the `factory` feature, which the documentation leaves out: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
   # the edition, so that a client of an operator is not shown the operator's model
@@ -626,6 +640,7 @@ defmodule Apiary.Edition do
     operator_chain_writer?: 1,
     operated?: 1,
     harness_owner: 1,
+    harness_source_allowed?: 3,
     client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,

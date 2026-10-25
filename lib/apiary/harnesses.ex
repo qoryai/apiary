@@ -2,7 +2,28 @@ defmodule Apiary.Harnesses do
   # The instance's assignments of harness sources (`Apiary.Harnesses.Assignment`): each
   # lets the runs of one organisation, or of every organisation, use the instance's links
   # for one harness source. The instance's organisation owns every assignment the core
-  # keeps.
+  # keeps. The module also has the rule that decides which links' access tokens a run may
+  # use for its harness (`allowed?/3`).
+  #
+  # ## The rule
+  #
+  # A link is one installation of an adapter's app on one external account, a grant of an
+  # organisation's connection (`Apiary.Adapters.Grant`); its owner is the organisation of
+  # that connection. A run of an organisation may use a link for a harness source, in this
+  # order:
+  #
+  #   1. when the link's owner is the run's organisation;
+  #   2. when the owner is the instance's organisation
+  #      (`Apiary.Edition.instance_organisation_id/0`), and an instance assignment of the
+  #      run's organisation or of every organisation covers the source;
+  #   3. otherwise, when the edition allows it
+  #      (`Apiary.Edition.harness_source_allowed?/3`). The core allows nothing more.
+  #
+  # An assignment covers a source with the same `git` and the same `ref`, compared as
+  # texts. An assignment with a `path`, a `stack` or a `module` covers only the source
+  # with that key and value, and no other key of the three. An assignment of a root, with
+  # none of the three, covers every source of that `git` and `ref`: the root itself, and
+  # each folder, export and module in it. A source of another `ref` is never covered.
   #
   # ## Writes
   #
@@ -29,7 +50,7 @@ defmodule Apiary.Harnesses do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Adapters, Audit, Features, Repo}
+  alias Apiary.{Access, Adapters, Audit, Edition, Features, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Harnesses.Assignment
   alias Apiary.Organisations.Organisation
@@ -37,11 +58,62 @@ defmodule Apiary.Harnesses do
 
   @source_keys ~w(git ref path stack module)
 
+  # The keys that narrow a source to a part of its remote source.
+  @narrowing ~w(path stack module)
+
   @typedoc """
   A harness source as it is in a harness document, with text keys: `git` and `ref`, and at
   most one of `path`, `stack` and `module`.
   """
   @type source :: %{required(String.t()) => String.t()}
+
+  ## The rule
+
+  @doc false
+  # allowed?/3 says whether a run of the organisation `run_organisation_id` may use a link
+  # whose owner is the organisation `owner_organisation_id` for the harness source
+  # `source`, by the rule of the moduledoc. Reads the assignments without a lock.
+  @spec allowed?(Ecto.UUID.t(), Ecto.UUID.t(), source) :: boolean
+  def allowed?(run_organisation_id, owner_organisation_id, source)
+      when is_binary(run_organisation_id) and is_binary(owner_organisation_id) and
+             is_map(source) do
+    cond do
+      owner_organisation_id == run_organisation_id ->
+        true
+
+      owner_organisation_id == Edition.instance_organisation_id() and
+          assigned?(run_organisation_id, source) ->
+        true
+
+      true ->
+        Edition.harness_source_allowed?(run_organisation_id, owner_organisation_id, source)
+    end
+  end
+
+  # Whether an instance assignment of the run's organisation, or of every organisation,
+  # covers `source`.
+  defp assigned?(run_organisation_id, %{"git" => git, "ref" => ref} = source)
+       when is_binary(git) and is_binary(ref) do
+    Repo.all(
+      from a in Assignment,
+        where: a.every_organisation or a.organisation_id == ^run_organisation_id,
+        where: fragment("? ->> 'git'", a.source) == ^git,
+        where: fragment("? ->> 'ref'", a.source) == ^ref,
+        select: a.source
+    )
+    |> Enum.any?(&covers?(&1, source))
+  end
+
+  defp assigned?(_run_organisation_id, _source), do: false
+
+  # An assignment of a root covers every source of its `git` and `ref`; any other covers
+  # the source with the same narrowing key and value alone.
+  defp covers?(assigned, source) do
+    case Map.take(assigned, @narrowing) do
+      root when map_size(root) == 0 -> true
+      narrowing -> Map.take(source, @narrowing) == narrowing
+    end
+  end
 
   ## Writes
 

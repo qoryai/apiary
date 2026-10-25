@@ -71,4 +71,20 @@ defmodule Apiary.EditionTest do
       assert Apiary.Edition.harness_owner(member) == nil
     end
   end
+
+  describe "harness_source_allowed?/3" do
+    @source %{"git" => "https://code.example.com/team/stacks", "ref" => "v1"}
+
+    test "the core answers false", %{scope: scope} do
+      owner = Ecto.UUID.generate()
+      refute Apiary.Edition.Core.harness_source_allowed?(scope.organisation.id, owner, @source)
+      refute Apiary.Edition.harness_source_allowed?(scope.organisation.id, owner, @source)
+    end
+
+    test "a test's stub answers true", %{scope: scope} do
+      owner = Ecto.UUID.generate()
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HarnessSourceAllowed)
+      assert Apiary.Edition.harness_source_allowed?(scope.organisation.id, owner, @source)
+    end
+  end
 end

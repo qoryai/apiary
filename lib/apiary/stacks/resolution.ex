@@ -18,7 +18,10 @@ defmodule Apiary.Stacks.Resolution do
   #
   # **Hidden.** `harness_hidden` is true when the run's organisation is operated
   # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation. A
-  # nil owner is never the run's organisation.
+  # document the instance's organisation owns, as one an instance admin saves, is the run's
+  # organisation's only for a run of the instance's organisation: a run of any other
+  # organisation hides it, whether the instance has one organisation or several. A nil
+  # owner is never the run's organisation.
   @moduledoc false
 
   alias Apiary.Stacks.Stack
