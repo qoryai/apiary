@@ -7,7 +7,8 @@ defmodule ApiaryWeb.Endpoint do
   #
   # A browser accepts a `__Host-` cookie only with Secure, Path=/ and no Domain, so a page
   # on an adapter's host, `<adapter>.<instance name>`, cannot set this cookie for the
-  # instance's host. Chrome and Firefox also accept a Secure cookie on http://localhost.
+  # instance's host. Chrome and Firefox also accept a Secure cookie on http://localhost;
+  # Safari accepts one only over https.
   @session_options [
     store: :cookie,
     key: "__Host-_apiary_key",
