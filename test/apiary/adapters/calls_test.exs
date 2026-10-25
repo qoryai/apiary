@@ -548,15 +548,15 @@ defmodule Apiary.Adapters.CallsTest do
       {conn.request_path, Jason.decode!(body)}
     end
 
-    test "run_credential/3 sends the grant, the resources, the access and the purpose, and keeps the token out of inspect",
+    test "run_credential/3 sends the connection, the resources, the access and the purpose, and keeps the token out of inspect",
          %{adapter: adapter, seed: seed} do
       answer = compact("run-credential-answer/write-without-expiry.json")
       answering(answer, seed)
 
       assert {:ok, %RunCredential{expires_at: nil, document: document} = credential} =
                Calls.run_credential(adapter, %{
-                 grant_ref: "G_1",
-                 resources: ["R_1001"],
+                 connection_id: "ac_0123456789abcdef",
+                 resources: ["C_2001"],
                  access: :write,
                  purpose: :work
                })
@@ -566,12 +566,14 @@ defmodule Apiary.Adapters.CallsTest do
 
       assert {"/calls/run-credential",
               %{
-                "grant_ref" => "G_1",
-                "resources" => ["R_1001"],
+                "connection_id" => "ac_0123456789abcdef",
+                "resources" => ["C_2001"],
                 "access" => "write",
                 "purpose" => "work"
-              }} =
+              } = body} =
                sent()
+
+      refute Map.has_key?(body, "grant_ref")
     end
 
     test "run_credential/3 reads expires_at; one not later than now is :invalid_answer",
@@ -652,9 +654,17 @@ defmodule Apiary.Adapters.CallsTest do
              end, "a call to read outside its schema"},
             {fn ->
                Calls.run_credential(adapter, %{
-                 grant_ref: "G_1",
-                 resources: ["R_1001"],
+                 connection_id: "ac_0123456789abcdef",
+                 resources: ["C_2001"],
                  access: :admin,
+                 purpose: :work
+               })
+             end, "a call to run-credential outside its schema"},
+            {fn ->
+               Calls.run_credential(adapter, %{
+                 grant_ref: "G_1",
+                 resources: ["C_2001"],
+                 access: :write,
                  purpose: :work
                })
              end, "a call to run-credential outside its schema"}

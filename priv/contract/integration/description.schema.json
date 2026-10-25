@@ -114,7 +114,7 @@
               "items": {"$ref": "definitions.schema.json#/$defs/secret_name"}
             },
             "credential_scope": {
-              "description": "How far one credential that the adapter answers to the call with the path run-credential reaches (run-credential.schema.json): resource, it covers only the resources the call names; grant, it covers every resource of the grant, so the control plane may use one credential for every resource of that grant. Absent, the control plane takes resource.",
+              "description": "How far one credential that the adapter answers to the call with the path run-credential reaches (run-credential.schema.json): resource, it covers only the resources the call names; grant, it covers every resource of the grant, so the control plane may use one credential from a call whose purpose is harness for every resource of that grant. The control plane uses a credential from a call whose purpose is work only for the run it was minted for, whatever the credential_scope. Absent, the control plane takes resource.",
               "type": "string",
               "enum": ["resource", "grant"]
             },

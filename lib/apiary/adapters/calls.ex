@@ -123,21 +123,26 @@ defmodule Apiary.Adapters.Calls do
   end
 
   @doc false
-  # run_credential/3 asks `adapter` for a credential for one run (`run-credential`):
-  # under the grant `grant_ref`, for `resources`, with `access` (`"read"` or `"write"`)
-  # and `purpose` (`"harness"` or `"work"`). `{:ok, %RunCredential{}}`, whose `inspect`
-  # shows no token, or `{:error, %CallFailure{}}`.
+  # run_credential/3 asks `adapter` for a credential for one run (`run-credential`), for
+  # `resources`, with `access` (`"read"` or `"write"`) and `purpose`: `"harness"`, under
+  # the grant `grant_ref`; or `"work"`, under a grant of the connection `connection_id`
+  # (the connection's public id), whose one resource is the ref of the target's
+  # collection. `{:ok, %RunCredential{}}`, whose `inspect` shows no token, or
+  # `{:error, %CallFailure{}}`.
   @spec run_credential(Node.t(), map, keyword) ::
           {:ok, RunCredential.t()} | {:error, CallFailure.t()}
   def run_credential(adapter, request, opts \\ []) do
-    %{grant_ref: grant_ref, resources: resources, access: access, purpose: purpose} = request
+    %{resources: resources, access: access, purpose: purpose} = request
 
-    members = [
-      {"grant_ref", grant_ref},
-      {"resources", resources},
-      {"access", to_string(access)},
-      {"purpose", to_string(purpose)}
-    ]
+    members =
+      [
+        {"grant_ref", request[:grant_ref]},
+        {"connection_id", request[:connection_id]},
+        {"resources", resources},
+        {"access", to_string(access)},
+        {"purpose", to_string(purpose)}
+      ]
+      |> Enum.reject(fn {_name, value} -> is_nil(value) end)
 
     with {:ok, credential} <- typed(adapter, "run-credential", members, opts) do
       {:ok, RunCredential.new(credential)}

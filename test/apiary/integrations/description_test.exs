@@ -264,10 +264,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "c3dcff533931e86b70ea299e1224bedb31814a21"
+  @integrations_ref "40854475f9facdc058ecec71e11e1aa39e6dee3d"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "b0c2570fc572fadf17415c0bca9b370fe39425a2ca912214f669893f5088707a",
+      "2b43639680a937df1448640dbe35202fd157961c500a36f37a540aab877fdaf0",
     "priv/contract/integration/definitions.schema.json" =>
       "c9607225effb2b67fa03a5eb1f28fe93d41a3f338f7db3e100237ecae5d8d245",
     "priv/contract/integration/descriptions/anthropic.json" =>
@@ -285,7 +285,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
       "c9607225effb2b67fa03a5eb1f28fe93d41a3f338f7db3e100237ecae5d8d245",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "8ac7a0e9e59342b330804c1191953cd2760a8ae4f23854b3d0a207190684409d"
+      "75e2c0ca3e083c8e869e6464ccc34f4741b5b161d712cf2853c463601a6e09aa"
   }
 
   @root Path.expand("../../..", __DIR__)
