@@ -1,7 +1,8 @@
 defmodule Apiary.GatewaysInstanceTest do
   # The instance level of the gateways (`Apiary.Gateways`): the instance's gateway, with no
   # organisation and no workspace, comes last among a workspace's levels, may serve every
-  # workspace, and is the default where no other level has one; the instance's pool's
+  # workspace, and is the default where no other level has one, while a workspace's or an
+  # organisation's first gateway still becomes its default; the instance's pool's
   # choice leads to it. Then what the keys of the instance's pool and gateway reach
   # (`Apiary.Access`). Not async: the instance has one pool and one gateway in use, which
   # two tests at once would make in turn.
@@ -64,16 +65,40 @@ defmodule Apiary.GatewaysInstanceTest do
       assert Enum.map(Gateways.gateway_choices(ctx.scope), & &1.id) == [own.id, ctx.gateway.id]
     end
 
-    test "a gateway made after it is not a default, so no node moves", ctx do
+    test "a workspace's first gateway becomes its default, and its nodes on the default move to it",
+         ctx do
       node = node_fixture(ctx.scope)
       assert node.gateway_choice == :default
+      assert Gateways.chosen(node).id == ctx.gateway.id
 
       gateway = gateway_fixture(ctx.scope)
-      refute gateway.default_gateway
-      organisation_gateway = organisation_gateway_fixture(ctx.scope)
-      refute organisation_gateway.default_gateway
+      assert gateway.default_gateway
+      assert Gateways.chosen(node).id == gateway.id
+      assert Gateways.default_gateway_for(ctx.scope.workspace).id == gateway.id
 
-      assert Gateways.chosen(node).id == ctx.gateway.id
+      # A second gateway of the workspace is no default: the first is.
+      refute gateway_fixture(ctx.scope).default_gateway
+      assert Gateways.default_gateway_for(ctx.other.workspace).id == ctx.gateway.id
+    end
+
+    test "an organisation's first gateway becomes its default", ctx do
+      organisation_gateway = organisation_gateway_fixture(ctx.scope)
+      assert organisation_gateway.default_gateway
+
+      assert Gateways.default_gateway_for(ctx.scope.workspace).id == organisation_gateway.id
+      assert Gateways.default_gateway_for(ctx.other.workspace).id == ctx.gateway.id
+    end
+
+    test "after a workspace's default is deleted, the oldest gateway left there becomes its default",
+         ctx do
+      first = gateway_fixture(ctx.scope)
+      second = gateway_fixture(ctx.scope)
+      assert first.default_gateway
+      refute second.default_gateway
+
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, first)
+      assert Repo.reload!(second).default_gateway
+      assert Gateways.default_gateway_for(ctx.scope.workspace).id == second.id
     end
 
     test "nodes on the default that reach no other default hold it", ctx do
