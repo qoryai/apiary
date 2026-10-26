@@ -6,7 +6,8 @@
       "address": "https://code.example.com/acme/harness",
       "grant_ref": "G_1",
       "resource_ref": "R_1001",
-      "public": true
+      "public": true,
+      "public_ref": "example.com/team/harness"
     }
   ]
 }

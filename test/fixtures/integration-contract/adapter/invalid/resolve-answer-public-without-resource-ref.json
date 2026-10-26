@@ -4,7 +4,8 @@
   "results": [
     {
       "address": "https://code.example.com/acme/public-stack",
-      "public": true
+      "public": true,
+      "public_ref": "example.com/team/project"
     }
   ]
 }
