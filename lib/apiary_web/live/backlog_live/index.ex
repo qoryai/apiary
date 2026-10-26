@@ -47,8 +47,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # connects the organisation; none of them has listed its collections yet; no collection
   # of theirs is assigned to the workspace; those assigned have no items; the Backlog is
   # off for every one of them with items; or one is linked and no ticket has arrived yet.
-  # The first and the third are the same state, no work source, with Connect a work
-  # source to the workspace set-up (`/<org>/set-up`).
+  # The first, no work source, has Connect a work source to the workspace set-up
+  # (`/<org>/set-up`).
   #
   # **The ticket.** A row's title puts the ticket's id in the address (`ticket`, `tk_…`),
   # and the ticket opens over the list (`ApiaryWeb.BacklogComponents.ticket/1`, frame
@@ -811,7 +811,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
     cond do
       facts.integrations == [] -> :no_source
       not Enum.any?(facts.sources, & &1.listed?) -> :unlisted
-      facts.assigned_collections == 0 -> :no_source
+      facts.assigned_collections == 0 -> :unassigned
       facts.linked_collections == 0 and facts.switched_off == 0 -> :itemless
       facts.linked_collections == 0 -> :off
       true -> :waiting

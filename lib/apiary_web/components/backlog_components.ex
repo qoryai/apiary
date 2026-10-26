@@ -791,12 +791,14 @@ defmodule ApiaryWeb.BacklogComponents do
   `Apiary.Sources.Backlog.backlog_facts/1` gives, a plain map. `state` is the page's
   reading of the facts, the first that holds:
 
-    * `:no_source` - no collection of a connected connection is assigned to the
-      workspace, and the integrations that connect the organisation, if any, have
-      listed theirs: the line that says so, and Connect a work source, to the workspace
-      set-up (`set_up_path`), to whoever may install an integration;
-    * `:unlisted` - none of the integrations the organisation is connected through has
-      listed its collections yet: a box for each, with Open to whoever may install one;
+    * `:no_source` - no integration that sends tickets connects the organisation: the
+      line that says so, and Connect a work source, to the workspace set-up
+      (`set_up_path`), to whoever may install an integration;
+    * `:unlisted` - none of those integrations has listed its collections yet: a box for
+      each, with Open to whoever may install one;
+    * `:unassigned` - no collection is assigned to the workspace: with one integration,
+      how many it lists and Assign; with several, a row for each with its count and
+      Assign;
     * `:itemless` - the collections assigned have no items at their source, and the cards;
     * `:off` - the Backlog is off for each assigned collection with items: the cards,
       then Turn the Backlog on;
@@ -804,7 +806,7 @@ defmodule ApiaryWeb.BacklogComponents do
       linked, each with its state, then Change.
 
   Whoever may not take a state's action reads who may, and whom to ask (`facts.ask`).
-  Install, Open, Turn the Backlog on and Change lead to the integration's page in
+  Install, Open, Assign, Turn the Backlog on and Change lead to the integration's page in
   Organisation settings › Integrations (`integration_path`, given its adapter's public
   id), or to that list (`integrations_path`) where several integrations are concerned.
   """
@@ -812,7 +814,7 @@ defmodule ApiaryWeb.BacklogComponents do
 
   attr :state, :atom,
     required: true,
-    values: [:no_source, :unlisted, :itemless, :off, :waiting]
+    values: [:no_source, :unlisted, :unassigned, :itemless, :off, :waiting]
 
   attr :facts, :map, required: true, doc: "the facts, as above"
   attr :organisation, :string, required: true, doc: "the organisation's name"
@@ -884,6 +886,114 @@ defmodule ApiaryWeb.BacklogComponents do
           >
             {gettext("Open %{integration}", integration: source.name)}
           </.action_with_caption>
+        </:actions>
+      </.empty_state>
+    </div>
+    """
+  end
+
+  def empty_backlog(%{state: :unassigned} = assigns) do
+    sources = assigns.facts.sources
+    nouns = Enum.map(sources, & &1.collection_noun)
+
+    assigns =
+      assign(assigns,
+        sources: sources,
+        collections: SourceComponents.collections(nouns, :and),
+        title:
+          gettext("No %{collection} is assigned to %{workspace}",
+            collection: SourceComponents.collection(nouns, :or),
+            workspace: assigns.workspace
+          ),
+        items: SourceComponents.items(shared_item_noun(sources))
+      )
+
+    ~H"""
+    <div id={@id} data-state="unassigned">
+      <.empty_state icon="hero-folder" tone="neutral" title={@title}>
+        <p :for={source <- @sources} :if={length(@sources) == 1} id={"#{@id}-line"}>
+          {ngettext(
+            "%{integration} lists %{number} %{collection} for %{organisation}. Assign it if %{workspace} works on it, and its %{items} appear here.",
+            "%{integration} lists %{number} %{collections} for %{organisation}. Assign the ones %{workspace} works on, and their %{items} appear here.",
+            source.collections,
+            integration: source.name,
+            number: Format.number(source.collections),
+            collection: SourceComponents.collection(source.collection_noun),
+            collections: SourceComponents.collections(source.collection_noun),
+            organisation: @organisation,
+            workspace: @workspace,
+            items: SourceComponents.items(source.item_noun)
+          )}
+        </p>
+        <p :if={length(@sources) > 1} id={"#{@id}-line"}>
+          {gettext("Assign the %{collections} %{workspace} works on, and their %{items} appear here.",
+            collections: @collections,
+            workspace: @workspace,
+            items: @items
+          )}
+        </p>
+        <:actions>
+          <.action_with_caption
+            :for={source <- @sources}
+            :if={length(@sources) == 1 and @facts.may.assign}
+            id={"#{@id}-assign-#{source.id}"}
+            icon="hero-folder"
+            variant="primary"
+            path={@integration_path.(source.id)}
+            caption={integration_caption(source.name)}
+          >
+            {assign_words(source)}
+          </.action_with_caption>
+          <ul
+            :if={length(@sources) > 1}
+            id={"#{@id}-sources"}
+            aria-label={gettext("Integrations")}
+            class="q-rows w-full max-w-[460px] rounded-box border border-line bg-base-100 text-left"
+          >
+            <li
+              :for={source <- @sources}
+              id={"#{@id}-source-#{source.id}"}
+              class="flex min-h-[38px] items-center gap-2.5 px-3 py-1.5 text-[12.5px]"
+            >
+              <.integration_tile name={source.name} class="q-bl-mk" />
+              <span class="min-w-0 flex-1 truncate">{source.name}</span>
+              <span class="whitespace-nowrap text-faint">
+                {ngettext("%{number} %{collection}", "%{number} %{collections}", source.collections,
+                  number: Format.number(source.collections),
+                  collection: SourceComponents.collection(source.collection_noun),
+                  collections: SourceComponents.collections(source.collection_noun)
+                )}
+              </span>
+              <.button
+                :if={@facts.may.assign}
+                id={"#{@id}-assign-#{source.id}"}
+                size="xs"
+                navigate={@integration_path.(source.id)}
+                title={integration_caption(source.name)}
+              >
+                {assign_words(source)}
+              </.button>
+            </li>
+          </ul>
+          <div
+            :if={!@facts.may.assign}
+            id={"#{@id}-who"}
+            class="grid w-full justify-items-center gap-1"
+          >
+            <p class="text-[13.5px]/5 text-muted">
+              {gettext(
+                "Only owners and admins of %{organisation} assign %{collections} to workspaces.",
+                organisation: @organisation,
+                collections: @collections
+              )}
+            </p>
+            <.ask :if={@facts.ask.assign != []} id={"#{@id}-ask"}>
+              {gettext("Ask %{names} to assign the ones %{workspace} works on.",
+                names: SourceComponents.joined(@facts.ask.assign, :or),
+                workspace: @workspace
+              )}
+            </.ask>
+          </div>
         </:actions>
       </.empty_state>
     </div>
@@ -1116,6 +1226,12 @@ defmodule ApiaryWeb.BacklogComponents do
 
   defp integration_caption(name),
     do: gettext("Organisation settings › Integrations › %{integration}", integration: name)
+
+  defp assign_words(source),
+    do:
+      gettext("Assign %{collections}",
+        collections: SourceComponents.collections(source.collection_noun)
+      )
 
   # The words the sources share for their items; nil, ticket and tickets, where they
   # differ.
