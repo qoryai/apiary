@@ -308,10 +308,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
     test "while a test run is in progress, the step says to wait, in a plain line",
          %{conn: conn, scope: scope} do
+      item = test_item!(scope)
+      test_run!(item, [state: :handed_over], %{state: "running"})
       view = open(conn, scope)
-      view |> form("#setup-test-form") |> render_submit()
 
-      # Run the test again with the line of a test that has not ended.
+      # Run the test again with the line of a test a machine is running.
       render_click(view, "run_test", %{"line" => @line})
 
       assert text(view, "#setup-test-running") ==
@@ -458,7 +459,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
                "The test run is queued for a machine."
     end
 
-    test "a wait past 5 minutes turns into its failure without a reload",
+    test "a wait past 5 minutes turns into its failure without a reload, and Run the test again queues a new test",
          %{conn: conn, scope: scope} do
       item = test_item!(scope)
       view = open(conn, scope)
@@ -471,15 +472,19 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
       assert has_element?(view, "#setup-test-failed[data-cause=no_machine]")
 
-      # Run the test again while the run still waits in the queue: the step says to wait.
+      # Run the test again while no machine has taken the run: the run ends, the test work
+      # item closes, and a new test run is queued.
       view |> element("#setup-test-again") |> render_click()
-      assert has_element?(view, "#setup-test-running")
-      assert Repo.aggregate(WorkItem, :count) == 1
-
-      # The line goes once the run has ended.
-      test_run!(item, state: :ended, end_cause: :run_ended)
-      :ok = Dispatches.broadcast([scope.workspace.id])
       refute has_element?(view, "#setup-test-running")
+
+      assert [%WorkItem{state: :closed}, %WorkItem{state: :exploring, title: @line}] =
+               Repo.all(from w in WorkItem, order_by: w.number)
+
+      assert [%DispatchRun{state: :ended, end_cause: :closed}] =
+               Repo.all(from d in DispatchRun, where: d.work_item_id == ^item.id)
+
+      assert text(view, "#setup-test > span:nth-child(3)") ==
+               "The test run is queued for a machine."
     end
   end
 end

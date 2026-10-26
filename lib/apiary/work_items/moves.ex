@@ -86,14 +86,16 @@ defmodule Apiary.WorkItems.Moves do
   #
   # A workspace has one live test work item at most, and a run's end leaves it live. So a
   # take in of a test first holds the live one, if there is one, `FOR UPDATE`, then its
-  # runs `FOR UPDATE`, by id: while one of them waits, is claimed or is handed over, it is
-  # `:test_running`; once all have ended, it closes that one, as the person, through the
-  # one close (`Apiary.WorkItems.close_locked/3`), with its entry in the trail, as a close
-  # writes it, then makes the new one. A take in of a test that commits meanwhile is
-  # refused by the index on live test work items, `:test_running` too. It locks the
-  # workspace's counter of numbers right after the new work item, then the runs of the
-  # queue. An undo, a decline and a close work on a test work item as on any other, and
-  # tell no adapter and no Backlog, as it has no ticket.
+  # runs `FOR UPDATE`, by id: while one of them is claimed or is handed over, a machine
+  # holds it, and it is `:test_running`; otherwise it closes that one, as the person,
+  # through the one close (`Apiary.WorkItems.close_locked/3`), which ends the runs that
+  # still wait (`end_cause: :closed`), with its entry in the trail, as a close writes it,
+  # then makes the new one: a test whose run no machine took is tried again at once. A
+  # take in of a test that commits meanwhile is refused by the index on live test work
+  # items, `:test_running` too. It locks the workspace's counter of numbers right after
+  # the new work item, then the runs of the queue. An undo, a decline and a close work on
+  # a test work item as on any other, and tell no adapter and no Backlog, as it has no
+  # ticket.
   #
   # ## Take in again
   #
@@ -376,10 +378,11 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
-  # The workspace's live test work item, held `FOR UPDATE`, closed by the person once none
-  # of its runs waits, is claimed or is handed over: `{:ok, {closed, workspace_ids}}`, the
-  # workspaces whose queue changed, or `{:ok, nil}` for none; `:test_running` while a run
-  # of it is still in progress.
+  # The workspace's live test work item, held `FOR UPDATE`, closed by the person once no
+  # machine holds a run of it, which ends the runs that still wait (`end_cause: :closed`,
+  # `WorkItems.close_locked/3`): `{:ok, {closed, workspace_ids}}`, the workspaces whose
+  # queue changed, or `{:ok, nil}` for none; `:test_running` while a run of it is claimed
+  # or handed over.
   defp close_last_test(scope, %Workspace{id: workspace_id, organisation_id: organisation_id}) do
     live =
       Repo.one(
@@ -409,11 +412,23 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
-  defp test_ended(held) do
-    case no_run(held) do
-      :ok -> :ok
-      {:error, :running} -> {:error, :test_running}
-    end
+  # No run of the test work item's take in is claimed or handed over. Its runs that wait,
+  # are claimed or are handed over are held `FOR UPDATE`, by id, as `no_run/1` holds them,
+  # and their state is read under that lock: a claim that took one first is seen claimed,
+  # and a claim after skips the held ones (`FOR UPDATE SKIP LOCKED`), then finds them
+  # ended by the close.
+  defp test_ended(%WorkItem{id: id, take_in: take_in}) do
+    states =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in,
+          where: fragment("? IN ('waiting', 'claimed', 'handed_over')", r.state),
+          order_by: r.id,
+          lock: "FOR UPDATE",
+          select: r.state
+      )
+
+    if Enum.all?(states, &(&1 == :waiting)), do: :ok, else: {:error, :test_running}
   end
 
   defp with_closed(told, nil), do: told
