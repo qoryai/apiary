@@ -288,6 +288,25 @@ defmodule Apiary.ModelChoices do
     }
   end
 
+  @doc false
+  # suggestions/1 is the models that Workspace settings › Model offers for the model
+  # provider `provider`, each a map of `id`, `title` and `effort`, its offered effort
+  # values: the models of its description (`Connections.provider_models/1`), its default
+  # model (`Connections.default_model/1`) first. The page reads its list here alone, so the
+  # list may come from elsewhere without a change to the page. A choice may name any other
+  # model id too.
+  @spec suggestions(Connection.t()) :: [
+          %{id: String.t(), title: String.t(), effort: [String.t()]}
+        ]
+  def suggestions(%Connection{} = provider) do
+    default = Connections.default_model(provider)
+
+    provider
+    |> Connections.provider_models()
+    |> Enum.map(&%{id: &1["id"], title: &1["title"], effort: offered(&1)})
+    |> Enum.sort_by(&(&1.id != default))
+  end
+
   ## Writing
 
   @doc false

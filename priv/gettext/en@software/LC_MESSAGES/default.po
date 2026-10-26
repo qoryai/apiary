@@ -2715,6 +2715,11 @@ msgid_plural "%{words} could not be read, so they are not applied."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model."
+msgstr "%{workspace}'s default model. A workflow or a repository can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model."
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace}'s mode, now %{mode}. It changes when %{workspace}'s does."

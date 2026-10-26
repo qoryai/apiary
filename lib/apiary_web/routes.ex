@@ -659,6 +659,12 @@ defmodule ApiaryWeb.Routes do
               live "/settings/integrations", AdapterLive.Index, :index
               live "/settings/integrations/new", AdapterLive.Index, :new
               live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
+              # Organisation settings › Model providers, with the features `factory` and
+              # `secrets`: the list, New model provider a separate page, and a provider's
+              # page with its keys, by its public id (`con_…`). The fixed path goes first.
+              live "/settings/model-providers", ProviderLive.Index, :index
+              live "/settings/model-providers/new", ProviderLive.Index, :new
+              live "/settings/model-providers/:provider_id", ProviderLive.Show, :show
             end
 
             unquote(@block)
@@ -763,6 +769,9 @@ defmodule ApiaryWeb.Routes do
               live "/settings", SettingsLive, :workspace
               # Who reaches the workspace, read only: membership is the organisation's.
               live "/settings/people", MemberLive.Workspace, :index
+              # The model the workspace's runs use, with the features `factory` and
+              # `secrets`.
+              live "/settings/model", ModelChoiceLive, :edit
               live "/settings/runs", SettingsLive, :runs
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
