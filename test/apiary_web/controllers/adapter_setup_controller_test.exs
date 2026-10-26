@@ -79,7 +79,12 @@ defmodule ApiaryWeb.AdapterSetupControllerTest do
     assert conn.resp_body |> String.replace(~r/<[^>]*>/, "") == ""
   end
 
-  test "Install's page sends on as before, from the same page", %{adapter: adapter} do
+  # Install offers only an adapter with nothing left to set up, so this page is a
+  # configured adapter's.
+  test "Install's page sends on as before, from the same page" do
+    %{adapter: adapter} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
     %{scope: owner, user: user} = sign_up_fixture()
     conn = build_conn() |> log_in_user(user)
 
