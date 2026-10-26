@@ -79,9 +79,11 @@ Set up Qory Apiary at http://localhost:4100/setup/<code>.
 
 Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
-same password again, the **Organisation name**, usually your company's, `Acme` say, and
-the **Workspace type**: pick **Software workspace**, whose words this guide uses. Then
-select **Set up**. You are signed in, and land on the overview of your workspace.
+same password again, and the **Organisation name**, usually your company's, `Acme` say.
+Then select **Set up**. You are signed in, and land on **Connect Qory Apiary**: at its
+mail step, select **Skip**, or **Continue** where it shows the server's mail settings. On
+**Set up your workspace**, choose the **Type** **Software**, whose words this guide uses,
+and select **Create workspace**. You land on the overview of your workspace.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
 Connect it, See runs here. Steps 5 to 7 below are those steps.
 
@@ -90,8 +92,8 @@ in at `http://localhost:4100/users/log-in` with your email address and password.
 is used nobody can sign up, and anyone who reads the log can use it, so open it as soon as
 the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
 
-Setting it up created an organisation with the name you gave, one workspace in it named
-*Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
+Setting it up created an organisation with the name you gave and your membership as its
+owner, and **Create workspace** created one workspace in it named *Main*. Both can be renamed in their **Settings**, at the
 foot of the sidebar: the workspace's on any page of the workspace, the organisation's on its
 overview, which its name in the top bar opens. As the person who set the instance up you
 are also its **instance admin**: your organisation is the instance owner, and its owners
