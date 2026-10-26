@@ -82,10 +82,16 @@ defmodule Apiary.WorkItems.Moves do
   # numbered next in the workspace, take in 1, with its `:taken_in` event, as a first take
   # in has, its first run queued (`Apiary.Dispatches.queue/2`), and its entry in the trail,
   # `details` `test: true`. No adapter is told, as none is behind it. A line the changeset
-  # refuses is the changeset. A workspace has one live test work item at most: while one
-  # is exploring, another take in of a test is `:test_running`, and the index on live
-  # test work items holds it against a take in of a test that commits meanwhile. It locks
-  # the workspace's counter of numbers right after its work item, then the runs of the
+  # refuses is the changeset.
+  #
+  # A workspace has one live test work item at most, and a run's end leaves it live. So a
+  # take in of a test first holds the live one, if there is one, `FOR UPDATE`, then its
+  # runs `FOR UPDATE`, by id: while one of them waits, is claimed or is handed over, it is
+  # `:test_running`; once all have ended, it closes that one, as the person, through the
+  # one close (`Apiary.WorkItems.close_locked/3`), with its entry in the trail, as a close
+  # writes it, then makes the new one. A take in of a test that commits meanwhile is
+  # refused by the index on live test work items, `:test_running` too. It locks the
+  # workspace's counter of numbers right after the new work item, then the runs of the
   # queue. An undo, a decline and a close work on a test work item as on any other, and
   # tell no adapter and no Backlog, as it has no ticket.
   #
@@ -333,8 +339,9 @@ defmodule Apiary.WorkItems.Moves do
       Repo.transact(fn ->
         with {:ok, workspace} <- workspace(scope),
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
-             :ok <- no_live_test(workspace) do
-          make_test(scope, workspace, line)
+             {:ok, closed} <- close_last_test(scope, workspace),
+             {:ok, {work_item, told}} <- make_test(scope, workspace, line) do
+          {:ok, {work_item, with_closed(told, closed)}}
         end
       end)
 
@@ -369,17 +376,52 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
-  # No live test work item in the workspace: one there is `:test_running`. A take in of
-  # a test that commits meanwhile is refused by the index on live test work items
-  # (`insert_test/2`).
-  defp no_live_test(%Workspace{id: workspace_id}) do
+  # The workspace's live test work item, held `FOR UPDATE`, closed by the person once none
+  # of its runs waits, is claimed or is handed over: `{:ok, {closed, workspace_ids}}`, the
+  # workspaces whose queue changed, or `{:ok, nil}` for none; `:test_running` while a run
+  # of it is still in progress.
+  defp close_last_test(scope, %Workspace{id: workspace_id, organisation_id: organisation_id}) do
     live =
-      Repo.exists?(
+      Repo.one(
         from w in WorkItem,
-          where: w.workspace_id == ^workspace_id and w.test and w.state == :exploring
+          where: w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id,
+          where: w.test and w.state == :exploring,
+          lock: "FOR UPDATE"
       )
 
-    if live, do: {:error, :test_running}, else: :ok
+    case live do
+      nil ->
+        {:ok, nil}
+
+      %WorkItem{} = held ->
+        with :ok <- test_ended(held),
+             :ok <- Access.authorize(scope, :"work_item.close", held),
+             {:ok, workspace_ids} <-
+               WorkItems.close_locked([held], {:person, scope.user.id}, DateTime.utc_now()),
+             closed = Repo.get!(WorkItem, held.id),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.close", closed, %{
+                 before: %{state: held.state},
+                 after: %{state: closed.state}
+               }) do
+          {:ok, {closed, workspace_ids}}
+        end
+    end
+  end
+
+  defp test_ended(held) do
+    case no_run(held) do
+      :ok -> :ok
+      {:error, :running} -> {:error, :test_running}
+    end
+  end
+
+  defp with_closed(told, nil), do: told
+
+  defp with_closed(told, {closed, workspace_ids}) do
+    told
+    |> Map.update!(:work_items, &[{closed.workspace_id, closed.public_id} | &1])
+    |> Map.put(:queues, workspace_ids)
   end
 
   # The number is taken once the changeset holds, as for a first take in.

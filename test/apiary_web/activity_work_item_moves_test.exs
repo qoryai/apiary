@@ -2,8 +2,8 @@ defmodule ApiaryWeb.ActivityWorkItemMovesTest do
   # The Activity lines of what a person does to the work items: a take in, a take in
   # again, an undo, a decline and a close, by their labels in the filter and their
   # sentences. A take in names the items of the work item's source, else tickets; a take
-  # in of a test is a test run. None
-  # has a subject yet: the page a work item's stable address opens is not there.
+  # in of a test is a test run. None has a subject yet: the page a work item's stable
+  # address opens is not there.
   use Apiary.DataCase, async: true
 
   import Ecto.Query

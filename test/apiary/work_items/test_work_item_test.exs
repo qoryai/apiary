@@ -386,15 +386,94 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
   end
 
   describe "one live test a workspace" do
-    test "refuses a take in of a test while one is exploring, and writes nothing", ctx do
-      live = test_item!(ctx.scope)
+    # The live test work item of the scope with its queued run replaced by one of `opts`
+    # (`explore_run_fixture/2`).
+    defp test_with_run!(scope, opts) do
+      work_item = test_item!(scope)
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      %{dispatch_run: run} = explore_run_fixture(work_item, opts)
+      {work_item, run}
+    end
 
-      assert WorkItems.take_in_test(ctx.scope, "A second line") == {:error, :test_running}
+    defp refused_while_running!(scope, live) do
+      assert WorkItems.take_in_test(scope, "A second line") == {:error, :test_running}
 
-      assert [%WorkItem{id: id}] = Repo.all(WorkItem)
+      assert [%WorkItem{id: id, state: :exploring}] = Repo.all(WorkItem)
       assert id == live.id
+      assert Repo.all(from e in Entry, where: e.action == "work_item.close") == []
+    end
+
+    test "refuses a take in of a test while the live one's run waits, and writes nothing",
+         ctx do
+      live = test_item!(ctx.scope)
+      refused_while_running!(ctx.scope, live)
+
       assert [_run] = Repo.all(DispatchRun)
       assert [_entry] = Repo.all(from e in Entry, where: e.action == "work_item.take_in")
+    end
+
+    test "refuses it while the live one's run is claimed or handed over", ctx do
+      for state <- [:claimed, :handed_over] do
+        {live, _run} = test_with_run!(ctx.scope, state: state)
+        refused_while_running!(ctx.scope, live)
+        Repo.delete_all(WorkItem)
+      end
+    end
+
+    test "once the live one's runs have all ended, closes it as the person, then makes the new one",
+         ctx do
+      for opts <- [
+            [end_cause: :lost],
+            [end_cause: :inputs_invalid],
+            [end_cause: :ticket_gone],
+            [end_cause: :released],
+            [end_cause: :run_ended],
+            [end_cause: :run_ended, result: understood_result()],
+            [end_cause: :run_ended, result: questions_result()]
+          ] do
+        {last, run} = test_with_run!(ctx.scope, opts)
+        if opts[:result], do: Settle.settle(run.id)
+
+        assert {:ok, %WorkItem{state: :exploring} = next} =
+                 WorkItems.take_in_test(ctx.scope, "Once more"),
+               inspect(opts)
+
+        assert %WorkItem{state: :closed, closed_by_id: closed_by} = Repo.reload!(last)
+        assert closed_by == ctx.scope.user.id
+
+        assert [%WorkItemEvent{actor_kind: :person}] =
+                 Repo.all(
+                   from e in WorkItemEvent,
+                     where: e.work_item_id == ^last.id and e.kind == :closed
+                 )
+
+        assert [entry] =
+                 Repo.all(
+                   from e in Entry,
+                     where: e.action == "work_item.close" and e.subject_id == ^last.id
+                 )
+
+        assert {entry.before, entry.after} == {%{"state" => "exploring"}, %{"state" => "closed"}}
+        assert [%DispatchRun{state: :waiting}] = runs(next)
+        close!(next)
+      end
+    end
+
+    test "tells the workspace of the one it closed and the one it made", ctx do
+      {last, _run} = test_with_run!(ctx.scope, end_cause: :lost)
+      Phoenix.PubSub.subscribe(Apiary.PubSub, WorkItems.topic(ctx.scope.workspace.id))
+
+      next = test_item!(ctx.scope)
+      assert_receive {:work_items_changed, ids}
+      assert Enum.sort(ids) == Enum.sort([last.public_id, next.public_id])
+    end
+
+    test "a line the changeset refuses leaves the live one as it was", ctx do
+      {last, _run} = test_with_run!(ctx.scope, end_cause: :lost)
+
+      assert {:error, %Ecto.Changeset{}} = WorkItems.take_in_test(ctx.scope, "")
+      assert %WorkItem{state: :exploring} = Repo.reload!(last)
+      assert Repo.all(from e in Entry, where: e.action == "work_item.close") == []
     end
 
     test "takes in another once the live one is undone, declined or closed", ctx do
@@ -524,6 +603,18 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
 
       assert dispatched?(run)
       refute run!(run).end_cause in [:closed, :undone]
+    end
+
+    test "after the claim ended its run, a new take in of a test closes it and queues one",
+         ctx do
+      last = test_item!(ctx.scope)
+      [run] = runs(last)
+      assert {:ok, _taken} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert %DispatchRun{state: :ended} = run!(run)
+
+      assert {:ok, next} = WorkItems.take_in_test(ctx.scope, "Once more")
+      assert %WorkItem{state: :closed} = Repo.reload!(last)
+      assert [%DispatchRun{state: :waiting}] = runs(next)
     end
 
     test "ends the run of a test work item that is not exploring, or moved, and takes none",
