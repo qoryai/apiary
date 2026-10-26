@@ -390,7 +390,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
                "Test run passed: the agent answered on a machine of the instance's pool. See the run"
     end
 
-    test "passed on a node since deleted names no pool", %{conn: conn, scope: scope} do
+    test "passed with no node names no pool", %{conn: conn, scope: scope} do
       item = test_item!(scope)
       view = open(conn, scope)
 
