@@ -2211,6 +2211,11 @@ msgstr ""
 msgid "%{organisation} has one workspace, %{workspace}, so every %{collection} is assigned to it, and its %{items} come into %{workspace}'s Backlog while its Backlog switch is on."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} may have no more workspaces."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} › %{workspace}"
@@ -2551,6 +2556,12 @@ msgstr ""
 msgid "%{tool} failed: %{summary}"
 msgstr ""
 
+#: lib/apiary_web/components/workspace_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "%{type} — %{line}"
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{url} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."
@@ -2714,6 +2725,11 @@ msgid "%{words} could not be read, so it is not applied."
 msgid_plural "%{words} could not be read, so they are not applied."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} is this instance's only workspace."
+msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
@@ -4085,6 +4101,11 @@ msgstr ""
 msgid "An owner or an admin of the organisation added you to %{workspace}."
 msgstr ""
 
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "An owner sets up this organisation's first workspace."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Answer and explore again"
@@ -4402,6 +4423,12 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Behind v%{n}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Bring tickets in from a system this instance has set up."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -4856,6 +4883,11 @@ msgstr "Changes to this repository's rules, newest first"
 msgid "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Check that %{adapter} is running. It has a key in use, but it has not sent the address where it is set up; this step updates once it has."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Check the adapter %{adapter} on the instance's Integrations page, then run Explore again. The adapter did not answer three times."
@@ -4910,6 +4942,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Choose a target"
 msgstr "Choose a repository"
+
+#: lib/apiary_web/components/workspace_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a type"
+msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5274,6 +5311,16 @@ msgstr ""
 msgid "Confirming makes work item #%{number} ready for Shape."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Connect"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Connect %{adapter} with an access key in Instance settings › Adapters. It can't be set up until it has a key in use; this step updates once it has one."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -5284,6 +5331,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connect %{name} with a command"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Connect a work source to %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5339,6 +5391,12 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Connections inline"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Continue"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -5500,6 +5558,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Create invitation link"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Create workspace"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -7165,6 +7228,12 @@ msgstr ""
 #: lib/apiary/lingo/domain/general.ex
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
+msgid "For any other work, such as marketing, incidents or customer care."
+msgstr ""
+
+#: lib/apiary/lingo/domain/general.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
 msgid "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
 msgstr ""
 
@@ -7172,6 +7241,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
 msgid "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
+msgstr ""
+
+#: lib/apiary/lingo/domain/software.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "For work on code. Each ticket needs a repository."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -7374,6 +7449,12 @@ msgstr ""
 
 #: lib/apiary/lingo/domain/general.ex
 #, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "General"
+msgstr ""
+
+#: lib/apiary/lingo/domain/general.ex
+#, elixir-autogen, elixir-format
 msgid "General workspace"
 msgstr ""
 
@@ -7423,6 +7504,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Get a new command"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Get the SMTP server's host name, port, username and password from your mail provider."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -7698,6 +7784,11 @@ msgstr ""
 msgid "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "If the step shows %{line}, mail is set up already, and this step needs nothing from you."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not ask for this change, ignore this email."
@@ -7730,9 +7821,30 @@ msgstr ""
 msgid "Images recorded"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "In %{field}, choose %{software} if %{workspace} works on code in repositories, or %{general} for any other work."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "In %{field}, enter the mail server's host name, such as %{host}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "In %{field}, keep %{starttls} for STARTTLS, or enter %{tls} if your provider uses TLS from the start."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "In %{organisation}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "In %{username} and %{password}, enter the login your provider gave you. Leave both empty if the relay takes mail without a login."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -10147,6 +10259,11 @@ msgstr ""
 msgid "No work items yet"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -10492,6 +10609,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Not set"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Not set up"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -11128,6 +11250,11 @@ msgstr ""
 msgid "Open the Backlog"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Open the email that Qory Apiary sent to your address, and follow its link while you are signed in."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open the full %{item}"
@@ -11619,6 +11746,12 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Preferences › %{page}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Press %{button}."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -12476,6 +12609,11 @@ msgstr ""
 msgid "Resolved"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Restore %{workspace} in Organisation settings › Workspaces. A deleted workspace keeps its name until it is purged."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Result"
@@ -13031,6 +13169,12 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail_form.ex
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Save and send a test"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Save changes"
@@ -13365,6 +13509,11 @@ msgstr ""
 msgid "Set by a target too"
 msgstr "Set by a repository too"
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Set by the server's environment"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "Set by the server's environment (%{variable}); change it there."
@@ -13437,6 +13586,11 @@ msgstr ""
 msgid "Set up"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Set up %{adapter}, so organisations can bring in tickets from %{adapter}."
+msgstr ""
+
 #: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Set up %{name}"
@@ -13465,6 +13619,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Set up from"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Set up mail, so Qory Apiary sends invitations and password links."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Set up your workspace"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/password.ex
@@ -13731,6 +13895,17 @@ msgstr ""
 msgid "Size"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Skip"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Skip this step. %{adapter} is no longer on the list of adapters installed with Qory Apiary, so it can't be set up."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Skip to content"
@@ -13744,6 +13919,12 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Smaller text"
+msgstr ""
+
+#: lib/apiary/lingo/domain/software.ex
+#, elixir-autogen, elixir-format
+msgctxt "workspace type"
+msgid "Software"
 msgstr ""
 
 #: lib/apiary/lingo/domain/software.ex
@@ -13839,9 +14020,19 @@ msgstr ""
 msgid "State"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "State:"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Stays on %{name}; it is never shown"
+msgstr ""
+
+#: lib/apiary_web/components/set_up_components.ex
+#, elixir-autogen, elixir-format
+msgid "Step %{step} of %{total}"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -15839,6 +16030,16 @@ msgctxt "plain"
 msgid "Tickets come into the Backlog from another system, such as an issue tracker, a support desk or a forge, through an integration that %{organisation} installs."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Tickets from %{integration} %{items}."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Tickets from %{integration}."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Time limit changed"
@@ -17152,6 +17353,16 @@ msgstr ""
 msgid "You can confirm your %{name} account by visiting the URL below:"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "You can connect one later from %{workspace}'s Overview."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "You can finish this later in Instance settings."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "You can log in to %{name} by visiting the URL below:"
@@ -17180,6 +17391,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You can't change the kind later."
+msgstr ""
+
+#: lib/apiary_web/components/workspace_components.ex
+#, elixir-autogen, elixir-format
+msgid "You can't change the type after you create the workspace."
 msgstr ""
 
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
@@ -17398,6 +17614,11 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Your account"
+msgstr ""
+
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "Your account and your organisation."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
