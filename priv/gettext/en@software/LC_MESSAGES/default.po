@@ -9799,6 +9799,11 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "No integration that serves this organisation's workspaces is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "No integration yet"
 msgstr ""
 
@@ -10161,11 +10166,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "No work items yet"
-msgstr ""
-
-#: lib/apiary_web/live/adapter_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex

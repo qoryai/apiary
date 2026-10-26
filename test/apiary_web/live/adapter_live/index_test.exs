@@ -9,7 +9,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   # adapter not installed that serves a workspace's domain, Install, which posts to the
   # Install path, every domain's while the organisation has no workspace; with none
   # configured, a line that says an instance admin sets one up; with some configured but
-  # none for the workspaces' domains, a line that says none is set up for this type; with
+  # none for the workspaces' domains, a line that says none serves them; with
   # every one installed, a line that says so; each in place of the lead.
   use ApiaryWeb.ConnCase, async: true
 
@@ -384,7 +384,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       refute html =~ "can't be installed yet"
     end
 
-    test "with configured integrations for no domain of the workspaces, says none is set up for this type",
+    test "with configured integrations for no domain of the workspaces, says none serves them",
          %{conn: conn, scope: scope} do
       %{adapter: desk} = connectable_adapter_fixture(%{name: unique_adapter_name("Help desk")})
 
@@ -396,8 +396,8 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       {:ok, lv, _html} = live(conn, new_path(scope))
 
       assert words(lv, "#add-none-for-type") ==
-               "No work source for this type is set up on this instance. An instance admin " <>
-                 "sets one up in Instance settings › Adapters."
+               "No integration that serves this organisation's workspaces is set up on this " <>
+                 "instance. An instance admin sets one up in Instance settings › Adapters."
 
       refute has_element?(lv, "#add-none-set-up")
       refute has_element?(lv, ".q-settings-head-sub")

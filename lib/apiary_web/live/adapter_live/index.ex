@@ -30,9 +30,9 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # for its collections, then Install, which posts to the Install path and sends the
   # person on to the integration, and Cancel, back to the list. Once pressed, the block
   # says where the person is taken. In place of the lead, a line says that an instance
-  # admin sets one up, where none is configured; that none is set up for the workspaces'
-  # type, where some are configured and none serves those domains; or that every one is
-  # installed.
+  # admin sets one up, where none is configured; that none serves the organisation's
+  # workspaces, where some are configured and none serves those domains; or that every
+  # one is installed.
   #
   # The feature is hidden from the documentation, so the module is too.
   @moduledoc false
@@ -149,7 +149,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
           class="text-[13.5px]/5 text-muted"
         >
           {gettext(
-            "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+            "No integration that serves this organisation's workspaces is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
           )}
         </p>
 
