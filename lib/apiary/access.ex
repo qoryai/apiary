@@ -553,7 +553,7 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited:
         {:not,
-         "no route or page saves a harness document: Apiary.Stacks.put_stack/3, which only tests and the demo call, checks no access and writes no entry"}
+         "Workspace settings › Workflow saves the workspace's document through Apiary.Stacks.Sources.save/3, which writes no entry, as Apiary.Stacks.put_stack/3 writes none"}
     ),
     Action.new(
       :"harness.assigned",

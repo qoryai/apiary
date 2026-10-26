@@ -764,6 +764,9 @@ defmodule ApiaryWeb.Routes do
               # Who reaches the workspace, read only: membership is the organisation's.
               live "/settings/people", MemberLive.Workspace, :index
               live "/settings/runs", SettingsLive, :runs
+              # The workflow of the workspace's runs and the harness source it comes from,
+              # with the `factory` feature.
+              live "/settings/workflow", WorkflowLive, :edit
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by

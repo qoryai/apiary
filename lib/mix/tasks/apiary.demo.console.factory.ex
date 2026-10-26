@@ -33,9 +33,11 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #     scope.
   #
   # Dana also stores the stack of Main's explore runs with `Apiary.Stacks.put_stack/3`,
-  # which no request or page calls: the workflow `hello` at the workspace, with a harness
-  # document that extends the stack `examples/hello` of qory's repository at one commit,
-  # so an explore run of Main has that workflow and that stack. A prebuild's documents
+  # not through the save of Workspace settings › Workflow
+  # (`Apiary.Stacks.Sources.save/3`), which reads the stack through an adapter: the
+  # workflow `hello` at the workspace, with a harness document that extends the stack
+  # `examples/hello` of qory's repository at one commit, so an explore run of Main has
+  # that workflow and that stack. A prebuild's documents
   # have no workflow and no stack.
   #
   # The key pair each adapter enrols is made here and kept in memory only: its secret
