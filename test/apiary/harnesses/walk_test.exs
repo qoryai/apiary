@@ -1232,6 +1232,46 @@ defmodule Apiary.Harnesses.WalkTest do
       never_sent(calls, "9001")
     end
 
+    test "3. another organisation's covered and public base and module: each public read is at the public_ref",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      other = scope_fixture()
+      {connection, _nonce} = connection_fixture(other, ctx.run.adapter, :listed)
+      grant(other.organisation.id, ctx.run.adapter, connection, "G_other")
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{
+            @public => {"G_other", "9001", {:public, "R_public"}},
+            @tools => {"G_other", "9003", {:public, "R_tools"}}
+          }),
+        files: @public_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert walked.access_level == :write
+      assert walked.harness_links == []
+
+      calls = calls()
+
+      # The base's first read, its exports, its stack followed with the access it declares,
+      # and the module's version.
+      assert public_reads(calls) == [
+               {"R_public", "harness.yaml", "main"},
+               {"R_public", "qory.yaml", "c-R_public"},
+               {"R_public", "stacks/web/qory-stack.yaml", "c-R_public"},
+               {"R_tools", "harness.yaml", "v2"}
+             ]
+
+      assert reads(calls) == [
+               {"R_app", "harness.yaml", "HEAD"},
+               {"R_app", "qory.yaml", "c-R_app"}
+             ]
+
+      never_sent(calls, "9001")
+      never_sent(calls, "9003")
+    end
+
     test "3. the instance's grant with no assignment and a public result: read as public, not not_allowed",
          ctx do
       setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
