@@ -54,10 +54,9 @@ defmodule Apiary.Kinds.Provider do
   other than `model_provider`, when its `name` differs from the file's name without
   `.json`, when two of its APIs have the same `format`, when the URL endpoint of an API
   or the `default` of an address setting breaks the rule of `Apiary.Kinds.Endpoint`, or
-  when it has more than 200 models or a model title of
-  more than 128 characters, which a provider connection cannot hold
-  (`Apiary.Connections.ProviderModel`). `Apiary.Kinds.Providers` calls it when the application is
-  compiled, so a description that fails stops the compile.
+  when it has more than 200 models or a model title of more than 128 characters.
+  `Apiary.Kinds.Providers` calls it when the application is compiled, so a description
+  that fails stops the compile.
   """
   @spec load!(Path.t()) :: t
   def load!(path) do
@@ -141,8 +140,8 @@ defmodule Apiary.Kinds.Provider do
         do: {address, refusal}
   end
 
-  # What `Apiary.Connections.ProviderModel` holds: 200 models, each title 1 to 128
-  # characters.
+  # At most 200 models, so a run's `provider_models` stays within 256 with its chosen
+  # models; each title 1 to 128 characters.
   defp models_refused(%__MODULE__{models: models}) do
     count = if length(models) > 200, do: [{:models, length(models)}], else: []
     count ++ for(%{"title" => t} <- models, String.length(t) > 128, do: {:title, t})

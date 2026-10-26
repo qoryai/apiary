@@ -87,7 +87,6 @@ defmodule Apiary.Deletion.Tables do
     {"retention_runs", :workspace},
     {"policy_rules", :workspace},
     {"connection_workspaces", :workspace},
-    {"provider_models", :organisation},
     {"organisation_connections", :organisation},
     {"service_definitions", :organisation},
     {"integration_releases", :organisation},
