@@ -118,6 +118,50 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
       assert has_element?(lv, "#set-up-help li b", "Set up")
     end
 
+    test "shows no steps while Set up is not on the page: blocked, or set up already", %{
+      conn: conn
+    } do
+      guide = source_guide_example()
+
+      # No key in use.
+      no_key = adapter_fixture(%{name: named("a-forge")})
+
+      # A key in use, and no address where it is set up or connected to.
+      %{adapter: not_declared} = connectable_adapter_fixture(%{name: named("b-forge")})
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^not_declared.id), set: [connect_url: nil])
+
+      # Installed with Qory Apiary under a name no longer listed.
+      %{adapter: not_listed} = settable_adapter_fixture(%{name: named("c-forge")})
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^not_listed.id),
+          set: [installed_as: named("gone")]
+        )
+
+      # Set up already: Continue.
+      %{adapter: configured} = connectable_adapter_fixture(%{name: named("d-forge")})
+
+      # Set up can be pressed: the steps show.
+      %{adapter: settable} = settable_adapter_fixture(%{name: named("e-forge")})
+
+      for adapter <- [no_key, not_declared, not_listed, configured, settable],
+          do: guided_adapter(adapter, guide)
+
+      for {adapter, step} <- [{no_key, 1}, {not_declared, 2}, {not_listed, 3}, {configured, 4}] do
+        {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{step}")
+        assert has_element?(lv, "#set-up-#{adapter.public_id}")
+        refute has_element?(lv, "#set-up-open")
+        refute has_element?(lv, "#set-up-help"), adapter.name
+      end
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=5")
+      assert has_element?(lv, "#set-up-#{settable.public_id}")
+      assert has_element?(lv, "#set-up-open")
+      assert has_element?(lv, "#set-up-help")
+    end
+
     test "with no guide, the step shows no steps", %{conn: conn} do
       %{adapter: adapter} = settable_adapter_fixture(%{name: named("forge")})
       guided_adapter(adapter, %{"connect" => source_guide_example()["connect"]})

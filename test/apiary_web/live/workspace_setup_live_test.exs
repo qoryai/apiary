@@ -324,6 +324,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
              ]
     end
 
+    test "names the adapter as its row does, and hides the steps once Connect can't be pressed",
+         %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      %{adapter: adapter} = connectable_adapter_fixture(%{name: "GitHub"})
+      guided_adapter(adapter, source_guide_example())
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+      help = "#set-up-help-#{adapter.public_id}"
+      connect = "#set-up-source-#{adapter.public_id}-connect-install"
+
+      assert has_element?(lv, "#set-up-source-#{adapter.public_id} p", "GitHub")
+      assert [first | _] = texts(lv, help, "li")
+      assert first == "Press Connect beside GitHub. GitHub opens."
+      assert has_element?(lv, connect, "Connect")
+      refute has_element?(lv, "#{connect}[disabled]")
+
+      # The adapter's key is revoked: Connect is disabled, and its steps go when the page
+      # renders again.
+      {1, _} =
+        Repo.update_all(
+          from(k in Apiary.AccessKeys.AccessKey, where: k.node_id == ^adapter.id),
+          set: [revoked_at: DateTime.utc_now()]
+        )
+
+      render_hook(lv, "install", %{"integration" => adapter.public_id})
+
+      assert has_element?(lv, "#{connect}[disabled]")
+      refute has_element?(lv, help)
+    end
+
     test "with no connect steps, or no guide, the old step shows", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()

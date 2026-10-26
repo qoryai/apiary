@@ -17,7 +17,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # each with Connect, the Install of Organisation settings › Integrations
   # (`ApiaryWeb.IntegrationComponents.install_form/1`), and Skip; with none, that no work
   # source for the type is set up on the instance, and Continue. Above the list, for each
-  # adapter whose guide gives steps for connecting it (`Apiary.Adapters.guide/2`), those
+  # adapter whose Connect can be pressed (`ApiaryWeb.IntegrationComponents.ready?/1`) and
+  # whose guide gives steps for connecting it (`Apiary.Adapters.guide/2`), those
   # steps after a first step of Qory Apiary's, Connect, and, while the organisation has one
   # workspace, a note that the workspace gets every collection picked. Skip and Continue
   # lead to the workspace's Overview, and so does Create workspace without the feature. Anyone
@@ -236,7 +237,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :sending, :string, required: true
 
   defp source_step(assigns) do
-    assigns = assign(assigns, :workspace, assigns.scope.workspace)
+    assigns =
+      assign(assigns,
+        workspace: assigns.scope.workspace,
+        ready:
+          for(
+            a <- assigns.adapters,
+            IntegrationComponents.ready?(a),
+            into: MapSet.new(),
+            do: a.id
+          )
+      )
 
     ~H"""
     <SetUpComponents.heading step={2} total={2}>
@@ -247,7 +258,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     </SetUpComponents.heading>
 
     <SetUpComponents.guide
-      :for={{adapter, guide} <- guides(@adapters)}
+      :for={{adapter, guide} <- guides(@adapters, @ready)}
       id={"set-up-help-#{adapter.public_id}"}
       guide={guide}
     >
@@ -285,7 +296,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           id={"set-up-source-#{adapter.public_id}-connect"}
           adapter={adapter}
           action={IntegrationComponents.paths(@scope, adapter).install}
-          ready={IntegrationComponents.ready?(adapter)}
+          ready={adapter.id in @ready}
           sending={@sending == adapter.public_id}
           label={gettext("Connect")}
         />
@@ -328,9 +339,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     """
   end
 
-  # Each adapter whose guide gives steps for connecting it, with them.
-  defp guides(adapters) do
-    for adapter <- adapters, guide = Adapters.guide(adapter, :connect), do: {adapter, guide}
+  # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide gives
+  # steps for connecting it, with them.
+  defp guides(adapters, ready) do
+    for adapter <- adapters,
+        adapter.id in ready,
+        guide = Adapters.guide(adapter, :connect),
+        do: {adapter, guide}
   end
 
   # The adapter's word for one of its collections, as a text it sent is shown.
