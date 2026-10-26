@@ -63,8 +63,9 @@ defmodule Apiary.HarnessReadsFixtures do
   Serves the calls of `adapters`, each `%{adapter, host, seed}`. `covered` maps an
   adapter's id to a map of an address to its `{grant_ref, resource_ref}`; `files` maps
   `{resource_ref, path}` to a document. A resource's version is `c-<resource_ref>`,
-  whatever version a read asks. `down: true` makes every call reach no one. Each call is
-  sent to the test as `{:harness_call, path, members}`.
+  whatever version a read asks. `down: true` makes every call reach no one, and `down:`
+  a list of adapter ids the calls of those adapters. Each call is sent to the test as
+  `{:harness_call, path, members}`.
   """
   def serve_calls(adapters, opts \\ []) do
     test = self()
@@ -81,7 +82,7 @@ defmodule Apiary.HarnessReadsFixtures do
       adapter = Map.fetch!(hosts, host)
 
       cond do
-        opts[:down] ->
+        down?(opts[:down], adapter) ->
           Req.Test.transport_error(conn, :econnrefused)
 
         path == "resolve" ->
@@ -117,6 +118,10 @@ defmodule Apiary.HarnessReadsFixtures do
       end
     end)
   end
+
+  defp down?(true, _adapter), do: true
+  defp down?(ids, adapter) when is_list(ids), do: adapter.adapter.id in ids
+  defp down?(_up, _adapter), do: false
 
   defp answer(conn, body, adapter) do
     body = Jason.encode!(body)

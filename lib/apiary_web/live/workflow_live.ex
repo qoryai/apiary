@@ -5,7 +5,7 @@ defmodule ApiaryWeb.WorkflowLive do
   # It opens for whoever may save it (`harness.save`, owners and admins), and is not found
   # for anyone else, as the section is absent from their list.
   #
-  # Under the title, the steps of the page, and in a workspace whose domain has harness
+  # Under the title, what the page sets and its steps, and in a workspace whose domain has harness
   # files (`Apiary.Lingo.Domain.harness_file?/1`), that a repository's harness file comes
   # first. A line says which workflow the runs follow now, where the workspace has one.
   #
@@ -14,7 +14,9 @@ defmodule ApiaryWeb.WorkflowLive do
   # is reading until then; the harness sources an instance admin assigned to the
   # organisation; and a public address, which shows a field for it. Choosing a source, or
   # typing an address, reads its stacks through the adapters, outside the page's process;
-  # a source that cannot be read says why under the field. Workflow lists the workflows
+  # a source that cannot be read says why under the field. The address is read when its
+  # field loses focus, not while it is typed; a read cancels the one before it, and a
+  # person's reads are limited (`Apiary.Stacks.Sources`). Workflow lists the workflows
   # the chosen source's stacks list, grouped by stack where it has several. Save stores
   # the document and says so; a refused save says why.
   #
@@ -43,6 +45,8 @@ defmodule ApiaryWeb.WorkflowLive do
         harness_file: Domain.harness_file?(scope.workspace),
         linked: nil,
         unread: 0,
+        left_out: 0,
+        listing_limited: nil,
         assigned: Sources.assigned(scope),
         current: Sources.current(scope.workspace),
         choice: "",
@@ -60,6 +64,7 @@ defmodule ApiaryWeb.WorkflowLive do
       if connected?(socket),
         do:
           socket
+          |> cancel_async(:linked)
           |> start_async(:linked, fn -> Sources.linked(scope) end)
           |> preselect_assigned(),
         else: socket
@@ -247,7 +252,7 @@ defmodule ApiaryWeb.WorkflowLive do
   defp address(socket, _text), do: socket
 
   # `source` chosen: its stacks read outside the page's process, and no workflow chosen
-  # until they are; a later choice's read wins over this one's.
+  # until they are; a later choice cancels this one's read.
   defp choose(socket, source) do
     scope = socket.assigns.current_scope
     choice = if source.kind == :address, do: "address", else: source.id
@@ -261,14 +266,23 @@ defmodule ApiaryWeb.WorkflowLive do
       read_error: nil,
       reading: true
     )
+    |> cancel_async(:read)
     |> start_async(:read, fn -> {source.id, source.git, Sources.read(scope, source)} end)
   end
 
   @impl true
-  def handle_async(:linked, {:ok, {linked, unread}}, socket) do
+  def handle_async(:linked, {:ok, {:ok, listing}}, socket) do
+    %{sources: linked, unread: unread, left_out: left_out} = listing
+
     {:noreply,
-     socket |> assign(linked: linked, unread: unread) |> preselect_linked() |> assign_form()}
+     socket
+     |> assign(linked: linked, unread: unread, left_out: left_out)
+     |> preselect_linked()
+     |> assign_form()}
   end
+
+  def handle_async(:linked, {:ok, {:error, {:limited, seconds}}}, socket),
+    do: {:noreply, socket |> assign(linked: [], listing_limited: seconds) |> assign_form()}
 
   def handle_async(:linked, {:exit, _reason}, socket),
     do: {:noreply, socket |> assign(linked: [], unread: :all) |> assign_form()}
@@ -343,15 +357,14 @@ defmodule ApiaryWeb.WorkflowLive do
         current={:workflow}
         title={gettext("Workflow")}
       >
-        <:subtitle>
-          {pgettext(
-            "plain",
-            "%{workspace}'s runs follow the workflow you choose here, from a harness repository.",
-            workspace: @workspace
-          )}
-        </:subtitle>
-
         <div id="workflow-help" class="grid max-w-[72ch] gap-2 text-[13px]/[20px] text-muted">
+          <p id="workflow-what">
+            {pgettext(
+              "plain",
+              "%{workspace}'s runs follow the workflow you choose here, from a harness repository.",
+              workspace: @workspace
+            )}
+          </p>
           <ol class="list-decimal space-y-1 pl-5">
             <li>
               <.rich text={
@@ -434,7 +447,7 @@ defmodule ApiaryWeb.WorkflowLive do
             label={gettext("Source")}
             prompt={gettext("Choose a source")}
             options={source_options(assigns)}
-            hint={unread_words(@unread)}
+            hint={listing_words(assigns)}
           />
           <.input
             :if={@choice == "address"}
@@ -444,6 +457,7 @@ defmodule ApiaryWeb.WorkflowLive do
             type="text"
             label={gettext("Public address")}
             errors={List.wrap(@address_error)}
+            debounce="blur"
             autocomplete="off"
             spellcheck="false"
             class="font-mono"
@@ -494,7 +508,7 @@ defmodule ApiaryWeb.WorkflowLive do
   end
 
   # The groups of Source: the linked repositories, read when the page connects; the
-  # assigned sources; and the public address. An empty group is left out.
+  # assigned sources; and the public address. Each group shows, an empty one too.
   defp source_options(assigns) do
     linked =
       case assigns.linked do
@@ -511,7 +525,6 @@ defmodule ApiaryWeb.WorkflowLive do
        for(source <- assigns.assigned, do: {source.label, source.id})},
       {gettext("Public address"), [{gettext("Enter an address"), "address"}]}
     ]
-    |> Enum.reject(fn {_group, options} -> options == [] end)
   end
 
   # The workflows of the chosen source's stacks, each `<stack index>/<workflow>`: one
@@ -529,6 +542,37 @@ defmodule ApiaryWeb.WorkflowLive do
   end
 
   defp no_workflow?(stacks), do: Enum.all?(stacks, &(&1.workflows == []))
+
+  # The hint under Source: a listing past the person's limit, else the linked
+  # repositories not read and those past the most a listing reads.
+  defp listing_words(%{listing_limited: seconds}) when is_integer(seconds),
+    do:
+      pngettext(
+        "plain",
+        "Wait %{count} second, then reload the page to list the linked repositories. Qory Apiary lists them at most %{limit} times a minute for each person.",
+        "Wait %{count} seconds, then reload the page to list the linked repositories. Qory Apiary lists them at most %{limit} times a minute for each person.",
+        seconds,
+        limit: Sources.limit(:linked)
+      )
+
+  defp listing_words(%{unread: unread, left_out: left_out}) do
+    case Enum.reject([unread_words(unread), left_out_words(left_out)], &is_nil/1) do
+      [] -> nil
+      words -> Enum.join(words, " ")
+    end
+  end
+
+  defp left_out_words(0), do: nil
+
+  defp left_out_words(count),
+    do:
+      pngettext(
+        "plain",
+        "Ask an instance admin to assign your harness repository if the list leaves it out: the list shows the first %{limit} linked repositories by title, and %{count} more is linked.",
+        "Ask an instance admin to assign your harness repository if the list leaves it out: the list shows the first %{limit} linked repositories by title, and %{count} more are linked.",
+        count,
+        limit: Sources.limit(:listed)
+      )
 
   defp unread_words(0), do: nil
 
@@ -562,6 +606,16 @@ defmodule ApiaryWeb.WorkflowLive do
       gettext(
         "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack.",
         source: source.label
+      )
+
+  defp read_words({:limited, seconds}, source, _organisation),
+    do:
+      ngettext(
+        "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary reads at most %{limit} sources a minute for each person.",
+        "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary reads at most %{limit} sources a minute for each person.",
+        seconds,
+        source: source.label,
+        limit: Sources.limit(:read)
       )
 
   defp read_words(_unreadable, source, _organisation),

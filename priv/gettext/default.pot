@@ -4239,6 +4239,14 @@ msgstr ""
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Ask an instance admin to assign your harness repository if the list leaves it out: the list shows the first %{limit} linked repositories by title, and %{count} more is linked."
+msgid_plural "Ask an instance admin to assign your harness repository if the list leaves it out: the list shows the first %{limit} linked repositories by title, and %{count} more are linked."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB."
@@ -16694,6 +16702,21 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Views"
 msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Wait %{count} second, then reload the page to list the linked repositories. Qory Apiary lists them at most %{limit} times a minute for each person."
+msgid_plural "Wait %{count} seconds, then reload the page to list the linked repositories. Qory Apiary lists them at most %{limit} times a minute for each person."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary reads at most %{limit} sources a minute for each person."
+msgid_plural "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary reads at most %{limit} sources a minute for each person."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format

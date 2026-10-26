@@ -115,13 +115,13 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   end
 
   describe "the page" do
-    test "the steps under the title, and in a software workspace the harness file comes first",
+    test "what the page sets and its steps, and in a software workspace the harness file comes first",
          %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
       assert has_element?(
                view,
-               "#settings-section-sub, .q-settings-head-sub",
+               "#workflow-help > p#workflow-what:first-child",
                "#{scope.workspace.name}'s runs follow the workflow you choose here, from a harness repository."
              )
 
@@ -174,13 +174,37 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                ~s(#workflow_source optgroup[label="Assigned by an instance admin"] option),
-               @team <> " @ v1"
+               "example-org/team-harness"
              )
 
       assert has_element?(
                view,
                ~s(#workflow_source optgroup[label="Public address"] option[value="address"])
              )
+    end
+  end
+
+  describe "Source's groups" do
+    test "each shows when it is empty", %{conn: conn, path: path} do
+      view = open(conn, path)
+
+      assert has_element?(view, ~s(#workflow_source optgroup[label="Linked repositories"]))
+
+      assert has_element?(
+               view,
+               ~s(#workflow_source optgroup[label="Assigned by an instance admin"])
+             )
+
+      refute has_element?(view, ~s(optgroup[label="Assigned by an instance admin"] option))
+    end
+
+    test "a third listing in a minute says when to reload", %{conn: conn, path: path} do
+      open(conn, path)
+      open(conn, path)
+      view = open(conn, path)
+
+      assert render(view) =~ "then reload the page to list the linked repositories."
+      refute render(view) =~ "acme/harness"
     end
   end
 

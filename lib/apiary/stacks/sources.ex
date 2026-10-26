@@ -34,6 +34,21 @@ defmodule Apiary.Stacks.Sources do
   # `qory-stack.yaml` in that folder, and a root the stacks its harness file exports or
   # its `qory-stack.yaml`, as for a linked collection.
   #
+  # ## Limits
+  #
+  # A person's reads are counted in a fixed window of a minute
+  # (`Apiary.Runs.RateLimit.reserve/3`), by the person's account: at most 2 listings
+  # (`linked/1`) and 10 reads of a source (`read/2`), else `{:error, {:limited,
+  # seconds}}`, the seconds until the window ends. Each resolve of an address may make the
+  # adapter call the system it reaches under credentials every organisation shares, so a
+  # person's reads stay a few. A listing reads at most 100 linked collections, the first
+  # by title, and leaves out the rest, counted; its reads take at most 60 seconds
+  # together, and a collection whose reads do not end by then is counted as not read. So
+  # one listing makes at most 2 resolves per adapter and 300 reads. A read of a source
+  # makes one resolve per adapter and at most 3 reads to find its stacks, then reads the
+  # first 20 stacks it has, in the order its harness file exports them; its calls take at
+  # most 30 seconds together, and one past that makes the source not read.
+  #
   # ## The save
   #
   # `save/3` is `harness.save` (owners and admins): the workspace-level document that
@@ -54,13 +69,25 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.Harnesses.{Assignment, Reader}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.RateLimit
   alias Apiary.Stacks.{Document, Stack}
 
   @head "HEAD"
   @stack_file "qory-stack.yaml"
-  # How many linked collections are read at once, and how long the reads of one may take.
+  # How many linked collections are read at once.
   @concurrency 4
-  @collection_time 30_000
+  # A person's listings and reads of a source in a window of a minute (the moduledoc).
+  @listings_a_minute 2
+  @reads_a_minute 10
+  @minute 60_000
+  # The most linked collections a listing reads, and the time all its reads may take.
+  @max_listed 100
+  @listing_time 60_000
+  # The most stacks a read of a source reads, and the time all its calls may take.
+  @max_stacks 20
+  @read_time 30_000
+  # The time of one call, `Apiary.Adapters.Calls`' default.
+  @call_time 10_000
 
   @typedoc """
   A source the page offers: its id on the page, its kind, its label, its `git` and `ref`,
@@ -83,23 +110,37 @@ defmodule Apiary.Stacks.Sources do
   @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
 
   @typedoc "Why a source's stacks were not read."
-  @type reason :: :not_covered | :no_stack | :unreadable
+  @type reason :: :not_covered | :no_stack | :unreadable | {:limited, pos_integer}
+
+  @typedoc """
+  A listing of the linked collections: those with a stack, how many could not be read,
+  and how many were past the most a listing reads.
+  """
+  @type listing :: %{sources: [source], unread: non_neg_integer, left_out: non_neg_integer}
 
   ## The sources
 
   @doc false
-  # linked/1 is the organisation's linked collections that have a stack, by title, and
-  # how many could not be read: `{sources, unread}` (the moduledoc). It calls the
-  # adapters, so a page runs it outside its process.
-  @spec linked(Scope.t()) :: {[source], non_neg_integer}
-  def linked(%Scope{organisation: %Organisation{} = organisation}) do
+  # linked/1 is the organisation's linked collections that have a stack, by title:
+  # `{:ok, listing}` (the moduledoc), or `{:error, {:limited, seconds}}` for a person
+  # past their listings of the minute. It calls the adapters, so a page runs it outside
+  # its process.
+  @spec linked(Scope.t()) :: {:ok, listing} | {:error, {:limited, pos_integer}}
+  def linked(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    with :ok <- spend(scope, :linked, @listings_a_minute),
+         do: {:ok, list_linked(organisation)}
+  end
+
+  defp list_linked(organisation) do
+    deadline = now() + @listing_time
+    {listed, left_out} = Enum.split(collections(organisation), @max_listed)
+
     {located, unresolved} =
-      organisation
-      |> collections()
+      listed
       |> Enum.group_by(fn {_collection, adapter} -> adapter.id end)
       |> Enum.reduce({[], 0}, fn {_id, [{_collection, adapter} | _] = pairs}, {located, failed} ->
         {here, failed_here} =
-          locate_collections(organisation, adapter, Enum.map(pairs, &elem(&1, 0)))
+          locate_collections(organisation, adapter, Enum.map(pairs, &elem(&1, 0)), deadline)
 
         {located ++ here, failed + failed_here}
       end)
@@ -107,9 +148,11 @@ defmodule Apiary.Stacks.Sources do
     results =
       located
       |> Task.async_stream(
-        fn {collection, location} -> {collection, location, stacks_at(location, @head)} end,
+        fn {collection, location} ->
+          {collection, location, stacks_at(location, @head, deadline)}
+        end,
         max_concurrency: @concurrency,
-        timeout: @collection_time,
+        timeout: @listing_time + @call_time,
         on_timeout: :kill_task,
         ordered: true
       )
@@ -131,7 +174,39 @@ defmodule Apiary.Stacks.Sources do
       end
 
     unread = Enum.count(results, &(not match?({:ok, {_c, _l, {:ok, _v, _s}}}, &1)))
-    {Enum.sort_by(sources, &String.downcase(&1.label)), unresolved + unread}
+
+    %{
+      sources: Enum.sort_by(sources, &String.downcase(&1.label)),
+      unread: unresolved + unread,
+      left_out: length(left_out)
+    }
+  end
+
+  @doc false
+  # limit/1 is a number the page states: the listings (`:linked`) and reads of a source
+  # (`:read`) a person may make in a minute, and the most linked collections a listing
+  # reads (`:listed`).
+  @spec limit(:linked | :read | :listed) :: pos_integer
+  def limit(:linked), do: @listings_a_minute
+  def limit(:read), do: @reads_a_minute
+  def limit(:listed), do: @max_listed
+
+  # One of the person's reads of `kind` in the window of a minute, `limit` at most.
+  defp spend(%Scope{user: %{id: user_id}}, kind, limit) do
+    case RateLimit.reserve({__MODULE__, kind, user_id}, limit, @minute) do
+      {:ok, _started_at} -> :ok
+      {:error, seconds} -> {:error, {:limited, seconds}}
+    end
+  end
+
+  defp now, do: System.monotonic_time(:millisecond)
+
+  # A call's options: its time, cut to what is left before `deadline`; nil once none is.
+  defp call_opts(deadline) do
+    case deadline - now() do
+      left when left > 0 -> [total: min(left, @call_time)]
+      _none -> nil
+    end
   end
 
   # The organisation's live collections of a connected connection, whose adapter has a
@@ -156,19 +231,18 @@ defmodule Apiary.Stacks.Sources do
   # Each collection with its link at `adapter`, under a live grant of the organisation,
   # and how many collections a resolve that failed left out; one the adapter does not
   # cover is left out uncounted.
-  defp locate_collections(organisation, adapter, collections) do
+  defp locate_collections(organisation, adapter, collections, deadline) do
     {covered, failed} =
       collections
       |> Enum.map(& &1.url)
       |> Enum.uniq()
       |> Enum.chunk_every(64)
       |> Enum.reduce({%{}, MapSet.new()}, fn chunk, {covered, failed} ->
-        case Calls.resolve(adapter, chunk) do
-          {:ok, results} ->
-            {Map.merge(covered, covered_here(organisation, adapter, results)), failed}
-
-          {:error, _failure} ->
-            {covered, MapSet.union(failed, MapSet.new(chunk))}
+        with opts when is_list(opts) <- call_opts(deadline),
+             {:ok, results} <- Calls.resolve(adapter, chunk, opts) do
+          {Map.merge(covered, covered_here(organisation, adapter, results)), failed}
+        else
+          _failed_or_late -> {covered, MapSet.union(failed, MapSet.new(chunk))}
         end
       end)
 
@@ -205,7 +279,7 @@ defmodule Apiary.Stacks.Sources do
       %{
         id: "assigned:" <> id,
         kind: :assigned,
-        label: label(source["git"], source["ref"], narrowing),
+        label: repository(source["git"]),
         git: source["git"],
         ref: source["ref"],
         narrowing: narrowing,
@@ -214,20 +288,55 @@ defmodule Apiary.Stacks.Sources do
         stacks: nil
       }
     end)
+    |> distinguish()
   end
 
-  # An assignment's label: its address as an error shows one, its ref, and the stack or
-  # the folder it narrows to.
-  defp label(git, ref, narrowing) do
-    narrowed =
-      case narrowing do
-        %{"stack" => name} -> " " <> name
-        %{"path" => path} -> " " <> path
-        _root -> ""
+  # The repository path of an address, such as `example-org/team-harness` for
+  # `https://github.com/example-org/team-harness.git`; else the address as an error shows
+  # one.
+  defp repository(git) do
+    with %URI{host: host, path: "/" <> _ = path} when is_binary(host) and host != "" <-
+           URI.parse(git),
+         trimmed when trimmed != "" <-
+           path |> String.trim("/") |> String.replace_suffix(".git", "") do
+      trimmed
+    else
+      _other -> Document.shown(git)
+    end
+  end
+
+  # Assignments whose labels are the same get their ref, where the refs differ, and the
+  # stack or folder they narrow to, where those differ, after a `·`; with neither, their
+  # addresses.
+  defp distinguish(sources) do
+    same_label = Enum.group_by(sources, & &1.label)
+
+    Enum.map(sources, fn source ->
+      case same_label[source.label] do
+        [_one] -> source
+        same -> %{source | label: told_apart(source, same)}
       end
-
-    Document.shown(git) <> " @ " <> ref <> narrowed
+    end)
   end
+
+  defp told_apart(source, same) do
+    refs? = differ?(same, & &1.ref)
+    narrowed? = differ?(same, & &1.narrowing)
+
+    if refs? or narrowed? do
+      [
+        source.label,
+        refs? && source.ref,
+        narrowed? && (source.narrowing["stack"] || source.narrowing["path"])
+      ]
+      |> Enum.filter(&is_binary/1)
+      |> Enum.join(" · ")
+    else
+      Document.shown(source.git)
+    end
+  end
+
+  defp differ?(sources, field), do: sources |> Enum.uniq_by(field) |> length() > 1
 
   @doc false
   # address/1 is the source at the address `text`, trimmed: `{:ok, source}`, or
@@ -283,14 +392,19 @@ defmodule Apiary.Stacks.Sources do
 
   @doc false
   # read/2 is the stacks of `source` and the workflows each lists (the moduledoc), in the
-  # order of their names: `{:ok, stacks}`, or `{:error, reason}`. It calls the adapters,
-  # so a page runs it outside its process.
+  # order of their names: `{:ok, stacks}`, or `{:error, reason}`, `{:limited, seconds}`
+  # for a person past their reads of the minute. It calls the adapters, so a page runs it
+  # outside its process.
   @spec read(Scope.t(), source) :: {:ok, [stack]} | {:error, reason}
-  def read(%Scope{organisation: %Organisation{} = organisation}, %{} = source) do
-    with {:ok, location, version, stacks} <- stacks_of(organisation, source) do
+  def read(%Scope{organisation: %Organisation{} = organisation} = scope, %{} = source) do
+    deadline = now() + @read_time
+
+    with :ok <- spend(scope, :read, @reads_a_minute),
+         {:ok, location, version, stacks} <- stacks_of(organisation, source, deadline) do
       stacks
+      |> Enum.take(@max_stacks)
       |> Enum.reduce_while([], fn stack, read ->
-        case workflows(location, stack.file, version) do
+        case workflows(location, stack.file, version, deadline) do
           {:ok, workflows} ->
             {:cont, [%{name: stack.name, base: base(source, stack), workflows: workflows} | read]}
 
@@ -317,16 +431,16 @@ defmodule Apiary.Stacks.Sources do
     Map.merge(narrowing, %{"git" => source.git, "ref" => source.ref})
   end
 
-  defp stacks_of(_organisation, %{kind: :linked} = source),
+  defp stacks_of(_organisation, %{kind: :linked} = source, _deadline),
     do: {:ok, source.location, source.version, source.stacks}
 
-  defp stacks_of(organisation, source) do
+  defp stacks_of(organisation, source, deadline) do
     harness_source = Map.merge(source.narrowing, %{"git" => source.git, "ref" => source.ref})
 
-    with {:ok, location} <- locate(organisation, harness_source) do
+    with {:ok, location} <- locate(organisation, harness_source, deadline) do
       case source.narrowing do
         %{"stack" => name} ->
-          with {:ok, version, stacks} <- stacks_at(location, source.ref) do
+          with {:ok, version, stacks} <- stacks_at(location, source.ref, deadline) do
             case Enum.filter(stacks, &(&1.name == name)) do
               [] -> {:error, :no_stack}
               exported -> {:ok, location, version, exported}
@@ -337,7 +451,7 @@ defmodule Apiary.Stacks.Sources do
           {:ok, location, source.ref, [%{name: nil, file: in_folder(path, @stack_file)}]}
 
         _root ->
-          with {:ok, version, stacks} <- stacks_at(location, source.ref),
+          with {:ok, version, stacks} <- stacks_at(location, source.ref, deadline),
                do: {:ok, location, version, stacks}
       end
     end
@@ -352,9 +466,9 @@ defmodule Apiary.Stacks.Sources do
 
   # The link of `harness_source`: the first result of an adapter, in the order of their
   # names, under a live grant of a connected connection that the rule allows.
-  defp locate(%Organisation{id: organisation_id}, %{"git" => git} = harness_source) do
+  defp locate(%Organisation{id: organisation_id}, %{"git" => git} = harness_source, deadline) do
     if CallWire.address?(git),
-      do: locate_at(adapters(), organisation_id, git, harness_source),
+      do: locate_at(adapters(), organisation_id, git, harness_source, deadline),
       else: {:error, :unreadable}
   end
 
@@ -366,16 +480,19 @@ defmodule Apiary.Stacks.Sources do
     )
   end
 
-  defp locate_at(adapters, organisation_id, git, harness_source) do
-    Enum.reduce_while(adapters, {:error, :not_covered}, fn adapter, not_found ->
-      with {:ok, [%{grant_ref: grant_ref, resource_ref: resource_ref}]} <-
-             Calls.resolve(adapter, [git]),
+  # An adapter whose resolve fails is passed over; with no link found, the source is
+  # `:unreadable` when any failed, since that adapter may have covered it.
+  defp locate_at(adapters, organisation_id, git, harness_source, deadline) do
+    Enum.reduce_while(adapters, {:error, :not_covered}, fn adapter, none ->
+      with opts when is_list(opts) <- call_opts(deadline) || {:error, :late},
+           {:ok, [%{grant_ref: grant_ref, resource_ref: resource_ref}]} <-
+             Calls.resolve(adapter, [git], opts),
            %Grant{} = grant <- live_grant(adapter, grant_ref),
            true <- Harnesses.allowed?(organisation_id, grant.organisation_id, harness_source) do
         {:halt, {:ok, location(adapter, grant_ref, resource_ref)}}
       else
-        {:error, _failure} -> {:halt, {:error, :unreadable}}
-        _not_allowed -> {:cont, not_found}
+        {:error, _failure} -> {:cont, {:error, :unreadable}}
+        _not_allowed -> {:cont, none}
       end
     end)
   end
@@ -398,19 +515,19 @@ defmodule Apiary.Stacks.Sources do
   # The stacks of the root at `location`, read at `at`: `{:ok, version, stacks}`, each
   # `%{name, file}`, `[]` for none; `{:error, :unreadable}` for a read that failed, both
   # root harness files, or a harness file whose `exports` do not read.
-  defp stacks_at(location, at) do
-    with {:ok, harness, version} <- read_file(location, "harness.yaml", at),
-         {:ok, qory, _version} <- read_file(location, "qory.yaml", version) do
+  defp stacks_at(location, at, deadline) do
+    with {:ok, harness, version} <- read_file(location, "harness.yaml", at, deadline),
+         {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
       case {harness, qory} do
-        {nil, nil} -> root_stack(location, version)
-        {content, nil} -> exported(location, content, version)
-        {nil, content} -> exported(location, content, version)
+        {nil, nil} -> root_stack(location, version, deadline)
+        {content, nil} -> exported(location, content, version, deadline)
+        {nil, content} -> exported(location, content, version, deadline)
         _both -> {:error, :unreadable}
       end
     end
   end
 
-  defp exported(location, content, version) do
+  defp exported(location, content, version, deadline) do
     case Reader.exports(content) do
       {:ok, %{stacks: [_ | _] = names} = exports} ->
         stacks =
@@ -422,18 +539,18 @@ defmodule Apiary.Stacks.Sources do
         {:ok, version, stacks}
 
       {:ok, _no_stacks} ->
-        root_stack(location, version)
+        root_stack(location, version, deadline)
 
       :none ->
-        root_stack(location, version)
+        root_stack(location, version, deadline)
 
       {:error, _reason} ->
         {:error, :unreadable}
     end
   end
 
-  defp root_stack(location, version) do
-    case read_file(location, @stack_file, version) do
+  defp root_stack(location, version, deadline) do
+    case read_file(location, @stack_file, version, deadline) do
       {:ok, nil, _version} -> {:ok, version, []}
       {:ok, _content, _version} -> {:ok, version, [%{name: nil, file: @stack_file}]}
       {:error, reason} -> {:error, reason}
@@ -441,8 +558,8 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # The workflows of the stack file `file` at `location`, read at `at`, by name.
-  defp workflows(location, file, at) do
-    case read_file(location, file, at) do
+  defp workflows(location, file, at, deadline) do
+    case read_file(location, file, at, deadline) do
       {:ok, nil, _version} ->
         {:error, :no_stack}
 
@@ -457,10 +574,10 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The document at `path` at `location`, read at `at`: `{:ok, content | nil,
-  # resolved_at}`, or `{:error, :unreadable}` for a path a read does not take or a call
-  # that failed.
-  defp read_file(location, path, at) do
+  # The document at `path` at `location`, read at `at` before `deadline`: `{:ok, content
+  # | nil, resolved_at}`, or `{:error, :unreadable}` for a path a read does not take, a
+  # call that failed, or no time left.
+  defp read_file(location, path, at, deadline) do
     request = %{
       grant_ref: location.grant_ref,
       resource_ref: location.resource_ref,
@@ -468,8 +585,10 @@ defmodule Apiary.Stacks.Sources do
       at: at
     }
 
-    if CallWire.document_path?(path) and CallWire.version_ref?(at) do
-      case Calls.read_document(location.adapter, request) do
+    opts = call_opts(deadline)
+
+    if CallWire.document_path?(path) and CallWire.version_ref?(at) and is_list(opts) do
+      case Calls.read_document(location.adapter, request, opts) do
         {:ok, %{found: true, content: content, resolved_at: version}} -> {:ok, content, version}
         {:ok, %{found: false, resolved_at: version}} -> {:ok, nil, version}
         {:error, _failure} -> {:error, :unreadable}
@@ -528,8 +647,13 @@ defmodule Apiary.Stacks.Sources do
               select: s.workflow
           )
 
-        for other <- replaced,
-            do: {:ok, _stack} = Stacks.delete_stack({:workspace, workspace, other})
+        # A save at the same time may have removed one already.
+        for other <- replaced do
+          case Stacks.delete_stack({:workspace, workspace, other}) do
+            {:ok, _stack} -> :ok
+            {:error, :not_found} -> :ok
+          end
+        end
 
         Stacks.put_stack(scope, {:workspace, workspace, workflow}, document(base))
       end)

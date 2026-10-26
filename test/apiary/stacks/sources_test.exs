@@ -43,7 +43,7 @@ defmodule Apiary.Stacks.SourcesTest do
       adapter.adapter.id => %{@harness => {"G_acme", "R_harness"}, @app => {"G_acme", "R_app"}}
     }
 
-    %{scope: scope, adapter: adapter, covered: covered}
+    %{scope: scope, adapter: adapter, connection: connection, covered: covered}
   end
 
   defp calls do
@@ -54,15 +54,16 @@ defmodule Apiary.Stacks.SourcesTest do
     end
   end
 
-  # The instance's adapter, its grant over `@team`, and the stub over both adapters.
-  defp instance_grant(ctx) do
+  # The instance's adapter, its grant over `@team`, and the stub over both adapters, with
+  # `opts` for the stub.
+  defp instance_grant(ctx, opts \\ []) do
     instance = call_adapter_fixture()
     instance_scope = instance_admin_scope()
     {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
     live_grant_fixture(instance_scope.organisation.id, instance.adapter, connection, "G_i")
 
     covered = Map.put(ctx.covered, instance.adapter.id, %{@team => {"G_i", "R_team"}})
-    serve_calls([ctx.adapter, instance], covered: covered, files: @files)
+    serve_calls([ctx.adapter, instance], [covered: covered, files: @files] ++ opts)
     instance_scope
   end
 
@@ -79,7 +80,7 @@ defmodule Apiary.Stacks.SourcesTest do
     test "only those with a stack, read at HEAD, with their stacks", ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
 
-      assert {[source], 0} = Sources.linked(ctx.scope)
+      assert {:ok, %{sources: [source], unread: 0, left_out: 0}} = Sources.linked(ctx.scope)
       assert %{kind: :linked, label: "acme/harness", git: @harness, ref: "HEAD"} = source
       assert source.version == "c-R_harness"
       assert source.stacks == [%{name: "triage", file: "stacks/triage/qory-stack.yaml"}]
@@ -93,7 +94,8 @@ defmodule Apiary.Stacks.SourcesTest do
       files = %{{"R_app", "qory-stack.yaml"} => @stack <> @workflows}
       serve_calls([ctx.adapter], covered: ctx.covered, files: files)
 
-      assert {[%{label: "acme/app", stacks: [%{name: nil, file: "qory-stack.yaml"}]}], 0} =
+      assert {:ok,
+              %{sources: [%{label: "acme/app", stacks: [%{name: nil, file: "qory-stack.yaml"}]}]}} =
                Sources.linked(ctx.scope)
     end
 
@@ -101,18 +103,47 @@ defmodule Apiary.Stacks.SourcesTest do
       covered = %{ctx.adapter.adapter.id => %{@harness => {"G_other", "R_harness"}}}
       serve_calls([ctx.adapter], covered: covered, files: @files)
 
-      assert {[], 0} = Sources.linked(ctx.scope)
+      assert {:ok, %{sources: [], unread: 0}} = Sources.linked(ctx.scope)
     end
 
     test "an adapter that reaches no one leaves its repositories out, counted", ctx do
       serve_calls([ctx.adapter], down: true)
 
-      assert {[], 2} = Sources.linked(ctx.scope)
+      assert {:ok, %{sources: [], unread: 2}} = Sources.linked(ctx.scope)
+    end
+
+    test "at most 100 are read, the first by title, and the rest counted", ctx do
+      serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
+
+      for n <- 1..99 do
+        harness_collection_fixture(
+          ctx.connection,
+          "https://code.example.com/zz/r#{n}",
+          "zz/r#{n}"
+        )
+      end
+
+      assert {:ok, %{sources: [%{label: "acme/harness"}], unread: 0, left_out: 1}} =
+               Sources.linked(ctx.scope)
+
+      resolved = for {"resolve", call} <- calls(), address <- call["addresses"], do: address
+      assert length(resolved) == 100
+      refute "https://code.example.com/zz/r99" in resolved
+    end
+
+    test "a person lists them at most twice a minute", ctx do
+      serve_calls([ctx.adapter], down: true)
+
+      assert {:ok, _listing} = Sources.linked(ctx.scope)
+      assert {:ok, _listing} = Sources.linked(ctx.scope)
+      assert {:error, {:limited, seconds}} = Sources.linked(ctx.scope)
+      assert seconds in 1..60
+      assert {:ok, _listing} = Sources.linked(scope_fixture())
     end
 
     test "reading one gives its workflows and the base a document extends", ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
-      {[source], 0} = Sources.linked(ctx.scope)
+      {:ok, %{sources: [source]}} = Sources.linked(ctx.scope)
 
       assert {:ok, [stack]} = Sources.read(ctx.scope, source)
 
@@ -145,8 +176,28 @@ defmodule Apiary.Stacks.SourcesTest do
                %{kind: :assigned, ref: "v2", narrowing: %{"stack" => "web"}} = web
              ] = Sources.assigned(ctx.scope)
 
-      assert root.label == @team <> " @ v1"
-      assert web.label == @team <> " @ v2 web"
+      assert root.label == "example-org/team-harness · v1"
+      assert web.label == "example-org/team-harness · v2 · web"
+    end
+
+    test "one is shown by its repository path, with its ref only where that tells two apart",
+         ctx do
+      admin = instance_admin_scope()
+      assignment(ctx.scope.organisation.id, %{"git" => @team, "ref" => "v1"}, admin)
+      assignment(ctx.scope.organisation.id, %{"git" => @harness <> ".git", "ref" => "v1"}, admin)
+
+      assignment(
+        ctx.scope.organisation.id,
+        %{"git" => "https://other.example.org/acme/harness", "ref" => "v1"},
+        admin
+      )
+
+      assert [
+               "example-org/team-harness",
+               "https://code.example.com/acme/harness.git",
+               "https://other.example.org/acme/harness"
+             ] =
+               Enum.map(Sources.assigned(ctx.scope), & &1.label)
     end
 
     test "one is read through the instance's grant the assignment covers", ctx do
@@ -161,6 +212,14 @@ defmodule Apiary.Stacks.SourcesTest do
                base: %{"git" => @team, "ref" => "v1"},
                workflows: ["review"]
              }
+    end
+
+    test "one is found past an adapter whose calls fail", ctx do
+      admin = instance_grant(ctx, down: [ctx.adapter.adapter.id])
+      assignment(ctx.scope.organisation.id, %{"git" => @team, "ref" => "v1"}, admin)
+      [source] = Sources.assigned(ctx.scope)
+
+      assert {:ok, [%{workflows: ["review"]}]} = Sources.read(ctx.scope, source)
     end
   end
 
@@ -197,6 +256,35 @@ defmodule Apiary.Stacks.SourcesTest do
       end
     end
 
+    test "a person reads sources at most 10 times a minute", ctx do
+      serve_calls([ctx.adapter], down: true)
+      {:ok, source} = Sources.address(@harness)
+
+      for _n <- 1..10, do: assert(Sources.read(ctx.scope, source) == {:error, :unreadable})
+      assert calls() != []
+
+      assert {:error, {:limited, seconds}} = Sources.read(ctx.scope, source)
+      assert seconds in 1..60
+      assert calls() == []
+    end
+
+    test "reads the first 20 stacks its harness file exports", ctx do
+      names = for n <- 1..25, do: "s#{n}"
+
+      files =
+        Map.new(names, &{{"R_harness", "stacks/#{&1}/qory-stack.yaml"}, @stack <> @workflows})
+        |> Map.put(
+          {"R_harness", "harness.yaml"},
+          "exports:\n  stacks: [#{Enum.join(names, ", ")}]\n"
+        )
+
+      serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+      {:ok, source} = Sources.address(@harness)
+
+      assert {:ok, stacks} = Sources.read(ctx.scope, source)
+      assert Enum.sort(Enum.map(stacks, & &1.name)) == Enum.sort(Enum.take(names, 20))
+    end
+
     test "with no stack, and with stacks that cannot be read", ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
       {:ok, app} = Sources.address(@app)
@@ -212,7 +300,7 @@ defmodule Apiary.Stacks.SourcesTest do
   describe "the save" do
     setup ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
-      {[source], 0} = Sources.linked(ctx.scope)
+      {:ok, %{sources: [source]}} = Sources.linked(ctx.scope)
       {:ok, [stack]} = Sources.read(ctx.scope, source)
       %{base: stack.base}
     end
