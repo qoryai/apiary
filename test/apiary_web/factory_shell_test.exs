@@ -37,6 +37,9 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.WorkItemLive.Index,
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.TargetLive.FurtherRepositories,
+    ApiaryWeb.ProviderLive.Index,
+    ApiaryWeb.ProviderLive.Show,
+    ApiaryWeb.ModelChoiceLive,
     ApiaryWeb.WorkflowLive,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.AdapterInstallController,
@@ -195,7 +198,13 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "/instance/nodes/x1"},
                  {:get, "/instance/nodes/x1/keys"},
                  {:get, "/instance/nodes/x1/keys/x1/revoke"},
-                 {:get, "/instance/nodes/x1/settings"}
+                 {:get, "/instance/nodes/x1/settings"},
+                 # The organisation's model providers: the list, New model provider and a
+                 # provider's page; and a workspace's Model.
+                 {:get, "#{org}/settings/model-providers"},
+                 {:get, "#{org}/settings/model-providers/new"},
+                 {:get, "#{org}/settings/model-providers/x1"},
+                 {:get, workspace_path(scope, "/settings/model")}
                ] ++
                  for(
                    rest <-

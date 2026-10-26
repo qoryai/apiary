@@ -1,6 +1,6 @@
 defmodule Apiary.ModelChoices do
-  # The model choices of an organisation: which model provider, key, model, effort and tier
-  # map its runs use (`Apiary.ModelChoices.ModelChoice`), set at levels 2 to 6 here and
+  # The model choices of an organisation: which runtime, model provider, key, model, effort
+  # and tier map its runs use (`Apiary.ModelChoices.ModelChoice`), set at levels 2 to 6 here and
   # resolved for each run by `Apiary.ModelChoices.Resolution`.
   #
   # ## Places
@@ -34,8 +34,10 @@ defmodule Apiary.ModelChoices do
   #
   # A save is checked, each refusal a changeset error on its field:
   #
+  #   * `runtime`: a runtime of the catalogue (`Apiary.Kinds.Runtimes`), or none for the
+  #     default (`default_runtime/0`); a choice that names one names a provider too;
   #   * `provider`: a model provider of the chain the choice is set on (`is invalid`
-  #     otherwise), that applies to the workspace, and that serves the runtime of the runs
+  #     otherwise), that applies to the workspace, and that serves the choice's runtime
   #     (`Apiary.Kinds.Providers.serve/2`). A deny rule of the security policy is not
   #     asked: it never blocks a host of an integration;
   #   * `key`: a value id of the provider's keys;
@@ -81,7 +83,7 @@ defmodule Apiary.ModelChoices do
   alias Apiary.{Access, Audit, Connections, Edition, Features, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Connections.{Connection, ConnectionWorkspace}
-  alias Apiary.Kinds.{Provider, Providers, Runtimes}
+  alias Apiary.Kinds.{Provider, Providers, Runtime, Runtimes}
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
@@ -90,9 +92,6 @@ defmodule Apiary.ModelChoices do
 
   # A workflow's name.
   @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
-
-  # The runtime of every run of the queue.
-  @runtime "claude"
 
   # How many places a refusal names before "and N more".
   @shown 5
@@ -119,9 +118,18 @@ defmodule Apiary.ModelChoices do
         }
 
   @doc false
-  # runtime_name/0 is the name of the runtime of every run of the queue.
-  @spec runtime_name() :: String.t()
-  def runtime_name, do: @runtime
+  # default_runtime/0 is the runtime of a choice that names none, and of a run whose
+  # choices name no provider: the catalogue's only runtime (`Apiary.Kinds.Runtimes`).
+  # With more than one in the catalogue, its first, in the catalogue's order.
+  @spec default_runtime() :: Runtime.t()
+  def default_runtime, do: hd(Runtimes.list())
+
+  @doc false
+  # runtime/1 is the runtime named `name`, the default for nil: `{:ok, runtime}`, or
+  # `:error` for a name the catalogue does not have (any more).
+  @spec runtime(String.t() | nil) :: {:ok, Runtime.t()} | :error
+  def runtime(nil), do: {:ok, default_runtime()}
+  def runtime(name), do: Runtimes.fetch(name)
 
   ## Reading
 
@@ -267,14 +275,21 @@ defmodule Apiary.ModelChoices do
           )
       end
 
-    %{choices: choices, workspace_id: workspace.id, target_id: target_id, workflow: workflow}
+    %{
+      choices: choices,
+      workspace_id: workspace.id,
+      target_id: target_id,
+      workflow: workflow,
+      default_runtime: default_runtime().name,
+      effort_values: Map.new(Runtimes.list(), &{&1.name, &1.effort_values})
+    }
   end
 
   @doc false
   # resolution_provider/1 is `provider`, a provider connection, as
   # `Apiary.ModelChoices.Resolution` reads a provider: its default key, its default model
-  # and its description's models (`Connections.provider_models/1`), each with its offered
-  # effort values.
+  # and its description's models (`Connections.provider_models/1`), each with the effort
+  # values its description lists. The resolution keeps those its runtime offers too.
   @spec resolution_provider(Connection.t()) :: Resolution.provider()
   def resolution_provider(%Connection{} = provider) do
     %{
@@ -282,17 +297,38 @@ defmodule Apiary.ModelChoices do
       default_model_id: Connections.default_model(provider),
       models:
         Enum.map(Connections.provider_models(provider), fn model ->
-          offered = offered(model)
-          %{model_id: model["id"], effort: if(offered == [], do: nil, else: offered)}
+          effort = model["effort"] || []
+          %{model_id: model["id"], effort: if(effort == [], do: nil, else: effort)}
         end)
     }
+  end
+
+  @doc false
+  # suggestions/2 is the models that Workspace settings › Model offers for the model
+  # provider `provider` and the runs of `runtime`, each a map of `id`, `title` and
+  # `effort`, its offered effort values: the models of its description
+  # (`Connections.provider_models/1`), its default model (`Connections.default_model/1`)
+  # first. The page reads its list here alone, so the
+  # list may come from elsewhere without a change to the page. A choice may name any other
+  # model id too.
+  @spec suggestions(Connection.t(), Runtime.t()) :: [
+          %{id: String.t(), title: String.t(), effort: [String.t()]}
+        ]
+  def suggestions(%Connection{} = provider, %Runtime{} = runtime) do
+    default = Connections.default_model(provider)
+
+    provider
+    |> Connections.provider_models()
+    |> Enum.map(&%{id: &1["id"], title: &1["title"], effort: offered(&1, runtime)})
+    |> Enum.sort_by(&(&1.id != default))
   end
 
   ## Writing
 
   @doc false
   # put_choice/3 sets the choice at `place` (`model_choice.write`; `provider.write` for
-  # the organisation's default), replacing what the place had: `attrs` has `provider`, the
+  # the organisation's default), replacing what the place had: `attrs` has `runtime`, the
+  # name of a runtime of the catalogue, `provider`, the
   # public id of a model provider of the organisation, `key`, the value id of one of its
   # keys, `model`, a model id, `effort`, one of that model's offered effort values,
   # `tiers`, a map of tiers, and, at the workspace, `locked`. Each but `provider` and
@@ -563,6 +599,7 @@ defmodule Apiary.ModelChoices do
       end
 
     %{
+      runtime: choice.runtime,
       provider: provider && provider.public_id,
       key: choice.value_id,
       model: choice.model_id,
@@ -596,6 +633,7 @@ defmodule Apiary.ModelChoices do
   # with what. The rest asks the provider (`checked/3`).
   defp input(attrs, at) do
     types = %{
+      runtime: :string,
       provider: :string,
       key: :string,
       model: :string,
@@ -611,11 +649,39 @@ defmodule Apiary.ModelChoices do
     |> update_change(:tiers, &empty_to_nil/1)
     |> validate_format(:model, @model_id, message: model_rule())
     |> validate_format(:effort, @effort, message: effort_rule())
-    |> needs(:provider, [:key, :model])
+    |> validate_runtime()
+    |> needs(:provider, [:runtime, :key, :model])
     |> needs(:model, [:effort])
     |> needs_one([:provider, :tiers])
     |> validate_tiers()
     |> Map.put(:action, :validate)
+  end
+
+  # A runtime the catalogue has.
+  defp validate_runtime(changeset) do
+    validate_change(changeset, :runtime, fn :runtime, name ->
+      case Runtimes.fetch(name) do
+        {:ok, _runtime} ->
+          []
+
+        :error ->
+          [
+            runtime:
+              {dgettext_noop(
+                 "errors",
+                 "Choose one of the offered runtimes: %{runtime} is not one of them."
+               ), runtime: name}
+          ]
+      end
+    end)
+  end
+
+  # The runtime of the choice `changeset` sends: the one it names, else the default.
+  defp runtime_of(changeset) do
+    case runtime(get_field(changeset, :runtime)) do
+      {:ok, runtime} -> runtime
+      :error -> default_runtime()
+    end
   end
 
   defp stringify(attrs) when is_map(attrs),
@@ -739,16 +805,19 @@ defmodule Apiary.ModelChoices do
   # Every check of the moduledoc that asks the provider, on a changeset `input/2` gave:
   # `{:ok, values}`, the columns to store, or the changeset with each reason.
   defp checked(changeset, provider, at) do
+    runtime = runtime_of(changeset)
+
     changeset =
       changeset
-      |> check_provider(provider, at)
+      |> check_provider(provider, at, runtime)
       |> check_key(provider)
-      |> check_model(provider)
-      |> check_tiers(provider)
+      |> check_model(provider, runtime)
+      |> check_tiers(provider, runtime)
 
     if changeset.valid? do
       {:ok,
        %{
+         runtime: get_field(changeset, :runtime),
          value_id: get_field(changeset, :key),
          model_id: get_field(changeset, :model),
          effort: get_field(changeset, :effort),
@@ -763,12 +832,12 @@ defmodule Apiary.ModelChoices do
   defp tiers_of(nil), do: nil
   defp tiers_of(tiers), do: Map.new(tiers, fn {tier, entry} -> {tier, tier_entry(entry)} end)
 
-  defp check_provider(changeset, nil, _at), do: changeset
+  defp check_provider(changeset, nil, _at, _runtime), do: changeset
 
-  defp check_provider(changeset, %Connection{} = provider, at) do
+  defp check_provider(changeset, %Connection{} = provider, at, runtime) do
     with :ok <- applies(provider, at),
-         {:ok, description} <- description(provider),
-         :ok <- serves(description, runtime()) do
+         {:ok, description} <- description(provider, runtime),
+         :ok <- serves(description, runtime) do
       changeset
     else
       {:error, {message, bindings}} -> add_error(changeset, :provider, message, bindings)
@@ -791,16 +860,11 @@ defmodule Apiary.ModelChoices do
 
   # The description the provider was added from; one a later pin changed or removed
   # serves nothing, and is refused as a provider that serves no format.
-  defp description(%Connection{} = provider) do
+  defp description(%Connection{} = provider, runtime) do
     case Connections.provider(provider) do
       {:ok, description} -> {:ok, description}
-      {:error, _changed} -> {:error, format_refusal(provider.name, runtime())}
+      {:error, _changed} -> {:error, format_refusal(provider.name, runtime)}
     end
-  end
-
-  defp runtime do
-    {:ok, runtime} = Runtimes.fetch(@runtime)
-    runtime
   end
 
   @doc false
@@ -858,48 +922,49 @@ defmodule Apiary.ModelChoices do
     end
   end
 
-  defp check_model(changeset, nil), do: changeset
+  defp check_model(changeset, nil, _runtime), do: changeset
 
-  defp check_model(changeset, %Connection{} = provider) do
+  defp check_model(changeset, %Connection{} = provider, runtime) do
     case get_field(changeset, :model) do
       nil ->
         changeset
 
       model_id ->
-        case effort_error(provider, model_id, get_field(changeset, :effort)) do
+        case effort_error(provider, model_id, get_field(changeset, :effort), runtime) do
           nil -> changeset
           {message, bindings} -> add_error(changeset, :effort, message, bindings)
         end
     end
   end
 
-  defp check_tiers(changeset, nil), do: changeset
+  defp check_tiers(changeset, nil, _runtime), do: changeset
 
-  defp check_tiers(%Ecto.Changeset{valid?: false} = changeset, _provider), do: changeset
+  defp check_tiers(%Ecto.Changeset{valid?: false} = changeset, _provider, _runtime),
+    do: changeset
 
-  defp check_tiers(changeset, %Connection{} = provider) do
+  defp check_tiers(changeset, %Connection{} = provider, runtime) do
     tiers = get_field(changeset, :tiers) || %{}
 
     Enum.reduce_while(tiers, changeset, fn {_tier, entry}, changeset ->
       %{"model" => model_id} = entry = tier_entry(entry)
 
-      case effort_error(provider, model_id, entry["effort"]) do
+      case effort_error(provider, model_id, entry["effort"], runtime) do
         nil -> {:cont, changeset}
         {message, bindings} -> {:halt, add_error(changeset, :tiers, message, bindings)}
       end
     end)
   end
 
-  # Why `effort` does not go with the model `model_id` of `provider`, or nil: no effort
-  # always does; else one of the model's offered effort values, of which a model the
-  # description does not list has none.
-  defp effort_error(_provider, _model_id, nil), do: nil
+  # Why `effort` does not go with the model `model_id` of `provider` for the runs of
+  # `runtime`, or nil: no effort always does; else one of the model's offered effort
+  # values, of which a model the description does not list has none.
+  defp effort_error(_provider, _model_id, nil, _runtime), do: nil
 
-  defp effort_error(%Connection{} = provider, model_id, effort) do
+  defp effort_error(%Connection{} = provider, model_id, effort, runtime) do
     offered =
       case Enum.find(Connections.provider_models(provider), &(&1["id"] == model_id)) do
         nil -> []
-        model -> offered(model)
+        model -> offered(model, runtime)
       end
 
     cond do
@@ -920,8 +985,8 @@ defmodule Apiary.ModelChoices do
 
   # The model's offered effort values: those of its list in the description that the
   # runtime's list contains too, in the model's order.
-  defp offered(%{} = model),
-    do: Enum.filter(model["effort"] || [], &(&1 in runtime().effort_values))
+  defp offered(%{} = model, %Runtime{effort_values: values}),
+    do: Enum.filter(model["effort"] || [], &(&1 in values))
 
   ## What uses a provider
 

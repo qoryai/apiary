@@ -13,7 +13,9 @@ defmodule Apiary.Dispatches.RunSettings do
   #
   # Only an explore run has `run_settings`, and only with both features `factory` and
   # `secrets` on; without either, the documents have none. With them on and no choice at any
-  # level, it has `runtime` alone, and the run uses the gateway's key.
+  # level, it has `runtime` alone, the catalogue's default
+  # (`Apiary.ModelChoices.default_runtime/0`), and the run uses the gateway's key. With a
+  # choice, `runtime` is the runtime the choice resolves to.
   #
   # ## What it holds
   #
@@ -37,7 +39,8 @@ defmodule Apiary.Dispatches.RunSettings do
   #   * `provider_gone`: the provider is not there, fails its integrity code
   #     (`Apiary.Connections.intact?/1`), does not apply to the workspace any more, or is
   #     no longer in the catalogue as it was added;
-  #   * `runtime_unserved`: no API of the provider serves the run's runtime
+  #   * `runtime_unserved`: the runtime the choice names is no longer in the catalogue
+  #     (`Apiary.Kinds.Runtimes`), or no API of the provider serves the run's runtime
   #     (`Apiary.Kinds.Providers.api/2`);
   #   * `provider_gone`: the endpoint of that API is a setting whose address
   #     `Apiary.Kinds.Endpoint` refuses;
@@ -85,7 +88,7 @@ defmodule Apiary.Dispatches.RunSettings do
   alias Apiary.{Connections, Features, ModelChoices, Repo, Stacks, TimeLimits}
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime, Runtimes}
+  alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime}
   alias Apiary.ModelChoices.Resolution
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
@@ -250,16 +253,16 @@ defmodule Apiary.Dispatches.RunSettings do
 
     case resolved do
       :none ->
-        sealed(with_time_limit(runtime_only(), held))
+        sealed(with_time_limit(runtime_only(ModelChoices.default_runtime()), held))
 
       {:error, :provider_removed} ->
         {:end, :provider_gone}
 
       {:ok, %Resolution{} = resolution} ->
         provider = Map.fetch!(providers, resolution.connection_id)
-        {:ok, runtime} = Runtimes.fetch(ModelChoices.runtime_name())
 
-        with :ok <- intact(provider),
+        with {:ok, runtime} <- runtime(resolution),
+             :ok <- intact(provider),
              {:ok, built} <-
                form(
                  resolution,
@@ -310,10 +313,19 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  defp runtime_only do
+  # The runtime the choice resolved to, or the run ends `runtime_unserved` for one the
+  # catalogue no longer has: no provider serves it.
+  defp runtime(%Resolution{runtime: name}) do
+    case ModelChoices.runtime(name) do
+      {:ok, runtime} -> {:ok, runtime}
+      :error -> {:end, :runtime_unserved}
+    end
+  end
+
+  defp runtime_only(%Runtime{name: name}) do
     %{
-      wire: Jason.OrderedObject.new([{"runtime", ModelChoices.runtime_name()}]),
-      stored: %{"runtime" => ModelChoices.runtime_name()},
+      wire: Jason.OrderedObject.new([{"runtime", name}]),
+      stored: %{"runtime" => name},
       columns: %{}
     }
   end
@@ -411,7 +423,7 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp built(%Resolution{} = resolution, %Connection{} = provider, models, runtime, api) do
     members =
-      [{"runtime", ModelChoices.runtime_name()}, {"model", resolution.model_id}] ++
+      [{"runtime", runtime.name}, {"model", resolution.model_id}] ++
         if(resolution.effort, do: [{"effort", resolution.effort}], else: []) ++
         [{"provider_models", provider_models(models, resolution, runtime)}] ++
         tiers(resolution.tiers)

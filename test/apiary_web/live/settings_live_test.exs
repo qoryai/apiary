@@ -475,6 +475,10 @@ defmodule ApiaryWeb.SettingsLiveTest do
             do: [integrations: base <> "/integrations", secrets: base <> "/secrets"],
             else: []
           ) ++
+          if(secrets? and Apiary.Features.on?(:factory),
+            do: [model: base <> "/model"],
+            else: []
+          ) ++
           if(factory?, do: [workflow: base <> "/workflow"], else: []) ++
           [runs: base <> "/runs"]
 
@@ -483,7 +487,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
       end
 
       # In the map's order: General, People, with the `security` feature Integrations and
-      # Secrets and variables, with the `factory` feature Workflow, and Runs last. The access keys are their nodes', not here.
+      # Secrets and variables, with `factory` also Model and Workflow, and Runs last. The access keys
+      # are their nodes', not here.
       assert lv
              |> element("#settings-tabs")
              |> render()

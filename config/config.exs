@@ -111,7 +111,8 @@ config :logger, :default_formatter,
 # invitation, a log-in link, an email change, a password link and Instance settings ›
 # Mail's test link carry; `invitation` an invitation's token, which the sign-up page's
 # query carries (`/users/register?invitation=…`); `return` what an integration hands back
-# on the link it sends a person to after an install (`/integrations/…?return=…`).
+# on the link it sends a person to after an install (`/integrations/…?return=…`); `key`
+# a model provider's key, which New model provider sends.
 config :phoenix, :filter_parameters, [
   "password",
   "secret",
@@ -119,7 +120,8 @@ config :phoenix, :filter_parameters, [
   "code",
   "token",
   "invitation",
-  "return"
+  "return",
+  "key"
 ]
 
 # Use Jason for JSON parsing in Phoenix
