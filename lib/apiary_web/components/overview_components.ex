@@ -2468,6 +2468,7 @@ defmodule ApiaryWeb.OverviewComponents do
             for={@form}
             id={"#{@id}-test-form"}
             phx-submit="run_test"
+            novalidate
             class="flex flex-wrap items-end gap-2 [&>fieldset]:min-w-0 [&>fieldset]:flex-[1_1_16rem]"
           >
             <.input
