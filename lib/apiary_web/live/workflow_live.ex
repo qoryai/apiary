@@ -595,7 +595,7 @@ defmodule ApiaryWeb.WorkflowLive do
     do:
       pgettext(
         "plain",
-        "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository only through a linked repository or an assignment.",
+        "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment.",
         source: source.label,
         organisation: organisation
       )

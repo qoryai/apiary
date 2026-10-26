@@ -9,6 +9,11 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # with the `factory` feature, by name, as Instance settings › Adapters lists them
   # (`ApiaryWeb.InstanceLive.Adapters`); then mail. A number out of range is the first step.
   #
+  # Where an adapter's guide gives steps for setting it up (`Apiary.Adapters.guide/2`), an
+  # adapter's step shows them under its title while Set up shows, after a first step of
+  # Qory Apiary's, Set up, and before a note of Qory Apiary's on Continue; where it gives
+  # none, or Set up does not show, no steps show.
+  #
   # An adapter's step says whether it is set up: "Set up" once it is configured
   # (`Apiary.Adapters.configured?/1`), with Continue; else "Not set up", with Set up while
   # it can be set up (`ApiaryWeb.AdapterComponents.settable?/3`), which opens the adapter's
@@ -211,10 +216,16 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   attr :row, :map, required: true
 
-  # An adapter's step: its name, what setting it up does, its state, and Set up or
-  # Continue.
-  defp adapter_step(%{row: %{adapter: adapter}} = assigns) do
-    assigns = assign(assigns, :adapter, adapter)
+  # An adapter's step: its name, what setting it up does, the steps its guide gives for
+  # setting it up after Qory Apiary's first, where it gives them and while Set up shows,
+  # its state, and Set up or Continue.
+  defp adapter_step(%{row: %{adapter: adapter} = row} = assigns) do
+    assigns =
+      assign(assigns,
+        adapter: adapter,
+        set_up: !row.configured and row.settable,
+        guide: Adapters.guide(adapter, :setup)
+      )
 
     ~H"""
     <section id={"set-up-#{@adapter.public_id}"} class="grid gap-4" aria-labelledby="set-up-name">
@@ -226,6 +237,22 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
           )}
         </p>
       </div>
+
+      <SetUpComponents.guide :if={@set_up && @guide} id="set-up-help" guide={@guide}>
+        <:first>
+          <.rich text={
+            rich_gettext("Press %{button}. A new tab opens.", button: {:b, gettext("Set up")})
+          } />
+        </:first>
+        <:note>
+          <.rich text={
+            rich_gettext("Come back to this tab. When the state shows %{state}, press %{button}.",
+              state: {:b, gettext("Set up")},
+              button: {:b, gettext("Continue")}
+            )
+          } />
+        </:note>
+      </SetUpComponents.guide>
 
       <p id="set-up-state" class="flex items-center gap-2 text-[13.5px]/5">
         <b class="font-semibold">{gettext("State:")}</b>
@@ -253,7 +280,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
             {gettext("Continue")}
           </.button>
           <AdapterComponents.setup_form
-            :if={!@row.configured && @row.settable}
+            :if={@set_up}
             id="set-up-open"
             adapter={@adapter}
             back="list"
