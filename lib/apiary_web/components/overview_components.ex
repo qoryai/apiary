@@ -2625,8 +2625,8 @@ defmodule ApiaryWeb.OverviewComponents do
       else: gettext("Test run passed: the agent answered on a machine of %{pool}.", pool: name)
   end
 
-  defp passed_line(_run),
-    do: gettext("Test run passed: the agent answered on a machine of the instance's pool.")
+  # A run whose node was deleted or purged has none (`runs.node_id` is cleared).
+  defp passed_line(_run), do: gettext("Test run passed: the agent answered on a machine.")
 
   # Each failure, the fix first.
   defp failed_line(:no_machine, _run),

@@ -377,11 +377,40 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
          %{conn: conn, scope: scope} do
       item = test_item!(scope)
       view = open(conn, scope)
-      test_run!(item, [state: :ended, end_cause: :run_ended], %{state: "completed"})
+      pool = instance_pool_fixture()
+
+      test_run!(item, [state: :ended, end_cause: :run_ended], %{
+        state: "completed",
+        node_id: pool.id
+      })
+
       :ok = Dispatches.broadcast([scope.workspace.id])
 
       assert text(view, "#setup-test-passed") ==
                "Test run passed: the agent answered on a machine of the instance's pool. See the run"
+    end
+
+    test "passed on a node since deleted names no pool", %{conn: conn, scope: scope} do
+      item = test_item!(scope)
+      view = open(conn, scope)
+
+      run =
+        test_run!(item, [state: :ended, end_cause: :run_ended], %{
+          state: "completed",
+          node_id: nil
+        })
+
+      :ok = Dispatches.broadcast([scope.workspace.id])
+
+      assert text(view, "#setup-test-passed") ==
+               "Test run passed: the agent answered on a machine. See the run"
+
+      refute text(view, "#setup-test-passed") =~ "instance's pool"
+
+      assert has_element?(
+               view,
+               "#setup-test-passed a[href='#{workspace_path(scope, "/runs/#{run.public_id}")}']"
+             )
     end
 
     test "each failure, the fix first, with Run the test again", %{conn: conn, scope: scope} do

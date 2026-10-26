@@ -14547,6 +14547,11 @@ msgstr ""
 msgid "Test run passed: the agent answered on a machine of the instance's pool."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Test run passed: the agent answered on a machine."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Text size"
