@@ -22,6 +22,10 @@ defmodule Apiary.Kinds.Provider do
   alias Apiary.Integrations.Description
   alias Apiary.Kinds.Endpoint
 
+  # The most models a description has, and the longest model title.
+  @models_max 200
+  @title_max 128
+
   @enforce_keys [:name, :title, :description]
   defstruct name: nil,
             title: nil,
@@ -73,7 +77,8 @@ defmodule Apiary.Kinds.Provider do
 
           {[], [], refused} ->
             raise ArgumentError,
-                  "#{path} has more models, or longer titles, than a provider holds: " <>
+                  "#{path} has more than #{@models_max} models, or a model title longer " <>
+                    "than #{@title_max} characters: " <>
                     inspect(refused)
 
           {[], refused, _models} ->
@@ -143,8 +148,8 @@ defmodule Apiary.Kinds.Provider do
   # At most 200 models, so a run's `provider_models` stays within 256 with its chosen
   # models; each title 1 to 128 characters.
   defp models_refused(%__MODULE__{models: models}) do
-    count = if length(models) > 200, do: [{:models, length(models)}], else: []
-    count ++ for(%{"title" => t} <- models, String.length(t) > 128, do: {:title, t})
+    count = if length(models) > @models_max, do: [{:models, length(models)}], else: []
+    count ++ for(%{"title" => t} <- models, String.length(t) > @title_max, do: {:title, t})
   end
 
   defp sha256(bytes), do: :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)
