@@ -65,6 +65,26 @@ defmodule ApiaryWeb.UserAuthTest do
       refute get_session(conn, :to_be_removed)
     end
 
+    test "lands an instance admin on the instance's connections until they are reviewed", %{
+      conn: conn
+    } do
+      admin = instance_admin_scope()
+
+      assert conn |> UserAuth.log_in_user(admin.user) |> redirected_to() ==
+               ~p"/instance/set-up"
+
+      # A person who is not an instance admin lands as before.
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+
+      assert conn |> UserAuth.log_in_user(user) |> redirected_to() ==
+               ~p"/#{organisation}/#{workspace}"
+
+      assert :ok = Apiary.Setup.review_connections(admin)
+
+      refute conn |> UserAuth.log_in_user(admin.user) |> redirected_to() ==
+               ~p"/instance/set-up"
+    end
+
     test "lands on the workspace's overview, the first page its sidebar shows", %{conn: conn} do
       %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
 

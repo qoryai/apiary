@@ -1,7 +1,7 @@
 defmodule Apiary.WorkItems.TestWorkItemTest do
   # A test work item (`Apiary.WorkItems.take_in_test/2`): what the table holds of it and
   # of every other work item, its changeset, the take in that makes it and queues its
-  # first run, who may make one, the Work items list that leaves it out, and the claim,
+  # first run, who may make one, the Work items list that shows it, and the claim,
   # which skips the check of the connection for it alone.
   use Apiary.DataCase, async: true
 
@@ -346,7 +346,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
   end
 
   describe "the Work items list" do
-    test "leaves a test work item out of every view, count, band, filter and the sidebar's count",
+    test "shows a test work item in every view, count, band, owner filter and the sidebar's count",
          ctx do
       %{scope: scope} = ctx
 
@@ -363,27 +363,74 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       end
 
       page = WorkItems.list_work_items(scope)
-      assert Enum.map(page.rows, & &1.id) == [listed.public_id]
-      assert page.counts == %{open: 1, you: 1, declined: 0, closed: 0}
 
-      for view <- ["you", "closed"] do
-        page = WorkItems.list_work_items(scope, %{"view" => view})
-        refute test_item.public_id in Enum.map(page.rows, & &1.id)
-        refute closed_test.public_id in Enum.map(page.rows, & &1.id)
-      end
+      assert Enum.sort(Enum.map(page.rows, & &1.id)) ==
+               Enum.sort([listed.public_id, test_item.public_id])
+
+      assert page.counts == %{open: 2, you: 2, declined: 0, closed: 1}
+
+      row = Enum.find(page.rows, &(&1.id == test_item.public_id))
+
+      assert {row.number, row.title, row.test, row.integration, row.key} ==
+               {test_item.number, @line, true, nil, nil}
+
+      assert %{test: false, integration: integration} =
+               Enum.find(page.rows, &(&1.id == listed.public_id))
+
+      assert is_binary(integration)
+
+      closed = WorkItems.list_work_items(scope, %{"view" => "closed"})
+      assert Enum.map(closed.rows, & &1.id) == [closed_test.public_id]
 
       bands = WorkItems.list_bands(scope)
-      assert [%{id: id}] = Enum.flat_map(Map.values(bands.bands), & &1)
-      assert id == listed.public_id
+      ids = bands.bands |> Map.values() |> Enum.concat() |> Enum.map(& &1.id)
+      assert Enum.sort(ids) == Enum.sort([listed.public_id, test_item.public_id])
 
-      assert WorkItems.list_filter_values(scope, :owner) == [%{key: scope.user.id, count: 1}]
+      assert WorkItems.list_filter_values(scope, :owner) == [%{key: scope.user.id, count: 3}]
+      assert WorkItems.count_waiting_on(scope) == 2
 
+      # Its collection title is no collection, so the Filter menu offers it as none.
       assert WorkItems.list_filter_values(scope, :collection) == [
                %{key: listed.collection_title, count: 1}
              ]
 
       assert WorkItems.list_filter_values(scope, :collection, "Test") == []
-      assert WorkItems.count_waiting_on(scope) == 1
+    end
+
+    test "a collection filter lists no test work item, even for a collection titled as its",
+         ctx do
+      test_item = test_item!(ctx.scope)
+
+      # A real collection with the title a test work item keeps for the column.
+      connection = ticket_connection_fixture(ctx.scope)
+
+      collection =
+        source_collection_fixture(ctx.scope, connection, %{title: test_item.collection_title})
+
+      item = source_item_fixture(ctx.scope, collection: collection)
+
+      titled =
+        work_item_fixture(ctx.scope, %{
+          connection_id: connection.id,
+          item_id: item.id,
+          collection_title: test_item.collection_title
+        })
+
+      page = WorkItems.list_work_items(ctx.scope, %{"collection" => ["Test run"]})
+      assert Enum.map(page.rows, & &1.id) == [titled.public_id]
+      assert page.counts == %{open: 1, you: 0, declined: 0, closed: 0}
+
+      assert WorkItems.list_filter_values(ctx.scope, :collection) == [
+               %{key: "Test run", count: 1}
+             ]
+    end
+
+    test "finds a test work item by its line", ctx do
+      test_item = test_item!(ctx.scope)
+      _listed = work_item_fixture(ctx.scope)
+
+      page = WorkItems.list_work_items(ctx.scope, %{"search" => "where are you"})
+      assert Enum.map(page.rows, & &1.id) == [test_item.public_id]
     end
   end
 
@@ -558,13 +605,26 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
   end
 
   describe "the lookups" do
-    test "find no test work item for a page, and no ticket of one", ctx do
+    test "find a test work item for a page, by its number and its public id, with no ticket",
+         ctx do
       work_item = test_item!(ctx.scope)
 
-      assert WorkItems.get_by_number(ctx.scope, work_item.number) == nil
-      assert WorkItems.get_by_public_id(ctx.scope, work_item.public_id) == nil
-      assert WorkItems.ticket(ctx.scope, work_item) == nil
-      assert WorkItems.ticket(ctx.scope, work_item, :all) == nil
+      assert WorkItems.get_by_number(ctx.scope, work_item.number).id == work_item.id
+      assert WorkItems.get_by_public_id(ctx.scope, work_item.public_id).id == work_item.id
+
+      none = %{
+        integration: nil,
+        item_noun: nil,
+        collection_noun: nil,
+        adapter_removed: false,
+        uninstalled: false,
+        uninstalled_at: nil,
+        ticket: nil,
+        comments: []
+      }
+
+      assert WorkItems.ticket(ctx.scope, work_item) == none
+      assert WorkItems.ticket(ctx.scope, work_item, :all) == none
 
       # The work item pages name it by its collection title alone, with no key.
       name = %{key: nil, collection_title: WorkItem.test_collection_title(), ticket_id: nil}

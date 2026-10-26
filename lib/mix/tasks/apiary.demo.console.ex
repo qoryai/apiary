@@ -440,8 +440,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   defp scope_of_second(owner, %Scope{workspace: workspace}), do: scope!(owner, workspace.slug)
 
-  # The instance's set-up, as its set-up link makes it, then a log-in link followed,
-  # which confirms the address, and a password set, as Settings would.
+  # The instance's set-up, as its set-up link makes it, and Main, a software workspace, as
+  # the workspace set-up page makes it; then a log-in link followed, which confirms the
+  # address, and a password set, as Settings would.
   defp sign_up!() do
     {:ok, %{user: user}} =
       Apiary.Setup.set_up(
@@ -450,6 +451,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         password: :optional,
         origin: %{worker: "demo"}
       )
+
+    {:ok, _main} =
+      user
+      |> Scope.for_user()
+      |> Organisations.load_scope()
+      |> Scope.put_origin(%{worker: "demo"})
+      |> Organisations.create_first_workspace(%{"domain" => "software"})
 
     token = capture(&Accounts.deliver_login_instructions(user, &1))
     {:ok, {user, _expired}} = Accounts.login_user_by_magic_link(token)

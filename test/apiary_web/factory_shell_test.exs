@@ -40,6 +40,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.ProviderLive.Index,
     ApiaryWeb.ProviderLive.Show,
     ApiaryWeb.ModelChoiceLive,
+    ApiaryWeb.WorkflowLive,
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.AdapterInstallController,
     ApiaryWeb.AdapterSetupController
@@ -208,7 +209,7 @@ defmodule ApiaryWeb.FactoryShellTest do
                  for(
                    rest <-
                      ~w(/backlog /backlog/x1 /work /work/1 /work/1/explore /work/1/explore/edit
-                        /work/1/thread /targets/x1/also-read),
+                        /work/1/thread /targets/x1/also-read /settings/workflow),
                    do: {:get, workspace_path(scope, rest)}
                  )
              )

@@ -811,7 +811,13 @@ defmodule Apiary.OrganisationsTest do
                    })
 
           assert [_main] = Organisations.list_workspaces(scope)
-          refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+
+          refute Repo.exists?(
+                   from e in Entry,
+                     where:
+                       e.action == "workspace.create" and
+                         e.organisation_id == ^scope.organisation.id
+                 )
 
           scope = mark_only_workspace(scope)
 
@@ -855,7 +861,12 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, :forbidden} =
                Organisations.create_workspace(member, %{"domain" => "software", "name" => "Data"})
 
-      refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+      refute Repo.exists?(
+               from e in Entry,
+                 where:
+                   e.action == "workspace.create" and
+                     e.organisation_id == ^owner.organisation.id
+             )
     end
 
     test "the core's edition is told and adds nothing" do
@@ -1003,7 +1014,13 @@ defmodule Apiary.OrganisationsTest do
       end
 
       refute Organisations.has_workspace?(owner)
-      refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+
+      refute Repo.exists?(
+               from e in Entry,
+                 where:
+                   e.action == "workspace.create" and
+                     e.organisation_id == ^owner.organisation.id
+             )
 
       assert {:ok, %Workspace{name: "Main"}} =
                owner

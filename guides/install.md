@@ -611,7 +611,7 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 A new instance is set up with its **set-up link**
 ([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
-instance's organisation, with its workspace **Main**, and is its owner. The instance has
+instance's organisation and is its owner, then creates its workspace **Main**. The instance has
 that one organisation and that one workspace. The organisation is the instance owner, and
 its owners are the instance's **instance admins**
 ([The instance admins](#the-instance-admins)); to everyone in it, it is an organisation
@@ -703,10 +703,12 @@ Set up Qory Apiary at https://qory.example.com/setup/<code>.
 With `compose.yaml`, `docker compose logs apiary | grep 'Set up Qory Apiary'` finds it:
 the log is one JSON object per line ([Logs](#logs)), and the sentence above is the line's
 `message`. Open the link: its page asks for your email address, a password and its
-confirmation, your organisation's name, and the **Workspace type** of its workspace Main:
-**Software workspace**, for work on code, or **General workspace**, for any other work.
-The type can't be changed after. **Set up** creates the instance's organisation, its
-workspace Main and your account as its owner, an instance admin, and signs you in. The code is 32 random bytes, kept in the database until it is used; it does
+confirmation, and your organisation's name. **Set up** creates the instance's
+organisation and your account as its owner, an instance admin, and signs you in. Two
+pages follow. **Connect Qory Apiary** ends with mail, the form of **Instance settings ›
+Mail**; **Skip** leaves it for later. **Set up your workspace** asks for the **Type** of
+the organisation's workspace Main: **Software**, for work on code, or **General**, for any
+other work. The type can't be changed after. **Create workspace** creates Main. The code is 32 random bytes, kept in the database until it is used; it does
 not expire before, and it works once: after it, any set-up link says "This Qory Apiary is
 already set up." and leads to the log-in page. Anyone who can read the log can use the
 link before you do, so open it as soon as the instance is up. On an instance that is set

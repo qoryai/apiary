@@ -11831,6 +11831,9 @@
   .q-wl-sub {
     display: none;
   }
+  .q-wl-test {
+    flex: none;
+  }
   .q-wl-tk {
     display: flex;
     min-width: 0;
@@ -11885,6 +11888,9 @@
     .q-wl-ttl {
       display: grid;
       gap: 0;
+    }
+    .q-wl-test {
+      justify-self: start;
     }
     .q-wl-sub {
       display: block;
@@ -11988,6 +11994,10 @@
     color: var(--q-faint);
     font-weight: 400;
     white-space: nowrap;
+  }
+  .q-wi-test {
+    margin-left: 4px;
+    vertical-align: middle;
   }
   /* The meta line's items are set apart by a "·" before each; the box clips the one that
      starts a line, so a wrapped line never starts with it. */
