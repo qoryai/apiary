@@ -160,6 +160,22 @@ defmodule Apiary.Adapters.Calls do
     do: typed(adapter, "resolve", [{"addresses", addresses}], opts)
 
   @doc false
+  # read_public/3 asks `adapter` for the document at `path` in the resource
+  # `resource_ref`, which it answered `public: true` to `resolve`, under no grant, at the
+  # version `at` (`read-public`). What it returns is as for `read_document/3`.
+  @spec read_public(Node.t(), map, keyword) :: {:ok, map} | {:error, CallFailure.t()}
+  def read_public(adapter, request, opts \\ []) do
+    %{resource_ref: resource_ref, path: path, at: at} = request
+
+    typed(
+      adapter,
+      "read-public",
+      [{"resource_ref", resource_ref}, {"path", path}, {"at", at}],
+      opts
+    )
+  end
+
+  @doc false
   # read_document/3 asks `adapter` for the document at `path` in the resource
   # `resource_ref`, under the grant `grant_ref`, at the version `at` (`read`).
   # `{:ok, %{resolved_at:, content:, found:}}`, `content` nil where the resource has no
@@ -490,12 +506,16 @@ defmodule Apiary.Adapters.Calls do
   def paths, do: @paths
 
   @doc false
-  # record_failure/3 writes `failure`, a failed call of one of `paths/0`, on the run of
-  # the queue `run` through `repo`, inside the caller's transaction where there is one:
-  # the adapter, the cause, the call's path, and the refusal's code for `:refused`. The
-  # run's page shows them (`ApiaryWeb.WorkItemComponents`). How the run ends is the
+  # record_failure/3 writes `failure`, a failed call of one of `paths/0` or of
+  # `read-public`, on the run of the queue `run` through `repo`, inside the caller's
+  # transaction where there is one: the adapter, the cause, the call's path, `read` for
+  # `read-public`, which reads harness files too, and the refusal's code for `:refused`.
+  # The run's page shows them (`ApiaryWeb.WorkItemComponents`). How the run ends is the
   # caller's. `:ok`, or `{:error, :not_found}` for a run that is gone.
   @spec record_failure(module, DispatchRun.t(), CallFailure.t()) :: :ok | {:error, :not_found}
+  def record_failure(repo, run, %CallFailure{path: "read-public"} = failure),
+    do: record_failure(repo, run, %{failure | path: "read"})
+
   def record_failure(repo, %DispatchRun{id: id}, %CallFailure{path: path} = failure)
       when path in @paths do
     code = if failure.cause == :refused, do: failure.code
