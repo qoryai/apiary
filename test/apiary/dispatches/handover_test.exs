@@ -840,6 +840,25 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert keys.(claimed.documents.inputs) == keys.(fixture)
     end
 
+    test "in a software workspace, is claimed with no target, no labels and no run variables",
+         ctx do
+      {work_item, queued} = test_item!(ctx)
+
+      claimed = claimed!(ctx)
+      assert {claimed.run.id, claimed.work_item.id} == {queued.id, work_item.id}
+      assert {claimed.documents.domain, claimed.documents.target} == {"software", nil}
+      assert queue_run!(queued).state == :claimed
+
+      inputs = inputs(claimed)
+      assert ExploreInputsSchema.validate(inputs) == :ok
+      assert inputs["instruction"]["text"] == @line
+      refute Map.has_key?(inputs, "ticket")
+      refute Map.has_key?(inputs, "target")
+
+      run = Repo.get!(Run, claimed.registered.id)
+      assert {run.registration_labels, run.registration_variables} == {%{}, nil}
+    end
+
     test "is formed with no ticket, while any other work item without one is ticket_gone",
          ctx do
       {test_item, test_run} = test_item!(ctx)
