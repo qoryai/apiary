@@ -704,6 +704,13 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{integration} lists %{number} %{collection} for %{organisation}. Assign it if %{workspace} works on it, and its %{items} appear here."
+msgid_plural "%{integration} lists %{number} %{collections} for %{organisation}. Assign the ones %{workspace} works on, and their %{items} appear here."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{integration} lists the open %{items} of the %{collections} assigned to %{workspace}, then sends each new one and each change."
 msgstr ""
 
@@ -1264,6 +1271,7 @@ msgstr ""
 msgid "%{node} has no key yet."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
@@ -4187,6 +4195,11 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
+msgid "Ask %{names} to assign the ones %{workspace} works on."
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
 msgid "Ask %{names} to install one."
 msgstr ""
 
@@ -4234,12 +4247,22 @@ msgstr ""
 msgid "Asking"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Assign %{collections}"
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Assign %{number} %{collection} to"
 msgid_plural "Assign %{number} %{collections} to"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Assign the %{collections} %{workspace} works on, and their %{items} appear here."
+msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -9592,6 +9615,11 @@ msgstr ""
 msgid "No %{collections} match “%{search}”."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "No %{collection} is assigned to %{workspace}"
+msgstr ""
+
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "No %{items} to take in"
@@ -10133,6 +10161,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "No work items yet"
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -10994,6 +11027,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins manage members, and only owners change a level or manage an owner or an admin."
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation} assign %{collections} to workspaces."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
