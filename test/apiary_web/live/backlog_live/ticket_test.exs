@@ -62,6 +62,21 @@ defmodule ApiaryWeb.BacklogLive.TicketTest do
     )
   end
 
+  test "Take in takes in the page's ticket, whatever id the press sends", ctx do
+    other = backlog_ticket_fixture(ctx.scope, title: "Export stops at row 500")
+    {:ok, view, _html} = live(ctx.conn, ticket_path(ctx.scope, ctx.ticket.public_id))
+
+    render_click(view, "take_in", %{"id" => other.id})
+
+    %WorkItem{number: number} = Repo.get_by!(WorkItem, item_id: ctx.ticket.id)
+    refute Repo.get_by(WorkItem, item_id: other.id)
+
+    assert_redirect(
+      view,
+      ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/work/#{number}"
+    )
+  end
+
   test "a refused Take in says why", ctx do
     Repo.get!(Collection, ctx.ticket.collection_id)
     |> Ecto.Changeset.change(target_system: nil, target_path: nil)

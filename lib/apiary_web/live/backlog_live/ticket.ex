@@ -106,10 +106,11 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
   end
 
   @impl true
-  def handle_event("take_in", %{"id" => id}, socket) when is_binary(id) do
+  # Take in takes the page's ticket in, whatever id the press sends.
+  def handle_event("take_in", _params, socket) do
     scope = socket.assigns.current_scope
 
-    case WorkItems.take_in(scope, id) do
+    case WorkItems.take_in(scope, socket.assigns.ticket.id) do
       {:ok, work_item} ->
         {:noreply,
          push_navigate(socket,
@@ -126,8 +127,6 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
         {:noreply, socket |> put_flash(:error, words) |> reload()}
     end
   end
-
-  def handle_event("take_in", _params, socket), do: {:noreply, socket}
 
   # A ticket of the workspace's Backlog was written, ended, closed or taken in: the page
   # reads its ticket again, with its scope, whatever the message names.
