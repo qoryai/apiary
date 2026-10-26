@@ -40,6 +40,17 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
     work_item
   end
 
+  # `work_item` closed, straight in the database, so that the workspace may take in another
+  # test.
+  defp close!(work_item) do
+    {1, _rows} =
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [state: :closed, closed_at: DateTime.utc_now()]
+      )
+
+    work_item
+  end
+
   defp runs(work_item),
     do: Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
 
@@ -238,7 +249,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
 
     test "numbers it next in the workspace, after a work item taken in from a ticket", ctx do
       ticket_item = work_item_fixture(ctx.scope)
-      work_item = test_item!(ctx.scope)
+      work_item = close!(test_item!(ctx.scope))
       assert {ticket_item.number, work_item.number} == {1, 2}
       assert test_item!(ctx.scope).number == 3
     end
@@ -273,8 +284,9 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
     end
 
     test "needs no target in a domain that needs one, nor in one that does not", ctx do
-      assert %WorkItem{target_system: nil} = test_item!(ctx.scope)
-      assert [%DispatchRun{state: :waiting}] = runs(test_item!(ctx.scope))
+      assert %WorkItem{target_system: nil} = software = test_item!(ctx.scope)
+      assert [%DispatchRun{state: :waiting}] = runs(software)
+      close!(software)
 
       general = with_domain(ctx.scope, "general")
       assert %WorkItem{target_system: nil} = work_item = test_item!(general)
@@ -297,10 +309,11 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       member = member_fixture(ctx.scope)
 
       for scope <- [admin.scope, member.scope] do
-        assert {:ok, %WorkItem{test: true, owner_id: owner_id}} =
+        assert {:ok, %WorkItem{test: true, owner_id: owner_id} = work_item} =
                  WorkItems.take_in_test(scope, @line)
 
         assert owner_id == scope.user.id
+        close!(work_item)
       end
     end
 
@@ -335,6 +348,8 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
          ctx do
       %{scope: scope} = ctx
 
+      closed_test = close!(test_item!(scope))
+
       # Each waits at Confirm for its owner, the reader.
       listed = work_item_fixture(scope)
       test_item = test_item!(scope)
@@ -344,13 +359,6 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
         %{dispatch_run: run} = explore_run_fixture(work_item, result: understood_result())
         Settle.settle(run.id)
       end
-
-      closed_test = test_item!(scope)
-
-      {1, _rows} =
-        Repo.update_all(from(w in WorkItem, where: w.id == ^closed_test.id),
-          set: [state: :closed, closed_at: DateTime.utc_now()]
-        )
 
       page = WorkItems.list_work_items(scope)
       assert Enum.map(page.rows, & &1.id) == [listed.public_id]
@@ -374,6 +382,120 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
 
       assert WorkItems.list_filter_values(scope, :collection, "Test") == []
       assert WorkItems.count_waiting_on(scope) == 1
+    end
+  end
+
+  describe "one live test a workspace" do
+    test "refuses a take in of a test while one is exploring, and writes nothing", ctx do
+      live = test_item!(ctx.scope)
+
+      assert WorkItems.take_in_test(ctx.scope, "A second line") == {:error, :test_running}
+
+      assert [%WorkItem{id: id}] = Repo.all(WorkItem)
+      assert id == live.id
+      assert [_run] = Repo.all(DispatchRun)
+      assert [_entry] = Repo.all(from e in Entry, where: e.action == "work_item.take_in")
+    end
+
+    test "takes in another once the live one is undone, declined or closed", ctx do
+      undone = test_item!(ctx.scope)
+      {:ok, _undone} = WorkItems.undo(ctx.scope, undone)
+
+      declined = test_item!(ctx.scope)
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^declined.id)
+      {:ok, _declined} = WorkItems.decline(ctx.scope, declined)
+
+      closed = test_item!(ctx.scope)
+      {:ok, _closed} = WorkItems.close(ctx.scope, closed)
+
+      assert %WorkItem{state: :exploring} = test_item!(ctx.scope)
+    end
+
+    test "counts only the workspace's test work items", ctx do
+      _ticket_item = work_item_fixture(ctx.scope)
+      _live = test_item!(ctx.scope)
+
+      elsewhere = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
+      assert %WorkItem{workspace_id: workspace_id} = test_item!(elsewhere)
+      assert workspace_id == elsewhere.workspace.id
+    end
+
+    test "the index refuses a second live test work item in a workspace", ctx do
+      ended = close!(test_item!(ctx.scope))
+      _live = test_item!(ctx.scope)
+
+      refused("work_items_workspace_id_live_test_index", fn ->
+        update!(ended.id, "state = 'exploring', closed_at = NULL")
+      end)
+    end
+  end
+
+  describe "undo, decline and close of a test work item" do
+    setup %{scope: scope} do
+      Phoenix.PubSub.subscribe(Apiary.PubSub, WorkItems.topic(scope.workspace.id))
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Sources.Topic.topic(scope.workspace.id))
+      :ok
+    end
+
+    # The work item's change is told on the workspace's work items, and no Backlog hears
+    # of it, as it has no ticket.
+    defp told!(%WorkItem{public_id: id}) do
+      assert_receive {:work_items_changed, [^id]}
+      refute_received {:tickets_changed, _ids}
+    end
+
+    test "an undo ends its waiting run and makes it undone", ctx do
+      work_item = test_item!(ctx.scope)
+      [run] = runs(work_item)
+      told!(work_item)
+
+      assert {:ok, %WorkItem{state: :undone}} = WorkItems.undo(ctx.scope, work_item)
+      assert %DispatchRun{state: :ended, end_cause: :undone} = Repo.reload!(run)
+      told!(work_item)
+    end
+
+    test "a decline works once no run of it is live", ctx do
+      work_item = test_item!(ctx.scope)
+      told!(work_item)
+
+      assert WorkItems.decline(ctx.scope, work_item) == {:error, :running}
+
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      assert {:ok, %WorkItem{state: :declined}} = WorkItems.decline(ctx.scope, work_item)
+      told!(work_item)
+    end
+
+    test "a close ends its waiting run and closes it", ctx do
+      work_item = test_item!(ctx.scope)
+      [run] = runs(work_item)
+      told!(work_item)
+
+      assert {:ok, %WorkItem{state: :closed}} = WorkItems.close(ctx.scope, work_item)
+      assert %DispatchRun{state: :ended} = Repo.reload!(run)
+      told!(work_item)
+    end
+  end
+
+  describe "the lookups" do
+    test "find no test work item for a page, and no ticket of one", ctx do
+      work_item = test_item!(ctx.scope)
+
+      assert WorkItems.get_by_number(ctx.scope, work_item.number) == nil
+      assert WorkItems.get_by_public_id(ctx.scope, work_item.public_id) == nil
+      assert WorkItems.ticket(ctx.scope, work_item) == nil
+      assert WorkItems.ticket(ctx.scope, work_item, :all) == nil
+
+      # The work item pages name it by its collection title alone, with no key.
+      name = %{key: nil, collection_title: WorkItem.test_collection_title(), ticket_id: nil}
+      assert WorkItems.ticket_names(ctx.scope, [work_item]) == %{work_item.id => name}
+    end
+
+    test "read where Explore stands for it and its Thread, as for any work item", ctx do
+      work_item = test_item!(ctx.scope)
+
+      assert %{} = WorkItems.explore(ctx.scope, work_item)
+      assert is_list(WorkItems.thread(ctx.scope, work_item))
+      assert WorkItems.backlog_off(ctx.scope, [work_item]) == MapSet.new()
     end
   end
 

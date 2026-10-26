@@ -245,8 +245,9 @@ defmodule Apiary.WorkItems.WorkItem do
   # run's input refuses in a text, as a first instruction holds them, and its owner;
   # `test` set, `test_collection_title/0` as its collection's title, a fresh public id
   # and take in 1. It has no ticket, no connection, no adapter and no target, whatever
-  # `attrs` holds, in every domain. The workspace, the number, the state and who took it
-  # in, and when, are the caller's to put.
+  # `attrs` holds, in every domain. A second live test work item of the workspace is an
+  # error on `test`. The workspace, the number, the state and who took it in, and when,
+  # are the caller's to put.
   @doc false
   @spec test_changeset(t, map) :: Ecto.Changeset.t()
   def test_changeset(%__MODULE__{} = work_item, attrs) do
@@ -275,6 +276,7 @@ defmodule Apiary.WorkItems.WorkItem do
     |> put_change(:take_in, 1)
     |> check_constraint(:title, name: :work_items_title_check)
     |> check_constraint(:test, name: :work_items_test_check)
+    |> unique_constraint(:test, name: :work_items_workspace_id_live_test_index)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
   end

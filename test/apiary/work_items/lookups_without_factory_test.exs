@@ -1,8 +1,8 @@
 defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
   # The lookups of a work item, its comments, the Work items list, its Filter menu's
   # values and the sidebar's count on an instance without the factory feature: nothing, to
-  # an owner too, no comment written, and no test work item made. The features are the node's, so this module is
-  # not async.
+  # an owner too, no comment written, and no test work item made. The features are the
+  # node's, so this module is not async.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
