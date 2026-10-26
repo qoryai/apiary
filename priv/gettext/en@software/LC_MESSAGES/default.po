@@ -719,6 +719,16 @@ msgstr ""
 msgid "%{integration} sends the list after the install. Then the %{items} of the %{collections} assigned to %{workspace} appear here."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} sent a target for this %{item} that is not valid, so it was not taken in."
+msgstr "%{integration} sent a repository for this %{item} that is not valid, so it was not taken in."
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{integration} sent no target for this %{item}, so it was not taken in. Each work item in %{workspace} needs one."
+msgstr "%{integration} sent no repository for this %{item}, so it was not taken in. Each work item in %{workspace} needs one."
+
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{integration} then brings you back here."
@@ -2194,16 +2204,6 @@ msgstr ""
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} can have one installation of %{integration}."
-msgstr ""
-
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} can then install them in Organisation settings › Integrations."
-msgstr ""
-
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} has no integration that sends tickets"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -4030,11 +4030,6 @@ msgstr ""
 msgid "An https address, such as https://example.com/shop/description.json. The release's other files are beside it."
 msgstr ""
 
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin adds integrations in Instance settings › Adapters."
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
@@ -4410,6 +4405,7 @@ msgstr ""
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/backlog_live/index.ex
+#: lib/apiary_web/live/backlog_live/ticket.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Backlog"
@@ -5331,6 +5327,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Connect %{name} with a command"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Connect a work source"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -7852,6 +7853,11 @@ msgstr ""
 msgid "In %{workspace}: %{reason}"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "In a software workspace, the ticket must be in a target assigned to %{workspace}."
+msgstr "In a software workspace, the ticket must be in a repository assigned to %{workspace}."
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "In background"
@@ -9895,6 +9901,16 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "No integration is set up on this instance yet. An instance admin sets one up in Instance settings › Adapters."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No integration that serves this organisation's workspaces is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+msgstr ""
+
+#: lib/apiary_web/live/adapter_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "No integration yet"
 msgstr ""
 
@@ -10262,6 +10278,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "No work source is connected to %{workspace}. Connect one to bring its tickets here."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -11035,6 +11056,11 @@ msgstr ""
 msgid "Only its description.json and checksums.txt are read, and nothing of it runs on Qory Apiary. You add it once they are read."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only members of %{workspace} take tickets in."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins add a node's keys."
@@ -11171,6 +11197,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "backlog view"
 msgid "Open"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{backlog}."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -11754,6 +11785,16 @@ msgstr ""
 msgid "Press %{button}."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Press %{take_in}."
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Press a ticket's title. Its panel opens."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
@@ -11877,6 +11918,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -12876,6 +12922,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run Explore again"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13932,6 +13983,16 @@ msgstr ""
 msgid "Software workspace"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Someone took this %{item} in already, as work item #%{number}."
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Someone took this %{item} in already, in another workspace."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side."
@@ -14223,6 +14284,16 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Take in from the Backlog"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5), unless the ticket's target has a %{harness} or %{qory}."
+msgstr "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5), unless the ticket's repository has a %{harness} or %{qory}."
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5)."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15632,6 +15703,16 @@ msgstr ""
 msgid "They leave %{organisation} and lose access to its workspaces and their runs at once. Their account stays; you can invite them again."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "This %{item} is closed at %{integration}, so it was not taken in."
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "This %{item} is no longer in %{workspace}'s Backlog, so it was not taken in."
+msgstr ""
+
 #: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "This Qory Apiary is already set up."
@@ -16022,12 +16103,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Thread"
-msgstr ""
-
-#: lib/apiary_web/components/backlog_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Tickets come into the Backlog from another system, such as an issue tracker, a support desk or a forge, through an integration that %{organisation} installs."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -17730,6 +17805,16 @@ msgstr ""
 msgid "a connection no rule allows is denied"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "a path has a backslash or a percent sign: write it with / and no percent-encoding"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "a path leads out of its source"
+msgstr ""
+
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "access keys machines enrolment pool"
@@ -18217,32 +18302,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "it has no %{path}"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "a path has a backslash or a percent sign: write it with / and no percent-encoding"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "a path leads out of its source"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "it exports no stack of that name"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "it has no qory-stack.yaml at the stack's path"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18252,7 +18312,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "its host is an IP address or a local name: give a public host name"
+msgid "it has no %{path}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "it has no qory-stack.yaml at the stack's path"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "it is larger than %{n} bytes as JSON"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18262,7 +18332,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "its host is an IP address or a local name: give a public host name"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "its ref is no version of its source"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18641,16 +18721,6 @@ msgstr ""
 msgid "reading it takes more than %{n} calls"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "it is larger than %{n} bytes as JSON"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reads requests to %{hosts}"
@@ -18808,12 +18878,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "the path %{path} leads out of its source"
+msgid "the path %{path} has a backslash or a percent sign: write it with / and no percent-encoding"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "the path %{path} has a backslash or a percent sign: write it with / and no percent-encoding"
+msgid "the path %{path} leads out of its source"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
