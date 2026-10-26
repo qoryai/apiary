@@ -925,6 +925,9 @@ defmodule Apiary.Organisations do
   `password: :required` asks for one whatever the mail, as the set-up page does.
   `domain: :required` asks a sign-up that creates an organisation for the domain of its
   first workspace, as the set-up page does (`change_sign_up/2`).
+  `workspace: false` creates the organisation with no workspace and asks for no domain:
+  its first workspace comes later (`create_first_workspace/2`). The answer's `workspace`
+  is then nil.
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
@@ -946,7 +949,7 @@ defmodule Apiary.Organisations do
            %{
              user: %User{},
              organisation: %Organisation{},
-             workspace: %Workspace{},
+             workspace: %Workspace{} | nil,
              membership: %Membership{}
            }}
           | {:error, Ecto.Changeset.t() | :instance_claimed | :not_set_up | :invalid_code}
@@ -963,6 +966,7 @@ defmodule Apiary.Organisations do
   defp sign_up(attrs, invitation, opts) do
     origin = Keyword.get(opts, :origin)
     invited? = match?(%Invitation{}, invitation)
+    workspace? = Keyword.get(opts, :workspace, true)
     mail? = Apiary.Mail.configured?()
 
     offered? =
@@ -997,7 +1001,11 @@ defmodule Apiary.Organisations do
         invited: invited?,
         validate_unique: false,
         password: password,
-        domain: if(invited?, do: :optional, else: Keyword.get(opts, :domain, :optional))
+        domain:
+          if(invited? or not workspace?,
+            do: :optional,
+            else: Keyword.get(opts, :domain, :optional)
+          )
       )
       |> refuse_closed_sign_up(offered?)
 
@@ -1109,6 +1117,7 @@ defmodule Apiary.Organisations do
     |> Ecto.Multi.insert(:user, user_changeset)
     |> build_organisation(
       name: name,
+      workspace: Keyword.get(opts, :workspace, true),
       domain: domain,
       how: & &1.how,
       scope: &sign_up_scope(&1, origin, actor),
@@ -1252,7 +1261,9 @@ defmodule Apiary.Organisations do
   - `:workspace`, its workspace "#{@default_workspace_name}", of the domain `domain:`
     names, one of `Apiary.Lingo.Domain.names/0`, or of the default domain
     (`Apiary.Lingo.Domain.default/0`) for nil or none; `{:error, changeset}`, the
-    workspace's, with its error on `domain`, for a name no domain has;
+    workspace's, with its error on `domain`, for a name no domain has; nil with
+    `workspace: false`, for an organisation whose first workspace comes later
+    (`create_first_workspace/2`);
   - `:membership`, its first owner, the person of the caller's change `owner:` names,
     `:user` unless it names another; nil with `owner: nil`, for an organisation whose
     first owner joins later;
@@ -1276,6 +1287,7 @@ defmodule Apiary.Organisations do
     how = Keyword.fetch!(opts, :how)
     scope = Keyword.fetch!(opts, :scope)
     owner = Keyword.get(opts, :owner, :user)
+    workspace? = Keyword.get(opts, :workspace, true)
     action = Keyword.get(opts, :action, :"organisation.create")
     details = Keyword.get(opts, :details, %{})
     pick = Keyword.get(opts, :pick_slug) || (&organisation_slug/1)
@@ -1291,7 +1303,9 @@ defmodule Apiary.Organisations do
       Ecto.Multi.new()
       |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert_organisation(name, pick) end)
       |> Ecto.Multi.run(:workspace, fn _repo, %{organisation: organisation} ->
-        organisation |> main_workspace(domain) |> PublicId.Insert.insert()
+        if workspace?,
+          do: organisation |> main_workspace(domain) |> PublicId.Insert.insert(),
+          else: {:ok, nil}
       end)
       |> Ecto.Multi.run(:membership, fn repo, %{organisation: organisation} ->
         if user,
@@ -1316,10 +1330,16 @@ defmodule Apiary.Organisations do
     end)
   end
 
-  # The entry of a new organisation: its workspace, its first owner's membership and
-  # person, the caller's details, and what the edition's steps said of it.
+  # The entry of a new organisation: its workspace, where it has one, its first owner's
+  # membership and person, the caller's details, and what the edition's steps said of it.
   defp organisation_entry(changes, details) do
     edition = Map.get(changes, :organisation_entry) || %{}
+
+    workspace =
+      case changes.workspace do
+        %Workspace{id: id} -> %{workspace_id: id}
+        nil -> %{}
+      end
 
     owner =
       case changes.membership do
@@ -1331,7 +1351,7 @@ defmodule Apiary.Organisations do
       before: edition[:before],
       after: edition[:after],
       details:
-        %{workspace_id: changes.workspace.id}
+        workspace
         |> Map.merge(owner)
         |> Map.merge(details)
         |> Map.merge(edition[:details] || %{})
@@ -1473,10 +1493,46 @@ defmodule Apiary.Organisations do
   """
   @spec create_workspace(Scope.t(), map) ::
           {:ok, %Workspace{}} | {:error, Ecto.Changeset.t() | :limit | Access.reason()}
-  def create_workspace(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
+  def create_workspace(%Scope{organisation: %Organisation{}} = scope, attrs),
+    do: insert_workspace(scope, attrs, :any)
+
+  @doc """
+  create_first_workspace/2 creates the first workspace of the scope's organisation, one
+  created with none (`sign_up_user/3` with `workspace: false`): named
+  "#{@default_workspace_name}", of the domain `attrs["domain"]`, one of
+  `Apiary.Lingo.Domain.names/0`. Nothing else of `attrs` is read. It is
+  `create_workspace/2` in every other way: the action `workspace.create`, the edition's
+  limit, the entry and the edition's step.
+
+  `{:ok, workspace}`; `{:error, :exists}` where the organisation has a workspace in use
+  already, counted under the organisation's lock, so of two calls at once one creates it;
+  otherwise `create_workspace/2`'s answers.
+  """
+  @spec create_first_workspace(Scope.t(), map) ::
+          {:ok, %Workspace{}}
+          | {:error, Ecto.Changeset.t() | :exists | :limit | Access.reason()}
+  def create_first_workspace(%Scope{organisation: %Organisation{}} = scope, attrs) do
+    domain = Map.get(attrs, "domain") || Map.get(attrs, :domain)
+    insert_workspace(scope, %{"name" => @default_workspace_name, "domain" => domain}, :first)
+  end
+
+  @doc """
+  has_workspace?/1 says whether the organisation has a workspace in use: false for one
+  created with none, until `create_first_workspace/2` creates it.
+  """
+  @spec has_workspace?(%Organisation{} | Scope.t()) :: boolean
+  def has_workspace?(%Scope{organisation: %Organisation{} = organisation}),
+    do: has_workspace?(organisation)
+
+  def has_workspace?(%Organisation{id: organisation_id}),
+    do: Repo.exists?(workspaces_in_use(organisation_id))
+
+  # `which` is `:first` for the organisation's first workspace, refused once it has one.
+  defp insert_workspace(%Scope{organisation: organisation} = scope, attrs, which) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"workspace.create", organisation),
            :ok <- lock_allowance(organisation),
+           :ok <- ensure_first(organisation, which),
            :ok <- ensure_within_limit(organisation),
            {:ok, workspace} <-
              organisation |> new_workspace_changeset(attrs) |> PublicId.Insert.insert(),
@@ -1504,17 +1560,23 @@ defmodule Apiary.Organisations do
         :ok
 
       limit when is_integer(limit) ->
-        in_use =
-          Repo.aggregate(
-            from(w in Workspace,
-              where: w.organisation_id == ^organisation_id and is_nil(w.deletion_marked_at)
-            ),
-            :count
-          )
-
+        in_use = Repo.aggregate(workspaces_in_use(organisation_id), :count)
         if in_use < limit, do: :ok, else: {:error, :limit}
     end
   end
+
+  # Whether the organisation has no workspace in use yet, for its first; under the
+  # organisation's lock, as `ensure_within_limit/1`.
+  defp ensure_first(_organisation, :any), do: :ok
+
+  defp ensure_first(%Organisation{} = organisation, :first),
+    do: if(has_workspace?(organisation), do: {:error, :exists}, else: :ok)
+
+  defp workspaces_in_use(organisation_id),
+    do:
+      from(w in Workspace,
+        where: w.organisation_id == ^organisation_id and is_nil(w.deletion_marked_at)
+      )
 
   # A new workspace of the organisation: its name and its domain, as the form gives them,
   # and its slug, the form's where it gives one, else one made from the name. The form's
