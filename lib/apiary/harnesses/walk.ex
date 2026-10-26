@@ -3,7 +3,10 @@ defmodule Apiary.Harnesses.Walk do
   # composes, the version of its target, each remote source's version, and the links the
   # run reads its harness sources through. It reads through the adapters' calls
   # (`Apiary.Adapters.Calls`: `resolve` and `read`) and writes nothing; the job stores
-  # what `run/2` returns (`Apiary.Harnesses`).
+  # what `run/2` returns (`Apiary.Harnesses`). A test work item's run is not walked: it gets
+  # the built-in harness when it is queued (`Apiary.Harnesses.Builtin`). The walk has no
+  # case for that harness's source: in any document it walks, the source is looked up as
+  # any other.
   #
   # ## The target's harness file
   #

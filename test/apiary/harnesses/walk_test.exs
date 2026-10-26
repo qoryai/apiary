@@ -2,7 +2,9 @@ defmodule Apiary.Harnesses.WalkTest do
   # The harness walk of an explore run (`Apiary.Harnesses.Walk`) against stub adapters
   # (`Req.Test`): the target's harness file or the stacks' document, two levels of
   # sources, the rule, the pins and the links, each failure, and the job that queues and
-  # writes it (`Apiary.Harnesses.WalkJob`).
+  # writes it (`Apiary.Harnesses.WalkJob`). A test work item's run gets the built-in
+  # harness unwalked (`Apiary.Harnesses.Builtin`); any other document with its source is
+  # walked.
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
 
@@ -12,13 +14,14 @@ defmodule Apiary.Harnesses.WalkTest do
   import Apiary.WorkItemsFixtures
   import Apiary.DispatchedRunsFixtures
 
-  alias Apiary.{Dispatches, Harnesses, Stacks}
+  alias Apiary.{Dispatches, Harnesses, Stacks, WorkItems}
   alias Apiary.Adapters.{Calls, Collection, Grant}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Harnesses.{Assignment, Reader, RunHarness, Walk, WalkJob}
+  alias Apiary.Harnesses.{Assignment, Builtin, Reader, RunHarness, Walk, WalkJob}
   alias Apiary.Nodes.Node
   alias Apiary.Policy.ComposedConfiguration
+  alias Apiary.Stacks.Document
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -1462,6 +1465,152 @@ defmodule Apiary.Harnesses.WalkTest do
       assert :ok = job(run)
       assert %DispatchRun{id: id} = waiting.()
       assert id == run.id
+    end
+  end
+
+  ## A test work item's run
+
+  describe "a test work item's run" do
+    @builtin_git "https://github.com/qoryai/qory"
+    @builtin_ref "2148b3ae11eff8ccbeb93d1a7c10aeb05595c95b"
+    @builtin "extends: {git: \"#{@builtin_git}\", ref: \"#{@builtin_ref}\", path: examples/hello}\n"
+
+    defp test_run!(scope) do
+      {:ok, work_item} = WorkItems.take_in_test(scope, "Hello! Where are you running?")
+      [run] = Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      run
+    end
+
+    # A grant of the instance's organisation covering the built-in source, served with the
+    # run's adapter: a walk of that source calls both adapters, and with no assignment
+    # fails `not_allowed`.
+    defp covering_builtin!(ctx) do
+      instance = adapter()
+      instance_scope = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
+      grant(instance_scope.organisation.id, instance.adapter, connection, "G_i")
+
+      covered = Map.put(covering(ctx), instance.adapter.id, %{@builtin_git => {"G_i", "R_qory"}})
+      serve([ctx.run, instance], covered: covered, files: @base_files)
+    end
+
+    test "is the hello example at its commit, a document the save rules take" do
+      assert Builtin.workflow() == "hello"
+
+      assert Builtin.document() == %{
+               "extends" => %{
+                 "git" => @builtin_git,
+                 "ref" => @builtin_ref,
+                 "path" => "examples/hello"
+               }
+             }
+
+      assert Document.check(@builtin) == {:ok, Builtin.document()}
+    end
+
+    test "resolves with the built-in harness when queued, in a software and a general workspace: no job, no call, no link",
+         ctx do
+      covering_builtin!(ctx)
+      general = with_domain(scope_fixture(), "general")
+
+      for scope <- [ctx.scope, general] do
+        # The workspace's levels, which a run that is no test would walk.
+        setting(scope, @setting)
+        recording(%{scope: scope}, "hello", :write)
+
+        run = test_run!(scope)
+
+        assert %RunHarness{
+                 state: :resolved,
+                 origin: :builtin,
+                 workflow: "hello",
+                 access_level: :read,
+                 target_version: nil,
+                 stack_id: nil,
+                 owner_organisation_id: nil,
+                 harness_hidden: false,
+                 harness_links: []
+               } = row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+        assert row.document == Builtin.document()
+        assert row.pins == [%{"git" => @builtin_git, "ref" => @builtin_ref, "at" => @builtin_ref}]
+
+        # No token: no link to read the source through, and its host for the stack proxy
+        # alone.
+        assert Harnesses.entries(run) == []
+        assert ComposedConfiguration.stack_hosts(row.pins) == ["github.com"]
+      end
+
+      refute_enqueued(worker: WalkJob)
+      assert calls() == []
+      assert Repo.aggregate(Assignment, :count) == 0
+    end
+
+    test "never reads write: the row's check refuses write, a link, a stack, an owner or a hidden harness",
+         ctx do
+      run = test_run!(ctx.scope)
+      row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+      stack = setting(ctx.scope, @setting)
+
+      for change <- [
+            [access_level: :write],
+            [harness_links: [%{"grant_id" => ctx.grant.id, "resources" => ["R_qory"]}]],
+            [stack_id: stack.id],
+            [owner_organisation_id: ctx.scope.organisation.id],
+            [harness_hidden: true]
+          ] do
+        assert_raise Ecto.ConstraintError, ~r/run_harnesses_builtin_check/, fn ->
+          row |> Ecto.Changeset.change(change) |> Repo.update()
+        end
+      end
+
+      assert Repo.reload!(row).access_level == :read
+    end
+
+    test "a work item that is no test is walked as before, beside a test", ctx do
+      test_run!(ctx.scope)
+
+      assert %RunHarness{origin: :none} =
+               Repo.get_by!(RunHarness, dispatch_run_id: queued(ctx).id)
+
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+
+      assert %RunHarness{state: :pending, workflow: "explore"} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      assert_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
+    end
+
+    test "any other document with the built-in source has it looked up at the adapters",
+         ctx do
+      covering_builtin!(ctx)
+
+      module =
+        "  - source: {git: \"#{@builtin_git}\", ref: \"#{@builtin_ref}\", path: examples/hello}\n"
+
+      # The built-in document itself, and the source as a module's.
+      for document <- [@builtin, "modules:\n" <> module] do
+        setting(ctx.scope, document)
+        calls()
+
+        assert {:failed, %{failure: :not_allowed, source: @builtin_git}} = Walk.run(ctx.input)
+        assert [@builtin_git] in resolves(calls())
+      end
+
+      # Once an assignment allows the instance's grant, the run reads the source through it.
+      Repo.insert!(%Assignment{
+        organisation_id: ctx.scope.organisation.id,
+        every_organisation: false,
+        source: %{"git" => @builtin_git, "ref" => @builtin_ref},
+        created_by_id: instance_admin_scope().user.id
+      })
+
+      setting(ctx.scope, "modules:\n" <> module)
+      calls()
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert [%{"resources" => ["R_qory"]}] = walked.harness_links
+      assert [@builtin_git] in resolves(calls())
     end
   end
 end

@@ -2,21 +2,24 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   # The claim answer as a node pool's starter receives it, with no `machine`, and the
   # harness members of the run's documents, from the run's harness walk
   # (`Apiary.Harnesses.WalkJob`): `target_version`, `workflow`, `harness_hidden` and,
-  # for a walk whose document came from the stacks, `harness`. None of the four for a
-  # run with no workflow and for a prebuild. The run's `access` is the level its walk
+  # for a walk whose document came from the stacks or is a test work item's built-in
+  # one, `harness`. None of the four for a run with no workflow and for a prebuild. The run's `access` is the level its walk
   # resolved, and `read` for a run with no workflow and for a prebuild. Each answer and
   # each documents object is valid under the vendored schemas, so the module is tagged
   # `:contract`. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
   import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, walk_resolved!: 2]
   import Apiary.NodesFixtures, only: [collection_fixture: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Repo, Stacks}
-  alias Apiary.Harnesses.Reader
+  alias Apiary.{Dispatches, Repo, Stacks, WorkItems}
+  alias Apiary.Harnesses.{Builtin, Reader}
+  alias Apiary.Policy.ComposedConfiguration
+  alias Apiary.Runs.RunCredential
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag needs: :factory
@@ -260,6 +263,50 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       documents = documents(claim(ctx))
       assert %{"access" => "read", "workflow" => "hello"} = documents
       valid!(documents)
+    end
+  end
+
+  describe "a test work item's explore run" do
+    # The run the claim registered.
+    defp registered(claim) do
+      code = Jason.decode!(claim)["run_code"]
+      [head, _fingerprint] = String.split(code, ".")
+      Repo.get_by!(Apiary.Runs.Run, run_code_sha256: Apiary.AccessKeys.EnrolmentCode.hash(head))
+    end
+
+    test "has the built-in harness and workflow, no target and no access, in a software and a general workspace",
+         ctx do
+      for domain <- ["software", "general"] do
+        %{scope: scope} = sign_up_fixture()
+        scope = with_domain(scope, domain)
+        ctx = Map.merge(ctx, handover_place_fixture(scope)) |> Map.put(:scope, scope)
+
+        # The workspace's level for `hello`, which a test work item's run does not read.
+        workflow!(ctx)
+        {:ok, _work_item} = WorkItems.take_in_test(scope, "Hello! Where are you running?")
+
+        claim = claim(ctx)
+        documents = documents(claim)
+
+        assert Map.take(documents, @harness) == %{
+                 "workflow" => "hello",
+                 "harness_hidden" => false,
+                 "harness" => %{"harness" => Builtin.document()}
+               }
+
+        refute Map.has_key?(documents, "access")
+        refute Map.has_key?(documents, "target")
+        assert documents["domain"] == domain
+        valid!(documents)
+
+        # No token for the source: no work credential, and its host for the stack proxy
+        # alone.
+        run = registered(claim)
+        assert {:ok, members} = ComposedConfiguration.members(run)
+        assert members.stack_hosts == ["github.com"]
+        assert members.work == nil
+        refute Repo.exists?(from c in RunCredential, where: c.run_id == ^run.id)
+      end
     end
   end
 
