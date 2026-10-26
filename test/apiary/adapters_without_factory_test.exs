@@ -96,6 +96,14 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     assert Repo.get!(Node, adapter.id).deleted_at == nil
   end
 
+  test "no adapter is listed as configured, for any domain",
+       %{connectable: %{adapter: adapter}} do
+    assert Adapters.configured?(adapter)
+
+    for domain <- Map.values(Apiary.Lingo.Domain.domains()),
+        do: assert(Adapters.list_configured(domain) == [])
+  end
+
   test "no adapter's set-up is started, even by an instance admin, and nothing is recorded",
        %{scope: scope, admin: admin, connectable: %{adapter: adapter}} do
     {1, _} =

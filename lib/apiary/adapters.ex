@@ -181,6 +181,35 @@ defmodule Apiary.Adapters do
 
   def get_adapter(%Scope{}, _public_id), do: nil
 
+  @doc false
+  # Whether `adapter` is configured: it declares no `setup_url`, which it declares only
+  # while it is not set up, and it may be connected (`connectable/1`: it declared a
+  # connect address and holds an access key in use).
+  @spec configured?(Node.t()) :: boolean
+  def configured?(%Node{kind: :adapter, setup_url: setup_url} = adapter),
+    do: is_nil(setup_url) and connectable(adapter) == :ok
+
+  @doc false
+  # The instance's adapters in use that are configured (`configured?/1`) and serve
+  # `domain`, a module of `Apiary.Lingo.Domain.domains/0`, by name, as `list_adapters/1`
+  # orders them. An adapter serves the domains its latest start listed, and every domain
+  # where it listed none, as `Apiary.Lingo.Domain.serves?/2` has it. None where the
+  # instance does not have the feature `factory`. The caller decides who may read them.
+  @spec list_configured(module) :: [Node.t()]
+  def list_configured(domain) when is_atom(domain) do
+    if Features.on?(:factory) do
+      name = domain.name()
+
+      live_query()
+      |> where([n], is_nil(n.domains) or ^name in n.domains)
+      |> order_by([n], asc: n.name, asc: n.id)
+      |> Repo.all()
+      |> Enum.filter(&configured?/1)
+    else
+      []
+    end
+  end
+
   # The instance's adapters are read by a person of an organisation who may read them
   # there (`adapter.read`, where they are shown the feature), and by an instance admin
   # where the instance has it (`authorize_instance/2`).
