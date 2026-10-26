@@ -17,13 +17,16 @@ defmodule Apiary.Dispatches.Inputs do
   #     the run: `attempt` 1 to 3, and `of` the take in's 3, as the schema requires;
   #   - `ticket`: the ticket as the work item kept it when it was taken in, its ref, its
   #     address, its title and its collection's title, and as the ticket's row holds it now,
-  #     its text, who filed it and when (`Apiary.Sources.Item`);
-  #   - `instruction`: the work item's first instruction, empty for none, who took it in and
-  #     when. Who took it in is named by their account: the local part of its email
-  #     address (`Apiary.Accounts.User.short_name/1`), or the fixed words `former member`
-  #     for an account deleted. The words are data on the wire, never translated;
+  #     its text, who filed it and when (`Apiary.Sources.Item`). A test work item has no
+  #     ticket (`Apiary.WorkItems.WorkItem.test_changeset/2`), and its input none;
+  #   - `instruction`: the work item's first instruction, empty for none, or for a test
+  #     work item the line the person typed, its title; who took it in and when. Who took
+  #     it in is named by their account: the local part of its email address
+  #     (`Apiary.Accounts.User.short_name/1`), or the fixed words `former member` for an
+  #     account deleted. The words are data on the wire, never translated;
   #   - `comments`: the ticket's comments not deleted at their source, oldest first, each
-  #     with its author as the source named them, when it was written there and its text.
+  #     with its author as the source named them, when it was written there and its text;
+  #     none for a test work item.
   #     The names the source gave, who filed the ticket and who wrote each comment, are the
   #     integration contract's `person` names: 1 to 100 characters, which may hold a tab
   #     or a line break but never U+0000. Their columns already hold them to that
@@ -42,10 +45,11 @@ defmodule Apiary.Dispatches.Inputs do
   #
   #   Every time is in UTC to the whole second, and every length is counted in code
   #   points, as the contract counts it. The answer is `{:ok, inputs}`, a
-  #   `Jason.OrderedObject`, or `{:error, :ticket_gone}` when the work item's ticket is no
-  #   longer kept, or `{:error, :inputs_invalid}` when a value breaks the contract's rule for
-  #   it and no input can be formed: an address that is not the contract's URL, a first
-  #   instruction or a name that holds a character the contract refuses, or is too long.
+  #   `Jason.OrderedObject`, or `{:error, :ticket_gone}` when the ticket of a work item that
+  #   is no test is no longer kept, or `{:error, :inputs_invalid}` when a value breaks the
+  #   contract's rule for it and no input can be formed: an address that is not the
+  #   contract's URL, an instruction or a name that holds a character the contract refuses,
+  #   or is too long.
   #   Nothing is cut or cleaned: a run is never given an input other than the one Qory
   #   keeps.
   #
@@ -139,6 +143,7 @@ defmodule Apiary.Dispatches.Inputs do
     end
   end
 
+  defp ticket(%WorkItem{test: true, item_id: nil}), do: {:ok, nil}
   defp ticket(%WorkItem{item_id: nil}), do: {:error, :ticket_gone}
 
   defp ticket(%WorkItem{item_id: item_id}) do
@@ -180,18 +185,25 @@ defmodule Apiary.Dispatches.Inputs do
       code_points(name) in 1..@max_name and not Regex.match?(@refused_in_text, name) and
         not Regex.match?(@refused_in_name, name)
 
-  # What the database does not hold to the contract's rules already.
-  defp valid(%WorkItem{url: url, first_instruction: instruction}) do
-    instruction = instruction || ""
+  # What the database does not hold to the contract's rules already. A test work item has
+  # no address to check.
+  defp valid(%WorkItem{test: test, url: url} = work_item) do
+    instruction = instruction(work_item)
 
-    if AdapterWire.url?(url) and code_points(instruction) <= @max_instruction and
+    if (test or AdapterWire.url?(url)) and code_points(instruction) <= @max_instruction and
          not Regex.match?(@refused_in_text, instruction),
        do: :ok,
        else: {:error, :inputs_invalid}
   end
 
+  # The instruction's text: a test work item's line, or the first instruction.
+  defp instruction(%WorkItem{test: true, title: line}), do: line
+  defp instruction(%WorkItem{first_instruction: instruction}), do: instruction || ""
+
   # The length the contract counts: code points, never graphemes.
   defp code_points(text), do: text |> String.codepoints() |> length()
+
+  defp comments(nil), do: []
 
   defp comments(%Item{id: item_id}) do
     Repo.all(
@@ -222,27 +234,20 @@ defmodule Apiary.Dispatches.Inputs do
            {"number", work_item.number},
            {"url", WorkItems.stable_url(work_item)}
          ])},
-        {"run", Jason.OrderedObject.new([{"attempt", attempt}, {"of", of}])},
-        {"ticket",
-         Jason.OrderedObject.new([
-           {"external_ref", work_item.external_ref},
-           {"url", work_item.url},
-           {"title", work_item.title},
-           {"body", item.body},
-           {"filed_by", person(item.filed_by_name, item.filed_by_kind)},
-           {"filed_at", time(item.source_created_at)},
-           {"collection", work_item.collection_title}
-         ])},
-        {"instruction",
-         Jason.OrderedObject.new([
-           {"text", work_item.first_instruction || ""},
-           {"by", Jason.OrderedObject.new([{"name", by}])},
-           {"at", time(work_item.taken_in_at)}
-         ])},
-        {"comments", comments},
-        {"comments_omitted", omitted},
-        {"answers", answers}
-      ] ++ target(run.target) ++ [{"domain", run.domain}]
+        {"run", Jason.OrderedObject.new([{"attempt", attempt}, {"of", of}])}
+      ] ++
+        ticket_entry(work_item, item) ++
+        [
+          {"instruction",
+           Jason.OrderedObject.new([
+             {"text", instruction(work_item)},
+             {"by", Jason.OrderedObject.new([{"name", by}])},
+             {"at", time(work_item.taken_in_at)}
+           ])},
+          {"comments", comments},
+          {"comments_omitted", omitted},
+          {"answers", answers}
+        ] ++ target(run.target) ++ [{"domain", run.domain}]
     )
   end
 
@@ -260,6 +265,24 @@ defmodule Apiary.Dispatches.Inputs do
       )
 
     {attempt - requeues, of - requeues}
+  end
+
+  # The ticket, left out for a test work item, which has none.
+  defp ticket_entry(_work_item, nil), do: []
+
+  defp ticket_entry(work_item, %Item{} = item) do
+    [
+      {"ticket",
+       Jason.OrderedObject.new([
+         {"external_ref", work_item.external_ref},
+         {"url", work_item.url},
+         {"title", work_item.title},
+         {"body", item.body},
+         {"filed_by", person(item.filed_by_name, item.filed_by_kind)},
+         {"filed_at", time(item.source_created_at)},
+         {"collection", work_item.collection_title}
+       ])}
+    ]
   end
 
   defp target(nil), do: []
