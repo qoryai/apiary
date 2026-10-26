@@ -88,6 +88,93 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     refute has_element?(lv, "#set-up-continue")
   end
 
+  describe "an adapter's guide" do
+    # The text of each element `selector` finds under the help, its spaces joined.
+    defp texts(lv, selector) do
+      lv
+      |> element("#set-up-help")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+    end
+
+    test "shows Qory Apiary's first step, then the adapter's setup steps, between its lines",
+         %{conn: conn} do
+      %{adapter: adapter} = settable_adapter_fixture(%{name: named("forge")})
+      guide = source_guide_example()
+      guided_adapter(adapter, guide)
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+
+      assert texts(lv, "li") ==
+               ["Press Set up. A new tab opens." | guide["setup"]["steps"]]
+
+      assert texts(lv, "p") == [
+               guide["setup"]["before"],
+               "Come back to this tab. When the state shows Set up, press Continue."
+             ]
+
+      assert has_element?(lv, "#set-up-help li b", "Set up")
+    end
+
+    test "with no guide, the step shows no steps", %{conn: conn} do
+      %{adapter: adapter} = settable_adapter_fixture(%{name: named("forge")})
+      guided_adapter(adapter, %{"connect" => source_guide_example()["connect"]})
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+
+      assert has_element?(lv, "#set-up-#{adapter.public_id}")
+      refute has_element?(lv, "#set-up-help")
+
+      guided_adapter(adapter, nil)
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+      refute has_element?(lv, "#set-up-help")
+    end
+
+    test "shows the adapter's lines as plain text, never as Markdown or HTML", %{conn: conn} do
+      %{adapter: adapter} = settable_adapter_fixture(%{name: named("forge")})
+
+      guided_adapter(adapter, %{
+        "setup" => %{
+          "before" => "<script>alert(1)</script> first",
+          "steps" => [
+            "Press **Approve** in <b>Settings</b>.",
+            "Open [the page](https://example.com)."
+          ],
+          "after" => "<i>Done</i>"
+        }
+      })
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+
+      assert texts(lv, "li") == [
+               "Press Set up. A new tab opens.",
+               "Press **Approve** in <b>Settings</b>.",
+               "Open [the page](https://example.com)."
+             ]
+
+      assert texts(lv, "p") == [
+               "<script>alert(1)</script> first",
+               "<i>Done</i>",
+               "Come back to this tab. When the state shows Set up, press Continue."
+             ]
+
+      refute has_element?(lv, "#set-up-help script")
+      refute has_element?(lv, "#set-up-help i")
+      refute has_element?(lv, "#set-up-help a")
+      refute has_element?(lv, "#set-up-help strong")
+
+      assert [_one] =
+               lv
+               |> element("#set-up-help")
+               |> render()
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query("li b")
+               |> Enum.to_list()
+    end
+  end
+
   test "an adapter that can't be set up says why, and what to do", %{conn: conn} do
     # No key in use.
     no_key = adapter_fixture(%{name: named("a-tracker")})

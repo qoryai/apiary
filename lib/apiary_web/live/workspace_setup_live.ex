@@ -16,8 +16,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # configured adapters that serve the workspace's type (`Apiary.Adapters.list_configured/1`),
   # each with Connect, the Install of Organisation settings › Integrations
   # (`ApiaryWeb.IntegrationComponents.install_form/1`), and Skip; with none, that no work
-  # source for the type is set up on the instance, and Continue. Skip and Continue lead to
-  # the workspace's Overview, and so does Create workspace without the feature. Anyone
+  # source for the type is set up on the instance, and Continue. Above the list, for each
+  # adapter whose guide gives steps for connecting it (`Apiary.Adapters.guide/2`), those
+  # steps after a first step of Qory Apiary's, Connect, and, while the organisation has one
+  # workspace, a note that the workspace gets every collection picked. Skip and Continue
+  # lead to the workspace's Overview, and so does Create workspace without the feature. Anyone
   # else, once there is a workspace, is sent on: to the workspace's first page, or to the
   # organisation's page where they reach no workspace.
   #
@@ -64,12 +67,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp assign_source_step(socket) do
-    workspace = socket.assigns.current_scope.workspace
+    scope = socket.assigns.current_scope
+    workspace = scope.workspace
 
     assign(socket,
       page_title: gettext("Connect a work source to %{workspace}", workspace: workspace.name),
       step: :source,
       adapters: Adapters.list_configured(Domain.for_workspace(workspace)),
+      one_workspace: match?([_one], Organisations.list_workspaces(scope)),
       sending: nil
     )
   end
@@ -144,6 +149,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           :if={@step == :source}
           scope={@current_scope}
           adapters={@adapters}
+          one_workspace={@one_workspace}
           sending={@sending}
         />
       </div>
@@ -226,6 +232,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   attr :scope, :map, required: true
   attr :adapters, :list, required: true
+  attr :one_workspace, :boolean, required: true
   attr :sending, :string, required: true
 
   defp source_step(assigns) do
@@ -238,6 +245,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {pgettext("plain", "Bring tickets in from a system this instance has set up.")}
       </:subtitle>
     </SetUpComponents.heading>
+
+    <SetUpComponents.guide
+      :for={{adapter, guide} <- guides(@adapters)}
+      id={"set-up-help-#{adapter.public_id}"}
+      guide={guide}
+    >
+      <:first>
+        <.rich text={
+          rich_gettext("Press %{button} beside %{adapter}. %{name} opens.",
+            button: {:b, gettext("Connect")},
+            adapter: {:b, adapter.name},
+            name: adapter.name
+          )
+        } />
+      </:first>
+      <:note :if={@one_workspace and Adapters.items?(adapter)}>
+        {gettext(
+          "%{workspace} gets every %{collection} you picked, because %{organisation} has one workspace.",
+          workspace: @workspace.name,
+          collection: collection_word(adapter),
+          organisation: @scope.organisation.name
+        )}
+      </:note>
+    </SetUpComponents.guide>
 
     <ul :if={@adapters != []} id="set-up-sources" class="grid gap-3">
       <li
@@ -296,6 +327,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     </div>
     """
   end
+
+  # Each adapter whose guide gives steps for connecting it, with them.
+  defp guides(adapters) do
+    for adapter <- adapters, guide = Adapters.guide(adapter, :connect), do: {adapter, guide}
+  end
+
+  # The adapter's word for one of its collections, as a text it sent is shown.
+  defp collection_word(adapter),
+    do:
+      adapter
+      |> Adapters.collection_noun()
+      |> SourceComponents.collection()
+      |> Apiary.ExternalText.line()
 
   # What an adapter brings in, in its words for its items where it names them.
   defp source_line(adapter) do

@@ -9,6 +9,10 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # with the `factory` feature, by name, as Instance settings › Adapters lists them
   # (`ApiaryWeb.InstanceLive.Adapters`); then mail. A number out of range is the first step.
   #
+  # Where an adapter's guide gives steps for setting it up (`Apiary.Adapters.guide/2`), an
+  # adapter's step shows them under its title, after a first step of Qory Apiary's, Set
+  # up, and before a note of Qory Apiary's on Continue; where it gives none, no steps show.
+  #
   # An adapter's step says whether it is set up: "Set up" once it is configured
   # (`Apiary.Adapters.configured?/1`), with Continue; else "Not set up", with Set up while
   # it can be set up (`ApiaryWeb.AdapterComponents.settable?/3`), which opens the adapter's
@@ -211,10 +215,11 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   attr :row, :map, required: true
 
-  # An adapter's step: its name, what setting it up does, its state, and Set up or
+  # An adapter's step: its name, what setting it up does, the steps its guide gives for
+  # setting it up after Qory Apiary's first, where it gives them, its state, and Set up or
   # Continue.
   defp adapter_step(%{row: %{adapter: adapter}} = assigns) do
-    assigns = assign(assigns, :adapter, adapter)
+    assigns = assign(assigns, adapter: adapter, guide: Adapters.guide(adapter, :setup))
 
     ~H"""
     <section id={"set-up-#{@adapter.public_id}"} class="grid gap-4" aria-labelledby="set-up-name">
@@ -226,6 +231,22 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
           )}
         </p>
       </div>
+
+      <SetUpComponents.guide :if={@guide} id="set-up-help" guide={@guide}>
+        <:first>
+          <.rich text={
+            rich_gettext("Press %{button}. A new tab opens.", button: {:b, gettext("Set up")})
+          } />
+        </:first>
+        <:note>
+          <.rich text={
+            rich_gettext("Come back to this tab. When the state shows %{state}, press %{button}.",
+              state: {:b, gettext("Set up")},
+              button: {:b, gettext("Continue")}
+            )
+          } />
+        </:note>
+      </SetUpComponents.guide>
 
       <p id="set-up-state" class="flex items-center gap-2 text-[13.5px]/5">
         <b class="font-semibold">{gettext("State:")}</b>

@@ -285,6 +285,86 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
     refute has_element?(lv, "#set-up-no-source")
   end
 
+  describe "an adapter's guide" do
+    # The text of each element `selector` finds under `help`, its spaces joined.
+    defp texts(lv, help, selector) do
+      lv
+      |> element(help)
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+    end
+
+    test "shows Qory Apiary's first step, the adapter's connect steps, its lines, and the note on the one workspace",
+         %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      %{adapter: adapter} = connectable_adapter_fixture()
+      guide = source_guide_example()
+      guided_adapter(adapter, guide)
+
+      {1, _} =
+        Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+          set: [collection_noun_one: "repository", collection_noun_other: "repositories"]
+        )
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+      help = "#set-up-help-#{adapter.public_id}"
+
+      assert texts(lv, help, "li") ==
+               [
+                 "Press Connect beside #{adapter.name}. #{adapter.name} opens."
+                 | guide["connect"]["steps"]
+               ]
+
+      assert texts(lv, help, "p") == [
+               guide["connect"]["before"],
+               guide["connect"]["after"],
+               "Main gets every repository you picked, because #{organisation.name} has one workspace."
+             ]
+    end
+
+    test "with no connect steps, or no guide, the old step shows", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      %{adapter: adapter} = connectable_adapter_fixture()
+      guided_adapter(adapter, %{"setup" => source_guide_example()["setup"]})
+      %{adapter: plain} = connectable_adapter_fixture()
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+
+      assert has_element?(lv, "#set-up-source-#{adapter.public_id}")
+      assert has_element?(lv, "#set-up-source-#{plain.public_id}")
+      refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
+      refute has_element?(lv, "#set-up-help-#{plain.public_id}")
+    end
+
+    test "shows the adapter's lines as plain text, and no note with two workspaces",
+         %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      workspace_fixture(organisation, "Second")
+
+      %{adapter: adapter} = connectable_adapter_fixture()
+
+      guided_adapter(adapter, %{
+        "connect" => %{
+          "steps" => ["Press **Allow** <b>now</b>."],
+          "after" => "<a href=\"x\">y</a>"
+        }
+      })
+
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+      help = "#set-up-help-#{adapter.public_id}"
+
+      assert texts(lv, help, "li") == [
+               "Press Connect beside #{adapter.name}. #{adapter.name} opens.",
+               "Press **Allow** <b>now</b>."
+             ]
+
+      assert texts(lv, help, "p") == [~s(<a href="x">y</a>)]
+      refute has_element?(lv, "#{help} a")
+    end
+  end
+
   test "with no adapter for the type, says so, with Continue", %{conn: conn} do
     %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
 
