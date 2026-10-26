@@ -36,18 +36,19 @@ defmodule Apiary.Stacks.Sources do
   #
   # ## Limits
   #
-  # A person's reads are counted in a fixed window of a minute
-  # (`Apiary.Runs.RateLimit.reserve/3`), by the person's account: at most 2 listings
-  # (`linked/1`) and 10 reads of a source (`read/2`), else `{:error, {:limited,
-  # seconds}}`, the seconds until the window ends. Each resolve of an address may make the
-  # adapter call the system it reaches under credentials every organisation shares, so a
-  # person's reads stay a few. A listing reads at most 100 linked collections, the first
-  # by title, and leaves out the rest, counted; its reads take at most 60 seconds
-  # together, and a collection whose reads do not end by then is counted as not read. So
-  # one listing makes at most 2 resolves per adapter and 300 reads. A read of a source
-  # makes one resolve per adapter and at most 3 reads to find its stacks, then reads the
-  # first 20 stacks it has, in the order its harness file exports them; its calls take at
-  # most 30 seconds together, and one past that makes the source not read.
+  # A person's reads are counted in a fixed window of a minute, by the person's account
+  # (`Apiary.Runs.RateLimit.reserve/3`): at most 2 listings (`linked/1`) and 10 reads of
+  # a source (`read/2`), else `{:error, {:limited, seconds}}`, the seconds until the
+  # window ends. `RateLimit` counts on each node, so on a cluster a person gets these
+  # limits on each node. Each resolve of an address may make the adapter call the system
+  # it reaches under credentials every organisation shares, so a person's reads stay a
+  # few. A listing reads at most 100 linked collections, the first by title, and leaves
+  # out the rest, counted; its reads take at most 60 seconds together, and a collection
+  # whose reads do not end by then is counted as not read. So one listing makes at most 2
+  # resolves per adapter and 300 reads. A read of a source makes one resolve per adapter
+  # and at most 3 reads to find its stacks, then reads the first 20 stacks it has, in the
+  # order its harness file exports them; its calls take at most 30 seconds together, and
+  # one past that makes the source not read.
   #
   # ## The save
   #
@@ -56,6 +57,8 @@ defmodule Apiary.Stacks.Sources do
   # workflow, under `Apiary.Stacks.Document`'s save rules. In the same transaction it
   # removes the workspace's rows of other workflows with no target, since a run takes the
   # workflow of the one row with a workflow at its places (`Apiary.Stacks.workflow/2`).
+  # Saves of one workspace take turns on a transaction-level advisory lock keyed by the
+  # workspace, so two at the same time leave one row.
   # It writes no audit entry, as `put_stack/3` writes none.
   #
   # The feature is hidden from the documentation, so the module is too.
@@ -183,12 +186,8 @@ defmodule Apiary.Stacks.Sources do
   end
 
   @doc false
-  # limit/1 is a number the page states: the listings (`:linked`) and reads of a source
-  # (`:read`) a person may make in a minute, and the most linked collections a listing
-  # reads (`:listed`).
-  @spec limit(:linked | :read | :listed) :: pos_integer
-  def limit(:linked), do: @listings_a_minute
-  def limit(:read), do: @reads_a_minute
+  # limit/1 is a number the page states: the most linked collections a listing reads.
+  @spec limit(:listed) :: pos_integer
   def limit(:listed), do: @max_listed
 
   # One of the person's reads of `kind` in the window of a minute, `limit` at most.
@@ -638,6 +637,8 @@ defmodule Apiary.Stacks.Sources do
     with :ok <- Access.authorize(scope, :"harness.save", workspace),
          true <- is_map(base) and is_binary(workflow) do
       Repo.transact(fn ->
+        lock_saves(workspace)
+
         replaced =
           Repo.all(
             from s in Stack,
@@ -647,7 +648,7 @@ defmodule Apiary.Stacks.Sources do
               select: s.workflow
           )
 
-        # A save at the same time may have removed one already.
+        # A save before this one may have removed one already.
         for other <- replaced do
           case Stacks.delete_stack({:workspace, workspace, other}) do
             {:ok, _stack} -> :ok
@@ -661,6 +662,17 @@ defmodule Apiary.Stacks.Sources do
       false -> {:error, :invalid}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # Saves of one workspace take turns: the second waits for the first's transaction, then
+  # sees its row and replaces it, so the workspace keeps one workflow.
+  defp lock_saves(%Workspace{id: workspace_id}) do
+    {:ok, uuid} = Ecto.UUID.dump(workspace_id)
+
+    Repo.query!(
+      "SELECT pg_advisory_xact_lock(hashtextextended('apiary:workflow-save:' || $1::uuid::text, 0))",
+      [uuid]
+    )
   end
 
   # The document that extends `base`, its values as YAML's double-quoted texts, which

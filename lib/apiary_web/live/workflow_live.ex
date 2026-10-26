@@ -549,10 +549,9 @@ defmodule ApiaryWeb.WorkflowLive do
     do:
       pngettext(
         "plain",
-        "Wait %{count} second, then reload the page to list the linked repositories. Qory Apiary lists them at most %{limit} times a minute for each person.",
-        "Wait %{count} seconds, then reload the page to list the linked repositories. Qory Apiary lists them at most %{limit} times a minute for each person.",
-        seconds,
-        limit: Sources.limit(:linked)
+        "Wait %{count} second, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them.",
+        "Wait %{count} seconds, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them.",
+        seconds
       )
 
   defp listing_words(%{unread: unread, left_out: left_out}) do
@@ -568,8 +567,8 @@ defmodule ApiaryWeb.WorkflowLive do
     do:
       pngettext(
         "plain",
-        "Ask an instance admin to assign your harness repository if the list leaves it out: the list shows the first %{limit} linked repositories by title, and %{count} more is linked.",
-        "Ask an instance admin to assign your harness repository if the list leaves it out: the list shows the first %{limit} linked repositories by title, and %{count} more are linked.",
+        "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more is linked.",
+        "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more are linked.",
         count,
         limit: Sources.limit(:listed)
       )
@@ -611,11 +610,10 @@ defmodule ApiaryWeb.WorkflowLive do
   defp read_words({:limited, seconds}, source, _organisation),
     do:
       ngettext(
-        "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary reads at most %{limit} sources a minute for each person.",
-        "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary reads at most %{limit} sources a minute for each person.",
+        "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
+        "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
         seconds,
-        source: source.label,
-        limit: Sources.limit(:read)
+        source: source.label
       )
 
   defp read_words(_unreadable, source, _organisation),
