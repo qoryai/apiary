@@ -12,7 +12,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # An adapter's step says whether it is set up: "Set up" once it is configured
   # (`Apiary.Adapters.configured?/1`), with Continue; else "Not set up", with Set up while
   # it can be set up (`ApiaryWeb.AdapterComponents.settable?/3`), which opens the adapter's
-  # set-up in a new tab. The step reads the adapters again as a key arrives or an adapter
+  # set-up in a new tab; else a line on why it can't be set up now, and what to do. The step reads the adapters again as a key arrives or an adapter
   # declares where to set it up or connect to it (`Apiary.Adapters.subscribe_keys/2`), so
   # it turns to "Set up" while the page is open.
   #
@@ -63,25 +63,35 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   end
 
   # The instance's adapters, with the `factory` feature, each with whether it is
-  # configured and whether it can be set up now.
+  # configured, whether it can be set up now, and, where neither, why not (`blocked/4`).
   defp adapters(scope) do
     if Adapters.authorize_instance(scope) == :ok do
       for adapter <- Adapters.list_adapters(scope) do
+        connected = AccessKeys.active_key?(adapter)
+        listed = Adapters.listed?(adapter)
+        configured = Adapters.configured?(adapter)
+        settable = AdapterComponents.settable?(adapter, connected, listed)
+
         %{
           adapter: adapter,
-          configured: Adapters.configured?(adapter),
-          settable:
-            AdapterComponents.settable?(
-              adapter,
-              AccessKeys.active_key?(adapter),
-              Adapters.listed?(adapter)
-            )
+          configured: configured,
+          settable: settable,
+          blocked: blocked(adapter, configured or settable, connected, listed)
         }
       end
     else
       []
     end
   end
+
+  # Why an adapter that is not set up can't be set up now, as
+  # `ApiaryWeb.AdapterComponents.settable?/3` decides: it has no key in use; it declares
+  # no `setup_url` (and, not configured, no connect address); or it is installed with Qory
+  # Apiary and off the list. Nil where it is set up or can be.
+  defp blocked(_adapter, true, _connected, _listed), do: nil
+  defp blocked(_adapter, false, false, _listed), do: :no_key
+  defp blocked(%{setup_url: nil}, false, true, _listed), do: :not_declared
+  defp blocked(_adapter, false, true, _listed), do: :not_listed
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -227,6 +237,10 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         </span>
       </p>
 
+      <p :if={@row.blocked} id="set-up-blocked" class="text-[13.5px]/5 text-muted">
+        {blocked_line(@row.blocked, @adapter.name)}
+      </p>
+
       <div class="flex flex-wrap items-start justify-between gap-3 pt-1">
         <div class="flex gap-2">
           <.button
@@ -253,6 +267,28 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     </section>
     """
   end
+
+  # What to do about an adapter that can't be set up now, and why.
+  defp blocked_line(:no_key, name),
+    do:
+      gettext(
+        "Connect %{adapter} with an access key in Instance settings › Adapters. It can't be set up until it has a key in use; this step updates once it has one.",
+        adapter: name
+      )
+
+  defp blocked_line(:not_declared, name),
+    do:
+      gettext(
+        "Check that %{adapter} is running. It has a key in use, but it has not sent the address where it is set up; this step updates once it has.",
+        adapter: name
+      )
+
+  defp blocked_line(:not_listed, name),
+    do:
+      gettext(
+        "Skip this step. %{adapter} is no longer on the list of adapters installed with Qory Apiary, so it can't be set up.",
+        adapter: name
+      )
 
   attr :source, :atom, required: true
   attr :current_scope, :map, required: true

@@ -88,6 +88,57 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     refute has_element?(lv, "#set-up-continue")
   end
 
+  test "an adapter that can't be set up says why, and what to do", %{conn: conn} do
+    # No key in use.
+    no_key = adapter_fixture(%{name: named("a-tracker")})
+
+    # A key in use, and no address where it is set up or connected to.
+    %{adapter: not_declared} = connectable_adapter_fixture(%{name: named("b-tracker")})
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^not_declared.id), set: [connect_url: nil])
+
+    # Installed with Qory Apiary under a name no longer listed.
+    %{adapter: not_listed} = settable_adapter_fixture(%{name: named("c-tracker")})
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^not_listed.id),
+        set: [installed_as: named("gone")]
+      )
+
+    # Set up can be pressed: no line.
+    %{adapter: settable} = settable_adapter_fixture(%{name: named("d-tracker")})
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=1")
+    assert has_element?(lv, "#set-up-#{no_key.public_id}")
+
+    assert words(lv, "#set-up-blocked") ==
+             "Connect #{no_key.name} with an access key in Instance settings › Adapters. " <>
+               "It can't be set up until it has a key in use; this step updates once it has one."
+
+    refute has_element?(lv, "#set-up-open")
+    assert has_element?(lv, "#set-up-skip-button", "Skip")
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=2")
+    assert has_element?(lv, "#set-up-#{not_declared.public_id}")
+
+    assert words(lv, "#set-up-blocked") ==
+             "Check that #{not_declared.name} is running. It has a key in use, but it has not " <>
+               "sent the address where it is set up; this step updates once it has."
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=3")
+    assert has_element?(lv, "#set-up-#{not_listed.public_id}")
+
+    assert words(lv, "#set-up-blocked") ==
+             "Skip this step. #{not_listed.name} is no longer on the list of adapters installed " <>
+               "with Qory Apiary, so it can't be set up."
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=4")
+    assert has_element?(lv, "#set-up-#{settable.public_id}")
+    assert has_element?(lv, "#set-up-open")
+    refute has_element?(lv, "#set-up-blocked")
+  end
+
   test "turns to Set up and Continue once the adapter is configured, while the page is open",
        %{conn: conn} do
     %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
