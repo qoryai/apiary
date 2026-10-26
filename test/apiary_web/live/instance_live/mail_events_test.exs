@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.InstanceLive.MailEventsTest do
   @moduledoc """
   Instance settings › Mail (`ApiaryWeb.InstanceLive.Mail`): an event its form never sends,
-  with a plaintext password in it, is refused in silence. The page's process stays up, so
-  no crash report prints the event, and no log line holds the password.
+  with a plaintext password in it, is refused in silence, by the form
+  (`ApiaryWeb.InstanceLive.MailForm`) and by the page. The page's process stays up, so no
+  crash report prints the event, and no log line holds the password.
   """
   # Not async: hiding the instance's organisation acts on the row every test shares.
   use ApiaryWeb.ConnCase, async: false
@@ -97,18 +98,19 @@ defmodule ApiaryWeb.InstanceLive.MailEventsTest do
     top ++ under ++ per_field ++ names ++ strings
   end
 
-  # The event as a client sends it on the page's channel: a hook's value as it comes, a
-  # form's encoded as a form encodes it. The page's state, read after it, says it was
-  # answered.
-  defp push(view, type, event, value) do
+  # The event as a client sends it on the page's channel, to the form's component, `cid`,
+  # or to the page, nil: a hook's value as it comes, a form's encoded as a form encodes it.
+  # The page's state, read after it, says it was answered.
+  defp push({view, cid}, type, event, value) do
     {_ref, topic, _proxy} = view.proxy
     value = if type == "form", do: Plug.Conn.Query.encode(value), else: value
+    payload = %{"type" => type, "event" => event, "value" => value}
 
     send(view.pid, %Phoenix.Socket.Message{
       topic: topic,
       event: "event",
       ref: "events-test",
-      payload: %{"type" => type, "event" => event, "value" => value}
+      payload: if(cid, do: Map.put(payload, "cid", cid), else: payload)
     })
 
     :sys.get_state(view.pid)
@@ -128,11 +130,12 @@ defmodule ApiaryWeb.InstanceLive.MailEventsTest do
 
   defp types(_value), do: ["hook"]
 
-  # Each event sent each payload: the events that took the page down.
-  defp sweep(conn, events, payloads) do
+  # Each event sent each payload, to the form or, with `to: :page`, to the page: the
+  # events that took the page down.
+  defp sweep(conn, events, payloads, to \\ :form) do
     for event <- events, payload <- payloads, type <- types(payload), reduce: {nil, []} do
       {view, downs} ->
-        view = view || mount(conn)
+        view = view || mount(conn, to)
 
         case push(view, type, event, payload) do
           :ok -> {view, downs}
@@ -143,9 +146,22 @@ defmodule ApiaryWeb.InstanceLive.MailEventsTest do
     |> Enum.reverse()
   end
 
-  defp mount(conn) do
+  # The page, and where its events go: the form's component, by its id, or the page.
+  defp mount(conn, to \\ :form) do
     {:ok, view, _html} = live(conn, ~p"/instance/mail")
-    view
+
+    cid =
+      if to == :form,
+        do:
+          view
+          |> element("#mail")
+          |> render()
+          |> LazyHTML.from_fragment()
+          |> LazyHTML.attribute("data-phx-component")
+          |> List.first()
+          |> String.to_integer()
+
+    {view, cid}
   end
 
   test "a save no form sends leaves the page up, and no password in a log line",
@@ -169,16 +185,29 @@ defmodule ApiaryWeb.InstanceLive.MailEventsTest do
     assert downs == []
   end
 
+  test "an event sent to the page, not its form, leaves the page up, and no password in a log line",
+       %{conn: conn} do
+    Process.flag(:trap_exit, true)
+    events = ["save", "validate", "no_such_event"]
+
+    {downs, log} =
+      with_log([level: :error], fn -> sweep(conn, events, Enum.take(payloads(), 12), :page) end)
+
+    refute log =~ @marker
+    assert downs == []
+  end
+
   # The shape that took the page down before: a save without `mail`, its password at the
   # top. Refused, it leaves the page as it was.
   test "a save without mail is refused, and the page is as it was", %{conn: conn} do
     Process.flag(:trap_exit, true)
-    view = mount(conn)
+    {view, _cid} = target = mount(conn)
     html = render(view)
 
     {result, log} =
       with_log([level: :error], fn ->
-        for type <- ["hook", "form"], do: push(view, type, "save", %{"smtp_password" => @marker})
+        for type <- ["hook", "form"],
+            do: push(target, type, "save", %{"smtp_password" => @marker})
       end)
 
     refute log =~ @marker
@@ -206,10 +235,10 @@ defmodule ApiaryWeb.InstanceLive.MailEventsTest do
   # The form still saves, as the Mail page's suite shows; this test shows that a save the
   # form sends with the `_unused_` names a browser adds is taken.
   test "a save the form sends, with the names a form adds, is taken", %{conn: conn} do
-    view = mount(conn)
+    target = mount(conn)
     unused = Map.new(@fields, &{"_unused_" <> &1, ""})
 
-    assert push(view, "form", "save", %{"mail" => Map.merge(@valid, unused)}) == :ok
+    assert push(target, "form", "save", %{"mail" => Map.merge(@valid, unused)}) == :ok
     assert %{smtp_relay: "smtp.example.com", smtp_username: "qory"} = Mail.settings()
     assert_received {:email, %{subject: "Turn on mail for Qory Apiary"}}
   end
