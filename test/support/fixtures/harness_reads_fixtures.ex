@@ -61,9 +61,11 @@ defmodule Apiary.HarnessReadsFixtures do
 
   @doc """
   Serves the calls of `adapters`, each `%{adapter, host, seed}`. `covered` maps an
-  adapter's id to a map of an address to its `{grant_ref, resource_ref}`; `files` maps
-  `{resource_ref, path}` to a document. A resource's version is `c-<resource_ref>`,
-  whatever version a read asks. `down: true` makes every call reach no one, and `down:`
+  adapter's id to a map of an address to its `{grant_ref, resource_ref}`, to those and its
+  public ref, `{grant_ref, resource_ref, {:public, public_ref}}`, or to its public ref
+  alone, `{:public, public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps
+  `{resource_ref, path}` to a document, a public ref's read as public (`read-public`). A
+  resource's version is `c-<resource_ref>`, whatever version a read asks. `down: true` makes every call reach no one, and `down:`
   a list of adapter ids the calls of those adapters. Each call is sent to the test as
   `{:harness_call, path, members}`.
   """
@@ -91,6 +93,23 @@ defmodule Apiary.HarnessReadsFixtures do
           results =
             for address <- call["addresses"] do
               case by_address[address] do
+                {:public, public_ref} ->
+                  %{
+                    "address" => address,
+                    "resource_ref" => "N_" <> public_ref,
+                    "public" => true,
+                    "public_ref" => public_ref
+                  }
+
+                {grant_ref, resource_ref, {:public, public_ref}} ->
+                  %{
+                    "address" => address,
+                    "grant_ref" => grant_ref,
+                    "resource_ref" => resource_ref,
+                    "public" => true,
+                    "public_ref" => public_ref
+                  }
+
                 {grant_ref, resource_ref} ->
                   %{
                     "address" => address,
@@ -105,7 +124,7 @@ defmodule Apiary.HarnessReadsFixtures do
 
           answer(conn, %{"version" => 1, "revision" => 1, "results" => results}, adapter)
 
-        path == "read" ->
+        path in ["read", "read-public"] ->
           found =
             case files[{call["resource_ref"], call["path"]}] do
               nil -> %{"found" => false}

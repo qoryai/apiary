@@ -11,7 +11,12 @@ defmodule Apiary.Adapters.SyncTest do
   import Apiary.AccessKeysFixtures
 
   import Apiary.DescriptionFixtures,
-    only: [contract_description: 0, read_description: 0, read_description: 1]
+    only: [
+      contract_description: 0,
+      contract_description: 1,
+      read_description: 0,
+      read_description: 1
+    ]
 
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -378,6 +383,48 @@ defmodule Apiary.Adapters.SyncTest do
       for other <- [pool_fixture(scope), node_fixture(scope)] do
         assert_raise Postgrex.Error, ~r/nodes_source_access_check/, fn ->
           Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [source_access: line])
+        end
+      end
+    end
+
+    test "stores the source role's guide at each start, and only an adapter holds one",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      guided = contract_description("example-source-guide.json")
+      guide = guided["roles"]["source"]["guide"]
+
+      # Before its first start, none.
+      assert reload(adapter).source_guide == nil
+
+      assert {:ok, declared} =
+               Adapters.declare(key_scope, %{
+                 declaration()
+                 | description: read_description(guided)
+               })
+
+      assert declared.source_guide == guide
+      assert reload(adapter).source_guide == guide
+
+      assert Adapters.guide(reload(adapter), :setup) == %{
+               before: "You need the administrator role in Example Tracker.",
+               steps: guide["setup"]["steps"],
+               after: "The adapter is registered with Example Tracker."
+             }
+
+      assert Adapters.guide(reload(adapter), :connect) == %{
+               before: nil,
+               steps: guide["connect"]["steps"],
+               after: nil
+             }
+
+      # The next start replaces it; a description with no guide leaves none.
+      assert {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert reload(adapter).source_guide == nil
+      assert Adapters.guide(reload(adapter), :setup) == nil
+
+      # Only an adapter holds one (`nodes_source_guide_check`).
+      for other <- [pool_fixture(scope), node_fixture(scope)] do
+        assert_raise Postgrex.Error, ~r/nodes_source_guide_check/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [source_guide: guide])
         end
       end
     end

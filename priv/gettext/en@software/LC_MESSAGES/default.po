@@ -2764,6 +2764,11 @@ msgid_plural "%{words} could not be read, so they are not applied."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} gets every %{collection} you picked, because %{organisation} has one workspace."
+msgstr ""
+
 #: lib/apiary/edition/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} is this instance's only workspace."
@@ -5329,6 +5334,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Collapse sidebar"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Come back to this tab. When the state shows %{state}, press %{button}."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -9185,7 +9195,7 @@ msgstr ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository only through a linked repository or an assignment."
+msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -12128,12 +12138,22 @@ msgstr ""
 msgid "Preferences › %{page}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Press %{button} beside %{adapter}. %{name} opens."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/set_up.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/workflow_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Press %{button}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Press %{button}. A new tab opens."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex

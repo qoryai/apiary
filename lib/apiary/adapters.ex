@@ -256,6 +256,28 @@ defmodule Apiary.Adapters do
       where: n.kind == :adapter and is_nil(n.deleted_at)
   end
 
+  ## The guide
+
+  @doc false
+  # guide/2 is the steps `adapter`'s description gives for `part`, `:setup` or `:connect`
+  # (`Apiary.Nodes.Node`'s `source_guide`): `%{before: line | nil, steps: [line],
+  # after: line | nil}`, each line the integration's words, shown as plain text; nil where
+  # it gives none for that part.
+  @spec guide(Node.t(), :setup | :connect) ::
+          %{before: String.t() | nil, steps: [String.t()], after: String.t() | nil} | nil
+  def guide(%Node{kind: :adapter, source_guide: %{} = guide}, part)
+      when part in [:setup, :connect] do
+    case guide[Atom.to_string(part)] do
+      %{"steps" => [_ | _] = steps} = given ->
+        %{before: given["before"], steps: steps, after: given["after"]}
+
+      _none ->
+        nil
+    end
+  end
+
+  def guide(%Node{kind: :adapter}, part) when part in [:setup, :connect], do: nil
+
   ## The words for a source's items
 
   @doc false

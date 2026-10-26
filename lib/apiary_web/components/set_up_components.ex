@@ -49,4 +49,33 @@ defmodule ApiaryWeb.SetUpComponents do
     </div>
     """
   end
+
+  attr :id, :string, required: true
+
+  attr :guide, :map,
+    required: true,
+    doc: "the adapter's part of its guide (`Apiary.Adapters.guide/2`)"
+
+  slot :first, required: true, doc: "the first step, Qory Apiary's"
+  slot :note, doc: "a line of Qory Apiary's under the adapter's steps"
+
+  @doc false
+  # guide/1 is `help/1` with an adapter's guide: its line before the steps, Qory Apiary's
+  # first step, the adapter's steps numbered after it, its line after them, then Qory
+  # Apiary's notes. The adapter's lines are its words, shown as plain text
+  # (`ApiaryWeb.ExternalText.external_text/1`), never as Markdown or HTML. The feature the
+  # adapters belong to is hidden from the documentation, so the function is too.
+  def guide(assigns) do
+    ~H"""
+    <.help id={@id}>
+      <p :if={@guide.before}><.external_text text={@guide.before} /></p>
+      <ol>
+        <li>{render_slot(@first)}</li>
+        <li :for={step <- @guide.steps}><.external_text text={step} /></li>
+      </ol>
+      <p :if={@guide.after}><.external_text text={@guide.after} /></p>
+      <p :for={note <- @note}>{render_slot(note)}</p>
+    </.help>
+    """
+  end
 end

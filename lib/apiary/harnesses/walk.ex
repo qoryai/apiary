@@ -899,12 +899,7 @@ defmodule Apiary.Harnesses.Walk do
       at: at
     }
 
-    read =
-      if location.grant_ref,
-        do: &Calls.read_document(&1, request, &2),
-        else: &Calls.read_public(&1, request, &2)
-
-    case call(location.adapter, read) do
+    case call(location.adapter, &Calls.read_at(&1, request, &2)) do
       {:ok, %{found: true, content: content, resolved_at: version}} -> {content, version}
       {:ok, %{found: false, resolved_at: version}} -> {nil, version}
       {:error, %CallFailure{} = failure} -> call_failed(failure, location)
