@@ -37,6 +37,16 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
   defp title(name), do: (Providers.fetch(name) |> elem(1)).title
 
+  # New model provider's form in `html` is sent with POST, and its key's field has no value.
+  defp assert_posts_without_key(html) do
+    form = LazyHTML.query(html, "#new-provider-form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+
+    key = LazyHTML.query(form, ~s{input[type="password"]})
+    assert LazyHTML.attribute(key, "name") == ["provider[key]"]
+    assert LazyHTML.attribute(key, "value") == []
+  end
+
   describe "the list" do
     test "lists each provider with its keys, and New model provider for an owner", ctx do
       %{conn: conn, scope: scope} = ctx
@@ -114,6 +124,25 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
       assert html =~ "can&#39;t be blank"
       assert {:ok, []} = Connections.list_providers(scope)
+    end
+
+    test "posts its form, and the key's field has no value", %{conn: conn, scope: scope} do
+      # The page before it connects: a submit there is the browser's, with the form's method.
+      html = conn |> get(new_path(scope)) |> html_response(200)
+      assert_posts_without_key(LazyHTML.from_document(html))
+
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      lv |> form("#new-provider-form", provider: %{provider: "litellm"}) |> render_change()
+
+      html =
+        lv
+        |> form("#new-provider-form",
+          provider: %{provider: "litellm", key: @key, address: "http://litellm.example.com"}
+        )
+        |> render_submit()
+
+      assert html =~ "https://"
+      assert_posts_without_key(LazyHTML.from_fragment(html))
     end
 
     test "LiteLLM asks its address, and the endpoint rule checks it", ctx do

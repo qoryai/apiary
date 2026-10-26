@@ -209,6 +209,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
         <.form
           for={@form}
           id="new-provider-form"
+          method="post"
           phx-change="choose"
           phx-submit="create"
           class="grid gap-4"
@@ -224,6 +225,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
             field={@form[:key]}
             id={"new-provider-key-#{@attempt}"}
             type="password"
+            value={nil}
             label={gettext("Key")}
             autocomplete="off"
             spellcheck="false"
