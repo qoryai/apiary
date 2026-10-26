@@ -485,6 +485,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     %{
       number: row.number,
       title: row.title,
+      test: row.test,
       key: row.key,
       repository: row.repository,
       status: status(row),
