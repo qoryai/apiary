@@ -189,6 +189,37 @@ defmodule Apiary.InvitationWithoutWorkspaceTest do
     assert allowance_id == scope.organisation.id
   end
 
+  test "a new link after the organisation got a workspace ends the validity period from now" do
+    scope = without_workspace()
+    %{invitation: invitation} = invitation_fixture(scope)
+
+    # The invitation ends in a day, so a renewal that does not set a new end shows.
+    Repo.update_all(from(i in Invitation, where: i.id == ^invitation.id),
+      set: [expires_at: DateTime.add(DateTime.utc_now(), 1, :day)]
+    )
+
+    {:ok, main} = Organisations.create_first_workspace(scope, %{"domain" => "software"})
+    at_main = workspace_scope(scope.user, main)
+
+    before = DateTime.utc_now()
+
+    assert {:ok, %Invitation{workspace_id: nil}} =
+             Organisations.renew_invitation(at_main, invitation.id, &url/1)
+
+    %Invitation{expires_at: expires_at} = Repo.get!(Invitation, invitation.id)
+    from_now = DateTime.add(before, Invitation.validity_days(), :day)
+    assert DateTime.diff(expires_at, from_now, :second) in 0..5
+
+    # Renewed from the scope as it was loaded, at no workspace, too.
+    assert {:ok, %Invitation{}} = Organisations.renew_invitation(scope, invitation.id, &url/1)
+
+    # A member renews nothing.
+    member = joined_scope(at_main, :member)
+
+    assert {:error, :forbidden} =
+             Organisations.renew_invitation(member, invitation.id, &url/1)
+  end
+
   test "revoked: the row goes, and the entry is the organisation's" do
     scope = without_workspace()
     %{invitation: invitation, token: token} = invitation_fixture(scope)
