@@ -1,13 +1,12 @@
 defmodule Apiary.ModelChoicesRacesTest do
-  # A model choice saved while the provider it names is deleted, or one of its models is,
-  # in each order. Each side runs on a connection apart, outside the SQL sandbox, so each
+  # A model choice saved while the provider it names is deleted, in each order. Each side runs on a connection apart, outside the SQL sandbox, so each
   # commits and each waits on the other's locks as it would in production. Not async: what
   # these tests commit is visible to every other test while they run, and they delete it
   # again before they end.
   #
   # The rule under test (`Apiary.ModelChoices`, `Apiary.Connections`): a save takes the
-  # provider's row `FOR SHARE`, and a delete of the provider or of one of its models takes
-  # it `FOR UPDATE`, so the two take turns. A save that comes first is seen by the delete,
+  # provider's row `FOR SHARE`, and a delete of the provider takes it `FOR UPDATE`, so the
+  # two take turns. A save that comes first is seen by the delete,
   # which is refused; a delete that comes first is seen by the save, which is refused too.
   use ExUnit.Case, async: false
 
@@ -86,73 +85,6 @@ defmodule Apiary.ModelChoicesRacesTest do
         refute provider_there?(ctx.provider)
         assert chosen() == 0
       end
-    end
-  end
-
-  describe "a choice and the deletion of a model it names" do
-    test "the choice saved first: the deletion waits, and is refused", ctx do
-      {first, first_pid} =
-        hold(fn ->
-          ModelChoices.put_choice(ctx.scope, :workspace, choice(ctx.provider, "claude-haiku-5-5"))
-        end)
-
-      assert {:ok, %ModelChoice{}} = first.result
-
-      second =
-        start(fn ->
-          Connections.delete_provider_model(ctx.scope, ctx.provider, "claude-haiku-5-5")
-        end)
-
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:error, {:model_in_use, [%{level: 5}]}} = Task.await(second.task)
-
-      assert Repo.exists?(
-               from m in Apiary.Connections.ProviderModel, where: m.model_id == "claude-haiku-5-5"
-             )
-    end
-
-    test "the model deleted first: the save waits, and is refused", ctx do
-      {first, first_pid} =
-        hold(fn ->
-          Connections.delete_provider_model(ctx.scope, ctx.provider, "claude-haiku-5-5")
-        end)
-
-      assert {:ok, %Connection{}} = first.result
-
-      second =
-        start(fn ->
-          ModelChoices.put_choice(ctx.scope, :workspace, choice(ctx.provider, "claude-haiku-5-5"))
-        end)
-
-      await_blocked(second.backend, first_pid)
-      commit(first)
-
-      assert {:error, %Ecto.Changeset{errors: [model: {message, _}]}} = Task.await(second.task)
-      assert message == "Choose a model from %{provider}'s list: %{model} is not on it."
-      assert chosen() == 0
-    end
-
-    test "a tier that names the model is a use too", ctx do
-      {first, first_pid} =
-        hold(fn ->
-          ModelChoices.put_choice(ctx.scope, :workspace, %{
-            tiers: %{"light" => "claude-haiku-5-5"},
-            provider: ctx.provider.public_id
-          })
-        end)
-
-      assert {:ok, %ModelChoice{}} = first.result
-
-      second =
-        start(fn ->
-          Connections.delete_provider_model(ctx.scope, ctx.provider, "claude-haiku-5-5")
-        end)
-
-      await_blocked(second.backend, first_pid)
-      commit(first)
-      assert {:error, {:model_in_use, [%{level: 5}]}} = Task.await(second.task)
     end
   end
 

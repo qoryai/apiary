@@ -60,8 +60,9 @@ defmodule Apiary.Dispatches.Handover do
   #      `variables_invalid`; an explore run whose work item's ticket is no longer kept,
   #      `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
-  #      (`Apiary.Lingo.Domain.target_required?/1`), `inputs_invalid`; an explore run
-  #      whose model choice cannot be formed (`Apiary.Dispatches.RunSettings`):
+  #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
+  #      `inputs_invalid`; an explore run whose model choice cannot be formed
+  #      (`Apiary.Dispatches.RunSettings`):
   #      `provider_gone`, `runtime_unserved`, `key_gone` or `model_gone`; and, checked
   #      last, with the features `factory` and `secrets` on, an explore run whose model
   #      choice has a provider, while one of the gateway's active keys the run key lists
@@ -643,8 +644,10 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # An explore run has its work item's target, nil for none; a work item without one in
-  # a domain that requires a target ends `inputs_invalid`. Its harness members come from
-  # its harness walk (`harness/2`). Its run settings come next
+  # a domain that requires a target ends `inputs_invalid`, except a test work item
+  # (`Apiary.WorkItems.WorkItem.test_changeset/2`), which has no target in any domain and
+  # so no run variables, labels, prebuilt image or work credential. Its harness members
+  # come from its harness walk (`harness/2`). Its run settings come next
   # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
   # `RunSettings.causes/0` lists, or refuse the claim. The run's documents and the input
   # get the same target and the same domain, and the input the bytes of the documents'
@@ -654,7 +657,7 @@ defmodule Apiary.Dispatches.Handover do
     target = target(work_item)
     harness = harness(dispatch_run, target)
 
-    with false <- is_nil(target) and Domain.target_required?(workspace),
+    with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
       formed(dispatch_run, workspace, target, work_item, settings, harness, fn domain ->
         rest = %{
@@ -757,6 +760,11 @@ defmodule Apiary.Dispatches.Handover do
       {:inputs, {:error, cause}} -> {:end, cause}
     end
   end
+
+  # Whether the work item is a test work item: `test` set and no connection, as the
+  # database holds them together (`work_items_test_check`).
+  defp test?(%WorkItem{test: true, connection_id: nil}), do: true
+  defp test?(%WorkItem{}), do: false
 
   # A work item's target, or nil for one without.
   defp target(%WorkItem{target_system: nil}), do: nil

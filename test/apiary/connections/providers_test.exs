@@ -6,7 +6,7 @@ defmodule Apiary.Connections.ProvidersTest do
 
   alias Apiary.{Connections, Secrets}
   alias Apiary.Audit.Entry
-  alias Apiary.Connections.{Connection, ProviderModel}
+  alias Apiary.Connections.Connection
   alias Apiary.Kinds.Providers
   alias Apiary.Secrets.{Secret, Value}
 
@@ -55,13 +55,8 @@ defmodule Apiary.Connections.ProvidersTest do
 
   defp changes(provider), do: Enum.map(trail(provider.id), & &1.details["change"])
 
-  defp model_ids(provider), do: Enum.map(provider.models, & &1.model_id)
-
-  defp default_model(provider),
-    do: Enum.find_value(provider.models, &(&1.is_default && &1.model_id))
-
   describe "adding a provider" do
-    test "links a secret of its keys and lists the description's models", %{scope: scope} do
+    test "links a secret of its keys and offers the description's models", %{scope: scope} do
       {:ok, catalogue} = Providers.fetch("openrouter")
       provider = openrouter!(scope)
 
@@ -78,8 +73,8 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert provider.description_ref == Providers.ref()
       assert provider.description_sha256 == catalogue.sha256
-      assert model_ids(provider) == Enum.map(catalogue.models, & &1["id"])
-      assert default_model(provider) == hd(catalogue.models)["id"]
+      assert Connections.provider_models(provider) == catalogue.models
+      assert Connections.default_model(provider) == hd(catalogue.models)["id"]
 
       assert %Secret{workspace_id: nil, values: values} = provider.secret
       assert Enum.map(values, & &1.value_id) == ["main", "spare"]
@@ -184,7 +179,8 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert Repo.aggregate(Connection, :count) == 0
       assert {:ok, provider} = litellm(scope, "https://litellm.example.com")
-      assert provider.models == []
+      assert Connections.provider_models(provider) == []
+      assert Connections.default_model(provider) == nil
       assert Connection.settings_map(provider) == %{"address" => "https://litellm.example.com"}
     end
 
@@ -211,9 +207,6 @@ defmodule Apiary.Connections.ProvidersTest do
                {:error, :forbidden}
 
       assert Connections.delete_provider(member, provider) == {:error, :forbidden}
-
-      assert Connections.add_provider_model(member, provider, %{model_id: "a"}) ==
-               {:error, :forbidden}
 
       # The keys go by the same answer, not by the edition's.
       assert Connections.delete_provider_key(member, provider, "spare") == {:error, :forbidden}
@@ -314,134 +307,33 @@ defmodule Apiary.Connections.ProvidersTest do
                {:error, :forbidden}
 
       assert Connections.delete_provider(scope, provider) == {:error, :forbidden}
-      assert Connections.put_default_model(scope, provider, "x") == {:error, :forbidden}
     end
   end
 
-  describe "the list of models" do
-    test "adds a model at the end, by its exact id", %{scope: scope} do
+  describe "the models" do
+    test "are the description's, in its order, the first the default", %{scope: scope} do
       provider = openrouter!(scope)
+      {:ok, catalogue} = Providers.fetch("openrouter")
 
-      assert {:ok, provider} =
-               Connections.add_provider_model(scope, provider, %{
-                 model_id: "acme/Model-1:free",
-                 effort: ["low", "high"]
-               })
+      assert [%{"id" => first, "title" => _title} | _rest] =
+               Connections.provider_models(provider)
 
-      assert %ProviderModel{
-               title: "acme/Model-1:free",
-               effort: ["low", "high"],
-               is_default: false
-             } =
-               List.last(provider.models)
-
-      assert {:error, changeset} =
-               Connections.add_provider_model(scope, provider, %{model_id: "acme/Model-1:free"})
-
-      assert errors_on(changeset).model_id == [
-               "Edit the model already listed, or enter another ID. This provider already has acme/Model-1:free."
-             ]
-
-      [_created, entry] = trail(provider.id)
-      assert entry.details["change"] == "provider_model_added"
-      assert entry.details["model_id"] == "acme/Model-1:free"
+      assert Connections.provider_models(catalogue) == catalogue.models
+      assert Connections.default_model(provider) == first
+      assert Connections.default_model(catalogue) == first
+      refute Map.has_key?(Map.from_struct(provider), :models)
     end
 
-    test "refuses an id, a title or effort values that break their rules", %{scope: scope} do
+    test "are none once the catalogue no longer has the description", %{scope: scope} do
       provider = openrouter!(scope)
 
-      for {attrs, field, message} <- [
-            {%{model_id: " model"}, :model_id,
-             "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."},
-            {%{model_id: String.duplicate("m", 201)}, :model_id,
-             "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."},
-            {%{model_id: "m", title: String.duplicate("t", 129)}, :title,
-             "should be at most 128 character(s)"},
-            {%{model_id: "m", effort: ["High"]}, :effort,
-             "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."},
-            {%{model_id: "m", effort: ["low", "low"]}, :effort,
-             "List at most 16 effort values, each once."},
-            {%{model_id: "m", effort: Enum.map(1..17, &"e#{&1}")}, :effort,
-             "List at most 16 effort values, each once."}
+      for changed <- [
+            %{provider | description_sha256: String.duplicate("0", 64)},
+            %{provider | provider_kind: "gone"}
           ] do
-        assert {:error, changeset} = Connections.add_provider_model(scope, provider, attrs)
-        assert message in Map.fetch!(errors_on(changeset), field), inspect(attrs)
+        assert Connections.provider_models(changed) == []
+        assert Connections.default_model(changed) == nil
       end
-
-      assert {:ok, provider} =
-               Connections.add_provider_model(scope, provider, %{
-                 model_id: String.duplicate("m", 200),
-                 title: String.duplicate("t", 128),
-                 effort: Enum.map(1..16, &"e#{&1}")
-               })
-
-      assert length(provider.models) == 5
-    end
-
-    test "holds at most 200 models", %{scope: scope} do
-      {:ok, provider} = litellm(scope, "https://litellm.example.com")
-
-      provider =
-        Enum.reduce(1..200, provider, fn n, provider ->
-          {:ok, provider} = Connections.add_provider_model(scope, provider, %{model_id: "m#{n}"})
-          provider
-        end)
-
-      assert length(provider.models) == 200
-      assert default_model(provider) == "m1"
-
-      assert {:error, changeset} =
-               Connections.add_provider_model(scope, provider, %{model_id: "m201"})
-
-      assert errors_on(changeset).model_id == [
-               "Remove a model first: a provider has at most 200 models."
-             ]
-    end
-
-    test "changes a model's title and effort, by its exact id", %{scope: scope} do
-      provider = openrouter!(scope)
-      [first | _rest] = provider.models
-
-      assert {:ok, provider} =
-               Connections.update_provider_model(scope, provider, first.model_id, %{
-                 title: "Opus",
-                 effort: [],
-                 model_id: "ignored"
-               })
-
-      assert %ProviderModel{title: "Opus", effort: nil} = hd(provider.models)
-      assert hd(provider.models).model_id == first.model_id
-
-      assert {:ok, ^provider} =
-               Connections.update_provider_model(scope, provider, first.model_id, %{title: "Opus"})
-
-      assert Connections.update_provider_model(scope, provider, String.upcase(first.model_id), %{
-               title: "x"
-             }) == {:error, :not_found}
-
-      assert changes(provider) == ["provider_created", "provider_model_changed"]
-    end
-
-    test "removes a model; the next becomes the default", %{scope: scope} do
-      provider = openrouter!(scope)
-      [first, second | _rest] = model_ids(provider)
-
-      assert {:ok, provider} = Connections.put_default_model(scope, provider, second)
-      assert default_model(provider) == second
-      assert {:ok, ^provider} = Connections.put_default_model(scope, provider, second)
-
-      assert {:ok, provider} = Connections.delete_provider_model(scope, provider, first)
-      assert default_model(provider) == second
-      assert {:ok, provider} = Connections.delete_provider_model(scope, provider, second)
-      assert hd(provider.models).is_default
-      assert Connections.delete_provider_model(scope, provider, first) == {:error, :not_found}
-
-      assert changes(provider) == [
-               "provider_created",
-               "provider_default_model_changed",
-               "provider_model_removed",
-               "provider_model_removed"
-             ]
     end
   end
 
@@ -556,7 +448,7 @@ defmodule Apiary.Connections.ProvidersTest do
       assert Enum.map(values, & &1.value_id) == ["main", "spare"]
     end
 
-    test "go with the provider, as do its models", %{scope: scope} do
+    test "go with the provider", %{scope: scope} do
       provider = openrouter!(scope)
 
       assert {:ok, %Connection{}} = Connections.delete_provider(scope, provider)
@@ -565,11 +457,6 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert Repo.aggregate(from(v in Value, where: v.secret_id == ^provider.secret_id), :count) ==
                0
-
-      assert Repo.aggregate(
-               from(m in ProviderModel, where: m.connection_id == ^provider.id),
-               :count
-             ) == 0
 
       [_created, entry] = trail(provider.id)
       assert entry.details["change"] == "provider_deleted"
@@ -670,13 +557,12 @@ defmodule Apiary.Connections.ProvidersTest do
     end
   end
 
-  test "an organisation's deletion takes its providers, their models and their keys",
+  test "an organisation's deletion takes its providers and their keys",
        %{scope: scope} do
     provider = openrouter!(scope)
     assert {:ok, :purged} = Apiary.Deletion.purge_now(scope.organisation, scope.user)
 
     refute Repo.get(Connection, provider.id)
     refute Repo.get(Secret, provider.secret_id)
-    assert Repo.aggregate(ProviderModel, :count) == 0
   end
 end

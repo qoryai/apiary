@@ -204,7 +204,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
         end)
       end
 
-      refused("url", fn -> update!("work_items", item.id, "url = NULL") end)
+      refused("work_items_test_check", fn -> update!("work_items", item.id, "url = NULL") end)
 
       for url <- [
             "https://forge.example.com:8443/acme/shop/-/issues/12?tab=notes#note_3",
@@ -349,7 +349,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
         end)
       end
 
-      refused("connection_id", fn ->
+      refused("work_items_test_check", fn ->
         update!("work_items", item.id, "connection_id = NULL")
       end)
     end
@@ -446,11 +446,17 @@ defmodule Apiary.WorkItems.WorkItemTest do
       %{scope: scope, work_item: item} = ctx
       elsewhere = ticket_connection_fixture(scope)
 
+      # With no ticket, so that the ticket's key, which names the adapter too, is not the
+      # one that refuses it.
       refused("work_items_connection_id_fkey", fn ->
-        update!("work_items", item.id, "adapter_id = $2", [Ecto.UUID.dump!(elsewhere.adapter_id)])
+        update!("work_items", item.id, "item_id = NULL, adapter_id = $2", [
+          Ecto.UUID.dump!(elsewhere.adapter_id)
+        ])
       end)
 
-      refused("adapter_id", fn -> update!("work_items", item.id, "adapter_id = NULL") end)
+      refused("work_items_test_check", fn ->
+        update!("work_items", item.id, "adapter_id = NULL")
+      end)
     end
 
     test "stays when its ticket's row goes, with no ticket", %{work_item: item} do

@@ -22,6 +22,8 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
   # The later migrations of a model provider and its model choice, whose keys depend on
   # the tables this one makes: down before it, and up after it.
   @later [
+    {20_261_026_140_000, Apiary.Repo.Migrations.KeepNoModelListForAProvider,
+     "keep_no_model_list_for_a_provider"},
     {20_261_019_070_200, Apiary.Repo.Migrations.KeepTheModelChoiceAtEachLevel,
      "keep_the_model_choice_at_each_level"},
     {20_261_019_070_100, Apiary.Repo.Migrations.KeepAProviderSModels, "keep_a_provider_s_models"},

@@ -1,9 +1,12 @@
 defmodule Apiary.Adapters.ConfiguredTest do
   # Whether an adapter is configured (`Apiary.Adapters.configured?/1`): it declared a
-  # connect address, holds an access key in use, and declares no `setup_url`; and the
+  # connect address, holds an access key in use, declares no `setup_url`, and, where it is
+  # installed with Qory Apiary, `QORY_INSTALLED_ADAPTERS` lists it; and the
   # configured adapters that serve a domain (`Apiary.Adapters.list_configured/1`).
   # `Apiary.AdaptersWithoutFactoryTest` lists none where the feature is off.
-  use Apiary.DataCase, async: true
+  #
+  # Not async: a test changes the adapters `QORY_INSTALLED_ADAPTERS` lists.
+  use Apiary.DataCase, async: false
 
   import Ecto.Query
   import Apiary.NodesFixtures
@@ -38,6 +41,26 @@ defmodule Apiary.Adapters.ConfiguredTest do
 
   defp ids(adapters), do: Enum.map(adapters, & &1.id)
 
+  setup do
+    saved_list = Application.fetch_env(:apiary, :installed_adapters)
+
+    on_exit(fn ->
+      case saved_list do
+        {:ok, names} -> Application.put_env(:apiary, :installed_adapters, names)
+        :error -> Application.delete_env(:apiary, :installed_adapters)
+      end
+    end)
+  end
+
+  # A configured adapter installed with Qory Apiary as a name `QORY_INSTALLED_ADAPTERS`
+  # does not list yet: it is set up and may be connected.
+  defp unlisted do
+    name = "tracker-#{System.unique_integer([:positive])}"
+    Application.put_env(:apiary, :installed_adapters, [])
+    adapter = configured("tracker-installed")
+    put(adapter, installed_as: name)
+  end
+
   describe "configured?/1" do
     test "an adapter with a connect address, a key in use and no setup_url is configured" do
       %{adapter: adapter} = connectable_adapter_fixture()
@@ -64,6 +87,14 @@ defmodule Apiary.Adapters.ConfiguredTest do
       %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
       {:ok, _revoked} = Adapters.revoke_key(instance_admin_scope(), key)
       refute Adapters.configured?(adapter)
+    end
+
+    test "an installed adapter is configured only while QORY_INSTALLED_ADAPTERS lists it" do
+      adapter = unlisted()
+      refute Adapters.configured?(adapter)
+
+      Application.put_env(:apiary, :installed_adapters, [adapter.installed_as])
+      assert Adapters.configured?(adapter)
     end
   end
 
@@ -103,6 +134,14 @@ defmodule Apiary.Adapters.ConfiguredTest do
       adapter = configured("tracker-gone")
       {:ok, _deleted} = Adapters.delete_adapter(instance_admin_scope(), adapter)
       assert listed(Software, [adapter]) == []
+    end
+
+    test "leaves out an installed adapter until QORY_INSTALLED_ADAPTERS lists it" do
+      adapter = unlisted()
+      assert listed(Software, [adapter]) == []
+
+      Application.put_env(:apiary, :installed_adapters, [adapter.installed_as])
+      assert listed(Software, [adapter]) == [adapter.id]
     end
   end
 end

@@ -38,9 +38,6 @@ defmodule Apiary.Connections.ProvidersWithoutFeaturesTest do
       assert Connections.update_connection(scope, provider, %{name: "x"}) == {:error, :not_found}
       assert Connections.put_default_key(scope, provider, "main") == {:error, :not_found}
 
-      assert Connections.add_provider_model(scope, provider, %{model_id: "m"}) ==
-               {:error, :not_found}
-
       assert Connections.delete_provider(scope, provider) == {:error, :not_found}
       assert Connections.delete_connection(scope, provider) == {:error, :not_found}
       assert Repo.aggregate(Connection, :count) == 1

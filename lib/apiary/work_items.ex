@@ -9,14 +9,15 @@ defmodule Apiary.WorkItems do
   # the scope's workspace in as a new work item, with its first run queued;
   # `take_in_again(scope, item_id, attrs)` brings back the ended work item of that ticket,
   # in the organisation, live again in the scope's workspace, with a new count of runs;
-  # `undo(scope, work_item)` undoes the latest take in while no claim holds its run;
-  # `decline(scope, work_item)` declines a live work item while none of its runs is live
-  # and its take in is not confirmed; `close(scope, work_item)` closes a live one. `attrs`
-  # holds the owner (`owner_id`) and the first instruction (`first_instruction`) the page
-  # gives. Each runs in one transaction with its event, its run, its feed entry and its
-  # entry in the trail, asks its action of `Apiary.Access`, and tells the pages once it
-  # commits. `Apiary.WorkItems.Moves` says how, what each refuses, and the order of its
-  # locks.
+  # `take_in_test(scope, line)` makes a test work item from a line the person typed, with
+  # no ticket, and queues its first run; `undo(scope, work_item)` undoes the latest take
+  # in while no claim holds its run; `decline(scope, work_item)` declines a live work item
+  # while none of its runs is live and its take in is not confirmed; `close(scope,
+  # work_item)` closes a live one. `attrs` holds the owner (`owner_id`) and the first
+  # instruction (`first_instruction`) the page gives. Each runs in one transaction with
+  # its event, its run, its feed entry and its entry in the trail, asks its action of
+  # `Apiary.Access`, and tells the pages once it commits. `Apiary.WorkItems.Moves` says
+  # how, what each refuses, and the order of its locks.
   #
   # ## What a member gives Explore: answer, confirm, explore again
   #
@@ -58,7 +59,8 @@ defmodule Apiary.WorkItems do
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
   # `get_for_ticket/2` find one work item for a page, and `ticket/3` is its ticket for the
   # work item page's Ticket tab. Each answers nothing to a person who may not read the
-  # workspace's work items (`work_item.read`).
+  # workspace's work items (`work_item.read`). None of them answers a test work item
+  # (`Apiary.WorkItems.WorkItem.test_changeset/2`), which no page shows yet.
   #
   # ## Closing: `close_locked/3` and `close_for_adapter/2`
   #
@@ -146,6 +148,15 @@ defmodule Apiary.WorkItems do
           {:ok, WorkItem.t()} | {:error, Moves.take_in_refusal()}
   def take_in(%Scope{} = scope, item_id, attrs \\ %{}),
     do: Moves.take_in(scope, item_id, Map.new(attrs))
+
+  @doc false
+  # take_in_test/2 makes a test work item of the scope's workspace from `line`, the line
+  # a person typed, with its first run queued, asked as a take in is
+  # (`Apiary.WorkItems.Moves`): `{:ok, work_item}`, or a refusal.
+  @spec take_in_test(Scope.t(), term) ::
+          {:ok, WorkItem.t()}
+          | {:error, :not_found | :forbidden | :test_running | Ecto.Changeset.t()}
+  defdelegate take_in_test(scope, line), to: Moves
 
   @doc false
   # take_in_again/3 brings back the ended work item of the ticket `item_id`, live again in
@@ -413,7 +424,8 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # get_by_number/2 is the work item of the scope's workspace numbered `number`, to a
-  # person who may read its work items; nil otherwise, and for no such number.
+  # person who may read its work items; nil otherwise, for no such number, and for a test
+  # work item, which no page shows yet.
   @spec get_by_number(Scope.t(), term) :: WorkItem.t() | nil
   def get_by_number(%Scope{} = scope, number) do
     with {:ok, number} <- number(number),
@@ -422,7 +434,7 @@ defmodule Apiary.WorkItems do
         from w in WorkItem,
           where:
             w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id and
-              w.number == ^number
+              w.number == ^number and not w.test
       )
     else
       _none -> nil
@@ -447,7 +459,8 @@ defmodule Apiary.WorkItems do
   # get_by_public_id/2 is the work item of the scope's organisation whose public id is
   # `public_id` (`wi_…`), in whichever of its workspaces it is now, with that workspace,
   # to a person who may read the work items there: the address the work item's stable url
-  # (`stable_url/1`) leads to. nil otherwise.
+  # (`stable_url/1`) leads to. nil otherwise, and for a test work item, which no page
+  # shows yet.
   @spec get_by_public_id(Scope.t(), term) :: WorkItem.t() | nil
   def get_by_public_id(%Scope{organisation: %Organisation{id: organisation_id}} = scope, id) do
     with true <- Apiary.PublicId.valid?(WorkItem.prefix(), id),
@@ -455,6 +468,7 @@ defmodule Apiary.WorkItems do
            Repo.one(
              from w in WorkItem,
                where: w.public_id == ^id and w.organisation_id == ^organisation_id,
+               where: not w.test,
                preload: :workspace
            ),
          true <-
@@ -640,9 +654,9 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # ticket/3 is the ticket of `work_item`, as the work item page's Ticket tab draws it,
-  # to a person who may read the work item in the scope's workspace; nil otherwise. The
-  # row is read again by its id, as for `explore/3`, and its ticket is the record
-  # `ticket_query/0` names. It is a map of:
+  # to a person who may read the work item in the scope's workspace; nil otherwise, and
+  # for a test work item, which has no ticket. The row is read again by its id, as for
+  # `explore/3`, and its ticket is the record `ticket_query/0` names. It is a map of:
   #
   #   * `integration` - the name of the adapter the ticket came through, with
   #     `item_noun` and `collection_noun`, its words (`Apiary.Adapters.item_noun/1`,
@@ -661,6 +675,7 @@ defmodule Apiary.WorkItems do
   def ticket(%Scope{} = scope, %WorkItem{} = work_item, comments \\ :latest)
       when comments in [:latest, :all] do
     case readable(scope, work_item) do
+      {:ok, %WorkItem{test: true}} -> nil
       {:ok, row} -> ticket_of(row, comments)
       :error -> nil
     end
