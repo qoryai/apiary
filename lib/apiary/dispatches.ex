@@ -355,7 +355,9 @@ defmodule Apiary.Dispatches do
           organisation_id: w.organisation_id,
           workspace_id: w.workspace_id,
           target_system: w.target_system,
-          target_path: w.target_path
+          target_path: w.target_path,
+          test: w.test,
+          connection_id: w.connection_id
         }
     )
   end
@@ -383,11 +385,17 @@ defmodule Apiary.Dispatches do
       |> Repo.insert()
 
     with {:ok, run} <- result,
-         {:ok, _walk} <- WalkJob.queue(run, target(work_item)) do
+         {:ok, _walk} <- WalkJob.queue(run, harness_place(work_item)) do
       broadcast([workspace_id])
       {:ok, run}
     end
   end
+
+  # What the run's harness walk is for: `:test` for a test work item, `test` set and no
+  # connection, as the database holds them together (`work_items_test_check`), which gets
+  # the built-in harness (`Apiary.Harnesses.Builtin`); else the work item's target.
+  defp harness_place(%{test: true, connection_id: nil}), do: :test
+  defp harness_place(work_item), do: target(work_item)
 
   defp target(%{target_system: system, target_path: path})
        when is_binary(system) and is_binary(path),
@@ -558,6 +566,8 @@ defmodule Apiary.Dispatches do
             workspace_id: w.workspace_id,
             target_system: w.target_system,
             target_path: w.target_path,
+            test: w.test,
+            connection_id: w.connection_id,
             state: w.state,
             take_in: w.take_in
           }
