@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "work_item": {
+    "id": "wi_8kx2mq4vt9ab3c5d",
+    "number": 341,
+    "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
+  },
+  "run": {
+    "attempt": 1,
+    "of": 3
+  },
+  "instruction": {
+    "text": "Hello! Where are you running?",
+    "by": {
+      "name": "Sam Example"
+    },
+    "at": "2026-10-17T09:30:00Z"
+  },
+  "comments": [],
+  "comments_omitted": 0,
+  "answers": [],
+  "domain": "marketing"
+}
