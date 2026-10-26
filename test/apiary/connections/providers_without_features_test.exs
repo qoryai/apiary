@@ -23,7 +23,8 @@ defmodule Apiary.Connections.ProvidersWithoutFeaturesTest do
 
   for {name, features} <- [
         {"factory", [:observability, :security, :secrets]},
-        {"secrets", [:observability, :security, :factory]}
+        # An instance without secrets is without factory too, which needs it.
+        {"secrets", [:observability, :security]}
       ] do
     @tag with_features: features
     test "without #{name}, a provider is not found and nothing is written" do
