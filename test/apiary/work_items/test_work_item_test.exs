@@ -7,15 +7,17 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
-  import Apiary.DispatchedRunsFixtures, only: [workspace_gateway!: 1]
+  import Apiary.DispatchedRunsFixtures, only: [handed_over: 4, workspace_gateway!: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [event_fixture: 4]
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Edition, EditionStubs, Organisations, Repo, WorkItems}
   alias Apiary.Adapters.Connection
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle}
+  alias Apiary.Runs.{Liveness, Projector, Run}
   alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
   @moduletag needs: :factory
@@ -605,16 +607,33 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       refute run!(run).end_cause in [:closed, :undone]
     end
 
-    test "after the claim ended its run, a new take in of a test closes it and queues one",
+    test "after its run, claimed and handed over, ended by its exit or lost, a new take in of a test closes it",
          ctx do
-      last = test_item!(ctx.scope)
-      [run] = runs(last)
-      assert {:ok, _taken} = Dispatches.claim(ctx.key, Dispatches.now())
-      assert %DispatchRun{state: :ended} = run!(run)
+      ends = [
+        {:run_ended,
+         fn handed ->
+           event_fixture(handed.run, 9, "run.exited", %{"state" => "failed", "exit_code" => 1})
+           assert {:ok, %Run{}} = Projector.project(handed.run)
+         end},
+        {:lost, fn handed -> Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second)) end}
+      ]
 
-      assert {:ok, next} = WorkItems.take_in_test(ctx.scope, "Once more")
-      assert %WorkItem{state: :closed} = Repo.reload!(last)
-      assert [%DispatchRun{state: :waiting}] = runs(next)
+      for {cause, run_end} <- ends do
+        last = test_item!(ctx.scope)
+        [queued] = runs(last)
+        handed = handed_over(ctx.scope, ctx.key, queued, %{})
+
+        # While its run is in progress, a new take in of a test is refused.
+        assert WorkItems.take_in_test(ctx.scope, "Once more") == {:error, :test_running}
+
+        run_end.(handed)
+        assert %DispatchRun{state: :ended, end_cause: ^cause} = run!(queued)
+
+        assert {:ok, next} = WorkItems.take_in_test(ctx.scope, "Once more")
+        assert %WorkItem{state: :closed} = Repo.reload!(last)
+        assert [%DispatchRun{state: :waiting}] = runs(next)
+        close!(next)
+      end
     end
 
     test "ends the run of a test work item that is not exploring, or moved, and takes none",
