@@ -109,7 +109,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
 
     assert text(lv) =~
-             "You are invited to Acme Studio. Your account joins it as soon as you confirm."
+             "You are invited to Acme Studio. You can open it as soon as you confirm your email address."
 
     html =
       lv
@@ -131,7 +131,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
 
     assert text(lv) =~
-             "You are invited to Acme Studio. Your account joins it as soon as you create it."
+             "You are invited to Acme Studio. You can open it as soon as you create your account."
   end
 
   test "People lists it with no workspace, before and after the organisation has one", %{

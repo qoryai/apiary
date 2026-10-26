@@ -17921,12 +17921,12 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
-msgid "You are invited to %{organisation}. Your account joins it as soon as you confirm."
+msgid "You are invited to %{organisation}. You can open it as soon as you confirm your email address."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
-msgid "You are invited to %{organisation}. Your account joins it as soon as you create it."
+msgid "You are invited to %{organisation}. You can open it as soon as you create your account."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex

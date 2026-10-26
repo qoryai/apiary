@@ -136,20 +136,21 @@ defmodule ApiaryWeb.UserLive.Registration do
     """
   end
 
-  # What the invitation is to, and when the account joins it: once the address is
-  # confirmed with mail, once the account is made without. An invitation without a
-  # workspace is to the organisation.
+  # What the invitation is to, and when the person can open it. With mail the account has
+  # no password, and the emailed link that signs it in first confirms its address; without
+  # mail the form signs it in once it is made. An invitation without a workspace is to the
+  # organisation.
   defp invited_line(%{workspace: nil, organisation: organisation}, true = _mail?),
     do:
       rich_gettext(
-        "You are invited to %{organisation}. Your account joins it as soon as you confirm.",
+        "You are invited to %{organisation}. You can open it as soon as you confirm your email address.",
         organisation: {:b, organisation.name}
       )
 
   defp invited_line(%{workspace: nil, organisation: organisation}, false = _mail?),
     do:
       rich_gettext(
-        "You are invited to %{organisation}. Your account joins it as soon as you create it.",
+        "You are invited to %{organisation}. You can open it as soon as you create your account.",
         organisation: {:b, organisation.name}
       )
 
