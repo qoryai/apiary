@@ -2291,8 +2291,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :test, :boolean, default: false, doc: "whether it is a test work item"
 
   # Qory's questions, in a frame that names the run; with the form for a member who may
-  # answer them. A test work item has no comments, and its line is its first instruction,
-  # so its next run reads the line and the answers.
+  # answer them. A test work item has no ticket, so its run reads no ticket comments, and
+  # its line is its instruction: its next run reads the line and the answers.
   defp questions_frame(assigns) do
     run = assigns.run
     n = length(run.questions)
