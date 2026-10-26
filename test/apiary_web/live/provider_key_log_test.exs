@@ -34,8 +34,8 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
   end
 
   # Without `Apiary.SecretLogFilter` this test passes too: Phoenix prints the last message
-  # with its payload's `key` as `[FILTERED]` (the `Inspect` of `Phoenix.Socket.Message`
-  # applies `:filter_parameters`), and the page's state has no key (`assign_form/3`).
+  # with its payload's `value`, the encoded form with the key, as `[FILTERED]`, because
+  # `value` is in `:filter_parameters`; and the page's state has no key (`assign_form/3`).
   test "a save that crashes the page logs no key", %{conn: conn, scope: scope} do
     key = key()
     {:ok, lv, _html} = live(conn, new_path(scope))
