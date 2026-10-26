@@ -1,6 +1,7 @@
 defmodule Apiary.Organisations.Invitation do
   @moduledoc """
-  An invitation to join an organisation's workspace, sent to an email address.
+  An invitation to join an organisation, through one of its workspaces while it has any,
+  sent to an email address.
 
   An invitation is the email address and nothing else the inviter writes: no level and no
   message. Its person joins as a member, of the workspace it was sent from, and an owner
