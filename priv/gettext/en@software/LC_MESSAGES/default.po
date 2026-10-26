@@ -2725,11 +2725,6 @@ msgstr ""
 msgid "%{workspace}'s policy"
 msgstr ""
 
-#: lib/apiary_web/live/setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{workspace}, your first workspace, gets this type. A workspace's type can't be changed after it is created."
-msgstr ""
-
 #: lib/apiary/sources/body.ex
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
@@ -16886,11 +16881,6 @@ msgstr ""
 msgid "Workspace settings › %{page}"
 msgstr ""
 
-#: lib/apiary_web/live/setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Workspace type"
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace's default set to %{mode}"
@@ -17478,11 +17468,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Your membership in these organisations is suspended: you cannot open them or act in them. An owner or an admin of each can activate it."
-msgstr ""
-
-#: lib/apiary/edition/core.ex
-#, elixir-autogen, elixir-format
-msgid "Your organisation and its first workspace."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex

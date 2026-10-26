@@ -594,6 +594,11 @@ defmodule ApiaryWeb.Layouts do
     doc:
       "on Runs and Network access narrowed to the targets of one path or to a typed name, `%{target, system, path}` (`ApiaryWeb.Narrowing.carried/2`): the sidebar's Runs and Network access carry the filters' target as the lists write it, and are named by the path and, only where another system has the path and one target is named, its system. Nil everywhere else"
 
+  attr :sidebar, :boolean,
+    default: true,
+    doc:
+      "false for a page that leads a person through steps of a set-up: the top bar and the page, with no sidebar and no second column"
+
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
     attr :navigate, :string, doc: "where the segment leads; none for the page itself"
@@ -629,6 +634,7 @@ defmodule ApiaryWeb.Layouts do
       assigns
       |> assign(:scope, scope)
       |> assign(:user, user)
+      |> assign(:sidebar, user != nil and assigns.sidebar)
       |> assign(:organisation, organisation)
       |> assign(:workspace, workspace)
       |> assign(:place, place)
@@ -682,7 +688,7 @@ defmodule ApiaryWeb.Layouts do
         nav_entries={@nav_entries}
         crumb={@crumb}
         trail={@trail}
-        sidebar={@user != nil}
+        sidebar={@sidebar}
         instance={@instance}
         instance_path={@instance_path}
         section={@section}
@@ -690,7 +696,7 @@ defmodule ApiaryWeb.Layouts do
         menus={@menus}
       />
 
-      <div :if={@user} class="drawer md:drawer-open">
+      <div :if={@sidebar} class="drawer md:drawer-open">
         <input
           id="nav-drawer"
           type="checkbox"
@@ -739,7 +745,7 @@ defmodule ApiaryWeb.Layouts do
         </div>
       </div>
 
-      <div :if={!@user} id="shell-content" class="flex min-w-0 flex-col">
+      <div :if={!@sidebar} id="shell-content" class="flex min-w-0 flex-col">
         <.content width={@width}>{render_slot(@inner_block)}</.content>
       </div>
 
