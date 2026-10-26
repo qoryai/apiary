@@ -89,6 +89,40 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     {:noreply, assign(socket, step: step, total: total)}
   end
 
+  # The adapters read again while the page is open, and the number of steps counted
+  # again. The step stays on what it showed: the same adapter, found by its id, or mail;
+  # where that adapter is gone, the step at its number, at most the last. An adapter added
+  # since is listened to as the others are.
+  defp reload_adapters(socket) do
+    %{adapters: before, step: step, current_scope: scope} = socket.assigns
+    adapters = adapters(scope)
+    total = length(adapters) + 1
+    known = MapSet.new(before, & &1.adapter.id)
+
+    for %{adapter: adapter} <- adapters,
+        adapter.id not in known,
+        do: Adapters.subscribe_keys(scope, adapter)
+
+    step =
+      case Enum.at(before, step - 1) do
+        nil ->
+          total
+
+        %{adapter: %{id: id}} ->
+          case Enum.find_index(adapters, &(&1.adapter.id == id)) do
+            nil -> min(step, total)
+            index -> index + 1
+          end
+      end
+
+    moved? = step != socket.assigns.step
+    socket = assign(socket, adapters: adapters, total: total, step: step)
+
+    if moved?,
+      do: push_patch(socket, to: ~p"/instance/set-up?#{[step: step]}", replace: true),
+      else: socket
+  end
+
   @impl true
   # Skip, or Continue once a step is done: the next step, or, after the last, on.
   def handle_event("next", _params, %{assigns: %{step: step, total: total}} = socket)
@@ -121,7 +155,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # adapters read again.
   def handle_info({event, %{node_id: _id}}, socket)
       when event in [:key_enrolled, :adapter_declared],
-      do: {:noreply, assign(socket, :adapters, adapters(socket.assigns.current_scope))}
+      do: {:noreply, reload_adapters(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 

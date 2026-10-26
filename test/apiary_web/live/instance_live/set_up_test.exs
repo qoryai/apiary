@@ -104,6 +104,39 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     refute has_element?(lv, "#set-up-skip")
   end
 
+  test "an adapter added while the page is open adds a step, and mail stays the last",
+       %{conn: conn} do
+    %{adapter: first} = connectable_adapter_fixture(%{name: named("b-tracker")})
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=2")
+    assert words(lv, "#set-up-step") == "Step 2 of 2"
+    assert has_element?(lv, "#set-up-mail")
+
+    # Listed before the first, by name.
+    %{adapter: added} = settable_adapter_fixture(%{name: named("a-tracker")})
+    send(lv.pid, {:adapter_declared, %{node_id: first.id}})
+
+    assert_patch(lv, ~p"/instance/set-up?step=3")
+    assert words(lv, "#set-up-step") == "Step 3 of 3"
+    assert has_element?(lv, "#set-up-mail")
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+    assert has_element?(lv, "#set-up-#{added.public_id}")
+  end
+
+  test "an adapter's step stays on it when another is added before it", %{conn: conn} do
+    %{adapter: shown} = settable_adapter_fixture(%{name: named("b-tracker")})
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+    assert has_element?(lv, "#set-up-#{shown.public_id}")
+
+    %{adapter: _added} = settable_adapter_fixture(%{name: named("a-tracker")})
+    send(lv.pid, {:adapter_declared, %{node_id: shown.id}})
+
+    assert_patch(lv, ~p"/instance/set-up?step=2")
+    assert words(lv, "#set-up-step") == "Step 2 of 3"
+    assert has_element?(lv, "#set-up-#{shown.public_id}")
+  end
+
   test "Skip and Continue lead to the next step", %{conn: conn} do
     %{adapter: first} = connectable_adapter_fixture(%{name: named("a-tracker")})
     %{adapter: second} = settable_adapter_fixture(%{name: named("b-tracker")})
