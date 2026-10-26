@@ -2753,6 +2753,12 @@ msgstr ""
 msgid "%{workspace}'s policy"
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "%{workspace}'s runs follow the workflow you choose here, from a harness repository."
+msgstr ""
+
 #: lib/apiary/sources/body.ex
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
@@ -3074,6 +3080,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown."
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A repository's %{harness} or %{qory} comes first."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -3516,6 +3528,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add a program from a release on github.com, gitlab.com or codeberg.org."
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4243,6 +4260,14 @@ msgstr ""
 msgid "Ask an admin of this Qory Apiary for a password link."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more is linked."
+msgid_plural "Ask an instance admin to assign your harness repository if the list leaves it out: Qory Apiary reads the first %{limit} linked repositories by title and lists those that have a stack, and %{count} more are linked."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an instance admin to check %{adapter}. The run stopped before it started: the answer of %{adapter} to the call for %{what} failed its signature check or its format check, or was over 1 MiB."
@@ -4353,6 +4378,11 @@ msgid "Assigned %{number} %{collection} to %{workspace}."
 msgid_plural "Assigned %{number} %{collections} to %{workspace}."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Assigned by an instance admin"
+msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4983,6 +5013,16 @@ msgstr ""
 msgid "Choose a password to sign in with."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a source"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a source and a workflow, then save."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a target"
@@ -4991,6 +5031,11 @@ msgstr ""
 #: lib/apiary_web/components/workspace_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a type"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a workflow"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -6610,6 +6655,11 @@ msgstr ""
 msgid "Enter a host, such as %{example}."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Enter an address"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter the password you set in account settings."
@@ -7855,6 +7905,12 @@ msgstr ""
 msgid "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "If the repository is public and not in the list, enter its address instead, such as %{example}, without a password or token in it."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/set_up.ex
 #, elixir-autogen, elixir-format
 msgid "If the step shows %{line}, mail is set up already, and this step needs nothing from you."
@@ -7896,6 +7952,18 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
 msgid "In %{field}, choose %{software} if %{workspace} works on code in repositories, or %{general} for any other work."
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "In %{field}, choose one of the workflows the repository's stack lists, such as %{example}."
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "In %{field}, choose the harness repository, such as %{example}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
@@ -9003,6 +9071,18 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Light"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository only through a linked repository or an assignment."
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Linked repositories"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -11169,6 +11249,11 @@ msgstr ""
 msgid "Only owners and admins add nodes."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins can change the workflow."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins can change these settings."
@@ -11315,6 +11400,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open %{name}'s policy"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{place}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -11879,6 +11969,7 @@ msgid "Preferences › %{page}"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
+#: lib/apiary_web/live/workflow_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Press %{button}."
@@ -11961,6 +12052,11 @@ msgstr ""
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Public address"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Pull interval"
@@ -12022,6 +12118,20 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not check the credential from the adapter"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Qory Apiary could not read %{count} linked repository, so the list leaves it out. Reload the page to try again."
+msgid_plural "Qory Apiary could not read %{count} linked repositories, so the list leaves them out. Reload the page to try again."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Qory Apiary could not read the linked repositories. Reload the page to try again."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -12329,6 +12439,16 @@ msgstr ""
 msgid "Reading the record"
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Reading the stack of %{source}…"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Reading…"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reads requests to"
@@ -12433,6 +12553,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Released on"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page to read %{source} again, or choose another source. Qory Apiary could not read its stack: the call to its integration failed, or a file in it is not valid."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -13283,6 +13408,16 @@ msgstr ""
 msgid "Runs of %{target} now read no other target."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of %{workspace} follow the workflow %{workflow} of %{source}."
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of %{workspace} follow the workflow %{workflow}."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of nodes and node pools on Default gateway go through the default."
@@ -13376,6 +13511,7 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/user_live/settings.ex
+#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Save"
 msgstr ""
@@ -13426,6 +13562,11 @@ msgstr ""
 msgid "Saved, but the test link could not be sent through these settings. Check them and save again."
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Saved. Runs of %{workspace} now follow the workflow %{workflow}."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
@@ -13439,6 +13580,7 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/user_live/settings.ex
+#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Saving"
 msgstr ""
@@ -14188,6 +14330,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/rule_list.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr ""
@@ -15235,6 +15378,12 @@ msgid_plural "The link's %{names} filters could not be read, so they are not app
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, add it to the GitHub App's installation, or ask an instance admin to assign it."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "The lock holds against targets. The document did not change."
@@ -15677,6 +15826,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The size the runtime ran at"
+msgstr ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "The stack of %{source} lists no workflow: add one under %{key} in its %{file}, or choose another source."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -16878,6 +17032,21 @@ msgstr ""
 msgid "Views"
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Wait %{count} second, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them."
+msgid_plural "Wait %{count} seconds, then reload the page to list the linked repositories. Qory Apiary limits how often a person can list them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources."
+msgid_plural "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for %{integration} to send its %{collections}…"
@@ -17298,6 +17467,12 @@ msgid_plural "Work items: %{count} wait for you"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgid "Workflow"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Works once, until %{time} (%{validity}). It is shown only now."
@@ -17357,6 +17532,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
+#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
 msgstr ""

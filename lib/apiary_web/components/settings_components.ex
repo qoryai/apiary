@@ -133,6 +133,16 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-lock-closed",
           path: ~p"/#{organisation}/#{workspace}/settings/secrets"
         },
+      # The workflow of the workspace's runs, with the `factory` feature, for whoever may
+      # save it.
+      Access.can?(scope, :"harness.save", workspace) &&
+        %Entry{
+          section: :main,
+          key: :workflow,
+          label: gettext("Workflow"),
+          icon: "hero-arrow-path-rounded-square",
+          path: ~p"/#{organisation}/#{workspace}/settings/workflow"
+        },
       %Entry{
         section: :main,
         key: :runs,
