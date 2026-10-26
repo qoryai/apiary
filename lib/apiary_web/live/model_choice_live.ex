@@ -7,9 +7,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # one (`Apiary.ModelChoices.default_runtime/0`). Model: a select of the models the page
   # suggests (`Apiary.ModelChoices.suggestions/2`) for each model provider of the
   # organisation that applies to the workspace and serves the chosen runtime
-  # (`Apiary.Kinds.Providers.serve/2`), grouped by provider where there are several, each provider's list ending with Another
-  # model, which opens a text field for any model id. Effort shows where the chosen model
-  # has effort values to choose from. With no choice saved, the first provider's first
+  # (`Apiary.Kinds.Providers.serve/2`), grouped by provider where there are several, each
+  # provider's list ending with Another model, which opens a text field for any model id.
+  # With none, one line per cause says what to do instead (`unserved/3`). Effort shows
+  # where the chosen model has effort values to choose from. With no choice saved, the first provider's first
   # model is selected. Save writes the choice (`Apiary.ModelChoices.put_choice/4`), keeping
   # the key and the tiers the place had while its provider stays the same; each refusal
   # shows its text under the field it is about.
@@ -71,20 +72,41 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   # The runtime the form has chosen, and the providers that serve it, each with its
-  # suggestions.
+  # suggestions; `described` is each applicable provider with its description, or why it
+  # has none (`Apiary.Connections.provider/1`).
   defp assign_runtime(socket, %Runtime{} = runtime) do
+    described =
+      for provider <- socket.assigns.applicable, do: {provider, Connections.provider(provider)}
+
     providers =
-      for provider <- socket.assigns.applicable,
-          serves?(provider, runtime),
+      for {provider, {:ok, description}} <- described,
+          Providers.serve(description, runtime) == :ok,
           do: %{provider: provider, models: ModelChoices.suggestions(provider, runtime)}
 
-    assign(socket, runtime: runtime, providers: providers)
+    assign(socket, runtime: runtime, providers: providers, described: described)
   end
 
-  defp serves?(provider, runtime) do
-    case Connections.provider(provider) do
-      {:ok, description} -> Providers.serve(description, runtime) == :ok
-      {:error, _changed} -> false
+  # Why no provider serves the chosen runtime, as the lines the page shows: each provider
+  # whose description changed or is gone, `{:changed, provider}` or `{:unknown,
+  # provider}`; then, while a provider with its description is left, `:other_runtime`
+  # when another runtime of the catalogue has a provider that serves it, else `:none`.
+  defp unserved(described, runtime, runtimes) do
+    descriptions = for {_provider, {:ok, description}} <- described, do: description
+
+    gone =
+      for {provider, {:error, why}} <- described,
+          do: {if(why == :provider_changed, do: :changed, else: :unknown), provider}
+
+    served_elsewhere? =
+      Enum.any?(runtimes, fn other ->
+        other.name != runtime.name and
+          Enum.any?(descriptions, &(Providers.serve(&1, other) == :ok))
+      end)
+
+    cond do
+      descriptions == [] -> gone
+      served_elsewhere? -> gone ++ [:other_runtime]
+      true -> gone ++ [:none]
     end
   end
 
@@ -283,6 +305,47 @@ defmodule ApiaryWeb.ModelChoiceLive do
       for(model <- models, do: {model.title, option(provider, model.id)}) ++
         [{gettext("Another model"), option(provider, nil)}]
 
+  defp line_id({cause, %Connection{public_id: id}}), do: "model-#{cause}-#{id}"
+  defp line_id(cause), do: "model-#{cause}"
+
+  defp unserved_text({:changed, provider}, scope, _runtime),
+    do:
+      rich_gettext(
+        "Add %{provider} again in %{place}: its description changed after it was added.",
+        provider: {:b, provider.name},
+        place: providers_link(scope)
+      )
+
+  defp unserved_text({:unknown, provider}, scope, _runtime),
+    do:
+      rich_gettext(
+        "Add another model provider in %{place}: Qory Apiary no longer has the description %{provider} was added from.",
+        provider: {:b, provider.name},
+        place: providers_link(scope)
+      )
+
+  defp unserved_text(:other_runtime, scope, runtime),
+    do:
+      rich_gettext(
+        "Choose another runtime: no model provider of %{organisation} serves %{runtime}.",
+        organisation: scope.organisation.name,
+        runtime: runtime.title
+      )
+
+  defp unserved_text(:none, scope, runtime),
+    do:
+      rich_gettext(
+        "Add a model provider that serves %{runtime} in %{place}. None of the model providers of %{organisation} serves %{runtime}.",
+        runtime: runtime.title,
+        organisation: scope.organisation.name,
+        place: providers_link(scope)
+      )
+
+  defp providers_link(scope),
+    do:
+      {:link, ~p"/#{scope.organisation}/settings/model-providers",
+       gettext("Organisation settings › Model providers")}
+
   defp efforts({_entry, %{effort: [_ | _] = effort}}), do: effort
   defp efforts(_chosen), do: []
 
@@ -341,13 +404,15 @@ defmodule ApiaryWeb.ModelChoiceLive do
             options={for runtime <- @runtimes, do: {runtime.title, runtime.name}}
             disabled={!@writes}
           />
-          <p :if={@providers == []} id="model-unserved" class="text-[13.5px]/5 text-muted">
-            {gettext(
-              "Choose another runtime: no model provider of %{organisation} serves %{runtime}.",
-              organisation: @current_scope.organisation.name,
-              runtime: @runtime.title
-            )}
-          </p>
+          <div :if={@providers == []} id="model-unserved" class="space-y-1">
+            <p
+              :for={line <- unserved(@described, @runtime, @runtimes)}
+              id={line_id(line)}
+              class="text-[13.5px]/5 text-muted"
+            >
+              <.rich text={unserved_text(line, @current_scope, @runtime)} />
+            </p>
+          </div>
           <.input
             :if={@providers != []}
             field={@form[:model]}

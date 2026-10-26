@@ -211,9 +211,11 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       assert has_element?(
                lv,
-               "#model-unserved",
+               "#model-other_runtime",
                "Choose another runtime: no model provider of #{scope.organisation.name} serves #{unserved.title}."
              )
+
+      refute has_element?(lv, "#model-none")
 
       lv
       |> form("#model-form", model_choice: %{runtime: second.name})
@@ -232,6 +234,63 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       assert %ModelChoice{model_id: "claude-opus-5-5", runtime: name} = choice(scope)
       assert name == second.name
+    end
+  end
+
+  # With no provider that serves the runtime, each line names the cause it is true for,
+  # and none asks for a runtime that cannot be chosen.
+  describe "with no provider that serves the runtime" do
+    test "a provider whose description changed is to be added again", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+
+      Repo.update_all(
+        from(c in Connections.Connection, where: c.id == ^provider.id),
+        set: [description_sha256: String.duplicate("0", 64)]
+      )
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               "#model-changed-#{provider.public_id}",
+               "Add #{provider.name} again in Organisation settings › Model providers: its description changed after it was added."
+             )
+
+      refute has_element?(lv, "#model-other_runtime")
+      refute has_element?(lv, "#model-none")
+      refute has_element?(lv, "#model-submit")
+    end
+
+    test "with one runtime, says to add a provider that serves it", ctx do
+      %{conn: conn, scope: scope} = ctx
+      [release] = Runtimes.list()
+      unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
+      :ok = Runtimes.put_test_list([unserved])
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      refute has_element?(lv, "#model_choice_runtime")
+      refute has_element?(lv, "#model-other_runtime")
+
+      assert has_element?(
+               lv,
+               "#model-none",
+               "Add a model provider that serves #{unserved.title} in Organisation settings › Model providers. None of the model providers of #{scope.organisation.name} serves #{unserved.title}."
+             )
+    end
+
+    test "with two runtimes that no provider serves, says to add a provider", ctx do
+      %{conn: conn, scope: scope} = ctx
+      [release] = Runtimes.list()
+      unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
+      other = %{unserved | name: release.name <> "-other", title: release.title <> " other"}
+      :ok = Runtimes.put_test_list([unserved, other])
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(lv, "#model_choice_runtime")
+      refute has_element?(lv, "#model-other_runtime")
+      assert has_element?(lv, "#model-none")
     end
   end
 end
