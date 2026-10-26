@@ -15,6 +15,9 @@ defmodule Apiary.ModelChoicesTest do
 
   @moduletag needs: :factory
 
+  # The catalogue's runtime, read from the list rather than named here.
+  @runtime hd(Apiary.Kinds.Runtimes.list()).name
+
   @key "sk-choice-test-0123456789"
   @model "claude-sonnet-5-5"
 
@@ -325,7 +328,7 @@ defmodule Apiary.ModelChoicesTest do
     end
 
     test "for a provider whose key the runtime has no variable for (T21)" do
-      {:ok, runtime} = Runtimes.fetch("claude")
+      {:ok, runtime} = Runtimes.fetch(@runtime)
       {:ok, anthropic} = Providers.fetch("anthropic")
       auth = %{"scheme" => "basic", "username" => "runner"}
       basic = %{anthropic | apis: Enum.map(anthropic.apis, &%{&1 | "auth" => auth})}
@@ -352,7 +355,7 @@ defmodule Apiary.ModelChoicesTest do
     end
 
     test "for a provider that serves no format the runtime sends (T20)" do
-      {:ok, runtime} = Runtimes.fetch("claude")
+      {:ok, runtime} = Runtimes.fetch(@runtime)
       {:ok, anthropic} = Providers.fetch("anthropic")
 
       other_format = %{

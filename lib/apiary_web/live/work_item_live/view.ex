@@ -139,6 +139,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
     %{
       number: row.number,
       title: row.title,
+      test: row.test,
       key: names[:key],
       url: row.url,
       repository: names[:collection_title] || row.collection_title,
@@ -151,13 +152,18 @@ defmodule ApiaryWeb.WorkItemLive.View do
       updated_at: row.updated_at,
       taken_in_by: person(ctx.people, row.taken_in_by_id),
       taken_in_at: row.taken_in_at,
-      first_instruction: row.first_instruction,
+      first_instruction: first_instruction(row, row.first_instruction),
       runs: runs_summary(ctx),
       run: latest,
       confirmed_by: explore.confirmed_at && person(ctx.people, explore.confirmed_by_id),
       confirmed_at: explore.confirmed_at
     }
   end
+
+  # A test work item's run takes its line, its title, as its instruction
+  # (`Apiary.Dispatches.Inputs`), so the line is its first instruction.
+  defp first_instruction(%{test: true, title: line}, _instruction), do: line
+  defp first_instruction(_row, instruction), do: instruction
 
   # Who ended it: none for a live work item, and none where the instance closed it.
   defp ended_by(status, by_id, ctx) do
@@ -276,9 +282,10 @@ defmodule ApiaryWeb.WorkItemLive.View do
     %{
       key: names[:key],
       url: row.url,
+      test: row.test,
       again: entry.again,
       owner: entry.owner_id && person(ctx.people, entry.owner_id),
-      first_instruction: entry.first_instruction
+      first_instruction: first_instruction(row, entry.first_instruction)
     }
   end
 

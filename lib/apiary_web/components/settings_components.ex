@@ -89,6 +89,17 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-puzzle-piece",
           path: ~p"/#{organisation}/settings/integrations",
           place: :organisation
+        },
+      # The organisation's model providers and their keys, with the features `factory`
+      # and `secrets`, for whoever may read them; each change there asks its action again.
+      providers?(scope) && can?(scope, :"connection.read") &&
+        %Entry{
+          section: :main,
+          key: :model_providers,
+          label: gettext("Model providers"),
+          icon: "hero-cpu-chip",
+          path: ~p"/#{organisation}/settings/model-providers",
+          place: :organisation
         }
     ]
 
@@ -132,6 +143,25 @@ defmodule ApiaryWeb.SettingsComponents do
           label: gettext("Secrets and variables"),
           icon: "hero-lock-closed",
           path: ~p"/#{organisation}/#{workspace}/settings/secrets"
+        },
+      # The model the workspace's runs use, with the features `factory` and `secrets`.
+      providers?(scope) && Access.can?(scope, :"connection.read", workspace) &&
+        %Entry{
+          section: :main,
+          key: :model,
+          label: gettext("Model"),
+          icon: "hero-cpu-chip",
+          path: ~p"/#{organisation}/#{workspace}/settings/model"
+        },
+      # The workflow of the workspace's runs, with the `factory` feature, for whoever may
+      # save it.
+      Access.can?(scope, :"harness.save", workspace) &&
+        %Entry{
+          section: :main,
+          key: :workflow,
+          label: gettext("Workflow"),
+          icon: "hero-arrow-path-rounded-square",
+          path: ~p"/#{organisation}/#{workspace}/settings/workflow"
         },
       %Entry{
         section: :main,
@@ -185,6 +215,10 @@ defmodule ApiaryWeb.SettingsComponents do
 
   defp title_level(_scope, :person), do: [gettext("Your settings")]
   defp title_level(_scope, :instance), do: [gettext("Instance settings")]
+
+  # Model providers and model choices need the features `factory` and `secrets` both.
+  defp providers?(scope),
+    do: Features.visible?(scope, :factory) and Features.visible?(scope, :secrets)
 
   # The settings' actions are asked of the organisation: listing its workspaces, whose
   # deletion is its.

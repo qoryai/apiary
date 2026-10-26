@@ -467,6 +467,9 @@ defmodule ApiaryWeb.Routes do
             live "/instance/general", InstanceLive.General, :show
             # Instance › Mail: the mail server.
             live "/instance/mail", InstanceLive.Mail, :show
+            # The instance's connections, one step a page (`?step=`), for the instance's
+            # admins: each adapter, with the `factory` feature, then mail.
+            live "/instance/set-up", InstanceLive.SetUp, :show
             # Instance › Configuration: the instance's settings, some saved there.
             live "/instance/configuration", InstanceLive.Configuration, :show
 
@@ -598,6 +601,9 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
+              # The workspace set-up: the first workspace's type while the organisation has
+              # none, then a work source for it.
+              live "/set-up", WorkspaceSetupLive, :show
               # The organisation's audit trail, a page of its sidebar beside the overview,
               # for the readers `audit.read` allows. It was a section of the settings,
               # `/settings/audit-log`, which sends on here (`ApiaryWeb.MovedController`).
@@ -659,6 +665,12 @@ defmodule ApiaryWeb.Routes do
               live "/settings/integrations", AdapterLive.Index, :index
               live "/settings/integrations/new", AdapterLive.Index, :new
               live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
+              # Organisation settings › Model providers, with the features `factory` and
+              # `secrets`: the list, New model provider a separate page, and a provider's
+              # page with its keys, by its public id (`con_…`). The fixed path goes first.
+              live "/settings/model-providers", ProviderLive.Index, :index
+              live "/settings/model-providers/new", ProviderLive.Index, :new
+              live "/settings/model-providers/:provider_id", ProviderLive.Show, :show
             end
 
             unquote(@block)
@@ -763,7 +775,13 @@ defmodule ApiaryWeb.Routes do
               live "/settings", SettingsLive, :workspace
               # Who reaches the workspace, read only: membership is the organisation's.
               live "/settings/people", MemberLive.Workspace, :index
+              # The model the workspace's runs use, with the features `factory` and
+              # `secrets`.
+              live "/settings/model", ModelChoiceLive, :edit
               live "/settings/runs", SettingsLive, :runs
+              # The workflow of the workspace's runs and the harness source it comes from,
+              # with the `factory` feature.
+              live "/settings/workflow", WorkflowLive, :edit
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by

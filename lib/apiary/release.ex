@@ -509,7 +509,7 @@ defmodule Apiary.Release do
 
   defp demo_refusal(:no_main),
     do:
-      "Run this command on an instance set up with the organisation name Acme. " <>
+      "Create the workspace Main at /acme/set-up, then run this command again. " <>
         "The organisation acme has no workspace main."
 
   defp demo_refusal(:filled),

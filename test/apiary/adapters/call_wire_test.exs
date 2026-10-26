@@ -1,6 +1,6 @@
 defmodule Apiary.Adapters.CallWireTest do
   # The bodies of the calls for a run's credential, to resolve addresses and to read a
-  # document, and their answers (`Apiary.Adapters.CallWire`), against the integration
+  # document, under a grant or as public, and their answers (`Apiary.Adapters.CallWire`), against the integration
   # contract's fixtures: each valid one accepted, each invalid one refused, and the
   # rules the schemas leave to the reader, checked one by one.
   use ExUnit.Case, async: true
@@ -20,11 +20,15 @@ defmodule Apiary.Adapters.CallWireTest do
   @paths %{
     "run-credential" => "run-credential",
     "resolve" => "resolve",
-    "read" => "read"
+    "read" => "read",
+    "read-public" => "read-public"
   }
 
+  # The path of the longest prefix of `name`, so `read-public-…` is not `read`.
   defp call_path(name) do
-    Enum.find_value(@paths, fn {prefix, path} ->
+    @paths
+    |> Enum.sort_by(fn {prefix, _path} -> -String.length(prefix) end)
+    |> Enum.find_value(fn {prefix, path} ->
       if String.starts_with?(name, prefix <> "-") or name == prefix, do: path
     end)
   end
@@ -35,18 +39,24 @@ defmodule Apiary.Adapters.CallWireTest do
   defp call("run-credential"), do: fixture("run-credential/read-harness.json")
   defp call("resolve"), do: fixture("resolve/two-addresses.json")
   defp call("read"), do: fixture("read/at-a-name.json")
+  defp call("read-public"), do: fixture("read-public/at-a-name.json")
 
   test "the valid calls are accepted as written" do
     for {dir, path} <- [
           {"run-credential", "run-credential"},
           {"resolve", "resolve"},
-          {"read", "read"}
+          {"read", "read"},
+          {"read-public", "read-public"}
         ],
         file <- Path.wildcard(Path.join([@fixtures, dir, "*.json"])) do
       assert CallWire.call?(path, fixture(Path.relative_to(file, @fixtures))), file
     end
 
     refute CallWire.call?("other", fixture("resolve/two-addresses.json"))
+
+    # A read under a grant is no public read, and the other way round.
+    refute CallWire.call?("read-public", fixture("read/at-a-name.json"))
+    refute CallWire.call?("read", fixture("read-public/at-a-name.json"))
   end
 
   test "the valid answers are read as written" do
@@ -66,6 +76,38 @@ defmodule Apiary.Adapters.CallWireTest do
                 },
                 %{address: "reader@code.example.com:acme/tools", covered: false}
               ]}
+
+    # The addresses each public answer is to.
+    addresses = &%{"addresses" => for(%{"address" => a} <- &1["results"], do: a)}
+    public = fixture("resolve-answer/public.json")
+    both = fixture("resolve-answer/public-and-covered.json")
+
+    assert answer("resolve", public, addresses.(public)) ==
+             {:ok,
+              [
+                %{
+                  address: "https://code.example.com/acme/public-stack",
+                  resource_ref: "R_2001",
+                  public: true,
+                  public_ref: "example.com/team/project"
+                },
+                %{address: "https://code.example.com/acme/private-stack", covered: false}
+              ]}
+
+    assert answer("resolve", both, addresses.(both)) ==
+             {:ok,
+              [
+                %{
+                  address: "https://code.example.com/acme/harness",
+                  grant_ref: "G_1",
+                  resource_ref: "R_1001",
+                  public: true,
+                  public_ref: "example.com/team/harness"
+                }
+              ]}
+
+    assert answer("read-public", fixture("read-answer/at-a-fixed-version.json")) ==
+             answer("read", fixture("read-answer/at-a-fixed-version.json"))
 
     assert answer("read", fixture("read-answer/at-a-fixed-version.json")) ==
              {:ok,
@@ -91,7 +133,8 @@ defmodule Apiary.Adapters.CallWireTest do
       |> Path.wildcard()
       |> Enum.map(&Path.basename/1)
 
-    assert length(names) == 39
+    assert length(names) == 46
+    assert "read-public-with-grant-ref.json" in names
 
     for name <- names do
       body = fixture("invalid/" <> name)
@@ -186,6 +229,33 @@ defmodule Apiary.Adapters.CallWireTest do
 
       assert answer("resolve", %{body | "results" => [%{first | "grant_ref" => ""}, second]}) ==
                :error
+    end
+
+    test "a public result has resource_ref, public, true, and public_ref, with grant_ref or without, and nothing else" do
+      body = fixture("resolve-answer/public.json")
+      [first, second] = body["results"]
+      call = %{"addresses" => [first["address"], second["address"]]}
+      both = Map.put(first, "grant_ref", "G_1")
+
+      assert {:ok, [%{grant_ref: "G_1", public: true, public_ref: "example.com/team/project"}, _]} =
+               answer("resolve", %{body | "results" => [both, second]}, call)
+
+      for bad <- [
+            %{first | "public" => "true"},
+            %{first | "resource_ref" => ""},
+            %{first | "public_ref" => ""},
+            Map.delete(first, "public_ref"),
+            Map.delete(both, "public_ref"),
+            Map.delete(first, "public"),
+            Map.delete(first, "resource_ref"),
+            Map.put(first, "covered", false),
+            Map.put(first, "other", 1),
+            Map.put(both, "other", 1),
+            %{both | "public" => false}
+          ] do
+        assert answer("resolve", %{body | "results" => [bad, second]}, call) == :error,
+               inspect(bad)
+      end
     end
   end
 

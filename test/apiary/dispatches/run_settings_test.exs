@@ -21,6 +21,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
   @moduletag needs: :factory
 
+  # The catalogue's runtime, read from the list rather than named here.
+  @runtime hd(Apiary.Kinds.Runtimes.list()).name
+
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @key "sk-ant-run-settings-0123456789"
   @efforts ~w(low medium high xhigh max)
@@ -100,16 +103,16 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      assert settings(handed) == %{"runtime" => "claude"}
+      assert settings(handed) == %{"runtime" => @runtime}
     end
 
     test "sends the runtime alone, and the run keeps no provider", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      assert settings(handed) == %{"runtime" => "claude"}
+      assert settings(handed) == %{"runtime" => @runtime}
 
       assert %Run{
-               run_settings: %{"runtime" => "claude"},
+               run_settings: %{"runtime" => @runtime},
                provider_connection_id: nil,
                provider_secret_id: nil,
                provider_value_id: nil,
@@ -145,7 +148,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert handed.target == nil
 
       assert settings(handed) == %{
-               "runtime" => "claude",
+               "runtime" => @runtime,
                "model" => "claude-opus-5-5",
                "effort" => "high",
                "provider_models" => models(@efforts),
@@ -196,7 +199,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       # No effort chosen: none is sent, and the runtime uses its default.
       assert settings(handed) == %{
-               "runtime" => "claude",
+               "runtime" => @runtime,
                "model" => "claude-opus-5-5",
                "provider_models" => models(@efforts)
              }
@@ -240,7 +243,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
       assert settings(handed) == %{
-               "runtime" => "claude",
+               "runtime" => @runtime,
                "model" => "acme-large",
                "provider_models" =>
                  models(@efforts) ++ [%{"id" => "acme-large"}, %{"id" => "acme-small"}],
@@ -547,7 +550,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Apiary.EditionStubs.ServesAcrossWithChain.operator(nil)
       built = built!(ctx)
 
-      assert built.stored == %{"runtime" => "claude"}
+      assert built.stored == %{"runtime" => @runtime}
       assert built.columns == %{}
     end
 
@@ -556,7 +559,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert {:ok, _choice} = ModelChoices.delete_choice(ctx.operator, :organisation, "operator")
       built = built!(ctx)
 
-      assert built.stored == %{"runtime" => "claude"}
+      assert built.stored == %{"runtime" => @runtime}
       assert built.columns == %{}
     end
 
@@ -578,7 +581,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   describe "form/5" do
     setup ctx do
       {:ok, loaded} = Connections.get_provider(ctx.scope, ctx.provider.public_id)
-      {:ok, runtime} = Runtimes.fetch("claude")
+      {:ok, runtime} = Runtimes.fetch(@runtime)
       {:ok, description} = Providers.fetch("anthropic")
 
       resolution = %Resolution{

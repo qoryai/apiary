@@ -30,6 +30,9 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
 
   @moduletag needs: :factory
 
+  # The catalogue's runtime, read from the list rather than named here.
+  @runtime hd(Apiary.Kinds.Runtimes.list()).name
+
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @old_address "https://litellm.example.com"
   @new_address "https://models.example.com"
@@ -197,12 +200,12 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       commit(first)
 
       assert {:ok, handed} = Task.await(second.task)
-      assert Jason.encode!(handed.run_settings) == ~s({"runtime":"claude"})
+      assert Jason.encode!(handed.run_settings) == ~s({"runtime":"#{@runtime}"})
 
       assert %Run{provider_connection_id: nil, provider_api: nil, run_settings: settings} =
                run!(handed)
 
-      assert settings == %{"runtime" => "claude"}
+      assert settings == %{"runtime" => @runtime}
     end
   end
 end

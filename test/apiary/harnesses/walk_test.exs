@@ -2,7 +2,9 @@ defmodule Apiary.Harnesses.WalkTest do
   # The harness walk of an explore run (`Apiary.Harnesses.Walk`) against stub adapters
   # (`Req.Test`): the target's harness file or the stacks' document, two levels of
   # sources, the rule, the pins and the links, each failure, and the job that queues and
-  # writes it (`Apiary.Harnesses.WalkJob`).
+  # writes it (`Apiary.Harnesses.WalkJob`). A test work item's run gets the built-in
+  # harness unwalked (`Apiary.Harnesses.Builtin`); any other document with its source is
+  # walked.
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
 
@@ -12,13 +14,14 @@ defmodule Apiary.Harnesses.WalkTest do
   import Apiary.WorkItemsFixtures
   import Apiary.DispatchedRunsFixtures
 
-  alias Apiary.{Dispatches, Harnesses, Stacks}
+  alias Apiary.{Dispatches, Harnesses, Stacks, WorkItems}
   alias Apiary.Adapters.{Calls, Collection, Grant}
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Harnesses.{Assignment, Reader, RunHarness, Walk, WalkJob}
+  alias Apiary.Harnesses.{Assignment, Builtin, Reader, RunHarness, Walk, WalkJob}
   alias Apiary.Nodes.Node
   alias Apiary.Policy.ComposedConfiguration
+  alias Apiary.Stacks.Document
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -60,8 +63,8 @@ defmodule Apiary.Harnesses.WalkTest do
   ## Setting up
 
   # An adapter with a call address, persisted, as its start-up declares one, and its seed.
-  defp adapter do
-    %{adapter: adapter, pair: pair} = connectable_adapter_fixture()
+  defp adapter(attrs \\ %{}) do
+    %{adapter: adapter, pair: pair} = connectable_adapter_fixture(attrs)
     host = adapter.name <> ".localhost"
 
     {1, _} =
@@ -126,9 +129,13 @@ defmodule Apiary.Harnesses.WalkTest do
   ## The stub adapters
 
   # Serves `adapters`' calls: `covered`, by adapter, maps an address to its grant and
-  # resource; `files` maps a resource and a path to a document. A resource's version is
-  # `c-<resource>`, whatever the version asked. `refuse` answers every read with a
-  # signed refusal; `down` makes every call reach no one.
+  # resource, `{grant_ref, resource_ref}`, to those and its public ref, `{grant_ref,
+  # resource_ref, {:public, public_ref}}`, or to its public ref alone, `{:public,
+  # public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps a resource or a
+  # public ref and a path to a document, read with a grant or as public. A resource's
+  # version is `c-<resource>`, whatever the version asked. `refuse` answers every read
+  # with a signed refusal, and `refuse_public` every public read; `down` makes every call
+  # reach no one.
   defp serve(adapters, opts) do
     test = self()
     hosts = Map.new(adapters, &{&1.host, &1})
@@ -153,6 +160,23 @@ defmodule Apiary.Harnesses.WalkTest do
           results =
             for address <- call["addresses"] do
               case by_address[address] do
+                {:public, public_ref} ->
+                  %{
+                    "address" => address,
+                    "resource_ref" => "N_" <> public_ref,
+                    "public" => true,
+                    "public_ref" => public_ref
+                  }
+
+                {grant_ref, resource_ref, {:public, public_ref}} ->
+                  %{
+                    "address" => address,
+                    "grant_ref" => grant_ref,
+                    "resource_ref" => resource_ref,
+                    "public" => true,
+                    "public_ref" => public_ref
+                  }
+
                 {grant_ref, resource_ref} ->
                   %{
                     "address" => address,
@@ -175,7 +199,11 @@ defmodule Apiary.Harnesses.WalkTest do
           {status, code} = refusal
           answer(conn, status, %{"error" => code}, adapter)
 
-        path == "read" ->
+        path == "read-public" and opts[:refuse_public] ->
+          {status, code} = opts[:refuse_public]
+          answer(conn, status, %{"error" => code}, adapter)
+
+        path in ["read", "read-public"] ->
           version = "c-" <> call["resource_ref"]
 
           found =
@@ -212,6 +240,13 @@ defmodule Apiary.Harnesses.WalkTest do
 
   defp reads(calls),
     do: for({_host, "read", call} <- calls, do: {call["resource_ref"], call["path"], call["at"]})
+
+  defp public_reads(calls),
+    do:
+      for(
+        {_host, "read-public", call} <- calls,
+        do: {call["resource_ref"], call["path"], call["at"]}
+      )
 
   defp resolves(calls), do: for({_host, "resolve", call} <- calls, do: call["addresses"])
 
@@ -1026,6 +1061,499 @@ defmodule Apiary.Harnesses.WalkTest do
 
   ## Refused before any call
 
+  ## Public sources
+
+  describe "public sources" do
+    # The public base's files: an export whose stack lists `@tools` and declares write.
+    @public_files %{
+      {"R_public", "harness.yaml"} => "exports:\n  stacks: [web]\n",
+      {"R_public", "stacks/web/qory-stack.yaml"} =>
+        "modules:\n  - source: {git: \"#{@tools}\", ref: v2}\n" <>
+          "workflows:\n  explore: {access: write}\n"
+    }
+
+    # An adapter of the instance's organisation, named first in the adapters' order, with
+    # its grant `G_i`, and an assignment of `assigned` sources to the run's organisation.
+    defp instance(ctx, assigned) do
+      instance = adapter(%{name: "aaa-#{System.unique_integer([:positive])}"})
+      instance_scope = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
+      grant = grant(instance_scope.organisation.id, instance.adapter, connection, "G_i")
+
+      for {git, ref} <- assigned do
+        Repo.insert!(%Assignment{
+          organisation_id: ctx.scope.organisation.id,
+          every_organisation: false,
+          source: %{"git" => git, "ref" => ref},
+          created_by_id: instance_scope.user.id
+        })
+      end
+
+      %{instance: instance, grant: grant}
+    end
+
+    defp no_reads_of(calls, resource),
+      do: refute(Enum.any?(reads(calls), &match?({^resource, _path, _at}, &1)))
+
+    # No call of any path sends `ref` as a resource.
+    defp never_sent(calls, ref) do
+      for {_host, path, call} <- calls do
+        refute call["resource_ref"] == ref, path
+        refute ref in Map.get(call, "resources", []), path
+      end
+    end
+
+    test "1. a grant of the run's organisation comes before an assigned grant at an adapter earlier in order",
+         ctx do
+      setting(ctx.scope, @setting)
+      %{instance: instance} = instance(ctx, [{@harness, "v1"}, {@tools, "v2"}])
+
+      serve([ctx.run, instance],
+        covered:
+          Map.put(covering(ctx, %{@tools => {"G_run", "R_tools"}}), instance.adapter.id, %{
+            @harness => {"G_i", "R_harness", {:public, "P_harness"}},
+            @tools => {"G_i", "R_tools", {:public, "P_tools"}}
+          }),
+        files: @base_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      grant_id = ctx.grant.id
+
+      assert [%{"grant_id" => ^grant_id, "resources" => ["R_harness", "R_tools"]}] =
+               walked.harness_links
+
+      assert public_reads(calls()) == []
+    end
+
+    test "2. an assignment comes before a public result", ctx do
+      setting(ctx.scope, @setting)
+
+      %{instance: instance, grant: instance_grant} =
+        instance(ctx, [{@harness, "v1"}, {@tools, "v2"}])
+
+      serve([ctx.run, instance],
+        covered:
+          Map.put(
+            %{ctx.run.adapter.id => %{@target => {"G_run", "R_app"}}},
+            instance.adapter.id,
+            %{
+              @harness => {"G_i", "R_harness", {:public, "P_harness"}},
+              @tools => {"G_i", "R_tools", {:public, "P_tools"}}
+            }
+          ),
+        files: @base_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      grant_id = instance_grant.id
+
+      assert [%{"grant_id" => ^grant_id, "resources" => ["R_harness", "R_tools"]}] =
+               walked.harness_links
+
+      assert public_reads(calls()) == []
+    end
+
+    test "3. a public result with no grant is read as public: its ref pinned, its stack followed, its access read, no link",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{@public => {:public, "R_public"}, @tools => {"G_run", "R_tools"}}),
+        files: @public_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+
+      assert walked.pins == [
+               %{"git" => @tools, "ref" => "v2", "at" => "c-R_tools"},
+               %{"git" => @public, "ref" => "main", "at" => "c-R_public"}
+             ]
+
+      # The base's stack declares write, and no row records a level.
+      assert walked.access_level == :write
+
+      # A link for the module alone: the public base is none.
+      grant_id = ctx.grant.id
+      assert [%{"grant_id" => ^grant_id, "resources" => ["R_tools"]}] = walked.harness_links
+
+      assert ComposedConfiguration.stack_hosts(walked.pins) ==
+               ["code.example.com", "public.example.org"]
+
+      calls = calls()
+
+      assert public_reads(calls) == [
+               {"R_public", "harness.yaml", "main"},
+               {"R_public", "qory.yaml", "c-R_public"},
+               {"R_public", "stacks/web/qory-stack.yaml", "c-R_public"}
+             ]
+
+      no_reads_of(calls, "R_public")
+      never_sent(calls, "N_R_public")
+      assert resolves(calls) == [[@target], [@public], [@tools]]
+      refute Enum.any?(calls, &match?({_host, "run-credential", _call}, &1))
+    end
+
+    test "3. a public result comes before a full commit id: the source is read", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{@public => {:public, "R_public"}, @tools => {"G_run", "R_tools"}}),
+        files: @public_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert %{"git" => @public, "ref" => @commit, "at" => "c-R_public"} in walked.pins
+      assert {"R_public", "harness.yaml", @commit} in public_reads(calls())
+    end
+
+    test "3. another organisation's covered and public result: read at its public_ref, never its resource_ref, with no link",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      other = scope_fixture()
+      {connection, _nonce} = connection_fixture(other, ctx.run.adapter, :listed)
+      grant(other.organisation.id, ctx.run.adapter, connection, "G_other")
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{
+            @public => {"G_other", "9001", {:public, "R_public"}},
+            @tools => {"G_run", "R_tools"}
+          }),
+        files: @public_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      grant_id = ctx.grant.id
+      assert [%{"grant_id" => ^grant_id, "resources" => ["R_tools"]}] = walked.harness_links
+
+      calls = calls()
+      assert {"R_public", "harness.yaml", "main"} in public_reads(calls)
+      no_reads_of(calls, "R_public")
+      never_sent(calls, "9001")
+    end
+
+    test "3. another organisation's covered and public base and module: each public read is at the public_ref",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      other = scope_fixture()
+      {connection, _nonce} = connection_fixture(other, ctx.run.adapter, :listed)
+      grant(other.organisation.id, ctx.run.adapter, connection, "G_other")
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{
+            @public => {"G_other", "9001", {:public, "R_public"}},
+            @tools => {"G_other", "9003", {:public, "R_tools"}}
+          }),
+        files: @public_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert walked.access_level == :write
+      assert walked.harness_links == []
+
+      calls = calls()
+
+      # The base's first read, its exports, its stack followed with the access it declares,
+      # and the module's version.
+      assert public_reads(calls) == [
+               {"R_public", "harness.yaml", "main"},
+               {"R_public", "qory.yaml", "c-R_public"},
+               {"R_public", "stacks/web/qory-stack.yaml", "c-R_public"},
+               {"R_tools", "harness.yaml", "v2"}
+             ]
+
+      assert reads(calls) == [
+               {"R_app", "harness.yaml", "HEAD"},
+               {"R_app", "qory.yaml", "c-R_app"}
+             ]
+
+      never_sent(calls, "9001")
+      never_sent(calls, "9003")
+    end
+
+    test "3. the instance's grant with no assignment and a public result: read as public, not not_allowed",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      %{instance: instance} = instance(ctx, [])
+
+      serve([ctx.run, instance],
+        covered:
+          Map.put(covering(ctx, %{@tools => {"G_run", "R_tools"}}), instance.adapter.id, %{
+            @public => {"G_i", "9002", {:public, "R_public"}}
+          }),
+        files: @public_files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      grant_id = ctx.grant.id
+      assert [%{"grant_id" => ^grant_id, "resources" => ["R_tools"]}] = walked.harness_links
+
+      calls = calls()
+
+      assert [{instance_host, "read-public", _call} | _] =
+               for({_host, "read-public", _call} = call <- calls, do: call)
+
+      assert instance_host == instance.host
+      no_reads_of(calls, "R_public")
+      never_sent(calls, "9002")
+    end
+
+    test "3. the first public result in the adapters' order is read", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      %{instance: first} = instance(ctx, [])
+
+      serve([ctx.run, first],
+        covered:
+          Map.put(
+            covering(ctx, %{@public => {:public, "R_public"}, @tools => {"G_run", "R_tools"}}),
+            first.adapter.id,
+            %{@public => {:public, "R_public"}}
+          ),
+        files: @public_files
+      )
+
+      assert {:ok, _walked} = Walk.run(ctx.input)
+      hosts = for {host, "read-public", _call} <- calls(), uniq: true, do: host
+      assert hosts == [first.host]
+    end
+
+    test "5. a source at a branch that no adapter answers public fails not_covered", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      serve([ctx.run], covered: covering(ctx), files: @public_files)
+      assert {:failed, %{failure: :not_covered, source: @public}} = Walk.run(ctx.input)
+      assert public_reads(calls()) == []
+    end
+
+    test "a public read refused resource_not_public fails not_covered", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@public => {:public, "R_public"}}),
+        files: @public_files,
+        refuse_public: {403, "resource_not_public"}
+      )
+
+      assert {:failed, %{failure: :not_covered, source: @public}} = Walk.run(ctx.input)
+    end
+
+    test "a private base whose stack lists a public module at a branch: the module is pinned, with no link",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      files =
+        Map.put(
+          @base_files,
+          {"R_harness", "stacks/web/qory-stack.yaml"},
+          "modules:\n  - source: {git: \"#{@tools}\", ref: v2}\n" <>
+            "  - source: {git: \"#{@public}\", ref: main, path: lint}\n"
+        )
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{@tools => {"G_run", "R_tools"}, @public => {:public, "R_public"}}),
+        files: files
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+
+      assert walked.pins == [
+               %{"git" => @harness, "ref" => "v1", "at" => "c-R_harness"},
+               %{"git" => @tools, "ref" => "v2", "at" => "c-R_tools"},
+               %{"git" => @public, "ref" => "main", "at" => "c-R_public"}
+             ]
+
+      grant_id = ctx.grant.id
+
+      assert [%{"grant_id" => ^grant_id, "resources" => ["R_harness", "R_tools"]}] =
+               walked.harness_links
+
+      assert ComposedConfiguration.stack_hosts(walked.pins) ==
+               ["code.example.com", "public.example.org"]
+
+      calls = calls()
+      assert public_reads(calls) == [{"R_public", "harness.yaml", "main"}]
+      no_reads_of(calls, "R_public")
+    end
+
+    test "a module source of a public base is checked as any other", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+
+      files =
+        Map.put(
+          @public_files,
+          {"R_public", "stacks/web/qory-stack.yaml"},
+          "modules:\n  - source: {git: \"https://localhost/acme/tools\", ref: v2}\n"
+        )
+
+      serve([ctx.run], covered: covering(ctx, %{@public => {:public, "R_public"}}), files: files)
+
+      assert {:failed,
+              %{
+                failure: :invalid,
+                source: "https://localhost/acme/tools",
+                rule: %{"rule" => "host"}
+              }} =
+               Walk.run(ctx.input)
+    end
+
+    test "public sources count toward no link: five links and two public modules resolve",
+         ctx do
+      linked = for n <- 1..4, do: "https://code.example.com/acme/m#{n}"
+      public = for n <- 1..2, do: "https://public.example.org/qory/p#{n}"
+
+      modules =
+        Enum.map_join(linked ++ public, "", &"  - source: {git: \"#{&1}\", ref: v1}\n")
+
+      setting(ctx.scope, @setting <> "modules:\n" <> modules)
+
+      more =
+        for {source, n} <- Enum.with_index(linked, 1), into: %{} do
+          grant(ctx.scope.organisation.id, ctx.run.adapter, ctx.connection, "G_#{n}")
+          {source, {"G_#{n}", "R_#{n}"}}
+        end
+        |> Map.merge(
+          Map.new(Enum.with_index(public, 1), fn {s, n} -> {s, {:public, "R_p#{n}"}} end)
+        )
+        |> Map.put(@tools, {"G_run", "R_tools"})
+
+      serve([ctx.run], covered: covering(ctx, more), files: @base_files)
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert length(walked.harness_links) == Walk.max_links()
+
+      assert Enum.sort(public_reads(calls())) == [
+               {"R_p1", "harness.yaml", "v1"},
+               {"R_p2", "harness.yaml", "v1"}
+             ]
+    end
+  end
+
+  describe "the ref of a source in the walk" do
+    @allowed_refs [
+      "HEAD",
+      "main",
+      "release/1.0",
+      "v1.2.0",
+      "refs/heads/main",
+      "refs/tags/v1.2.0",
+      String.duplicate("0a", 20),
+      String.duplicate("b1", 32)
+    ]
+    @refused_refs [
+      "refs/pull/1/head",
+      "refs/merge-requests/1/head",
+      "refs/remotes/x",
+      "pull-requests/1/from",
+      "changes/01/1/1",
+      "notes/x",
+      "refs/tags/../pull/1/head",
+      "./pull/1/head"
+    ]
+    # A base's stack whose one module is at a full commit id, so it is not read.
+    @ref_stack "modules:\n  - source: {git: \"#{@lint}\", ref: \"#{@commit}\"}\n"
+
+    # A walk of the target's file, which no save check reads, whose base is `git` at
+    # `ref`: linked at `R_harness` for `@harness`, public at `R_public` for `@public`.
+    defp walk_ref(ctx, git, ref) do
+      serve([ctx.run],
+        covered: covering(ctx, %{@public => {:public, "R_public"}}),
+        files: %{
+          {"R_app", "harness.yaml"} => "harness:\n  extends: {git: \"#{git}\", ref: '#{ref}'}\n",
+          {"R_harness", "qory-stack.yaml"} => @ref_stack,
+          {"R_public", "qory-stack.yaml"} => @ref_stack
+        }
+      )
+
+      Walk.run(ctx.input)
+    end
+
+    test "each allowed form is read, for a linked and a public source", ctx do
+      for git <- [@harness, @public], ref <- @allowed_refs do
+        assert {:ok, walked} = walk_ref(ctx, git, ref), "#{git} #{ref}"
+        assert Enum.any?(walked.pins, &match?(%{"git" => ^git, "ref" => ^ref}, &1))
+        calls = calls()
+
+        {resource, read} =
+          if git == @harness,
+            do: {"R_harness", reads(calls)},
+            else: {"R_public", public_reads(calls)}
+
+        assert {resource, "qory-stack.yaml", ref} in read
+      end
+    end
+
+    test "another ref under refs/, a short name in another namespace, or a dot part fails invalid before a call, for a linked and a public source",
+         ctx do
+      for git <- [@harness, @public], ref <- @refused_refs do
+        assert {:failed, %{failure: :invalid, source: ^git, rule: rule}} =
+                 walk_ref(ctx, git, ref)
+
+        assert rule == %{
+                 "message" =>
+                   "write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                     "refs/tags/<name> or a full commit id: people without write access can " <>
+                     "change other refs, such as a pull request's",
+                 "values" => %{"ref" => ref}
+               }
+
+        assert resolves(calls()) == [[@target]]
+      end
+    end
+
+    test "a module of a public base's stack at another ref under refs/ fails invalid", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main}\n")
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@public => {:public, "R_public"}}),
+        files: %{
+          {"R_public", "qory-stack.yaml"} =>
+            "modules:\n  - source: {git: \"#{@tools}\", ref: refs/pull/1/head}\n"
+        }
+      )
+
+      assert {:failed, %{failure: :invalid, source: @tools, rule: %{"values" => values}}} =
+               Walk.run(ctx.input)
+
+      assert values == %{"ref" => "refs/pull/1/head"}
+    end
+
+    test "a hidden harness's ref rule has no ref", ctx do
+      admin = %{
+        instance_admin_scope()
+        | organisation: ctx.scope.organisation,
+          workspace: ctx.scope.workspace
+      }
+
+      {:ok, _stack} =
+        Stacks.put_stack(
+          admin,
+          {:workspace, ctx.scope.workspace, "explore"},
+          "extends: {git: \"#{@harness}\", ref: v1}\n"
+        )
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: %{
+          {"R_harness", "qory-stack.yaml"} =>
+            "modules:\n  - source: {git: \"#{@tools}\", ref: refs/pull/1/head}\n"
+        }
+      )
+
+      assert {:failed, %{failure: :invalid, source: nil, rule: rule}} = Walk.run(ctx.input)
+
+      assert rule == %{
+               "message" =>
+                 "write the ref as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                   "refs/tags/<name> or a full commit id: people without write access can " <>
+                   "change other refs, such as a pull request's",
+               "values" => %{}
+             }
+    end
+  end
+
   describe "refused before any call to resolve a source" do
     setup ctx do
       serve([ctx.run], covered: covering(ctx), files: @base_files)
@@ -1362,6 +1890,63 @@ defmodule Apiary.Harnesses.WalkTest do
       assert Harnesses.entries(run) == []
     end
 
+    test "a public base resolves with its pin, its host in stack_hosts, and no link or credential",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      run = queued(ctx)
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{
+            @public => {:public, "R_public"},
+            "https://public.example.org/qory/lint" => {:public, "R_lint"}
+          }),
+        files: %{
+          {"R_public", "harness.yaml"} => "exports:\n  stacks: [web]\n",
+          {"R_public", "stacks/web/qory-stack.yaml"} =>
+            "modules:\n  - source: {git: \"https://public.example.org/qory/lint\", ref: main}\n"
+        }
+      )
+
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :resolved, harness_links: []} =
+               row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      assert row.pins == [
+               %{
+                 "git" => "https://public.example.org/qory/lint",
+                 "ref" => "main",
+                 "at" => "c-R_lint"
+               },
+               %{"git" => @public, "ref" => "main", "at" => "c-R_public"}
+             ]
+
+      assert ComposedConfiguration.stack_hosts(row.pins) == ["public.example.org"]
+      assert Harnesses.entries(run) == []
+    end
+
+    test "a public read that fails otherwise ends the run adapter_failed, at the read", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+      run = queued(ctx)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@public => {:public, "R_public"}}),
+        refuse_public: {400, "invalid_request"}
+      )
+
+      assert :ok = job(run)
+      adapter_id = ctx.run.adapter.id
+
+      assert %DispatchRun{
+               end_detail: "adapter_failed",
+               adapter_failure_id: ^adapter_id,
+               adapter_failure: :refused,
+               adapter_failure_call: "read",
+               adapter_failure_code: "invalid_request"
+             } = Repo.get!(DispatchRun, run.id)
+    end
+
     test "the job writes the access level the walk resolved", ctx do
       recording(ctx, "explore", nil)
       run = queued(ctx)
@@ -1462,6 +2047,152 @@ defmodule Apiary.Harnesses.WalkTest do
       assert :ok = job(run)
       assert %DispatchRun{id: id} = waiting.()
       assert id == run.id
+    end
+  end
+
+  ## A test work item's run
+
+  describe "a test work item's run" do
+    @builtin_git "https://github.com/qoryai/qory"
+    @builtin_ref "2148b3ae11eff8ccbeb93d1a7c10aeb05595c95b"
+    @builtin "extends: {git: \"#{@builtin_git}\", ref: \"#{@builtin_ref}\", path: examples/hello}\n"
+
+    defp test_run!(scope) do
+      {:ok, work_item} = WorkItems.take_in_test(scope, "Hello! Where are you running?")
+      [run] = Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      run
+    end
+
+    # A grant of the instance's organisation covering the built-in source, served with the
+    # run's adapter: a walk of that source calls both adapters, and with no assignment
+    # fails `not_allowed`.
+    defp covering_builtin!(ctx) do
+      instance = adapter()
+      instance_scope = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
+      grant(instance_scope.organisation.id, instance.adapter, connection, "G_i")
+
+      covered = Map.put(covering(ctx), instance.adapter.id, %{@builtin_git => {"G_i", "R_qory"}})
+      serve([ctx.run, instance], covered: covered, files: @base_files)
+    end
+
+    test "is the hello example at its commit, a document the save rules take" do
+      assert Builtin.workflow() == "hello"
+
+      assert Builtin.document() == %{
+               "extends" => %{
+                 "git" => @builtin_git,
+                 "ref" => @builtin_ref,
+                 "path" => "examples/hello"
+               }
+             }
+
+      assert Document.check(@builtin) == {:ok, Builtin.document()}
+    end
+
+    test "resolves with the built-in harness when queued, in a software and a general workspace: no job, no call, no link",
+         ctx do
+      covering_builtin!(ctx)
+      general = with_domain(scope_fixture(), "general")
+
+      for scope <- [ctx.scope, general] do
+        # The workspace's levels, which a run that is no test would walk.
+        setting(scope, @setting)
+        recording(%{scope: scope}, "hello", :write)
+
+        run = test_run!(scope)
+
+        assert %RunHarness{
+                 state: :resolved,
+                 origin: :builtin,
+                 workflow: "hello",
+                 access_level: :read,
+                 target_version: nil,
+                 stack_id: nil,
+                 owner_organisation_id: nil,
+                 harness_hidden: false,
+                 harness_links: []
+               } = row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+        assert row.document == Builtin.document()
+        assert row.pins == [%{"git" => @builtin_git, "ref" => @builtin_ref, "at" => @builtin_ref}]
+
+        # No token: no link to read the source through, and its host for the stack proxy
+        # alone.
+        assert Harnesses.entries(run) == []
+        assert ComposedConfiguration.stack_hosts(row.pins) == ["github.com"]
+      end
+
+      refute_enqueued(worker: WalkJob)
+      assert calls() == []
+      assert Repo.aggregate(Assignment, :count) == 0
+    end
+
+    test "never reads write: the row's check refuses write, a link, a stack, an owner or a hidden harness",
+         ctx do
+      run = test_run!(ctx.scope)
+      row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+      stack = setting(ctx.scope, @setting)
+
+      for change <- [
+            [access_level: :write],
+            [harness_links: [%{"grant_id" => ctx.grant.id, "resources" => ["R_qory"]}]],
+            [stack_id: stack.id],
+            [owner_organisation_id: ctx.scope.organisation.id],
+            [harness_hidden: true]
+          ] do
+        assert_raise Ecto.ConstraintError, ~r/run_harnesses_builtin_check/, fn ->
+          row |> Ecto.Changeset.change(change) |> Repo.update()
+        end
+      end
+
+      assert Repo.reload!(row).access_level == :read
+    end
+
+    test "a work item that is no test is walked as before, beside a test", ctx do
+      test_run!(ctx.scope)
+
+      assert %RunHarness{origin: :none} =
+               Repo.get_by!(RunHarness, dispatch_run_id: queued(ctx).id)
+
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+
+      assert %RunHarness{state: :pending, workflow: "explore"} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      assert_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
+    end
+
+    test "any other document with the built-in source has it looked up at the adapters",
+         ctx do
+      covering_builtin!(ctx)
+
+      module =
+        "  - source: {git: \"#{@builtin_git}\", ref: \"#{@builtin_ref}\", path: examples/hello}\n"
+
+      # The built-in document itself, and the source as a module's.
+      for document <- [@builtin, "modules:\n" <> module] do
+        setting(ctx.scope, document)
+        calls()
+
+        assert {:failed, %{failure: :not_allowed, source: @builtin_git}} = Walk.run(ctx.input)
+        assert [@builtin_git] in resolves(calls())
+      end
+
+      # Once an assignment allows the instance's grant, the run reads the source through it.
+      Repo.insert!(%Assignment{
+        organisation_id: ctx.scope.organisation.id,
+        every_organisation: false,
+        source: %{"git" => @builtin_git, "ref" => @builtin_ref},
+        created_by_id: instance_admin_scope().user.id
+      })
+
+      setting(ctx.scope, "modules:\n" <> module)
+      calls()
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert [%{"resources" => ["R_qory"]}] = walked.harness_links
+      assert [@builtin_git] in resolves(calls())
     end
   end
 end

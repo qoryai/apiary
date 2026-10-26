@@ -59,8 +59,9 @@ defmodule Apiary.WorkItems do
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
   # `get_for_ticket/2` find one work item for a page, and `ticket/3` is its ticket for the
   # work item page's Ticket tab. Each answers nothing to a person who may not read the
-  # workspace's work items (`work_item.read`). None of them answers a test work item
-  # (`Apiary.WorkItems.WorkItem.test_changeset/2`), which no page shows yet.
+  # workspace's work items (`work_item.read`). Each reads a test work item
+  # (`Apiary.WorkItems.WorkItem.test_changeset/2`) as any work item; its ticket has no
+  # record and no integration.
   #
   # ## Closing: `close_locked/3` and `close_for_adapter/2`
   #
@@ -424,8 +425,7 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # get_by_number/2 is the work item of the scope's workspace numbered `number`, to a
-  # person who may read its work items; nil otherwise, for no such number, and for a test
-  # work item, which no page shows yet.
+  # person who may read its work items; nil otherwise, and for no such number.
   @spec get_by_number(Scope.t(), term) :: WorkItem.t() | nil
   def get_by_number(%Scope{} = scope, number) do
     with {:ok, number} <- number(number),
@@ -434,7 +434,7 @@ defmodule Apiary.WorkItems do
         from w in WorkItem,
           where:
             w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id and
-              w.number == ^number and not w.test
+              w.number == ^number
       )
     else
       _none -> nil
@@ -459,8 +459,7 @@ defmodule Apiary.WorkItems do
   # get_by_public_id/2 is the work item of the scope's organisation whose public id is
   # `public_id` (`wi_…`), in whichever of its workspaces it is now, with that workspace,
   # to a person who may read the work items there: the address the work item's stable url
-  # (`stable_url/1`) leads to. nil otherwise, and for a test work item, which no page
-  # shows yet.
+  # (`stable_url/1`) leads to. nil otherwise.
   @spec get_by_public_id(Scope.t(), term) :: WorkItem.t() | nil
   def get_by_public_id(%Scope{organisation: %Organisation{id: organisation_id}} = scope, id) do
     with true <- Apiary.PublicId.valid?(WorkItem.prefix(), id),
@@ -468,7 +467,6 @@ defmodule Apiary.WorkItems do
            Repo.one(
              from w in WorkItem,
                where: w.public_id == ^id and w.organisation_id == ^organisation_id,
-               where: not w.test,
                preload: :workspace
            ),
          true <-
@@ -654,11 +652,12 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # ticket/3 is the ticket of `work_item`, as the work item page's Ticket tab draws it,
-  # to a person who may read the work item in the scope's workspace; nil otherwise, and
-  # for a test work item, which has no ticket. The row is read again by its id, as for
-  # `explore/3`, and its ticket is the record `ticket_query/0` names. It is a map of:
+  # to a person who may read the work item in the scope's workspace; nil otherwise. The
+  # row is read again by its id, as for `explore/3`, and its ticket is the record
+  # `ticket_query/0` names. It is a map of:
   #
-  #   * `integration` - the name of the adapter the ticket came through, with
+  #   * `integration` - the name of the adapter the ticket came through, nil for a test
+  #     work item, which came through none, with
   #     `item_noun` and `collection_noun`, its words (`Apiary.Adapters.item_noun/1`,
   #     `collection_noun/1`), and `adapter_removed`, whether the adapter was removed;
   #   * `uninstalled` - whether the record's connection ended because the integration was
@@ -675,10 +674,23 @@ defmodule Apiary.WorkItems do
   def ticket(%Scope{} = scope, %WorkItem{} = work_item, comments \\ :latest)
       when comments in [:latest, :all] do
     case readable(scope, work_item) do
-      {:ok, %WorkItem{test: true}} -> nil
+      {:ok, %WorkItem{test: true}} -> no_ticket()
       {:ok, row} -> ticket_of(row, comments)
       :error -> nil
     end
+  end
+
+  defp no_ticket do
+    %{
+      integration: nil,
+      item_noun: nil,
+      collection_noun: nil,
+      adapter_removed: false,
+      uninstalled: false,
+      uninstalled_at: nil,
+      ticket: nil,
+      comments: []
+    }
   end
 
   defp ticket_of(%WorkItem{} = row, comments) do
