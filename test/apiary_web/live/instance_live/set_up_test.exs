@@ -88,6 +88,57 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     refute has_element?(lv, "#set-up-continue")
   end
 
+  test "an adapter that can't be set up says why, and what to do", %{conn: conn} do
+    # No key in use.
+    no_key = adapter_fixture(%{name: named("a-tracker")})
+
+    # A key in use, and no address where it is set up or connected to.
+    %{adapter: not_declared} = connectable_adapter_fixture(%{name: named("b-tracker")})
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^not_declared.id), set: [connect_url: nil])
+
+    # Installed with Qory Apiary under a name no longer listed.
+    %{adapter: not_listed} = settable_adapter_fixture(%{name: named("c-tracker")})
+
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^not_listed.id),
+        set: [installed_as: named("gone")]
+      )
+
+    # Set up can be pressed: no line.
+    %{adapter: settable} = settable_adapter_fixture(%{name: named("d-tracker")})
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=1")
+    assert has_element?(lv, "#set-up-#{no_key.public_id}")
+
+    assert words(lv, "#set-up-blocked") ==
+             "Connect #{no_key.name} with an access key in Instance settings › Adapters. " <>
+               "It can't be set up until it has a key in use; this step updates once it has one."
+
+    refute has_element?(lv, "#set-up-open")
+    assert has_element?(lv, "#set-up-skip-button", "Skip")
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=2")
+    assert has_element?(lv, "#set-up-#{not_declared.public_id}")
+
+    assert words(lv, "#set-up-blocked") ==
+             "Check that #{not_declared.name} is running. It has a key in use, but it has not " <>
+               "sent the address where it is set up; this step updates once it has."
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=3")
+    assert has_element?(lv, "#set-up-#{not_listed.public_id}")
+
+    assert words(lv, "#set-up-blocked") ==
+             "Skip this step. #{not_listed.name} is no longer on the list of adapters installed " <>
+               "with Qory Apiary, so it can't be set up."
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=4")
+    assert has_element?(lv, "#set-up-#{settable.public_id}")
+    assert has_element?(lv, "#set-up-open")
+    refute has_element?(lv, "#set-up-blocked")
+  end
+
   test "turns to Set up and Continue once the adapter is configured, while the page is open",
        %{conn: conn} do
     %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
@@ -102,6 +153,39 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     assert has_element?(lv, "#set-up-continue", "Continue")
     refute has_element?(lv, "#set-up-open")
     refute has_element?(lv, "#set-up-skip")
+  end
+
+  test "an adapter added while the page is open adds a step, and mail stays the last",
+       %{conn: conn} do
+    %{adapter: first} = connectable_adapter_fixture(%{name: named("b-tracker")})
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=2")
+    assert words(lv, "#set-up-step") == "Step 2 of 2"
+    assert has_element?(lv, "#set-up-mail")
+
+    # Listed before the first, by name.
+    %{adapter: added} = settable_adapter_fixture(%{name: named("a-tracker")})
+    send(lv.pid, {:adapter_declared, %{node_id: first.id}})
+
+    assert_patch(lv, ~p"/instance/set-up?step=3")
+    assert words(lv, "#set-up-step") == "Step 3 of 3"
+    assert has_element?(lv, "#set-up-mail")
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+    assert has_element?(lv, "#set-up-#{added.public_id}")
+  end
+
+  test "an adapter's step stays on it when another is added before it", %{conn: conn} do
+    %{adapter: shown} = settable_adapter_fixture(%{name: named("b-tracker")})
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+    assert has_element?(lv, "#set-up-#{shown.public_id}")
+
+    %{adapter: _added} = settable_adapter_fixture(%{name: named("a-tracker")})
+    send(lv.pid, {:adapter_declared, %{node_id: shown.id}})
+
+    assert_patch(lv, ~p"/instance/set-up?step=2")
+    assert words(lv, "#set-up-step") == "Step 2 of 3"
+    assert has_element?(lv, "#set-up-#{shown.public_id}")
   end
 
   test "Skip and Continue lead to the next step", %{conn: conn} do
@@ -169,6 +253,16 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   end
 
   defp total(step), do: step |> String.split() |> List.last()
+
+  test "asks for a recent sign-in, as Instance settings › Mail does", %{user: user} do
+    eleven_minutes_ago = DateTime.add(DateTime.utc_now(:second), -11, :minute)
+    conn = log_in_user(build_conn(), user, token_authenticated_at: eleven_minutes_ago)
+
+    assert {:error, {:redirect, %{to: "/users/log-in", flash: flash}}} =
+             live(conn, ~p"/instance/set-up")
+
+    assert flash["error"] == "You must re-authenticate to access this page."
+  end
 
   test "shows the help and the form of Instance settings › Mail, with Skip", %{conn: conn} do
     lv = mail_step(conn)

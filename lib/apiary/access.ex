@@ -142,7 +142,7 @@ defmodule Apiary.Access do
     # The workspace.
     Action.new(
       :"workspace.create",
-      "create a workspace of the organisation, which starts empty, while the edition's limit allows another; no page of the core offers it",
+      "create a workspace of the organisation, which starts empty, while the edition's limit allows another; in the core, the first one, on the workspace set-up page",
       roles: @owners,
       asked_of: :organisation
     ),
