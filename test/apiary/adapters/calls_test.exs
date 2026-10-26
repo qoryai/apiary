@@ -679,7 +679,8 @@ defmodule Apiary.Adapters.CallsTest do
 
       assert {:ok,
               [
-                %{resource_ref: "R_2001", public: true} = public,
+                %{resource_ref: "R_2001", public: true, public_ref: "example.com/team/project"} =
+                  public,
                 %{covered: false}
               ]} = Calls.resolve(adapter, addresses)
 

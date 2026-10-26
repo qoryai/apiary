@@ -68,8 +68,8 @@ defmodule Apiary.Harnesses.Walk do
   # Such a base's `qory-stack.yaml` is not followed, so its modules' sources are not
   # checked, pinned or linked.
   #
-  # A public source is read through the adapter that answered `public` (`read-public`,
-  # with no grant), by the rules of a linked source: its version pinned, its base's
+  # A public source is read through the adapter that answered `public`, at the result's
+  # `public_ref` (`read-public`, with no grant), by the rules of a linked source: its version pinned, its base's
   # `qory-stack.yaml` followed, its modules' sources checked, and the level its
   # workflows declare read. It is no link: it counts toward no limit of links, and the run
   # gets no credential for it. Its pin puts its host in the run's `stack_hosts`, and qory
@@ -724,9 +724,10 @@ defmodule Apiary.Harnesses.Walk do
 
   defp public(public, _adapter, _result), do: public
 
-  # The resource a public result's `read-public` calls read: every public read takes it
-  # from here, so no read of a public source uses another member of the result.
-  defp public_ref(%{public: true, resource_ref: resource_ref}), do: resource_ref
+  # The resource a public result's `read-public` calls read, its `public_ref`: every
+  # public read takes it from here. A covered result's `resource_ref` may be a ref only
+  # its grant's organisation may use, so it never reaches `read-public`.
+  defp public_ref(%{public: true, public_ref: public_ref}), do: public_ref
 
   defp resolve_at(adapter, addresses) do
     case call(adapter, &Calls.resolve(&1, addresses, &2)) do

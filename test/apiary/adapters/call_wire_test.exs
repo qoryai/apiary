@@ -88,7 +88,8 @@ defmodule Apiary.Adapters.CallWireTest do
                 %{
                   address: "https://code.example.com/acme/public-stack",
                   resource_ref: "R_2001",
-                  public: true
+                  public: true,
+                  public_ref: "example.com/team/project"
                 },
                 %{address: "https://code.example.com/acme/private-stack", covered: false}
               ]}
@@ -100,7 +101,8 @@ defmodule Apiary.Adapters.CallWireTest do
                   address: "https://code.example.com/acme/harness",
                   grant_ref: "G_1",
                   resource_ref: "R_1001",
-                  public: true
+                  public: true,
+                  public_ref: "example.com/team/harness"
                 }
               ]}
 
@@ -131,7 +133,7 @@ defmodule Apiary.Adapters.CallWireTest do
       |> Path.wildcard()
       |> Enum.map(&Path.basename/1)
 
-    assert length(names) == 44
+    assert length(names) == 46
     assert "read-public-with-grant-ref.json" in names
 
     for name <- names do
@@ -229,18 +231,22 @@ defmodule Apiary.Adapters.CallWireTest do
                :error
     end
 
-    test "a public result has resource_ref and public, true, with grant_ref or without, and nothing else" do
+    test "a public result has resource_ref, public, true, and public_ref, with grant_ref or without, and nothing else" do
       body = fixture("resolve-answer/public.json")
       [first, second] = body["results"]
       call = %{"addresses" => [first["address"], second["address"]]}
       both = Map.put(first, "grant_ref", "G_1")
 
-      assert {:ok, [%{grant_ref: "G_1", public: true}, _]} =
+      assert {:ok, [%{grant_ref: "G_1", public: true, public_ref: "example.com/team/project"}, _]} =
                answer("resolve", %{body | "results" => [both, second]}, call)
 
       for bad <- [
             %{first | "public" => "true"},
             %{first | "resource_ref" => ""},
+            %{first | "public_ref" => ""},
+            Map.delete(first, "public_ref"),
+            Map.delete(both, "public_ref"),
+            Map.delete(first, "public"),
             Map.delete(first, "resource_ref"),
             Map.put(first, "covered", false),
             Map.put(first, "other", 1),

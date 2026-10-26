@@ -161,8 +161,9 @@ defmodule Apiary.Adapters.Calls do
 
   @doc false
   # read_public/3 asks `adapter` for the document at `path` in the resource
-  # `resource_ref`, which it answered `public: true` to `resolve`, under no grant, at the
-  # version `at` (`read-public`). What it returns is as for `read_document/3`.
+  # `resource_ref`, the `public_ref` of a result it answered `public: true` to `resolve`,
+  # under no grant, at the version `at` (`read-public`). What it returns is as for
+  # `read_document/3`.
   @spec read_public(Node.t(), map, keyword) :: {:ok, map} | {:error, CallFailure.t()}
   def read_public(adapter, request, opts \\ []) do
     %{resource_ref: resource_ref, path: path, at: at} = request

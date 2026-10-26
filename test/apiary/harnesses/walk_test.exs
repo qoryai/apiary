@@ -126,9 +126,10 @@ defmodule Apiary.Harnesses.WalkTest do
   ## The stub adapters
 
   # Serves `adapters`' calls: `covered`, by adapter, maps an address to its grant and
-  # resource, `{grant_ref, resource_ref}`, to those and `public`, `{grant_ref,
-  # resource_ref, :public}`, or to `public` alone, `{:public, resource_ref}`; `files` maps
-  # a resource and a path to a document, read with a grant or as public. A resource's
+  # resource, `{grant_ref, resource_ref}`, to those and its public ref, `{grant_ref,
+  # resource_ref, {:public, public_ref}}`, or to its public ref alone, `{:public,
+  # public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps a resource or a
+  # public ref and a path to a document, read with a grant or as public. A resource's
   # version is `c-<resource>`, whatever the version asked. `refuse` answers every read
   # with a signed refusal, and `refuse_public` every public read; `down` makes every call
   # reach no one.
@@ -156,15 +157,21 @@ defmodule Apiary.Harnesses.WalkTest do
           results =
             for address <- call["addresses"] do
               case by_address[address] do
-                {:public, resource_ref} ->
-                  %{"address" => address, "resource_ref" => resource_ref, "public" => true}
+                {:public, public_ref} ->
+                  %{
+                    "address" => address,
+                    "resource_ref" => "N_" <> public_ref,
+                    "public" => true,
+                    "public_ref" => public_ref
+                  }
 
-                {grant_ref, resource_ref, :public} ->
+                {grant_ref, resource_ref, {:public, public_ref}} ->
                   %{
                     "address" => address,
                     "grant_ref" => grant_ref,
                     "resource_ref" => resource_ref,
-                    "public" => true
+                    "public" => true,
+                    "public_ref" => public_ref
                   }
 
                 {grant_ref, resource_ref} ->
@@ -1085,6 +1092,14 @@ defmodule Apiary.Harnesses.WalkTest do
     defp no_reads_of(calls, resource),
       do: refute(Enum.any?(reads(calls), &match?({^resource, _path, _at}, &1)))
 
+    # No call of any path sends `ref` as a resource.
+    defp never_sent(calls, ref) do
+      for {_host, path, call} <- calls do
+        refute call["resource_ref"] == ref, path
+        refute ref in Map.get(call, "resources", []), path
+      end
+    end
+
     test "1. a grant of the run's organisation comes before an assigned grant at an adapter earlier in order",
          ctx do
       setting(ctx.scope, @setting)
@@ -1093,8 +1108,8 @@ defmodule Apiary.Harnesses.WalkTest do
       serve([ctx.run, instance],
         covered:
           Map.put(covering(ctx, %{@tools => {"G_run", "R_tools"}}), instance.adapter.id, %{
-            @harness => {"G_i", "R_harness", :public},
-            @tools => {"G_i", "R_tools", :public}
+            @harness => {"G_i", "R_harness", {:public, "P_harness"}},
+            @tools => {"G_i", "R_tools", {:public, "P_tools"}}
           }),
         files: @base_files
       )
@@ -1120,8 +1135,8 @@ defmodule Apiary.Harnesses.WalkTest do
             %{ctx.run.adapter.id => %{@target => {"G_run", "R_app"}}},
             instance.adapter.id,
             %{
-              @harness => {"G_i", "R_harness", :public},
-              @tools => {"G_i", "R_tools", :public}
+              @harness => {"G_i", "R_harness", {:public, "P_harness"}},
+              @tools => {"G_i", "R_tools", {:public, "P_tools"}}
             }
           ),
         files: @base_files
@@ -1172,6 +1187,7 @@ defmodule Apiary.Harnesses.WalkTest do
              ]
 
       no_reads_of(calls, "R_public")
+      never_sent(calls, "N_R_public")
       assert resolves(calls) == [[@target], [@public], [@tools]]
       refute Enum.any?(calls, &match?({_host, "run-credential", _call}, &1))
     end
@@ -1190,7 +1206,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {"R_public", "harness.yaml", @commit} in public_reads(calls())
     end
 
-    test "3. another organisation's grant with a public result: read as public, with no link",
+    test "3. another organisation's covered and public result: read at its public_ref, never its resource_ref, with no link",
          ctx do
       setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
       other = scope_fixture()
@@ -1200,7 +1216,7 @@ defmodule Apiary.Harnesses.WalkTest do
       serve([ctx.run],
         covered:
           covering(ctx, %{
-            @public => {"G_other", "R_public", :public},
+            @public => {"G_other", "9001", {:public, "R_public"}},
             @tools => {"G_run", "R_tools"}
           }),
         files: @public_files
@@ -1213,6 +1229,7 @@ defmodule Apiary.Harnesses.WalkTest do
       calls = calls()
       assert {"R_public", "harness.yaml", "main"} in public_reads(calls)
       no_reads_of(calls, "R_public")
+      never_sent(calls, "9001")
     end
 
     test "3. the instance's grant with no assignment and a public result: read as public, not not_allowed",
@@ -1223,7 +1240,7 @@ defmodule Apiary.Harnesses.WalkTest do
       serve([ctx.run, instance],
         covered:
           Map.put(covering(ctx, %{@tools => {"G_run", "R_tools"}}), instance.adapter.id, %{
-            @public => {"G_i", "R_public", :public}
+            @public => {"G_i", "9002", {:public, "R_public"}}
           }),
         files: @public_files
       )
@@ -1239,6 +1256,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
       assert instance_host == instance.host
       no_reads_of(calls, "R_public")
+      never_sent(calls, "9002")
     end
 
     test "3. the first public result in the adapters' order is read", ctx do
