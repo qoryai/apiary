@@ -2625,7 +2625,7 @@ defmodule ApiaryWeb.OverviewComponents do
       else: gettext("Test run passed: the agent answered on a machine of %{pool}.", pool: name)
   end
 
-  # A run whose node was deleted or purged has none (`runs.node_id` is cleared).
+  # A run has no node when its key named none, or when its node was purged.
   defp passed_line(_run), do: gettext("Test run passed: the agent answered on a machine.")
 
   # Each failure, the fix first.
