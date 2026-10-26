@@ -1015,7 +1015,10 @@ defmodule Apiary.Adapters do
   # the integration shows them; a start that changes none of them tells none. The start is
   # stored by then: where the database fails to read those connections, the failure is
   # logged, no organisation is told, and the start answers as stored. `opts[:connections]`
-  # replaces that read, a function of the adapter, for a test that makes it fail.
+  # replaces that read, a function of the adapter, for a test that makes it fail. A start
+  # that changes the adapter's `setup_url` or `connect_url` tells, after the commit, the
+  # pages subscribed to its keys (`subscribe_keys/2`), as the instance's connections show
+  # whether it is configured (`configured?/1`).
   # `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
   # `{:error, :not_found}`.
   @spec declare(Scope.t(), Wire.declaration(), keyword) ::
@@ -1046,14 +1049,17 @@ defmodule Apiary.Adapters do
            :ok <- record_declaration(scope, current, declared),
            {:ok, relinked} <- Collections.relink_adapter(current, declared),
            :ok <- tell_first(current, declared) do
-        {:ok, {declared, relinked, shown_changed?(current, declared)}}
+        {:ok,
+         {declared, relinked, shown_changed?(current, declared),
+          set_up_changed?(current, declared)}}
       end
     end)
     |> case do
-      {:ok, {declared, relinked, shown_changed?}} ->
+      {:ok, {declared, relinked, shown_changed?, set_up_changed?}} ->
         :ok = Collections.broadcast_relinked(relinked)
         connections = Keyword.get(opts, :connections, &connections_told/1)
         if shown_changed?, do: :ok = broadcast_shown(declared, connections)
+        if set_up_changed?, do: :ok = broadcast_declared(declared)
         {:ok, declared}
 
       {:error, _reason} = refused ->
@@ -1073,6 +1079,23 @@ defmodule Apiary.Adapters do
 
   defp shown_changed?(current, declared),
     do: Map.take(current, @shown) != Map.take(declared, @shown)
+
+  # Whether a start changed what `configured?/1` reads of the adapter: where to set it up
+  # and where to connect to it.
+  defp set_up_changed?(current, declared),
+    do:
+      Map.take(current, [:setup_url, :connect_url]) !=
+        Map.take(declared, [:setup_url, :connect_url])
+
+  # After the start commits: tells the pages subscribed to the adapter's keys
+  # (`subscribe_keys/2`) that whether it is configured may have changed.
+  defp broadcast_declared(%Node{id: id} = adapter),
+    do:
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        AccessKeys.topic(AccessKeys.place_id(adapter), id),
+        {:adapter_declared, %{node_id: id}}
+      )
 
   # After the start commits: tells each organisation with a connection to the adapter that
   # it changed (`Apiary.Adapters.Collections.broadcast_connection/1`), once, naming the
@@ -1204,7 +1227,9 @@ defmodule Apiary.Adapters do
       do: AccessKeys.cancel_code(scope, code)
 
   @doc false
-  # Subscribes an instance admin to `adapter`'s keys and codes (`Apiary.AccessKeys.topic/2`).
+  # Subscribes an instance admin to `adapter`'s keys and codes (`Apiary.AccessKeys.topic/2`),
+  # and to its starts that change where to set it up or to connect to it
+  # (`{:adapter_declared, %{node_id: id}}`, `declare/3`).
   @spec subscribe_keys(Scope.t(), Node.t()) :: :ok | {:error, term}
   def subscribe_keys(%Scope{} = scope, %Node{kind: :adapter} = adapter),
     do: AccessKeys.subscribe(scope, adapter)

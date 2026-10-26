@@ -879,6 +879,48 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
+  describe "a start that changes where to set it up or connect to it" do
+    # A start of the adapter whose key is `adapter_key`, declaring `connect_url` and, unless
+    # nil, `setup_url`.
+    defp start(adapter_key, connect_url, setup_url) do
+      Adapters.declare(Scope.for_access_key(adapter_key), %{
+        time: ~U[2026-10-25 12:00:00Z],
+        connect_url: connect_url,
+        setup_url: setup_url,
+        default_interval: 3600,
+        minimum_interval: 900,
+        sends_changes: true,
+        description: Apiary.DescriptionFixtures.contract_description() |> description()
+      })
+    end
+
+    defp description(document) do
+      {:ok, description} = document |> Jason.encode!() |> Apiary.Integrations.Description.parse()
+      description
+    end
+
+    test "tells the pages subscribed to its keys, once committed", %{admin: admin} do
+      adapter = adapter_fixture()
+      %{key: key} = keyed(admin, adapter)
+      :ok = Adapters.subscribe_keys(admin, adapter)
+      id = adapter.id
+      connect = "https://tracker-adapter.acme.example/connect"
+      setup = "https://tracker-adapter.acme.example/setup"
+
+      assert {:ok, _declared} = start(key, connect, setup)
+      assert_receive {:adapter_declared, %{node_id: ^id}}
+
+      # The same addresses again: nothing to tell.
+      assert {:ok, _declared} = start(key, connect, setup)
+      refute_receive {:adapter_declared, _}
+
+      # Set up: it declares no `setup_url` any more, and is configured.
+      assert {:ok, declared} = start(key, connect, nil)
+      assert_receive {:adapter_declared, %{node_id: ^id}}
+      assert Adapters.configured?(declared)
+    end
+  end
+
   describe "the apply items of its work credential, at each start" do
     # A declaration as `Apiary.Adapters.Wire.declaration/1` reads one, with `document` as
     # its description.

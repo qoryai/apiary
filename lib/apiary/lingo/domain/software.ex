@@ -58,6 +58,13 @@ defmodule Apiary.Lingo.Domain.Software do
       )
 
   @impl true
+  def type_name, do: pgettext("workspace type", "Software")
+
+  @impl true
+  def type_line,
+    do: pgettext("workspace type", "For work on code. Each ticket needs a repository.")
+
+  @impl true
   def target_required?, do: true
 
   @impl true

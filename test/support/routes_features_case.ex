@@ -7,7 +7,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
 
   The routes every instance has are the core's (`always/0`: signing in and out, the
   organisation's own management and its audit trail, the instance's mail and configuration, the
-  documentation, health, discovery and enrolment) and those an edition names for its own pages. A test module uses it with a
+  first-time set-up of the instance and of a workspace, the documentation, health, discovery and enrolment) and those an edition names for its own pages. A test module uses it with a
   router, the core's or an edition's, and the edition's modules beside the core's:
 
       use ApiaryWeb.RoutesFeaturesCase, async: true, router: ApiaryWeb.Router
@@ -54,6 +54,8 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.UserLive.Password,
     ApiaryWeb.InvitationLive.Accept,
     ApiaryWeb.SetupLive,
+    ApiaryWeb.InstanceLive.SetUp,
+    ApiaryWeb.WorkspaceSetupLive,
     ApiaryWeb.InstanceLive.General,
     ApiaryWeb.InstanceLive.Mail,
     ApiaryWeb.InstanceMailController,
