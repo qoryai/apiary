@@ -2353,7 +2353,7 @@ defmodule ApiaryWeb.OverviewComponents do
               <.button
                 id={"#{@id}-model-key-act"}
                 variant={if @current == :model_key, do: "primary", else: "default"}
-                href={model_providers_path(@org)}
+                href={~p"/#{@org}/settings/model-providers"}
               >
                 {gettext("Add model key")}
               </.button>
@@ -2658,10 +2658,6 @@ defmodule ApiaryWeb.OverviewComponents do
       gettext(
         "Read the run's log, then press Run the test again. The test run ended without passing."
       )
-
-  # Organisation settings › Model providers.
-  defp model_providers_path(organisation),
-    do: "/" <> Phoenix.Param.to_param(organisation) <> "/settings/model-providers"
 
   # The two ways to connect a node or pool, its kind's way first: a machine runs a
   # command, a pool's shared key is generated in the browser.
