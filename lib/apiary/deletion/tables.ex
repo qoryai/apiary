@@ -50,8 +50,7 @@ defmodule Apiary.Deletion.Tables do
   # listings before the collections they belong to; an adapter's collections, the
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
-  # item; a connection's workspaces
-  # and a provider's models before the connection, and the connections before the
+  # item; a connection's workspaces before the connection, and the connections before the
   # releases, the service definitions and the secrets they name; everything of a
   # workspace before the workspace.
   #

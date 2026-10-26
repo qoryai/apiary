@@ -517,8 +517,8 @@ for each other and never on each other at once:
    the membership, then the integrations lock, then the provider's row `FOR SHARE` and
    the choice's row. A change to a provider takes the provider's row `FOR UPDATE`, so it
    waits for a save of a choice of that provider, or is seen by it: the change reads the
-   choices that use the provider without a lock, and refuses while one does. No change to a provider takes a lock on an adapter's
-   connection.
+   choices that use the provider without a lock, and refuses while one does. No change to
+   a provider takes a lock on an adapter's connection.
    A write of a time limit (`Apiary.TimeLimits`) takes the security policy's order, then
    the limit's row `FOR UPDATE`.
    The claim of an explore run (`Apiary.Dispatches.RunSettings`) holds the pool's row,
