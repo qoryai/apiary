@@ -35,6 +35,10 @@ config :apiary, ApiaryWeb.Endpoint,
 # from its row (`Apiary.Lingo.Domain`). Defined in test/support; no instance has it.
 config :apiary, Apiary.Lingo.Domain, test_domains: %{"example" => Apiary.Lingo.Domain.Example}
 
+# The tests' seam for a runtime catalogue of another size than the release's
+# (`Apiary.Kinds.Runtimes.put_test_list/1`). No other build compiles it.
+config :apiary, Apiary.Kinds.Runtimes, test_seam: true
+
 # In test we don't send emails
 config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 

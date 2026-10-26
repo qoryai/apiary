@@ -24,8 +24,9 @@ defmodule Apiary.ModelChoices.Resolution do
   # order whose tier map maps the tier to a model that goes with the resolved provider: a
   # model of its description with one of that model's effort values or none, or any
   # other model id with no effort. Where the input has `effort_values`, the effort values
-  # of each runtime by its name, a model's effort values are those its runtime has too. A tier no choice maps so is left out: the run's
-  # program fills it, or runs the agent on the run's model.
+  # of each runtime by its name, a model's effort values are those its runtime has too. A
+  # tier no choice maps so is left out: the run's program fills it, or runs the agent on
+  # the run's model.
   @moduledoc false
 
   alias Apiary.ModelChoices.ModelChoice
