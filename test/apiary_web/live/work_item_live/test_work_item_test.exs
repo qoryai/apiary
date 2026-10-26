@@ -171,6 +171,14 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       {test_item, _run} = ran!(scope, result: questions_result())
       {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
 
+      assert has_element?(
+               view,
+               "#work-item-explore-questions",
+               "Qory runs Explore again from the start, with the line and the answers of this take in."
+             )
+
+      refute has_element?(view, "#work-item-explore-questions", "its comments")
+
       view |> element("#work-item-step-decline") |> render_click()
 
       assert has_element?(

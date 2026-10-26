@@ -1121,9 +1121,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  # What happened to a run that gave no result, as one sentence with its id; none for a
-  # run that ended before its handover, which has no id to name.
-  # A test work item's run answers its line: a line in words that no workspace's words change, while its run waits or runs; nil for any other work item.
+  # A test work item's run answers its line, in words that no workspace's words change,
+  # while its run waits or runs; nil for any other work item.
   defp test_line(%{work_item: %{test: true}, status: :queued}),
     do: gettext("Qory answers the line when the run starts.")
 
@@ -1132,6 +1131,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp test_line(_assigns), do: nil
 
+  # What happened to a run that gave no result, as one sentence with its id; none for a
+  # run that ended before its handover, which has no id to name.
   defp no_result_line(_status, %{id: nil}), do: nil
 
   defp no_result_line(:no_result, run) do
@@ -1982,6 +1983,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         errors={@errors}
         submits={@submits}
         item={@item}
+        test={@work_item[:test] == true}
       />
       <.proposal_frame
         :if={@view == :proposal}
@@ -1997,6 +1999,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id={"#{@id}-earlier"}
         runs={@earlier_runs}
         item={@item}
+        test={@work_item[:test] == true}
         now={@now}
       />
       <.earlier_take_ins
@@ -2285,9 +2288,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :errors, :map, default: %{}
   attr :submits, :integer, default: 0
   attr :item, :string, required: true, doc: "the source's word for one of its items"
+  attr :test, :boolean, default: false, doc: "whether it is a test work item"
 
   # Qory's questions, in a frame that names the run; with the form for a member who may
-  # answer them.
+  # answer them. A test work item has no comments, and its line is its first instruction,
+  # so its next run reads the line and the answers.
   defp questions_frame(assigns) do
     run = assigns.run
     n = length(run.questions)
@@ -2303,11 +2308,20 @@ defmodule ApiaryWeb.WorkItemComponents do
         heading: ngettext("Qory's question", "Qory's questions", n),
         next:
           next_run?(run) &&
-            gettext(
-              "Qory runs Explore again from the start, with the %{item}, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
-              attempt: Format.number(run.attempt + 1),
-              of: Format.number(run.of),
-              item: assigns.item
+            if(assigns.test,
+              do:
+                gettext(
+                  "Qory runs Explore again from the start, with the line and the answers of this take in. It is run %{attempt} of %{of}.",
+                  attempt: Format.number(run.attempt + 1),
+                  of: Format.number(run.of)
+                ),
+              else:
+                gettext(
+                  "Qory runs Explore again from the start, with the %{item}, its comments, the first instruction and the answers of this take in. It is run %{attempt} of %{of}.",
+                  attempt: Format.number(run.attempt + 1),
+                  of: Format.number(run.of),
+                  item: assigns.item
+                )
             )
       )
 
@@ -3038,6 +3052,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :runs, :list, required: true
   attr :item, :string, required: true, doc: "the source's word for one of its items"
+  attr :test, :boolean, default: false, doc: "whether it is a test work item"
   attr :now, :any, required: true
 
   # The take in's earlier runs, each folded: its place, its id, what it gave, when.
@@ -3056,7 +3071,13 @@ defmodule ApiaryWeb.WorkItemComponents do
           </span>
         </summary>
         <div class="q-xp-inner">
-          <.run_body id={"#{@id}-#{run_dom(run)}-body"} run={run} item={@item} now={@now} />
+          <.run_body
+            id={"#{@id}-#{run_dom(run)}-body"}
+            run={run}
+            item={@item}
+            test={@test}
+            now={@now}
+          />
         </div>
       </details>
     </section>
@@ -3080,6 +3101,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :run, :map, required: true
   attr :item, :string, required: true, doc: "the source's word for one of its items"
+  attr :test, :boolean, default: false, doc: "whether it is a test work item"
   attr :now, :any, required: true
 
   # Inside a run's fold: its questions and the answers, its questions nobody answered,
@@ -3120,6 +3142,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       run={@run}
       mode={:read}
       item={@item}
+      test={@test}
     />
     """
   end

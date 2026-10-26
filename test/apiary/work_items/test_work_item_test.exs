@@ -397,6 +397,34 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       assert WorkItems.list_filter_values(scope, :collection, "Test") == []
     end
 
+    test "a collection filter lists no test work item, even for a collection titled as its",
+         ctx do
+      test_item = test_item!(ctx.scope)
+
+      # A real collection with the title a test work item keeps for the column.
+      connection = ticket_connection_fixture(ctx.scope)
+
+      collection =
+        source_collection_fixture(ctx.scope, connection, %{title: test_item.collection_title})
+
+      item = source_item_fixture(ctx.scope, collection: collection)
+
+      titled =
+        work_item_fixture(ctx.scope, %{
+          connection_id: connection.id,
+          item_id: item.id,
+          collection_title: test_item.collection_title
+        })
+
+      page = WorkItems.list_work_items(ctx.scope, %{"collection" => ["Test run"]})
+      assert Enum.map(page.rows, & &1.id) == [titled.public_id]
+      assert page.counts == %{open: 1, you: 0, declined: 0, closed: 0}
+
+      assert WorkItems.list_filter_values(ctx.scope, :collection) == [
+               %{key: "Test run", count: 1}
+             ]
+    end
+
     test "finds a test work item by its line", ctx do
       test_item = test_item!(ctx.scope)
       _listed = work_item_fixture(ctx.scope)

@@ -12055,6 +12055,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Qory runs Explore again from the start, with the line and the answers of this take in. It is run %{attempt} of %{of}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Qory started Explore again in run %{run}"
 msgstr ""
 

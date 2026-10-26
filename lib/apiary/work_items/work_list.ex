@@ -524,13 +524,14 @@ defmodule Apiary.WorkItems.WorkList do
 
   defp collections(query, nil), do: query
 
+  # A test work item is in no collection: the title it keeps for the column is not one.
   defp collections(query, titles) do
     if is_list(titles) and length(titles) <= @max_filter_values and Enum.all?(titles, &title?/1),
       do:
         where(
           query,
           [work_item: w, ticket: t],
-          coalesce(t.title, w.collection_title) in ^titles
+          not w.test and coalesce(t.title, w.collection_title) in ^titles
         ),
       else: where(query, false)
   end
