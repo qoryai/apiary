@@ -963,6 +963,10 @@ defmodule Apiary.Dispatches do
   # for any other (closed, declined, its connection ended, moved to another workspace,
   # or gone). Read without a lock: the run is locked, so an undo waits for the claim and
   # is then refused; a close that commits meanwhile finds the run claimed.
+  #
+  # A test work item has no connection to check (`WorkItem.test_changeset/2`): only one
+  # with `test` set and no `connection_id` skips that check, and the database holds both
+  # together (`work_items_test_check`). Every other work item keeps it.
   defp work_item_of(%DispatchRun{work_item_id: work_item_id, workspace_id: workspace_id}) do
     found =
       Repo.one(
@@ -976,6 +980,14 @@ defmodule Apiary.Dispatches do
     case found do
       {%WorkItem{state: :exploring, workspace_id: ^workspace_id} = work_item, connection}
       when connection in [:pending, :connected] ->
+        {:ok, work_item}
+
+      {%WorkItem{
+         state: :exploring,
+         workspace_id: ^workspace_id,
+         test: true,
+         connection_id: nil
+       } = work_item, nil} ->
         {:ok, work_item}
 
       {%WorkItem{state: :undone}, _connection} ->

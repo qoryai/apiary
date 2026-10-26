@@ -381,7 +381,9 @@ defmodule Apiary.WorkItems.WorkList do
   end
 
   # The work items of the workspace, each with its ticket (`:ticket`), its latest undo or
-  # close (`:ended`), and where Explore stands for it (`:explore_status`).
+  # close (`:ended`), and where Explore stands for it (`:explore_status`). A test work
+  # item (`Apiary.WorkItems.WorkItem.test_changeset/2`) is in no list, view, count or
+  # Filter menu.
   defp work_items(organisation_id, workspace_id) do
     from(w in WorkItem,
       as: :work_item,
@@ -403,7 +405,8 @@ defmodule Apiary.WorkItems.WorkList do
         ),
       as: :ended,
       on: true,
-      where: w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id
+      where: w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id,
+      where: not w.test
     )
     |> Explore.with_status()
   end

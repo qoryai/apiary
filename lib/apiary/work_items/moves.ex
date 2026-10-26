@@ -73,6 +73,18 @@ defmodule Apiary.WorkItems.Moves do
   # (`Apiary.WorkItems.as_seen/2`): one of another workspace by its state alone, as the
   # Backlog shows it; a take in again's `{:taken, work_item}` too.
   #
+  # ## Take in a test
+  #
+  # A take in of a test (`take_in_test/2`) is asked as a take in is, `work_item.take_in` of
+  # the scope's workspace, and reads no ticket, connection, collection or target. It makes
+  # a test work item of the line the person typed
+  # (`Apiary.WorkItems.WorkItem.test_changeset/2`), `:exploring`, owned by the person,
+  # numbered next in the workspace, take in 1, with its `:taken_in` event, as a first take
+  # in has, its first run queued (`Apiary.Dispatches.queue/2`), and its entry in the trail,
+  # `details` `test: true`. No adapter is told, as none is behind it. A line the changeset
+  # refuses is the changeset. It locks the workspace's counter of numbers right after its
+  # work item, then the runs of the queue.
+  #
   # ## Take in again
   #
   # A take in again finds the work item of the ticket by that key: none is `:not_taken`,
@@ -303,6 +315,54 @@ defmodule Apiary.WorkItems.Moves do
           nil ->
             {:error, refused}
         end
+    end
+  end
+
+  ## Take in a test
+
+  @doc false
+  @spec take_in_test(Scope.t(), term) ::
+          {:ok, WorkItem.t()} | {:error, :not_found | :forbidden | Ecto.Changeset.t()}
+  def take_in_test(%Scope{} = scope, line) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, workspace} <- workspace(scope),
+             :ok <- Access.authorize(scope, :"work_item.take_in", workspace) do
+          make_test(scope, workspace, line)
+        end
+      end)
+
+    finish(result)
+  end
+
+  # A new test work item of the line, its event, its first run and its entry in the trail.
+  defp make_test(scope, workspace, line) do
+    now = DateTime.utc_now()
+
+    changeset =
+      %WorkItem{
+        organisation_id: workspace.organisation_id,
+        workspace_id: workspace.id,
+        state: :exploring,
+        taken_in_by_id: scope.user.id,
+        taken_in_at: now
+      }
+      |> WorkItem.test_changeset(%{title: line, owner_id: scope.user.id})
+
+    with {:ok, changeset} <- valid(changeset),
+         {:ok, work_item} <-
+           changeset
+           |> Ecto.Changeset.put_change(:number, Number.next(workspace))
+           |> PublicId.Insert.insert(),
+         :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
+         {:ok, _run} <- Dispatches.queue(work_item, 1),
+         {:ok, _entry} <-
+           Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
+             after: %{state: :exploring},
+             details: %{"take_in" => 1, "test" => true}
+           }) do
+      {:ok,
+       {work_item, %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: []}}}
     end
   end
 
