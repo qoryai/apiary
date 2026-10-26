@@ -2,7 +2,7 @@ defmodule Apiary.Stacks.Sources do
   # The harness sources Workspace settings › Workflow offers a workspace
   # (`ApiaryWeb.WorkflowLive`), the stacks each has, the workflows each stack lists, and
   # the save of the workspace's document. Every read goes through the adapters' calls
-  # (`Apiary.Adapters.Calls`: `resolve` and `read`), as a run's walk reads
+  # (`Apiary.Adapters.Calls`: `resolve`, `read` and `read-public`), as a run's walk reads
   # (`Apiary.Harnesses.Walk`), and writes nothing.
   #
   # ## The sources
@@ -26,13 +26,14 @@ defmodule Apiary.Stacks.Sources do
   #
   # `read/2` reads the stacks of one source and the workflows each lists, the names of its
   # `qory-stack.yaml`'s `workflows`. An assigned source or an address is resolved at every
-  # adapter with a `call_url`, in the order of their names, and the first result under a
-  # live grant of a connected connection that the rule allows
-  # (`Apiary.Harnesses.allowed?/3`) is its link. None is `:not_covered`: Qory Apiary reads
-  # a harness source only through a link, and a run's walk could not read it either. A
-  # source with `stack` is that export of its root harness file, one with `path` the
-  # `qory-stack.yaml` in that folder, and a root the stacks its harness file exports or
-  # its `qory-stack.yaml`, as for a linked collection.
+  # adapter with a `call_url`, in the order of their names, as a run's walk resolves it:
+  # the first result under a live grant of a connected connection that the rule allows
+  # (`Apiary.Harnesses.allowed?/3`) is its link; with none, the first result with
+  # `public`, true, makes it public, read at that result's `public_ref` (`read-public`),
+  # with no grant and no link. Neither is `:not_covered`, and a run's walk could not read
+  # it either. A source with `stack` is that export of its root harness file, one with
+  # `path` the `qory-stack.yaml` in that folder, and a root the stacks its harness file
+  # exports or its `qory-stack.yaml`, as for a linked collection.
   #
   # ## Limits
   #
@@ -463,8 +464,9 @@ defmodule Apiary.Stacks.Sources do
     |> Enum.join("/")
   end
 
-  # The link of `harness_source`: the first result of an adapter, in the order of their
-  # names, under a live grant of a connected connection that the rule allows.
+  # Where `harness_source` is read: its link, the first result of an adapter, in the order
+  # of their names, under a live grant of a connected connection that the rule allows;
+  # else the first public result, with no grant.
   defp locate(%Organisation{id: organisation_id}, %{"git" => git} = harness_source, deadline) do
     if CallWire.address?(git),
       do: locate_at(adapters(), organisation_id, git, harness_source, deadline),
@@ -479,22 +481,53 @@ defmodule Apiary.Stacks.Sources do
     )
   end
 
-  # An adapter whose resolve fails is passed over; with no link found, the source is
-  # `:unreadable` when any failed, since that adapter may have covered it.
+  # An adapter whose resolve fails is passed over. A link at a later adapter comes before
+  # a public result at an earlier one, as in a run's walk. With neither, the source is
+  # `:unreadable` when any resolve failed, since that adapter may have covered it.
   defp locate_at(adapters, organisation_id, git, harness_source, deadline) do
-    Enum.reduce_while(adapters, {:error, :not_covered}, fn adapter, none ->
+    adapters
+    |> Enum.reduce_while(%{public: nil, failed: false}, fn adapter, found ->
       with opts when is_list(opts) <- call_opts(deadline) || {:error, :late},
-           {:ok, [%{grant_ref: grant_ref, resource_ref: resource_ref}]} <-
-             Calls.resolve(adapter, [git], opts),
-           %Grant{} = grant <- live_grant(adapter, grant_ref),
-           true <- Harnesses.allowed?(organisation_id, grant.organisation_id, harness_source) do
-        {:halt, {:ok, location(adapter, grant_ref, resource_ref)}}
+           {:ok, [%{} = result]} <- Calls.resolve(adapter, [git], opts) do
+        case linked(adapter, result, organisation_id, harness_source) do
+          %{} = link -> {:halt, {:ok, link}}
+          nil -> {:cont, %{found | public: found.public || public(adapter, result)}}
+        end
       else
-        {:error, _failure} -> {:cont, {:error, :unreadable}}
-        _not_allowed -> {:cont, none}
+        {:error, _failure} -> {:cont, %{found | failed: true}}
+        _other -> {:cont, found}
       end
     end)
+    |> case do
+      {:ok, link} -> {:ok, link}
+      %{public: %{} = public} -> {:ok, public}
+      %{failed: true} -> {:error, :unreadable}
+      _none -> {:error, :not_covered}
+    end
   end
+
+  # The link of a covered result under a live grant the rule allows; nil for none.
+  defp linked(
+         adapter,
+         %{grant_ref: grant_ref, resource_ref: resource_ref},
+         organisation_id,
+         source
+       ) do
+    with %Grant{} = grant <- live_grant(adapter, grant_ref),
+         true <- Harnesses.allowed?(organisation_id, grant.organisation_id, source),
+         do: location(adapter, grant_ref, resource_ref),
+         else: (_not_allowed -> nil)
+  end
+
+  defp linked(_adapter, _result, _organisation_id, _source), do: nil
+
+  # A public result's location, with no grant, at its `public_ref`: a covered result's
+  # `resource_ref` may be a ref only its grant's organisation may use, so it is never read
+  # with no grant. Nil for a result that is not public.
+  defp public(adapter, %{public: true, public_ref: public_ref}),
+    do: location(adapter, nil, public_ref)
+
+  defp public(_adapter, _result), do: nil
 
   # The live grant of `adapter` with `grant_ref`, of a connected connection, whatever its
   # organisation; nil for none.
@@ -573,9 +606,10 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The document at `path` at `location`, read at `at` before `deadline`: `{:ok, content
-  # | nil, resolved_at}`, or `{:error, :unreadable}` for a path a read does not take, a
-  # call that failed, or no time left.
+  # The document at `path` at `location`, read at `at` before `deadline`, with no grant
+  # for a public source's location (`read-public`): `{:ok, content | nil, resolved_at}`,
+  # or `{:error, :unreadable}` for a path a read does not take, a call that failed, or no
+  # time left.
   defp read_file(location, path, at, deadline) do
     request = %{
       grant_ref: location.grant_ref,
@@ -587,7 +621,7 @@ defmodule Apiary.Stacks.Sources do
     opts = call_opts(deadline)
 
     if CallWire.document_path?(path) and CallWire.version_ref?(at) and is_list(opts) do
-      case Calls.read_document(location.adapter, request, opts) do
+      case Calls.read_at(location.adapter, request, opts) do
         {:ok, %{found: true, content: content, resolved_at: version}} -> {:ok, content, version}
         {:ok, %{found: false, resolved_at: version}} -> {:ok, nil, version}
         {:error, _failure} -> {:error, :unreadable}

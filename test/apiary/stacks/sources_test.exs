@@ -20,6 +20,7 @@ defmodule Apiary.Stacks.SourcesTest do
   @harness "https://code.example.com/acme/harness"
   @app "https://code.example.com/acme/app"
   @team "https://code.example.com/example-org/team-harness"
+  @public "https://code.example.com/example-org/public-harness"
 
   @stack "modules:\n  - name: core\n    source: {path: modules/core}\n"
   @workflows "workflows:\n  triage: {}\n  fix:\n    access: write\n"
@@ -65,6 +66,12 @@ defmodule Apiary.Stacks.SourcesTest do
     covered = Map.put(ctx.covered, instance.adapter.id, %{@team => {"G_i", "R_team"}})
     serve_calls([ctx.adapter, instance], [covered: covered, files: @files] ++ opts)
     instance_scope
+  end
+
+  # The public reads among `calls`, in order: `{resource_ref, path, at}`.
+  defp public_reads(calls) do
+    for {"read-public", call} <- calls,
+        do: {call["resource_ref"], call["path"], call["at"]}
   end
 
   defp assignment(organisation_id, source, by) do
@@ -214,6 +221,23 @@ defmodule Apiary.Stacks.SourcesTest do
              }
     end
 
+    test "a public one is read at its ref as public, with no grant", ctx do
+      covered = Map.put(ctx.covered, ctx.adapter.adapter.id, %{@public => {:public, "P_pub"}})
+      files = %{{"P_pub", "qory-stack.yaml"} => @stack <> @workflows}
+      serve_calls([ctx.adapter], covered: covered, files: files)
+      assignment(ctx.scope.organisation.id, %{"git" => @public, "ref" => "v1"}, ctx.scope)
+      [source] = Sources.assigned(ctx.scope)
+
+      assert {:ok, [%{base: %{"git" => @public, "ref" => "v1"}, workflows: ["fix", "triage"]}]} =
+               Sources.read(ctx.scope, source)
+
+      calls = calls()
+      assert [] = for({"read", _call} <- calls, do: :read)
+      assert [_ | _] = public = for({"read-public", call} <- calls, do: call)
+      assert Enum.all?(public, &(&1["resource_ref"] == "P_pub" and &1["at"] in ["v1", "c-P_pub"]))
+      refute Enum.any?(public, &Map.has_key?(&1, "grant_ref"))
+    end
+
     test "one is found past an adapter whose calls fail", ctx do
       admin = instance_grant(ctx, down: [ctx.adapter.adapter.id])
       assignment(ctx.scope.organisation.id, %{"git" => @team, "ref" => "v1"}, admin)
@@ -254,6 +278,69 @@ defmodule Apiary.Stacks.SourcesTest do
         {:ok, source} = Sources.address(git)
         assert Sources.read(ctx.scope, source) == {:error, :not_covered}
       end
+    end
+
+    test "a public one is read at HEAD as public, and a run's walk reads its save", ctx do
+      covered = %{ctx.adapter.adapter.id => %{@public => {:public, "P_pub"}}}
+      files = %{{"P_pub", "qory-stack.yaml"} => @stack <> @workflows}
+      serve_calls([ctx.adapter], covered: covered, files: files)
+      {:ok, source} = Sources.address(@public)
+
+      assert {:ok, [%{name: nil, base: base, workflows: ["fix", "triage"]}]} =
+               Sources.read(ctx.scope, source)
+
+      assert base == %{"git" => @public, "ref" => "HEAD"}
+      assert [{"P_pub", "harness.yaml", "HEAD"} | _] = public_reads(calls())
+
+      assert {:ok, _stored} = Sources.save(ctx.scope, base, "triage")
+
+      input = %{
+        organisation: ctx.scope.organisation,
+        workspace: ctx.scope.workspace,
+        target: nil,
+        workflow: "triage"
+      }
+
+      assert {:ok, walked} = Walk.run(input)
+      assert walked.harness_links == []
+      assert walked.pins == [%{"git" => @public, "ref" => "HEAD", "at" => "c-P_pub"}]
+    end
+
+    test "a source a grant covers that the rule does not allow is read as public, at its public_ref",
+         ctx do
+      instance = call_adapter_fixture()
+      instance_scope = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
+      live_grant_fixture(instance_scope.organisation.id, instance.adapter, connection, "G_i")
+
+      covered = %{instance.adapter.id => %{@team => {"G_i", "R_team", {:public, "P_team"}}}}
+      files = %{{"P_team", "qory-stack.yaml"} => @stack <> "workflows:\n  review: {}\n"}
+      serve_calls([ctx.adapter, instance], covered: covered, files: files)
+      {:ok, source} = Sources.address(@team)
+
+      assert {:ok, [%{workflows: ["review"]}]} = Sources.read(ctx.scope, source)
+
+      calls = calls()
+      assert [] = for({"read", _call} <- calls, do: :read)
+      assert [_ | _] = reads = public_reads(calls)
+      assert Enum.all?(reads, fn {resource_ref, _path, _at} -> resource_ref == "P_team" end)
+    end
+
+    test "a link at a later adapter comes before a public result at an earlier one", ctx do
+      first = call_adapter_fixture(%{name: "a-public-#{System.unique_integer([:positive])}"})
+      assert first.adapter.name < ctx.adapter.adapter.name
+
+      covered =
+        Map.put(ctx.covered, first.adapter.id, %{@harness => {:public, "P_harness"}})
+
+      serve_calls([ctx.adapter, first], covered: covered, files: @files)
+      {:ok, source} = Sources.address(@harness)
+
+      assert {:ok, [%{name: "triage"}]} = Sources.read(ctx.scope, source)
+
+      calls = calls()
+      assert public_reads(calls) == []
+      assert [_ | _] = for({"read", %{"grant_ref" => "G_acme"}} <- calls, do: :read)
     end
 
     test "a person reads sources at most 10 times a minute", ctx do

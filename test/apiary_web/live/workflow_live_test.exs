@@ -307,7 +307,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#workflow_workflow[disabled]")
     end
 
-    test "that no linked repository or assignment covers says so", %{
+    test "that no linked repository or assignment covers, and that is not public, says so", %{
       conn: conn,
       scope: scope,
       path: path
@@ -319,8 +319,76 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                "#workflow-read-error",
-               "Link https://public.example.org/qory/stack to #{scope.organisation.name}, or ask an instance admin to assign it"
+               "Link https://public.example.org/qory/stack to #{scope.organisation.name}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
              )
+    end
+
+    test "that is public lists the workflows of its stack at HEAD, read as public, and saves",
+         %{conn: conn, scope: scope, path: path, adapter: adapter, covered: covered} do
+      public = "https://code.example.com/example-org/public-harness"
+      covered = Map.update!(covered, adapter.adapter.id, &Map.put(&1, public, {:public, "P_pub"}))
+
+      files =
+        Map.put(@files, {"P_pub", "qory-stack.yaml"}, @stack <> "workflows:\n  review: {}\n")
+
+      serve_calls([adapter], covered: covered, files: files)
+
+      view = open(conn, path)
+      change(view, %{source: "address"})
+      calls()
+      change(view, %{source: "address", address: public})
+
+      assert has_element?(view, ~s(#workflow_workflow option[value="0/review"]), "review")
+      refute has_element?(view, "#workflow-read-error")
+
+      reads = for {path, call} <- calls(), path in ["read", "read-public"], do: {path, call}
+      assert [_ | _] = reads
+
+      assert Enum.all?(reads, fn {path, call} ->
+               path == "read-public" and call["resource_ref"] == "P_pub" and
+                 not Map.has_key?(call, "grant_ref")
+             end)
+
+      assert {"read-public", %{"path" => "harness.yaml", "at" => "HEAD"}} = hd(reads)
+
+      change(view, %{source: "address", address: public, workflow: "0/review"})
+      view |> form("#workflow-form", workflow: %{workflow: "0/review"}) |> render_submit()
+
+      assert Sources.current(scope.workspace) == %{
+               workflow: "review",
+               base: %{"git" => public, "ref" => "HEAD"}
+             }
+    end
+
+    test "that a grant covers with no assignment, and that is public, is read at its public ref",
+         %{conn: conn, path: path, adapter: adapter, covered: covered} do
+      instance = call_adapter_fixture()
+      admin = instance_admin_scope()
+      {connection, _nonce} = connection_fixture(admin, instance.adapter, :listed)
+      live_grant_fixture(admin.organisation.id, instance.adapter, connection, "G_i")
+
+      covered =
+        Map.put(covered, instance.adapter.id, %{@team => {"G_i", "R_team", {:public, "P_team"}}})
+
+      files =
+        Map.put(@files, {"P_team", "qory-stack.yaml"}, @stack <> "workflows:\n  audit: {}\n")
+
+      serve_calls([adapter, instance], covered: covered, files: files)
+
+      view = open(conn, path)
+      change(view, %{source: "address"})
+      calls()
+      change(view, %{source: "address", address: @team})
+
+      assert has_element?(view, ~s(#workflow_workflow option[value="0/audit"]), "audit")
+
+      resources =
+        for {path, call} <- calls(),
+            path in ["read", "read-public"],
+            do: {path, call["resource_ref"]}
+
+      assert [_ | _] = resources
+      assert Enum.uniq(resources) == [{"read-public", "P_team"}]
     end
 
     test "that a link covers is read like a linked repository", %{conn: conn, path: path} do

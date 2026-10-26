@@ -195,6 +195,14 @@ defmodule Apiary.Adapters.Calls do
     typed(adapter, "read", members, opts)
   end
 
+  @doc false
+  # read_at/3 reads as a location allows: `read_document/3` under the request's
+  # `grant_ref`, or `read_public/3` for a request whose `grant_ref` is nil, whose
+  # `resource_ref` is then a public result's `public_ref`.
+  @spec read_at(Node.t(), map, keyword) :: {:ok, map} | {:error, CallFailure.t()}
+  def read_at(adapter, %{grant_ref: nil} = request, opts), do: read_public(adapter, request, opts)
+  def read_at(adapter, %{} = request, opts), do: read_document(adapter, request, opts)
+
   # A call whose body its schema allows (`Apiary.Adapters.CallWire.call?/2`), else an
   # `ArgumentError` that shows no value; and its answer, read to its schema, else
   # `:invalid_answer`.
