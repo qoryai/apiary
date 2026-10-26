@@ -1032,7 +1032,7 @@ defmodule Apiary.OrganisationsTest do
       end
     end
 
-    test "has_workspace?/1 counts only workspaces in use" do
+    test "has_workspace?/1 counts only workspaces in use; a marked Main keeps its name" do
       %{scope: scope, organisation: organisation, workspace: main} = sign_up_fixture()
       assert Organisations.has_workspace?(organisation)
 
@@ -1047,6 +1047,19 @@ defmodule Apiary.OrganisationsTest do
       |> Repo.update!()
 
       refute Organisations.has_workspace?(scope)
+
+      # Main marked for deletion keeps its name, so no first workspace is created. The
+      # scope loaded again is at no workspace.
+      scope = Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
+      assert scope.workspace == nil
+
+      assert {:error, changeset} =
+               Organisations.create_first_workspace(scope, %{"domain" => "software"})
+
+      assert %{name: ["is already the name of a workspace in this organisation"]} =
+               errors_on(changeset)
+
+      assert Organisations.list_workspaces(scope) == []
     end
   end
 

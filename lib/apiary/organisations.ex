@@ -1506,7 +1506,9 @@ defmodule Apiary.Organisations do
 
   `{:ok, workspace}`; `{:error, :exists}` where the organisation has a workspace in use
   already, counted under the organisation's lock, so of two calls at once one creates it;
-  otherwise `create_workspace/2`'s answers.
+  otherwise `create_workspace/2`'s answers. A workspace marked for deletion is not in
+  use, but keeps its name: where it is named "#{@default_workspace_name}", the answer is
+  `{:error, changeset}` with its error on `name`.
   """
   @spec create_first_workspace(Scope.t(), map) ::
           {:ok, %Workspace{}}
@@ -1517,7 +1519,7 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  has_workspace?/1 says whether the organisation has a workspace in use: false for one
+  has_workspace?/1 is true when the organisation has a workspace in use: false for one
   created with none, until `create_first_workspace/2` creates it.
   """
   @spec has_workspace?(%Organisation{} | Scope.t()) :: boolean
