@@ -21,7 +21,6 @@ defmodule ApiaryWeb.BacklogLive.EmptyTest do
   @forge {{"issue", "issues"}, {"repository", "repositories"}}
   @tracker {{"task", "tasks"}, {"project", "projects"}}
   @helpdesk {{"incident", "incidents"}, {"queue", "queues"}}
-  @none {nil, nil}
 
   setup :register_and_log_in_user
 
@@ -126,107 +125,70 @@ defmodule ApiaryWeb.BacklogLive.EmptyTest do
   # The letter of a source's tile, which a row's text starts with.
   defp tile(%{adapter: adapter}), do: String.first(adapter.name)
 
-  describe "no integration that sends tickets" do
-    test "with none offered, says that an instance admin adds them, to anyone", ctx do
-      org = ctx.scope.organisation.name
+  describe "no work source" do
+    test "with no integration: the line, and Connect a work source to the set-up", ctx do
+      workspace = ctx.scope.workspace.name
+      # An instance adapter the organisation is not connected through changes nothing.
+      offered("Tracker", @tracker)
 
-      for conn <- [ctx.conn, member(ctx.scope)] do
-        {:ok, view, _html} = live(conn, page(ctx.scope))
+      {:ok, view, html} = live(ctx.conn, page(ctx.scope))
 
-        assert has_element?(view, ~s(#backlog-empty[data-state="none"]))
-        assert heading(view) == "#{org} has no integration that sends tickets"
+      assert has_element?(view, ~s(#backlog-empty[data-state="no_source"]))
+      assert has_element?(view, "h1", "Backlog")
 
-        assert words(view, "#backlog-empty-line") ==
-                 "Tickets come into the Backlog from another system, such as an issue " <>
-                   "tracker, a support desk or a forge, through an integration that " <>
-                   "#{org} installs."
+      assert words(view, "#backlog-empty-line") ==
+               "No work source is connected to #{workspace}. Connect one to bring its " <>
+                 "tickets here."
 
-        assert words(view, "#backlog-empty-instance") ==
-                 "An instance admin adds integrations in Instance settings › Adapters. " <>
-                   "#{org} can then install them in Organisation settings › Integrations."
+      assert words(view, "#backlog-empty-connect") == "Connect a work source"
 
-        refute has_element?(view, "#backlog-empty-offered")
-        refute has_element?(view, "#backlog-empty-who")
-        refute has_element?(view, "#page-header-description")
-        refute has_element?(view, "#backlog")
-      end
-    end
+      assert attribute(view, "#backlog-empty-connect", "href") ==
+               ["/#{ctx.scope.organisation.slug}/set-up"]
 
-    test "one card for an owner: the name, what it sends, and Install to its page", ctx do
-      adapter = offered("Tracker", @tracker)
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-      card = "#backlog-empty-offered-#{adapter.public_id}"
-      title = "Organisation settings › Integrations › #{adapter.name}"
-
-      assert words(view, "#backlog-empty-offered h3") ==
-               "Integrations #{ctx.scope.organisation.name} can install"
-
-      assert words(view, card) ==
-               "#{String.first(adapter.name)} #{adapter.name} " <>
-                 "Tasks from projects Install"
-
-      for link <- ["#{card}-name", "#{card}-install"] do
-        assert attribute(view, link, "href") == [settings(ctx.scope, adapter)]
-        assert attribute(view, link, "title") == [title]
-      end
-
-      refute has_element?(view, "#backlog-empty-instance")
+      refute html =~ "Not Found"
       refute has_element?(view, "#backlog-empty-who")
-      refute has_element?(view, "#backlog-empty-offered-all")
+      refute has_element?(view, "#backlog-empty-offered")
+      refute has_element?(view, "#page-header-description")
+      refute has_element?(view, "#backlog")
     end
 
-    test "a member reads the cards without Install, who installs, and whom to ask", ctx do
-      adapter = offered("Tracker", @tracker)
+    test "with an integration whose collections are assigned to no workspace: the same", ctx do
+      tracker = source(ctx.scope, "Tracker", @tracker)
+      collection(ctx.scope, tracker, %{workspace_id: nil})
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      assert has_element?(view, ~s(#backlog-empty[data-state="no_source"]))
+      assert has_element?(view, "#backlog-empty-connect")
+    end
+
+    test "a collection of a connection that ended is no work source", ctx do
+      tracker = source(ctx.scope, "Tracker", @tracker)
+      collection(ctx.scope, tracker)
+
+      tracker.connection
+      |> Ecto.Changeset.change(
+        state: :ended,
+        ended_at: DateTime.utc_now(),
+        ended_reason: :adapter_reported
+      )
+      |> Repo.update!()
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
+      assert has_element?(view, ~s(#backlog-empty[data-state="no_source"]))
+    end
+
+    test "a member reads who installs integrations, and whom to ask, in place of the button",
+         ctx do
       admin = admin(ctx.scope)
       {:ok, view, _html} = live(member(ctx.scope), page(ctx.scope))
-      card = "#backlog-empty-offered-#{adapter.public_id}"
 
-      assert has_element?(view, "#{card}-name")
-      refute has_element?(view, "#{card}-install")
+      assert has_element?(view, "#backlog-empty-line")
+      refute has_element?(view, "#backlog-empty-connect")
 
       assert texts(view, "#backlog-empty-who p") == [
                "Owners and admins of #{ctx.scope.organisation.name} install integrations.",
                "Ask #{short(ctx)} or #{short(admin)} to install one."
              ]
-    end
-
-    test "several cards by name, each in its adapter's words; Tickets for one with none",
-         ctx do
-      helpdesk = offered("Helpdesk", @helpdesk)
-      forge = offered("Forge", @forge)
-      plain = offered("Plain", @none)
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-
-      assert attribute(view, "#backlog-empty-offered li", "id") ==
-               Enum.map([forge, helpdesk, plain], &"backlog-empty-offered-#{&1.public_id}")
-
-      assert texts(view, "#backlog-empty-offered li .text-muted") ==
-               ["Issues from repositories", "Incidents from queues", "Tickets"]
-    end
-
-    test "more than six: the first six by name, then Show all", ctx do
-      for n <- 1..7, do: offered("Tracker #{n}", @tracker)
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-
-      assert length(texts(view, "#backlog-empty-offered li")) == 6
-      assert words(view, "#backlog-empty-offered-all") == "Show all"
-
-      assert attribute(view, "#backlog-empty-offered-all", "href") ==
-               ["/#{ctx.scope.organisation.slug}/settings/integrations"]
-    end
-
-    test "offers no adapter without items, nor one the organisation is connected through",
-         ctx do
-      %{adapter: plain} = source(ctx.scope, "Plain", @none)
-
-      {1, _} = Repo.update_all(from(n in Node, where: n.id == ^plain.id), set: [items: false])
-      quiet = offered("Quiet", @none)
-      {1, _} = Repo.update_all(from(n in Node, where: n.id == ^quiet.id), set: [items: false])
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-      assert has_element?(view, ~s(#backlog-empty[data-state="none"]))
-      refute has_element?(view, "#backlog-empty-offered")
-      assert has_element?(view, "#backlog-empty-instance")
     end
   end
 
@@ -264,109 +226,6 @@ defmodule ApiaryWeb.BacklogLive.EmptyTest do
                "#{forge.name} hasn't listed its repositories yet",
                "#{helpdesk.name} hasn't listed its queues yet"
              ]
-    end
-  end
-
-  describe "nothing assigned to the workspace" do
-    test "with one integration: how many it lists, and Assign in its words", ctx do
-      tracker = source(ctx.scope, "Tracker", @tracker)
-      for _ <- 1..12, do: collection(ctx.scope, tracker, %{workspace_id: nil})
-      org = ctx.scope.organisation.name
-      workspace = ctx.scope.workspace.name
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-      assert has_element?(view, ~s(#backlog-empty[data-state="unassigned"]))
-      assert heading(view) == "No project is assigned to #{workspace}"
-
-      assert words(view, "#backlog-empty-line") ==
-               "#{tracker.adapter.name} lists 12 projects for #{org}. Assign the ones " <>
-                 "#{workspace} works on, and their tasks appear here."
-
-      assign = "#backlog-empty-assign-#{tracker.adapter.public_id}"
-      assert words(view, assign) == "Assign projects"
-      assert attribute(view, assign, "href") == [settings(ctx.scope, tracker.adapter)]
-
-      assert words(view, "#{assign}-caption") ==
-               "Organisation settings › Integrations › #{tracker.adapter.name}"
-
-      refute has_element?(view, "#backlog-empty-who")
-    end
-
-    test "one collection in the singular", ctx do
-      helpdesk = source(ctx.scope, "Helpdesk", @helpdesk)
-      collection(ctx.scope, helpdesk, %{workspace_id: nil})
-      workspace = ctx.scope.workspace.name
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-
-      assert words(view, "#backlog-empty-line") ==
-               "#{helpdesk.adapter.name} lists 1 queue for #{ctx.scope.organisation.name}. " <>
-                 "Assign it if #{workspace} works on it, and its incidents appear here."
-    end
-
-    test "a member reads who assigns, and whom to ask", ctx do
-      helpdesk = source(ctx.scope, "Helpdesk", @helpdesk)
-      collection(ctx.scope, helpdesk, %{workspace_id: nil})
-      {:ok, view, _html} = live(member(ctx.scope), page(ctx.scope))
-
-      refute has_element?(view, "#backlog-empty-assign-#{helpdesk.adapter.public_id}")
-
-      assert texts(view, "#backlog-empty-who p") == [
-               "Only owners and admins of #{ctx.scope.organisation.name} assign queues " <>
-                 "to workspaces.",
-               "Ask #{short(ctx)} to assign the ones #{ctx.scope.workspace.name} works on."
-             ]
-    end
-
-    test "with several: the nouns joined, a row for each with its count and Assign", ctx do
-      forge = source(ctx.scope, "Forge", @forge)
-      tracker = source(ctx.scope, "Tracker", @tracker)
-      for _ <- 1..3, do: collection(ctx.scope, forge, %{workspace_id: nil})
-      collection(ctx.scope, tracker, %{workspace_id: nil})
-      workspace = ctx.scope.workspace.name
-
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-      assert heading(view) == "No repository or project is assigned to #{workspace}"
-
-      assert words(view, "#backlog-empty-line") ==
-               "Assign the repositories and projects #{workspace} works on, and their " <>
-                 "tickets appear here."
-
-      assert attribute(view, "#backlog-empty-sources", "aria-label") == ["Integrations"]
-
-      assert texts(view, "#backlog-empty-sources li") == [
-               "#{tile(forge)}#{forge.adapter.name} 3 repositories Assign repositories",
-               "#{tile(tracker)}#{tracker.adapter.name} 1 project Assign projects"
-             ]
-
-      assert attribute(view, "#backlog-empty-assign-#{tracker.adapter.public_id}", "title") ==
-               ["Organisation settings › Integrations › #{tracker.adapter.name}"]
-
-      {:ok, view, _html} = live(member(ctx.scope), page(ctx.scope))
-      refute has_element?(view, "#backlog-empty-sources a")
-
-      assert texts(view, "#backlog-empty-who p") |> hd() ==
-               "Only owners and admins of #{ctx.scope.organisation.name} assign " <>
-                 "repositories and projects to workspaces."
-    end
-
-    test "a source that names no words reads collection and tickets", ctx do
-      plain = source(ctx.scope, "Plain", @none)
-      forge = source(ctx.scope, "Forge", @forge)
-      collection(ctx.scope, plain, %{workspace_id: nil})
-      workspace = ctx.scope.workspace.name
-      {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
-
-      assert heading(view) == "No repository or collection is assigned to #{workspace}"
-
-      assert words(view, "#backlog-empty-line") ==
-               "Assign the repositories and collections #{workspace} works on, and their " <>
-                 "tickets appear here."
-
-      assert words(view, "#backlog-empty-assign-#{plain.adapter.public_id}") ==
-               "Assign collections"
-
-      assert words(view, "#backlog-empty-assign-#{forge.adapter.public_id}") ==
-               "Assign repositories"
     end
   end
 
