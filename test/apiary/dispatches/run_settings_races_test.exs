@@ -82,8 +82,6 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
         keys: [%{value_id: "main", value: "sk-team-races"}]
       })
 
-    {:ok, provider} = Connections.add_provider_model(scope, provider, %{model_id: "team-large"})
-
     {:ok, _choice} =
       ModelChoices.put_choice(scope, :workspace, %{
         provider: provider.public_id,

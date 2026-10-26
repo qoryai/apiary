@@ -302,7 +302,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"provider.write",
-      "add, change and remove a model provider, its keys and its models, and where and how it applies; set the organisation's default model choice",
+      "add, change and remove a model provider and its keys, and where and how it applies; set the organisation's default model choice",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation

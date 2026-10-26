@@ -74,11 +74,12 @@ defmodule Apiary.Dispatches.DispatchRun do
   # code, does not apply to the workspace, has a description the catalogue changed since
   # the provider was added, or has an endpoint address the endpoint rule refuses
   # (`provider_gone`); no longer serves the runtime (`runtime_unserved`); no longer has
-  # the chosen key (`key_gone`); or no longer lists the chosen model or effort value
-  # (`model_gone`) (`Apiary.Dispatches.RunSettings`), 410 gone; `secrets_not_allowed`, a
-  # claimed explore run whose model choice has a provider, whose gateway has an active key
-  # made without the stored-secrets flag (`allow_secrets`), so the gateway may not get
-  # the run's model key (`Apiary.Dispatches.Handover`), 410 gone; `run_refused`, a run
+  # the chosen key (`key_gone`); or has no model for the run, or no longer offers the
+  # chosen effort value (`model_gone`) (`Apiary.Dispatches.RunSettings`), 410 gone;
+  # `secrets_not_allowed`, a claimed explore run whose model choice has a provider, whose
+  # gateway has an active key made without the stored-secrets flag (`allow_secrets`), so
+  # the gateway may not get the run's model key (`Apiary.Dispatches.Handover`), 410 gone;
+  # `run_refused`, a run
   # its gateway refused before it started (`dev.qory.run.refused`), not queued again, with
   # the refusal's code kept as `end_detail` (`Apiary.Dispatches.RunEnd.refused/1`);
   # `build_failed`, a waiting run held for its target's build, whose build failed, or was
