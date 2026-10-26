@@ -26,11 +26,18 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # (`Apiary.Setup.review_connections/1`) and sends the admin on, to their organisation's
   # workspace set-up while it has no workspace (`ApiaryWeb.UserAuth.signed_in_path/1`).
   #
+  # The page asks for a recent sign-in, as Instance settings › Mail does
+  # (`ApiaryWeb.UserAuth`'s sudo mode), for every step: the mail step saves the mail
+  # server, and whoever controls the mail receives every log-in link. An instance admin
+  # arrives here right after a sign-in.
+  #
   # The adapters' steps belong to a feature hidden from the documentation, so the module
   # is too.
   @moduledoc false
 
   use ApiaryWeb, :live_view
+
+  on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
 
   alias Apiary.{Access, AccessKeys, Adapters, Mail, Setup}
   alias ApiaryWeb.{AdapterComponents, SetUpComponents}
