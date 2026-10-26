@@ -1388,6 +1388,120 @@ defmodule Apiary.Harnesses.WalkTest do
     end
   end
 
+  describe "the ref of a source in the walk" do
+    @allowed_refs [
+      "HEAD",
+      "main",
+      "release/1.0",
+      "v1.2.0",
+      "refs/heads/main",
+      "refs/tags/v1.2.0",
+      String.duplicate("0a", 20),
+      String.duplicate("b1", 32)
+    ]
+    @refused_refs ["refs/pull/1/head", "refs/merge-requests/1/head", "refs/remotes/x"]
+    # A base's stack whose one module is at a full commit id, so it is not read.
+    @ref_stack "modules:\n  - source: {git: \"#{@lint}\", ref: \"#{@commit}\"}\n"
+
+    # A walk of the target's file, which no save check reads, whose base is `git` at
+    # `ref`: linked at `R_harness` for `@harness`, public at `R_public` for `@public`.
+    defp walk_ref(ctx, git, ref) do
+      serve([ctx.run],
+        covered: covering(ctx, %{@public => {:public, "R_public"}}),
+        files: %{
+          {"R_app", "harness.yaml"} => "harness:\n  extends: {git: \"#{git}\", ref: '#{ref}'}\n",
+          {"R_harness", "qory-stack.yaml"} => @ref_stack,
+          {"R_public", "qory-stack.yaml"} => @ref_stack
+        }
+      )
+
+      Walk.run(ctx.input)
+    end
+
+    test "each allowed form is read, for a linked and a public source", ctx do
+      for git <- [@harness, @public], ref <- @allowed_refs do
+        assert {:ok, walked} = walk_ref(ctx, git, ref), "#{git} #{ref}"
+        assert Enum.any?(walked.pins, &match?(%{"git" => ^git, "ref" => ^ref}, &1))
+        calls = calls()
+
+        {resource, read} =
+          if git == @harness,
+            do: {"R_harness", reads(calls)},
+            else: {"R_public", public_reads(calls)}
+
+        assert {resource, "qory-stack.yaml", ref} in read
+      end
+    end
+
+    test "any other ref under refs/ fails invalid before a call, for a linked and a public source",
+         ctx do
+      for git <- [@harness, @public], ref <- @refused_refs do
+        assert {:failed, %{failure: :invalid, source: ^git, rule: rule}} =
+                 walk_ref(ctx, git, ref)
+
+        assert rule == %{
+                 "message" =>
+                   "write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                     "refs/tags/<name> or a full commit id: people without write access can " <>
+                     "change other refs, such as a pull request's",
+                 "values" => %{"ref" => ref}
+               }
+
+        assert resolves(calls()) == [[@target]]
+      end
+    end
+
+    test "a module of a public base's stack at another ref under refs/ fails invalid", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main}\n")
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@public => {:public, "R_public"}}),
+        files: %{
+          {"R_public", "qory-stack.yaml"} =>
+            "modules:\n  - source: {git: \"#{@tools}\", ref: refs/pull/1/head}\n"
+        }
+      )
+
+      assert {:failed, %{failure: :invalid, source: @tools, rule: %{"values" => values}}} =
+               Walk.run(ctx.input)
+
+      assert values == %{"ref" => "refs/pull/1/head"}
+    end
+
+    test "a hidden harness's ref rule has no ref", ctx do
+      admin = %{
+        instance_admin_scope()
+        | organisation: ctx.scope.organisation,
+          workspace: ctx.scope.workspace
+      }
+
+      {:ok, _stack} =
+        Stacks.put_stack(
+          admin,
+          {:workspace, ctx.scope.workspace, "explore"},
+          "extends: {git: \"#{@harness}\", ref: v1}\n"
+        )
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: %{
+          {"R_harness", "qory-stack.yaml"} =>
+            "modules:\n  - source: {git: \"#{@tools}\", ref: refs/pull/1/head}\n"
+        }
+      )
+
+      assert {:failed, %{failure: :invalid, source: nil, rule: rule}} = Walk.run(ctx.input)
+
+      assert rule == %{
+               "message" =>
+                 "write the ref as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                   "refs/tags/<name> or a full commit id: people without write access can " <>
+                   "change other refs, such as a pull request's",
+               "values" => %{}
+             }
+    end
+  end
+
   describe "refused before any call to resolve a source" do
     setup ctx do
       serve([ctx.run], covered: covering(ctx), files: @base_files)

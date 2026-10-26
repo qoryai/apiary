@@ -32,7 +32,7 @@ defmodule Apiary.Stacks.Document do
   #      but a scheme at its start: `https://user@host/r?q` shows as `https://host/r`.
   #      When a `?` or `#` comes before the last `@`, the error shows "the address"
   #      instead. So an error shows no user name, password or query, whatever the
-  #      address's shape.
+  #      address's shape. Then each text `ref` of those sources (`ref_error/1`).
   #   6. The run contract's `harness_section` (`documents.schema.json` beside this file,
   #      vendored from the integrations contract at the commit in `.contract-ref`),
   #      validated with JSV: git sources and exports only, no `{path}` source, no module
@@ -172,6 +172,56 @@ defmodule Apiary.Stacks.Document do
     section
     |> addresses()
     |> Enum.each(&address/1)
+
+    for ref <- refs(section), error = ref_error(ref), do: throw({__MODULE__, error})
+    :ok
+  end
+
+  # The text `ref`s of the base and of the modules' sources, in order.
+  defp refs(section) do
+    base =
+      case section do
+        %{"extends" => %{"ref" => ref}} when is_binary(ref) -> [ref]
+        _other -> []
+      end
+
+    modules =
+      case section do
+        %{"modules" => modules} when is_list(modules) ->
+          for %{"source" => %{"ref" => ref}} when is_binary(ref) <- modules, do: ref
+
+        _other ->
+          []
+      end
+
+    base ++ modules
+  end
+
+  # Namespaces under `refs/` other than branches and tags, which git also finds by a
+  # short name: `git fetch` resolves `pull/1/head` as `refs/pull/1/head`.
+  @other_namespaces ~w(pull merge-requests remotes)
+
+  @doc false
+  # ref_error/1 is the refusal of `ref`, a harness source's version, nil for one that is
+  # `HEAD`, a branch or tag name, `refs/heads/<name>`, `refs/tags/<name>` or a full
+  # commit id. Every other ref under `refs/`, such as `refs/pull/1/head`, and its short
+  # name, such as `pull/1/head`, is refused: people without write access to a
+  # repository can change some of them. The save rules and the harness walk both call it.
+  @spec ref_error(String.t()) :: error | nil
+  def ref_error(ref) when is_binary(ref) do
+    allowed =
+      case String.split(ref, "/", parts: 3) do
+        ["refs", kind, name] when kind in ["heads", "tags"] -> name != ""
+        ["refs" | _rest] -> false
+        [first, _rest | _more] -> first not in @other_namespaces
+        _one_part -> true
+      end
+
+    unless allowed do
+      {"write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+         "refs/tags/<name> or a full commit id: people without write access can change " <>
+         "other refs, such as a pull request's", ref: ref}
+    end
   end
 
   # The `git` addresses of the base and of the modules' sources, in order, where the
@@ -320,15 +370,19 @@ defmodule Apiary.Stacks.Document do
   @doc false
   # source_error/2 is the refusal of `source`, a remote source of a harness file or of a
   # `qory-stack.yaml`, which no save check reads, by the save rules of a document's
-  # sources: its `git` address as step 5 checks it, then step 6's definition of a base
-  # (`kind` `:base`, `harness_base`) or of a module's source (`:module`,
-  # `harness_source`). nil, or one `{message, values}`.
+  # sources: its `git` address and its `ref` as step 5 checks them, then step 6's
+  # definition of a base (`kind` `:base`, `harness_base`) or of a module's source
+  # (`:module`, `harness_source`). nil, or one `{message, values}`.
   @spec source_error(map, :base | :module) :: error | nil
   def source_error(%{} = source, kind) when kind in [:base, :module] do
     case source do
       %{"git" => git} when is_binary(git) -> address(git)
       _other -> :ok
     end
+
+    with %{"ref" => ref} when is_binary(ref) <- source,
+         {_message, _values} = error <- ref_error(ref),
+         do: throw({__MODULE__, error})
 
     schema(source, if(kind == :base, do: "harness_base", else: "harness_source"))
     nil

@@ -110,7 +110,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     "key" => :key,
     "place" => :place,
     "rule" => :rule,
-    "limit" => :limit
+    "limit" => :limit,
+    "ref" => :ref
   }
   @declinable [:confirm, :questions, :used_up, :no_result, :lost, :cancelled]
   @edit_fields [:level, :reason, :understanding, :scope_in, :scope_out, :approach]

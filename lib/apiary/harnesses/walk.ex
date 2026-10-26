@@ -35,7 +35,8 @@ defmodule Apiary.Harnesses.Walk do
   # (one with `git`) is checked, in this order: the form `<user>@<host>:<path>` fails
   # `scp_form`; an address with a user name fails `credential_in_address`; then
   # `invalid` for the save rules of a source (`Apiary.Stacks.Document.source_error/2`),
-  # a host with a percent-encoding, an address longer than a call takes, a `ref` that is
+  # a `ref` under `refs/` that is no branch or tag among them, linked or public
+  # (`Apiary.Stacks.Document.ref_error/1`), a host with a percent-encoding, an address longer than a call takes, a `ref` that is
   # no version a read takes, a host that is an IP address in any notation or a local
   # name (`localhost`, `*.localhost`, each also with final dots), and a `path` that is
   # absolute, leads out of its source with `..`, or has a `\` or a `%`, which could
@@ -1001,9 +1002,9 @@ defmodule Apiary.Harnesses.Walk do
   end
 
   # A save check's message with a value that is part of a hidden harness, the base's
-  # stack name, a key, or the place in the document and the rule there: in words without
-  # the value, for a hidden harness.
-  @hidden_values [:name, :key, :place, :rule]
+  # stack name, a key, a source's ref, or the place in the document and the rule there:
+  # in words without the value, for a hidden harness.
+  @hidden_values [:name, :key, :place, :rule, :ref]
   @hidden_messages %{
     ("give the base %{name} as a git source and an export: " <>
        "extends: {git: <https address>, ref: <ref>, stack: %{name}}") =>
@@ -1013,7 +1014,13 @@ defmodule Apiary.Harnesses.Walk do
        "modules, bind, extensions and workflows") =>
       "may not contain one of its keys: a harness document takes name, description, " <>
         "extends, modules, bind, extensions and workflows",
-    "repeats the key %{key}" => "repeats a key"
+    "repeats the key %{key}" => "repeats a key",
+    ("write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+       "refs/tags/<name> or a full commit id: people without write access can change " <>
+       "other refs, such as a pull request's") =>
+      "write the ref as HEAD, a branch or tag name, refs/heads/<name>, refs/tags/<name> " <>
+        "or a full commit id: people without write access can change other refs, such as " <>
+        "a pull request's"
   }
   # The words of any other such message, the schema's among them.
   @hidden_message "has a value the harness format does not take"
