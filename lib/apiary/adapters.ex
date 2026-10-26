@@ -183,18 +183,24 @@ defmodule Apiary.Adapters do
 
   @doc false
   # Whether `adapter` is configured: it declares no `setup_url`, which it declares only
-  # while it is not set up, and it may be connected (`connectable/1`: it declared a
-  # connect address and holds an access key in use).
+  # while it is not set up; it may be connected (`connectable/1`: it declared a connect
+  # address and holds an access key in use); and it is listed for organisations: one
+  # installed with Qory Apiary while `QORY_INSTALLED_ADAPTERS` lists it (`listed?/1`),
+  # one an instance admin added at any time. `setup/2` and `seal_app_values/4` return an
+  # error for an installed adapter the list no longer has.
   @spec configured?(Node.t()) :: boolean
   def configured?(%Node{kind: :adapter, setup_url: setup_url} = adapter),
-    do: is_nil(setup_url) and connectable(adapter) == :ok
+    do:
+      is_nil(setup_url) and connectable(adapter) == :ok and
+        (not installed?(adapter) or listed?(adapter))
 
   @doc false
-  # The instance's adapters in use that are configured (`configured?/1`) and serve
-  # `domain`, a module of `Apiary.Lingo.Domain.domains/0`, by name, as `list_adapters/1`
-  # orders them. An adapter serves the domains its latest start listed, and every domain
-  # where it listed none, as `Apiary.Lingo.Domain.serves?/2` has it. None where the
-  # instance does not have the feature `factory`. The caller decides who may read them.
+  # The instance's adapters in use that are configured (`configured?/1`), so none that
+  # `QORY_INSTALLED_ADAPTERS` no longer lists, and serve `domain`, a module of
+  # `Apiary.Lingo.Domain.domains/0`, by name, as `list_adapters/1` orders them. An
+  # adapter serves the domains its latest start listed, and every domain where it listed
+  # none, as `Apiary.Lingo.Domain.serves?/2` has it. None where the instance does not
+  # have the feature `factory`. The caller decides who may read them.
   @spec list_configured(module) :: [Node.t()]
   def list_configured(domain) when is_atom(domain) do
     if Features.on?(:factory) do
