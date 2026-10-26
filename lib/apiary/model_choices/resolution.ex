@@ -13,14 +13,16 @@ defmodule Apiary.ModelChoices.Resolution do
   #
   # **The provider, the key, the model and the effort** come from one choice: the first in
   # the order that chose a provider. A choice without a key takes the provider's default
-  # key; without a model, the provider's default model, and then no effort, so the runtime
-  # uses its default effort. No choice with a provider resolves to `:none`: the run uses
-  # the gateway's key. A choice whose provider is not among `providers` resolves to
-  # `{:error, :provider_removed}`.
+  # key; without a model, the provider's default model, the first of its description's,
+  # and then no effort, so the runtime uses its default effort. A provider whose
+  # description lists no model has no default: the resolution then has no model. No
+  # choice with a provider resolves to `:none`: the run uses the gateway's key. A choice
+  # whose provider is not among `providers` resolves to `{:error, :provider_removed}`.
   #
   # **The tiers**, each of `light`, `fast` and `thinking` by itself: the first choice in the
-  # order whose tier map maps the tier to a model on the resolved provider's list, with an
-  # effort value of that model's or none. A tier no choice maps so is left out: the run's
+  # order whose tier map maps the tier to a model that goes with the resolved provider: a
+  # model of its description with one of that model's effort values or none, or any
+  # other model id with no effort. A tier no choice maps so is left out: the run's
   # program fills it, or runs the agent on the run's model.
   @moduledoc false
 
@@ -29,18 +31,15 @@ defmodule Apiary.ModelChoices.Resolution do
   @tiers ~w(light fast thinking)
 
   @typedoc """
-  A provider as the resolution reads it: the value id of its default key, and its models,
-  each with its `model_id`, its `effort` values (nil for none) and whether it is the
-  default.
+  A provider as the resolution reads it: the value id of its default key, the id of its
+  default model (nil for none), and its description's models, each with its `model_id`
+  and its `effort` values (nil for none).
   """
   @type provider :: %{
           required(:default_value_id) => String.t() | nil,
+          required(:default_model_id) => String.t() | nil,
           required(:models) => [
-            %{
-              required(:model_id) => String.t(),
-              required(:effort) => [String.t()] | nil,
-              required(:is_default) => boolean
-            }
+            %{required(:model_id) => String.t(), required(:effort) => [String.t()] | nil}
           ]
         }
 
@@ -152,7 +151,7 @@ defmodule Apiary.ModelChoices.Resolution do
   defp resolved(level, choice, provider, order) do
     {model_id, effort} =
       case choice.model_id do
-        nil -> {default_model(provider), nil}
+        nil -> {provider.default_model_id, nil}
         model_id -> {model_id, choice.effort}
       end
 
@@ -173,16 +172,13 @@ defmodule Apiary.ModelChoices.Resolution do
     }
   end
 
-  defp default_model(%{models: models}),
-    do: Enum.find_value(models, fn model -> model.is_default && model.model_id end)
-
-  # The first entry for `tier` in the order whose model and effort the provider lists:
+  # The first entry for `tier` in the order whose model and effort go with the provider:
   # `{level, entry}`, or `{nil, nil}` for none.
   defp tier(order, tier, provider) do
     Enum.find_value(order, {nil, nil}, fn {level, choice} ->
       with %{} = tiers <- choice.tiers,
            %{"model" => _model} = entry <- entry(tiers[tier]),
-           true <- listed?(provider, entry) do
+           true <- goes_with?(provider, entry) do
         {level, entry}
       else
         _other -> nil
@@ -197,10 +193,13 @@ defmodule Apiary.ModelChoices.Resolution do
 
   defp entry(_other), do: nil
 
-  defp listed?(%{models: models}, entry) do
-    Enum.any?(models, fn model ->
-      model.model_id == entry["model"] and
-        (is_nil(entry["effort"]) or entry["effort"] in (model.effort || []))
-    end)
+  # A model of the description with no effort or one of its effort values; any other
+  # model id with no effort.
+  defp goes_with?(%{models: models}, entry) do
+    case {Enum.find(models, &(&1.model_id == entry["model"])), entry["effort"]} do
+      {_model, nil} -> true
+      {nil, _effort} -> false
+      {model, effort} -> effort in (model.effort || [])
+    end
   end
 end

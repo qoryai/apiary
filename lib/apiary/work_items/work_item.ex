@@ -29,6 +29,12 @@ defmodule Apiary.WorkItems.WorkItem do
   # the time it closed, `closed_at`, and the person who closed it, `closed_by_id`, where a
   # person did; no other has them.
   #
+  # A test work item (`test` true, `test_changeset/2`) is one Qory Apiary makes from a line
+  # a person types, with no ticket and no work source behind it: no `connection_id`,
+  # `adapter_id`, `item_id`, `external_ref` or `url`, the line as its `title`, and the
+  # fixed `collection_title` of `test_collection_title/0`. Any other has all of them but
+  # `item_id`, which the database holds (`work_items_test_check`).
+  #
   # `public_id` is its name outside the database: `wi_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`). The database holds every
   # bound above, and counts characters as code points, as `take_in_changeset/2` does.
@@ -53,6 +59,7 @@ defmodule Apiary.WorkItems.WorkItem do
   @max_url 2048
   @max_title 1024
   @max_instruction 4000
+  @test_collection_title "Test run"
 
   # definitions.schema.json: $defs.url as a ticket's is held, and $defs.target's system.
   @url ~r{\Ahttps://[^/?#@\s]+([/?#]\S*)?\z}
@@ -77,6 +84,7 @@ defmodule Apiary.WorkItems.WorkItem do
     field :target_path, :string
     field :take_in, :integer
     field :first_instruction, :string, default: ""
+    field :test, :boolean, default: false
     field :state, Ecto.Enum, values: State.states()
     field :taken_in_at, :utc_datetime_usec
     field :declined_at, :utc_datetime_usec
@@ -227,6 +235,52 @@ defmodule Apiary.WorkItems.WorkItem do
     |> foreign_key_constraint(:item_id, name: :work_items_item_id_fkey)
   end
 
+  # test_collection_title/0 is the `collection_title` of every test work item.
+  @doc false
+  @spec test_collection_title() :: String.t()
+  def test_collection_title, do: @test_collection_title
+
+  # test_changeset/2 is the changeset of a new test work item: the line a person typed as
+  # its `title`, not blank, within the title's bounds and with none of the characters a
+  # run's input refuses in a text, as a first instruction holds them, and its owner;
+  # `test` set, `test_collection_title/0` as its collection's title, a fresh public id
+  # and take in 1. It has no ticket, no connection, no adapter and no target, whatever
+  # `attrs` holds, in every domain. A second live test work item of the workspace is an
+  # error on `test`. The workspace, the number, the state and who took it in, and when,
+  # are the caller's to put.
+  @doc false
+  @spec test_changeset(t, map) :: Ecto.Changeset.t()
+  def test_changeset(%__MODULE__{} = work_item, attrs) do
+    work_item
+    |> cast(attrs, [:title, :owner_id], empty_values: [nil])
+    |> validate_required([:title, :owner_id])
+    |> validate_length(:title, min: 1, max: @max_title, count: :codepoints)
+    |> validate_change(:title, fn :title, line ->
+      if String.trim(line) == "",
+        do: [title: {"can't be blank", validation: :required}],
+        else: []
+    end)
+    |> refuse_in_text(
+      :title,
+      @control,
+      dgettext_noop("errors", "must not contain control characters")
+    )
+    |> refuse_in_text(
+      :title,
+      @invisible,
+      dgettext_noop("errors", "must not contain invisible characters")
+    )
+    |> put_change(:test, true)
+    |> put_change(:collection_title, @test_collection_title)
+    |> put_change(:public_id, Apiary.PublicId.generate(@prefix))
+    |> put_change(:take_in, 1)
+    |> check_constraint(:title, name: :work_items_title_check)
+    |> check_constraint(:test, name: :work_items_test_check)
+    |> unique_constraint(:test, name: :work_items_workspace_id_live_test_index)
+    |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
+    |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
+  end
+
   # The target: both its system and its path, or neither, for a work item without one;
   # the system a host name's characters, and the path 1 to `@max_target_path` code
   # points. Whether a work item needs one, and what else its path must be, are its
@@ -255,21 +309,23 @@ defmodule Apiary.WorkItems.WorkItem do
   defp validate_instruction(changeset) do
     changeset
     |> validate_length(:first_instruction, max: @max_instruction, count: :codepoints)
-    |> refuse_in_instruction(
+    |> refuse_in_text(
+      :first_instruction,
       @control,
       dgettext_noop("errors", "must not contain control characters")
     )
-    |> refuse_in_instruction(
+    |> refuse_in_text(
+      :first_instruction,
       @invisible,
       dgettext_noop("errors", "must not contain invisible characters")
     )
   end
 
-  defp refuse_in_instruction(changeset, pattern, message) do
-    validate_change(changeset, :first_instruction, fn :first_instruction, text ->
+  defp refuse_in_text(changeset, field, pattern, message) do
+    validate_change(changeset, field, fn ^field, text ->
       if String.valid?(text) and not Regex.match?(pattern, text),
         do: [],
-        else: [first_instruction: message]
+        else: [{field, message}]
     end)
   end
 end

@@ -39,15 +39,17 @@ defmodule Apiary.ModelChoices do
   #     (`Apiary.Kinds.Providers.serve/2`). A deny rule of the security policy is not
   #     asked: it never blocks a host of an integration;
   #   * `key`: a value id of the provider's keys;
-  #   * `model` and `effort`: a model on the provider's list, and one of its offered effort
-  #     values;
+  #   * `model` and `effort`: a model id of the form `@model_id` takes, one of the
+  #     description's models (`Connections.provider_models/1`) or any other id. With a
+  #     model of the description, the effort is one of its offered effort values; with any
+  #     other id, the choice sets no effort;
   #   * `tiers`: tiers among `light`, `fast` and `thinking`, each a model id, or a map of
-  #     `model` and `effort`; with a provider, each model on the provider's list and each
-  #     effort one of that model's offered effort values.
+  #     `model` and `effort`; with a provider, each tier as `model` and `effort` are.
   #
-  # A model's **offered effort values** are the values that both the model's list and the
-  # runtime's (`Apiary.Kinds.Runtime`, `effort_values`) contain, in the model's order. A
-  # resolution reads only these.
+  # A model's **offered effort values** are the values that both the model's list in the
+  # description and the runtime's (`Apiary.Kinds.Runtime`, `effort_values`) contain, in the
+  # model's order; a model the description does not list has none. A resolution reads only
+  # these.
   #
   # The organisation's default has no workspace, so the workspace is not asked of it: a
   # run whose workspace the default's provider does not reach is ended at its claim.
@@ -78,7 +80,7 @@ defmodule Apiary.ModelChoices do
 
   alias Apiary.{Access, Audit, Connections, Edition, Features, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Connections.{Connection, ConnectionWorkspace, ProviderModel}
+  alias Apiary.Connections.{Connection, ConnectionWorkspace}
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -190,8 +192,7 @@ defmodule Apiary.ModelChoices do
           from c in Connection,
             where:
               c.id in ^ids and c.organisation_id == ^owner and not is_nil(c.provider_kind) and
-                c.chain == ^chain,
-            preload: [models: ^from(m in ProviderModel, order_by: [asc: m.position])]
+                c.chain == ^chain
         )
         |> Map.new(&{&1.id, resolution_provider(&1)})
       end
@@ -270,21 +271,19 @@ defmodule Apiary.ModelChoices do
   end
 
   @doc false
-  # resolution_provider/1 is `provider`, a provider connection with its models loaded, as
-  # `Apiary.ModelChoices.Resolution` reads a provider.
+  # resolution_provider/1 is `provider`, a provider connection, as
+  # `Apiary.ModelChoices.Resolution` reads a provider: its default key, its default model
+  # and its description's models (`Connections.provider_models/1`), each with its offered
+  # effort values.
   @spec resolution_provider(Connection.t()) :: Resolution.provider()
   def resolution_provider(%Connection{} = provider) do
     %{
       default_value_id: provider.default_value_id,
+      default_model_id: Connections.default_model(provider),
       models:
-        Enum.map(provider.models, fn model ->
+        Enum.map(Connections.provider_models(provider), fn model ->
           offered = offered(model)
-
-          %{
-            model_id: model.model_id,
-            effort: if(offered == [], do: nil, else: offered),
-            is_default: model.is_default
-          }
+          %{model_id: model["id"], effort: if(offered == [], do: nil, else: offered)}
         end)
     }
   end
@@ -295,7 +294,7 @@ defmodule Apiary.ModelChoices do
   # put_choice/3 sets the choice at `place` (`model_choice.write`; `provider.write` for
   # the organisation's default), replacing what the place had: `attrs` has `provider`, the
   # public id of a model provider of the organisation, `key`, the value id of one of its
-  # keys, `model`, a model id of its list, `effort`, one of that model's effort values,
+  # keys, `model`, a model id, `effort`, one of that model's offered effort values,
   # `tiers`, a map of tiers, and, at the workspace, `locked`. Each but `provider` and
   # `tiers` may be left out; one of those two is needed. `{:ok, choice}`, or
   # `{:error, refusal}`: a changeset with the reason on its field (the moduledoc). `chain`
@@ -704,7 +703,7 @@ defmodule Apiary.ModelChoices do
       )
 
   # The provider `changeset` names, a model provider of the chain `chain`, read
-  # with its models and its keys' value ids, its row locked `FOR SHARE`:
+  # with its keys' value ids, its row locked `FOR SHARE`:
   # `{:ok, provider}`, `{:ok, nil}` for none named, or the changeset with the reason on
   # `provider`.
   defp hold_provider(%Ecto.Changeset{valid?: false} = changeset, _organisation, _chain),
@@ -727,7 +726,6 @@ defmodule Apiary.ModelChoices do
           %Connection{} = provider ->
             {:ok,
              Repo.preload(provider,
-               models: from(m in ProviderModel, order_by: [asc: m.position]),
                workspaces: [],
                secret: [values: from(v in Value, select: struct(v, [:id, :value_id]))]
              )}
@@ -868,16 +866,9 @@ defmodule Apiary.ModelChoices do
         changeset
 
       model_id ->
-        case listed(provider, model_id) do
-          nil ->
-            add_error(changeset, :model, not_listed(), provider: provider.name, model: model_id)
-
-          model ->
-            effort = get_field(changeset, :effort)
-
-            if is_nil(effort) or effort in offered(model),
-              do: changeset,
-              else: add_error(changeset, :effort, effort_not_listed(), effort_bindings(model))
+        case effort_error(provider, model_id, get_field(changeset, :effort)) do
+          nil -> changeset
+          {message, bindings} -> add_error(changeset, :effort, message, bindings)
         end
     end
   end
@@ -892,66 +883,56 @@ defmodule Apiary.ModelChoices do
     Enum.reduce_while(tiers, changeset, fn {_tier, entry}, changeset ->
       %{"model" => model_id} = entry = tier_entry(entry)
 
-      case listed(provider, model_id) do
-        nil ->
-          {:halt,
-           add_error(changeset, :tiers, not_listed(), provider: provider.name, model: model_id)}
-
-        model ->
-          if is_nil(entry["effort"]) or entry["effort"] in offered(model),
-            do: {:cont, changeset},
-            else:
-              {:halt, add_error(changeset, :tiers, effort_not_listed(), effort_bindings(model))}
+      case effort_error(provider, model_id, entry["effort"]) do
+        nil -> {:cont, changeset}
+        {message, bindings} -> {:halt, add_error(changeset, :tiers, message, bindings)}
       end
     end)
   end
 
-  defp listed(%Connection{models: models}, model_id),
-    do: Enum.find(models, &(&1.model_id == model_id))
+  # Why `effort` does not go with the model `model_id` of `provider`, or nil: no effort
+  # always does; else one of the model's offered effort values, of which a model the
+  # description does not list has none.
+  defp effort_error(_provider, _model_id, nil), do: nil
 
-  defp not_listed,
-    do: dgettext_noop("errors", "Choose a model from %{provider}'s list: %{model} is not on it.")
+  defp effort_error(%Connection{} = provider, model_id, effort) do
+    offered =
+      case Enum.find(Connections.provider_models(provider), &(&1["id"] == model_id)) do
+        nil -> []
+        model -> offered(model)
+      end
 
-  defp effort_not_listed,
-    do: dgettext_noop("errors", "Choose one of %{model}'s effort values: %{values}.")
+    cond do
+      effort in offered ->
+        nil
 
-  defp effort_bindings(%ProviderModel{model_id: model_id} = model),
-    do: [model: model_id, values: Enum.join(offered(model), ", ")]
+      offered == [] ->
+        {dgettext_noop(
+           "errors",
+           "Leave the effort empty: %{model} has no effort values to choose from."
+         ), model: model_id}
 
-  # The model's offered effort values: those of its list that the runtime's list contains
-  # too, in the model's order.
-  defp offered(%ProviderModel{effort: effort}),
-    do: Enum.filter(effort || [], &(&1 in runtime().effort_values))
+      true ->
+        {dgettext_noop("errors", "Choose one of %{model}'s effort values: %{values}."),
+         model: model_id, values: Enum.join(offered, ", ")}
+    end
+  end
+
+  # The model's offered effort values: those of its list in the description that the
+  # runtime's list contains too, in the model's order.
+  defp offered(%{} = model),
+    do: Enum.filter(model["effort"] || [], &(&1 in runtime().effort_values))
 
   ## What uses a provider
 
   @doc false
-  # places_using/2 is the places of the choices, at levels 2 to 6, that use the model
-  # provider `provider`, or, given `model_id`, that use that model of it, by their model
-  # or a tier: each a `t:named_place/0`, the organisation's default first, then by
-  # workspace, target and workflow. Read without a lock: the caller holds the provider's
-  # row `FOR UPDATE`, so no save of a choice of it runs meanwhile.
-  @spec places_using(Connection.t(), String.t() | nil) :: [named_place]
-  def places_using(%Connection{id: id}, model_id \\ nil) do
-    query = from c in ModelChoice, where: c.connection_id == ^id
-
-    query =
-      if model_id,
-        do:
-          where(
-            query,
-            [c],
-            c.model_id == ^model_id or
-              fragment(
-                "EXISTS (SELECT 1 FROM jsonb_each(?) AS t(tier, entry) WHERE t.entry ->> 'model' = ?)",
-                c.tiers,
-                ^model_id
-              )
-          ),
-        else: query
-
-    named(query)
-  end
+  # places_using/1 is the places of the choices, at levels 2 to 6, that use the model
+  # provider `provider`: each a `t:named_place/0`, the organisation's default first, then
+  # by workspace, target and workflow. Read without a lock: the caller holds the
+  # provider's row `FOR UPDATE`, so no save of a choice of it runs meanwhile.
+  @spec places_using(Connection.t()) :: [named_place]
+  def places_using(%Connection{id: id}),
+    do: named(from c in ModelChoice, where: c.connection_id == ^id)
 
   @doc false
   # key_places/1 is the places of the choices, at levels 2 to 6, that use a key of the
@@ -1007,9 +988,9 @@ defmodule Apiary.ModelChoices do
   defp place_name_of(%{workspace: workspace}), do: workspace
 
   @doc false
-  # in_use_words/2 is why the model provider, or the model, `name` was not removed: the
-  # places of the choices that use it (`t:named_place/0`), the first five, then
-  # "and N more". Nil for none.
+  # in_use_words/2 is why the model provider `name` was not removed: the places of the
+  # choices that use it (`t:named_place/0`), the first five, then "and N more". Nil for
+  # none.
   @spec in_use_words(String.t(), [named_place]) :: String.t() | nil
   def in_use_words(_name, []), do: nil
 

@@ -76,12 +76,10 @@ defmodule Apiary.Connections.WriteActionsTest do
 
     provider = provider!(scope)
     {:ok, provider} = Connections.update_provider(scope, provider, %{name: "Models"})
-    {:ok, provider} = Connections.add_provider_model(scope, provider, %{model_id: "acme/m1"})
-    {:ok, provider} = Connections.put_default_model(scope, provider, "acme/m1")
     {:ok, provider} = Connections.add_provider_key(scope, provider, %{value_id: "x", value: "k"})
     {:ok, provider} = Connections.put_default_key(scope, provider, "x")
     {:ok, _deleted} = Connections.delete_provider(scope, provider)
-    assert actions(provider) == List.duplicate("provider.write", 7)
+    assert actions(provider) == List.duplicate("provider.write", 5)
   end
 
   test "the organisation's default model choice is written under provider.write", %{scope: scope} do
@@ -163,13 +161,8 @@ defmodule Apiary.Connections.WriteActionsTest do
       assert Connections.update_connection(scope, provider, %{name: "Models"}) ==
                {:error, :forbidden}
 
-      assert Connections.add_provider_model(scope, provider, %{model_id: "acme/m1"}) ==
-               {:error, :forbidden}
-
       assert Connections.add_provider_key(scope, provider, %{value_id: "x", value: "k"}) ==
                {:error, :forbidden}
-
-      assert Connections.put_default_model(scope, provider, "acme/m1") == {:error, :forbidden}
 
       assert ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id}) ==
                {:error, :forbidden}

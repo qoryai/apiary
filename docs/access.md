@@ -515,11 +515,10 @@ for each other and never on each other at once:
    policy's order, then the provider's row `FOR SHARE`, then the choice's row
    `FOR UPDATE`. A write of the organisation's default takes the organisation's rows and
    the membership, then the integrations lock, then the provider's row `FOR SHARE` and
-   the choice's row. A change to a provider or to one of its models takes the provider's
-   row `FOR UPDATE`, so it waits for a save of a choice of that provider, or is seen by
-   it: the change reads the choices that use the provider, or the model, without a lock,
-   and refuses while one does. No change to a provider takes a lock on an adapter's
-   connection.
+   the choice's row. A change to a provider takes the provider's row `FOR UPDATE`, so it
+   waits for a save of a choice of that provider, or is seen by it: the change reads the
+   choices that use the provider without a lock, and refuses while one does. No change to
+   a provider takes a lock on an adapter's connection.
    A write of a time limit (`Apiary.TimeLimits`) takes the security policy's order, then
    the limit's row `FOR UPDATE`.
    The claim of an explore run (`Apiary.Dispatches.RunSettings`) holds the pool's row,

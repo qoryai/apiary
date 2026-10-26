@@ -17,7 +17,8 @@ defmodule Apiary.Connections.Connection do
       digest. `name` is shown, the description's title unless one is given. `settings` are
       its plain settings, such as the address of an endpoint from a setting. `secret_id`
       is the organisation's secret whose values are its keys, and `default_value_id` the
-      value id of its default key. Its models are `Apiary.Connections.ProviderModel` rows.
+      value id of its default key. Its models are its description's
+      (`Apiary.Connections.provider_models/1`); the row keeps none.
     * **service**: `name` is shown; the row names its definition, built in
       by key (`service_builtin`) or one of the organisation's (`service_definition_id`), and
       never holds a host, a path or an auth itself.
@@ -70,8 +71,6 @@ defmodule Apiary.Connections.Connection do
 
     has_many :workspaces, Apiary.Connections.ConnectionWorkspace,
       preload_order: [asc: :workspace_id]
-
-    has_many :models, Apiary.Connections.ProviderModel, preload_order: [asc: :position]
 
     timestamps(type: :utc_datetime_usec)
   end

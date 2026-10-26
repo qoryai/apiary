@@ -25,6 +25,7 @@ defmodule Apiary.Edition do
 
   - **Limits and sign-up**: `limits/0`, `sign_up_open?/0`, `organisation_created/2`,
     `workspace_created/3`, `instance_organisation_id/0`, `first_sign_up_line/0`,
+    `first_workspace_line/1`, `first_workspace_waiting_line/1`,
     `audit_retention_max_days/0`, `attribution?/0`.
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
@@ -121,6 +122,19 @@ defmodule Apiary.Edition do
   (`ApiaryWeb.SetupLive`), translated when it is asked.
   """
   @callback first_sign_up_line() :: String.t()
+
+  @doc """
+  The workspace set-up page's line on which workspace `organisation`'s first one is, under
+  its title, for a person who may create it, on `/:org/set-up`, translated when it is
+  asked.
+  """
+  @callback first_workspace_line(%Organisation{}) :: String.t()
+
+  @doc """
+  The workspace set-up page's line for a person who may not create `organisation`'s first
+  workspace: who does. Translated when it is asked.
+  """
+  @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
 
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
@@ -634,6 +648,8 @@ defmodule Apiary.Edition do
     workspace_created: 3,
     instance_organisation_id: 0,
     first_sign_up_line: 0,
+    first_workspace_line: 1,
+    first_workspace_waiting_line: 1,
     above_workspace: 1,
     model_choice_chain: 1,
     operator_chain_organisation: 1,

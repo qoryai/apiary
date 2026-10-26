@@ -252,7 +252,7 @@ defmodule Apiary.SetupTest do
       assert {count(Organisation), count(User)} == before
     end
 
-    test "set_up/2 with the code makes the instance's organisation, Main and its admin" do
+    test "set_up/2 with the code makes the instance's organisation and its admin, no workspace" do
       code = Setup.code!()
       before = {count(Organisation), count(Workspace), count(Membership)}
 
@@ -262,7 +262,8 @@ defmodule Apiary.SetupTest do
 
       assert %Organisation{name: "Acme Hosting"} = organisation
       assert Apiary.Edition.instance_organisation_id() == organisation.id
-      assert %Workspace{name: "Main"} = workspace
+      assert workspace == nil
+      refute Organisations.has_workspace?(organisation)
       assert %Membership{level: :owner} = owner
       assert owner.user_id == user.id
       assert Access.instance_admin?(Scope.for_user(user))
@@ -271,7 +272,7 @@ defmodule Apiary.SetupTest do
 
       {organisations, workspaces, memberships} = before
       assert count(Organisation) == organisations + 1
-      assert count(Workspace) == workspaces + 1
+      assert count(Workspace) == workspaces
       assert count(Membership) == memberships + 1
 
       # The code dies on use.
@@ -689,6 +690,52 @@ defmodule Apiary.SetupTest do
 
   test "first_sign_up_line/0 is the core's line" do
     assert Apiary.Edition.Core.first_sign_up_line() ==
-             "Your organisation and its first workspace."
+             "Your account and your organisation."
+  end
+
+  test "the core's lines on the first workspace" do
+    organisation = Apiary.OrganisationsFixtures.organisation_fixture()
+
+    assert Apiary.Edition.Core.first_workspace_line(organisation) ==
+             "Main is this instance's only workspace."
+
+    assert Apiary.Edition.Core.first_workspace_waiting_line(organisation) ==
+             "An owner sets up this organisation's first workspace."
+  end
+
+  describe "the connections" do
+    defp reviewed_at do
+      case Repo.query!("SELECT connections_reviewed_at FROM instance_settings WHERE id") do
+        %{rows: [[at]]} -> at
+        %{rows: []} -> nil
+      end
+    end
+
+    test "are not reviewed until an instance admin reviews them, once" do
+      refute Setup.connections_reviewed?()
+
+      # Anyone but an instance admin is refused, and nothing is set.
+      person = Apiary.OrganisationsFixtures.scope_fixture()
+      assert {:error, :forbidden} = Setup.review_connections(person)
+      refute Setup.connections_reviewed?()
+
+      admin = Apiary.OrganisationsFixtures.instance_admin_scope()
+      assert :ok = Setup.review_connections(admin)
+      assert Setup.connections_reviewed?()
+      first = reviewed_at()
+      assert %NaiveDateTime{} = first
+
+      # A later review keeps the first time.
+      assert :ok = Setup.review_connections(admin)
+      assert reviewed_at() == first
+    end
+
+    test "with no row, are not reviewed, and a review makes the row" do
+      Repo.query!("DELETE FROM instance_settings")
+      refute Setup.connections_reviewed?()
+
+      assert :ok = Setup.review_connections(Apiary.OrganisationsFixtures.instance_admin_scope())
+      assert Setup.connections_reviewed?()
+    end
   end
 end
