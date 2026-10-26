@@ -68,14 +68,19 @@ defmodule Apiary.Kinds.Runtimes do
                end
              end).()
 
+  # The key of the list a test puts in its process (`put_test_list/1`), and the flag that
+  # any test has put one.
+  @test_list {__MODULE__, :test_list}
+  @stubbed {__MODULE__, :stubbed}
+
   @doc "list/0 is every runtime of the catalogue, in its order."
   @spec list() :: [Runtime.t()]
-  def list, do: @runtimes
+  def list, do: test_list() || @runtimes
 
   @doc "fetch/1 is the runtime named `name`: `{:ok, runtime}`, or `:error`."
   @spec fetch(term) :: {:ok, Runtime.t()} | :error
   def fetch(name) do
-    case Enum.find(@runtimes, &(&1.name == name)) do
+    case Enum.find(list(), &(&1.name == name)) do
       %Runtime{} = runtime -> {:ok, runtime}
       nil -> :error
     end
@@ -94,6 +99,37 @@ defmodule Apiary.Kinds.Runtimes do
   def hosts(%Runtime{declares: declares}),
     do: declares |> Enum.flat_map(&Map.get(&1, "hosts", [])) |> Enum.uniq()
 
+  @doc false
+  # put_test_list/1 makes `runtimes` the catalogue that `list/0` and `fetch/1` answer in
+  # this process and in the processes it starts, such as a LiveView of a test, until the
+  # process ends. For tests that need a catalogue of another size than the release's.
+  @spec put_test_list([Runtime.t()]) :: :ok
+  def put_test_list(runtimes) when is_list(runtimes) do
+    unless :persistent_term.get(@stubbed, false), do: :persistent_term.put(@stubbed, true)
+    Process.put(@test_list, runtimes)
+    :ok
+  end
+
+  # The list a test put in this process, or in the nearest of its callers that put one;
+  # nil where no test ever put one.
+  defp test_list do
+    if :persistent_term.get(@stubbed, false) do
+      Enum.find_value([self() | Process.get(:"$callers", [])], fn
+        pid when pid == self() -> Process.get(@test_list)
+        pid -> caller_list(pid)
+      end)
+    end
+  end
+
+  defp caller_list(pid) when is_pid(pid) do
+    case Process.info(pid, {:dictionary, @test_list}) do
+      {{:dictionary, @test_list}, list} when is_list(list) -> list
+      _unset_or_gone -> nil
+    end
+  end
+
+  defp caller_list(_name), do: nil
+
   @doc """
   variables/0 is every variable a runtime of the catalogue declares, reserves or reads a
   model key from (`model_keys`): the names no other connection may take for a placeholder
@@ -101,7 +137,7 @@ defmodule Apiary.Kinds.Runtimes do
   """
   @spec variables() :: [String.t()]
   def variables do
-    @runtimes
+    list()
     |> Enum.flat_map(fn runtime ->
       Enum.flat_map(runtime.declares, &List.wrap(&1["name"])) ++
         runtime.reserves ++ Enum.map(runtime.model_keys, & &1["variable"])

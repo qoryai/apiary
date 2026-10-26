@@ -11,6 +11,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.Kinds.Runtimes
   alias Apiary.ModelChoices.ModelChoice
 
   @moduletag needs: [:factory, :secrets]
@@ -39,6 +40,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   defp option(provider, model \\ nil),
     do: if(model, do: "#{provider.public_id}/#{model}", else: provider.public_id)
 
+  # A software workspace says repository for target (`docs/lingo.md`).
   test "offers the description's models, the default first, then Another model", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
     {:ok, lv, html} = live(conn, path(scope))
@@ -49,14 +51,17 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert has_element?(
              lv,
              "#model-line",
-             "#{scope.workspace.name}'s default model. A workflow or a target can set another model for its runs. If #{scope.workspace.name} sets none, its runs use #{scope.organisation.name}'s model."
+             "#{scope.workspace.name}'s default model. A workflow or a repository can set another model for its runs. If #{scope.workspace.name} sets none, its runs use #{scope.organisation.name}'s model."
            )
 
     titles =
-      for model <- ModelChoices.suggestions(provider), do: model.title
+      for model <- ModelChoices.suggestions(provider, ModelChoices.default_runtime()),
+          do: model.title
 
     assert titles == Enum.map(Connections.provider_models(provider), & &1["title"])
-    assert hd(ModelChoices.suggestions(provider)).id == Connections.default_model(provider)
+
+    assert hd(ModelChoices.suggestions(provider, ModelChoices.default_runtime())).id ==
+             Connections.default_model(provider)
 
     options =
       Regex.scan(~r{<option[^>]*>([^<]+)</option>}, html, capture: :all_but_first)
@@ -163,5 +168,70 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     settings = documents.run_settings |> Jason.encode!() |> Jason.decode!()
     assert %{"model" => "claude-sonnet-5-5", "effort" => "low"} = settings
+  end
+
+  describe "the runtime" do
+    test "is hidden while the list has one runtime, and the choice names none", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      refute has_element?(lv, "#model_choice_runtime")
+
+      lv
+      |> form("#model-form", model_choice: %{model: option(provider, "claude-haiku-5-5")})
+      |> render_submit()
+
+      assert %ModelChoice{runtime: nil, model_id: "claude-haiku-5-5"} = choice(scope)
+    end
+
+    test "with two, is a field; Model lists only the providers that serve the runtime", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      [release] = Runtimes.list()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+
+      unserved = %{
+        release
+        | name: release.name <> "-unserved",
+          title: release.title <> " unserved",
+          model: %{release.model | "formats" => ["no-such-format"]}
+      }
+
+      :ok = Runtimes.put_test_list([release, second, unserved])
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(lv, "#model_choice_runtime")
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="#{second.name}"]})
+
+      lv
+      |> form("#model-form", model_choice: %{runtime: unserved.name})
+      |> render_change()
+
+      refute has_element?(lv, "#model_choice_model")
+      refute has_element?(lv, "#model-submit")
+
+      assert has_element?(
+               lv,
+               "#model-unserved",
+               "Choose another runtime: no model provider of #{scope.organisation.name} serves #{unserved.title}."
+             )
+
+      lv
+      |> form("#model-form", model_choice: %{runtime: second.name})
+      |> render_change()
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_model option[value="#{option(provider, "claude-opus-5-5")}"]}
+             )
+
+      lv
+      |> form("#model-form",
+        model_choice: %{runtime: second.name, model: option(provider, "claude-opus-5-5")}
+      )
+      |> render_submit()
+
+      assert %ModelChoice{model_id: "claude-opus-5-5", runtime: name} = choice(scope)
+      assert name == second.name
+    end
   end
 end

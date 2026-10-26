@@ -2,9 +2,12 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # Workspace settings › Model, `/:org/:workspace/settings/model`, with the features
   # `factory` and `secrets`: the workspace's model choice (level 5, `Apiary.ModelChoices`).
   #
-  # One field, Model: a select of the models the page suggests for each model provider of
-  # the organisation that applies to the workspace (`Apiary.ModelChoices.suggestions/1`),
-  # grouped by provider where there are several, each provider's list ending with Another
+  # Runtime, a select of the runtime catalogue (`Apiary.Kinds.Runtimes`), shown only while
+  # the catalogue has more than one; with one, the choice names none and its runs use that
+  # one (`Apiary.ModelChoices.default_runtime/0`). Model: a select of the models the page
+  # suggests (`Apiary.ModelChoices.suggestions/2`) for each model provider of the
+  # organisation that applies to the workspace and serves the chosen runtime
+  # (`Apiary.Kinds.Providers.serve/2`), grouped by provider where there are several, each provider's list ending with Another
   # model, which opens a text field for any model id. Effort shows where the chosen model
   # has effort values to choose from. With no choice saved, the first provider's first
   # model is selected. Save writes the choice (`Apiary.ModelChoices.put_choice/4`), keeping
@@ -26,6 +29,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   alias Apiary.{Access, Connections, ModelChoices}
   alias Apiary.Connections.Connection
+  alias Apiary.Kinds.{Providers, Runtime, Runtimes}
   alias Apiary.ModelChoices.ModelChoice
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
@@ -43,23 +47,49 @@ defmodule ApiaryWeb.ModelChoiceLive do
      |> load()}
   end
 
-  # The providers that apply to the workspace, each with its suggestions, and the form as
-  # the workspace's choice sets it.
+  # The providers that apply to the workspace, the runtime of the workspace's choice, and
+  # the form as that choice sets it.
   defp load(socket) do
     scope = socket.assigns.current_scope
     {:ok, providers} = Connections.list_providers(scope)
-
-    providers =
-      for provider <- providers,
-          applies?(provider, scope.workspace.id),
-          do: %{provider: provider, models: ModelChoices.suggestions(provider)}
-
     choice = workspace_choice(scope)
 
+    runtime =
+      case ModelChoices.runtime(choice && choice.runtime) do
+        {:ok, runtime} -> runtime
+        :error -> ModelChoices.default_runtime()
+      end
+
     socket
-    |> assign(providers: providers, choice: choice)
-    |> assign_form(choice_params(choice, providers), [])
+    |> assign(
+      applicable: Enum.filter(providers, &applies?(&1, scope.workspace.id)),
+      runtimes: Runtimes.list(),
+      choice: choice
+    )
+    |> assign_runtime(runtime)
+    |> then(&assign_form(&1, choice_params(choice, &1.assigns.providers), []))
   end
+
+  # The runtime the form has chosen, and the providers that serve it, each with its
+  # suggestions.
+  defp assign_runtime(socket, %Runtime{} = runtime) do
+    providers =
+      for provider <- socket.assigns.applicable,
+          serves?(provider, runtime),
+          do: %{provider: provider, models: ModelChoices.suggestions(provider, runtime)}
+
+    assign(socket, runtime: runtime, providers: providers)
+  end
+
+  defp serves?(provider, runtime) do
+    case Connections.provider(provider) do
+      {:ok, description} -> Providers.serve(description, runtime) == :ok
+      {:error, _changed} -> false
+    end
+  end
+
+  # Whether the form shows Runtime: while the catalogue has more than one.
+  defp runtimes?(runtimes), do: length(runtimes) > 1
 
   defp applies?(%Connection{applies_to: "all"}, _workspace_id), do: true
 
@@ -127,7 +157,9 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   defp assign_form(socket, params, errors) do
     params =
-      Enum.reduce(errors, params, fn {field, _}, p -> Map.put_new(p, "#{field}", "") end)
+      errors
+      |> Enum.reduce(params, fn {field, _}, p -> Map.put_new(p, "#{field}", "") end)
+      |> Map.put("runtime", socket.assigns.runtime.name)
 
     assign(socket,
       form: to_form(params, as: :model_choice, errors: errors),
@@ -136,8 +168,24 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   @impl true
-  def handle_event("choose", %{"model_choice" => params}, socket),
-    do: {:noreply, assign_form(socket, params, [])}
+  # A change of the runtime lists the providers that serve it, and keeps the chosen model
+  # while its provider is one of them.
+  def handle_event("choose", %{"model_choice" => params}, socket) do
+    socket =
+      with name when name != socket.assigns.runtime.name <- params["runtime"],
+           {:ok, runtime} <- Runtimes.fetch(name) do
+        assign_runtime(socket, runtime)
+      else
+        _same -> socket
+      end
+
+    params =
+      if chosen(params["model"], socket.assigns.providers),
+        do: params,
+        else: Map.merge(params, choice_params(nil, socket.assigns.providers))
+
+    {:noreply, assign_form(socket, params, [])}
+  end
 
   def handle_event("save", %{"model_choice" => params}, %{assigns: %{writes: true}} = socket) do
     scope = socket.assigns.current_scope
@@ -151,7 +199,12 @@ defmodule ApiaryWeb.ModelChoiceLive do
         effort = if model == :other, do: nil, else: blank_to_nil(params["effort"])
 
         attrs =
-          %{provider: provider.public_id, model: model_id, effort: effort}
+          %{
+            runtime: if(runtimes?(socket.assigns.runtimes), do: socket.assigns.runtime.name),
+            provider: provider.public_id,
+            model: model_id,
+            effort: effort
+          }
           |> Map.merge(kept(socket.assigns.choice, provider))
 
         case ModelChoices.put_choice(scope, :workspace, attrs) do
@@ -200,6 +253,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
       case field do
         :model when model == :other -> {:other, error}
         :effort -> {:effort, error}
+        :runtime -> {:runtime, error}
         _other -> {:model, error}
       end
     end
@@ -260,7 +314,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
           </span>
         </:subtitle>
 
-        <p :if={@providers == []} id="model-no-provider" class="text-[13.5px]/5 text-muted">
+        <p :if={@applicable == []} id="model-no-provider" class="text-[13.5px]/5 text-muted">
           <.rich text={
             rich_gettext("Add a model provider in %{place}, then choose its model here.",
               place:
@@ -271,7 +325,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         </p>
 
         <.form
-          :if={@providers != []}
+          :if={@applicable != []}
           for={@form}
           id="model-form"
           phx-change="choose"
@@ -280,6 +334,22 @@ defmodule ApiaryWeb.ModelChoiceLive do
           novalidate
         >
           <.input
+            :if={runtimes?(@runtimes)}
+            field={@form[:runtime]}
+            type="select"
+            label={gettext("Runtime")}
+            options={for runtime <- @runtimes, do: {runtime.title, runtime.name}}
+            disabled={!@writes}
+          />
+          <p :if={@providers == []} id="model-unserved" class="text-[13.5px]/5 text-muted">
+            {gettext(
+              "Choose another runtime: no model provider of %{organisation} serves %{runtime}.",
+              organisation: @current_scope.organisation.name,
+              runtime: @runtime.title
+            )}
+          </p>
+          <.input
+            :if={@providers != []}
             field={@form[:model]}
             type="select"
             label={gettext("Model")}
@@ -307,7 +377,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
           />
           <SettingsComponents.save id="model-save">
             <.button
-              :if={@writes}
+              :if={@writes and @providers != []}
               id="model-submit"
               type="submit"
               variant="primary"
