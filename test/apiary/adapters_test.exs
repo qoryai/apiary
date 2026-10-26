@@ -335,6 +335,39 @@ defmodule Apiary.AdaptersTest do
       assert details["connection_id"] == connection_id
       refute inspect(details) =~ pass
     end
+
+    test "an adapter not set up, or serving none of the workspaces' domains, is not connected; with no workspace, every domain is offered",
+         %{scope: scope} do
+      %{adapter: settable} = settable_adapter_fixture()
+      %{adapter: general} = connectable_adapter_fixture()
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^general.id),
+          set: [domains: ["general"]]
+        )
+
+      general = Repo.get!(Node, general.id)
+
+      # Main is a software workspace.
+      assert Adapters.connect(scope, settable) == {:error, :not_offered}
+      assert Adapters.connect(scope, general) == {:error, :not_offered}
+      assert Repo.aggregate(from(e in Entry, where: e.action == "adapter.connect"), :count) == 0
+
+      {1, _} =
+        Repo.update_all(
+          from(w in Organisations.Workspace, where: w.organisation_id == ^scope.organisation.id),
+          set: [
+            deletion_marked_at: DateTime.utc_now(),
+            purge_after: DateTime.add(DateTime.utc_now(), 30, :day),
+            purge_trigger: "grace_period"
+          ]
+        )
+
+      scope = Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
+      assert Organisations.list_workspaces(scope) == []
+      assert Adapters.connect(scope, settable) == {:error, :not_offered}
+      assert {:ok, _url, _session} = Adapters.connect(scope, general)
+    end
   end
 
   describe "its keys" do

@@ -70,6 +70,7 @@ defmodule Apiary.Adapters do
     Audit,
     Dispatches,
     Features,
+    Organisations,
     PublicId,
     Repo,
     WorkItems
@@ -91,6 +92,7 @@ defmodule Apiary.Adapters do
   }
 
   alias Apiary.Contract.Ed25519
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
@@ -208,6 +210,29 @@ defmodule Apiary.Adapters do
     else
       []
     end
+  end
+
+  @doc false
+  # The domains whose adapters the scope's organisation is offered, modules of
+  # `Apiary.Lingo.Domain.domains/0`: those of its workspaces, each once, or every domain
+  # (`Apiary.Lingo.Domain.choices/0`) while it has none.
+  @spec offered_domains(Scope.t()) :: [module]
+  def offered_domains(%Scope{} = scope) do
+    case scope |> Organisations.list_workspaces() |> Enum.map(&Domain.for_workspace/1) do
+      [] -> Domain.choices()
+      domains -> Enum.uniq(domains)
+    end
+  end
+
+  @doc false
+  # Whether the scope's organisation is offered `adapter`: it is configured
+  # (`configured?/1`) and serves one of `offered_domains/1`, as `list_configured/1` has
+  # it. Install asks it (`connect/2`), so an adapter Add an integration does not list is
+  # not installed by a request made without the page.
+  @spec offered?(Scope.t(), Node.t()) :: boolean
+  def offered?(%Scope{} = scope, %Node{domains: domains} = adapter) do
+    configured?(adapter) and
+      (is_nil(domains) or Enum.any?(offered_domains(scope), &(&1.name() in domains)))
   end
 
   # The instance's adapters are read by a person of an organisation who may read them
@@ -629,12 +654,20 @@ defmodule Apiary.Adapters do
   # `{:error, :too_soon}` when the organisation's connected connection would need a pass
   # that expires too far ahead, as for a second press in the same second;
   # `{:error, :no_connect_url}` while the adapter declared no address; `{:error, :no_key}`
-  # while it holds no access key in use; `{:error, :forbidden}`; `{:error, :not_found}`;
-  # none of them changes anything or leaves an entry.
+  # while it holds no access key in use; `{:error, :not_offered}` for an adapter the
+  # organisation is not offered (`offered?/2`: not configured, or serving none of its
+  # workspaces' domains); `{:error, :forbidden}`; `{:error, :not_found}`; none of them
+  # changes anything or leaves an entry.
   @spec connect(Scope.t(), Node.t()) ::
           {:ok, String.t(), {String.t(), String.t()}}
           | {:error,
-             :too_soon | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
+             :too_soon
+             | :no_connect_url
+             | :no_key
+             | :not_offered
+             | :invalid
+             | :too_long
+             | Access.reason()}
   def connect(%Scope{} = scope, %Node{id: id}) do
     result =
       Repo.transact(fn ->
@@ -643,6 +676,7 @@ defmodule Apiary.Adapters do
                live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
                  {:error, :not_found},
              :ok <- connectable(current),
+             true <- offered?(scope, current) || {:error, :not_offered},
              nonce = ConnectPass.new_nonce(),
              {:ok, connection, pass, replaced} <- Connections.start(scope, current, nonce),
              {:ok, _entry} <-
