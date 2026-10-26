@@ -1127,12 +1127,22 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{name} started a test run"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{name} took this in %{when}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} took this in %{when}. Until a run starts, you can undo this."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -5135,6 +5145,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed when its integration was removed"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Closing ends the work on it in Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -11904,6 +11919,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Qory answers the line when the run starts."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Qory asked %{number} question before it can propose what to do."
 msgid_plural "Qory asked %{number} questions before it can propose what to do."
 msgstr[0] ""
@@ -11922,6 +11942,11 @@ msgid "Qory asked %{number} question, after %{duration}"
 msgid_plural "Qory asked %{number} questions, after %{duration}"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory is answering the line."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -12761,6 +12786,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run %{attempt} of %{of} answers the line."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run %{attempt} of %{of} is queued."
 msgstr ""
 
@@ -12772,6 +12802,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run %{attempt} of %{of} reads the %{item}. It proposes what to do, or asks what it needs to know."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It answers the line."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -14332,6 +14367,12 @@ msgstr ""
 msgid "Terminal, live"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/components/work_item_list_components.ex
+#, elixir-autogen, elixir-format
+msgid "Test"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Text size"
@@ -15466,6 +15507,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The whole workspace"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The work item stays in Qory Apiary, declined."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -17484,12 +17530,22 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "You started a test run"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "You took this in %{when}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You took this in %{when}. Until a run starts, you can undo this."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18280,6 +18336,18 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "last seen first"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgctxt "the line a test work item was made from"
+msgid "line"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgctxt "the line a test work item was made from"
+msgid "lines"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex

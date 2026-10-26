@@ -114,6 +114,7 @@ defmodule Apiary.WorkItems.WorkListTest do
                key: "#12",
                repository: "acme/shop",
                integration: adapter.name,
+               test: false,
                state: :exploring,
                take_in: 1,
                status: :queued,
