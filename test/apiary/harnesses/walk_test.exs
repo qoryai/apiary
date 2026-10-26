@@ -1439,7 +1439,16 @@ defmodule Apiary.Harnesses.WalkTest do
       String.duplicate("0a", 20),
       String.duplicate("b1", 32)
     ]
-    @refused_refs ["refs/pull/1/head", "refs/merge-requests/1/head", "refs/remotes/x"]
+    @refused_refs [
+      "refs/pull/1/head",
+      "refs/merge-requests/1/head",
+      "refs/remotes/x",
+      "pull-requests/1/from",
+      "changes/01/1/1",
+      "notes/x",
+      "refs/tags/../pull/1/head",
+      "./pull/1/head"
+    ]
     # A base's stack whose one module is at a full commit id, so it is not read.
     @ref_stack "modules:\n  - source: {git: \"#{@lint}\", ref: \"#{@commit}\"}\n"
 
@@ -1473,7 +1482,7 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
-    test "any other ref under refs/ fails invalid before a call, for a linked and a public source",
+    test "another ref under refs/, a short name in another namespace, or a dot part fails invalid before a call, for a linked and a public source",
          ctx do
       for git <- [@harness, @public], ref <- @refused_refs do
         assert {:failed, %{failure: :invalid, source: ^git, rule: rule}} =

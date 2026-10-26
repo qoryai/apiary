@@ -35,16 +35,19 @@ defmodule Apiary.Harnesses.Walk do
   # (one with `git`) is checked, in this order: the form `<user>@<host>:<path>` fails
   # `scp_form`; an address with a user name fails `credential_in_address`; then
   # `invalid` for the save rules of a source (`Apiary.Stacks.Document.source_error/2`),
-  # a `ref` under `refs/` that is no branch or tag among them, linked or public
-  # (`Apiary.Stacks.Document.ref_error/1`), a host with a percent-encoding, an address longer than a call takes, a `ref` that is
-  # no version a read takes, a host that is an IP address in any notation or a local
-  # name (`localhost`, `*.localhost`, each also with final dots), and a `path` that is
-  # absolute, leads out of its source with `..`, or has a `\` or a `%`, which could
-  # spell `..` another way. Every other `path` the walk reads is checked the same way: a
-  # local path of the target's file, an export's stack file, and a local module of a
-  # level-2 base's `qory-stack.yaml`, which is read from the stack file's folder, so only
-  # a path that leaves the base's repository from there fails. A file's base given by
-  # name alone, `{stack: <name>}`, fails `invalid` with the save rule's words.
+  # among them its `ref`, linked or public (`Apiary.Stacks.Document.ref_error/1`: a
+  # `ref` under `refs/` that is no branch or tag, a short name in one of the other
+  # namespaces it lists, such as `pull/1/head`, or a `ref` with an empty part or a part
+  # that starts with `.`), a host with a percent-encoding, an address longer than a call
+  # takes, a `ref` that is no version a read takes, a host that is an IP address in any
+  # notation or a local name (`localhost`, `*.localhost`, each also with final dots), and
+  # a `path` that is absolute, leads out of its source with `..`, or has a `\` or a `%`,
+  # which could spell `..` another way. Every other `path` the walk reads is checked the
+  # same way: a local path of the target's file, an export's stack file, and a local
+  # module of a level-2 base's `qory-stack.yaml`, which is read from the stack file's
+  # folder, so only a path that leaves the base's repository from there fails. A file's
+  # base given by name alone, `{stack: <name>}`, fails `invalid` with the save rule's
+  # words.
   #
   # Each level's addresses are resolved at every adapter with a `call_url`, in the order
   # of their names. A covered result counts under a live grant of a connected connection:
@@ -70,11 +73,11 @@ defmodule Apiary.Harnesses.Walk do
   # checked, pinned or linked.
   #
   # A public source is read through the adapter that answered `public`, at the result's
-  # `public_ref` (`read-public`, with no grant), by the rules of a linked source: its version pinned, its base's
-  # `qory-stack.yaml` followed, its modules' sources checked, and the level its
-  # workflows declare read. It is no link: it counts toward no limit of links, and the run
-  # gets no credential for it. Its pin puts its host in the run's `stack_hosts`, and qory
-  # fetches it with no credential.
+  # `public_ref` (`read-public`, with no grant), by the rules of a linked source: its
+  # version pinned, its base's `qory-stack.yaml` followed, its modules' sources checked,
+  # and the level its workflows declare read. It is no link: it counts toward no limit of
+  # links, and the run gets no credential for it. Its pin puts its host in the run's
+  # `stack_hosts`, and qory fetches it with no credential.
   #
   # Then the base is read through its link, or as public, at its `ref`:
   # `<path>/qory-stack.yaml` for a `path`; the root's harness file's `exports` and the
@@ -100,7 +103,8 @@ defmodule Apiary.Harnesses.Walk do
   #     (`Apiary.Harnesses.Reader.workflow_access/2`), of the base's `qory-stack.yaml`
   #     for a section with `extends`, and of the section's `workflows` for one without.
   #     A value other than `write`, an absent key, an absent `workflows` entry, and a
-  #     base with no link, which is not read, declare `:read`;
+  #     base that is not read, one with no link that is not public, declare `:read`. A
+  #     public base has no link, is read, and its value counts;
   #   * recorded: the access level of the stack row with the run's workflow
   #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
   #
@@ -428,8 +432,9 @@ defmodule Apiary.Harnesses.Walk do
 
     {{listed, folder}, listed_by} =
       case {base, allowed} do
-        # A base with no link is pinned at its commit and not read: the walk does not
-        # follow its `qory-stack.yaml`, so its modules are neither checked nor pinned.
+        # A base with no link that is not public is pinned at its commit and not read:
+        # the walk does not follow its `qory-stack.yaml`, so its modules are neither
+        # checked nor pinned. A public base has an adapter and is read below.
         {%{"git" => _git}, [{_source, %{adapter: nil}} | _]} ->
           put_pin(base["git"], base["ref"], base["ref"])
           {{[], []}, nil}

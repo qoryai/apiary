@@ -197,25 +197,33 @@ defmodule Apiary.Stacks.Document do
     base ++ modules
   end
 
-  # Namespaces under `refs/` other than branches and tags, which git also finds by a
-  # short name: `git fetch` resolves `pull/1/head` as `refs/pull/1/head`.
-  @other_namespaces ~w(pull merge-requests remotes)
+  # Namespaces under `refs/` other than branches and tags that forges and code review
+  # servers write, often for anyone who opens a pull request or uploads a change. git
+  # resolves a short name under `refs/` first: `git fetch` takes `pull/1/head` as
+  # `refs/pull/1/head`, and `changes/34/1234/2` as `refs/changes/34/1234/2`.
+  @other_namespaces ~w(pull pull-requests merge-requests changes remotes notes keep-around
+                       pipelines environments)
 
   @doc false
   # ref_error/1 is the refusal of `ref`, a harness source's version, nil for one that is
   # `HEAD`, a branch or tag name, `refs/heads/<name>`, `refs/tags/<name>` or a full
-  # commit id. Every other ref under `refs/`, such as `refs/pull/1/head`, and its short
-  # name, such as `pull/1/head`, is refused: people without write access to a
-  # repository can change some of them. The save rules and the harness walk both call it.
+  # commit id. Refused: every other ref under `refs/`, such as `refs/pull/1/head`; a
+  # short name whose first part is one of `@other_namespaces`, such as `pull/1/head`;
+  # and a ref with an empty part, or a part that starts with `.`, such as `..`, so that
+  # no path steps around those checks. People without write access to a repository can
+  # change some of those refs. The save rules and the harness walk both call it.
   @spec ref_error(String.t()) :: error | nil
   def ref_error(ref) when is_binary(ref) do
+    parts = String.split(ref, "/")
+
     allowed =
-      case String.split(ref, "/", parts: 3) do
-        ["refs", kind, name] when kind in ["heads", "tags"] -> name != ""
-        ["refs" | _rest] -> false
-        [first, _rest | _more] -> first not in @other_namespaces
-        _one_part -> true
-      end
+      not Enum.any?(parts, &(&1 == "" or String.starts_with?(&1, "."))) and
+        case parts do
+          ["refs", kind, _name | _rest] when kind in ["heads", "tags"] -> true
+          ["refs" | _rest] -> false
+          [first, _second | _rest] -> first not in @other_namespaces
+          [_one] -> true
+        end
 
     unless allowed do
       {"write the ref %{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>

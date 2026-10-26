@@ -250,7 +250,14 @@ defmodule Apiary.StacksTest do
       "merge-requests/1/head",
       "remotes/x",
       "refs/heads/",
-      "refs/notes/x"
+      "refs/notes/x",
+      "pull-requests/1/from",
+      "changes/01/1/1",
+      "notes/x",
+      "refs/tags/../pull/1/head",
+      "./pull/1/head",
+      "/x",
+      "a//b"
     ]
 
     test "take a ref that is HEAD, a branch or tag name, refs/heads/*, refs/tags/* or a full commit id",
@@ -268,7 +275,7 @@ defmodule Apiary.StacksTest do
       end
     end
 
-    test "refuse any other ref under refs/, and its short name, in the base and in a module",
+    test "refuse any other ref under refs/, a short name in another namespace, and an empty or dot part, in the base and in a module",
          ctx do
       for ref <- @refused_refs,
           document <- [
