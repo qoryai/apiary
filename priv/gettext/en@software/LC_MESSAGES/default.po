@@ -15237,6 +15237,11 @@ msgstr ""
 msgid "The size the runtime ran at"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The step is done when %{workspace} has a collection from a work source and Qory Apiary has read the list of collections through its adapter."
+msgstr "The step is done when %{workspace} has a repository from a work source and Qory Apiary has read the list of repositories through its adapter."
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The target's rule is kept and shown as held. Only an owner can unlock."

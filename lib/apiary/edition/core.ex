@@ -84,6 +84,20 @@ defmodule Apiary.Edition.Core do
   def harness_source_allowed?(_run_organisation_id, _owner_organisation_id, _source),
     do: false
 
+  # The setup list counts what the workspace and its organisation have, and the instance's
+  # pool and gateway.
+  @impl true
+  def work_source_ready(workspace), do: Apiary.WorkspaceSetup.work_source(workspace)
+
+  @impl true
+  def machines_ready(workspace), do: Apiary.WorkspaceSetup.machines(workspace)
+
+  @impl true
+  def model_key_ready?(workspace), do: Apiary.WorkspaceSetup.model_key?(workspace)
+
+  @impl true
+  def test_run_passed?(workspace), do: Apiary.WorkspaceSetup.test_passed?(workspace)
+
   @impl true
   def client_reads(_scope, _kind, _run, subject), do: subject
 
