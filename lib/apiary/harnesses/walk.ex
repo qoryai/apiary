@@ -2,8 +2,8 @@ defmodule Apiary.Harnesses.Walk do
   # The harness walk of an explore run (`Apiary.Harnesses.WalkJob`): which harness the run
   # composes, the version of its target, each remote source's version, and the links the
   # run reads its harness sources through. It reads through the adapters' calls
-  # (`Apiary.Adapters.Calls`: `resolve` and `read`) and writes nothing; the job stores
-  # what `run/2` returns (`Apiary.Harnesses`).
+  # (`Apiary.Adapters.Calls`: `resolve`, `read` and `read-public`) and writes nothing; the
+  # job stores what `run/2` returns (`Apiary.Harnesses`).
   #
   # ## The target's harness file
   #
@@ -46,27 +46,44 @@ defmodule Apiary.Harnesses.Walk do
   # name alone, `{stack: <name>}`, fails `invalid` with the save rule's words.
   #
   # Each level's addresses are resolved at every adapter with a `call_url`, in the order
-  # of their names. A result counts under a live grant of a connected connection: its
-  # owner is that connection's organisation, and the rule decides
-  # (`Apiary.Harnesses.allowed?/3`). The first result allowed is the source's link. With
-  # none, a source a grant of the instance's organisation covers fails `not_allowed`.
-  # Any other source, one no grant covers or one only other organisations' grants cover,
-  # fails `not_covered`, unless its `ref` is a full commit id (40 or 64 lower-case hex
-  # digits): then it has no link and is not read. Either way the run learns nothing of
-  # another organisation's grants; only a grant of the instance's organisation shows, as
-  # `not_allowed`. A source with a full commit id and no link has its `ref` as its pin, so
-  # its host is in the run's `stack_hosts`, and qory fetches it with no credential: a
-  # private one fails when qory composes the harness. Such a base's `qory-stack.yaml` is
-  # not followed, so its modules' sources are not checked, pinned or linked.
+  # of their names. A covered result counts under a live grant of a connected connection:
+  # its owner is that connection's organisation. Each source takes the first of these, in
+  # this order:
   #
-  # Then the base is read through its link, at its `ref`: `<path>/qory-stack.yaml` for a
-  # `path`; the root's harness file's `exports` and the export's `qory-stack.yaml` for a
-  # `stack`; and for the root, its `qory-stack.yaml`. As qory reads a base, a folder
-  # without `qory-stack.yaml` fails `invalid`: the harness section of the root's harness
-  # file is no stack. A base of the target's file with `path` and no `git` is read the same way
-  # in the target, at `target_version`. Every other remote source's repository has its
-  # root `harness.yaml` read once, at its `ref`, for its version. Each later read of a
-  # repository is at the version the first returned, its pin.
+  #   1. a result under a grant of the run's organisation: the source's link;
+  #   2. a result under another grant the rule allows (`Apiary.Harnesses.allowed?/3`),
+  #      such as a grant of the instance's organisation with an assignment: the link;
+  #   3. a result with `public`, true, the first in the adapters' order, with or without
+  #      a grant: the source is public;
+  #   4. a source a grant of the instance's organisation covers fails `not_allowed`;
+  #   5. a `ref` that is a full commit id (40 or 64 lower-case hex digits): no link, and
+  #      the source is not read;
+  #   6. any other source, one no grant covers or one only other organisations' grants
+  #      cover, fails `not_covered`.
+  #
+  # The run learns nothing of another organisation's grants; only a grant of the
+  # instance's organisation shows, as `not_allowed`. A source with a full commit id and no
+  # link has its `ref` as its pin, so its host is in the run's `stack_hosts`, and qory
+  # fetches it with no credential: a private one fails when qory composes the harness.
+  # Such a base's `qory-stack.yaml` is not followed, so its modules' sources are not
+  # checked, pinned or linked.
+  #
+  # A public source is read through the adapter that answered `public` (`read-public`,
+  # with no grant), by the rules of a linked source: its version pinned, its base's
+  # `qory-stack.yaml` followed, its modules' sources checked, and the level its
+  # workflows declare read. It is no link: it counts toward no limit of links, and the run
+  # gets no credential for it. Its pin puts its host in the run's `stack_hosts`, and qory
+  # fetches it with no credential.
+  #
+  # Then the base is read through its link, or as public, at its `ref`:
+  # `<path>/qory-stack.yaml` for a `path`; the root's harness file's `exports` and the
+  # export's `qory-stack.yaml` for a `stack`; and for the root, its `qory-stack.yaml`. As
+  # qory reads a base, a folder without `qory-stack.yaml` fails `invalid`: the harness
+  # section of the root's harness file is no stack. A base of the target's file with
+  # `path` and no `git` is read the same way in the target, at `target_version`. Every
+  # other remote source's repository has its root `harness.yaml` read once, at its `ref`,
+  # for its version. Each later read of a repository is at the version the first
+  # returned, its pin.
   #
   # The links: one per grant, with the resources the walk resolved under it, read only.
   # More than `max_links/0` (5: the 8 credentials of a run, less the model key, the
@@ -90,9 +107,9 @@ defmodule Apiary.Harnesses.Walk do
   #
   # At most 60 seconds and 24 calls per walk. A call that times out or reaches no one,
   # or a walk out of time, is `{:retry, failure}`, for the job to try again. A refusal is
-  # final: `grant_unknown` and `resource_not_covered` fail `not_covered`;
-  # `version_not_found` and `document_not_text` fail `invalid`; any other failure of a
-  # call fails `adapter_failed`, with the call's failure.
+  # final: `grant_unknown`, `resource_not_covered` and `resource_not_public` fail
+  # `not_covered`; `version_not_found` and `document_not_text` fail `invalid`; any other
+  # failure of a call fails `adapter_failed`, with the call's failure.
   #
   # ## What a failure shows
   #
@@ -614,28 +631,26 @@ defmodule Apiary.Harnesses.Walk do
   defp authorise([], _organisation), do: []
 
   defp authorise(sources, %Organisation{id: organisation_id}) do
-    covered = resolve(sources |> Enum.map(& &1["git"]) |> Enum.uniq())
+    {covered, public} = resolve(sources |> Enum.map(& &1["git"]) |> Enum.uniq())
     instance = Edition.instance_organisation_id()
 
     allowed =
       Enum.map(sources, fn source ->
         candidates = Map.get(covered, source["git"], [])
-
-        found =
-          Enum.find_value(candidates, fn {adapter, grant, resource_ref} ->
-            if Harnesses.allowed?(organisation_id, grant.organisation_id, source),
-              do: {adapter, grant, resource_ref}
-          end)
-
         shown = Document.shown(source["git"])
 
-        case found do
+        case allowed(candidates, organisation_id, source) do
           {adapter, grant, resource_ref} ->
             link(adapter, grant, resource_ref)
             {source, location(adapter, grant.grant_ref, resource_ref, shown, [], shown)}
 
           nil ->
             cond do
+              # Read with no grant, so with no link.
+              is_map_key(public, source["git"]) ->
+                {adapter, resource_ref} = Map.fetch!(public, source["git"])
+                {source, location(adapter, nil, resource_ref, shown, [], shown)}
+
               Enum.any?(candidates, fn {_a, grant, _r} -> grant.organisation_id == instance end) ->
                 fail(:not_allowed, shown)
 
@@ -653,12 +668,24 @@ defmodule Apiary.Harnesses.Walk do
     allowed
   end
 
+  # The first candidate under a grant of the run's organisation, else the first under a
+  # grant the rule allows; nil for none.
+  defp allowed(candidates, organisation_id, source) do
+    Enum.find(candidates, fn {_adapter, grant, _ref} ->
+      grant.organisation_id == organisation_id
+    end) ||
+      Enum.find(candidates, fn {_adapter, grant, _ref} ->
+        Harnesses.allowed?(organisation_id, grant.organisation_id, source)
+      end)
+  end
+
   # A full commit id, as `Apiary.Dispatches.Built` takes one: 40 lower-case hex digits
   # for SHA-1, 64 for SHA-256. A branch, a tag or a short id is none.
   defp commit?(ref), do: is_binary(ref) and Regex.match?(@commit, ref)
 
-  # The covered results of `addresses` at every adapter with a `call_url`, by address:
-  # `{adapter, grant, resource_ref}` under a live grant of a connected connection.
+  # The results of `addresses` at every adapter with a `call_url`, two maps by address:
+  # the covered ones, `{adapter, grant, resource_ref}` under a live grant of a connected
+  # connection, and the first public one, `{adapter, resource_ref}`, whatever its grant.
   defp resolve(addresses) do
     adapters =
       Repo.all(
@@ -669,19 +696,37 @@ defmodule Apiary.Harnesses.Walk do
 
     for adapter <- adapters,
         chunk <- Enum.chunk_every(addresses, 64),
-        %{address: address, grant_ref: grant_ref, resource_ref: resource_ref} <-
-          resolve_at(adapter, chunk),
-        %Grant{} = grant <- [live_grant(adapter, grant_ref)],
-        reduce: %{} do
-      covered ->
+        result <- resolve_at(adapter, chunk),
+        reduce: {%{}, %{}} do
+      {covered, public} -> {covered(covered, adapter, result), public(public, adapter, result)}
+    end
+  end
+
+  defp covered(covered, adapter, %{grant_ref: grant_ref, resource_ref: resource_ref} = result) do
+    case live_grant(adapter, grant_ref) do
+      %Grant{} = grant ->
         Map.update(
           covered,
-          address,
+          result.address,
           [{adapter, grant, resource_ref}],
           &(&1 ++ [{adapter, grant, resource_ref}])
         )
+
+      nil ->
+        covered
     end
   end
+
+  defp covered(covered, _adapter, _result), do: covered
+
+  defp public(public, adapter, %{public: true, address: address} = result),
+    do: Map.put_new(public, address, {adapter, public_ref(result)})
+
+  defp public(public, _adapter, _result), do: public
+
+  # The resource a public result's `read-public` calls read: every public read takes it
+  # from here, so no read of a public source uses another member of the result.
+  defp public_ref(%{public: true, resource_ref: resource_ref}), do: resource_ref
 
   defp resolve_at(adapter, addresses) do
     case call(adapter, &Calls.resolve(&1, addresses, &2)) do
@@ -721,7 +766,8 @@ defmodule Apiary.Harnesses.Walk do
   ## Reading
 
   # The version of a remote source's repository: its pin, or its root `harness.yaml`
-  # read once at its `ref`; for a source with no link, its `ref`, a full commit id.
+  # read once at its `ref`, through its link or as public; for a source with no link
+  # that is not public, its `ref`, a full commit id.
   defp pin(%{"git" => git, "ref" => ref}, %{adapter: nil}), do: put_pin(git, ref, ref)
 
   defp pin(%{"git" => git, "ref" => ref}, location) do
@@ -832,7 +878,7 @@ defmodule Apiary.Harnesses.Walk do
   end
 
   # The document at `parts` under the location's folder, at `at`: `{content | nil,
-  # resolved_at}`.
+  # resolved_at}`. A location with no grant is a public source's (`read-public`).
   defp read(location, parts, at) do
     path = Enum.join(location.prefix ++ parts, "/")
 
@@ -843,7 +889,12 @@ defmodule Apiary.Harnesses.Walk do
       at: at
     }
 
-    case call(location.adapter, &Calls.read_document(&1, request, &2)) do
+    read =
+      if location.grant_ref,
+        do: &Calls.read_document(&1, request, &2),
+        else: &Calls.read_public(&1, request, &2)
+
+    case call(location.adapter, read) do
       {:ok, %{found: true, content: content, resolved_at: version}} -> {content, version}
       {:ok, %{found: false, resolved_at: version}} -> {nil, version}
       {:error, %CallFailure{} = failure} -> call_failed(failure, location)
@@ -878,7 +929,7 @@ defmodule Apiary.Harnesses.Walk do
        do: retry(%{name: failure.adapter_name})
 
   defp call_failed(%CallFailure{cause: :refused, code: code}, %{} = location)
-       when code in ["grant_unknown", "resource_not_covered"],
+       when code in ["grant_unknown", "resource_not_covered", "resource_not_public"],
        do: fail(:not_covered, location.source)
 
   defp call_failed(%CallFailure{cause: :refused, code: "version_not_found"}, %{} = location),
