@@ -1533,8 +1533,39 @@ defmodule Apiary.Organisations do
   def has_workspace?(%Organisation{id: organisation_id}),
     do: Repo.exists?(workspaces_in_use(organisation_id))
 
+  @doc """
+  workspaces_topic/1 is the `Apiary.PubSub` topic of the organisation `organisation_id`'s
+  workspaces. Once `create_workspace/2` or `create_first_workspace/2` has created one, the
+  topic gets `{:workspace_created, %{organisation_id: id, workspace_id: id}}`.
+  """
+  @spec workspaces_topic(Ecto.UUID.t()) :: String.t()
+  def workspaces_topic(organisation_id), do: "organisation_workspaces:" <> organisation_id
+
+  @doc """
+  subscribe_workspaces/1 subscribes the caller to the topic of the scope's organisation's
+  workspaces (`workspaces_topic/1`). The messages carry ids only.
+  """
+  @spec subscribe_workspaces(Scope.t()) :: :ok | {:error, term}
+  def subscribe_workspaces(%Scope{organisation: %Organisation{id: organisation_id}}),
+    do: Phoenix.PubSub.subscribe(Apiary.PubSub, workspaces_topic(organisation_id))
+
   # `which` is `:first` for the organisation's first workspace, refused once it has one.
-  defp insert_workspace(%Scope{organisation: organisation} = scope, attrs, which) do
+  # The topic of its workspaces is told once the transaction has committed.
+  defp insert_workspace(%Scope{} = scope, attrs, which) do
+    with {:ok, workspace} <- insert_workspace_row(scope, attrs, which) do
+      _sent =
+        Phoenix.PubSub.broadcast(
+          Apiary.PubSub,
+          workspaces_topic(workspace.organisation_id),
+          {:workspace_created,
+           %{organisation_id: workspace.organisation_id, workspace_id: workspace.id}}
+        )
+
+      {:ok, workspace}
+    end
+  end
+
+  defp insert_workspace_row(%Scope{organisation: organisation} = scope, attrs, which) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"workspace.create", organisation),
            :ok <- lock_allowance(organisation),

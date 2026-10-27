@@ -72,7 +72,7 @@ defmodule ApiaryWeb.AdapterComponents do
   attr :adapter, Node, required: true
   attr :back, :string, default: nil, doc: "`list` on the list, so a refusal comes back there"
   attr :variant, :string, default: "default", values: ~w(default primary)
-  attr :size, :string, default: "xs", values: ~w(xs sm)
+  attr :size, :string, default: "xs", values: ~w(xs sm md)
   attr :target, :string, default: nil, doc: "`_blank` to open the adapter in a new tab"
 
   @doc false

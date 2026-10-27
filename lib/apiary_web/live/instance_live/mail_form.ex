@@ -16,9 +16,9 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   field stays empty and nothing it is bound to changes (`Apiary.Mail.save_settings/3`).
 
   `step` is the mail step's form: its button is "Save and send a test", with the step's
-  `actions` beside it, and it says neither that mail is off nor what a save sends, which the
-  step's help says. Once a save has sent the test link, it tells the page that holds it,
-  `{ApiaryWeb.InstanceLive.MailForm, :sent}`.
+  `back` before it and its `actions` at the end of the row, and it says neither that mail
+  is off nor what a save sends, which the step's context says. Once a save has sent the
+  test link, it tells the page that holds it, `{ApiaryWeb.InstanceLive.MailForm, :sent}`.
 
   A save after the sign-in has grown old leads to the log-in page, as the settings page's
   mount does (`ApiaryWeb.UserAuth`'s sudo mode); a person who is no longer an instance
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   alias ApiaryWeb.SettingsComponents
 
   # Given: `id`, `current_scope`, `path`, the page's path, and, for the mail step, `step`
-  # true and the `actions` slot.
+  # true and the `back` and `actions` slots.
   @impl true
   def render(assigns) do
     ~H"""
@@ -151,10 +151,12 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
               )}
             </:note>
           </SettingsComponents.save>
-          <div :if={@step} id="mail-save" class="flex flex-wrap items-start justify-between gap-3">
-            <.button type="submit" variant="primary" loading_text={gettext("Sending")}>
+          <div :if={@step} id="mail-save" class="q-su-acts">
+            {render_slot(@back)}
+            <.button type="submit" variant="primary" size="md" loading_text={gettext("Sending")}>
               {gettext("Save and send a test")}
             </.button>
+            <span class="grow"></span>
             {render_slot(@actions)}
           </div>
         </.form>
@@ -214,6 +216,7 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
     socket = assign(socket, assigns)
     socket = assign_new(socket, :step, fn -> false end)
     socket = assign_new(socket, :actions, fn -> [] end)
+    socket = assign_new(socket, :back, fn -> [] end)
 
     if Map.has_key?(socket.assigns, :source),
       do: {:ok, socket},

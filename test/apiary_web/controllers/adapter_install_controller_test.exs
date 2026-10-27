@@ -66,6 +66,66 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
     assert conn.resp_body |> String.replace(~r/<[^>]*>/, "") == ""
   end
 
+  describe "back" do
+    # The pass's payload, decoded: the part before its signature.
+    defp payload(pass) do
+      [part, _signature] = String.split(pass, ".")
+      part |> Base.url_decode64!(padding: false) |> Jason.decode!()
+    end
+
+    defp pass(conn) do
+      "https://tracker.example.com/connect?state=" <> pass = refresh_url(conn)
+      pass
+    end
+
+    test "\"set-up\" is kept in the session beside the nonce; the address and the pass are as without it",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      plain = install(conn, scope, adapter.public_id)
+
+      set_up =
+        post(
+          conn,
+          "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}/install?back=set-up"
+        )
+
+      # Each press starts a connection; the session keeps the one it started.
+      [[plain_id, _nonce]] = get_session(plain, "connect_passes")
+      assert ConnectSession.back(plain, plain_id) == nil
+
+      assert [[public_id, nonce, "set-up"]] = get_session(set_up, "connect_passes")
+      assert ConnectSession.back(set_up, public_id) == "set-up"
+      assert ConnectSession.fetch(set_up, public_id) == nonce
+
+      # The connect address and the pass have the same shape and the same fields, and
+      # neither carries the back value.
+      assert refresh_url(set_up) =~
+               ~r{\Ahttps://tracker\.example\.com/connect\?state=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\z}
+
+      assert Map.keys(payload(pass(set_up))) == Map.keys(payload(pass(plain)))
+      refute refresh_url(set_up) =~ "set-up"
+      refute inspect(payload(pass(set_up))) =~ "set-up"
+    end
+
+    test "any other value is not kept: no address, no open redirect", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter
+    } do
+      for back <- ["https://evil.example.com/", "//evil.example.com", "/acme/settings", "list"] do
+        conn =
+          post(
+            conn,
+            "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}/install?" <>
+              URI.encode_query(back: back)
+          )
+
+        assert [[public_id, nonce]] = get_session(conn, "connect_passes")
+        assert ConnectSession.fetch(conn, public_id) == nonce
+        assert ConnectSession.back(conn, public_id) == nil
+      end
+    end
+  end
+
   test "an admin may install too", %{scope: scope, adapter: adapter} do
     %{user: admin} = member_fixture(scope, :admin)
     conn = build_conn() |> log_in_user(admin) |> install(scope, adapter.public_id)

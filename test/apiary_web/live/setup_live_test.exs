@@ -10,6 +10,7 @@ defmodule ApiaryWeb.SetupLiveTest do
 
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
+  import ApiaryWeb.SetUpSteps
 
   alias Apiary.Setup
 
@@ -54,7 +55,25 @@ defmodule ApiaryWeb.SetupLiveTest do
              |> String.trim() ==
                Apiary.Edition.first_sign_up_line()
 
-      assert has_element?(lv, "#setup-admin", "You become this instance's admin.")
+      assert has_element?(
+               lv,
+               "#set-up-context #setup-admin",
+               "You create the first account of Qory Apiary and its organisation. As the " <>
+                 "instance admin, you connect Qory Apiary to mail and to the systems that " <>
+                 "bring in work, then set up the organisation's first workspace."
+             )
+
+      refute render(lv) =~ "You become this instance's admin."
+
+      # The first step of the set-up: the instance's connections and the workspace after it.
+      assert [{"Your account", :current} | rest] = steps(lv)
+      names = Enum.map(rest, &elem(&1, 0))
+
+      assert Enum.find_index(names, &(&1 == "Mail")) <
+               Enum.find_index(names, &(&1 == "Workspace"))
+
+      assert Enum.all?(rest, &(elem(&1, 1) in [:to_come, :done]))
+      assert count(lv) == "Step 1 of #{length(rest) + 1}"
 
       assert fields(lv) == [
                "user[email]",
