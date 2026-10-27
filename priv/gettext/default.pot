@@ -11875,7 +11875,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
-msgid "Organisations see the new name on their Integrations page and when they install it, where the adapter's description gives no title."
+msgid "Organisations see the new name on their Integrations page and when they install the adapter, unless its description has a title."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
