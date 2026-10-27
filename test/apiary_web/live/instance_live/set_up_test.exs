@@ -501,6 +501,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
     refute has_element?(lv, "#set-up-continue")
   end
 
+  @tag :feature_sets
   test "Save and send a test sends the test link, marks the connections reviewed and leads on",
        %{conn: conn, user: user, scope: scope} do
     lv = mail_step(conn)
@@ -582,6 +583,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
     refute Setup.connections_reviewed?()
   end
 
+  @tag :feature_sets
   test "Skip on the last step marks the connections reviewed and leads on",
        %{conn: conn, scope: scope} do
     lv = mail_step(conn)
@@ -657,6 +659,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       else: [{"Workspace", current}]
   end
 
+  @tag :feature_sets
   test "with no adapter, the page has no step and sends the admin on as a sign-in does",
        %{conn: conn, organisation: organisation} do
     for path <- [~p"/instance/set-up", ~p"/instance/set-up?step=mail"] do

@@ -172,6 +172,7 @@ defmodule Apiary.FeaturesTest do
       if free != [], do: refute(guide =~ ~r/every other feature\s+needs it/)
     end
 
+    @tag :feature_sets
     test "a name that is no feature is a mistake in the caller" do
       assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
         Features.needs(:dispatch)
@@ -192,6 +193,8 @@ defmodule Apiary.FeaturesTest do
   end
 
   describe "visible?/2" do
+    @describetag :feature_sets
+
     setup do
       organisation = %Organisation{id: Ecto.UUID.generate()}
       workspace = %Workspace{id: Ecto.UUID.generate(), organisation_id: organisation.id}
@@ -317,6 +320,8 @@ defmodule Apiary.FeaturesTest do
   end
 
   describe "hidden_of/1" do
+    @describetag :feature_sets
+
     test "keeps the features the instance has, in the order of all/0" do
       assert Features.hidden_of([]) == []
       assert Features.hidden_of(Enum.reverse(Features.all())) == Features.enabled()
@@ -501,6 +506,7 @@ defmodule Apiary.FeaturesTest do
       end
     end
 
+    @tag :feature_sets
     test "the nodes are the part nodes, of no feature, after the features' parts" do
       assert List.last(Features.parts()) == :nodes
       assert Features.feature_of(:nodes) == nil
@@ -667,6 +673,8 @@ end
 defmodule Apiary.FeaturesBootTest do
   # Not async: boot!/0 sets the features of the whole node.
   use ExUnit.Case, async: false
+
+  @moduletag :feature_sets
 
   alias Apiary.Features
 

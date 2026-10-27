@@ -306,6 +306,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SignUpOpen)
     end
 
+    @tag :feature_sets
     test "says the first workspace is set up next, with mail or without", %{conn: conn} do
       Apiary.Mail.put_test_source(:env)
       {:ok, lv, _html} = live(conn, ~p"/users/register")

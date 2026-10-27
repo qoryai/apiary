@@ -50,6 +50,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
   defp count(query), do: Repo.aggregate(query, :count)
 
+  @tag :feature_sets
   test "fills an empty instance: the organisation, its workspaces, people and their runs" do
     fill()
 
@@ -128,6 +129,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert count(from p in Apiary.Targets.Pin, where: p.user_id == ^dana.id) == 3
   end
 
+  @tag :feature_sets
   test "gives Main nodes with keys, its runs placed on the history's, secrets, variables and integrations" do
     fill()
 

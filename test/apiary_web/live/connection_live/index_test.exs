@@ -162,6 +162,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       :ok
     end
 
+    @tag :feature_sets
     test "are destinations that read as calls to their tool; a refused request is a denial",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
@@ -229,6 +230,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     end
   end
 
+  @tag :feature_sets
   test "a denial to a host longer than 255 bytes is a row with the host cut, and no rule from it",
        %{conn: conn, scope: scope} do
     long = String.duplicate("abcdefgh.", 33) <> "example"
@@ -282,6 +284,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       }
     end
 
+    @tag :feature_sets
     test "one row per destination with its reason, denied first", %{conn: conn, scope: scope} do
       view = open(conn, scope)
 
@@ -428,6 +431,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{b}-toggle[aria-expanded=false]")
     end
 
+    @tag :feature_sets
     test "every filter is the URL; per target is the page with repo set", %{
       conn: conn,
       scope: scope
@@ -484,6 +488,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       )
     end
 
+    @tag :feature_sets
     test "a system with a colon filters and reads back", %{conn: conn, scope: scope} do
       started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"},
         egress: [%{"host" => "colon.example"}]
@@ -875,6 +880,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       %{shop: target_id(scope, "github.com", "acme/shop")}
     end
 
+    @tag :feature_sets
     test "the line says so, with the target's runs, its policy and the whole list", %{
       conn: conn,
       scope: scope,
@@ -940,6 +946,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
         do: assert(attribute(view, "#nav-policy", "href") == workspace_path(scope, "/policy"))
     end
 
+    @tag :feature_sets
     test "only the target carries, and its system only where the path is shared", %{
       conn: conn,
       scope: scope,
@@ -1181,6 +1188,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       end
     end
 
+    @tag :feature_sets
     test "a patch to another target names it and its policy at once", %{
       conn: conn,
       scope: scope,

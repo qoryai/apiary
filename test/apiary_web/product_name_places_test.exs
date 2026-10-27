@@ -323,6 +323,7 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
     if Apiary.Features.on?(:security), do: Enum.at(lines, 1), else: nil
   end
 
+  @tag :feature_sets
   test "with no name set, every place reads as it always has, and none says Powered by",
        %{conn: conn} do
     places = places(conn)
@@ -352,6 +353,7 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
     end
   end
 
+  @tag :feature_sets
   test "with no name set, where the edition names the product otherwise, only the menu's button shows that name",
        %{conn: conn} do
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AnotherName)
@@ -382,6 +384,7 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
         do: assert(List.last(last) == "==============================")
   end
 
+  @tag :feature_sets
   test "with a name set, every place reads it, and the three lines say Powered by Qory Apiary",
        %{conn: conn} do
     put_name("Acme Agents")

@@ -19,6 +19,7 @@ defmodule ApiaryWeb.JumpControllerTest do
   defp labels(nil), do: []
   defp labels(group), do: Enum.map(group["items"], & &1["label"])
 
+  @tag :feature_sets
   test "with nothing typed: every page the reader may open, the workspace's, the organisation's and their own",
        %{conn: conn, scope: scope} do
     answer = jump(conn, workspace_path(scope, "/jump"))
@@ -74,6 +75,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert answer["empty"] == "Nothing matches “no such page”."
   end
 
+  @tag :feature_sets
   test "entries of the same name say whose they are, and none is listed twice",
        %{conn: conn, scope: scope} do
     labels = labels(group(jump(conn, workspace_path(scope, "/jump")), "Go to"))

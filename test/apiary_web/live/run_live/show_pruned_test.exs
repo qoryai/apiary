@@ -49,6 +49,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     refute html =~ "No session events arrived"
   end
 
+  @tag :feature_sets
   test "its terminal says the same, and its connections are still there", %{
     conn: conn,
     scope: scope
