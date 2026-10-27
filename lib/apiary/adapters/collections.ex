@@ -417,10 +417,11 @@ defmodule Apiary.Adapters.Collections do
   # disconnect ends it (`end_disconnected/2`), whatever its organisation's state, and its
   # organisation's trail gets the entry `collection.move`, by the instance, about the
   # collection, with its title as it was then (`name`), its connection's public id
-  # (`connection_id`) and the adapter's name (`integration`), written before the end, as a
-  # Backlog switch writes its entry before its change. `:ended` once that commits, after
-  # which the collection is broadcast to its organisation; `:free` for a ref no
-  # connection holds live; `:kept` otherwise.
+  # (`connection_id`) and the adapter's title as it was then (`integration`,
+  # `Apiary.Adapters.title/1`), written before the end, as a Backlog switch writes its
+  # entry before its change. `:ended` once that commits, after which the collection is
+  # broadcast to its organisation; `:free` for a ref no connection holds live; `:kept`
+  # otherwise.
   defp end_elsewhere(%Connection{id: connection_id, adapter_id: adapter_id}, ref, started_at) do
     {:ok, outcome} =
       Repo.transact(fn ->
@@ -442,7 +443,7 @@ defmodule Apiary.Adapters.Collections do
                   details: %{
                     name: collection.title,
                     connection_id: collection.connection.public_id,
-                    integration: Repo.get!(Node, adapter_id).name
+                    integration: Adapters.title(Repo.get!(Node, adapter_id))
                   }
                 })
 
