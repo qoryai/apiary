@@ -9050,6 +9050,23 @@
     gap: 1px;
     overflow-y: auto;
   }
+  .q-pick-grp {
+    display: grid;
+    gap: 1px;
+  }
+  .q-pick-group {
+    padding: 10px 8px 4px;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 16px;
+  }
+  .q-pick-grp:first-child .q-pick-group {
+    padding-top: 6px;
+  }
+  .q-pick-group[hidden] {
+    display: none;
+  }
   .q-pick-opt {
     position: relative;
     display: grid;
@@ -9065,6 +9082,14 @@
   }
   .q-pick-opt:hover {
     background-color: var(--color-base-200);
+  }
+  .q-pick-opt:has(:disabled) {
+    color: var(--q-faint);
+    background-color: transparent;
+    cursor: default;
+  }
+  .q-pick-opt:has(:disabled) .q-pick-s {
+    color: var(--q-faint);
   }
   .q-pick-opt:has(:focus-visible) {
     background-color: var(--color-base-300);

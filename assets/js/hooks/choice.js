@@ -9,9 +9,13 @@
 // and keep the choice. Without a search box, a letter goes to the next option whose title
 // starts with it.
 //
+// A disabled option shows but cannot be chosen: the arrow keys, the letters and the
+// opening keys pass over it, and a click on it does nothing.
+//
 // The search box narrows the options by title and subtitle in the browser, and keeps the
-// chosen option and any marked `data-keep` in view. It has no name, and its input never
-// reaches the form, so a keystroke sends no phx-change.
+// chosen option and any marked `data-keep` in view. A group heading shows while one of
+// its options does. It has no name, and its input never reaches the form, so a keystroke
+// sends no phx-change.
 //
 // The open panel (`hidden`), the button's `aria-expanded` and the hidden options are this
 // hook's: the component ignores them in a patch (`JS.ignore_attributes`), so the patch
@@ -34,6 +38,42 @@ export function matches(text, query) {
   return words(query).every(word => haystack.includes(word))
 }
 
+// What a query shows of a choice's groups, each `{options: [{text, keep, disabled,
+// checked}]}`: for each group whether its heading shows and which options do, and the
+// count of matches of `total`. The count leaves out an option kept in view whatever the
+// query (Another model) and a disabled one (Reading…). Without a query every heading
+// shows, an empty group's too.
+export function narrowed(groups, query) {
+  const searching = words(query).length > 0
+  let found = 0
+  let total = 0
+  const shown = groups.map(group => {
+    const options = group.options.map(option => {
+      const match = matches(option.text, query)
+      if (!option.keep && !option.disabled) {
+        total += 1
+        if (match) found += 1
+      }
+      return match || option.keep || option.checked
+    })
+    return {heading: !searching || options.some(Boolean), options}
+  })
+  return {groups: shown, found, total, searching}
+}
+
+// The index of the next option the keys may go to from `at`, a step of 1 or -1, around
+// the ends: one shown and not disabled. From -1, the first (1) or the last (-1); -1 when
+// there is none.
+export function next(options, at, step) {
+  const n = options.length
+  const from = at < 0 ? (step > 0 ? -1 : n) : at
+  for (let i = 1; i <= n; i++) {
+    const j = (((from + step * i) % n) + n) % n
+    if (!options[j].hidden && !options[j].disabled) return j
+  }
+  return -1
+}
+
 const grouped = n => n.toLocaleString(document.body.dataset.locale || "en-GB")
 
 export const Choice = {
@@ -43,8 +83,10 @@ export const Choice = {
     this.panel = () => this.el.querySelector(":scope > .q-pick-panel")
     this.search = () => this.el.querySelector(".q-pick-find input")
     this.radios = () => [...this.el.querySelectorAll(".q-pick-radio")]
-    this.shown = () => this.radios().filter(radio => !radio.closest(".q-pick-opt").hidden)
-    this.checked = () => this.radios().find(radio => radio.checked)
+    // The radios the keys may go to: shown, and not disabled.
+    this.usable = () =>
+      this.radios().filter(radio => !radio.disabled && !radio.closest(".q-pick-opt").hidden)
+    this.checked = () => this.radios().find(radio => radio.checked && !radio.disabled)
 
     this.el.addEventListener("click", e => {
       const button = this.button()
@@ -57,8 +99,14 @@ export const Choice = {
       const option = e.target.closest(".q-pick-opt")
       if (option && !e.target.matches(".q-pick-radio")) {
         e.preventDefault()
-        this.choose(option.querySelector(".q-pick-radio"))
+        const radio = option.querySelector(".q-pick-radio")
+        if (!radio.disabled) this.choose(radio)
       }
+    })
+
+    // A press on a disabled option leaves the focus where it was, not on the page.
+    this.el.addEventListener("mousedown", e => {
+      if (e.target.closest(".q-pick-opt")?.querySelector(".q-pick-radio:disabled")) e.preventDefault()
     })
 
     this.el.addEventListener("keydown", e => this.key(e))
@@ -110,12 +158,15 @@ export const Choice = {
           return
         }
         this.show()
-        const search = this.search()
-        const list = this.shown()
+        const radios = this.radios()
+        const ends = radios.map(radio => ({
+          hidden: radio.closest(".q-pick-opt").hidden,
+          disabled: radio.disabled,
+        }))
         const target =
-          (e.key !== "ArrowUp" && search) ||
+          (e.key !== "ArrowUp" && this.search()) ||
           this.checked() ||
-          (e.key === "ArrowUp" ? list[list.length - 1] : list[0])
+          radios[next(ends, -1, e.key === "ArrowUp" ? -1 : 1)]
         target?.focus()
       }
       return
@@ -124,7 +175,8 @@ export const Choice = {
       if (e.key === "ArrowDown") {
         e.preventDefault()
         const checked = this.checked()
-        ;(checked && this.shown().includes(checked) ? checked : this.shown()[0])?.focus()
+        const list = this.usable()
+        ;(list.includes(checked) ? checked : list[0])?.focus()
       } else if (e.key === "Enter") {
         // Enter in a search box would submit the form.
         e.preventDefault()
@@ -136,7 +188,7 @@ export const Choice = {
         e.preventDefault()
         this.choose(e.target)
       } else if (!this.search() && e.key.length === 1 && /\S/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const list = this.shown()
+        const list = this.usable()
         const at = list.indexOf(e.target)
         const letter = e.key.toLocaleLowerCase()
         const next = [...list.slice(at + 1), ...list.slice(0, at + 1)].find(radio =>
@@ -168,7 +220,7 @@ export const Choice = {
 
   // Checks a radio as a click would: the form hears the change, as it hears an arrow key's.
   check(radio) {
-    if (!radio || radio.checked) return
+    if (!radio || radio.checked || radio.disabled) return
     radio.checked = true
     radio.dispatchEvent(new Event("input", {bubbles: true}))
     radio.dispatchEvent(new Event("change", {bubbles: true}))
@@ -204,25 +256,32 @@ export const Choice = {
   narrow() {
     const search = this.search()
     if (!search) return
-    const query = search.value
     const checked = this.checked()
-    // The count is of the options the search reads: one kept in view whatever it says,
-    // such as Another model, is not among them.
-    const options = [...this.el.querySelectorAll(".q-pick-opt")]
-    const counted = options.filter(option => option.dataset.keep !== "true")
-    let found = 0
-    for (const option of options) {
-      const match = matches(option.textContent, query)
-      if (match && option.dataset.keep !== "true") found += 1
-      option.hidden = !match && option.dataset.keep !== "true" && !option.contains(checked)
-    }
+    const groups = [...this.el.querySelectorAll(".q-pick-grp")]
+    const options = group => [...group.querySelectorAll(".q-pick-opt")]
+    const {groups: shown, found, total, searching} = narrowed(
+      groups.map(group => ({
+        options: options(group).map(option => ({
+          text: option.textContent,
+          keep: option.dataset.keep === "true",
+          disabled: option.querySelector(".q-pick-radio").disabled,
+          checked: option.contains(checked),
+        })),
+      })),
+      search.value
+    )
+    groups.forEach((group, g) => {
+      const heading = group.querySelector(".q-pick-group")
+      if (heading) heading.hidden = !shown[g].heading
+      options(group).forEach((option, o) => (option.hidden = !shown[g].options[o]))
+    })
     const status = this.el.querySelector(".q-pick-status")
     if (!status) return
-    if (words(query).length === 0) status.textContent = ""
+    if (!searching) status.textContent = ""
     else if (found === 0) status.textContent = this.el.dataset.none
     else
       status.textContent = this.el.dataset.found
         .replace("%{shown}", grouped(found))
-        .replace("%{total}", grouped(counted.length))
+        .replace("%{total}", grouped(total))
   },
 }
