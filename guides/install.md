@@ -481,6 +481,12 @@ environment variable SMTP_TLS must be always, if_available or never
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.
 <!-- /feature -->
+<!-- feature: factory -->
+- `factory`: the work items of a workspace and what they are taken in from: the adapters'
+  steps of the instance's set-up, a workspace's work source, model providers and model,
+  workflow, and its setup list with the test run. Opt-in. Needs `observability`,
+  `security` and `secrets`.
+<!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
 the discovery document leave it out, and the documentation at `/docs` does not describe
@@ -506,6 +512,14 @@ Every feature but the security policy:
 QORY_FEATURES=all-security
 ```
 <!-- /feature -->
+<!-- feature: factory -->
+
+The work items and their set-up, with the features they need:
+
+```sh
+QORY_FEATURES=observability,security,secrets,factory
+```
+<!-- /feature -->
 
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
@@ -524,6 +538,36 @@ QORY_FEATURES=observability
 
 To switch a feature on later, add it to the value and restart. Every instance has the
 whole database schema whatever its features, so nothing is migrated.
+
+<!-- feature: factory -->
+### The instance's node pool and gateway
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `QORY_INSTALLED_POOL` | none | The name of the instance's node pool: a lower-case letter, then lower-case letters, digits and hyphens, 32 characters at most. Not set, or empty, declares none. |
+| `QORY_INSTALLED_GATEWAY` | none | The name of the instance's gateway, by the same rule. Not set, or empty, declares none. |
+| `QORY_INSTALLED_GATEWAY_URL` | required with `QORY_INSTALLED_GATEWAY` | The address pools reach the gateway at: `https://`, a host, and a port if needed, nothing more. Set without `QORY_INSTALLED_GATEWAY`, it stops the boot. |
+
+The instance's pool and gateway run beside Qory Apiary, with no organisation and no
+workspace; `compose.yaml` runs neither. Once the instance is set up, Qory Apiary adds each
+one declared and, while it has no key in use, writes a one-time code for it to
+`<name>/code` in `QORY_ENROLMENT_DIR`, `/run/qory/enrolment` when not set. The pool or
+the gateway makes its key from that code: no person runs a command for them. The pool
+takes the runs of every workspace with no node pool in use, and the gateway serves every
+organisation.
+
+The gateway's key allows stored secrets, which a test run with a model key needs; a key
+that a person makes on **Nodes** never allows them, so a test run through a gateway added
+there ends before a machine starts it. For a workspace with no node pool in use, the
+overview's step **Machines for runs** is done once the pool and the gateway each have a
+key in use. An instance admin checks them in **Instance settings › Nodes**: each is ready
+when **State** shows **Running** or **Last seen**. If one shows **Never seen**, open the
+logs of the pool and the gateway on the instance's host.
+
+The variables are read at boot. A malformed value, the same name for the pool and the
+gateway, a name that an adapter installed with Qory Apiary has, or a pool or gateway
+declared on an instance without `factory`, stops the boot.
+<!-- /feature -->
 
 ### Audit trail
 
@@ -720,6 +764,31 @@ in. It creates no workspace. Two pages follow:
    after. **Create workspace** creates Main and opens its overview: `/acme/main` for an
    organisation named `Acme`. Until Main exists, a sign-in of a member of the organisation
    opens this page.
+
+<!-- feature: factory -->
+With the `factory` feature, both pages have more steps:
+
+- **Connect Qory Apiary** has one step for each adapter that **Instance settings ›
+  Adapters** lists, then **Mail**. An adapter's step shows **State:** with **Set up** or
+  **Not set up**. While **Set up** shows, the step also shows the adapter's steps for its
+  set-up, where the adapter has some, starting with "Press **Set up**. A new tab opens."
+  Select **Set up**, and follow those steps in the new tab. Back on the set-up page,
+  once the state shows **Set up**, select **Continue**. The step of an adapter without a
+  key in use, or of one that has not sent the address where it is set up, shows what to
+  do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
+  connection for later, in **Instance settings**.
+- **Create workspace** opens step 2 of **Set up your workspace** in place of the overview:
+  **Connect a work source to Main**, at the same address. It lists the work sources that
+  the instance has set up for the workspace's type, each with **Connect**. Select
+  **Connect** beside one, and follow the steps the page shows for it. **Skip** opens the
+  overview, where you connect one later from the step **Work source**. With no work
+  source for the type, the page shows so, and **Continue** opens the overview. Only owners
+  and admins connect a work source.
+
+The overview then shows **Set up Main** until a test run passes:
+[Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has its
+steps.
+<!-- /feature -->
 
 The code is 32 random bytes, kept in the database until it is used; it does
 not expire before, and it works once: after it, any set-up link shows "This Qory Apiary is
