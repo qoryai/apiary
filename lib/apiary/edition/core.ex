@@ -70,6 +70,9 @@ defmodule Apiary.Edition.Core do
   def set_up_title(_scope, _step), do: gettext("Set up your workspace")
 
   @impl true
+  def set_up_context(_scope, _step_id), do: nil
+
+  @impl true
   def above_workspace(_workspace), do: nil
 
   # The core has no operator: an organisation's runs take its own chain of model choices.

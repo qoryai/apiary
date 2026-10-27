@@ -36,7 +36,8 @@ defmodule ApiaryWeb.SetUpComponents do
      `first: true` on the set-up link's page, whose reader becomes one. An adapter is
      done once it is configured; Mail where the
      environment sets it, or once settings are saved and their test link sent.
-  4. Workspace: for a person of an organisation, done once it has a workspace in use
+  4. Workspace: for a person of an organisation who may create its first workspace
+     (`workspace.create`), or once it has one, done then
      (`Apiary.Organisations.has_workspace?/1`); signed out, where the organisation is
      still to be made, or is the invitation's and has none.
   5. Work source, with the `factory` feature, for a person who may connect an adapter or
@@ -65,8 +66,11 @@ defmodule ApiaryWeb.SetUpComponents do
   defp step(id, label, group, done, path),
     do: %{id: id, label: label, group: group, state: done, path: path, note: nil}
 
-  defp invitation_step(%Invitation{workspace: nil}, token, current) when is_binary(token),
-    do: [
+  # With the invitation's organisation's id, for the edition (`c:Apiary.Edition.set_up_steps/2`);
+  # no page shows it.
+  defp invitation_step(%Invitation{workspace: nil} = invitation, token, current)
+       when is_binary(token) do
+    step =
       step(
         :invitation,
         gettext("Invitation"),
@@ -74,7 +78,9 @@ defmodule ApiaryWeb.SetUpComponents do
         current != :invitation,
         ~p"/invitations/#{token}"
       )
-    ]
+
+    [Map.put(step, :organisation_id, invitation.organisation_id)]
+  end
 
   defp invitation_step(_invitation, _token, _current), do: []
 
@@ -113,34 +119,14 @@ defmodule ApiaryWeb.SetUpComponents do
   defp mail_done?, do: Mail.source() == :env or Mail.shown().state in [:pending, :on]
 
   # Signed in: the person's organisation, which has its workspace or is to have one.
+  # Before the workspace exists, only for a person who may create it: another person
+  # waits, and the page shows them no step of the workspace's.
   defp workspace_steps(%Scope{organisation: %Organisation{} = organisation} = scope, _, true) do
-    workspace =
-      [
-        step(
-          :workspace,
-          gettext("Workspace"),
-          :workspace,
-          Organisations.has_workspace?(organisation),
-          ~p"/#{organisation}/set-up?step=type"
-        )
-      ]
+    made? = Organisations.has_workspace?(organisation)
 
-    if source_step?(scope, organisation) do
-      done = organisation_workspace(scope) |> source_done?()
-
-      workspace ++
-        [
-          step(
-            :source,
-            gettext("Work source"),
-            :workspace,
-            done,
-            ~p"/#{organisation}/set-up?step=source"
-          )
-        ]
-    else
-      workspace
-    end
+    if made? or Access.can?(scope, :"workspace.create", organisation),
+      do: workspace_and_source(scope, organisation, made?),
+      else: []
   end
 
   defp workspace_steps(_scope, _invitation, true), do: []
@@ -159,6 +145,35 @@ defmodule ApiaryWeb.SetUpComponents do
       [step(:workspace, gettext("Workspace"), :workspace, false, nil) | source]
     else
       []
+    end
+  end
+
+  defp workspace_and_source(scope, organisation, made?) do
+    workspace = [
+      step(
+        :workspace,
+        gettext("Workspace"),
+        :workspace,
+        made?,
+        ~p"/#{organisation}/set-up?step=type"
+      )
+    ]
+
+    if source_step?(scope, organisation) do
+      done = organisation_workspace(scope) |> source_done?()
+
+      workspace ++
+        [
+          step(
+            :source,
+            gettext("Work source"),
+            :workspace,
+            done,
+            ~p"/#{organisation}/set-up?step=source"
+          )
+        ]
+    else
+      workspace
     end
   end
 
