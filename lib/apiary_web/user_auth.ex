@@ -749,11 +749,15 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   @doc """
-  signed_in_path/1 is where a signed-in user is sent, from `/` and after log-in: the
+  signed_in_path/1 is where a signed-in user is sent, from `/` and after log-in: an
+  instance admin, the instance's connections, `/instance/set-up`, until an instance admin
+  finishes or skips their last step (`Apiary.Setup.connections_reviewed?/0`); else the
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
   (`Apiary.Organisations.load_home_scope/2`), at the first page it shows them
-  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's path, `/:org`, for a
+  (`ApiaryWeb.Layouts.workspace_landing/1`); the organisation's workspace set-up,
+  `/:org/set-up`, while the organisation has no workspace in use
+  (`Apiary.Organisations.has_workspace?/1`); the organisation's path, `/:org`, for a
   member who reaches no workspace yet, which says so; and without a membership
   `/users/organisations`. A LiveView cannot read the session, and is given `/`, which
   sends on the same way.
@@ -765,19 +769,32 @@ defmodule ApiaryWeb.UserAuth do
   def signed_in_path(_socket), do: ~p"/"
 
   defp signed_in_path(conn, %Apiary.Accounts.User{} = user) do
-    case home_scope(conn, Scope.for_user(user)) do
-      %Scope{organisation: %{}, workspace: %{}} = scope ->
-        ApiaryWeb.Layouts.workspace_landing(scope)
+    scope = Scope.for_user(user)
 
-      %Scope{organisation: %{} = organisation} ->
-        ~p"/#{organisation}"
+    if connections_to_review?(scope) do
+      ~p"/instance/set-up"
+    else
+      case home_scope(conn, scope) do
+        %Scope{organisation: %{}, workspace: %{}} = scope ->
+          ApiaryWeb.Layouts.workspace_landing(scope)
 
-      _no_membership ->
-        ~p"/users/organisations"
+        %Scope{organisation: %{} = organisation} ->
+          if Organisations.has_workspace?(organisation),
+            do: ~p"/#{organisation}",
+            else: ~p"/#{organisation}/set-up"
+
+        _no_membership ->
+          ~p"/users/organisations"
+      end
     end
   end
 
   defp signed_in_path(_conn, nil), do: ~p"/"
+
+  # Whether the person is an instance admin, sent to the instance's connections until one
+  # finishes or skips their last step.
+  defp connections_to_review?(scope),
+    do: not Apiary.Setup.connections_reviewed?() and Apiary.Access.instance_admin?(scope)
 
   @doc """
   home_scope/1 is the request's scope as a person's pages and the Instance's have it:

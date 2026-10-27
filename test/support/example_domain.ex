@@ -33,6 +33,12 @@ defmodule Apiary.Lingo.Domain.Example do
   def description, do: "For the tests only."
 
   @impl true
+  def type_name, do: "Example"
+
+  @impl true
+  def type_line, do: "For the tests only."
+
+  @impl true
   def target_required?, do: false
 
   @impl true

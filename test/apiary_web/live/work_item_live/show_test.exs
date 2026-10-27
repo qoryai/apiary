@@ -12,10 +12,13 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
   import Ecto.Query
   import Phoenix.LiveViewTest
+  import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, dispatched!: 1]
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [event_fixture: 4]
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Edition, EditionStubs, Repo, WorkItems}
+  alias Apiary.{Dispatches, Edition, EditionStubs, Repo, WorkItems}
+  alias Apiary.Runs.Projector
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
@@ -397,6 +400,106 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
       assert has_element?(view, "#work-item-explore-none-h", "The run ended with an error.")
+    end
+  end
+
+  describe "a run the gateway refused" do
+    @key_fix "Add a model key in Organisation settings › Model providers."
+
+    # Run `attempt` of 3 of a work item, refused by its gateway with `code` through the
+    # refusal's path: queued, claimed and handed over, then its `run.refused` event
+    # projected, which ends its run of the queue `run_refused` with the code
+    # (`Apiary.Dispatches.RunEnd.refused/1`). The runs before it ended without a result.
+    defp refused(scope, code, attempt \\ 1) do
+      place = handover_place_fixture(scope)
+      work_item = work_item_fixture(scope)
+
+      if attempt == 1 do
+        {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, work_item.take_in) end)
+      else
+        for _earlier <- 1..(attempt - 1), do: explore_run_fixture(work_item)
+
+        {:ok, _queued} =
+          Repo.transact(fn -> Dispatches.queue_next(work_item, work_item.take_in) end)
+      end
+
+      %{registered: run} = dispatched!(place.key)
+      event_fixture(run, 1, "run.refused", %{"code" => code, "names" => ["MODEL_KEY"]})
+      {:ok, run} = Projector.project(run)
+
+      {work_item, run}
+    end
+
+    test "for want of a model key: each tab puts the fix first, none says it ended with an error",
+         %{conn: conn, scope: scope} do
+      {work_item, run} = refused(scope, "model_key_missing")
+      short = String.slice(run.public_id, 0, 11)
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-step-line",
+               @key_fix <> " The gateway had no model key for run #{short}."
+             )
+
+      refute html =~ "ended with an error"
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(view, "#work-item-explore-none-h", "The run ended before it started.")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none p",
+               @key_fix <> " The gateway had no model key for the run."
+             )
+
+      refute html =~ "ended with an error"
+
+      {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
+      assert html =~ @key_fix <> " The gateway had no model key for run"
+      refute html =~ "ended with an error"
+    end
+
+    test "at run 3 of 3: the step card puts the fix first and keeps that no run is left",
+         %{conn: conn, scope: scope} do
+      {work_item, run} = refused(scope, "model_key_missing", 3)
+      short = String.slice(run.public_id, 0, 11)
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-step-line",
+               @key_fix <>
+                 " The gateway had no model key for run #{short}. That run was run 3 of 3, the most one take in has, so Qory cannot explore again in this take in."
+             )
+
+      refute html =~ "ended without a result, so Qory cannot explore again"
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none p",
+               @key_fix <> " The gateway had no model key for the run."
+             )
+
+      {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
+      assert html =~ @key_fix <> " The gateway had no model key for run"
+    end
+
+    test "with another code, every tab keeps the words for an error",
+         %{conn: conn, scope: scope} do
+      {work_item, _run} = refused(scope, "image_user_root")
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(view, "#work-item-explore-none-h", "The run ended with an error.")
+      refute html =~ "model key"
+
+      {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
+      assert html =~ "ended with an error, so Explore has no result"
+      refute html =~ "model key"
     end
   end
 

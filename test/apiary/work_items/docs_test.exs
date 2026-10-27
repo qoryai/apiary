@@ -1,8 +1,7 @@
 defmodule Apiary.WorkItems.DocsTest do
-  # The work items belong to `factory`, a feature the documentation does not differ by
-  # (`docs: false`): every instance is served the same `/docs`, the module reference
-  # included, with it on or off, so no module of theirs is in it. ExDoc leaves out a
-  # module whose docs are hidden (`@moduledoc false`), and every function with it.
+  # The work items belong to `factory`, and no module of theirs is in the module
+  # reference, so an instance without factory is served no page of them. ExDoc leaves out
+  # a module whose docs are hidden (`@moduledoc false`), and every function with it.
   use ExUnit.Case, async: true
 
   # The pages of the feature, which answer as a path that does not exist until they are

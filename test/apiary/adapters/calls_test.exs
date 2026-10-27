@@ -637,6 +637,56 @@ defmodule Apiary.Adapters.CallsTest do
       assert {:ok, %{found: false, content: nil}} = Calls.read_document(adapter, request)
     end
 
+    test "read_public/3 sends the resource, the path and the version, with no grant, and reads the document",
+         %{adapter: adapter, seed: seed} do
+      request = %{resource_ref: "R_2001", path: "qory-stack.yaml", at: "main"}
+
+      answering(compact("read-answer/at-a-fixed-version.json"), seed)
+
+      assert {:ok, %{found: true, content: "harness:\n  extends:\n    ref: v1\n"}} =
+               Calls.read_public(adapter, request)
+
+      assert {"/calls/read-public",
+              %{"resource_ref" => "R_2001", "path" => "qory-stack.yaml", "at" => "main"} = body} =
+               sent()
+
+      refute Map.has_key?(body, "grant_ref")
+
+      assert Map.delete(body, "time") ==
+               Map.delete(Jason.decode!(compact("read-public/at-a-name.json")), "time")
+    end
+
+    test "read_public/3 reads the refusal resource_not_public",
+         %{adapter: adapter, seed: seed} do
+      stub(fn conn ->
+        {conn, _body} = tell(conn)
+        answer(conn, 403, compact("refusal/resource-not-public.json"), seed)
+      end)
+
+      assert {:error,
+              %CallFailure{cause: :refused, code: "resource_not_public", path: "read-public"}} =
+               Calls.read_public(adapter, %{resource_ref: "R_2001", path: "qory.yaml", at: "main"})
+    end
+
+    test "resolve/3 reads a public result, with a grant and without",
+         %{adapter: adapter, seed: seed} do
+      answering(compact("resolve-answer/public.json"), seed)
+
+      addresses = [
+        "https://code.example.com/acme/public-stack",
+        "https://code.example.com/acme/private-stack"
+      ]
+
+      assert {:ok,
+              [
+                %{resource_ref: "R_2001", public: true, public_ref: "example.com/team/project"} =
+                  public,
+                %{covered: false}
+              ]} = Calls.resolve(adapter, addresses)
+
+      refute Map.has_key?(public, :grant_ref)
+    end
+
     test "a call outside its schema raises, without its values, and is not sent",
          %{adapter: adapter} do
       stub(fn conn -> flunk("sent #{conn.request_path}") end)
@@ -716,6 +766,12 @@ defmodule Apiary.Adapters.CallsTest do
                adapter_failure_call: "read",
                adapter_failure_code: nil
              } = reload(run)
+
+      # A public read is a read of the harness files.
+      assert Calls.record_failure(Repo, run, %{failure | path: "read-public"}) == :ok
+
+      assert %DispatchRun{adapter_failure_call: "read", adapter_failure_code: "grant_unknown"} =
+               reload(run)
     end
 
     test "a call no run makes, or a run that is gone, writes nothing",

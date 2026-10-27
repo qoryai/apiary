@@ -1152,7 +1152,7 @@ defmodule ApiaryWeb.RunComponents do
   its count alone.
   """
   # The Backlog's Filed by filter marks a bot's name with its tile
-  # (`ApiaryWeb.BacklogLive.Index`), a page the documentation leaves out.
+  # (`ApiaryWeb.BacklogLive.Index`), a page of the `factory` feature.
   attr :id, :string, required: true
   attr :name, :string, required: true
   attr :label, :string, required: true

@@ -18,7 +18,7 @@ defmodule Apiary.Dispatches.HandoverTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Nodes, Repo}
+  alias Apiary.{Dispatches, ExploreInputsSchema, Nodes, Repo, WorkItems}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Inputs, Slots}
   alias Apiary.Nodes.Node
@@ -793,6 +793,88 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert List.last(kept)["body"] == "20 " <> body
       one_more = byte_size(Jason.encode!(%{"body" => "#{first_kept - 1} " <> body}))
       assert byte_size(encoded) + one_more > Inputs.max_bytes()
+    end
+  end
+
+  describe "the explore input of a test work item" do
+    @line "Hello! Where are you running?"
+    @without_ticket Path.expand(
+                      "../../fixtures/contract/explore/v1/inputs/without-ticket.json",
+                      __DIR__
+                    )
+
+    defp test_item!(ctx) do
+      {:ok, work_item} = WorkItems.take_in_test(ctx.scope, @line)
+      [queued] = Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      {work_item, queued}
+    end
+
+    test "has the line as its instruction, no ticket and no comments, and the run is claimed",
+         ctx do
+      with_domain(ctx.scope, "general")
+      {work_item, queued} = test_item!(ctx)
+
+      claimed = claimed!(ctx)
+      assert {claimed.run.id, claimed.work_item.id} == {queued.id, work_item.id}
+      assert queue_run!(queued).state == :claimed
+
+      inputs = inputs(claimed)
+      assert ExploreInputsSchema.validate(inputs) == :ok
+      refute Map.has_key?(inputs, "ticket")
+
+      [local | _] = String.split(ctx.scope.user.email, "@")
+
+      assert inputs["instruction"] == %{
+               "text" => @line,
+               "by" => %{"name" => local},
+               "at" =>
+                 work_item.taken_in_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+             }
+
+      assert {inputs["comments"], inputs["comments_omitted"]} == {[], 0}
+      assert inputs["answers"] == []
+
+      # The members the contract's input without a ticket has, in its order.
+      fixture = @without_ticket |> File.read!() |> Jason.decode!(objects: :ordered_objects)
+      keys = &Enum.map(&1.values, fn {key, _value} -> key end)
+      assert keys.(claimed.documents.inputs) == keys.(fixture)
+    end
+
+    test "in a software workspace, is claimed with no target, no labels and no run variables",
+         ctx do
+      {work_item, queued} = test_item!(ctx)
+
+      claimed = claimed!(ctx)
+      assert {claimed.run.id, claimed.work_item.id} == {queued.id, work_item.id}
+      assert {claimed.documents.domain, claimed.documents.target} == {"software", nil}
+      assert queue_run!(queued).state == :claimed
+
+      inputs = inputs(claimed)
+      assert ExploreInputsSchema.validate(inputs) == :ok
+      assert inputs["instruction"]["text"] == @line
+      refute Map.has_key?(inputs, "ticket")
+      refute Map.has_key?(inputs, "target")
+
+      run = Repo.get!(Run, claimed.registered.id)
+      assert {run.registration_labels, run.registration_variables} == {%{}, nil}
+    end
+
+    test "is formed with no ticket, while any other work item without one is ticket_gone",
+         ctx do
+      {test_item, test_run} = test_item!(ctx)
+      run = %{domain: "general", target: nil}
+
+      assert {:ok, inputs} = Inputs.explore(Repo.reload!(test_item), test_run, run)
+      inputs = inputs |> Jason.encode!() |> Jason.decode!()
+      assert ExploreInputsSchema.validate(inputs) == :ok
+      assert inputs["instruction"]["text"] == @line
+
+      {work_item, queued} = queued!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [item_id: nil])
+
+      assert Inputs.explore(Repo.reload!(work_item), queued, run) == {:error, :ticket_gone}
     end
   end
 

@@ -79,7 +79,7 @@ defmodule Apiary.Sources.Ingest do
   # waits for that lock, so each would wait on the other. Nothing here writes the
   # adapter's feed.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

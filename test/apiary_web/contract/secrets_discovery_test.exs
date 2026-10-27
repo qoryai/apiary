@@ -117,8 +117,8 @@ defmodule ApiaryWeb.Contract.SecretsDiscoveryTest do
     end
   end
 
-  describe "with secrets off" do
-    @describetag with_features: [:observability, :security, :factory]
+  describe "with secrets off, and so factory, which needs it" do
+    @describetag with_features: [:observability, :security]
 
     test "discovery lists no secrets URL, and a request that verifies is a signed 404", ctx do
       refute Map.has_key?(Jason.decode!(response(discovery(ctx.allowed), 200)), "secrets")

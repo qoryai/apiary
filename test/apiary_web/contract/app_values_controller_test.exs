@@ -127,7 +127,7 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
     Repo.all(
       from e in Entry,
         where: e.action == "adapter.app_values_set" and e.subject_id == ^adapter.id,
-        order_by: e.inserted_at
+        order_by: [asc: e.inserted_at, asc: e.id]
     )
   end
 
@@ -375,7 +375,7 @@ defmodule ApiaryWeb.Contract.AppValuesControllerTest do
     Repo.all(
       from e in Entry,
         where: e.action == "adapter.app_values_seal" and e.subject_id == ^adapter.id,
-        order_by: e.inserted_at
+        order_by: [asc: e.inserted_at, asc: e.id]
     )
   end
 

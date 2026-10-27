@@ -335,6 +335,39 @@ defmodule Apiary.AdaptersTest do
       assert details["connection_id"] == connection_id
       refute inspect(details) =~ pass
     end
+
+    test "an adapter not set up, or serving none of the workspaces' domains, is not connected; with no workspace, every domain is offered",
+         %{scope: scope} do
+      %{adapter: settable} = settable_adapter_fixture()
+      %{adapter: general} = connectable_adapter_fixture()
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^general.id),
+          set: [domains: ["general"]]
+        )
+
+      general = Repo.get!(Node, general.id)
+
+      # Main is a software workspace.
+      assert Adapters.connect(scope, settable) == {:error, :not_offered}
+      assert Adapters.connect(scope, general) == {:error, :not_offered}
+      assert Repo.aggregate(from(e in Entry, where: e.action == "adapter.connect"), :count) == 0
+
+      {1, _} =
+        Repo.update_all(
+          from(w in Organisations.Workspace, where: w.organisation_id == ^scope.organisation.id),
+          set: [
+            deletion_marked_at: DateTime.utc_now(),
+            purge_after: DateTime.add(DateTime.utc_now(), 30, :day),
+            purge_trigger: "grace_period"
+          ]
+        )
+
+      scope = Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
+      assert Organisations.list_workspaces(scope) == []
+      assert Adapters.connect(scope, settable) == {:error, :not_offered}
+      assert {:ok, _url, _session} = Adapters.connect(scope, general)
+    end
   end
 
   describe "its keys" do
@@ -879,6 +912,48 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
+  describe "a start that changes where to set it up or connect to it" do
+    # A start of the adapter whose key is `adapter_key`, declaring `connect_url` and, unless
+    # nil, `setup_url`.
+    defp start(adapter_key, connect_url, setup_url) do
+      Adapters.declare(Scope.for_access_key(adapter_key), %{
+        time: ~U[2026-10-25 12:00:00Z],
+        connect_url: connect_url,
+        setup_url: setup_url,
+        default_interval: 3600,
+        minimum_interval: 900,
+        sends_changes: true,
+        description: Apiary.DescriptionFixtures.contract_description() |> description()
+      })
+    end
+
+    defp description(document) do
+      {:ok, description} = document |> Jason.encode!() |> Apiary.Integrations.Description.parse()
+      description
+    end
+
+    test "tells the pages subscribed to its keys, once committed", %{admin: admin} do
+      adapter = adapter_fixture()
+      %{key: key} = keyed(admin, adapter)
+      :ok = Adapters.subscribe_keys(admin, adapter)
+      id = adapter.id
+      connect = "https://tracker-adapter.acme.example/connect"
+      setup = "https://tracker-adapter.acme.example/setup"
+
+      assert {:ok, _declared} = start(key, connect, setup)
+      assert_receive {:adapter_declared, %{node_id: ^id}}
+
+      # The same addresses again: nothing to tell.
+      assert {:ok, _declared} = start(key, connect, setup)
+      refute_receive {:adapter_declared, _}
+
+      # Set up: it declares no `setup_url` any more, and is configured.
+      assert {:ok, declared} = start(key, connect, nil)
+      assert_receive {:adapter_declared, %{node_id: ^id}}
+      assert Adapters.configured?(declared)
+    end
+  end
+
   describe "the apply items of its work credential, at each start" do
     # A declaration as `Apiary.Adapters.Wire.declaration/1` reads one, with `document` as
     # its description.
@@ -1382,19 +1457,19 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
-  test "Apiary.Access's tables name no action of a feature the documentation does not differ by" do
+  test "Apiary.Access's tables name the adapters' actions and none of a feature the documentation does not differ by" do
     {:docs_v1, _, :elixir, _, %{"en" => moduledoc}, _, _} = Code.fetch_docs(Access)
     undocumented = Apiary.Features.all() -- Apiary.Features.documented()
 
     hidden = for action <- Access.actions(), Access.feature(action) in undocumented, do: action
-    assert :"adapter.create" in hidden
-    assert :"adapter.disconnect" in hidden
 
     for action <- hidden do
       refute moduledoc =~ "`#{action}`", "the moduledoc names #{action}"
     end
 
-    refute moduledoc =~ "adapter_key"
+    assert moduledoc =~ "`adapter.create`"
+    assert moduledoc =~ "`adapter.disconnect`"
+    assert moduledoc =~ "adapter_key"
     assert moduledoc =~ "`node.create`"
   end
 end

@@ -38,7 +38,7 @@ defmodule Apiary.Adapters.Installed do
   # installed adapter's key, broadcasts on `topic/0` once it commits (`nudge/0`); the
   # installer, which otherwise passes every 10 seconds, passes at once.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   require Logger

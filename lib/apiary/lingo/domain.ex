@@ -67,9 +67,8 @@ defmodule Apiary.Lingo.Domain do
   also reads, joined with commas. It names no target. A domain without it gives a run no
   such label.
   """
-  # Qory adds it to a run a claim registers, with the `factory` feature, which the
-  # documentation leaves out: the other paths are those its target's runs also read
-  # (`Apiary.Targets.further_repositories/1`).
+  # Qory adds it to a run a claim registers, with the `factory` feature: the other paths
+  # are those its target's runs also read (`Apiary.Targets.further_repositories/1`).
   @callback paths_label() :: String.t()
 
   @optional_callbacks paths_label: 0
@@ -91,6 +90,19 @@ defmodule Apiary.Lingo.Domain do
   Qory reads there. Translated in the locale of the caller's process.
   """
   @callback description() :: String.t()
+
+  @doc """
+  The domain's name where a person picks a new workspace's type from a list, one line per
+  type (`ApiaryWeb.WorkspaceComponents.type_field/1`): "Software". Translated in the
+  locale of the caller's process.
+  """
+  @callback type_name() :: String.t()
+
+  @doc """
+  The line beside `c:type_name/0` in that list: what work a workspace of the domain is
+  for. Translated in the locale of the caller's process.
+  """
+  @callback type_line() :: String.t()
 
   @doc """
   Whether a work item of the domain needs a target: true where Take in refuses a ticket

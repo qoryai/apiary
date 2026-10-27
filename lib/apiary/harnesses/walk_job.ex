@@ -4,7 +4,9 @@ defmodule Apiary.Harnesses.WalkJob do
   # (`Apiary.Harnesses.RunHarness`) in the transaction that queues the run
   # (`Apiary.Dispatches`), and the job where the run has a workflow
   # (`Apiary.Stacks.workflow_for/2`). A run with no workflow gets a row resolved with
-  # origin `:none` and no job: nothing is read for it.
+  # origin `:none` and no job: nothing is read for it. A test work item's run gets a row
+  # resolved with the built-in harness (`Apiary.Harnesses.Builtin`), origin `:builtin`,
+  # and no job: the workspace's levels are not read for it, and no adapter is called.
   #
   # The job walks the run's harness while the row is pending and the run waits, and
   # writes the result on the row, the row held `FOR UPDATE`. A walk that failed ends the
@@ -16,7 +18,7 @@ defmodule Apiary.Harnesses.WalkJob do
   # so its run ends and does not wait for ever. Run twice, the second finds the row no
   # longer pending and does nothing.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Apiary.Job,
     queue: :harness,
@@ -34,16 +36,20 @@ defmodule Apiary.Harnesses.WalkJob do
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Calls
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle}
-  alias Apiary.Harnesses.{RunHarness, Walk}
+  alias Apiary.Harnesses.{Builtin, RunHarness, Walk}
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.WorkItem
 
   @doc false
   # queue/2 writes the row of `run`, a run of the queue just inserted, and its job where
   # it has a workflow, inside the caller's transaction. `target` is the work item's
-  # `%{system, path}`, nil for none. `{:ok, row}` or `{:error, reason}`.
-  @spec queue(DispatchRun.t(), %{system: String.t(), path: String.t()} | nil) ::
+  # `%{system, path}`, nil for none, or `:test` for a test work item's run. `{:ok, row}`
+  # or `{:error, reason}`.
+  @spec queue(DispatchRun.t(), %{system: String.t(), path: String.t()} | nil | :test) ::
           {:ok, RunHarness.t()} | {:error, term}
+  def queue(%DispatchRun{} = run, :test),
+    do: Repo.insert(struct!(RunHarness, [dispatch_run_id: run.id] ++ Builtin.walked()))
+
   def queue(%DispatchRun{} = run, target) do
     workspace = Repo.get!(Workspace, run.workspace_id)
 

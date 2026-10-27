@@ -18,7 +18,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # `Referrer-Policy: no-referrer`, so no page it leads to sends the link, with its
   # `return`, on as a referrer.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :controller

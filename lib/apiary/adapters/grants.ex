@@ -35,7 +35,7 @@ defmodule Apiary.Adapters.Grants do
   # then writes the grants' entries. A grant end locks the connection `FOR UPDATE`, so it
   # runs one at a time with the connection's reports and the parts of its listings.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query

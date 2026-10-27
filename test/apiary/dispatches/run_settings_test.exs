@@ -21,6 +21,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
   @moduletag needs: :factory
 
+  # The catalogue's runtime, read from the list rather than named here.
+  @runtime hd(Apiary.Kinds.Runtimes.list()).name
+
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @key "sk-ant-run-settings-0123456789"
   @efforts ~w(low medium high xhigh max)
@@ -100,16 +103,16 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      assert settings(handed) == %{"runtime" => "claude"}
+      assert settings(handed) == %{"runtime" => @runtime}
     end
 
     test "sends the runtime alone, and the run keeps no provider", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      assert settings(handed) == %{"runtime" => "claude"}
+      assert settings(handed) == %{"runtime" => @runtime}
 
       assert %Run{
-               run_settings: %{"runtime" => "claude"},
+               run_settings: %{"runtime" => @runtime},
                provider_connection_id: nil,
                provider_secret_id: nil,
                provider_value_id: nil,
@@ -145,7 +148,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert handed.target == nil
 
       assert settings(handed) == %{
-               "runtime" => "claude",
+               "runtime" => @runtime,
                "model" => "claude-opus-5-5",
                "effort" => "high",
                "provider_models" => models(@efforts),
@@ -196,7 +199,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       # No effort chosen: none is sent, and the runtime uses its default.
       assert settings(handed) == %{
-               "runtime" => "claude",
+               "runtime" => @runtime,
                "model" => "claude-opus-5-5",
                "provider_models" => models(@efforts)
              }
@@ -226,21 +229,30 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       refute Jason.encode!(api) =~ "sk-ant"
     end
 
-    test "sends each model's effort values that the runtime has too", ctx do
-      {:ok, provider} =
-        Connections.add_provider_model(ctx.scope, ctx.provider, %{
-          model_id: "tiny",
-          effort: ["turbo", "low"]
-        })
-
-      choose!(ctx.scope, :workspace, %{provider: provider.public_id, model: "tiny", effort: "low"})
+    test "lists the description's models, then each chosen model it does not list", ctx do
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        model: "acme-large",
+        tiers: %{
+          "light" => "claude-haiku-5-5",
+          "fast" => "acme-small",
+          "thinking" => "acme-large"
+        }
+      })
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      assert %{"model" => "tiny", "effort" => "low", "provider_models" => listed} =
-               settings(handed)
-
-      assert List.last(listed) == %{"id" => "tiny", "effort" => ["low"]}
+      assert settings(handed) == %{
+               "runtime" => @runtime,
+               "model" => "acme-large",
+               "provider_models" =>
+                 models(@efforts) ++ [%{"id" => "acme-large"}, %{"id" => "acme-small"}],
+               "tiers" => %{
+                 "light" => "claude-haiku-5-5",
+                 "fast" => "acme-small",
+                 "thinking" => "acme-large"
+               }
+             }
     end
   end
 
@@ -258,42 +270,49 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       ended!(queued, dispatch, :secrets_not_allowed)
     end
 
-    test "model_gone for a main effort outside the runtime's list", ctx do
-      {:ok, provider} =
-        Connections.add_provider_model(ctx.scope, ctx.provider, %{
-          model_id: "tiny",
-          effort: ["turbo", "low"]
+    test "model_gone for an effort the chosen model does not offer", ctx do
+      # Past the save, which refuses each: choices stored before the description changed.
+      for {{model, effort}, n} <-
+            Enum.with_index([{"claude-opus-5-5", "turbo"}, {"acme-large", "low"}]) do
+        Repo.delete_all(ModelChoice)
+
+        Repo.insert!(%ModelChoice{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id,
+          connection_id: ctx.provider.id,
+          model_id: model,
+          effort: effort
         })
 
-      # Past the save, which refuses an effort outside the runtime's list: a choice stored
-      # before the runtime's list changed.
-      Repo.insert!(%ModelChoice{
-        organisation_id: ctx.scope.organisation.id,
-        workspace_id: ctx.scope.workspace.id,
-        connection_id: provider.id,
-        model_id: "tiny",
-        effort: "turbo"
-      })
+        {answer, queued, dispatch} = handover!(ctx, %{external_ref: "acme/shop##{30 + n}"})
+        assert answer == {:error, :gone}, model
+        ended!(queued, dispatch, :model_gone)
+      end
+    end
+
+    test "model_gone where no model resolves, for a provider whose description lists none",
+         ctx do
+      {:ok, litellm} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "litellm",
+          settings: %{"address" => "https://litellm.example.com"},
+          keys: [%{value_id: "main", value: "sk-team"}]
+        })
+
+      choose!(ctx.scope, :workspace, %{provider: litellm.public_id})
 
       {answer, queued, dispatch} = handover!(ctx)
-
       assert answer == {:error, :gone}
       ended!(queued, dispatch, :model_gone)
     end
 
-    test "model_gone for a model the provider no longer lists", ctx do
-      choose!(ctx.scope, :workspace, %{
-        provider: ctx.provider.public_id,
-        model: "claude-fable-5-1"
-      })
+    test "never for a model the description does not list", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, model: "acme-large"})
 
-      Repo.delete_all(
-        from m in Apiary.Connections.ProviderModel, where: m.model_id == "claude-fable-5-1"
-      )
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      {answer, queued, dispatch} = handover!(ctx)
-      assert answer == {:error, :gone}
-      ended!(queued, dispatch, :model_gone)
+      assert %{"model" => "acme-large", "provider_models" => listed} = settings(handed)
+      assert List.last(listed) == %{"id" => "acme-large"}
     end
 
     test "provider_gone for a setting endpoint that fails the endpoint rule", ctx do
@@ -303,9 +322,6 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           settings: %{"address" => "https://litellm.example.com"},
           keys: [%{value_id: "main", value: "sk-team"}]
         })
-
-      {:ok, litellm} =
-        Connections.add_provider_model(ctx.scope, litellm, %{model_id: "team-large"})
 
       choose!(ctx.scope, :workspace, %{provider: litellm.public_id, model: "team-large"})
 
@@ -336,9 +352,6 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           settings: %{"address" => "https://litellm.example.com"},
           keys: [%{value_id: "main", value: "sk-team"}]
         })
-
-      {:ok, litellm} =
-        Connections.add_provider_model(ctx.scope, litellm, %{model_id: "team-large"})
 
       choose!(ctx.scope, :workspace, %{provider: litellm.public_id, model: "team-large"})
 
@@ -376,15 +389,16 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           keys: [%{value_id: "main", value: "sk-team"}]
         })
 
-      {:ok, litellm} =
-        Connections.add_provider_model(ctx.scope, litellm, %{model_id: "team-large"})
-
       choose!(ctx.scope, :workspace, %{provider: litellm.public_id, model: "team-large"})
       %{litellm: litellm}
     end
 
     test "is resolved to the address the provider has", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+
+      # The description lists no model: the chosen one alone.
+      assert %{"model" => "team-large", "provider_models" => [%{"id" => "team-large"}]} =
+               settings(handed)
 
       assert %Run{
                provider_api: %{
@@ -536,7 +550,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Apiary.EditionStubs.ServesAcrossWithChain.operator(nil)
       built = built!(ctx)
 
-      assert built.stored == %{"runtime" => "claude"}
+      assert built.stored == %{"runtime" => @runtime}
       assert built.columns == %{}
     end
 
@@ -545,7 +559,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert {:ok, _choice} = ModelChoices.delete_choice(ctx.operator, :organisation, "operator")
       built = built!(ctx)
 
-      assert built.stored == %{"runtime" => "claude"}
+      assert built.stored == %{"runtime" => @runtime}
       assert built.columns == %{}
     end
 
@@ -567,7 +581,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   describe "form/5" do
     setup ctx do
       {:ok, loaded} = Connections.get_provider(ctx.scope, ctx.provider.public_id)
-      {:ok, runtime} = Runtimes.fetch("claude")
+      {:ok, runtime} = Runtimes.fetch(@runtime)
       {:ok, description} = Providers.fetch("anthropic")
 
       resolution = %Resolution{
@@ -666,6 +680,57 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                )
 
       assert first == %{"id" => "claude-opus-5-5", "effort" => ~w(low medium high)}
+    end
+
+    test "lists each chosen model the description does not list once, after its models",
+         ctx do
+      resolution = %{
+        ctx.resolution
+        | model_id: "acme-large",
+          effort: nil,
+          tiers: %{
+            "light" => %{"model" => "claude-haiku-5-5"},
+            "fast" => %{"model" => "acme-small"},
+            "thinking" => %{"model" => "acme-large"}
+          }
+      }
+
+      assert {:ok, %{stored: %{"provider_models" => listed}}} =
+               RunSettings.form(
+                 resolution,
+                 ctx.loaded,
+                 {:ok, ctx.description},
+                 ctx.runtime,
+                 ctx.scope.workspace.id
+               )
+
+      assert Enum.map(listed, & &1["id"]) ==
+               Enum.map(ctx.description.models, & &1["id"]) ++ ["acme-large", "acme-small"]
+
+      # A description with no models: the chosen ones alone.
+      assert {:ok, %{stored: %{"provider_models" => listed}}} =
+               RunSettings.form(
+                 resolution,
+                 ctx.loaded,
+                 {:ok, %{ctx.description | models: []}},
+                 ctx.runtime,
+                 ctx.scope.workspace.id
+               )
+
+      assert listed == [
+               %{"id" => "acme-large"},
+               %{"id" => "claude-haiku-5-5"},
+               %{"id" => "acme-small"}
+             ]
+
+      # And no model at all: nothing to run on.
+      assert RunSettings.form(
+               %{resolution | model_id: nil},
+               ctx.loaded,
+               {:ok, ctx.description},
+               ctx.runtime,
+               ctx.scope.workspace.id
+             ) == {:end, :model_gone}
     end
   end
 

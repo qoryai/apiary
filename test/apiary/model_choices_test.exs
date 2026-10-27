@@ -15,6 +15,9 @@ defmodule Apiary.ModelChoicesTest do
 
   @moduletag needs: :factory
 
+  # The catalogue's runtime, read from the list rather than named here.
+  @runtime hd(Apiary.Kinds.Runtimes.list()).name
+
   @key "sk-choice-test-0123456789"
   @model "claude-sonnet-5-5"
 
@@ -325,7 +328,7 @@ defmodule Apiary.ModelChoicesTest do
     end
 
     test "for a provider whose key the runtime has no variable for (T21)" do
-      {:ok, runtime} = Runtimes.fetch("claude")
+      {:ok, runtime} = Runtimes.fetch(@runtime)
       {:ok, anthropic} = Providers.fetch("anthropic")
       auth = %{"scheme" => "basic", "username" => "runner"}
       basic = %{anthropic | apis: Enum.map(anthropic.apis, &%{&1 | "auth" => auth})}
@@ -352,7 +355,7 @@ defmodule Apiary.ModelChoicesTest do
     end
 
     test "for a provider that serves no format the runtime sends (T20)" do
-      {:ok, runtime} = Runtimes.fetch("claude")
+      {:ok, runtime} = Runtimes.fetch(@runtime)
       {:ok, anthropic} = Providers.fetch("anthropic")
 
       other_format = %{
@@ -375,66 +378,38 @@ defmodule Apiary.ModelChoicesTest do
                %{key: ["Choose one of Anthropic API key's keys: nope is not one of them."]}
     end
 
-    test "for a model or an effort the provider does not list (T23, T24)", ctx do
+    test "for an effort the model has not, of the description or any other id (T23, T24)",
+         ctx do
       %{scope: scope, provider: provider} = ctx
 
-      {:ok, provider} =
-        Connections.add_provider_model(scope, provider, %{model_id: "tiny", effort: ["low"]})
+      assert errors(
+               ModelChoices.put_choice(scope, :workspace, attrs(provider, %{effort: "turbo"}))
+             ) ==
+               %{
+                 effort: [
+                   "Choose one of #{@model}'s effort values: low, medium, high, xhigh, max."
+                 ]
+               }
 
-      assert errors(ModelChoices.put_choice(scope, :workspace, attrs(provider, %{model: "huge"}))) ==
-               %{model: ["Choose a model from Anthropic API key's list: huge is not on it."]}
+      assert errors(
+               ModelChoices.put_choice(scope, :workspace, attrs(provider, %{model: "acme-large"}))
+             ) ==
+               %{
+                 effort: [
+                   "Leave the effort empty: acme-large has no effort values to choose from."
+                 ]
+               }
 
-      assert errors(ModelChoices.put_choice(scope, :workspace, attrs(provider, %{model: "tiny"}))) ==
-               %{effort: ["Choose one of tiny's effort values: low."]}
-
-      assert {:ok, _} =
+      # A model the description does not list is taken by its id, with no effort.
+      assert {:ok, %ModelChoice{model_id: "acme-large", effort: nil}} =
                ModelChoices.put_choice(
                  scope,
                  :workspace,
-                 attrs(provider, %{model: "tiny", effort: "low"})
+                 attrs(provider, %{model: "acme-large", effort: nil})
                )
     end
 
-    test "for an effort the model lists and the runtime does not", ctx do
-      %{scope: scope, provider: provider} = ctx
-      {:ok, runtime} = Runtimes.fetch("claude")
-      refute "turbo" in runtime.effort_values
-
-      {:ok, provider} =
-        Connections.add_provider_model(scope, provider, %{
-          model_id: "tiny",
-          effort: ["turbo", "low", "high"]
-        })
-
-      assert errors(
-               ModelChoices.put_choice(
-                 scope,
-                 :workspace,
-                 attrs(provider, %{model: "tiny", effort: "turbo"})
-               )
-             ) == %{effort: ["Choose one of tiny's effort values: low, high."]}
-
-      assert errors(
-               ModelChoices.put_choice(
-                 scope,
-                 :workspace,
-                 attrs(provider, %{tiers: %{"fast" => %{"model" => "tiny", "effort" => "turbo"}}})
-               )
-             ) == %{tiers: ["Choose one of tiny's effort values: low, high."]}
-
-      assert {:ok, _} =
-               ModelChoices.put_choice(
-                 scope,
-                 :workspace,
-                 attrs(provider, %{
-                   model: "tiny",
-                   effort: "high",
-                   tiers: %{"fast" => %{"model" => "tiny", "effort" => "low"}}
-                 })
-               )
-    end
-
-    test "for a tier that is not light, fast or thinking (T15), or a tier model not listed",
+    test "for a tier that is not light, fast or thinking (T15), or a tier effort its model has not",
          ctx do
       %{scope: scope, provider: provider} = ctx
 
@@ -451,10 +426,12 @@ defmodule Apiary.ModelChoicesTest do
                ModelChoices.put_choice(
                  scope,
                  :workspace,
-                 attrs(provider, %{tiers: %{"fast" => "nothing"}})
+                 attrs(provider, %{
+                   tiers: %{"fast" => %{"model" => "acme-small", "effort" => "low"}}
+                 })
                )
              ) == %{
-               tiers: ["Choose a model from Anthropic API key's list: nothing is not on it."]
+               tiers: ["Leave the effort empty: acme-small has no effort values to choose from."]
              }
 
       assert errors(
@@ -466,6 +443,13 @@ defmodule Apiary.ModelChoicesTest do
              ) == %{
                tiers: ["Choose one of #{@model}'s effort values: low, medium, high, xhigh, max."]
              }
+
+      assert {:ok, %ModelChoice{tiers: %{"fast" => %{"model" => "acme-small"}}}} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{tiers: %{"fast" => "acme-small"}})
+               )
     end
 
     test "for a model id, an effort or a tier entry that breaks its rule (T13, T14)", ctx do
@@ -538,29 +522,35 @@ defmodule Apiary.ModelChoicesTest do
   end
 
   describe "resolve/3" do
-    test "leaves out a tier whose effort the runtime does not accept", ctx do
+    test "leaves out a tier whose effort its model has not", ctx do
       %{scope: scope, provider: provider} = ctx
-
-      {:ok, provider} =
-        Connections.add_provider_model(scope, provider, %{
-          model_id: "tiny",
-          effort: ["turbo", "low"]
-        })
 
       {:ok, choice} =
         ModelChoices.put_choice(
           scope,
           :workspace,
-          attrs(provider, %{tiers: %{"fast" => %{"model" => "tiny", "effort" => "low"}}})
+          attrs(provider, %{
+            tiers: %{"fast" => %{"model" => @model, "effort" => "low"}, "light" => "acme-small"}
+          })
         )
 
-      assert {:ok,
-              {:ok, %Resolution{tiers: %{"fast" => %{"model" => "tiny", "effort" => "low"}}}}} =
+      assert {:ok, {:ok, %Resolution{tiers: tiers}}} =
                ModelChoices.resolve(scope, :workspace, "hello")
 
-      # A row saved when the runtime accepted "turbo"; a save refuses it.
+      assert tiers == %{
+               "fast" => %{"model" => @model, "effort" => "low"},
+               "light" => %{"model" => "acme-small"}
+             }
+
+      # Rows a save refuses: an effort the description's model has not, and an effort with
+      # a model the description does not list.
       choice
-      |> Ecto.Changeset.change(tiers: %{"fast" => %{"model" => "tiny", "effort" => "turbo"}})
+      |> Ecto.Changeset.change(
+        tiers: %{
+          "fast" => %{"model" => @model, "effort" => "turbo"},
+          "light" => %{"model" => "acme-small", "effort" => "low"}
+        }
+      )
       |> Repo.update!()
 
       assert {:ok, {:ok, %Resolution{tiers: tiers}}} =

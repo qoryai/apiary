@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "revision": 1,
+  "results": [
+    {
+      "address": "https://code.example.com/acme/harness",
+      "grant_ref": "G_1",
+      "resource_ref": "R_1001",
+      "public": false,
+      "public_ref": "example.com/team/harness"
+    }
+  ]
+}

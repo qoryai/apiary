@@ -51,7 +51,7 @@ defmodule Apiary.Explore.Result do
   # (`Apiary.WorkItems.Explore`) and the one Qory keeps on the run of the queue
   # (`Apiary.Dispatches.Settle`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   alias Apiary.Kinds.{Bounds, Schema}

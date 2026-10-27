@@ -23,7 +23,8 @@ defmodule Apiary.Connections.ProvidersWithoutFeaturesTest do
 
   for {name, features} <- [
         {"factory", [:observability, :security, :secrets]},
-        {"secrets", [:observability, :security, :factory]}
+        # An instance without secrets is without factory too, which needs it.
+        {"secrets", [:observability, :security]}
       ] do
     @tag with_features: features
     test "without #{name}, a provider is not found and nothing is written" do
@@ -37,9 +38,6 @@ defmodule Apiary.Connections.ProvidersWithoutFeaturesTest do
       assert Connections.update_provider(scope, provider, %{name: "x"}) == {:error, :not_found}
       assert Connections.update_connection(scope, provider, %{name: "x"}) == {:error, :not_found}
       assert Connections.put_default_key(scope, provider, "main") == {:error, :not_found}
-
-      assert Connections.add_provider_model(scope, provider, %{model_id: "m"}) ==
-               {:error, :not_found}
 
       assert Connections.delete_provider(scope, provider) == {:error, :not_found}
       assert Connections.delete_connection(scope, provider) == {:error, :not_found}

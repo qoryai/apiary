@@ -18,7 +18,9 @@ defmodule Apiary.Connections.ProviderMigrationTest do
   @migrations [
     {20_261_019_070_000, Apiary.Repo.Migrations.KeepAProviderAsAnIntegrationConnection,
      "keep_a_provider_as_an_integration_connection"},
-    {20_261_019_070_100, Apiary.Repo.Migrations.KeepAProviderSModels, "keep_a_provider_s_models"}
+    {20_261_019_070_100, Apiary.Repo.Migrations.KeepAProviderSModels, "keep_a_provider_s_models"},
+    {20_261_026_140_000, Apiary.Repo.Migrations.KeepNoModelListForAProvider,
+     "keep_no_model_list_for_a_provider"}
   ]
 
   @options [log: false, migration_lock: false]
@@ -59,7 +61,7 @@ defmodule Apiary.Connections.ProviderMigrationTest do
 
   @provider_columns ~w(chain default_value_id description_ref provider_kind secret_id)
 
-  test "down takes the provider's columns and models away, and up puts them back" do
+  test "down takes the provider's columns away, and up puts them back, with no model list" do
     %{scope: scope} = sign_up_fixture()
     {:ok, _runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
 
@@ -81,13 +83,29 @@ defmodule Apiary.Connections.ProviderMigrationTest do
 
     up!()
     assert Enum.all?(@provider_columns, &(&1 in columns("organisation_connections")))
-    assert "effort" in columns("provider_models")
+    assert columns("provider_models") == []
 
-    assert {:ok, %Connection{provider_kind: "openrouter", models: [_ | _]}} =
+    assert {:ok, %Connection{provider_kind: "openrouter"} = provider} =
              Connections.create_provider(scope, %{
                provider: "openrouter",
                keys: [%{value_id: "main", value: "x"}]
              })
+
+    assert [_ | _] = Connections.provider_models(provider)
+  end
+
+  test "the model list goes, and down puts it back empty" do
+    {version, migration, _name} = List.last(@migrations)
+
+    assert :ok = Ecto.Migrator.down(Repo, version, migration, @options)
+    assert "effort" in columns("provider_models")
+    assert %{rows: [[0]]} = Repo.query!("SELECT count(*) FROM provider_models")
+
+    assert :ok = Ecto.Migrator.up(Repo, version, migration, @options)
+    assert columns("provider_models") == []
+
+    assert %{rows: [[0]]} =
+             Repo.query!("SELECT count(*) FROM pg_proc WHERE proname = 'provider_effort_valid'")
   end
 
   describe "the checks" do
@@ -164,78 +182,6 @@ defmodule Apiary.Connections.ProviderMigrationTest do
     test "the provider's keys are not deleted while it links them", %{provider: provider} do
       assert run("DELETE FROM secrets WHERE id = $1", [Ecto.UUID.dump!(provider.secret_id)]) ==
                "organisation_connections_secret_id_fkey"
-    end
-
-    defp model(%Connection{} = provider, attrs) do
-      attrs =
-        Map.merge(
-          %{model_id: "m", title: "M", effort: nil, position: 99, is_default: false},
-          attrs
-        )
-
-      run(
-        """
-        INSERT INTO provider_models
-          (id, organisation_id, connection_id, model_id, title, effort, position, is_default,
-           inserted_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
-        """,
-        [
-          Ecto.UUID.dump!(Ecto.UUID.generate()),
-          Ecto.UUID.dump!(provider.organisation_id),
-          Ecto.UUID.dump!(provider.id),
-          attrs.model_id,
-          attrs.title,
-          attrs.effort,
-          attrs.position,
-          attrs.is_default
-        ]
-      )
-    end
-
-    test "a model, at its bounds", %{provider: provider} do
-      id = "a" <> String.duplicate("~", 199)
-      assert model(provider, %{model_id: id}) == :ok
-      assert model(provider, %{model_id: id <> "~"}) == "provider_models_model_id_format"
-      assert model(provider, %{model_id: "a b"}) == "provider_models_model_id_format"
-      assert model(provider, %{model_id: "-a"}) == "provider_models_model_id_format"
-      assert model(provider, %{model_id: id}) == "provider_models_connection_id_model_id_index"
-
-      assert model(provider, %{model_id: "t1", title: String.duplicate("é", 128)}) == :ok
-
-      assert model(provider, %{model_id: "t2", title: String.duplicate("é", 129)}) ==
-               "provider_models_title_length"
-
-      assert model(provider, %{model_id: "t3", title: ""}) == "provider_models_title_length"
-
-      sixteen = Enum.map(1..16, &"e#{&1}")
-      assert model(provider, %{model_id: "e1", effort: sixteen}) == :ok
-
-      assert model(provider, %{model_id: "e2", effort: sixteen ++ ["e17"]}) ==
-               "provider_models_effort_check"
-
-      assert model(provider, %{model_id: "e3", effort: []}) == "provider_models_effort_check"
-
-      assert model(provider, %{model_id: "e4", effort: ["a", "a"]}) ==
-               "provider_models_effort_check"
-
-      assert model(provider, %{model_id: "e5", effort: ["A"]}) == "provider_models_effort_check"
-
-      assert model(provider, %{model_id: "e6", effort: ["a", nil]}) ==
-               "provider_models_effort_check"
-
-      assert model(provider, %{model_id: "e7", effort: ["a" <> String.duplicate("b", 31)]}) ==
-               :ok
-
-      assert model(provider, %{model_id: "e8", effort: ["a" <> String.duplicate("b", 32)]}) ==
-               "provider_models_effort_check"
-
-      assert model(provider, %{model_id: "p1", position: 0}) == :ok
-      assert model(provider, %{model_id: "p2", position: -1}) == "provider_models_position_check"
-
-      # The provider has its default model: a second is refused.
-      assert model(provider, %{model_id: "d1", is_default: true}) ==
-               "provider_models_default_index"
     end
   end
 end

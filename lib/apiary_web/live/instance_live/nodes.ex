@@ -12,7 +12,7 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
   # either reports (`Apiary.Nodes.topic/1`, `"instance"`). Qory Apiary makes them from its
   # settings, so the page offers no way to add one.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

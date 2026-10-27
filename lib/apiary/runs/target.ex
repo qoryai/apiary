@@ -12,7 +12,7 @@ defmodule Apiary.Runs.Target do
   gets the column's default, of the same shape, read back on insert.
   """
 
-  # With the `factory` feature, which the documentation leaves out:
+  # With the `factory` feature:
   # `further_repositories` are the paths in its system that its runs also read, after it,
   # in the order a person put them, empty for none: read through
   # `Apiary.Targets.further_repositories/1`, written whole through

@@ -18,13 +18,15 @@ defmodule ApiaryWeb.AdapterInstallController do
   #   4. when the organisation's connected connection cannot take a new pass yet, as for
   #      a second press in the same second, the person is sent to the integration's page;
   #      when the adapter cannot be connected yet (it declared no address, holds no key in
-  #      use, or no pass could be made), to Add an integration. Neither changes anything.
+  #      use, or no pass could be made), or the organisation is not offered it (not
+  #      configured, or serving none of its workspaces' domains,
+  #      `Apiary.Adapters.offered?/2`), to Add an integration. Neither changes anything.
   #
   # The address is outside the console, so the person is sent there by a page that
   # refreshes to it (`ApiaryWeb.SendOn`), told no referrer and kept by no cache. The pass
   # is never logged.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :controller
@@ -57,7 +59,8 @@ defmodule ApiaryWeb.AdapterInstallController do
           to: ~p"/#{scope.organisation}/settings/integrations/#{adapter_id}"
         )
 
-      {:error, reason} when reason in [:no_connect_url, :no_key, :invalid, :too_long] ->
+      {:error, reason}
+      when reason in [:no_connect_url, :no_key, :not_offered, :invalid, :too_long] ->
         redirect(conn, to: ~p"/#{scope.organisation}/settings/integrations/new")
     end
   end

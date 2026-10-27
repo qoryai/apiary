@@ -73,6 +73,30 @@ defmodule Apiary.WorkItems.Moves do
   # (`Apiary.WorkItems.as_seen/2`): one of another workspace by its state alone, as the
   # Backlog shows it; a take in again's `{:taken, work_item}` too.
   #
+  # ## Take in a test
+  #
+  # A take in of a test (`take_in_test/2`) is asked as a take in is, `work_item.take_in` of
+  # the scope's workspace, and reads no ticket, connection, collection or target. It makes
+  # a test work item of the line the person typed
+  # (`Apiary.WorkItems.WorkItem.test_changeset/2`), `:exploring`, owned by the person,
+  # numbered next in the workspace, take in 1, with its `:taken_in` event, as a first take
+  # in has, its first run queued (`Apiary.Dispatches.queue/2`), and its entry in the trail,
+  # `details` `test: true`. No adapter is told, as none is behind it. A line the changeset
+  # refuses is the changeset.
+  #
+  # A workspace has one live test work item at most, and a run's end leaves it live. So a
+  # take in of a test first holds the live one, if there is one, `FOR UPDATE`, then its
+  # runs `FOR UPDATE`, by id: while one of them is claimed or is handed over, a machine
+  # holds it, and it is `:test_running`; otherwise it closes that one, as the person,
+  # through the one close (`Apiary.WorkItems.close_locked/3`), which ends the runs that
+  # still wait (`end_cause: :closed`), with its entry in the trail, as a close writes it,
+  # then makes the new one: a test whose run no machine took is tried again at once. A
+  # take in of a test that commits meanwhile is refused by the index on live test work
+  # items, `:test_running` too. It locks the workspace's counter of numbers right after
+  # the new work item, then the runs of the queue. An undo, a decline and a close work on
+  # a test work item as on any other, and tell no adapter and no Backlog, as it has no
+  # ticket.
+  #
   # ## Take in again
   #
   # A take in again finds the work item of the ticket by that key: none is `:not_taken`,
@@ -165,7 +189,7 @@ defmodule Apiary.WorkItems.Moves do
   # tells the workspaces whose queue changed (`Apiary.Dispatches.broadcast/1`). A comment
   # and its deletion tell the work items' topic alone: the Backlog shows no comment.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -298,6 +322,137 @@ defmodule Apiary.WorkItems.Moves do
           {_message, opts} when is_list(opts) ->
             if opts[:constraint] == :unique,
               do: {:error, {:raced, ticket}},
+              else: {:error, refused}
+
+          nil ->
+            {:error, refused}
+        end
+    end
+  end
+
+  ## Take in a test
+
+  @doc false
+  @spec take_in_test(Scope.t(), term) ::
+          {:ok, WorkItem.t()}
+          | {:error, :not_found | :forbidden | :test_running | Ecto.Changeset.t()}
+  def take_in_test(%Scope{} = scope, line) do
+    result =
+      Repo.transact(fn ->
+        with {:ok, workspace} <- workspace(scope),
+             :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             {:ok, closed} <- close_last_test(scope, workspace),
+             {:ok, {work_item, told}} <- make_test(scope, workspace, line) do
+          {:ok, {work_item, with_closed(told, closed)}}
+        end
+      end)
+
+    finish(result)
+  end
+
+  # A new test work item of the line, its event, its first run and its entry in the trail.
+  defp make_test(scope, workspace, line) do
+    now = DateTime.utc_now()
+
+    changeset =
+      %WorkItem{
+        organisation_id: workspace.organisation_id,
+        workspace_id: workspace.id,
+        state: :exploring,
+        taken_in_by_id: scope.user.id,
+        taken_in_at: now
+      }
+      |> WorkItem.test_changeset(%{title: line, owner_id: scope.user.id})
+
+    with {:ok, changeset} <- valid(changeset),
+         {:ok, work_item} <- insert_test(changeset, workspace),
+         :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
+         {:ok, _run} <- Dispatches.queue(work_item, 1),
+         {:ok, _entry} <-
+           Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
+             after: %{state: :exploring},
+             details: %{"take_in" => 1, "test" => true}
+           }) do
+      {:ok,
+       {work_item, %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: []}}}
+    end
+  end
+
+  # The workspace's live test work item, held `FOR UPDATE`, closed by the person once no
+  # machine holds a run of it, which ends the runs that still wait (`end_cause: :closed`,
+  # `WorkItems.close_locked/3`): `{:ok, {closed, workspace_ids}}`, the workspaces whose
+  # queue changed, or `{:ok, nil}` for none; `:test_running` while a run of it is claimed
+  # or handed over.
+  defp close_last_test(scope, %Workspace{id: workspace_id, organisation_id: organisation_id}) do
+    live =
+      Repo.one(
+        from w in WorkItem,
+          where: w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id,
+          where: w.test and w.state == :exploring,
+          lock: "FOR UPDATE"
+      )
+
+    case live do
+      nil ->
+        {:ok, nil}
+
+      %WorkItem{} = held ->
+        with :ok <- test_ended(held),
+             :ok <- Access.authorize(scope, :"work_item.close", held),
+             {:ok, workspace_ids} <-
+               WorkItems.close_locked([held], {:person, scope.user.id}, DateTime.utc_now()),
+             closed = Repo.get!(WorkItem, held.id),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"work_item.close", closed, %{
+                 before: %{state: held.state},
+                 after: %{state: closed.state}
+               }) do
+          {:ok, {closed, workspace_ids}}
+        end
+    end
+  end
+
+  # No run of the test work item's take in is claimed or handed over. Its runs that wait,
+  # are claimed or are handed over are held `FOR UPDATE`, by id, as `no_run/1` holds them,
+  # and their state is read under that lock: a claim that took one first is seen claimed,
+  # and a claim after skips the held ones (`FOR UPDATE SKIP LOCKED`), then finds them
+  # ended by the close.
+  defp test_ended(%WorkItem{id: id, take_in: take_in}) do
+    states =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in,
+          where: fragment("? IN ('waiting', 'claimed', 'handed_over')", r.state),
+          order_by: r.id,
+          lock: "FOR UPDATE",
+          select: r.state
+      )
+
+    if Enum.all?(states, &(&1 == :waiting)), do: :ok, else: {:error, :test_running}
+  end
+
+  defp with_closed(told, nil), do: told
+
+  defp with_closed(told, {closed, workspace_ids}) do
+    told
+    |> Map.update!(:work_items, &[{closed.workspace_id, closed.public_id} | &1])
+    |> Map.put(:queues, workspace_ids)
+  end
+
+  # The number is taken once the changeset holds, as for a first take in.
+  defp insert_test(changeset, workspace) do
+    changeset
+    |> Ecto.Changeset.put_change(:number, Number.next(workspace))
+    |> PublicId.Insert.insert()
+    |> case do
+      {:ok, work_item} ->
+        {:ok, work_item}
+
+      {:error, %Ecto.Changeset{errors: errors} = refused} ->
+        case errors[:test] do
+          {_message, opts} when is_list(opts) ->
+            if opts[:constraint] == :unique,
+              do: {:error, :test_running},
               else: {:error, refused}
 
           nil ->
@@ -470,11 +625,12 @@ defmodule Apiary.WorkItems.Moves do
           [state: state]
       end
 
-    tell_undone? = is_nil(before) or before.state == :undone
+    # A test work item has no adapter to tell.
+    tell_undone? = not held.test and (is_nil(before) or before.state == :undone)
 
     with {:ok, work_item} <- held |> Ecto.Changeset.change(changes) |> Repo.update(),
          :ok <- event(work_item, :undone, scope, now, %{"take_in" => work_item.take_in}),
-         {:ok, _seq} <- feed_if(tell_undone?, adapter_of(work_item), work_item, "undone"),
+         {:ok, _seq} <- feed_if(tell_undone?, work_item, "undone"),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.undo", work_item, %{
              before: %{state: :exploring},
@@ -1098,10 +1254,17 @@ defmodule Apiary.WorkItems.Moves do
   defp feed_if(true, adapter, work_item, status), do: feed(adapter, work_item, status)
   defp feed_if(false, _adapter, _work_item, _status), do: {:ok, nil}
 
+  # The adapter of `work_item` is read only when it is told.
+  defp feed_if(true, work_item, status), do: feed(adapter_of(work_item), work_item, status)
+  defp feed_if(false, _work_item, _status), do: {:ok, nil}
+
   ## Telling
 
   # The workspaces to tell of a change to `work_item`: the one it is in, and each whose
-  # Backlog shows its ticket's live record.
+  # Backlog shows its ticket's live record. A test work item has no ticket.
+  defp told(%WorkItem{test: true} = work_item),
+    do: %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: []}
+
   defp told(%WorkItem{} = work_item) do
     tickets =
       Repo.all(

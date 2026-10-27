@@ -25,6 +25,7 @@ defmodule Apiary.Edition do
 
   - **Limits and sign-up**: `limits/0`, `sign_up_open?/0`, `organisation_created/2`,
     `workspace_created/3`, `instance_organisation_id/0`, `first_sign_up_line/0`,
+    `first_workspace_line/1`, `first_workspace_waiting_line/1`,
     `audit_retention_max_days/0`, `attribution?/0`.
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
@@ -94,7 +95,8 @@ defmodule Apiary.Edition do
   @doc """
   Adds the edition's steps to the transaction that creates an organisation
   (`Apiary.Organisations.build_organisation/2`), after the organisation
-  (`:organisation`), its workspace Main (`:workspace`) and its first owner's membership
+  (`:organisation`), its workspace Main (`:workspace`, nil for one whose first workspace
+  its owner creates later) and its first owner's membership
   (`:membership`, nil for one whose first owner joins later), and before the entry that
   begins its trail. `how` says how it is created: `:first_sign_up`, the instance's first
   sign-up, which creates the instance's organisation; `{:sign_up, extra}`, a later
@@ -123,6 +125,19 @@ defmodule Apiary.Edition do
   @callback first_sign_up_line() :: String.t()
 
   @doc """
+  The workspace set-up page's line on which workspace `organisation`'s first one is, under
+  its title, for a person who may create it, on `/:org/set-up`, translated when it is
+  asked.
+  """
+  @callback first_workspace_line(%Organisation{}) :: String.t()
+
+  @doc """
+  The workspace set-up page's line for a person who may not create `organisation`'s first
+  workspace: who does. Translated when it is asked.
+  """
+  @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
+
+  @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
   its workspaces (`Apiary.Policy.Above`: host rules, a required mode, whether the
   workspace may allow more hosts, and variables), or nil: the core has none. Asked
@@ -135,7 +150,7 @@ defmodule Apiary.Edition do
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
-  # With the `factory` feature, which the documentation leaves out: the chain of model
+  # With the `factory` feature: the chain of model
   # choices that resolves for the runs of the organisation `organisation_id`
   # (`Apiary.ModelChoices`): "organisation", the choices the organisation sets, or
   # "operator", the choices an operator sets for it as its client, which are then the
@@ -144,7 +159,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 
-  # With the `factory` feature, which the documentation leaves out: the organisation whose
+  # With the `factory` feature: the organisation whose
   # model choices are the chain of the organisation `organisation_id` while its chain is
   # "operator" (`c:model_choice_chain/1`): the operator that runs work for it, or nil.
   # A model key of the operator's chain is sealed only for that organisation's gateway or
@@ -155,7 +170,7 @@ defmodule Apiary.Edition do
   @callback operator_chain_organisation(organisation_id :: Ecto.UUID.t()) ::
               Ecto.UUID.t() | nil
 
-  # With the `factory` feature, which the documentation leaves out: whether the person of
+  # With the `factory` feature: whether the person of
   # `scope` writes the operator's chain of model providers and choices in the scope's
   # organisation, the organisation whose rows are the chain of the clients it runs work for
   # (`c:operator_chain_organisation/1`). When true, the scope's organisation's providers
@@ -166,7 +181,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback operator_chain_writer?(Scope.t()) :: boolean
 
-  # With the `factory` feature, which the documentation leaves out: whether `organisation`
+  # With the `factory` feature: whether `organisation`
   # is a client that an operator runs work for. A run of such an organisation hides the
   # text of its stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`).
   # Asked without a lock, once per claim of an explore run. The core has no operator and
@@ -174,7 +189,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback operated?(%Organisation{}) :: boolean
 
-  # With the `factory` feature, which the documentation leaves out: the organisation that
+  # With the `factory` feature: the organisation that
   # owns a harness document the person of `scope` saves (`Apiary.Stacks.put_stack/3`), or
   # nil, which refuses the save. A run of another organisation hides the document's text
   # (`Apiary.Stacks.Resolution`). Asked once per save, before its transaction. The core
@@ -185,7 +200,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback harness_owner(Scope.t()) :: Ecto.UUID.t() | nil
 
-  # With the `factory` feature, which the documentation leaves out: whether a run of the
+  # With the `factory` feature: whether a run of the
   # organisation `run_organisation_id` may use a link of the organisation
   # `owner_organisation_id` for `source`, a harness source as it is in a harness document
   # (`Apiary.Harnesses.allowed?/3`). Asked only after the core's checks refuse it: the
@@ -199,7 +214,41 @@ defmodule Apiary.Edition do
               source :: Apiary.Harnesses.source()
             ) :: boolean
 
-  # With the `factory` feature, which the documentation leaves out: what a person of
+  # With the `factory` feature: the four rules of the
+  # Overview's setup list for `workspace` (`Apiary.WorkspaceSetup`), each asked once per
+  # read of the list, without a lock. An edition may count what serves the workspace from
+  # another organisation; the core counts the workspace's and its organisation's alone, and
+  # the instance's pool and gateway, but for the model key, which it reads on the chain the
+  # edition names:
+  #
+  # - `work_source_ready/1`: the adapters whose live collections are assigned to the
+  #   workspace, through a connection that is connected and listed, each with how many,
+  #   by name; `[]` while the step is not done (`Apiary.WorkspaceSetup.work_source/1`);
+  # - `machines_ready/1`: a node pool that serves the workspace's runs and the gateway its
+  #   choice resolves to, both with an active key; nil while the step is not done
+  #   (`Apiary.WorkspaceSetup.machines/1`);
+  # - `model_key_ready?/1`: whether the chain of model choices that resolves for the
+  #   workspace's runs, the organisation's or an operator's (`c:model_choice_chain/1`,
+  #   `c:operator_chain_organisation/1`), has a model provider with a key and a choice a
+  #   run reads (`Apiary.WorkspaceSetup.model_key?/1`);
+  # - `test_run_passed?/1`: whether a test run of the workspace passed
+  #   (`Apiary.WorkspaceSetup.test_passed?/1`).
+  @doc false
+  @callback work_source_ready(%Workspace{}) :: [
+              %{adapter: Apiary.Nodes.Node.t(), collections: pos_integer}
+            ]
+
+  @doc false
+  @callback machines_ready(%Workspace{}) ::
+              %{pool: Apiary.Nodes.Node.t(), gateway: Apiary.Nodes.Node.t()} | nil
+
+  @doc false
+  @callback model_key_ready?(%Workspace{}) :: boolean
+
+  @doc false
+  @callback test_run_passed?(%Workspace{}) :: boolean
+
+  # With the `factory` feature: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
   # the edition, so that a client of an operator is not shown the operator's model
   # provider: its credential, its connections and its events. `kind` is what is read, and
@@ -634,6 +683,8 @@ defmodule Apiary.Edition do
     workspace_created: 3,
     instance_organisation_id: 0,
     first_sign_up_line: 0,
+    first_workspace_line: 1,
+    first_workspace_waiting_line: 1,
     above_workspace: 1,
     model_choice_chain: 1,
     operator_chain_organisation: 1,
@@ -641,6 +692,10 @@ defmodule Apiary.Edition do
     operated?: 1,
     harness_owner: 1,
     harness_source_allowed?: 3,
+    work_source_ready: 1,
+    machines_ready: 1,
+    model_key_ready?: 1,
+    test_run_passed?: 1,
     client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,

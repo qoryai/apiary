@@ -31,14 +31,14 @@ defmodule Apiary.Integrations.DescriptionTest do
                ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
                   example-gateway.json example-projects.json example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
-                  example-tracker.json github.json unknown-role.json)
+                  example-source-guide.json example-tracker.json github.json unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 104
+      assert length(names) == 110
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -57,7 +57,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 39
+      assert length(names) == 45
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -93,7 +93,13 @@ defmodule Apiary.Integrations.DescriptionTest do
              "#/roles/source/collection_noun"},
             {"collection-noun-upper-case", :pattern, "#/roles/source/collection_noun/one"},
             {"collection-noun-work-item", :not, "#/roles/source/collection_noun/one"},
-            {"collection-noun-work-items-hyphen", :not, "#/roles/source/collection_noun/other"}
+            {"collection-noun-work-items-hyphen", :not, "#/roles/source/collection_noun/other"},
+            {"guide-301-characters", :maxLength, "#/roles/source/guide/setup/steps/0"},
+            {"guide-line-feed", :pattern, "#/roles/source/guide/setup/after"},
+            {"guide-no-steps", :required, "#/roles/source/guide/connect"},
+            {"guide-steps-11", :maxItems, "#/roles/source/guide/connect/steps"},
+            {"guide-steps-empty", :minItems, "#/roles/source/guide/connect/steps"},
+            {"guide-undefined-member", :additionalProperties, "#/roles/source/guide/setup"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
@@ -264,10 +270,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "e8272d526cbbcfcf416dc78c0a25c7079cb0f9f0"
+  @integrations_ref "24f1125680838387abed1d16c7dbeac198b27994"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "a01f726228f4f668b7c33d5bdb6e5edd998c227896d8dea7b8baae5018ec82ba",
+      "5ba850ce1ebaf44e9732eb29eb08001c80a430d5605c4a7c16e235440c0d8b20",
     "priv/contract/integration/definitions.schema.json" =>
       "6198a125d943ac8b8d3f27d757b6d77696171009d6bf218cfd527eacdc0288b8",
     "priv/contract/integration/descriptions/anthropic.json" =>
@@ -285,7 +291,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
       "6198a125d943ac8b8d3f27d757b6d77696171009d6bf218cfd527eacdc0288b8",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "fd0be53054ddf85bc82081434dcb04770d842b16679f620106244ec3330341fe"
+      "7557e6a7159b3ab7c5e9b249d9cfee9040dcaed7906c1d4c86a0d484ad975a9b"
   }
 
   @root Path.expand("../../..", __DIR__)

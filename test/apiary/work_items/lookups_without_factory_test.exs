@@ -1,8 +1,8 @@
 defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
   # The lookups of a work item, its comments, the Work items list, its Filter menu's
   # values and the sidebar's count on an instance without the factory feature: nothing, to
-  # an owner too, and no comment written. The features are the node's, so this module is
-  # not async.
+  # an owner too, no comment written, and no test work item made. The features are the
+  # node's, so this module is not async.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -64,5 +64,16 @@ defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
     assert WorkItems.list_filter_values(scope, :owner) == []
     assert WorkItems.list_filter_values(scope, :collection) == []
     assert WorkItems.count_waiting_on(scope) == 0
+  end
+
+  @tag with_features: [:observability]
+  test "make no test work item and queue no run" do
+    %{scope: scope} = sign_up_fixture()
+
+    assert WorkItems.take_in_test(scope, "Hello! Where are you running?") ==
+             {:error, :not_found}
+
+    assert Repo.aggregate(Apiary.WorkItems.WorkItem, :count) == 0
+    assert Repo.aggregate(Apiary.Dispatches.DispatchRun, :count) == 0
   end
 end

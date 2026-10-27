@@ -6,9 +6,10 @@ defmodule ApiaryWeb.OrganisationLive do
   count, its denied attempts and its last run), at most six and a link to all of them;
   beside them its people and its details, as lines, not boxes (`docs/ui.md`, Lists).
 
-  A member who reaches no workspace yet, where the edition says which workspaces their
-  level reaches (`c:Apiary.Edition.reaches_workspace?/3`), is told so, and led to the
-  People section of the settings, where the owners and admins are listed. Once they reach
+  An organisation with no workspace in use yet sends the person on to its workspace
+  set-up, `/:org/set-up`. A member who reaches no workspace yet, where the edition says
+  which workspaces their level reaches (`c:Apiary.Edition.reaches_workspace?/3`), is told
+  so, and led to the People section of the settings, where the owners and admins are listed. Once they reach
   one while the page is open, the member's scope is loaded again (`ApiaryWeb.UserAuth`),
   and the page offers the workspace.
 
@@ -293,7 +294,14 @@ defmodule ApiaryWeb.OrganisationLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, socket |> load() |> UserAuth.on_membership_change(&load/1)}
+    organisation = socket.assigns.current_scope.organisation
+
+    # An organisation with no workspace yet has the workspace set-up in place of its
+    # overview.
+    if is_nil(socket.assigns.current_scope.workspace) and
+         not Organisations.has_workspace?(organisation),
+       do: {:ok, push_navigate(socket, to: ~p"/#{organisation}/set-up")},
+       else: {:ok, socket |> load() |> UserAuth.on_membership_change(&load/1)}
   end
 
   # What the page shows, read again when the reader's membership changes: a member added

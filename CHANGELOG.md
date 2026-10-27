@@ -84,6 +84,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An integration's settings check counts large text toward its memory limit.
 - An integration's settings check refuses a schema, or settings checked as regular
   expressions, whose patterns would take more than 16 MiB of memory once compiled.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
 - The access action `connection.write` is split in three. `provider.write` covers model
   providers, their keys and models, and the organisation's default model choice;
   `runtime.write` covers runtimes; `connection.write` keeps integrations, services, an

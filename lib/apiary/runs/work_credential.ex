@@ -52,7 +52,7 @@ defmodule Apiary.Runs.WorkCredential do
   # `inspect` hides it, until `value/2` builds the sealed value. Nothing here writes it
   # to the database or a log. No database transaction is open during the call.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, only: [from: 2]

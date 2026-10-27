@@ -11,8 +11,7 @@ defmodule ApiaryWeb.SendOn do
   # and `Cache-Control: no-store`, so the pass is kept by no cache. The address is in the
   # answer's body alone, which nothing logs.
   #
-  # The feature its pages belong to is hidden from the documentation, so the module is
-  # too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Plug.Conn

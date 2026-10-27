@@ -2,9 +2,14 @@ defmodule Apiary.Setup do
   @moduledoc """
   The instance's set-up link, `/setup/<code>`: the one way to make the first admin of an
   instance from a browser. Its page (`ApiaryWeb.SetupLive`) asks for an email address, a
-  password and the organisation's name, and makes the instance's first account, its
-  organisation and the workspace Main. Until it is used nobody can sign up
+  password and the organisation's name, and makes the instance's first account and its
+  organisation, with no workspace. Until it is used nobody can sign up
   (`Apiary.Organisations.sign_up_offer/1` answers `:not_set_up`).
+
+  **The connections.** After set-up, an instance admin is sent to the instance's
+  connections, `/instance/set-up`, at every sign-in, until an instance admin finishes or
+  skips its last step: `review_connections/1` sets `connections_reviewed_at` of the
+  instance's row, and `connections_reviewed?/0` reads it.
 
   **The code.** 32 random bytes (`:crypto.strong_rand_bytes/1`) in base64url without
   padding, 43 characters. It is stored as it is in the instance's row of
@@ -196,6 +201,45 @@ defmodule Apiary.Setup do
   def set_up?, do: not is_nil(Apiary.Edition.instance_organisation_id())
 
   @doc """
+  connections_reviewed?/0 says whether an instance admin has finished or skipped the last
+  step of the instance's connections, `/instance/set-up`:
+  `connections_reviewed_at` of the instance's row is set. False with no row.
+  """
+  @spec connections_reviewed?() :: boolean
+  def connections_reviewed? do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT 1 FROM instance_settings WHERE id AND connections_reviewed_at IS NOT NULL"
+      )
+
+    rows != []
+  end
+
+  @doc """
+  review_connections/1 marks the instance's connections reviewed, for the instance admin
+  of `scope` (`Apiary.Access.instance_admin?/1`): it sets `connections_reviewed_at` of the
+  instance's row, made where there is none, once; a later call keeps the first time.
+  `:ok`, or `{:error, :forbidden}` for anyone but an instance admin.
+  """
+  @spec review_connections(Apiary.Accounts.Scope.t()) :: :ok | {:error, :forbidden}
+  def review_connections(scope) do
+    if Apiary.Access.instance_admin?(scope) do
+      now = DateTime.utc_now()
+      Repo.query!(@ensure_row, [now])
+
+      Repo.query!(
+        "UPDATE instance_settings SET connections_reviewed_at = $1 " <>
+          "WHERE id AND connections_reviewed_at IS NULL",
+        [now]
+      )
+
+      :ok
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc """
   code!/0 is the set-up code, found or made: the stored one, or else a new one, stored
   before it is returned, all under the row's lock. The same code until it is used.
   Raises once the instance is set up, when there is no code to give, and with a preset
@@ -302,9 +346,10 @@ defmodule Apiary.Setup do
   `Apiary.Organisations.sign_up_user/3` with `first_only: true` and `actor: :instance`,
   in one transaction that also checks the code under the row's lock and marks it used.
   `attrs` are the sign-up form's: `email`, `organisation_name`, `password`,
-  `password_confirmation`, and `domain`, Main's domain, the default domain without one.
-  It creates the instance's organisation, its workspace Main and the account as its
-  owner, and the edition's part of a first sign-up applies (`:first_sign_up`).
+  `password_confirmation`. It creates the instance's organisation, with no workspace, and
+  the account as its owner, and the edition's part of a first sign-up applies
+  (`:first_sign_up`). The organisation's first workspace comes later
+  (`Apiary.Organisations.create_first_workspace/2`, from the workspace set-up page).
 
   Answers `{:ok, map}` as the sign-up does; `{:error, :already_set_up}` once the instance
   is set up, a set-up a moment before included; `{:error, :invalid_code}` for a code that
@@ -314,9 +359,7 @@ defmodule Apiary.Setup do
   `password: :required` asks for a password, as the set-up page does; by default it is
   required while the instance sends no email (`Apiary.Mail.configured?/0`), as a
   person's sign-up's is, and optional once it does; a password given is kept either way.
-  `domain: :required` asks for Main's domain, as the set-up page does; without it, a
-  sign-up with no domain makes Main of the default domain. `origin:` is where the set-up
-  comes from, for its entry
+  `origin:` is where the set-up comes from, for its entry
   (`Apiary.Accounts.Scope.put_origin/2`); `Apiary.Setup` when none is given.
   """
   @spec set_up(String.t(), map, keyword) ::
@@ -340,7 +383,7 @@ defmodule Apiary.Setup do
                actor: :instance,
                setup_code: code,
                password: password,
-               domain: Keyword.get(opts, :domain, :optional),
+               workspace: false,
                origin: Keyword.get(opts, :origin) || %{worker: "Apiary.Setup"}
              ) do
           {:ok, _signed_up} = done -> done

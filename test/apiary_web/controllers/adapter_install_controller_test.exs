@@ -4,7 +4,8 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
   # session; the page that sends the person on to the adapter's connect address with the
   # pass, kept by no cache and telling no referrer; the CSRF check; a connected
   # organisation's new pass; and where a person is sent when the connected connection
-  # cannot take a pass yet or the adapter cannot be connected.
+  # cannot take a pass yet, the adapter cannot be connected, or the organisation is not
+  # offered it.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -178,6 +179,25 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
     bare = adapter_fixture()
     conn = install(conn, scope, bare.public_id)
     assert redirected_to(conn) == "/#{scope.organisation.slug}/settings/integrations/new"
+    assert connections(scope) == []
+    assert connect_entries() == 0
+  end
+
+  test "an adapter Add an integration does not offer sends the person there, and changes nothing",
+       %{conn: conn, scope: scope} do
+    %{adapter: settable} = settable_adapter_fixture(%{name: unique_adapter_name("Set up")})
+    %{adapter: desk} = connectable_adapter_fixture(%{name: unique_adapter_name("Help desk")})
+
+    {1, _} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^desk.id),
+        set: [domains: ["general"]]
+      )
+
+    for adapter <- [settable, desk] do
+      conn = install(conn, scope, adapter.public_id)
+      assert redirected_to(conn) == "/#{scope.organisation.slug}/settings/integrations/new"
+    end
+
     assert connections(scope) == []
     assert connect_entries() == 0
   end

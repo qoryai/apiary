@@ -60,7 +60,7 @@ defmodule Apiary.WorkItems.Explore do
   # `stage/1` is the stage a status is at, as a decline or a close records it: `:shape`
   # once confirmed, `:confirm` while the proposal waits, `:explore` otherwise.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

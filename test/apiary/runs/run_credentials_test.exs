@@ -82,6 +82,21 @@ defmodule Apiary.Runs.RunCredentialsTest do
     assert entries() == []
   end
 
+  describe "the run of a test work item" do
+    test "gets no entry, while the workspace's adapter declares apply items", ctx do
+      # A work item of the workspace whose ticket's adapter declares them, its run left
+      # out of the queue.
+      work_item = work_item_fixture(ctx.scope)
+      set!(Node, work_item.adapter_id, source_apply: @apply)
+
+      {:ok, test_item} = Apiary.WorkItems.take_in_test(ctx.scope, "Hello! Where are you running?")
+      assert {:ok, %{registered: %Run{} = run, work_item: claimed}} = claim(ctx)
+      assert claimed.id == test_item.id
+      assert run.registration_labels == %{}
+      assert entries() == []
+    end
+  end
+
   describe "an explore run whose ticket's adapter declares apply items" do
     test "gets work-1 with the filled paths, a repeat left out, its collection and read access",
          ctx do

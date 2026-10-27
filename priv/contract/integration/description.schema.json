@@ -56,7 +56,7 @@
           }
         },
         "source": {
-          "description": "The source adapter: the program that reads a source of work, such as a tracker, and speaks the integration contract to the control plane (adapter.schema.json). Every value here other than items, credential_scope and apply is the integration's words, which the control plane shows verbatim as plain text, never as Markdown or HTML. Each value other than items and apply is one line with no control characters, none of the format characters listed for a prose line ($defs.line) and no bidirectional controls, so no control character in a value overrides the order it is shown in, and each value other than items, item_noun, collection_noun, secrets, credential_scope and apply names the system itself, with no placeholder. The source role is not one a reader starts: it is not started as <program> <role> --settings <json>, and it does not end by printing one document as those roles do: start runs the program as a server, and the enrol command prints only the settings to add, as program says. A person runs setup.command, then the enrol command under program, then start, and the program runs as a server. The rules for how a role is started and how it ends apply to describe and to the roles a reader starts, not to this one. A prose line is 1 to 300 characters, and a command 1 to 200 characters of printable ASCII.",
+          "description": "The source adapter: the program that reads a source of work, such as a tracker, and speaks the integration contract to the control plane (adapter.schema.json). Every value here other than items, credential_scope and apply is the integration's words, which the control plane shows verbatim as plain text, never as Markdown or HTML. Each value other than items and apply is one line with no control characters, none of the format characters listed for a prose line ($defs.line) and no bidirectional controls, so no control character in a value overrides the order it is shown in, and each value other than items, item_noun, collection_noun, secrets, credential_scope, apply and guide refers to the system by its name, with no placeholder. A line of guide has no placeholder either, and need not refer to the system by its name. The source role is not one a reader starts: it is not started as <program> <role> --settings <json>, and it does not end by printing one document as those roles do: start runs the program as a server, and the enrol command prints only the settings to add, as program says. A person runs setup.command, then the enrol command under program, then start, and the program runs as a server. The rules for how a role is started and how it ends apply to describe and to the roles a reader starts, not to this one. A prose line is 1 to 300 characters, and a command 1 to 200 characters of printable ASCII.",
           "type": "object",
           "additionalProperties": false,
           "required": ["description", "program", "setup", "start", "connect", "access", "disconnect"],
@@ -81,6 +81,15 @@
             "connect": {"description": "The line the control plane shows before its button that sends the person to the source, saying what happens at the source. The button's label is the control plane's text, not this line.", "$ref": "#/$defs/line"},
             "access": {"description": "How to change, at the source, which collections the adapter reaches.", "$ref": "#/$defs/line"},
             "disconnect": {"description": "How to remove the grant at the source.", "$ref": "#/$defs/line"},
+            "guide": {
+              "description": "Short step-by-step help for the set-up step, setup, and for the connect step, connect: what a person does at the source, step by step. The control plane shows each value verbatim as plain text, never as Markdown or HTML, as it shows the other values of this role, so a button's name appears exactly as written. For each part, the control plane shows before, then a first step that the control plane writes, such as the button to press in the control plane, then the adapter's steps, numbered after that first step, then after. The adapter's steps describe only the adapter's system: the control plane writes that first step and any notes about the control plane. setup and connect are each optional. Absent, the control plane shows setup.help and connect alone.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "setup": {"description": "The help for the set-up step, which prepares the source side.", "$ref": "#/$defs/guide_part"},
+                "connect": {"description": "The help for the connect step, which sends a person to the source to give the adapter access.", "$ref": "#/$defs/guide_part"}
+              }
+            },
             "item_noun": {
               "description": "The integration's words for one item and for many, shown verbatim as plain text where the control plane names this source's items; absent, the control plane says ticket and tickets. Each is 1 to 32 characters: lower-case letters, a to z, in words joined by single spaces or hyphens, starting and ending with a letter, and never work item or work items, with a space or a hyphen.",
               "type": "object",
@@ -292,6 +301,23 @@
       "additionalProperties": {"$ref": "#/$defs/bounds"}
     },
     "line": {"description": "A prose line of the integration's words: 1 to 300 characters, one line, with no control characters, no bidirectional controls (the marks U+061C, U+200E and U+200F, the embeddings and overrides U+202A to U+202E and the isolates U+2066 to U+2069, so no control character in a value overrides the order it is shown in), and none of these format characters, which are usually not shown: U+00AD, U+180E, U+200B, U+2060 to U+2064, U+FEFF and U+FFF9 to U+FFFB.", "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]+$"},
+    "guide_part": {
+      "description": "The help for one step of the source role's guide: before, an optional line shown above the steps; steps, 1 to 10 lines, each one step a person takes, in order; and after, an optional line shown below the steps. Each value is a prose line ($defs.line).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "before": {"description": "A line shown above the steps.", "$ref": "#/$defs/line"},
+        "steps": {
+          "description": "The steps, 1 to 10, in the order a person takes them, each one line.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {"$ref": "#/$defs/line"}
+        },
+        "after": {"description": "A line shown below the steps.", "$ref": "#/$defs/line"}
+      }
+    },
     "command": {"description": "A command a person runs: 1 to 200 characters of printable ASCII.", "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[ -~]+$"},
     "noun": {"description": "One of the integration's words for the source's items or for its collections: 1 to 32 characters, lower-case letters, a to z, in words joined by single spaces or hyphens, starting and ending with a letter, and never work item or work items, with a space or a hyphen.", "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[a-z]+(?:[ -][a-z]+)*$", "not": {"pattern": "^work[ -]items?$"}}
   }

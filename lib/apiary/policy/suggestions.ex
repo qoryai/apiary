@@ -14,7 +14,7 @@ defmodule Apiary.Policy.Suggestions do
   each and whether it is the workspace's or the target's, at most 20.
   """
 
-  # With the `factory` feature, which the documentation leaves out: every read of events
+  # With the `factory` feature: every read of events
   # and connections goes through the edition's narrowing of what the scope's person reads
   # of the workspace's runs (`c:Apiary.Edition.client_reads/4`).
 

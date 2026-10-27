@@ -212,8 +212,11 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
 - **The first sign-up** (`Apiary.Organisations.sign_up_user/3`) creates the instance's
   organisation (`c:Apiary.Edition.instance_organisation_id/0`; in the core's edition,
   the oldest organisation in use), named by the sign-up form's organisation name, with
-  its workspace **Main** and the person as its owner, the instance's first admin, and
-  nothing else; the edition is told so (`:first_sign_up`). It is the set-up's or the
+  the person as its owner, the instance's first admin, and nothing else; the edition is
+  told so (`:first_sign_up`). By the set-up link it has no workspace (`workspace:
+  false`): its owner creates **Main** on the workspace set-up page, `/:org/set-up`, and
+  chooses its type there (`Apiary.Organisations.create_first_workspace/2`). By the
+  release command it has **Main**. It is the set-up's or the
   release command's alone (`first_only: true`, `actor: :instance`; The set-up link,
   below); any other sign-up before it is `{:error, :not_set_up}`. Whether a sign-up is
   the first is read inside its transaction: when no organisation is the instance's yet,
@@ -226,11 +229,13 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   form sent beyond the core's fields (`{:sign_up, extra}`), which the edition may refuse
   on one of its fields. `Apiary.Organisations.sign_up_offer/1` (`:not_set_up`, `:open` or
   `:closed`) is what the page offers, and the sign-up asks again before it creates
-  anything. A sign-up with an invitation creates no organisation. Every new organisation
-  starts with one workspace, **Main**.
+  anything. A sign-up with an invitation creates no organisation. An organisation the
+  sign-up page creates has no workspace either (`workspace: false`): its owner lands on
+  the workspace set-up page and creates **Main** there, as after the set-up link.
 - **One way to create an organisation.** `Apiary.Organisations.build_organisation/2` is
   the one way, for a sign-up and for each of an edition's ways: the slug, the workspace
-  Main, the owner membership, the edition's steps and the entry that begins its trail.
+  Main unless `workspace: false`, the owner membership, the edition's steps and the entry
+  that begins its trail.
 - **The instance admins** are the owners of the instance's organisation
   (`Apiary.Access.instance_admin?/1`, [access.md](access.md), The instance's admins). It
   is never deleted nor purged (`:instance_organisation`), so an instance never loses it:

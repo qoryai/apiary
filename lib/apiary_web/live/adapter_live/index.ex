@@ -21,14 +21,20 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # the adapters' words when they all name the same.
   #
   # Add an integration is for whoever may connect one (`adapter.connect`); to anyone else
-  # it is a path that does not exist. Each adapter not installed is a block
+  # it is a path that does not exist. It offers only the configured adapters that serve
+  # the domain of one of the organisation's workspaces, or any domain while it has none
+  # (`Apiary.Adapters.offered_domains/1`, `Apiary.Adapters.list_configured/1`), read after
+  # that check; Install asks the same (`Apiary.Adapters.offered?/2`). Each one not
+  # installed is a block
   # (`ApiaryWeb.IntegrationComponents.install_block/1`): what Install does, in its words
   # for its collections, then Install, which posts to the Install path and sends the
   # person on to the integration, and Cancel, back to the list. Once pressed, the block
-  # says where the person is taken. One that cannot be installed yet has Install disabled.
-  # With every adapter installed, a line says so, in place of the lead.
+  # says where the person is taken. In place of the lead, a line says that an instance
+  # admin sets one up, where none is configured; that none serves the organisation's
+  # workspaces, where some are configured and none serves those domains; or that every
+  # one is installed.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -38,6 +44,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
 
   alias Apiary.{Access, Adapters, Organisations}
   alias Apiary.Adapters.{Collections, Connections}
+  alias Apiary.Lingo.Domain
   alias ApiaryWeb.{IntegrationComponents, SettingsComponents, SourceComponents}
 
   @impl true
@@ -47,7 +54,13 @@ defmodule ApiaryWeb.AdapterLive.Index do
     new? = socket.assigns.live_action == :new
     if new? and not connects, do: raise(ApiaryWeb.NotFound)
 
-    adapters = Adapters.list_adapters(scope)
+    workspaces = Organisations.list_workspaces(scope)
+
+    adapters =
+      if new?,
+        do: configured(Adapters.offered_domains(scope)),
+        else: Adapters.list_adapters(scope)
+
     live = Connections.live_by_adapter(scope)
 
     rows =
@@ -74,12 +87,22 @@ defmodule ApiaryWeb.AdapterLive.Index do
        noun: Adapters.shared_collection_noun(adapters),
        nouns: Enum.map(adapters, &Adapters.collection_noun/1),
        connects: connects,
-       several: length(Organisations.list_workspaces(scope)) > 1,
+       several: length(workspaces) > 1,
+       any_configured: new? and configured(Domain.choices()) != [],
        sending: nil
      )}
   end
 
   defp add_title, do: gettext("Add an integration")
+
+  # The configured adapters that serve one of `domains`, each once, by name, as
+  # `Apiary.Adapters.list_configured/1` orders them.
+  defp configured(domains) do
+    domains
+    |> Enum.flat_map(&Adapters.list_configured/1)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.sort_by(&{&1.name, &1.id})
+  end
 
   @impl true
   def handle_event("install", %{"integration" => public_id}, socket) do
@@ -104,11 +127,31 @@ defmodule ApiaryWeb.AdapterLive.Index do
       <:crumb>{add_title()}</:crumb>
 
       <.settings_page section={:integrations} title={add_title()}>
-        <:subtitle :if={!@all_installed}>
+        <:subtitle :if={@rows != [] and !@all_installed}>
           {gettext("Install one of this instance's integrations for %{organisation}.",
             organisation: @current_scope.organisation.name
           )}
         </:subtitle>
+
+        <p
+          :if={@rows == [] and !@any_configured}
+          id="add-none-set-up"
+          class="text-[13.5px]/5 text-muted"
+        >
+          {gettext(
+            "No integration is set up on this instance yet. An instance admin sets one up in Instance settings › Adapters."
+          )}
+        </p>
+
+        <p
+          :if={@rows == [] and @any_configured}
+          id="add-none-for-type"
+          class="text-[13.5px]/5 text-muted"
+        >
+          {gettext(
+            "No integration that serves this organisation's workspaces is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+          )}
+        </p>
 
         <p
           :if={@all_installed}

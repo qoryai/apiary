@@ -50,7 +50,7 @@ defmodule Apiary.Integrations.Description do
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
 
-  # The `source` role is the `factory` feature's, which the documentation leaves out. Of
+  # The `source` role is the `factory` feature's. Of
   # it, four members are read out (`item_noun/1`, `items?/1`, `collection_noun/1`,
   # `access/1`): its words for one item and for many, `item_noun`, `one` and `other`, each
   # 1 to 32 characters: lower-case letters in words joined by single spaces or hyphens,
@@ -363,6 +363,14 @@ defmodule Apiary.Integrations.Description do
       _none -> nil
     end
   end
+
+  @doc false
+  # source_guide/1 is the source role's `guide`, the steps for setting the adapter up
+  # (`setup`) and for connecting it (`connect`), each with `steps` and an optional
+  # `before` and `after`, as decoded; nil for a description with none.
+  @spec source_guide(t) :: map | nil
+  def source_guide(%__MODULE__{document: document}),
+    do: get_in(document, ["roles", "source", "guide"])
 
   @doc false
   # source_apply/1 is the source role's `apply` items, the templates of the run's work

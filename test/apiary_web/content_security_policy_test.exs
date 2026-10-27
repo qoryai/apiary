@@ -442,6 +442,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("number", _path, p), do: p.work_item_number
   defp value_of("n", _path, _p), do: 1
   defp value_of("adapter_id", _path, p), do: p.adapter_id
+  defp value_of("provider_id", _path, p), do: p.provider_id
   defp value_of("release_id", _path, p), do: p.release_id
   defp value_of("value_id", _path, p), do: p.value_id
   defp value_of("section", _path, _p), do: "runs"
@@ -609,6 +610,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       %{access_key: pool_key} = installed_key_fixture(pool)
 
       %{
+        provider_id: provider_id(scope),
         adapter_id: adapter.public_id,
         adapter_key_id: adapter_key.key_id,
         adapter_code_id: adapter_code.id,
@@ -618,6 +620,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       }
     else
       %{
+        provider_id: "con_none",
         adapter_id: "na_x",
         adapter_key_id: "x1",
         adapter_code_id: Ecto.UUID.generate(),
@@ -625,6 +628,21 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         instance_key_id: "x1",
         work_item_number: 1
       }
+    end
+  end
+
+  # A model provider, for its page, which needs `secrets` too.
+  defp provider_id(scope) do
+    if Features.on?(:secrets) do
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: hd(Apiary.Kinds.Providers.list()).name,
+          keys: [%{value_id: "key-1", value: "x"}]
+        })
+
+      provider.public_id
+    else
+      "con_none"
     end
   end
 

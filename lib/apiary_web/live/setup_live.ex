@@ -2,13 +2,14 @@ defmodule ApiaryWeb.SetupLive do
   @moduledoc """
   The set-up page, `/setup/<code>`, the link a new instance logs at every start until it
   is used (`Apiary.Setup`). With the stored code it asks for an email address, a password
-  and its confirmation, the organisation's name, and the type of Main, its domain, with
-  no type chosen until the person picks one (`Apiary.Lingo.Domain.choices/0`); it makes
-  the instance's first account, an instance admin, its organisation and the workspace Main
+  and its confirmation, and the organisation's name; it makes the instance's first
+  account, an instance admin, and its organisation, with no workspace
   (`Apiary.Setup.set_up/3`), and the edition says what is created
   (`c:Apiary.Edition.first_sign_up_line/0`). Once it is accepted, the same form is
   submitted to the log-in controller (`phx-trigger-action`, as the sign-up page does),
-  which signs the person in with the password the browser holds.
+  which signs the person in with the password the browser holds, and sends them on to
+  the instance's connections and then the workspace set-up
+  (`ApiaryWeb.UserAuth.signed_in_path/1`).
 
   Once the instance is set up, any code gets "already set up" and the way to log in.
   Before, a code that is not the stored one is a path that does not exist
@@ -21,7 +22,6 @@ defmodule ApiaryWeb.SetupLive do
   use ApiaryWeb, :live_view
 
   alias Apiary.{Organisations, Setup}
-  alias Apiary.Lingo.Domain
 
   defmodule HeldCode do
     @moduledoc false
@@ -108,21 +108,6 @@ defmodule ApiaryWeb.SetupLive do
             }
             required
           />
-          <.input
-            field={@form[:domain]}
-            type="radio"
-            label={gettext("Workspace type")}
-            options={
-              for domain <- Domain.choices(),
-                  do: {domain.label(), domain.name(), domain.description()}
-            }
-            hint={
-              gettext(
-                "%{workspace}, your first workspace, gets this type. A workspace's type can't be changed after it is created.",
-                workspace: Organisations.default_workspace_name()
-              )
-            }
-          />
           <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Setting up")}>
             {gettext("Set up")}
           </.button>
@@ -184,11 +169,7 @@ defmodule ApiaryWeb.SetupLive do
   def handle_event("save", %{"user" => params}, %{assigns: %{state: :form}} = socket) do
     %HeldCode{value: code} = socket.assigns.code
 
-    case Setup.set_up(code, params,
-           password: :required,
-           domain: :required,
-           origin: socket.assigns.origin
-         ) do
+    case Setup.set_up(code, params, password: :required, origin: socket.assigns.origin) do
       # The same form goes to the log-in controller, with the address the account has,
       # and signs the person in with the password the browser holds.
       {:ok, %{user: user}} ->
@@ -232,12 +213,7 @@ defmodule ApiaryWeb.SetupLive do
   end
 
   defp change_set_up(params),
-    do:
-      Organisations.change_sign_up(params,
-        validate_unique: false,
-        password: :required,
-        domain: :required
-      )
+    do: Organisations.change_sign_up(params, validate_unique: false, password: :required)
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset),
     do: assign(socket, :form, to_form(changeset, as: "user"))

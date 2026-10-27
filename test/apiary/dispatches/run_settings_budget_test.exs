@@ -14,7 +14,6 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
-  alias Apiary.Connections.ProviderModel
   alias Apiary.Dispatches.{DispatchRun, Handover}
   alias Apiary.Runs.{Run, RunCode}
   alias Apiary.Sources.Comment
@@ -24,56 +23,30 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @limit 1_048_576
-  @efforts ~w(low medium high xhigh max)
 
   setup do
     %{scope: scope} = sign_up_fixture()
     Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 
-  # The anthropic provider with 200 models, the most a provider has, each id 200
-  # characters, the most a model id has, each with every effort value of the runtime;
-  # chosen for the workspace with an effort and the three tiers.
-  defp provider_at_its_caps!(scope) do
+  # The anthropic provider, chosen for the workspace with a model and the three tiers that
+  # its description does not list, each id 200 characters, the most a model id has: the
+  # run settings list the description's models and these four.
+  defp provider_with_long_ids!(scope) do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "anthropic",
         keys: [%{value_id: "main", value: "sk-ant-budget-0123456789"}]
       })
 
-    now = DateTime.utc_now()
-    ids = for n <- 1..196, do: String.pad_trailing("team-#{n}-", 200, "x")
-
-    Repo.insert_all(
-      ProviderModel,
-      for {id, n} <- Enum.with_index(ids, 4) do
-        %{
-          id: Ecto.UUID.generate(),
-          organisation_id: provider.organisation_id,
-          connection_id: provider.id,
-          model_id: id,
-          title: "Team #{n}",
-          effort: @efforts,
-          position: n,
-          is_default: false,
-          inserted_at: now,
-          updated_at: now
-        }
-      end
-    )
-
-    [light, fast, thinking | _rest] = ids
+    [model, light, fast, thinking] =
+      for n <- 1..4, do: String.pad_trailing("team-#{n}-", 200, "x")
 
     {:ok, _choice} =
       ModelChoices.put_choice(scope, :workspace, %{
         provider: provider.public_id,
-        model: List.last(ids),
-        effort: "max",
-        tiers: %{
-          "light" => %{"model" => light, "effort" => "low"},
-          "fast" => %{"model" => fast, "effort" => "medium"},
-          "thinking" => %{"model" => thinking, "effort" => "xhigh"}
-        }
+        model: model,
+        tiers: %{"light" => light, "fast" => fast, "thinking" => thinking}
       })
 
     provider
@@ -145,14 +118,13 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   end
 
   describe "the 201's limit" do
-    test "holds the run settings at their caps and the input at its limit within 1 MiB", ctx do
-      provider_at_its_caps!(ctx.scope)
+    test "holds the run settings and the input at its limit within 1 MiB", ctx do
+      provider_with_long_ids!(ctx.scope)
       queued!(ctx)
       handed = claimed!(ctx)
 
       settings = Jason.encode!(handed.run_settings)
-      assert byte_size(settings) > 50_000
-      assert length(Jason.decode!(settings)["provider_models"]) == 200
+      assert length(Jason.decode!(settings)["provider_models"]) == 8
       assert omitted(handed) > 0
 
       # The 201 carries the documents the claim stored, and fits 1 MiB with the margin
@@ -165,7 +137,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     end
 
     test "leaves out more of the oldest comments when the rest of the 201 takes more", ctx do
-      provider_at_its_caps!(ctx.scope)
+      provider_with_long_ids!(ctx.scope)
       queued!(ctx)
       put_limit(500_000)
       handed = claimed!(ctx)
@@ -184,9 +156,9 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     @tag :capture_log
     test "refuses the claim, with nothing written, when the rest of the documents passes the limit",
          ctx do
-      provider_at_its_caps!(ctx.scope)
+      provider_with_long_ids!(ctx.scope)
       queued = queued!(ctx)
-      put_limit(40_000)
+      put_limit(3_000)
 
       assert Dispatches.claim(ctx.key, Dispatches.now(), @body) == {:error, :unavailable}
 
@@ -197,10 +169,12 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   end
 
   describe "with the feature secrets off" do
-    @tag with_features: [:observability, :security, :factory]
+    @tag with_features: [:observability, :security, :secrets, :factory]
     test "the documents have no run settings, and the run keeps none, whatever the gateway's keys",
          ctx do
-      off = Application.get_env(:apiary, :features)
+      # `factory` needs `secrets`, so no value of QORY_FEATURES gives these features: they
+      # are set here because `Apiary.Dispatches.RunSettings` asks for `secrets` as well.
+      off = Application.get_env(:apiary, :features) -- [:secrets]
 
       # The provider and the choice are made with every feature on, as on an instance that
       # turned `secrets` off later.

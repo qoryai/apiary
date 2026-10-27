@@ -8,7 +8,7 @@ defmodule Apiary.Harnesses.Assignment do
   # instance admin creates and deletes one (`Apiary.Harnesses`). The table and its rules
   # are `20261025140100_keep_the_instance_s_harness_assignments`'s.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Ecto.Schema
 

@@ -49,6 +49,17 @@ defmodule Apiary.Lingo.Domain.General do
       )
 
   @impl true
+  def type_name, do: pgettext("workspace type", "General")
+
+  @impl true
+  def type_line,
+    do:
+      pgettext(
+        "workspace type",
+        "For any other work, such as marketing, incidents or customer care."
+      )
+
+  @impl true
   def target_required?, do: false
 
   @impl true

@@ -40,7 +40,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   # is turned off there, with a grey dot and when it was last seen, it offers no Set up,
   # and the danger zone is back.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

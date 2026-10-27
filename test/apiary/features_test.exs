@@ -101,20 +101,23 @@ defmodule Apiary.FeaturesTest do
                {:error, "path_rules needs security, which is left out"}
     end
 
-    test "factory is opt-in and needs observability and security: off unless a list names it" do
+    test "factory is opt-in and needs observability, security and secrets: off unless a list names it" do
       assert :factory in Features.opt_in()
-      assert Features.needs(:factory) == [:observability, :security]
+      assert Features.needs(:factory) == [:observability, :security, :secrets]
 
       for value <- [nil, "", "  ", "all", all_but_a_leaf(), "observability,security"] do
         assert {:ok, features} = Features.parse(value)
         refute :factory in features, inspect(value)
       end
 
-      assert Features.parse("observability,security,factory") ==
-               {:ok, [:observability, :security, :factory]}
+      assert Features.parse("observability,security,secrets,factory") ==
+               {:ok, [:observability, :security, :secrets, :factory]}
 
       assert Features.parse("factory,path_rules,secrets,security,observability") ==
                {:ok, [:observability, :security, :secrets, :path_rules, :factory]}
+
+      assert Features.parse("observability,security,factory") ==
+               {:error, "factory needs secrets, which is left out"}
 
       assert Features.parse("observability,factory") ==
                {:error, "factory needs security, which is left out"}
@@ -291,7 +294,7 @@ defmodule Apiary.FeaturesTest do
 
     test "a feature that needs a hidden one is not shown, as the scope keeps it", ctx do
       for {named, hidden} <- [
-            {[:secrets], [:secrets]},
+            {[:secrets], [:secrets, :factory]},
             {[:path_rules], [:path_rules]},
             {[:factory], [:factory]},
             {[:registry], [:registry]},
@@ -332,7 +335,8 @@ defmodule Apiary.FeaturesTest do
                inspect(feature)
       end
 
-      assert Features.hidden_of([:secrets]) == Enum.filter(Features.enabled(), &(&1 == :secrets))
+      assert Features.hidden_of([:secrets]) ==
+               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory]))
 
       assert Features.hidden_of([:path_rules]) ==
                Enum.filter(Features.enabled(), &(&1 == :path_rules))
@@ -359,7 +363,7 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([part]) == [part]
 
       assert Features.hidden_of([part, :secrets, part]) ==
-               Enum.filter(Features.enabled(), &(&1 == :secrets)) ++ [part]
+               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory])) ++ [part]
 
       # A part is hidden with its feature without being named (`visible?/2`), so hiding
       # the feature adds no part.
@@ -454,8 +458,8 @@ defmodule Apiary.FeaturesTest do
       end
     end
 
-    test "documented/0 is every feature but path_rules, factory and registry, which the documentation does not differ by" do
-      assert Features.documented() == Features.all() -- [:path_rules, :factory, :registry]
+    test "documented/0 is every feature but path_rules and registry, which the documentation does not differ by" do
+      assert Features.documented() == Features.all() -- [:path_rules, :registry]
     end
 
     test "registry/1 takes docs: false for a feature the documentation does not differ by" do
@@ -735,9 +739,19 @@ defmodule Apiary.FeaturesBootTest do
       refute Features.on?(:factory)
     end
 
-    Application.put_env(:apiary, :features_setting, "observability,security,factory")
-    assert Features.boot!() == [:observability, :security, :factory]
+    Application.put_env(:apiary, :features_setting, "observability,security,secrets,factory")
+    assert Features.boot!() == [:observability, :security, :secrets, :factory]
     assert Features.on?(:factory)
+  end
+
+  test "boot!/0 stops the boot where QORY_FEATURES names factory without secrets" do
+    Application.put_env(:apiary, :features_setting, "observability,security,factory")
+    error = assert_raise ArgumentError, fn -> Features.boot!() end
+    assert error.message =~ "QORY_FEATURES is not valid: factory needs secrets, which is left out"
+
+    Application.put_env(:apiary, :features_setting, "factory")
+    error = assert_raise ArgumentError, fn -> Features.boot!() end
+    assert error.message =~ "QORY_FEATURES is not valid: factory needs observability"
   end
 
   test "boot!/0 boots where QORY_FEATURES still names instance_mail, as if it did not" do

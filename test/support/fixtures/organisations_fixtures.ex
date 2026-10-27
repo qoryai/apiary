@@ -24,7 +24,9 @@ defmodule Apiary.OrganisationsFixtures do
   accepts that invitation instead of creating an organisation. Without one it is a later
   sign-up, which the fixture makes whether or not the edition opens one (`open: true`,
   `Apiary.Organisations.sign_up_user/3`); or, on an instance a test shows as not set up,
-  its set-up (`Apiary.Setup.set_up/3`).
+  its set-up (`Apiary.Setup.set_up/3`), then its first workspace, Main, as the workspace
+  set-up page makes it (`Apiary.Organisations.create_first_workspace/2`), of the domain
+  `domain` names, the default without one.
   """
   def sign_up_fixture(attrs \\ %{}) do
     {token, attrs} = Map.pop(attrs, :invitation_token)
@@ -32,7 +34,7 @@ defmodule Apiary.OrganisationsFixtures do
 
     {:ok, %{user: user, organisation: organisation, workspace: workspace, membership: membership}} =
       if is_nil(token) and not Apiary.Setup.set_up?(),
-        do: Apiary.Setup.set_up(Apiary.Setup.code!(), attrs),
+        do: set_up(attrs),
         else: Organisations.sign_up_user(attrs, token, open: true)
 
     user = confirm_user(user)
@@ -48,21 +50,37 @@ defmodule Apiary.OrganisationsFixtures do
 
   def organisation_fixture(attrs \\ %{}), do: sign_up_fixture(attrs).organisation
 
+  # The instance's set-up, then its organisation's first workspace, Main, made by its
+  # first owner.
+  defp set_up(attrs) do
+    with {:ok, %{user: user} = signed_up} <- Apiary.Setup.set_up(Apiary.Setup.code!(), attrs) do
+      domain = attrs[:domain] || attrs["domain"] || Apiary.Lingo.Domain.default().name()
+
+      {:ok, workspace} =
+        user
+        |> Scope.for_user()
+        |> Organisations.load_scope()
+        |> Organisations.create_first_workspace(%{"domain" => domain})
+
+      {:ok, %{signed_up | workspace: workspace}}
+    end
+  end
+
   @doc "A loaded scope for a fresh owner of a fresh organisation."
   def scope_fixture(attrs \\ %{}), do: sign_up_fixture(attrs).scope
 
   @doc """
   The instance's own organisation (`c:Apiary.Edition.instance_organisation_id/0`), created
-  once by the instance's set-up (`Apiary.Setup.set_up/3`), the way the product creates
-  it, and committed, outside any test's sandbox: every test sees it, so the instance is
-  set up for every test.
+  once by the instance's set-up (`Apiary.Setup.set_up/3`), with its first workspace,
+  Main, the way the product creates them, and committed, outside any test's sandbox:
+  every test sees it, so the instance is set up for every test.
   """
   def ensure_instance_organisation! do
     organisation =
       case Apiary.Edition.instance_organisation_id() do
         nil ->
           {:ok, %{organisation: organisation}} =
-            Apiary.Setup.set_up(Apiary.Setup.code!(), %{
+            set_up(%{
               email: "instance-admin@example.com",
               organisation_name: "The suite's instance"
             })

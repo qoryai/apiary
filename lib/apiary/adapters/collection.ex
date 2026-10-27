@@ -32,7 +32,7 @@ defmodule Apiary.Adapters.Collection do
   # `public_id` is its name outside the database: `sc_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Ecto.Schema
 

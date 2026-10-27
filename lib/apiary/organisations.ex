@@ -6,7 +6,8 @@ defmodule Apiary.Organisations do
   admin or member. The levels of `c:Apiary.Edition.every_workspace_levels/0` reach every
   workspace of the organisation, in the core's edition all three; the edition says which
   workspaces another level reaches (`Apiary.Access.reaches_every_workspace?/1`). An
-  invitation is sent from a workspace.
+  invitation is sent from a workspace, or from the organisation while it has none
+  (`invite_member/3`).
 
   An organisation and a workspace each get a slug from their name when they are created
   (`Apiary.Organisations.Slug`), a workspace's as the form that creates it says
@@ -873,9 +874,10 @@ defmodule Apiary.Organisations do
   Registers a user and places them in an organisation, in one transaction.
 
   Without an invitation token the user gets a new organisation named `organisation_name`,
-  with a slug made from that name, a workspace named "#{@default_workspace_name}" and an
-  owner membership (`build_organisation/2`): nothing is made from the address. Whether it
-  may, is `sign_up_offer/1`'s answer, asked again inside the transaction:
+  with a slug made from that name, an owner membership, and a workspace named
+  "#{@default_workspace_name}" unless `workspace: false` (`build_organisation/2`): nothing
+  is made from the address. Whether it may, is `sign_up_offer/1`'s answer, asked again
+  inside the transaction:
 
   - **The instance's first sign-up** creates the instance's organisation, whose
     owners run the instance (`Apiary.Access.instance_admin?/1`): its owner is the
@@ -896,8 +898,9 @@ defmodule Apiary.Organisations do
 
   With a valid pending token the invitation is accepted instead: no organisation is
   created, no name is asked for, and the person joins at the level the invitation gives,
-  a member unless the edition says otherwise (`accept_invitation/2`). An invalid or
-  expired token behaves as no token.
+  a member unless the edition says otherwise (`accept_invitation/2`). The answer's
+  `workspace` is the invitation's, nil for one without. An invalid or expired token
+  behaves as no token.
 
   A refusal is `{:error, changeset}`, the changeset of the sign-up form
   (`change_sign_up/2`), with its errors on `email` and `organisation_name`, and on the
@@ -925,6 +928,9 @@ defmodule Apiary.Organisations do
   `password: :required` asks for one whatever the mail, as the set-up page does.
   `domain: :required` asks a sign-up that creates an organisation for the domain of its
   first workspace, as the set-up page does (`change_sign_up/2`).
+  `workspace: false` creates the organisation with no workspace and asks for no domain:
+  its first workspace comes later (`create_first_workspace/2`), as the sign-up page and
+  the set-up page ask. The answer's `workspace` is then nil.
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
@@ -946,7 +952,7 @@ defmodule Apiary.Organisations do
            %{
              user: %User{},
              organisation: %Organisation{},
-             workspace: %Workspace{},
+             workspace: %Workspace{} | nil,
              membership: %Membership{}
            }}
           | {:error, Ecto.Changeset.t() | :instance_claimed | :not_set_up | :invalid_code}
@@ -963,6 +969,7 @@ defmodule Apiary.Organisations do
   defp sign_up(attrs, invitation, opts) do
     origin = Keyword.get(opts, :origin)
     invited? = match?(%Invitation{}, invitation)
+    workspace? = Keyword.get(opts, :workspace, true)
     mail? = Apiary.Mail.configured?()
 
     offered? =
@@ -997,7 +1004,11 @@ defmodule Apiary.Organisations do
         invited: invited?,
         validate_unique: false,
         password: password,
-        domain: if(invited?, do: :optional, else: Keyword.get(opts, :domain, :optional))
+        domain:
+          if(invited? or not workspace?,
+            do: :optional,
+            else: Keyword.get(opts, :domain, :optional)
+          )
       )
       |> refuse_closed_sign_up(offered?)
 
@@ -1109,6 +1120,7 @@ defmodule Apiary.Organisations do
     |> Ecto.Multi.insert(:user, user_changeset)
     |> build_organisation(
       name: name,
+      workspace: Keyword.get(opts, :workspace, true),
       domain: domain,
       how: & &1.how,
       scope: &sign_up_scope(&1, origin, actor),
@@ -1225,7 +1237,8 @@ defmodule Apiary.Organisations do
   end
 
   # An accepted invitation: the level its person joined at, and the membership it became;
-  # never the address it was sent to. The entry is in the invitation's workspace.
+  # never the address it was sent to. The entry is in the invitation's workspace, or the
+  # organisation's, with no workspace, for an invitation without one.
   defp accepted(%Membership{id: id, level: level}),
     do: %{after: %{level: level}, details: %{membership_id: id}}
 
@@ -1252,7 +1265,9 @@ defmodule Apiary.Organisations do
   - `:workspace`, its workspace "#{@default_workspace_name}", of the domain `domain:`
     names, one of `Apiary.Lingo.Domain.names/0`, or of the default domain
     (`Apiary.Lingo.Domain.default/0`) for nil or none; `{:error, changeset}`, the
-    workspace's, with its error on `domain`, for a name no domain has;
+    workspace's, with its error on `domain`, for a name no domain has; nil with
+    `workspace: false`, for an organisation whose first workspace comes later
+    (`create_first_workspace/2`);
   - `:membership`, its first owner, the person of the caller's change `owner:` names,
     `:user` unless it names another; nil with `owner: nil`, for an organisation whose
     first owner joins later;
@@ -1276,6 +1291,7 @@ defmodule Apiary.Organisations do
     how = Keyword.fetch!(opts, :how)
     scope = Keyword.fetch!(opts, :scope)
     owner = Keyword.get(opts, :owner, :user)
+    workspace? = Keyword.get(opts, :workspace, true)
     action = Keyword.get(opts, :action, :"organisation.create")
     details = Keyword.get(opts, :details, %{})
     pick = Keyword.get(opts, :pick_slug) || (&organisation_slug/1)
@@ -1291,7 +1307,9 @@ defmodule Apiary.Organisations do
       Ecto.Multi.new()
       |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert_organisation(name, pick) end)
       |> Ecto.Multi.run(:workspace, fn _repo, %{organisation: organisation} ->
-        organisation |> main_workspace(domain) |> PublicId.Insert.insert()
+        if workspace?,
+          do: organisation |> main_workspace(domain) |> PublicId.Insert.insert(),
+          else: {:ok, nil}
       end)
       |> Ecto.Multi.run(:membership, fn repo, %{organisation: organisation} ->
         if user,
@@ -1316,10 +1334,16 @@ defmodule Apiary.Organisations do
     end)
   end
 
-  # The entry of a new organisation: its workspace, its first owner's membership and
-  # person, the caller's details, and what the edition's steps said of it.
+  # The entry of a new organisation: its workspace, where it has one, its first owner's
+  # membership and person, the caller's details, and what the edition's steps said of it.
   defp organisation_entry(changes, details) do
     edition = Map.get(changes, :organisation_entry) || %{}
+
+    workspace =
+      case changes.workspace do
+        %Workspace{id: id} -> %{workspace_id: id}
+        nil -> %{}
+      end
 
     owner =
       case changes.membership do
@@ -1331,7 +1355,7 @@ defmodule Apiary.Organisations do
       before: edition[:before],
       after: edition[:after],
       details:
-        %{workspace_id: changes.workspace.id}
+        workspace
         |> Map.merge(owner)
         |> Map.merge(details)
         |> Map.merge(edition[:details] || %{})
@@ -1473,10 +1497,48 @@ defmodule Apiary.Organisations do
   """
   @spec create_workspace(Scope.t(), map) ::
           {:ok, %Workspace{}} | {:error, Ecto.Changeset.t() | :limit | Access.reason()}
-  def create_workspace(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
+  def create_workspace(%Scope{organisation: %Organisation{}} = scope, attrs),
+    do: insert_workspace(scope, attrs, :any)
+
+  @doc """
+  create_first_workspace/2 creates the first workspace of the scope's organisation, one
+  created with none (`sign_up_user/3` with `workspace: false`): named
+  "#{@default_workspace_name}", of the domain `attrs["domain"]`, one of
+  `Apiary.Lingo.Domain.names/0`. Nothing else of `attrs` is read. It is
+  `create_workspace/2` in every other way: the action `workspace.create`, the edition's
+  limit, the entry and the edition's step.
+
+  `{:ok, workspace}`; `{:error, :exists}` where the organisation has a workspace in use
+  already, counted under the organisation's lock, so of two calls at once one creates it;
+  otherwise `create_workspace/2`'s answers. A workspace marked for deletion is not in
+  use, but keeps its name: where it is named "#{@default_workspace_name}", the answer is
+  `{:error, changeset}` with its error on `name`.
+  """
+  @spec create_first_workspace(Scope.t(), map) ::
+          {:ok, %Workspace{}}
+          | {:error, Ecto.Changeset.t() | :exists | :limit | Access.reason()}
+  def create_first_workspace(%Scope{organisation: %Organisation{}} = scope, attrs) do
+    domain = Map.get(attrs, "domain") || Map.get(attrs, :domain)
+    insert_workspace(scope, %{"name" => @default_workspace_name, "domain" => domain}, :first)
+  end
+
+  @doc """
+  has_workspace?/1 is true when the organisation has a workspace in use: false for one
+  created with none, until `create_first_workspace/2` creates it.
+  """
+  @spec has_workspace?(%Organisation{} | Scope.t()) :: boolean
+  def has_workspace?(%Scope{organisation: %Organisation{} = organisation}),
+    do: has_workspace?(organisation)
+
+  def has_workspace?(%Organisation{id: organisation_id}),
+    do: Repo.exists?(workspaces_in_use(organisation_id))
+
+  # `which` is `:first` for the organisation's first workspace, refused once it has one.
+  defp insert_workspace(%Scope{organisation: organisation} = scope, attrs, which) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"workspace.create", organisation),
            :ok <- lock_allowance(organisation),
+           :ok <- ensure_first(organisation, which),
            :ok <- ensure_within_limit(organisation),
            {:ok, workspace} <-
              organisation |> new_workspace_changeset(attrs) |> PublicId.Insert.insert(),
@@ -1504,17 +1566,23 @@ defmodule Apiary.Organisations do
         :ok
 
       limit when is_integer(limit) ->
-        in_use =
-          Repo.aggregate(
-            from(w in Workspace,
-              where: w.organisation_id == ^organisation_id and is_nil(w.deletion_marked_at)
-            ),
-            :count
-          )
-
+        in_use = Repo.aggregate(workspaces_in_use(organisation_id), :count)
         if in_use < limit, do: :ok, else: {:error, :limit}
     end
   end
+
+  # Whether the organisation has no workspace in use yet, for its first; under the
+  # organisation's lock, as `ensure_within_limit/1`.
+  defp ensure_first(_organisation, :any), do: :ok
+
+  defp ensure_first(%Organisation{} = organisation, :first),
+    do: if(has_workspace?(organisation), do: {:error, :exists}, else: :ok)
+
+  defp workspaces_in_use(organisation_id),
+    do:
+      from(w in Workspace,
+        where: w.organisation_id == ^organisation_id and is_nil(w.deletion_marked_at)
+      )
 
   # A new workspace of the organisation: its name and its domain, as the form gives them,
   # and its slug, the form's where it gives one, else one made from the name. The form's
@@ -2424,7 +2492,7 @@ defmodule Apiary.Organisations do
 
   @doc """
   The organisation's pending invitations (not accepted, not expired), newest first, each
-  with the workspace it grants.
+  with the workspace it grants, nil for one sent while the organisation had none.
   """
   def list_invitations(%Scope{organisation: %Organisation{id: organisation_id}}) do
     now = DateTime.utc_now()
@@ -2450,6 +2518,15 @@ defmodule Apiary.Organisations do
   or an admin invites; `{:error, :forbidden}` for a member. The edition may refuse the
   level, member, `{:error, {:level_refused, reason}}` (`Apiary.Access.level_refusal/4`),
   asked once the organisation's row is locked.
+
+  **Without a workspace**, a scope at the organisation alone, it invites into the
+  organisation while the organisation has no workspace in use (`has_workspace?/1`): the
+  invitation has none, `workspace_id` nil, and its person joins the organisation
+  (`accept_invitation/2`). The invitation page then opens the organisation's workspace
+  set-up, `/:org/set-up`, while it has no workspace. The rule is checked again once the
+  organisation's row is locked, so a first workspace created at the same moment
+  (`create_first_workspace/2`) is seen. Once the organisation has a workspace in use, a
+  scope without one is `{:error, :not_found}`: it has no workspace to send it from.
 
   **With mail** (`Apiary.Mail.configured?/0`) the link is emailed, `{:ok, invitation}`, and
   the inviter's account is confirmed, as signing in with a mailed link confirms it:
@@ -2505,9 +2582,9 @@ defmodule Apiary.Organisations do
     {changeset, token} = new_invitation(scope, attrs)
     mail? = Mail.configured?()
 
-    # Asked of the invitation as it would be: its workspace. An organisation's page without
-    # a workspace has none to send it from.
-    with %Workspace{} <- workspace || {:error, :not_found},
+    # Asked of the invitation as it would be: its workspace, none while the organisation
+    # has none.
+    with :ok <- refuse_without_workspace(organisation, workspace),
          :ok <-
            Access.authorize(scope, :"member.invite", Ecto.Changeset.apply_changes(changeset)),
          :ok <- ensure_confirmed(inviter, mail?),
@@ -2531,9 +2608,16 @@ defmodule Apiary.Organisations do
   need not be, as `invite_member/3` says. The entry names the allowance,
   `details.allowance_id`, which `renew_invitation/4` charges again.
 
+  A scope without a workspace writes an invitation with none while the organisation has
+  no workspace in use, as `invite_member/3` says, asked again under the organisation's
+  lock. Where the allowance is another organisation, the scope's organisation is held
+  `FOR SHARE` with the allowance's row, in one statement (`lock_organisations/2`); a
+  caller that holds further organisation rows takes this one with them.
+
   `{:ok, invitation, token}`, the token for `send_invitation/4` once the transaction has
-  committed; `{:error, changeset}` for the refusals of `invite_member/3`, and
-  `{:error, :forbidden}` for an allowance out of use.
+  committed; `{:error, changeset}` for the refusals of `invite_member/3`;
+  `{:error, :not_found}` for a scope without a workspace where the organisation has one
+  in use; and `{:error, :forbidden}` for an allowance out of use.
   """
   @spec insert_invitation(Scope.t(), map, keyword) ::
           {:ok, %Invitation{}, String.t()}
@@ -2543,7 +2627,7 @@ defmodule Apiary.Organisations do
     allowance = Keyword.get(opts, :allowance) || scope.organisation
     {changeset, token} = new_invitation(scope, attrs)
 
-    with %Workspace{} <- scope.workspace || {:error, :not_found},
+    with :ok <- refuse_without_workspace(scope.organisation, scope.workspace),
          :ok <- ensure_confirmed(scope.user, Mail.configured?()),
          {:ok, invitation} <- write_invitation(scope, changeset, action, allowance) do
       {:ok, invitation, token}
@@ -2790,7 +2874,8 @@ defmodule Apiary.Organisations do
       order_by: [desc: e.inserted_at, desc: e.id]
   end
 
-  # A new invitation to the scope's workspace, by the scope's person, and its URL token.
+  # A new invitation to the scope's workspace, none for a scope without one, by the scope's
+  # person, and its URL token.
   defp new_invitation(
          %Scope{user: inviter, organisation: organisation, workspace: workspace},
          attrs
@@ -2822,9 +2907,11 @@ defmodule Apiary.Organisations do
          allowance,
          level \\ nil
        ) do
+    workspace_id = Ecto.Changeset.get_field(changeset, :workspace_id)
+
     with %Ecto.Changeset{valid?: true} = changeset <-
            refuse_existing_member(changeset, organisation),
-         :ok <- lock_allowance(allowance),
+         :ok <- lock_invitation_places(allowance, organisation, workspace_id),
          :ok <- if(level, do: ensure_grantable(scope, organisation, level), else: :ok),
          %Ecto.Changeset{valid?: true} = changeset <-
            changeset
@@ -2841,6 +2928,42 @@ defmodule Apiary.Organisations do
       %Ecto.Changeset{} = changeset -> {:error, changeset}
       {:error, _reason} = error -> error
     end
+  end
+
+  # An invitation is sent from the scope's workspace; a scope without one sends it while the
+  # organisation has no workspace in use, asked again under the organisation's lock
+  # (`lock_invitation_places/3`).
+  defp refuse_without_workspace(_organisation, %Workspace{}), do: :ok
+
+  defp refuse_without_workspace(%Organisation{id: id}, nil), do: refuse_workspace_in_use(id)
+
+  # The allowance's row, as `lock_allowance/1` takes it. For an invitation without a
+  # workspace, the organisation's row too, which the creation of a workspace takes
+  # `FOR NO KEY UPDATE` (`insert_workspace/3`): a first workspace waits for the invitation,
+  # or came first and is seen. That is the allowance's row where the allowance is the
+  # organisation; else both are taken in one statement, the organisation's `FOR SHARE`.
+  defp lock_invitation_places(allowance, _organisation, workspace_id)
+       when is_binary(workspace_id),
+       do: lock_allowance(allowance)
+
+  defp lock_invitation_places(%Organisation{id: id} = allowance, %Organisation{id: id}, nil) do
+    with :ok <- lock_allowance(allowance), do: refuse_workspace_in_use(id)
+  end
+
+  defp lock_invitation_places(%Organisation{id: allowance_id}, %Organisation{id: id}, nil) do
+    mode = &if(&1 == allowance_id, do: :no_key_update, else: :share)
+
+    with {:ok, _locked} <- lock_organisations([allowance_id, id], mode),
+         true <- in_use?(allowance_id) || {:error, :forbidden},
+         do: refuse_workspace_in_use(id)
+  end
+
+  # An invitation without a workspace, once the organisation has one in use, is refused as
+  # a scope with no workspace to send it from is.
+  defp refuse_workspace_in_use(organisation_id) do
+    if Repo.exists?(workspaces_in_use(organisation_id)),
+      do: {:error, :not_found},
+      else: :ok
   end
 
   # The invitation, as it is now, locked: a revocation or an acceptance of it waits, and
@@ -2965,14 +3088,16 @@ defmodule Apiary.Organisations do
     limit = Instance.invitations_per_day()
     attempts_limit = limit * @attempts_per_invitation
 
-    # Its withdrawal, in the invitation's workspace and after it: on the trail's index of
-    # `(workspace_id, subject_id, inserted_at)`. A withdrawal names the entry it undoes,
-    # `details.entry_id`, and undoes that one alone: an invitation sent, then renewed and
-    # withdrawn, still counts once. One written before withdrawals named it undoes every
-    # earlier entry of its invitation.
+    # Its withdrawal, in the invitation's workspace, or in none for an invitation without
+    # one, and after it: on the trail's index of `(workspace_id, subject_id, inserted_at)`.
+    # A withdrawal names the entry it undoes, `details.entry_id`, and undoes that one
+    # alone: an invitation sent, then renewed and withdrawn, still counts once. One written
+    # before withdrawals named it undoes every earlier entry of its invitation.
     undelivered =
       from r in Apiary.Audit.Entry,
-        where: r.workspace_id == parent_as(:invite).workspace_id,
+        where:
+          r.workspace_id == parent_as(:invite).workspace_id or
+            (is_nil(r.workspace_id) and is_nil(parent_as(:invite).workspace_id)),
         where: r.subject_id == parent_as(:invite).subject_id,
         where: r.inserted_at >= parent_as(:invite).inserted_at,
         where: r.organisation_id == parent_as(:invite).organisation_id,
@@ -3152,10 +3277,10 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  The pending invitation behind a URL token, preloaded with organisation and workspace, or
-  nil: nil too for an invitation into an organisation or a workspace marked for deletion,
-  or into an organisation out of use (`c:Apiary.Edition.active_organisations/2`), which
-  accepts no one.
+  The pending invitation behind a URL token, preloaded with organisation and workspace, the
+  workspace nil for one sent without, or nil: nil too for an invitation into an
+  organisation or a workspace marked for deletion, or into an organisation out of use
+  (`c:Apiary.Edition.active_organisations/2`), which accepts no one.
   """
   @spec get_invitation_by_token(term) :: %Invitation{} | nil
   def get_invitation_by_token(token) when is_binary(token) do
@@ -3165,7 +3290,7 @@ defmodule Apiary.Organisations do
     from(i in Invitation,
       join: o in assoc(i, :organisation),
       as: :organisation,
-      join: w in assoc(i, :workspace),
+      left_join: w in assoc(i, :workspace),
       where: i.token_hash == ^token_hash and is_nil(i.accepted_at) and i.expires_at > ^now,
       where: is_nil(o.deletion_marked_at) and is_nil(w.deletion_marked_at),
       preload: [organisation: o, workspace: w]
@@ -3188,7 +3313,10 @@ defmodule Apiary.Organisations do
   (`Apiary.Access.level_refusal/4`); what the edition adds once the
   membership exists (`c:Apiary.Edition.accepted/4`); the invitation deleted; and the audit
   entry of `invitation.accept`, by the user, in the workspace it was sent from, which
-  names the membership it became. Takes the URL token or the invitation
+  names the membership it became. An invitation without a workspace makes the same
+  membership of the organisation, and its entry is the organisation's, with no workspace;
+  it is accepted whether or not the organisation has had a workspace since it was sent.
+  Takes the URL token or the invitation
   `get_invitation_by_token/1` returned earlier; the invitation is claimed inside the
   transaction, so it makes one membership however many callers hold it: the others get
   `{:error, :invalid}`, and so does an account deleted meanwhile, or an invitation whose
@@ -3289,26 +3417,41 @@ defmodule Apiary.Organisations do
   # claim, or came first and are seen; the workspace's `FOR KEY SHARE` holds it against
   # its purge's deletion, and its marking is read as the claim finds it. It is claimed by
   # the token it was found by: renewed since (`renew_invitation/4`), it has another, and
-  # the old link claims nothing.
-  defp claim_invitation(%Invitation{id: id, token_hash: token_hash}) do
+  # the old link claims nothing. An invitation without a workspace has no workspace row to
+  # hold, and is claimed with its organisation's row alone.
+  defp claim_invitation(%Invitation{id: id, token_hash: token_hash} = invitation) do
     now = DateTime.utc_now()
 
     claim =
       from(i in Invitation,
         join: o in assoc(i, :organisation),
         as: :organisation,
-        join: w in assoc(i, :workspace),
         where: i.id == ^id and i.token_hash == ^token_hash,
         where: is_nil(i.accepted_at) and i.expires_at > ^now,
-        where: is_nil(o.deletion_marked_at) and is_nil(w.deletion_marked_at),
-        lock: fragment("FOR UPDATE OF ? FOR KEY SHARE OF ?, ?", i, o, w)
+        where: is_nil(o.deletion_marked_at)
       )
+      |> claim_place(invitation)
       |> Edition.active_organisations(:organisation)
 
     case Repo.one(claim) do
       %Invitation{} = claimed -> {:ok, claimed}
       nil -> {:error, :invalid}
     end
+  end
+
+  defp claim_place(query, %Invitation{workspace_id: nil}) do
+    from([i, o] in query,
+      where: is_nil(i.workspace_id),
+      lock: fragment("FOR UPDATE OF ? FOR KEY SHARE OF ?", i, o)
+    )
+  end
+
+  defp claim_place(query, %Invitation{}) do
+    from([i, o] in query,
+      join: w in assoc(i, :workspace),
+      where: is_nil(w.deletion_marked_at),
+      lock: fragment("FOR UPDATE OF ? FOR KEY SHARE OF ?, ?", i, o, w)
+    )
   end
 
   @expired_days 30
