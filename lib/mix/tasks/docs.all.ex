@@ -24,7 +24,7 @@ defmodule Mix.Tasks.Docs.All do
     `security: [extras: [...], modules: [...]]`, a module given by name or by a regex on
     it. The key `all` is every feature the documentation differs by
     (`Apiary.Features.documented/0`). The module reference, but for the tasks the guides
-    name, is listed under `secrets`: the prose of a shared module names features too, and
+    name, is listed under `secrets`: the prose of a shared module mentions features too, and
     ExDoc reads it from the compiled docs, where no marker reaches, so every tree with
     `secrets` has that prose whole. A module of `factory` alone is listed under `factory`.
     An extra listed under no feature, such as the release notes, is in every tree.

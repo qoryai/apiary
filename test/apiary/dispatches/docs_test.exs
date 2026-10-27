@@ -1,7 +1,8 @@
 defmodule Apiary.Dispatches.DocsTest do
   # The queue of a workspace belongs to `factory`. No type the module reference shows
-  # names a run's dispatch. ExDoc shows the definition of every type whose docs are not
-  # hidden; a private type (`@typep`) is shown by its name alone.
+  # mentions a run's dispatch, so an instance without factory is served no mention of one.
+  # ExDoc shows the definition of every type whose docs are not hidden; a private type
+  # (`@typep`) is shown by its name alone.
   use ExUnit.Case, async: true
 
   test "the type of a run shows none of its fields, a run's dispatch among them" do

@@ -168,7 +168,7 @@ defmodule Apiary.MixProject do
         "c:Apiary.Edition.features_of/3",
         "Apiary.Features.of/2",
         "Apiary.Features.on?/2",
-        # A function with hidden docs, which `ApiaryWeb.TargetLive.FurtherRepositories` names.
+        # A function with hidden docs, which `ApiaryWeb.TargetLive.FurtherRepositories` mentions.
         "Apiary.Targets.set_further_repositories/3"
       ],
       extras: [
@@ -239,10 +239,10 @@ defmodule Apiary.MixProject do
           ]
         ],
         # The module reference needs `secrets`, which needs `security`: the prose of a shared
-        # module names both, so only an instance with them serves it. That prose names
+        # module mentions both, so only an instance with them serves it. That prose mentions
         # `factory` too, and an instance without it is served that prose; the modules of
         # `factory` alone are listed under it. The tasks the guides send a self-hoster to
-        # stay in every tree; their docs name no feature, and ExDoc warns of a `mix` span
+        # stay in every tree; their docs mention no feature, and ExDoc warns of a `mix` span
         # whose task a tree leaves out. The release notes are in every tree.
         secrets: [
           modules: [
