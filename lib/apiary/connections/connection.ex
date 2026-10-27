@@ -23,8 +23,8 @@ defmodule Apiary.Connections.Connection do
       by key (`service_builtin`) or one of the organisation's (`service_definition_id`), and
       never holds a host, a path or an auth itself.
 
-  `chain` is `organisation` for a connection the organisation sets up, or `operator` for a
-  provider an operator sets up for a client, which the edition manages.
+  `chain` is `organisation` for a connection the organisation sets up, or, for a provider,
+  the chain an edition adds, which that edition manages.
 
   The row holds no secret: a provider links its keys' secret by its id. The row carries an integrity code over
   everything above (`Apiary.Kinds.Coded`), which `Apiary.Connections` checks where it reads
