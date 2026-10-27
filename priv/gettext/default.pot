@@ -10116,7 +10116,7 @@ msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
-msgid "Next: on the Overview, Machines, Model key, Workflow and Test run"
+msgid "Next: on the Overview, Machines for runs, Model key and Test run"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/gateways.ex

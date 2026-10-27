@@ -339,7 +339,7 @@ defmodule ApiaryWeb.SetUpComponents do
         <% end %>
       </ol>
       <p :if={@next} id="set-up-next" class="q-su-next">
-        {gettext("Next: on the Overview, Machines, Model key, Workflow and Test run")}
+        {gettext("Next: on the Overview, Machines for runs, Model key and Test run")}
       </p>
     </nav>
     """

@@ -237,7 +237,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
                ["redirect"]
 
       assert doc |> LazyHTML.query("#set-up-next") |> LazyHTML.text() |> String.trim() ==
-               "Next: on the Overview, Machines, Model key, Workflow and Test run"
+               "Next: on the Overview, Machines for runs, Model key and Test run"
 
       refute render_component(&SetUpComponents.steps/1, steps: @steps) =~ "Next:"
     end
