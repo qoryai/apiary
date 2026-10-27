@@ -169,6 +169,36 @@ defmodule ApiaryWeb.ProviderLiveTest do
              )
     end
 
+    test "Provider is a choice: each provider's title and its description's text", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert has_element?(lv, "button#provider_provider", "Anthropic API key")
+      refute has_element?(lv, "select#provider_provider")
+
+      for {provider, index} <- Enum.with_index(Providers.list()) do
+        assert has_element?(
+                 lv,
+                 ~s{#provider_provider-#{index}[type=radio][name="provider[provider]"][value="#{provider.name}"]}
+               )
+
+        assert has_element?(lv, "label[for=provider_provider-#{index}]", provider.title)
+      end
+
+      # A subtitle is plain text: no backticks, and the terms' address is on About this page.
+      subscription = Enum.find_index(Providers.list(), &(&1.name == "claude-subscription"))
+      subtitle = lv |> element("#provider_provider-#{subscription}-s") |> render()
+      assert subtitle =~ "an access token that claude setup-token creates."
+      assert subtitle =~ "on behalf of other users."
+      refute subtitle =~ "`"
+      refute subtitle =~ "https://"
+
+      # The form sends the radio as it sent the select.
+      lv |> form("#new-provider-form", provider: %{provider: "litellm"}) |> render_change()
+      assert has_element?(lv, "button#provider_provider", "LiteLLM")
+      assert has_element?(lv, "#new-provider-address")
+    end
+
     test "Anthropic's terms are plain words where the description has no address" do
       provider = %Provider{
         name: "claude-subscription",

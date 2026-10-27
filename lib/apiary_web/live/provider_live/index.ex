@@ -216,9 +216,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
         >
           <.input
             field={@form[:provider]}
-            type="select"
+            type="choice"
             label={gettext("Provider")}
-            options={for p <- Providers.list(), do: {p.title, p.name}}
+            options={provider_options()}
           />
           <.input
             field={@form[:key]}
@@ -389,6 +389,24 @@ defmodule ApiaryWeb.ProviderLive.Index do
     <span :if={!@href}>{gettext("Anthropic's terms")}</span>
     """
   end
+
+  # Each provider of the catalogue, its description's text under its title. A subtitle is
+  # plain text: the description's backticks and the address that ends it, which
+  # About this page links to (`terms_url/1`), are left out.
+  defp provider_options do
+    for provider <- Providers.list() do
+      %{value: provider.name, title: provider.title, subtitle: subtitle(provider)}
+    end
+  end
+
+  defp subtitle(%Provider{description: %{document: %{"description" => text}}})
+       when is_binary(text) do
+    text
+    |> String.replace(~r{\s*[^.]*:\s*https://\S+\s*$}, "")
+    |> String.replace("`", "")
+  end
+
+  defp subtitle(_provider), do: nil
 
   # The address that ends the provider's description, such as the Claude subscription's
   # link to Anthropic's terms, nil without one; a subtitle shows text only, so the link is
