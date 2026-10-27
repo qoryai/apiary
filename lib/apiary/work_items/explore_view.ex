@@ -39,14 +39,15 @@ defmodule Apiary.WorkItems.ExploreView do
   # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`,
   # `end_cause`, the end cause of its run of the queue (nil while it has not ended),
   # `end_detail`, the code that end kept, nil for none (a gateway's refusal code, such as
-  # `"model_key_missing"`, for `run_refused`), `adapter_failure`, the call to an adapter the run stopped at, nil for none
-  # (`%{adapter: name, cause: cause, call: path, code: code}`), `harness_failure`, why
-  # its harness walk failed, nil for none (`%{code: code, source: source or nil, rule:
-  # rule or nil, adapter: name or nil}`, `Apiary.Harnesses.RunHarness`), and
-  # by what it gave: `proposal` (`Apiary.WorkItems.Proposal.from_result/1`), nil for none;
-  # `understanding` and `questions`, each `%{public_id: position, text: question, answer:
-  # answer or nil}`, for a run that asked; and `answered_by_id` and `answered_at` once its
-  # questions were answered. A confirmed run's proposal is read from its confirmation,
+  # `"model_key_missing"`, for `run_refused`), `adapter_failure`, the call to an adapter
+  # the run stopped at, nil for none (`%{adapter: name, cause: cause, call: path, code:
+  # code}`), `harness_failure`, why its harness walk failed, nil for none (`%{code: code,
+  # source: source or nil, rule: rule or nil, adapter: name or nil}`,
+  # `Apiary.Harnesses.RunHarness`), and by what it gave: `proposal`
+  # (`Apiary.WorkItems.Proposal.from_result/1`), nil for none; `understanding` and
+  # `questions`, each `%{public_id: position, text: question, answer: answer or nil}`, for
+  # a run that asked; and `answered_by_id` and `answered_at` once its questions were
+  # answered. A confirmed run's proposal is read from its confirmation,
   # which keeps the result, so it outlives the run's events.
   #
   # ## `thread/2`

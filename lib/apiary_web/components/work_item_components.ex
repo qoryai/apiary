@@ -933,14 +933,7 @@ defmodule ApiaryWeb.WorkItemComponents do
                 attempt: Format.number(run.attempt),
                 of: Format.number(run.of)
               ),
-            else:
-              run[:id] &&
-                rich_gettext(
-                  "Run %{run} was run %{attempt} of %{of}, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in.",
-                  run: run_ref(run),
-                  attempt: Format.number(run.attempt),
-                  of: Format.number(run.of)
-                )
+            else: run[:id] && used_up_line(run)
           )
       )
 
@@ -1174,6 +1167,26 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       rich_gettext("Run %{run} was cancelled before it ended, so Explore has no result.",
         run: run_ref(run)
+      )
+
+  # The take in's last run, which gave no result, as one sentence with its id: for a
+  # missing model key, the fix first, as `no_result_line/2` puts it.
+  defp used_up_line(%{end_cause: :run_refused, end_detail: "model_key_missing"} = run),
+    do:
+      rich_gettext(
+        "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}. That run was run %{attempt} of %{of}, the most one take in has, so Qory cannot explore again in this take in.",
+        run: run_ref(run),
+        attempt: Format.number(run.attempt),
+        of: Format.number(run.of)
+      )
+
+  defp used_up_line(run),
+    do:
+      rich_gettext(
+        "Run %{run} was run %{attempt} of %{of}, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in.",
+        run: run_ref(run),
+        attempt: Format.number(run.attempt),
+        of: Format.number(run.of)
       )
 
   # Who took the work item in and when; for a reader who may undo it, that they can until
