@@ -448,9 +448,9 @@ without one passes to the next (`Apiary.Stacks.Resolution`). The owner of a stor
 document is the organisation of the person who saved it, when that person saved it as a
 member acting in that organisation; for an instance admin who saved it with no such
 membership, it is the instance's organisation; it is unknown once the owner organisation
-is deleted. `harness_hidden` is `true` when the run's organisation is a client of an
-operator (`Apiary.Edition.operated?/1`, which the core edition, `Apiary.Edition.Core`,
-answers `false`), or when the stacks' document applies and its owner is not the run's
+is deleted. `harness_hidden` is `true` when an edition's check of the run's organisation
+returns `true` (`Apiary.Edition`; the core edition, `Apiary.Edition.Core`, returns
+`false`), or when the stacks' document applies and its owner is not the run's
 organisation. A document the instance's organisation owns is hidden from the runs of
 every other organisation, whether the instance has one organisation or several, and an
 unknown owner is never the run's organisation. Only tests and the demo
