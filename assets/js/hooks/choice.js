@@ -104,9 +104,11 @@ export const Choice = {
       }
     })
 
-    // A press on a disabled option leaves the focus where it was, not on the page.
+    // A press in the panel, but in the search box, leaves the focus where it was. Else it
+    // moves to the page's `<main tabindex="-1">`, and that focusout closes the panel
+    // before the click reaches an option.
     this.el.addEventListener("mousedown", e => {
-      if (e.target.closest(".q-pick-opt")?.querySelector(".q-pick-radio:disabled")) e.preventDefault()
+      if (e.target.closest(".q-pick-panel") && !e.target.closest(".q-pick-find input")) e.preventDefault()
     })
 
     this.el.addEventListener("keydown", e => this.key(e))

@@ -260,6 +260,26 @@ defmodule ApiaryWeb.WorkflowLiveTest do
              )
     end
 
+    test "chosen, it is checked and shown on the button", %{
+      conn: conn,
+      path: path,
+      linked_id: linked_id
+    } do
+      view = open(conn, path)
+      radio = "#workflow_source-options input[type=radio]"
+
+      change(view, %{source: linked_id})
+
+      assert has_element?(view, ~s{#{radio}[value="#{linked_id}"][checked]})
+      refute has_element?(view, ~s{#{radio}[checked]:not([value="#{linked_id}"])})
+
+      assert has_element?(
+               view,
+               "button#workflow_source:not(.is-prompt) .q-pick-t",
+               "acme/harness"
+             )
+    end
+
     test "the saved setting is chosen again when the page opens", %{
       conn: conn,
       scope: scope,
