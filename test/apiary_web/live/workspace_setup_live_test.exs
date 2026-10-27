@@ -365,7 +365,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
 
     assert has_element?(
              lv,
-             ~s{#set-up-source-#{adapter.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{adapter.public_id}/install"]},
+             ~s{#set-up-source-#{adapter.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{adapter.public_id}/install?back=set-up"]},
              "Connect"
            )
 

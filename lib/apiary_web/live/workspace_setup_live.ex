@@ -414,7 +414,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             :if={is_nil(@who_may)}
             id={"set-up-source-#{adapter.public_id}-connect"}
             adapter={adapter}
-            action={IntegrationComponents.paths(@scope, adapter).install}
+            action={IntegrationComponents.paths(@scope, adapter).install <> "?back=set-up"}
             ready={adapter.id in @ready}
             sending={@sending == adapter.public_id}
             label={gettext("Connect")}

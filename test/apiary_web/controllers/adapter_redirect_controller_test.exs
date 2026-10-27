@@ -255,6 +255,49 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
     end
   end
 
+  describe "with a return, from an install started at the workspace set-up" do
+    test "leads to its Work source step, with the same return link", %{
+      conn: conn,
+      scope: scope,
+      pair: pair,
+      connection: connection,
+      nonce: nonce,
+      session: session
+    } do
+      # The adapter's return link is the one it gives without the back value.
+      token = return_token(pair.secret, connection.public_id, nonce)
+
+      conn =
+        conn
+        |> ConnectSession.put(session, "set-up")
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(conn) == "/#{scope.organisation.slug}/set-up?step=source"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "is connected."
+      assert get_session(conn, "connect_passes") == nil
+      assert %Connection{state: :connected} = reload(connection)
+    end
+
+    test "a back value the session may not keep leads to the integration's page", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter,
+      pair: pair,
+      connection: connection,
+      nonce: nonce,
+      session: session
+    } do
+      token = return_token(pair.secret, connection.public_id, nonce)
+
+      conn =
+        conn
+        |> ConnectSession.put(session, "https://evil.example.com/")
+        |> get(~p"/integrations/#{connection}?return=#{token}")
+
+      assert redirected_to(conn) == page(scope, adapter)
+    end
+  end
+
   describe "the session's nonces" do
     test "keep the latest pass of the last few connections, one each", %{conn: conn} do
       conn = ConnectSession.put(conn, {"ac_0000000000000001", "a"})
@@ -274,6 +317,18 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
       assert ConnectSession.fetch(conn, "ac_0000000000000002") == nil
       assert ConnectSession.fetch(conn, "ac_0000000000000003") == "n3"
       assert ConnectSession.fetch(conn, nil) == nil
+
+      # A back value beside a nonce is kept only where it is one of backs/0.
+      conn = ConnectSession.put(conn, {"ac_0000000000000004", "n4"}, "set-up")
+      assert ConnectSession.back(conn, "ac_0000000000000004") == "set-up"
+      assert ConnectSession.fetch(conn, "ac_0000000000000004") == "n4"
+      conn = ConnectSession.put(conn, {"ac_0000000000000004", "n5"}, "/elsewhere")
+      assert ConnectSession.back(conn, "ac_0000000000000004") == nil
+
+      conn =
+        put_session(conn, "connect_passes", [["ac_0000000000000006", "n6", "https://e.example"]])
+
+      assert ConnectSession.fetch(conn, "ac_0000000000000006") == nil
 
       # What the session holds that is not its shape is read as nothing.
       conn = put_session(conn, "connect_passes", %{"ac_0000000000000003" => "n3"})
