@@ -792,14 +792,16 @@ With the `factory` feature, both pages have more steps:
   key in use, or of one that has not sent the address where it is set up, shows what to
   do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
   connection for later, in **Instance settings**.
-- **Create workspace**, or another member's creating Main while the page is open, opens
-  the step **Work source** of **Set up your workspace** in place of the overview: **Connect a work source to Main**, at
-  `/<organisation>/set-up?step=source`. It lists the work sources that the instance has
-  set up for the workspace's type, each with **Connect**. Select **Connect** beside one,
-  and follow the steps that the column **About this step** lists under its name.
-  **Skip** opens the overview, where you connect one later from the step **Work
-  source**. With no work source for the type, the page shows so, and **Continue** opens
-  the overview. Only owners and admins connect a work source.
+- **Create workspace**, or another member's creating Main while the page is open, opens,
+  for an owner or an admin, the step **Work source** of **Set up your workspace** in
+  place of the overview: **Connect a work source to Main**, at
+  `/<organisation>/set-up?step=source`; a member goes to Main's overview. The step lists
+  the work sources that the instance has set up for the workspace's type, each with
+  **Connect**. Select **Connect** beside one, and follow the steps that the column
+  **About this step** lists under its name. **Skip** opens the overview, where you
+  connect one later from the step **Work source**. With no work source for the type, the
+  page shows so, and **Continue** opens the overview. Only owners and admins connect a
+  work source.
 
 The overview then shows **Set up Main** until a test run passes:
 [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has its

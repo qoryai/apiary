@@ -1207,8 +1207,9 @@ out use `Layouts.set_up/1`, a header with the product's mark and the theme menu.
   done, a ring in the primary colour and `aria-current="step"` when current, a dash and
   **Skipped** under a step passed over. Each step done or skipped is a link to that step
   where it has a page, before the current step or after it; Your account is not, and on
-  the pages read signed out no step is. An edition's note about a step goes under its name. Under the last step, "Next: on the
-  Overview, Machines, Model key, Workflow and Test run" where the factory is on. Below
+  the pages read signed out, only Invitation is. An edition's note about a step goes
+  under its name. Under the last step, "Next: on the Overview, Machines, Model key,
+  Workflow and Test run" where the factory is on. Below
   1280 px the indicator is a bar, "Step 4 of 5: Workspace", with **All steps**, a
   disclosure that opens the list; Escape closes it. A page with one step shows no
   indicator.
@@ -1217,8 +1218,8 @@ out use `Layouts.set_up/1`, a header with the product's mark and the theme menu.
   step ("Back to Mail"). A step with no page before it, such as the one after Your
   account, has no Back. It is the one Back at a form's foot in the console: a step has
   no Cancel, since there is nowhere to go back to but the step before. A step opened
-  again shows what was saved there and can be changed. The step Workspace, opened again, shows
-  the workspace and its type, read only, with **Continue**: the type can't change.
+  again shows what was saved there and can be changed. The step Workspace, opened again,
+  shows the workspace and its type, read only, with **Continue**: the type can't change.
 
 ## Components
 

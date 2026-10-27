@@ -168,8 +168,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             do: ~p"/#{organisation}/set-up?step=source",
             else: ~p"/#{organisation}/#{workspace}"
 
-        # Off the Type step, so this page's own broadcast of the new workspace
-        # (`handle_info/2`) navigates no second time.
+        # Off the Type step, so the broadcast this page caused, of the new workspace
+        # (`handle_info/2`), navigates no second time.
         {:noreply, socket |> assign(:step, :created) |> push_navigate(to: to)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
