@@ -13,7 +13,7 @@ defmodule ApiaryWeb.PageComponents do
   - `page_form/1` and `page_form_foot/1`: a create or edit form as a separate page, never
     a dialog, with Cancel back to where it was opened from.
   - `not_on_runs/1`: the one plain line a page over data no run receives says.
-  - `context_column/1`: a form with its context, About this page, in a column beside it.
+  - `context_column/1`: a form with its context, About this step, in a column beside it.
 
   Two more patterns are `ApiaryWeb.CoreComponents`': the confirmation in place, never a
   dialog (`inline_confirm/1`, and a deletion's, `ApiaryWeb.SettingsComponents.deletion_confirm/1`),
@@ -227,7 +227,7 @@ defmodule ApiaryWeb.PageComponents do
   @doc """
   context_column/1 is a form with its context: why the page exists and what it changes,
   and the steps the reader takes outside it, never a field, an option or a button the form
-  shows. The context is an `<aside>` headed About this page, after the form in reading
+  shows. The context is an `<aside>` headed About this step, after the form in reading
   order. It stands beside the form where the page has 840 px for both, and under the
   form below that, so a settings page beside the sidebar and the second column shows it
   beside from a 1366 px screen (`docs/ui.md`, Settings). A settings page passes its
@@ -248,7 +248,7 @@ defmodule ApiaryWeb.PageComponents do
     <div class="q-context-grid">
       <div class="q-context-main">{render_slot(@inner_block)}</div>
       <aside id={@id} class="q-context" aria-labelledby={"#{@id}-h"}>
-        <h2 id={"#{@id}-h"} class="q-context-h">{gettext("About this page")}</h2>
+        <h2 id={"#{@id}-h"} class="q-context-h">{gettext("About this step")}</h2>
         {render_slot(@context)}
       </aside>
     </div>

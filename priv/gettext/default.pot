@@ -3357,10 +3357,6 @@ msgid "About the organisation"
 msgstr ""
 
 #: lib/apiary_web/components/page_components.ex
-#, elixir-autogen, elixir-format
-msgid "About this page"
-msgstr ""
-
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "About this step"

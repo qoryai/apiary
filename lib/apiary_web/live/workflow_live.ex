@@ -5,7 +5,7 @@ defmodule ApiaryWeb.WorkflowLive do
   # It opens for whoever may save it (`harness.save`, owners and admins), and is not found
   # for anyone else, as the section is absent from their list.
   #
-  # Beside the form, About this page says what the page sets and which sources Source
+  # Beside the form, About this step says what the page sets and which sources Source
   # lists. Under the title, in a workspace whose domain has harness files
   # (`Apiary.Lingo.Domain.harness_file?/1`), a notice says that a repository's harness
   # file comes first, and a line says which workflow the runs follow now, where the
