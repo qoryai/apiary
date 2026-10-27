@@ -33,6 +33,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
     @describetag needs: :factory
 
     test "an instance admin: the account, each adapter, mail, the workspace, its source" do
+      Apiary.Mail.put_test_source(:none)
       admin = instance_admin_scope()
       %{adapter: adapter} = settable_adapter_fixture(%{name: named("a-tracker")})
       key = {:adapter, adapter.public_id}
@@ -42,12 +43,11 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert [
                {:account, :done},
                {^key, :current},
-               {:mail, mail},
+               {:mail, :to_come},
                {:workspace, :done},
                {:source, :to_come}
              ] = shape(steps)
 
-      assert mail in [:done, :to_come]
       assert Enum.map(steps, & &1.group) == [nil, :connect, :connect, :workspace, :workspace]
 
       assert Enum.find(steps, &(&1.id == key)).path ==
@@ -71,12 +71,40 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert configured_id == configured.public_id
     end
 
+    test "where the server's environment sets mail, there is no mail step" do
+      Apiary.Mail.put_test_source(:env)
+      admin = instance_admin_scope()
+
+      assert shape(SetUpComponents.steps_for(admin, :account)) ==
+               [{:account, :current}, {:workspace, :done}, {:source, :to_come}]
+
+      refute SetUpComponents.connect_steps?(admin)
+
+      %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
+      key = {:adapter, adapter.public_id}
+
+      assert [{:account, :done}, {^key, :current}, {:workspace, :done}, {:source, :to_come}] =
+               shape(SetUpComponents.steps_for(admin, key))
+
+      assert SetUpComponents.connect_steps?(admin)
+      refute SetUpComponents.connect_steps?(scope_fixture())
+    end
+
+    test "with mail not set by the environment, an instance admin has the mail step" do
+      Apiary.Mail.put_test_source(:none)
+      admin = instance_admin_scope()
+
+      assert {:mail, :to_come} in shape(SetUpComponents.steps_for(admin, :account))
+      assert SetUpComponents.connect_steps?(admin)
+    end
+
     test "a sign-up: the account, then the workspace and its source" do
       assert shape(SetUpComponents.steps_for(nil, :account)) ==
                [{:account, :current}, {:workspace, :to_come}, {:source, :to_come}]
     end
 
     test "the set-up link: the account, then the instance's connections and the workspace" do
+      Apiary.Mail.put_test_source(:none)
       %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
       steps = SetUpComponents.steps_for(nil, :account, first: true)
       ids = Enum.map(steps, & &1.id)
@@ -85,8 +113,14 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert {:adapter, adapter.public_id} in ids
       assert Enum.take(ids, -3) == [:mail, :workspace, :source]
 
-      # Signed out, no step has a page to open: Mail done by the environment is no link.
+      # Signed out, no step has a page to open.
       assert Enum.all?(steps, &is_nil(&1.path))
+
+      # Where the server's environment sets mail, no mail step.
+      Apiary.Mail.put_test_source(:env)
+
+      assert Enum.map(SetUpComponents.steps_for(nil, :account, first: true), & &1.id) ==
+               [:account, {:adapter, adapter.public_id}, :workspace, :source]
     end
 
     test "an invited sign-up whose invitation has no workspace starts with the invitation" do

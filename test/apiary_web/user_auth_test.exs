@@ -68,13 +68,17 @@ defmodule ApiaryWeb.UserAuthTest do
     test "lands an instance admin on the instance's connections until they are reviewed", %{
       conn: conn
     } do
+      # The fixture signs up without a password, as with mail.
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+
+      # Mail not set by the environment: the connections have their mail step.
+      Apiary.Mail.put_test_source(:none)
       admin = instance_admin_scope()
 
       assert conn |> UserAuth.log_in_user(admin.user) |> redirected_to() ==
                ~p"/instance/set-up"
 
       # A person who is not an instance admin lands as before.
-      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
 
       assert conn |> UserAuth.log_in_user(user) |> redirected_to() ==
                ~p"/#{organisation}/#{workspace}"
@@ -83,6 +87,17 @@ defmodule ApiaryWeb.UserAuthTest do
 
       refute conn |> UserAuth.log_in_user(admin.user) |> redirected_to() ==
                ~p"/instance/set-up"
+    end
+
+    test "with mail from the environment and no adapter, lands an instance admin as anyone else",
+         %{conn: conn} do
+      Apiary.Mail.put_test_source(:env)
+      admin = instance_admin_scope()
+
+      assert conn |> UserAuth.log_in_user(admin.user) |> redirected_to() ==
+               ~p"/#{admin.organisation}/#{admin.workspace}"
+
+      refute Apiary.Setup.connections_reviewed?()
     end
 
     test "lands on the workspace's overview, the first page its sidebar shows", %{conn: conn} do

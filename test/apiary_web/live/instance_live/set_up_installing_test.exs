@@ -28,6 +28,9 @@ defmodule ApiaryWeb.InstanceLive.SetUpInstallingTest do
     name = "tracker-#{System.unique_integer([:positive])}"
     Application.put_env(:apiary, :installed_adapters, [name])
 
+    # Mail not set by the environment: the page has its mail step, after the adapter's.
+    Apiary.Mail.put_test_source(:none)
+
     admin = instance_admin_scope()
     %{name: name, admin: admin, conn: log_in_user(build_conn(), admin.user)}
   end
@@ -48,7 +51,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpInstallingTest do
        %{conn: conn, name: name} do
     {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
 
-    assert [{"Your account", :done}, {^name, :current}, {"Mail", _mail, :link} | _] = steps(lv)
+    assert [{"Your account", :done}, {^name, :current}, {"Mail", :to_come} | _] = steps(lv)
     assert has_element?(lv, "#set-up-installing-#{name} h2", name)
 
     assert words(lv, "#set-up-installing") ==
