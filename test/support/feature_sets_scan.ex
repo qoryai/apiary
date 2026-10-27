@@ -3,9 +3,9 @@ defmodule Apiary.FeatureSetsScan do
   FeatureSetsScan checks the `:feature_sets` tags of a suite. CI runs every test once,
   with every feature on, and runs again under each other feature set only the tests
   tagged `:feature_sets` (`Apiary.TestSetup`). A test needs the tag when it reads the
-  instance's features while it runs, in its body, a `setup` or a helper, and has no
-  `with_features:`. Untagged, it would run with every feature on alone, and a branch of a feature
-  that is off would go untested.
+  instance's features while it runs, in its body, a `setup` or a helper, has no
+  `with_features:`, and has no feature of `once:` in its `needs:`. Untagged, it would run
+  with every feature on alone, and a branch of a feature that is off would go untested.
 
   These calls are reads (`reads/0`):
 
@@ -19,10 +19,10 @@ defmodule Apiary.FeatureSetsScan do
   its comments, strings, `@moduledoc` or `@doc`.
 
   A test sets its features first with `with_features:` (`Apiary.DataCase.setup_features/1`)
-  alone: it then runs under the features it lists, whatever the set. A `put_env` of
-  `:features` and `setup {Apiary.DataCase, :without_registry}` change the suite's
-  features, which still vary with the set, so a test that reads them after either takes
-  the tag.
+  alone: it then runs under the features it lists, whatever the set. The scan does not
+  count a `put_env` of `:features` or `setup {Apiary.DataCase, :without_registry}` as
+  setting them, because `without_registry` keeps the set's other features, so a test
+  that reads them after either takes the tag.
 
   `violations/2` scans `<dir>/**/*_test.exs` and `<dir>/support/**/*.ex` of each
   directory it is given, and returns a violation for:
