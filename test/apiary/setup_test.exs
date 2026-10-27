@@ -316,6 +316,18 @@ defmodule Apiary.SetupTest do
       assert entry.remote_ip == "203.0.113.7"
     end
 
+    test "set_up/3 nudges the installer of the adapters after a set-up; a refused one does not" do
+      :ok = Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Adapters.Installed.topic())
+
+      assert {:error, :invalid_code} = Setup.set_up("not-the-code", password_attrs())
+      refute_received :nudge
+      refute Setup.set_up?()
+
+      assert {:ok, _set_up} = Setup.set_up(Setup.code!(), password_attrs())
+      assert_receive :nudge
+      assert Setup.set_up?()
+    end
+
     test "a wrong code sets nothing up, and the code stays" do
       code = Setup.code!()
       before = {count(Organisation), count(User)}
