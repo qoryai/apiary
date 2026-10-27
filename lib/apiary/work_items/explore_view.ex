@@ -38,7 +38,8 @@ defmodule Apiary.WorkItems.ExploreView do
   # (`Apiary.WorkItems.Explore.run_state/1`), `place` (`Apiary.WorkItems.Explore.step/4`),
   # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`,
   # `end_cause`, the end cause of its run of the queue (nil while it has not ended),
-  # `adapter_failure`, the call to an adapter the run stopped at, nil for none
+  # `end_detail`, the code that end kept, nil for none (a gateway's refusal code, such as
+  # `"model_key_missing"`, for `run_refused`), `adapter_failure`, the call to an adapter the run stopped at, nil for none
   # (`%{adapter: name, cause: cause, call: path, code: code}`), `harness_failure`, why
   # its harness walk failed, nil for none (`%{code: code, source: source or nil, rule:
   # rule or nil, adapter: name or nil}`, `Apiary.Harnesses.RunHarness`), and
@@ -64,7 +65,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * the runs: `:started` (`run`, `start`: nil for a take in's first run, `:answers` for
   #     a run after answers, `:again` for any other), at its start, for a run handed over;
   #     then at its end `:asked` (`run`, `questions`, `duration_ms`), `:proposed` (`run`,
-  #     `duration_ms`, `owner_id`), `:no_result` (`run`, `outcome`), `:lost` or
+  #     `duration_ms`, `owner_id`), `:no_result` (`run`, `outcome`, and the end cause and
+  #     its code, `end_cause` and `end_detail`, as a run map has them), `:lost` or
   #     `:cancelled` (`run`).
   #
   # `run` is `%{id, workspace_id, attempt, of}`. A run that has not ended, or reads as
@@ -160,6 +162,7 @@ defmodule Apiary.WorkItems.ExploreView do
       duration_ms: ended_at && duration_ms(step, ended_at),
       outcome: step.outcome,
       end_cause: step.dispatch_run.end_cause,
+      end_detail: step.dispatch_run.end_detail,
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
       proposal: nil,
@@ -517,7 +520,16 @@ defmodule Apiary.WorkItems.ExploreView do
             [%{kind: :proposed, at: at, run: run, duration_ms: duration, owner_id: owner_id}]
 
           :no_result ->
-            [%{kind: :no_result, at: at, run: run, outcome: step.outcome}]
+            [
+              %{
+                kind: :no_result,
+                at: at,
+                run: run,
+                outcome: step.outcome,
+                end_cause: step.dispatch_run.end_cause,
+                end_detail: step.dispatch_run.end_detail
+              }
+            ]
 
           place when place in [:lost, :cancelled] ->
             [%{kind: place, at: at, run: run}]

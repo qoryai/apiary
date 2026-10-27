@@ -400,6 +400,83 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     end
   end
 
+  describe "a run the gateway refused" do
+    @key_fix "Add a model key in Organisation settings › Model providers."
+
+    # A run its gateway refused with `code`, as the refusal leaves it: the run failed with
+    # the code as its reason, and its run of the queue ended `run_refused` with the code.
+    defp refused(scope, code) do
+      work_item = work_item_fixture(scope)
+
+      %{dispatch_run: dispatch_run, run: run} =
+        explore_run_fixture(work_item,
+          end_cause: :run_refused,
+          registered: true,
+          run: %{
+            state: "failed",
+            exit_state: nil,
+            exited_at: nil,
+            outcome_state: nil,
+            outcome_time: nil,
+            outcome_received_at: nil,
+            outcome_digest: nil,
+            reason: code,
+            refused_at: DateTime.utc_now()
+          }
+        )
+
+      Repo.update_all(from(d in Apiary.Dispatches.DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [end_detail: code]
+      )
+
+      {work_item, run}
+    end
+
+    test "for want of a model key: each tab puts the fix first, none says it ended with an error",
+         %{conn: conn, scope: scope} do
+      {work_item, run} = refused(scope, "model_key_missing")
+      short = String.slice(run.public_id, 0, 11)
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-step-line",
+               @key_fix <> " The gateway had no model key for run #{short}."
+             )
+
+      refute html =~ "ended with an error"
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(view, "#work-item-explore-none-h", "The run ended before it started.")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none p",
+               @key_fix <> " The gateway had no model key for the run."
+             )
+
+      refute html =~ "ended with an error"
+
+      {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
+      assert html =~ @key_fix <> " The gateway had no model key for run"
+      refute html =~ "ended with an error"
+    end
+
+    test "with another code, every tab keeps the words for an error",
+         %{conn: conn, scope: scope} do
+      {work_item, _run} = refused(scope, "image_user_root")
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(view, "#work-item-explore-none-h", "The run ended with an error.")
+      refute html =~ "model key"
+
+      {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
+      assert html =~ "ended with an error, so Explore has no result"
+      refute html =~ "model key"
+    end
+  end
+
   describe "live" do
     test "a change to the work item is drawn; one to another is not read", %{
       conn: conn,

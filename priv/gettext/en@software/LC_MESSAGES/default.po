@@ -3563,7 +3563,18 @@ msgstr ""
 msgid "Add a key"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
 msgstr ""

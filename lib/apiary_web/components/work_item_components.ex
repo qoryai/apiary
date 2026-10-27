@@ -25,8 +25,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     nothing to show); then `:confirm`, `:shape`, `:declined`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
   #     and once it has one, `:id` (its `rn_` id), `:path`, `:state`, `:outcome`
-  #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause` and
-  #     what it gave;
+  #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause`,
+  #     `:end_detail` and what it gave;
   #   * `:stage` - for an ended work item, the stage it ended at (`:explore`, `:confirm`
   #     or `:shape`); a live one's stage follows from its status;
   #   * `:owner` - a person, or `nil`;
@@ -1136,6 +1136,16 @@ defmodule ApiaryWeb.WorkItemComponents do
   # run that ended before its handover, which has no id to name.
   defp no_result_line(_status, %{id: nil}), do: nil
 
+  defp no_result_line(
+         :no_result,
+         %{end_cause: :run_refused, end_detail: "model_key_missing"} = run
+       ),
+       do:
+         rich_gettext(
+           "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}.",
+           run: run_ref(run)
+         )
+
   defp no_result_line(:no_result, run) do
     case run[:outcome] do
       :none ->
@@ -1863,7 +1873,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   (`:pending`, `:running`, `:completed`, `:failed`, `:cancelled` or `:lost`),
   `:started_at`, `:ended_at`, `:duration` (how long it took, in words), `:outcome`
   (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause` (why its
-  run of the queue ended, nil while it has not), and what it gave:
+  run of the queue ended, nil while it has not), `:end_detail` (the code that end kept,
+  such as the gateway's refusal `"model_key_missing"` for `:run_refused`), and what it gave:
   `:proposal`, or `:understanding` and `:questions` (each `%{public_id:, text:, answer:}`)
   with `:answered_by` (a person) and `:answered_at` once a member answered them.
 
@@ -2765,6 +2776,13 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
        harness_failure_words(run[:harness_failure])}
+
+  defp no_result_words(%{end_cause: :run_refused, end_detail: "model_key_missing"}),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended before it started."),
+       gettext(
+         "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
+       )}
 
   defp no_result_words(%{end_cause: cause}) when cause in @unstarted,
     do:
@@ -3731,7 +3749,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:proposed` - Qory proposed what to do, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
-      (`outcome`: `:error`, `:none` or `:refused`);
+      (`outcome`: `:error`, `:none` or `:refused`); for a run the gateway refused for
+      want of a model key (`end_cause: :run_refused`, `end_detail: "model_key_missing"`),
+      what a member fixes;
     * `:explore_again` - who asked Qory to explore again;
     * `:confirmed` - who confirmed Qory's proposal, with their changes (`changed`);
     * `:closed`, `:declined` - who closed or declined it, and where it was declined
@@ -3787,6 +3807,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: :error,
     values: [:error, :none, :refused],
     doc: "`:no_result`: why the run gave none"
+
+  attr :end_cause, :atom, default: nil, doc: "`:no_result`: why its run of the queue ended"
+
+  attr :end_detail, :string,
+    default: nil,
+    doc: "`:no_result`: the code that end kept, as a run map has it"
 
   attr :changed, :boolean, default: false, doc: "`:confirmed`: with the member's changes"
 
@@ -3996,6 +4022,18 @@ defmodule ApiaryWeb.WorkItemComponents do
           name: {:b, owner.name}
         )
   end
+
+  defp event_line(%{
+         kind: :no_result,
+         end_cause: :run_refused,
+         end_detail: "model_key_missing",
+         run: run
+       }),
+       do:
+         rich_gettext(
+           "Add a model key in Organisation settings › Model providers. The gateway had no model key for run %{run}",
+           run: run_ref(run)
+         )
 
   defp event_line(%{kind: :no_result, outcome: :none, run: run}),
     do: rich_gettext("Run %{run} ended without a result", run: run_ref(run))
