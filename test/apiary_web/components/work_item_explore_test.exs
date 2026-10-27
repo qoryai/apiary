@@ -2260,4 +2260,142 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
     end
   end
+
+  describe "a run the gateway refused for want of a model key" do
+    @key_fix "Add a model key in Organisation settings › Model providers."
+
+    defp refused(detail) do
+      run(%{
+        id: "rn_01aa52d07c4a91e6",
+        path: "/8wonders/main/runs/rn_01aa52d07c4a91e6",
+        state: :failed,
+        outcome: :error,
+        end_cause: :run_refused,
+        end_detail: detail,
+        proposal: nil,
+        ended_at: ago(3600),
+        duration: "4 minutes"
+      })
+    end
+
+    test "the step card puts the fix first and keeps the run's link" do
+      html = card(work_item(%{number: 97, status: :no_result, run: refused("model_key_missing")}))
+
+      assert text(html, "#work-item-step-line") ==
+               @key_fix <> " The gateway had no model key for run rn_01aa52d0."
+
+      assert attr(html, "#work-item-step-line a", "href") == [
+               "/8wonders/main/runs/rn_01aa52d07c4a91e6"
+             ]
+
+      refute html =~ "ended with an error"
+    end
+
+    test "Explore's tab says the run ended before it started, then the fix and why" do
+      html = tab(work_item(%{number: 97, status: :no_result, run: refused("model_key_missing")}))
+
+      assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+
+      assert texts(html, "#work-item-explore-none p") == [
+               "The run ended before it started.",
+               @key_fix <> " The gateway had no model key for the run.",
+               "The run's page, rn_01aa52d0, shows what it did."
+             ]
+
+      refute html =~ "ended with an error"
+    end
+
+    test "the Thread's line puts the fix first and names the run" do
+      html =
+        event(
+          kind: :no_result,
+          run: run(%{}),
+          outcome: :error,
+          end_cause: :run_refused,
+          end_detail: "model_key_missing"
+        )
+
+      assert line(html) ==
+               @key_fix <> " The gateway had no model key for run rn_01a97b20 14 Oct, 11:25"
+
+      assert attr(html, "p a", "href") == ["/8wonders/main/runs/rn_01a97b20c4e81f3d"]
+      assert count(html, ".q-wi-ev-bad") == 1
+    end
+
+    test "another refusal code, or another end cause, keeps the words for an error" do
+      for r <- [refused("image_user_root"), %{refused(nil) | end_cause: :run_ended}] do
+        item = work_item(%{number: 97, status: :no_result, run: r})
+
+        assert text(card(item), "#work-item-step-line") ==
+                 "Run rn_01aa52d0 ended with an error, so Explore has no result."
+
+        assert text(tab(item), "#work-item-explore-none-h") == "The run ended with an error."
+
+        thread =
+          event(
+            kind: :no_result,
+            run: r,
+            outcome: :error,
+            end_cause: r.end_cause,
+            end_detail: r.end_detail
+          )
+
+        assert line(thread) ==
+                 "Run rn_01aa52d0 ended with an error, so Explore has no result 14 Oct, 11:25"
+
+        refute thread =~ "model key"
+      end
+    end
+
+    test "at run 3 of 3, the step card puts the fix first and keeps that no run is left" do
+      r = %{refused("model_key_missing") | attempt: 3}
+      html = card(work_item(%{number: 97, status: :no_result, run: r}), can_close: true)
+
+      assert text(html, ".q-wi-badge") == "3 of 3 runs used"
+
+      assert text(html, "#work-item-step-line") ==
+               @key_fix <>
+                 " The gateway had no model key for run rn_01aa52d0. That run was run 3 of 3, the most one take in has, so Qory cannot explore again in this take in."
+
+      assert attr(html, "#work-item-step-line a", "href") == [
+               "/8wonders/main/runs/rn_01aa52d07c4a91e6"
+             ]
+
+      assert count(html, "#work-item-step-ways") == 1
+      refute html =~ "ended without a result"
+    end
+
+    test "at run 3 of 3, Explore's tab and the Thread keep the fix" do
+      r = %{refused("model_key_missing") | attempt: 3}
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}), can_act: true)
+
+      assert texts(html, "#work-item-explore-none p") == [
+               "The run ended before it started.",
+               @key_fix <> " The gateway had no model key for the run.",
+               "The run's page, rn_01aa52d0, shows what it did."
+             ]
+
+      thread =
+        event(
+          kind: :no_result,
+          run: r,
+          outcome: :error,
+          end_cause: :run_refused,
+          end_detail: "model_key_missing"
+        )
+
+      assert line(thread) ==
+               @key_fix <> " The gateway had no model key for run rn_01aa52d0 14 Oct, 11:25"
+    end
+
+    test "at run 3 of 3, another refusal code keeps the words for the run limit" do
+      r = %{refused("image_user_root") | attempt: 3}
+      html = card(work_item(%{number: 97, status: :no_result, run: r}))
+
+      assert text(html, "#work-item-step-line") ==
+               "Run rn_01aa52d0 was run 3 of 3, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in."
+
+      refute html =~ "model key"
+    end
+  end
 end
