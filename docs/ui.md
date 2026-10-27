@@ -213,7 +213,7 @@ the console keeps. Every other act happens on a page, in place:
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
   from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and the
-  breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A save goes back
+  breadcrumb lead back (a step of the set-up has Back at its foot, The set-up below) (`PageComponents.page_form/1`, `page_form_foot/1`). A save goes back
   with a flash; a refused one stays, the error under its field. What a save shows once,
   such as a generated key's secret, it shows on the page the save leads to, never again
   once the reader leaves it.
@@ -1171,6 +1171,44 @@ its disclosure alike.
 The classes of the shell are in `app.css`'s shell block, and they are
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
 hides its parts on phones in that block.
+
+## The set-up
+
+The set-up is the pages a person goes through before the console: the set-up link
+(`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
+(`/instance/set-up?step=<adapter id>|mail`) and Set up your workspace
+(`/<org>/set-up?step=type|source`). Each step has its URL, so a reload or a link opens
+that step. The pages have no sidebar and no top bar menus (`Layouts.set_up/1` for the
+pages read signed out).
+
+- **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
+  form, and an `<aside>` headed **About this step** with what the step does, in the muted
+  colour and with no box. From 1280 px they stand side by side, 220 · 480 · 320 px with
+  48 px gaps, from the page's left edge. From 1024 px the indicator is a bar on top, and
+  the form and the aside stand side by side, 480 · 320 px. Below 1024 px the aside goes
+  under the form. In reading order the aside comes after the form. Steps done in another
+  system, such as an adapter's set-up in a new tab, are a numbered list in the aside,
+  headed by where they happen ("In the new tab", "On GitHub"); the form never repeats
+  them.
+- **The steps indicator** (`SetUpComponents.steps/1`) lists the steps that
+  `SetUpComponents.steps_for/3` builds for the person and the instance, after the
+  edition's answer (`c:Apiary.Edition.set_up_steps/2`). Above it: "Step 4 of 5" and a
+  progress bar, never a count of the steps left. The steps stand under their groups,
+  Connect Qory Apiary and Set up your workspace, each with its mark: a filled check when done,
+  a ring in the primary colour and `aria-current="step"` when current, a dash and
+  **Skipped** under a step passed over. Each step done or skipped is a link to it, before the current step or after it.
+  An edition's note about a step goes under its name. Under the last step, "Next: on the
+  Overview, Machines, Model key, Workflow and Test run" where the factory is on. Below
+  1280 px the indicator is a bar, "Step 4 of 5: Workspace", with **All steps**, a
+  disclosure that opens the list; Escape closes it. A page with one step shows no
+  indicator.
+- **Back** (`SetUpComponents.back/1`) is the first button at the form's foot, left of the
+  primary one, and opens the step before the current one; its `aria-label` names that
+  step ("Back to Mail"). A step with no page before it, such as the one after Your
+  account, has no Back. It is the one Back at a form's foot in the console: a step has
+  no Cancel, since there is nowhere to go back to but the step before. A step opened
+  again shows what was saved there and can be changed. The step Workspace, opened again, shows
+  the workspace and its type, read only, with **Continue**: the type can't change.
 
 ## Components
 

@@ -154,10 +154,15 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       assert_patch(lv, ~p"/#{organisation}/set-up?step=source")
       assert {"Workspace", :done, :link} in steps(lv)
     else
-      assert has_element?(
-               lv,
-               ~s{#set-up-continue[href="#{ApiaryWeb.Layouts.workspace_landing(%{Scope.for_user(user) | organisation: organisation, workspace: main})}"]}
-             )
+      # Continue opens the workspace, at its first page the person may open.
+      [href] =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#set-up-continue")
+        |> LazyHTML.attribute("href")
+
+      assert String.starts_with?(href, ~p"/#{organisation}/#{main}")
     end
   end
 

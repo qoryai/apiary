@@ -31,17 +31,17 @@ defmodule ApiaryWeb.SetUpComponents do
   1. Invitation, with `invitation:`, an invitation without a workspace, and `token:`, its
      token: done, a link back to its page, unless it is the page's step.
   2. Your account: done once the person is signed in; never a link.
-  3. One step for each of the instance's adapters, by name, with the `factory` feature
-     (`Apiary.Adapters.list_adapters/1`), then Mail: for an instance admin, and with
+  3. One step for each of the instance's adapters, by name, with the `factory` feature,
+     then Mail: for an instance admin, and with
      `first: true` on the set-up link's page, whose reader becomes one. An adapter is
-     done once it is configured (`Apiary.Adapters.configured?/1`); Mail where the
+     done once it is configured; Mail where the
      environment sets it, or once settings are saved and their test link sent.
   4. Workspace: for a person of an organisation, done once it has a workspace in use
      (`Apiary.Organisations.has_workspace?/1`); signed out, where the organisation is
      still to be made, or is the invitation's and has none.
   5. Work source, with the `factory` feature, for a person who may connect an adapter or
      whom the edition tells who may (`c:ApiaryWeb.Edition.who_may_sentence/2`): done by the
-     Overview's rule (`c:Apiary.Edition.work_source_ready/1`).
+     Overview's rule, the edition's `work_source_ready/1`.
 
   The step `current` names is current; a step before it that is not done is skipped;
   every other step is done or to come.
