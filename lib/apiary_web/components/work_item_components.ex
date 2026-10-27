@@ -1118,10 +1118,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   # A test work item's run answers its line, in words that no workspace's words change,
   # while its run waits or runs; nil for any other work item.
   defp test_line(%{work_item: %{test: true}, status: :queued}),
-    do: gettext("Qory answers the line when the run starts.")
+    do: gettext("The agent answers the line when the run starts.")
 
   defp test_line(%{work_item: %{test: true}, status: :running}),
-    do: gettext("Qory is answering the line.")
+    do: gettext("The agent is answering the line.")
 
   defp test_line(_assigns), do: nil
 
@@ -2146,14 +2146,17 @@ defmodule ApiaryWeb.WorkItemComponents do
         {:queued, _whose} when assigns.test ->
           {gettext("Explore is queued."),
            gettext(
-             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It answers the line.",
+             "Run %{attempt} of %{of} starts when the workspace's node pool takes it. The agent answers the line in it.",
              attempt: attempt,
              of: of
            )}
 
         {:running, _whose} when assigns.test ->
           {gettext("Qory is exploring."),
-           gettext("Run %{attempt} of %{of} answers the line.", attempt: attempt, of: of)}
+           gettext("The agent answers the line in run %{attempt} of %{of}.",
+             attempt: attempt,
+             of: of
+           )}
 
         {:queued, :none} ->
           {gettext("Explore is queued."),

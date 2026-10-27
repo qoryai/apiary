@@ -660,7 +660,7 @@ defmodule ApiaryWeb.BacklogComponents do
         <p :if={@harness_file}>
           <.rich text={
             rich_gettext(
-              "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5), unless the ticket's target has a %{harness} or %{qory}.",
+              "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's target has a %{harness} or %{qory}.",
               workspace: @workspace,
               harness: {:code, "harness.yaml"},
               qory: {:code, "qory.yaml"}
@@ -669,7 +669,7 @@ defmodule ApiaryWeb.BacklogComponents do
         </p>
         <p :if={!@harness_file}>
           {gettext(
-            "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5).",
+            "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow.",
             workspace: @workspace
           )}
         </p>

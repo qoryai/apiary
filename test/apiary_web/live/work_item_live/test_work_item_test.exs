@@ -103,8 +103,13 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
                "Until a run starts, you can undo this."
              )
 
-      assert has_element?(view, "#work-item-step", "Qory answers the line when the run starts.")
-      assert has_element?(view, "#work-item-explore-wait", "It answers the line.")
+      assert has_element?(
+               view,
+               "#work-item-step",
+               "The agent answers the line when the run starts."
+             )
+
+      assert has_element?(view, "#work-item-explore-wait", "The agent answers the line in it.")
       refute has_element?(view, "#work-item-explore", "the code")
       no_ticket!(view)
 

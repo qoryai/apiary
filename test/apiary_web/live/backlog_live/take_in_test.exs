@@ -64,8 +64,8 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
 
       assert words(view, "#backlog-ticket-take-in-help") ==
                "Take in makes a work item from a ticket and starts its explore run. " <>
-                 "#{workspace} needs a workflow first (section 5), unless the ticket's " <>
-                 "repository has a harness.yaml or qory.yaml. " <>
+                 "#{workspace} needs a workflow first, set in Workspace settings › Workflow, " <>
+                 "unless the ticket's repository has a harness.yaml or qory.yaml. " <>
                  "Open Backlog. Press a ticket's title. Its panel opens. Press Take in. " <>
                  "In a software workspace, the ticket must be in a repository assigned to " <>
                  "#{workspace}."
@@ -114,7 +114,8 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
 
       assert words(view, "#backlog-ticket-take-in-help") ==
                "Take in makes a work item from a ticket and starts its explore run. " <>
-                 "#{scope.workspace.name} needs a workflow first (section 5). " <>
+                 "#{scope.workspace.name} needs a workflow first, " <>
+                 "set in Workspace settings › Workflow. " <>
                  "Open Backlog. Press a ticket's title. Its panel opens. Press Take in."
     end
   end
