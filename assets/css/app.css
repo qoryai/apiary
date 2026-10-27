@@ -9038,8 +9038,10 @@
     font-size: 0.75rem;
     line-height: 16px;
   }
+  /* Empty, the status keeps its place in the accessibility tree, so its first words are
+     announced. */
   .q-pick-status:empty {
-    display: none;
+    padding: 0;
   }
   /* Eight options of two lines show whole; more scroll inside the panel. */
   .q-pick-options {

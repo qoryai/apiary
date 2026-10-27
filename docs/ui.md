@@ -1220,10 +1220,11 @@ needs becomes a component, or an attribute of one, not a copy.
   search box, else the chosen radio, else the first. The arrow keys move among the
   radios and check them, as radios do; Enter or Space, or a click on an option, chooses
   it, closes the panel and returns the focus to the button. Escape closes it and puts
-  back the option chosen when it opened; Tab and a click elsewhere close it and keep
-  the choice. Without a search box a letter goes to the next option whose title starts
+  back the option chosen when it opened; with none chosen then, it keeps the one checked
+  since, as a form with no value for the field would send no key for it. Tab and a
+  click elsewhere close it and keep the choice. Without a search box a letter goes to the next option whose title starts
   with it. The button's `aria-expanded` and `aria-controls` point to the panel, its name
-  is the label and the chosen title, and each option is described by its subtitle; an
+  is the label and the chosen title and subtitle, and each option is described by its subtitle; an
   error marks the button `aria-invalid` and describes it, so a failed submit focuses the
   button. Above eight options, or with `search`, the panel has a search box that
   narrows the options in the browser by title and subtitle, keeps the chosen option and

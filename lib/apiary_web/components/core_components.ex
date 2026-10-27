@@ -772,8 +772,9 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   # A choice: the button shows the chosen option, and its panel the options as radios. The
-  # `Choice` hook opens and closes the panel and narrows it, and owns the attributes it
-  # sets (`JS.ignore_attributes`), so the patch after each arrow key's change keeps them.
+  # `Choice` hook opens and closes the panel and narrows it. A patch leaves the attributes
+  # the hook sets as they are (`JS.ignore_attributes`), so the patch after each arrow key's
+  # change keeps the panel open and narrowed.
   def input(%{type: "choice"} = assigns) do
     options = Enum.with_index(assigns.options)
 

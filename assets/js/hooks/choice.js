@@ -4,8 +4,10 @@
 // radio, else the first, and ArrowUp the chosen or the last. In the panel the radios keep
 // their arrow keys; Enter or Space, or a click on an option, chooses it, closes the panel
 // and gives focus back to the button. Escape closes it and puts back the option chosen
-// when it opened. Tab and a click elsewhere close it and keep the choice. Without a search
-// box, a letter goes to the next option whose title starts with it.
+// when it opened; with none chosen then, it keeps the one checked since, since a form
+// without the field's value would send no key for it. Tab and a click elsewhere close it
+// and keep the choice. Without a search box, a letter goes to the next option whose title
+// starts with it.
 //
 // The search box narrows the options by title and subtitle in the browser, and keeps the
 // chosen option and any marked `data-keep` in view. It has no name, and its input never
@@ -14,6 +16,12 @@
 // The open panel (`hidden`), the button's `aria-expanded` and the hidden options are this
 // hook's: the component ignores them in a patch (`JS.ignore_attributes`), so the patch
 // after an arrow key's phx-change leaves the panel open and the options narrowed.
+
+// The radio Escape checks again: the one chosen when the panel opened, where there was
+// one and another is checked now; else none, and no change is sent.
+export function putBack(before, now) {
+  return before && before !== now ? before : null
+}
 
 // The words of a query, lower case, each of which a match must contain.
 export function words(query) {
@@ -44,7 +52,8 @@ export const Choice = {
         this.open ? this.close(false) : this.show()
         return
       }
-      // A click on an option's words; a radio's own click comes from its arrow keys too.
+      // A click on an option's words. A click on the radio itself also comes from the
+      // arrow keys, which check it with no click of the pointer.
       const option = e.target.closest(".q-pick-opt")
       if (option && !e.target.matches(".q-pick-radio")) {
         e.preventDefault()
@@ -145,7 +154,6 @@ export const Choice = {
   show() {
     this.open = true
     this.before = this.checked()
-    this.shownBefore = this.button().querySelector(".q-pick-text")?.cloneNode(true)
     this.panel().hidden = false
     this.button().setAttribute("aria-expanded", "true")
     this.narrow()
@@ -171,19 +179,8 @@ export const Choice = {
     this.close(true)
   },
 
-  // Escape puts back what was chosen when the panel opened, or nothing.
   restore() {
-    const now = this.checked()
-    if (now === this.before) return
-    if (this.before) {
-      this.check(this.before)
-    } else {
-      now.checked = false
-      now.dispatchEvent(new Event("input", {bubbles: true}))
-      now.dispatchEvent(new Event("change", {bubbles: true}))
-      if (this.shownBefore) this.button().querySelector(".q-pick-text").replaceWith(this.shownBefore)
-      this.button().classList.add("is-prompt")
-    }
+    this.check(putBack(this.before, this.checked()))
   },
 
   title(radio) {
