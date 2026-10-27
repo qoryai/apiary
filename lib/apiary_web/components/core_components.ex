@@ -579,6 +579,27 @@ defmodule ApiaryWeb.CoreComponents do
   `{label, value}`, one choice. A choice given as `{label, value, line}` is a card, with
   its line under its label. A text input with a `prefix` shows it in mono before the
   value, as one field: the path a slug completes.
+
+  A `choice` input is a select whose options each have a title and a subtitle: a button
+  that shows the chosen option and opens its options in place under it, as a group of
+  radios named like the field, so the form sends it as it sends a select. Each of
+  `options` is a map, `%{value: value, title: title}`, with these optional keys:
+
+    * `subtitle`: a line under the title;
+    * `mono: :title` or `mono: :subtitle`: that part in mono, such as a model's id;
+    * `keep: true`: the option shows whatever the search, such as "Another model".
+
+  Above eight options, or with `search`, a box above the options narrows them by title and
+  subtitle in the browser (the `Choice` hook). The box has no name, so the form never
+  sends it.
+
+      <.input
+        field={@form[:domain]}
+        type="choice"
+        label="Type"
+        prompt="Choose a type"
+        options={[%{value: "software", title: "Software", subtitle: "For work on code."}]}
+      />
   """
   attr :id, :any, default: nil
   attr :name, :any
@@ -596,7 +617,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   attr :type, :string,
     default: "text",
-    values: ~w(checkbox color date datetime-local email file month number password
+    values: ~w(checkbox choice color date datetime-local email file month number password
                radio search select tel text textarea time url week hidden)
 
   attr :field, Phoenix.HTML.FormField,
@@ -604,8 +625,27 @@ defmodule ApiaryWeb.CoreComponents do
 
   attr :errors, :list, default: []
   attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
-  attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
-  attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
+  attr :prompt, :string, default: nil, doc: "the prompt for select and choice inputs"
+
+  attr :options, :list,
+    doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2; a choice's maps"
+
+  attr :search, :boolean,
+    default: nil,
+    doc: "a choice's search box; nil shows it above eight options"
+
+  attr :search_label, :string,
+    default: nil,
+    doc: "the name of a choice's search box; nil says Find a <label>"
+
+  attr :found, :string,
+    default: nil,
+    doc: """
+    what a choice's search says it shows, with `%{shown}` and `%{total}` left in for the
+    browser to fill, such as `gettext("%{shown} of %{total} models", shown: "%{shown}",
+    total: "%{total}")`; nil says "%{shown} of %{total} options"
+    """
+
   attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
   attr :class, :any, default: nil, doc: "extra classes for the input element"
 
@@ -731,6 +771,139 @@ defmodule ApiaryWeb.CoreComponents do
     """
   end
 
+  # A choice: the button shows the chosen option, and its panel the options as radios. The
+  # `Choice` hook opens and closes the panel and narrows it. A patch leaves the attributes
+  # the hook sets as they are (`JS.ignore_attributes`), so the patch after each arrow key's
+  # change keeps the panel open and narrowed.
+  def input(%{type: "choice"} = assigns) do
+    options = Enum.with_index(assigns.options)
+
+    assigns =
+      assigns
+      |> assign(:indexed, options)
+      |> assign(
+        :chosen,
+        Enum.find(assigns.options, &(to_string(&1.value) == to_string(assigns.value)))
+      )
+      |> assign(
+        :search?,
+        if(is_nil(assigns.search), do: length(options) > 8, else: assigns.search)
+      )
+      |> assign(
+        :search_name,
+        assigns.search_label ||
+          gettext("Find a %{filter}", filter: String.downcase(assigns.label || ""))
+      )
+
+    ~H"""
+    <fieldset
+      id={"#{@id}-choice"}
+      class="fieldset q-pick"
+      phx-hook="Choice"
+      data-found={
+        @found ||
+          gettext("%{shown} of %{total} options", shown: "%{shown}", total: "%{total}")
+      }
+      data-none={gettext("No option matches. Clear the search to see every option.")}
+    >
+      <legend :if={@label} id={"#{@id}-label"} class="mb-1 text-[13px]/[18px] font-medium">
+        {@label}
+        <span :if={@optional} class="font-normal text-faint">{gettext("(optional)")}</span>
+      </legend>
+      <button
+        type="button"
+        id={@id}
+        class={[
+          "q-pick-btn",
+          "q-pick-#{@size}",
+          !@chosen && "is-prompt",
+          @errors != [] && "q-pick-error",
+          @class
+        ]}
+        aria-expanded="false"
+        aria-controls={"#{@id}-panel"}
+        aria-labelledby={if @label, do: "#{@id}-label #{@id}-shown", else: "#{@id}-shown"}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={describedby(@id, @errors, @hint, @rest)}
+        disabled={@rest[:disabled]}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <span id={"#{@id}-shown"} class="q-pick-text">
+          <span class={["q-pick-t", @chosen && @chosen[:mono] == :title && "mono"]}>
+            {if @chosen, do: @chosen.title, else: @prompt}
+          </span>
+          <span
+            :if={@chosen && @chosen[:subtitle]}
+            class={["q-pick-s", @chosen[:mono] == :subtitle && "mono"]}
+          >
+            {@chosen.subtitle}
+          </span>
+        </span>
+      </button>
+      <div
+        id={"#{@id}-panel"}
+        class="q-pick-panel"
+        hidden
+        phx-mounted={JS.ignore_attributes(["hidden"])}
+      >
+        <div :if={@search?} id={"#{@id}-find"} class="q-pick-find" phx-update="ignore">
+          <label>
+            <.icon name="hero-magnifying-glass" class="q-pick-find-i size-4" />
+            <input
+              id={"#{@id}-search"}
+              type="search"
+              class="input input-sm"
+              placeholder={@search_name}
+              aria-label={@search_name}
+              aria-controls={"#{@id}-options"}
+              autocomplete="off"
+            />
+          </label>
+          <p id={"#{@id}-status"} class="q-pick-status" role="status"></p>
+        </div>
+        <div
+          id={"#{@id}-options"}
+          class="q-pick-options"
+          role="radiogroup"
+          aria-labelledby={@label && "#{@id}-label"}
+        >
+          <label
+            :for={{option, index} <- @indexed}
+            for={"#{@id}-#{index}"}
+            class="q-pick-opt"
+            data-keep={option[:keep] && "true"}
+            phx-mounted={JS.ignore_attributes(["hidden"])}
+          >
+            <input
+              type="radio"
+              id={"#{@id}-#{index}"}
+              name={@name}
+              value={option.value}
+              checked={to_string(@value) == to_string(option.value)}
+              class="q-pick-radio"
+              aria-describedby={option[:subtitle] && "#{@id}-#{index}-s"}
+              {without_describedby(@rest)}
+            />
+            <.icon name="hero-check-micro" class="q-pick-ck size-4" />
+            <span class="q-pick-text">
+              <span class={["q-pick-t", option[:mono] == :title && "mono"]}>{option.title}</span>
+              <span
+                :if={option[:subtitle]}
+                id={"#{@id}-#{index}-s"}
+                class={["q-pick-s", option[:mono] == :subtitle && "mono"]}
+              >
+                {option.subtitle}
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+      <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
+      <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
+    </fieldset>
+    """
+  end
+
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <fieldset class="fieldset">
@@ -804,9 +977,10 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   # A radio group none of whose choices is picked sends nothing, so it is never a used
-  # input: once its form is submitted, its errors show all the same.
-  defp submitted_group?(%{type: "radio"}, %{form: %{source: %{action: action}}}),
-    do: action in [:insert, :update]
+  # input: once its form is submitted, its errors show all the same. A choice is one.
+  defp submitted_group?(%{type: type}, %{form: %{source: %{action: action}}})
+       when type in ["radio", "choice"],
+       do: action in [:insert, :update]
 
   defp submitted_group?(_assigns, _field), do: false
 
