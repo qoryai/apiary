@@ -24,11 +24,11 @@ defmodule ApiaryWeb.Contract.Configuration do
   to it.
   """
 
-  # With the `factory` and `secrets` features both on, which the documentation leaves
-  # out: the document of an access key allowed stored secrets (`allow_secrets`) has
-  # `secrets`, `{url}`, the secrets endpoint (`ApiaryWeb.Contract.SecretsController`),
-  # after `run`; a key not allowed them, or either feature off, gets none. With the
-  # `registry` feature on, which the documentation leaves out too, every key's document
+  # With the `factory` and `secrets` features both on: the document of an access key
+  # allowed stored secrets (`allow_secrets`) has `secrets`, `{url}`, the secrets endpoint
+  # (`ApiaryWeb.Contract.SecretsController`), after `run`; a key not allowed them, or
+  # either feature off, gets none. With the
+  # `registry` feature on, which the documentation leaves out, every key's document
   # has it: a gateway fetches a run's registry credential there, and does not start a run
   # whose run configuration lists credentials without it.
 

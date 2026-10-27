@@ -20,7 +20,7 @@ defmodule ApiaryWeb.WorkflowLive do
   # the chosen source's stacks list, grouped by stack where it has several. Save stores
   # the document and says so; a refused save says why.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

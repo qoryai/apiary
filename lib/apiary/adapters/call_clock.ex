@@ -20,7 +20,7 @@ defmodule Apiary.Adapters.CallClock do
   # owns the table and drops, every minute, the calls whose last time is more than 600
   # seconds behind the clock, which the clock's second passes anyway.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use GenServer
 

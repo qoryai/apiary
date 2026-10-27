@@ -9,7 +9,7 @@ defmodule ApiaryWeb.ConnectSession do
   # The session keeps the last `kept/0` connections a browser started, the latest pass of
   # each: a new pass for the same connection replaces the one kept.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Plug.Conn, only: [get_session: 2, put_session: 3]

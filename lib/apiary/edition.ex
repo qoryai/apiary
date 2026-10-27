@@ -149,7 +149,7 @@ defmodule Apiary.Edition do
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
-  # With the `factory` feature, which the documentation leaves out: the chain of model
+  # With the `factory` feature: the chain of model
   # choices that resolves for the runs of the organisation `organisation_id`
   # (`Apiary.ModelChoices`): "organisation", the choices the organisation sets, or
   # "operator", the choices an operator sets for it as its client, which are then the
@@ -158,7 +158,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 
-  # With the `factory` feature, which the documentation leaves out: the organisation whose
+  # With the `factory` feature: the organisation whose
   # model choices are the chain of the organisation `organisation_id` while its chain is
   # "operator" (`c:model_choice_chain/1`): the operator that runs work for it, or nil.
   # A model key of the operator's chain is sealed only for that organisation's gateway or
@@ -169,7 +169,7 @@ defmodule Apiary.Edition do
   @callback operator_chain_organisation(organisation_id :: Ecto.UUID.t()) ::
               Ecto.UUID.t() | nil
 
-  # With the `factory` feature, which the documentation leaves out: whether the person of
+  # With the `factory` feature: whether the person of
   # `scope` writes the operator's chain of model providers and choices in the scope's
   # organisation, the organisation whose rows are the chain of the clients it runs work for
   # (`c:operator_chain_organisation/1`). When true, the scope's organisation's providers
@@ -180,7 +180,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback operator_chain_writer?(Scope.t()) :: boolean
 
-  # With the `factory` feature, which the documentation leaves out: whether `organisation`
+  # With the `factory` feature: whether `organisation`
   # is a client that an operator runs work for. A run of such an organisation hides the
   # text of its stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`).
   # Asked without a lock, once per claim of an explore run. The core has no operator and
@@ -188,7 +188,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback operated?(%Organisation{}) :: boolean
 
-  # With the `factory` feature, which the documentation leaves out: the organisation that
+  # With the `factory` feature: the organisation that
   # owns a harness document the person of `scope` saves (`Apiary.Stacks.put_stack/3`), or
   # nil, which refuses the save. A run of another organisation hides the document's text
   # (`Apiary.Stacks.Resolution`). Asked once per save, before its transaction. The core
@@ -199,7 +199,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback harness_owner(Scope.t()) :: Ecto.UUID.t() | nil
 
-  # With the `factory` feature, which the documentation leaves out: whether a run of the
+  # With the `factory` feature: whether a run of the
   # organisation `run_organisation_id` may use a link of the organisation
   # `owner_organisation_id` for `source`, a harness source as it is in a harness document
   # (`Apiary.Harnesses.allowed?/3`). Asked only after the core's checks refuse it: the
@@ -213,7 +213,7 @@ defmodule Apiary.Edition do
               source :: Apiary.Harnesses.source()
             ) :: boolean
 
-  # With the `factory` feature, which the documentation leaves out: the four rules of the
+  # With the `factory` feature: the four rules of the
   # Overview's setup list for `workspace` (`Apiary.WorkspaceSetup`), each asked once per
   # read of the list, without a lock. An edition may count what serves the workspace from
   # another organisation; the core counts the workspace's and its organisation's alone, and
@@ -244,7 +244,7 @@ defmodule Apiary.Edition do
   @doc false
   @callback test_run_passed?(%Workspace{}) :: boolean
 
-  # With the `factory` feature, which the documentation leaves out: what a person of
+  # With the `factory` feature: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
   # the edition, so that a client of an operator is not shown the operator's model
   # provider: its credential, its connections and its events. `kind` is what is read, and

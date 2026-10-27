@@ -204,7 +204,7 @@ defmodule Apiary.Adapters.Collections do
   #     connection, and reads its `items` from that row;
   #   * the pages' reads (`backlog_switch/2`, the lists and counts) change nothing.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

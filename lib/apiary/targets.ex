@@ -26,7 +26,7 @@ defmodule Apiary.Targets do
   workspace's, whatever the query.
   """
 
-  # With the `factory` feature, which the documentation leaves out:
+  # With the `factory` feature:
   #
   # **What its runs also read.** A target's further repositories (`further_repositories/1`)
   # are the paths in its system its runs read after it, in the order a person put them:
@@ -698,7 +698,7 @@ defmodule Apiary.Targets do
   # further_repositories/1 is the further repositories of `target`: the paths in its system
   # that its runs also read after it, in the order they were saved, `[]` for none. It reads
   # the target as it was loaded; `set_further_repositories/3` checked every one of them.
-  # Of the `factory` feature, which the documentation leaves out.
+  # Of the `factory` feature, and left out of the module reference.
   @doc false
   @spec further_repositories(Target.t()) :: [String.t()]
   def further_repositories(%Target{further_repositories: paths}) when is_list(paths), do: paths
@@ -724,7 +724,7 @@ defmodule Apiary.Targets do
   #   * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
   #     `{:error, :not_found}` for a target that is gone.
   #
-  # Of the `factory` feature, which the documentation leaves out.
+  # Of the `factory` feature, and left out of the module reference.
   @doc false
   @spec set_further_repositories(Scope.t(), Target.t(), String.t() | [String.t()] | nil) ::
           {:ok, Target.t()} | {:error, Ecto.Changeset.t() | Access.reason()}

@@ -2160,7 +2160,7 @@ defmodule ApiaryWeb.OverviewComponents do
   # Where the reader may not take a step's action (`may`), the step says who may in its
   # place.
   #
-  # It belongs to a feature hidden from the documentation, so it is too.
+  # Of the `factory` feature, and left out of the module reference.
   @doc false
   attr :id, :string, default: "setup"
   attr :scope, :map, required: true, doc: "the caller's scope: its organisation and workspace"

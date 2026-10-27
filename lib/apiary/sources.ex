@@ -25,7 +25,7 @@ defmodule Apiary.Sources do
   # each once. Ids only: a reader loads what it may see. A collection linked to no
   # workspace is told nothing; a post that changed nothing sends nothing.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   alias Apiary.Accounts.Scope

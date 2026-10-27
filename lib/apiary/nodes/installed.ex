@@ -24,7 +24,7 @@ defmodule Apiary.Nodes.Installed do
   # deleted. Each holds one key at most, gets no code from a person, and enrols with a code
   # that names no maker only while it is declared (`declared?/1`). Both are always on.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   require Logger

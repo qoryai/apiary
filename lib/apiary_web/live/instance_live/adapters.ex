@@ -17,7 +17,7 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
   # there is no adapter yet. The instance has no catalogue of adapters to add yet, so the
   # page lists none.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

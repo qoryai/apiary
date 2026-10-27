@@ -42,7 +42,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # the comments' assigns, and passes their events to that module; Cancel closes the
   # question showing, the page's or a comment's.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

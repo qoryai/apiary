@@ -62,7 +62,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # flash in the page's words (`ApiaryWeb.BacklogComponents.take_in_refused/3`), and the
   # page reads what it shows again. Take in again, on a row, does nothing yet.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

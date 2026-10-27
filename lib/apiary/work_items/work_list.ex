@@ -50,7 +50,7 @@ defmodule Apiary.WorkItems.WorkList do
   # Every input a person gives (a search, a filter value, a cursor) is bounded and checked
   # before a query reads it.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

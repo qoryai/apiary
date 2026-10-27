@@ -189,7 +189,7 @@ defmodule Apiary.WorkItems.Moves do
   # tells the workspaces whose queue changed (`Apiary.Dispatches.broadcast/1`). A comment
   # and its deletion tell the work items' topic alone: the Backlog shows no comment.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

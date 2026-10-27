@@ -78,7 +78,7 @@ defmodule Apiary.Adapters.Connections do
   # connection it takes or makes and for the one it replaces, the return that connects,
   # and each end.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

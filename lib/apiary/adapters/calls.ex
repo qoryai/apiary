@@ -49,7 +49,7 @@ defmodule Apiary.Adapters.Calls do
   # `max_answer` in bytes, `resolver` (`Apiary.Adapters.CallAddress`), and `req_options`,
   # merged into each request's.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query

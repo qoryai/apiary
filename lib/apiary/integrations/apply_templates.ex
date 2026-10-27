@@ -18,7 +18,7 @@ defmodule Apiary.Integrations.ApplyTemplates do
   # with the path exactly as the adapter wrote it, with no case folding and no decoding,
   # and leaves out a filled path equal to an earlier filled path of the same item.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   @placeholder "{target.path}"

@@ -23,7 +23,7 @@ defmodule Apiary.Adapters.Installed.CodeFile do
   # **The code is a secret until it is used.** It is written there and nowhere else: this
   # module logs nothing, and a failure says only its reason.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   alias Apiary.Adapters.Installed

@@ -81,7 +81,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # again does. The page follows the organisation's connections and collections as they
   # change (`Apiary.Adapters.Collections.subscribe/1`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

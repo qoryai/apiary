@@ -29,7 +29,7 @@ defmodule Apiary.Harnesses.RunHarness do
   #     breaks; and `failure_adapter`, the adapter's name, for `adapter_unavailable`.
   #   * `attempts`: the job's attempts so far.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Ecto.Schema
 

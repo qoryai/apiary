@@ -35,7 +35,7 @@ defmodule Apiary.Adapters.Installer do
   # the names it said failed. No line it logs carries a code, nor the message or the reason
   # of a failure caught, only its kind: the exception's module, or `:exit` or `:throw`.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use GenServer

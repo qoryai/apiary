@@ -24,7 +24,7 @@ defmodule ApiaryWeb.InstanceLive.Node do
   # The page reads the node again as an instance reports (`Apiary.Nodes.Installed.subscribe/1`)
   # and as a key arrives or is revoked (`Apiary.AccessKeys.subscribe/2`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

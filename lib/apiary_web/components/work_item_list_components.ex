@@ -19,7 +19,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   # (any member's) or a name (the list filtered to that owner), or `nil` when nothing
   # waits.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 

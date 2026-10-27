@@ -50,7 +50,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # Add answers as a path that does not exist for every entry, as for an entry the
   # catalogue does not hold: the instance has no catalogue of adapters to add yet.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

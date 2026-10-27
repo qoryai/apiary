@@ -14,7 +14,7 @@ defmodule Apiary.Harnesses.Builtin do
   # (`Apiary.Policy.ComposedConfiguration`). The base is not read, so it declares no access
   # level: the run reads, and the row's check (`run_harnesses_builtin_check`) keeps it so.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   @git "https://github.com/qoryai/qory"

@@ -28,7 +28,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # once there is a workspace, is sent on: to the workspace's first page, or to the
   # organisation's page where they reach no workspace.
   #
-  # Step 2 belongs to a feature hidden from the documentation, so the module is too.
+  # Step 2 is of the `factory` feature, and the module reference leaves the module out.
   @moduledoc false
 
   use ApiaryWeb, :live_view

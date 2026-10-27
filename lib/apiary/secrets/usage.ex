@@ -67,7 +67,7 @@ defmodule Apiary.Secrets.Usage do
     )
   end
 
-  # With the `factory` feature, which the documentation leaves out: a model choice
+  # With the `factory` feature: a model choice
   # (`Apiary.ModelChoices`) that chose a key of a provider's secret uses that key, by its
   # value id, a use of kind `:model_choice` named as a refusal names its place. Read in
   # the caller's transaction, which holds the provider's row.

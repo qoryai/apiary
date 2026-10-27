@@ -37,7 +37,7 @@ defmodule Apiary.Sources.Item do
   # Every text and label is untrusted: shown as data, never followed. The database holds
   # every bound above, and counts characters as code points, as `changeset/2` does.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset

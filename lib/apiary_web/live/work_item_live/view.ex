@@ -18,7 +18,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # is its short id alone, and a run that ended before its handover has no id at all.
   # How long a run took is in the run pages' words (`ApiaryWeb.RunComponents`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :verified_routes

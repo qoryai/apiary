@@ -104,7 +104,7 @@ defmodule Apiary.WorkItems do
   # before the runs it lapses, so a close that held runs and then waited on a pool could
   # wait on a claim that waits on it.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

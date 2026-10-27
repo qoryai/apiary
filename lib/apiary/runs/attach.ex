@@ -99,7 +99,7 @@ defmodule Apiary.Runs.Attach do
   (`Apiary.Runs.Sender.sending_ended?/1`).
   """
 
-  # With the `factory` feature, which the documentation leaves out:
+  # With the `factory` feature:
   #
   # - Among the runs that have ended (5. above) is a prebuild whose run of the queue its
   #   starter's `prebuilt` ended, to any attach but a repeat.
