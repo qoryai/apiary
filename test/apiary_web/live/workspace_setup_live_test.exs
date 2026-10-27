@@ -369,6 +369,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
              "Connect"
            )
 
+    refute has_element?(lv, "#set-up-source-#{adapter.public_id}-connected")
+
     assert has_element?(
              lv,
              ~s{#set-up-skip-button[href="/#{organisation.slug}/#{main.slug}"]},
@@ -377,6 +379,41 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
 
     assert words(lv, "#set-up-skip p") == "You can connect one later from Main's Overview."
     refute has_element?(lv, "#set-up-no-source")
+  end
+
+  test "an adapter already connected shows Connected, by the Overview's rule, and Continue",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, workspace: main, scope: scope} = sign_up_fixture()
+    collection = collection_fixture(scope)
+    connected = Repo.get!(Apiary.Nodes.Node, collection.adapter_id)
+    %{adapter: other} = connectable_adapter_fixture()
+
+    assert [%{adapter: %{id: id}}] = Apiary.Edition.work_source_ready(main)
+    assert id == connected.id
+
+    {:ok, lv, _html} =
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=source")
+
+    assert has_element?(lv, "#set-up-source-#{connected.public_id}-connected", "Connected")
+    refute has_element?(lv, "#set-up-source-#{other.public_id}-connected")
+
+    # Connect stays, to connect another account; the step is done, so Continue, not Skip.
+    assert has_element?(
+             lv,
+             "#set-up-source-#{connected.public_id}-connect-install:not(.btn-primary)"
+           )
+
+    assert has_element?(lv, "#set-up-source-#{other.public_id}-connect-install.btn-primary")
+    assert {"Work source", :current} in steps(lv)
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-continue[href="/#{organisation.slug}/#{main.slug}"]},
+             "Continue"
+           )
+
+    refute has_element?(lv, "#set-up-skip-button")
+    refute has_element?(lv, "#set-up-skip p")
   end
 
   describe "an adapter's guide" do

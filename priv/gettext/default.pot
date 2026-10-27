@@ -5656,6 +5656,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/gateways.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connected"
 msgstr ""

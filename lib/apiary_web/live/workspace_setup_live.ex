@@ -139,6 +139,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       page_title: gettext("Connect a work source to %{workspace}", workspace: workspace.name),
       step: :source,
       adapters: Adapters.list_configured(Domain.for_workspace(workspace)),
+      # The adapters connected to the workspace, by the Overview's rule for its Work
+      # source step.
+      connected: MapSet.new(Apiary.Edition.work_source_ready(workspace), & &1.adapter.id),
       one_workspace: match?([_one], Organisations.list_workspaces(scope)),
       sending: nil,
       who_may: who_may
@@ -239,6 +242,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         scope={@current_scope}
         steps={@steps}
         adapters={@adapters}
+        connected={@connected}
         one_workspace={@one_workspace}
         sending={@sending}
         who_may={@who_may}
@@ -371,6 +375,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :scope, :map, required: true
   attr :steps, :list, required: true
   attr :adapters, :list, required: true
+  attr :connected, MapSet, required: true, doc: "the ids of the adapters connected to it"
   attr :one_workspace, :boolean, required: true
   attr :sending, :string, required: true
   attr :who_may, :string, required: true
@@ -410,10 +415,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <p class="truncate font-medium">{adapter.name}</p>
             <p class="text-[12.5px]/4 text-muted">{source_line(adapter)}</p>
           </div>
+          <span
+            :if={MapSet.member?(@connected, adapter.id)}
+            id={"set-up-source-#{adapter.public_id}-connected"}
+            class="q-sdot q-sdot-completed text-[13px]/5"
+          >
+            <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
+          </span>
           <IntegrationComponents.install_form
             :if={is_nil(@who_may)}
             id={"set-up-source-#{adapter.public_id}-connect"}
             adapter={adapter}
+            variant={if MapSet.member?(@connected, adapter.id), do: "default", else: "primary"}
             action={IntegrationComponents.paths(@scope, adapter).install <> "?back=set-up"}
             ready={adapter.id in @ready}
             sending={@sending == adapter.public_id}
@@ -433,6 +446,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <div :if={@adapters != []} id="set-up-skip" class="q-su-acts">
         <SetUpComponents.back steps={@steps} page={~p"/#{@scope.organisation}/set-up"} />
         <.button
+          :if={MapSet.size(@connected) > 0}
+          id="set-up-continue"
+          variant="primary"
+          size="md"
+          navigate={~p"/#{@scope.organisation}/#{@workspace}"}
+        >
+          {gettext("Continue")}
+        </.button>
+        <.button
+          :if={MapSet.size(@connected) == 0}
           id="set-up-skip-button"
           variant="ghost"
           size="md"
@@ -440,7 +463,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         >
           {gettext("Skip")}
         </.button>
-        <p :if={is_nil(@who_may)} class="self-center text-[12.5px]/4 text-muted">
+        <p
+          :if={is_nil(@who_may) and MapSet.size(@connected) == 0}
+          class="self-center text-[12.5px]/4 text-muted"
+        >
           {gettext("You can connect one later from %{workspace}'s Overview.",
             workspace: @workspace.name
           )}
