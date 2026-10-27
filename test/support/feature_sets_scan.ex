@@ -15,7 +15,7 @@ defmodule Apiary.FeatureSetsScan do
   - `Application.get_env(:apiary, :features)` and `:features_setting`.
 
   An edition adds the reads of its modules with `reads:`. The scan matches the code, not
-  its comments, `@moduledoc` or `@doc`.
+  its comments, strings, `@moduledoc` or `@doc`.
 
   A test sets its features first with `with_features:` (`Apiary.DataCase.setup_features/1`),
   `setup {Apiary.DataCase, :without_registry}`, or a `put_env` of `:features` that
@@ -124,7 +124,7 @@ defmodule Apiary.FeatureSetsScan do
       tagged? and not around? and not Enum.any?(tests, & &1.reads?) ->
         [{:reads_nothing, path} | both]
 
-      exposed? and not tagged? and not sets_first?(Macro.to_string(ast), tests) ->
+      exposed? and not tagged? and not sets_first?(code(ast), tests) ->
         [{:untagged, path} | both]
 
       true ->
@@ -143,8 +143,18 @@ defmodule Apiary.FeatureSetsScan do
   end
 
   defp reads?(ast, reads) do
-    code = Macro.to_string(ast)
+    code = code(ast)
     Enum.any?(reads, &Regex.match?(&1, code))
+  end
+
+  # The text of the code without its strings, which read nothing.
+  defp code(ast) do
+    ast
+    |> Macro.prewalk(fn
+      string when is_binary(string) -> ""
+      node -> node
+    end)
+    |> Macro.to_string()
   end
 
   # A file's text without its comments, `@moduledoc`, `@doc` and `@typedoc`, which read
