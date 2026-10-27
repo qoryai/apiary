@@ -73,7 +73,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     assert has_element?(lv, "#set-up-steps p", "Set up your workspace")
 
     assert words(lv, "#set-up-next") ==
-             "Next: on the Overview, Machines, Model key, Workflow and Test run"
+             "Next: on the Overview, Machines for runs, Model key and Test run"
 
     {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{second.public_id}")
     assert count(lv) == "Step 3 of 6"

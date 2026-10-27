@@ -67,6 +67,22 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     assert steps(lv) ==
              [{"Invitation", :current}, {"Your account", :to_come}, {"Workspace", :to_come}]
 
+    # The Invitation step has the organisation's id, for the edition; the page never
+    # shows it.
+    invitation = Organisations.get_invitation_by_token(token)
+
+    assert [%{id: :invitation, organisation_id: organisation_id} | _] =
+             ApiaryWeb.SetUpComponents.steps_for(nil, :invitation,
+               invitation: invitation,
+               token: token
+             )
+
+    assert organisation_id == invitation.organisation_id
+    refute render(lv) =~ organisation_id
+
+    {:ok, _register, register_html} = live(build_conn(), ~p"/users/register?invitation=#{token}")
+    refute register_html =~ organisation_id
+
     assert has_element?(lv, "#invitation-email", "The invitation is for bee@example.com.")
     refute text(lv) =~ "Create an account with"
 

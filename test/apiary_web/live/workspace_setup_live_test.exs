@@ -17,6 +17,34 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   alias Apiary.Organisations.{Membership, Workspace}
   alias ApiaryWeb.UserAuth
 
+  defmodule Waiting do
+    # An edition that lists, for a person who waits, their account and an extra step,
+    # and has a line for the column About this step.
+    def set_up_steps(%Scope{}, []),
+      do: [
+        %{
+          id: :account,
+          label: "Your account",
+          group: nil,
+          state: :done,
+          path: nil,
+          note: nil
+        },
+        %{
+          id: :client,
+          label: "Client's workspace",
+          group: :workspace,
+          state: :current,
+          path: nil,
+          note: "Harbour Ops sets it up"
+        }
+      ]
+
+    def set_up_steps(_scope, steps), do: steps
+
+    def set_up_context(%Scope{}, :workspace), do: "Harbour Ops sets up the workspace."
+  end
+
   # An organisation made with no workspace, and its owner.
   defp sign_up_without_workspace do
     {:ok, %{user: user, organisation: organisation}} =
@@ -246,7 +274,43 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       refute has_element?(lv, "#set-up-form")
       refute has_element?(lv, "#set-up-steps")
+      refute has_element?(lv, "#set-up-context")
     end
+  end
+
+  test "an instance admin who waits in another organisation sees no steps", %{conn: conn} do
+    %{organisation: organisation} = sign_up_without_workspace()
+    admin = instance_admin_scope()
+
+    %Membership{organisation_id: organisation.id, user_id: admin.user.id}
+    |> Membership.changeset(%{level: :member})
+    |> Repo.insert!()
+
+    {:ok, lv, _html} = conn |> log_in_user(admin.user) |> live(~p"/#{organisation}/set-up")
+
+    # The Connect steps are the instance's, not this page's: a person who waits gets the
+    # core's list, which has no step.
+    assert has_element?(lv, "#set-up-waiting")
+    assert steps(lv) == []
+    refute has_element?(lv, "#set-up-steps")
+    refute has_element?(lv, "#set-up-context")
+  end
+
+  test "a person who waits sees the edition's steps from 2 on, and its line for the step",
+       %{conn: conn} do
+    %{organisation: organisation} = sign_up_without_workspace()
+    member = joined(organisation, :member)
+
+    # The core lists the member's account alone and has no line, so the page shows
+    # neither (the test before this one); the edition's answer shows both.
+    :ok = Apiary.Edition.put_test_stub(Waiting)
+    {:ok, lv, _html} = conn |> log_in_user(member) |> live(~p"/#{organisation}/set-up")
+
+    assert has_element?(lv, "#set-up-waiting")
+    assert steps(lv) == [{"Your account", :done}, {"Client's workspace", :current}]
+    assert count(lv) == "Step 2 of 2"
+
+    assert words(lv, "#set-up-context #set-up-what") == "Harbour Ops sets up the workspace."
   end
 
   test "is no page for someone outside the organisation", %{conn: conn} do

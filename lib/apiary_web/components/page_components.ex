@@ -235,7 +235,7 @@ defmodule ApiaryWeb.PageComponents do
   renders this.
 
       <.settings_page section={:model} title={gettext("Model")}>
-        <.form ...>...</.form>
+        <.form ... novalidate>...</.form>
         <:context><p>{gettext("Main's default model. ...")}</p></:context>
       </.settings_page>
   """

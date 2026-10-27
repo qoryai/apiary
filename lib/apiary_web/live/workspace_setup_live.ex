@@ -12,8 +12,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # (`Apiary.Organisations.create_first_workspace/2`); its context says what the workspace
   # is, with the edition's line on which workspace this is
   # (`c:Apiary.Edition.first_workspace_line/1`). Anyone else is told who sets it up
-  # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with no progress indicator. Where
-  # a workspace marked for deletion still has the name Main, the page says to restore it.
+  # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with the indicator where the
+  # edition lists 2 steps or more (the core lists them none) and the context
+  # where the edition has a line (`c:Apiary.Edition.set_up_context/2`). Where a workspace
+  # marked for deletion still has the name Main, the page says to restore it.
   # The page listens to the organisation's workspaces
   # (`Apiary.Organisations.subscribe_workspaces/1`): once its first workspace is made, by
   # anyone, the page opens Work source as it would open now. Once the workspace exists,
@@ -98,14 +100,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     assign(socket, steps: steps, current: Enum.find(steps, &(&1.id == current)))
   end
 
+  # A person who may not create the workspace waits: the core lists them no step, so the
+  # page shows no indicator unless the edition lists steps (`c:Apiary.Edition.set_up_steps/2`).
   defp assign_type_step(socket) do
     scope = socket.assigns.current_scope
-    socket = assign_steps(socket, :workspace)
+    creates = Access.can?(scope, :"workspace.create", scope.organisation)
+
+    socket =
+      if creates,
+        do: assign_steps(socket, :workspace),
+        else: assign(socket, steps: Apiary.Edition.set_up_steps(scope, []), current: nil)
 
     assign(socket,
       page_title: Apiary.Edition.set_up_title(scope, socket.assigns.current),
       step: :type,
-      creates: Access.can?(scope, :"workspace.create", scope.organisation),
+      creates: creates,
       refusal: nil,
       form: to_form(%{"domain" => nil}, as: "workspace")
     )
@@ -259,7 +268,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp workspace_context(assigns) do
     ~H"""
     <p id="set-up-what">
-      {gettext(
+      <%!-- The workspace type's context: read where the type is picked, in no domain's
+      words yet (docs/lingo.md). --%>
+      {pgettext(
+        "workspace type",
         "%{workspace} is where Qory Apiary takes in tickets and runs agents on them. Its type sets which work sources it can connect, and whether each ticket needs a repository.",
         workspace: Organisations.default_workspace_name()
       )}
@@ -275,13 +287,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :form, :any, required: true
   attr :refusal, :atom, required: true
 
+  # The waiting line, for a person who may not create the workspace. The frame shows the
+  # steps where the edition lists 2 or more (the core lists none),
+  # and the column About this step where the edition has a line for it
+  # (`c:Apiary.Edition.set_up_context/2`).
   defp type_step(%{creates: false} = assigns) do
+    assigns = assign(assigns, :context, Apiary.Edition.set_up_context(assigns.scope, :workspace))
+
     ~H"""
-    <SetUpComponents.frame>
+    <SetUpComponents.frame
+      steps={@steps}
+      next={SetUpComponents.next?(@scope)}
+      page={~p"/#{@scope.organisation}/set-up"}
+    >
       <SetUpComponents.heading>{@title}</SetUpComponents.heading>
       <p id="set-up-waiting" class="text-sm/5 text-muted">
         {Apiary.Edition.first_workspace_waiting_line(@scope.organisation)}
       </p>
+      <:context :if={@context}>
+        <p id="set-up-what">{@context}</p>
+      </:context>
     </SetUpComponents.frame>
     """
   end
