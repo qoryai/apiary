@@ -82,12 +82,12 @@ CI runs every test once, with every feature on, and runs only the tests tagged
 `@moduletag`) when it reads the instance's features, in its body, a `setup` or a helper:
 `Apiary.Features.on?/1`, `enabled/0`, `visible?/2` or `hidden_of/1`,
 `ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env/2`,
-`fetch_env/2` or `fetch_env!/2` of `:features`. A test tagged `with_features:` runs under
-the features it lists, whatever the set, and takes no tag. So does a test whose `needs:`
-lists an opt-in feature (`Apiary.Features.opt_in/0`): only the run with every feature on
-turns that feature on. The guard does not count a `put_env` of the features or
-`without_registry` as setting them, because `without_registry` keeps the set's other
-features: a test that reads them after either takes the tag. The guard
+`fetch_env/2` or `fetch_env!/2` of `:features`. A test tagged `with_features:` runs once,
+in the run with every feature on, under the features it lists, and takes no tag. So does a
+test whose `needs:` lists an opt-in feature (`Apiary.Features.opt_in/0`): only the run
+with every feature on turns that feature on. The guard does not count a `put_env` of the
+features or `without_registry` as setting them, because `without_registry` keeps the set's
+other features: a test that reads them after either takes the tag. The guard
 `test/apiary/feature_sets_tag_test.exs` fails for a test that reads the features with
 neither the tag, `with_features:` nor an opt-in feature in its `needs:`; for a
 tagged file that reads nothing; for a test with both `with_features:` and the tag; and for
