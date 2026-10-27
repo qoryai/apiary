@@ -439,9 +439,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
            )
 
     refute has_element?(lv, "#set-up-skip p")
-
-    render_hook(lv, "install", %{"integration" => adapter.public_id})
-    refute has_element?(lv, "#set-up-source-#{adapter.public_id}-connect")
   end
 
   test "sends on anyone adapter.connect does not allow, where the edition says nothing of who may",

@@ -23,10 +23,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # workspace, a note that the workspace gets every collection picked. Skip and Continue
   # lead to the workspace's Overview, and so does Create workspace without the feature. A
   # person `adapter.connect` refuses sees the same step where the edition says who may
-  # connect one (`c:ApiaryWeb.Edition.who_may_sentence/2`): the adapters with no Connect and
-  # no steps, that sentence, and Skip. Anyone else, once there is a workspace, is sent on:
-  # to the workspace's first page, or to the organisation's page where they reach no
-  # workspace.
+  # connect one (`c:ApiaryWeb.Edition.who_may_sentence/2`), with no Connect and no steps:
+  # the adapters, that sentence, and Skip; with none, the line and Continue. Anyone else,
+  # once there is a workspace, is sent on: to the workspace's first page, or to the
+  # organisation's page where they reach no workspace.
   #
   # Step 2 belongs to a feature hidden from the documentation, so the module is too.
   @moduledoc false
