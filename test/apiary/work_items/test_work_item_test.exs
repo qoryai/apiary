@@ -452,13 +452,34 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       assert Repo.all(from e in Entry, where: e.action == "work_item.close") == []
     end
 
-    test "refuses a take in of a test while the live one's run waits, and writes nothing",
+    test "while the live one's run waits for a machine, ends that run, closes it and makes the new one",
          ctx do
-      live = test_item!(ctx.scope)
-      refused_while_running!(ctx.scope, live)
+      for queued_at <- [DateTime.utc_now(), DateTime.add(DateTime.utc_now(), -301, :second)] do
+        last = test_item!(ctx.scope)
+        [waiting] = runs(last)
 
-      assert [_run] = Repo.all(DispatchRun)
-      assert [_entry] = Repo.all(from e in Entry, where: e.action == "work_item.take_in")
+        {1, _rows} =
+          Repo.update_all(from(r in DispatchRun, where: r.id == ^waiting.id),
+            set: [queued_at: queued_at]
+          )
+
+        assert {:ok, %WorkItem{state: :exploring} = next} =
+                 WorkItems.take_in_test(ctx.scope, "Once more")
+
+        assert %DispatchRun{state: :ended, end_cause: :closed} = Repo.reload!(waiting)
+
+        assert %WorkItem{state: :closed, closed_by_id: closed_by} = Repo.reload!(last)
+        assert closed_by == ctx.scope.user.id
+
+        assert [_entry] =
+                 Repo.all(
+                   from e in Entry,
+                     where: e.action == "work_item.close" and e.subject_id == ^last.id
+                 )
+
+        assert [%DispatchRun{state: :waiting}] = runs(next)
+        close!(next)
+      end
     end
 
     test "refuses it while the live one's run is claimed or handed over", ctx do
@@ -665,6 +686,19 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
 
       assert dispatched?(run)
       refute run!(run).end_cause in [:closed, :undone]
+    end
+
+    test "while the claim holds its run, a new take in of a test is refused and the run stays claimed",
+         ctx do
+      last = test_item!(ctx.scope)
+      [run] = runs(last)
+      assert {:ok, _taken} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert %DispatchRun{state: :claimed} = run!(run)
+
+      assert WorkItems.take_in_test(ctx.scope, "Once more") == {:error, :test_running}
+      assert %DispatchRun{state: :claimed} = run!(run)
+      assert %WorkItem{state: :exploring} = Repo.reload!(last)
+      assert [%WorkItem{}] = Repo.all(WorkItem)
     end
 
     test "after its run, claimed and handed over, ended by its exit or lost, a new take in of a test closes it",
