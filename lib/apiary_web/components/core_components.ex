@@ -587,7 +587,13 @@ defmodule ApiaryWeb.CoreComponents do
 
     * `subtitle`: a line under the title;
     * `mono: :title` or `mono: :subtitle`: that part in mono, such as a model's id;
-    * `keep: true`: the option shows whatever the search, such as "Another model".
+    * `keep: true`: the option shows whatever the search, such as "Another model";
+    * `disabled: true`: the option shows but cannot be chosen, such as "Reading…" while
+      a list loads; the arrow keys pass over it.
+
+  `options` may also hold groups, `{heading, [option]}`, such as models per provider:
+  each heading shows above its options, an empty group's too, and the radios stay one
+  group for the field. A search hides a heading none of whose options match.
 
   Above eight options, or with `search`, a box above the options narrows them by title and
   subtitle in the browser (the `Choice` hook). The box has no name, so the form never
@@ -628,7 +634,8 @@ defmodule ApiaryWeb.CoreComponents do
   attr :prompt, :string, default: nil, doc: "the prompt for select and choice inputs"
 
   attr :options, :list,
-    doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2; a choice's maps"
+    doc:
+      "the options to pass to Phoenix.HTML.Form.options_for_select/2; a choice's maps or groups"
 
   attr :search, :boolean,
     default: nil,
@@ -776,19 +783,23 @@ defmodule ApiaryWeb.CoreComponents do
   # the hook sets as they are (`JS.ignore_attributes`), so the patch after each arrow key's
   # change keeps the panel open and narrowed.
   def input(%{type: "choice"} = assigns) do
-    options = Enum.with_index(assigns.options)
+    groups = choice_groups(assigns.options)
+    options = Enum.flat_map(groups, fn {_heading, _group, indexed} -> indexed end)
 
     assigns =
       assigns
-      |> assign(:indexed, options)
+      |> assign(:groups, groups)
       |> assign(
         :chosen,
-        Enum.find(assigns.options, &(to_string(&1.value) == to_string(assigns.value)))
+        Enum.find_value(options, fn {option, _index} ->
+          choice_chosen?(option, assigns.value) && option
+        end)
       )
       |> assign(
         :search?,
         if(is_nil(assigns.search), do: length(options) > 8, else: assigns.search)
       )
+      |> assign(:radio_rest, assigns.rest |> without_describedby() |> Map.delete(:disabled))
       |> assign(
         :search_name,
         assigns.search_label ||
@@ -867,35 +878,51 @@ defmodule ApiaryWeb.CoreComponents do
           role="radiogroup"
           aria-labelledby={@label && "#{@id}-label"}
         >
-          <label
-            :for={{option, index} <- @indexed}
-            for={"#{@id}-#{index}"}
-            class="q-pick-opt"
-            data-keep={option[:keep] && "true"}
-            phx-mounted={JS.ignore_attributes(["hidden"])}
-          >
-            <input
-              type="radio"
-              id={"#{@id}-#{index}"}
-              name={@name}
-              value={option.value}
-              checked={to_string(@value) == to_string(option.value)}
-              class="q-pick-radio"
-              aria-describedby={option[:subtitle] && "#{@id}-#{index}-s"}
-              {without_describedby(@rest)}
-            />
-            <.icon name="hero-check-micro" class="q-pick-ck size-4" />
-            <span class="q-pick-text">
-              <span class={["q-pick-t", option[:mono] == :title && "mono"]}>{option.title}</span>
-              <span
-                :if={option[:subtitle]}
-                id={"#{@id}-#{index}-s"}
-                class={["q-pick-s", option[:mono] == :subtitle && "mono"]}
-              >
-                {option.subtitle}
+          <div :for={{heading, group, indexed} <- @groups} class="q-pick-grp">
+            <p
+              :if={heading}
+              id={"#{@id}-g#{group}"}
+              class="q-pick-group"
+              phx-mounted={JS.ignore_attributes(["hidden"])}
+            >
+              {heading}
+            </p>
+            <label
+              :for={{option, index} <- indexed}
+              for={"#{@id}-#{index}"}
+              class="q-pick-opt"
+              data-keep={option[:keep] && "true"}
+              phx-mounted={JS.ignore_attributes(["hidden"])}
+            >
+              <input
+                type="radio"
+                id={"#{@id}-#{index}"}
+                name={@name}
+                value={option.value}
+                checked={choice_chosen?(option, @value)}
+                disabled={option[:disabled] || @rest[:disabled]}
+                class="q-pick-radio"
+                aria-describedby={
+                  choice_describedby([
+                    heading && "#{@id}-g#{group}",
+                    option[:subtitle] && "#{@id}-#{index}-s"
+                  ])
+                }
+                {@radio_rest}
+              />
+              <.icon name="hero-check-micro" class="q-pick-ck size-4" />
+              <span class="q-pick-text">
+                <span class={["q-pick-t", option[:mono] == :title && "mono"]}>{option.title}</span>
+                <span
+                  :if={option[:subtitle]}
+                  id={"#{@id}-#{index}-s"}
+                  class={["q-pick-s", option[:mono] == :subtitle && "mono"]}
+                >
+                  {option.subtitle}
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
         </div>
       </div>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
@@ -983,6 +1010,36 @@ defmodule ApiaryWeb.CoreComponents do
        do: action in [:insert, :update]
 
   defp submitted_group?(_assigns, _field), do: false
+
+  # A choice's options as groups, each `{heading, group index, [{option, index}]}`: a
+  # `{heading, options}` is a group, and options outside one form a group with no heading.
+  # The index runs on across the groups, so each radio's id is unique in the field.
+  defp choice_groups(options) do
+    options
+    |> Enum.chunk_by(&is_tuple/1)
+    |> Enum.flat_map(fn
+      [{_heading, _options} | _] = groups -> groups
+      options -> [{nil, options}]
+    end)
+    |> Enum.with_index()
+    |> Enum.map_reduce(0, fn {{heading, options}, group}, next ->
+      {{heading, group, Enum.with_index(options, next)}, next + length(options)}
+    end)
+    |> elem(0)
+  end
+
+  # A disabled option is never the chosen one, and no value chooses none: Reading…, whose
+  # value is "", is not chosen while the field is blank.
+  defp choice_chosen?(option, value),
+    do: !option[:disabled] && !is_nil(value) && to_string(option.value) == to_string(value)
+
+  # A choice's radio is described by its group's heading, then its subtitle.
+  defp choice_describedby(ids) do
+    case Enum.filter(ids, & &1) do
+      [] -> nil
+      ids -> Enum.join(ids, " ")
+    end
+  end
 
   # What describes a field: its errors, else its hint, then whatever the page describes it
   # by too (an `aria-describedby` given to `input/1`, such as a hint the page draws

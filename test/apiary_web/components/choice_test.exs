@@ -148,6 +148,112 @@ defmodule ApiaryWeb.ChoiceTest do
     end
   end
 
+  describe "a choice with groups" do
+    test "heads each group, an empty one too, in one radio group with unique ids" do
+      doc =
+        choice(%{
+          params: %{"domain" => "shared"},
+          options: [
+            {"Linked repositories",
+             [
+               %{value: "harness", title: "example-org/harness", mono: :title},
+               %{value: "ops", title: "example-org/harness-ops", mono: :title}
+             ]},
+            {"Assigned by an instance admin", []},
+            {"Public address",
+             [%{value: "address", title: "Enter an address", subtitle: "Any https address."}]}
+          ]
+        })
+
+      assert LazyHTML.query(doc, "[role=radiogroup]") |> Enum.count() == 1
+
+      assert text(doc, "[role=radiogroup] > .q-pick-grp > p.q-pick-group") ==
+               ["Linked repositories", "Assigned by an instance admin", "Public address"]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "p.q-pick-group"), "id") ==
+               ["workspace_domain-g0", "workspace_domain-g1", "workspace_domain-g2"]
+
+      radios = LazyHTML.query(doc, "input[type=radio]")
+      assert LazyHTML.attribute(radios, "id") == Enum.map(0..2, &"workspace_domain-#{&1}")
+      assert LazyHTML.attribute(radios, "name") == List.duplicate("workspace[domain]", 3)
+
+      assert LazyHTML.attribute(radios, "aria-describedby") == [
+               "workspace_domain-g0",
+               "workspace_domain-g0",
+               "workspace_domain-g2 workspace_domain-2-s"
+             ]
+
+      assert text(doc, ".q-pick-opt .q-pick-t.mono") ==
+               ["example-org/harness", "example-org/harness-ops"]
+    end
+
+    test "finds the chosen option in any group, and counts every group for the search" do
+      doc =
+        choice(%{
+          params: %{"domain" => "model-9"},
+          options: [{"Anthropic", models(5)}, {"OpenRouter", Enum.drop(models(9), 5)}]
+        })
+
+      assert text(doc, "#workspace_domain-shown .q-pick-t") == ["Model 9"]
+      assert LazyHTML.query(doc, "input[type=search]") |> Enum.count() == 1
+
+      assert LazyHTML.query(doc, "input[type=radio][checked]") |> LazyHTML.attribute("id") ==
+               ["workspace_domain-8"]
+    end
+
+    test "takes options outside a group as a group with no heading" do
+      doc =
+        choice(%{
+          options: [%{value: "a", title: "Alpha"}, {"More", [%{value: "b", title: "Beta"}]}]
+        })
+
+      assert text(doc, "p.q-pick-group") == ["More"]
+      assert LazyHTML.query(doc, ".q-pick-grp") |> Enum.count() == 2
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#workspace_domain-0"), "aria-describedby") ==
+               []
+    end
+  end
+
+  describe "a choice with a disabled option" do
+    test "shows it with a disabled radio, which the form never sends" do
+      doc =
+        choice(%{
+          options: [
+            {"Linked repositories", [%{value: "", title: "Reading…", disabled: true}]},
+            {"Public address", [%{value: "address", title: "Enter an address"}]}
+          ]
+        })
+
+      assert text(doc, ".q-pick-opt .q-pick-t") == ["Reading…", "Enter an address"]
+
+      assert LazyHTML.query(doc, "input[type=radio][disabled]") |> LazyHTML.attribute("id") ==
+               ["workspace_domain-0"]
+
+      assert LazyHTML.query(doc, "input[type=radio][checked]") |> Enum.count() == 0
+      assert text(doc, "#workspace_domain-shown") == [""]
+    end
+
+    test "is never chosen, though its value is the field's" do
+      doc =
+        choice(%{
+          params: %{"domain" => ""},
+          prompt: "Choose a source",
+          options: [%{value: "", title: "Reading…", disabled: true}]
+        })
+
+      assert LazyHTML.query(doc, "input[type=radio][checked]") |> Enum.count() == 0
+      assert text(doc, "#workspace_domain-shown") == ["Choose a source"]
+    end
+
+    test "with the field disabled, disables every radio and the button" do
+      doc = choice(%{disabled: true})
+
+      assert LazyHTML.query(doc, "input[type=radio][disabled]") |> Enum.count() == 2
+      assert LazyHTML.query(doc, "button[disabled]") |> Enum.count() == 1
+    end
+  end
+
   describe "a choice with a chosen value" do
     test "shows the chosen title and subtitle on its button, and checks its radio" do
       doc = choice(%{params: %{"domain" => "general"}, prompt: "Choose a type"})
