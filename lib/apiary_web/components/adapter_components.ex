@@ -27,7 +27,7 @@ defmodule ApiaryWeb.AdapterComponents do
   # minute", "Every 15 minutes"), else in seconds; and the same in lower case, to stand
   # inside a sentence.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 
@@ -72,12 +72,14 @@ defmodule ApiaryWeb.AdapterComponents do
   attr :adapter, Node, required: true
   attr :back, :string, default: nil, doc: "`list` on the list, so a refusal comes back there"
   attr :variant, :string, default: "default", values: ~w(default primary)
+  attr :size, :string, default: "xs", values: ~w(xs sm md)
+  attr :target, :string, default: nil, doc: "`_blank` to open the adapter in a new tab"
 
   @doc false
   # Set up for `adapter`: a form that posts to its set-up's path, `paths/1`'s `setup`,
   # with the session's CSRF token, and the instance admin is sent on to the adapter
-  # (`ApiaryWeb.AdapterSetupController`). Its button is core's default one, or, with
-  # `variant` "primary", core's primary one.
+  # (`ApiaryWeb.AdapterSetupController`), in a new tab with `target` `_blank`. Its button
+  # is core's default one, or, with `variant` "primary", core's primary one.
   def setup_form(assigns) do
     ~H"""
     <.form
@@ -85,11 +87,12 @@ defmodule ApiaryWeb.AdapterComponents do
       id={@id}
       action={paths(@adapter).setup}
       method="post"
+      target={@target}
       novalidate
       class="contents"
     >
       <input :if={@back} type="hidden" name="back" value={@back} />
-      <.button id={"#{@id}-button"} type="submit" variant={@variant} size="xs">
+      <.button id={"#{@id}-button"} type="submit" variant={@variant} size={@size}>
         <.icon name="hero-arrow-top-right-on-square-micro" class="size-4" />{gettext("Set up")}
       </.button>
     </.form>

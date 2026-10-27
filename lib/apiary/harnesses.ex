@@ -47,7 +47,7 @@ defmodule Apiary.Harnesses do
   # source with none of the three is the root of the remote source. One assignment per
   # source and organisation: a second is a changeset error on `source`.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Changeset

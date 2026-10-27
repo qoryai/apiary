@@ -23,11 +23,11 @@ defmodule Mix.Tasks.Docs.All do
   - **An extra or a module**, in the `:features` of the docs configuration in `mix.exs`:
     `security: [extras: [...], modules: [...]]`, a module given by name or by a regex on
     it. The key `all` is every feature the documentation differs by
-    (`Apiary.Features.documented/0`): the module reference, but for the tasks the guides
-    name, is only in the tree of an instance that has every one, since the prose of a
-    shared module names features too, and ExDoc reads it from the compiled docs, where no
-    marker reaches. An extra listed under no feature, such as the release notes, is in
-    every tree.
+    (`Apiary.Features.documented/0`). The module reference, but for the tasks the guides
+    name, is listed under `secrets`: the prose of a shared module mentions features too, and
+    ExDoc reads it from the compiled docs, where no marker reaches, so every tree with
+    `secrets` has that prose whole. A module of `factory` alone is listed under `factory`.
+    An extra listed under no feature, such as the release notes, is in every tree.
   - **A module that declares its feature** with `use ApiaryWeb.Features`, without anything
     in `mix.exs`; one that declares several with `any:` is in a tree that has one of them.
   - **A passage of a guide**, between marker lines that stand alone:
@@ -47,8 +47,9 @@ defmodule Mix.Tasks.Docs.All do
   those features need. The trees are built over the features the documentation differs
   by (`Apiary.Features.documented/0`): a feature listed with `docs: false` names no tree
   and is in none, and an instance is served the same tree with it on or off. The core
-  builds `observability` (nothing that needs a feature), `observability+security`, and
-  `all`, which is the one with the module reference; an edition's features add the trees
+  builds `observability` (nothing that needs a feature), `observability+security`,
+  `observability+security+secrets`, which has the module reference without the modules of
+  `factory` alone, and `all`, which has it whole; an edition's features add the trees
   between them. There is one tree for each different
   content an instance can be owed, so adding markers for a feature that had none adds the
   trees it needs and nothing else.

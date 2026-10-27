@@ -481,6 +481,12 @@ environment variable SMTP_TLS must be always, if_available or never
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.
 <!-- /feature -->
+<!-- feature: factory -->
+- `factory`: the work items of a workspace and what they are taken in from: the adapters'
+  steps of the instance's set-up, a workspace's work source, model providers and model,
+  workflow, and its setup list with the test run. Opt-in. Needs `observability`,
+  `security` and `secrets`.
+<!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
 the discovery document leave it out, and the documentation at `/docs` does not describe
@@ -506,6 +512,14 @@ Every feature but the security policy:
 QORY_FEATURES=all-security
 ```
 <!-- /feature -->
+<!-- feature: factory -->
+
+The work items and their set-up, with the features they need:
+
+```sh
+QORY_FEATURES=observability,security,secrets,factory
+```
+<!-- /feature -->
 
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
@@ -524,6 +538,36 @@ QORY_FEATURES=observability
 
 To switch a feature on later, add it to the value and restart. Every instance has the
 whole database schema whatever its features, so nothing is migrated.
+
+<!-- feature: factory -->
+### The instance's node pool and gateway
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `QORY_INSTALLED_POOL` | none | The name of the instance's node pool: a lower-case letter, then lower-case letters, digits and hyphens, 32 characters at most. Not set, or empty, declares none. |
+| `QORY_INSTALLED_GATEWAY` | none | The name of the instance's gateway, by the same rule. Not set, or empty, declares none. |
+| `QORY_INSTALLED_GATEWAY_URL` | required with `QORY_INSTALLED_GATEWAY` | The address pools reach the gateway at: `https://`, a host, and a port if needed, nothing more. Set without `QORY_INSTALLED_GATEWAY`, it stops the boot. |
+
+The instance's pool and gateway run beside Qory Apiary, with no organisation and no
+workspace; `compose.yaml` runs neither. Once the instance is set up, Qory Apiary adds each
+one declared and, while it has no key in use, writes a one-time code for it to
+`<name>/code` in `QORY_ENROLMENT_DIR`, `/run/qory/enrolment` when not set. The pool or
+the gateway makes its key from that code: no person runs a command for them. The pool
+takes the runs of every workspace with no node pool in use, and the gateway serves every
+organisation.
+
+The gateway's key allows stored secrets, which a test run with a model key needs; a key
+that a person makes on **Nodes** never allows them, so a test run through a gateway added
+there ends before a machine starts it. For a workspace with no node pool in use, the
+overview's step **Machines for runs** is done once the pool and the gateway each have a
+key in use. An instance admin checks them in **Instance settings › Nodes**: each is ready
+when **State** shows **Running** or **Last seen**. If one shows **Never seen**, open the
+logs of the pool and the gateway on the instance's host.
+
+The variables are read at boot. A malformed value, the same name for the pool and the
+gateway, a name that an adapter installed with Qory Apiary has, or a pool or gateway
+declared on an instance without `factory`, stops the boot.
+<!-- /feature -->
 
 ### Audit trail
 
@@ -611,14 +655,15 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 A new instance is set up with its **set-up link**
 ([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
-instance's organisation, with its workspace **Main**, and is its owner. The instance has
-that one organisation and that one workspace. The organisation is the instance owner, and
-its owners are the instance's **instance admins**
-([The instance admins](#the-instance-admins)); to everyone in it, it is an organisation
-like any other. Until the link is used nobody signs up: the sign-up and log-in pages say
-"This Qory Apiary is not set up yet: use the set-up link from its install."
+instance's organisation and is its owner, then creates its workspace **Main** on
+**Set up your workspace**. The instance has that one organisation and that one workspace.
+The organisation is the instance owner, and its owners are the instance's **instance
+admins** ([The instance admins](#the-instance-admins)); to everyone in it, it is an
+organisation like any other. Until the link is used nobody signs up: the sign-up and
+log-in pages show "This Qory Apiary is not set up yet: use the set-up link from its
+install."
 
-After it, nobody signs up without an invitation: the sign-up page says sign-up is by
+After it, nobody signs up without an invitation: the sign-up page shows that sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
 from an owner or an admin of the organisation, sent from its **People** page. Someone with
 an invitation signs up without being asked for an organisation's name, and joins the
@@ -702,12 +747,69 @@ Set up Qory Apiary at https://qory.example.com/setup/<code>.
 
 With `compose.yaml`, `docker compose logs apiary | grep 'Set up Qory Apiary'` finds it:
 the log is one JSON object per line ([Logs](#logs)), and the sentence above is the line's
-`message`. Open the link: its page asks for your email address, a password and its
-confirmation, your organisation's name, and the **Workspace type** of its workspace Main:
-**Software workspace**, for work on code, or **General workspace**, for any other work.
-The type can't be changed after. **Set up** creates the instance's organisation, its
-workspace Main and your account as its owner, an instance admin, and signs you in. The code is 32 random bytes, kept in the database until it is used; it does
-not expire before, and it works once: after it, any set-up link says "This Qory Apiary is
+`message`. Open the link. Its page, **Set up Qory Apiary**, has the fields **Email**,
+**Password**, **Confirm password** and **Organisation name**. **Set up** creates the
+instance's organisation and your account as its owner, an instance admin, and signs you
+in. It creates no workspace.
+
+Each page of the set-up shows the list of its steps: **Your account**, the steps under
+**Connect Qory Apiary**, then those under **Set up your workspace**, with a mark on each
+step done and **Skipped** under each step skipped. On a window narrower than 1280 px,
+the list is a bar with **Step 2 of 4** and **All steps**, which opens the list. Once
+you are signed in, each step done or skipped is a link to that step where it has a
+page; **Your account** is not. **Back**, at the foot of a step's form, opens the step
+before it. A step you open again shows what you saved there, and
+you can change it. The step **Workspace**, opened again, shows the workspace's type and
+**Continue**: the type can't be changed. A column headed **About this step**, beside
+the form or under it on a window narrower than 1024 px, says what the step does. Two
+pages follow the set-up link's page:
+
+1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
+   `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save
+   and send a test** saves the mail server and emails you a test link; mail turns on
+   when you follow that link while signed in. **Skip** leaves mail for later. Where the
+   server's environment sets mail, the step shows those settings and **Continue**. Until
+   an instance admin finishes or skips this step, each sign-in of an instance admin
+   opens this page first.
+2. **Set up your workspace**, at `/<organisation>/set-up?step=type`, creates the
+   organisation's workspace Main. In **Type**, choose **Software**, for work on code, or
+   **General**, for any other work; no type is chosen before you choose one. The type
+   can't be changed after. **Create workspace** creates Main and opens its overview:
+   `/acme/main` for an organisation named `Acme`. Until Main exists, a sign-in of a
+   member of the organisation opens this page. If another member creates Main while the
+   page is open, the page opens Main's overview without a reload.
+
+<!-- feature: factory -->
+With the `factory` feature, both pages have more steps:
+
+- **Connect Qory Apiary** has one step for each adapter that **Instance settings ›
+  Adapters** lists, at `/instance/set-up?step=<adapter id>`, then **Mail**. An
+  adapter's step shows **State:** with **Set up** or **Not set up**. While **Set up**
+  shows, the column **About this step** lists, under **In the new tab**, the adapter's
+  steps for its set-up, where the adapter has some. Select **Set up**: the adapter's
+  set-up page opens in a new tab. Follow those steps there. Back on the set-up page,
+  once the state shows **Set up**, select **Continue**. The step of an adapter without a
+  key in use, or of one that has not sent the address where it is set up, shows what to
+  do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
+  connection for later, in **Instance settings**.
+- **Create workspace**, or another member's creating Main while the page is open, opens,
+  for an owner or an admin, the step **Work source** of **Set up your workspace** in
+  place of the overview: **Connect a work source to Main**, at
+  `/<organisation>/set-up?step=source`; a member goes to Main's overview. The step lists
+  the work sources that the instance has set up for the workspace's type, each with
+  **Connect**. Select **Connect** beside one, and follow the steps that the column
+  **About this step** lists under its name. **Skip** opens the overview, where you
+  connect one later from the step **Work source**. With no work source for the type, the
+  page shows so, and **Continue** opens the overview. Only owners and admins connect a
+  work source.
+
+The overview then shows **Set up Main** until a test run passes:
+[Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has its
+steps.
+<!-- /feature -->
+
+The code is 32 random bytes, kept in the database until it is used; it does
+not expire before, and it works once: after it, any set-up link shows "This Qory Apiary is
 already set up." and leads to the log-in page. Anyone who can read the log can use the
 link before you do, so open it as soon as the instance is up. On an instance that is set
 up, a restored one included, a start writes no such line. The address in the link is the
@@ -781,12 +883,14 @@ bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")
 
 On an instance that is not set up, it sets it up: it creates the organisation, its
 workspace Main and the account as its owner, makes the set-up link work no more, and
-emails the account its log-in link. Without the name it is refused and says so. Should
-the email not go out, the instance is set up all the same, and the command says to ask
-for a link at `/users/log-in` once the mail settings work; it never prints the address or
-the link. Without mail it prints a password link for the account instead, which works
-once, for an hour, and never the address: open it to set your password. Should the set-up
-link be used a moment before, the command does what it does on any instance.
+emails the account its log-in link. Unlike the set-up link, it creates Main itself, of the
+type **Software**, so **Set up your workspace** does not open. Without the name it is
+refused and says so. Should the email not go out, the instance is set up all the same,
+and the command says to ask for a link at `/users/log-in` once the mail settings work; it
+never prints the address or the link. Without mail it prints a password link for the
+account instead, which works once, for an hour, and never the address: open it to set
+your password. Should the set-up link be used a moment before, the command does what it
+does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,
 adding it to the organisation when it is not there yet; the account must exist, so the
@@ -851,8 +955,8 @@ To try Qory Apiary with data in it, load the demo into a new instance: synthetic
 people and nodes, all under `example.com` and other example names. Never load it into an
 instance people work in.
 
-1. Set up the instance with the organisation name **Acme**
-   ([Set up a new instance](#set-up-a-new-instance)).
+1. Set up the instance with the organisation name **Acme**, and create its workspace Main
+   at `/acme/set-up` ([Set up a new instance](#set-up-a-new-instance)).
 2. Run on the release:
 
    ```sh
@@ -875,8 +979,8 @@ bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
 ```
 
 The command makes nothing and stops when the instance is not set up, its organisation is
-not Acme, or its workspace Main already has runs or nodes. Otherwise it prints what it
-made, and last the address to open.
+not Acme, Acme has no workspace Main yet, or Main already has runs or nodes. Otherwise it
+prints what it made, and last the address to open.
 
 ## Backups
 

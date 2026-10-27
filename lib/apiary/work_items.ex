@@ -9,14 +9,15 @@ defmodule Apiary.WorkItems do
   # the scope's workspace in as a new work item, with its first run queued;
   # `take_in_again(scope, item_id, attrs)` brings back the ended work item of that ticket,
   # in the organisation, live again in the scope's workspace, with a new count of runs;
-  # `undo(scope, work_item)` undoes the latest take in while no claim holds its run;
-  # `decline(scope, work_item)` declines a live work item while none of its runs is live
-  # and its take in is not confirmed; `close(scope, work_item)` closes a live one. `attrs`
-  # holds the owner (`owner_id`) and the first instruction (`first_instruction`) the page
-  # gives. Each runs in one transaction with its event, its run, its feed entry and its
-  # entry in the trail, asks its action of `Apiary.Access`, and tells the pages once it
-  # commits. `Apiary.WorkItems.Moves` says how, what each refuses, and the order of its
-  # locks.
+  # `take_in_test(scope, line)` makes a test work item from a line the person typed, with
+  # no ticket, and queues its first run; `undo(scope, work_item)` undoes the latest take
+  # in while no claim holds its run; `decline(scope, work_item)` declines a live work item
+  # while none of its runs is live and its take in is not confirmed; `close(scope,
+  # work_item)` closes a live one. `attrs` holds the owner (`owner_id`) and the first
+  # instruction (`first_instruction`) the page gives. Each runs in one transaction with
+  # its event, its run, its feed entry and its entry in the trail, asks its action of
+  # `Apiary.Access`, and tells the pages once it commits. `Apiary.WorkItems.Moves` says
+  # how, what each refuses, and the order of its locks.
   #
   # ## What a member gives Explore: answer, confirm, explore again
   #
@@ -58,7 +59,9 @@ defmodule Apiary.WorkItems do
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
   # `get_for_ticket/2` find one work item for a page, and `ticket/3` is its ticket for the
   # work item page's Ticket tab. Each answers nothing to a person who may not read the
-  # workspace's work items (`work_item.read`).
+  # workspace's work items (`work_item.read`). Each reads a test work item
+  # (`Apiary.WorkItems.WorkItem.test_changeset/2`) as any work item; its ticket has no
+  # record and no integration.
   #
   # ## Closing: `close_locked/3` and `close_for_adapter/2`
   #
@@ -101,7 +104,7 @@ defmodule Apiary.WorkItems do
   # before the runs it lapses, so a close that held runs and then waited on a pool could
   # wait on a claim that waits on it.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -146,6 +149,15 @@ defmodule Apiary.WorkItems do
           {:ok, WorkItem.t()} | {:error, Moves.take_in_refusal()}
   def take_in(%Scope{} = scope, item_id, attrs \\ %{}),
     do: Moves.take_in(scope, item_id, Map.new(attrs))
+
+  @doc false
+  # take_in_test/2 makes a test work item of the scope's workspace from `line`, the line
+  # a person typed, with its first run queued, asked as a take in is
+  # (`Apiary.WorkItems.Moves`): `{:ok, work_item}`, or a refusal.
+  @spec take_in_test(Scope.t(), term) ::
+          {:ok, WorkItem.t()}
+          | {:error, :not_found | :forbidden | :test_running | Ecto.Changeset.t()}
+  defdelegate take_in_test(scope, line), to: Moves
 
   @doc false
   # take_in_again/3 brings back the ended work item of the ticket `item_id`, live again in
@@ -644,7 +656,8 @@ defmodule Apiary.WorkItems do
   # row is read again by its id, as for `explore/3`, and its ticket is the record
   # `ticket_query/0` names. It is a map of:
   #
-  #   * `integration` - the name of the adapter the ticket came through, with
+  #   * `integration` - the name of the adapter the ticket came through, nil for a test
+  #     work item, which came through none, with
   #     `item_noun` and `collection_noun`, its words (`Apiary.Adapters.item_noun/1`,
   #     `collection_noun/1`), and `adapter_removed`, whether the adapter was removed;
   #   * `uninstalled` - whether the record's connection ended because the integration was
@@ -661,9 +674,23 @@ defmodule Apiary.WorkItems do
   def ticket(%Scope{} = scope, %WorkItem{} = work_item, comments \\ :latest)
       when comments in [:latest, :all] do
     case readable(scope, work_item) do
+      {:ok, %WorkItem{test: true}} -> no_ticket()
       {:ok, row} -> ticket_of(row, comments)
       :error -> nil
     end
+  end
+
+  defp no_ticket do
+    %{
+      integration: nil,
+      item_noun: nil,
+      collection_noun: nil,
+      adapter_removed: false,
+      uninstalled: false,
+      uninstalled_at: nil,
+      ticket: nil,
+      comments: []
+    }
   end
 
   defp ticket_of(%WorkItem{} = row, comments) do

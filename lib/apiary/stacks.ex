@@ -14,10 +14,11 @@ defmodule Apiary.Stacks do
   #
   # ## Writes
   #
-  # `put_stack/3` and `delete_stack/1` set and remove the stack at one place. Only tests
-  # call them, and the demo (`mix apiary.demo.console`) calls `put_stack/3`: no route or
-  # page does, and they check no access and write no audit entry. `harness.save` is the
-  # access action for a save. A write records the person who saved the value and, in
+  # `put_stack/3` and `delete_stack/1` set and remove the stack at one place. They check no
+  # access and write no audit entry. Tests call them, the demo (`mix apiary.demo.console`)
+  # calls `put_stack/3`, and Workspace settings › Workflow calls both through
+  # `Apiary.Stacks.Sources.save/3`, which asks `harness.save`, the access action for a
+  # save, first. A write records the person who saved the value and, in
   # `owner_organisation_id`, the organisation the edition gives for the scope
   # (`Apiary.Edition.harness_owner/1`). The core gives the scope's organisation when the
   # scope reaches it through a membership there alone (`saved_by/1`), and the instance's
@@ -206,8 +207,7 @@ defmodule Apiary.Stacks do
   # (`Apiary.Edition.harness_owner/1`). `opts`: `access`, the access level recorded for
   # the runs of the place's workflow, `:read` or `:write`, nil for none (the default).
   # `{:ok, stack}`; `{:error, :forbidden}` when the edition gives none; or `{:error,
-  # changeset}` with the reason on its field. Only tests and the demo call it: no route
-  # or page does, and it checks no access (the moduledoc).
+  # changeset}` with the reason on its field. It checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness, opts \\ []) do
@@ -241,8 +241,8 @@ defmodule Apiary.Stacks do
 
   @doc false
   # delete_stack/1 removes the stack at `place`, so the next level applies. `{:ok,
-  # stack}`, as it was, or `{:error, :not_found}` for a place with none. Only tests call
-  # it: no route or page does, and it checks no access (the moduledoc).
+  # stack}`, as it was, or `{:error, :not_found}` for a place with none. It checks no
+  # access (the moduledoc).
   @spec delete_stack(place) :: {:ok, Stack.t()} | {:error, :not_found}
   def delete_stack(place) do
     columns = columns(place)

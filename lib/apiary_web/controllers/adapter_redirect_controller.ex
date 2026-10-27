@@ -9,16 +9,18 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # when the person comes back from it, it first takes the return
   # (`Apiary.Adapters.Connections.complete_return/4`) with the nonce the person's session
   # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
-  # ended there. A return the person did not start in this browser is answered with a
-  # page that says so; a link that names no connection they reach, and a return that is
-  # bad, expired or used, as a path that does not exist, whoever asks, so the link does
-  # not tell whether one exists. Behind sign-in: an anonymous visitor is sent to log in
-  # first. `return` is kept out of the logs (`:filter_parameters`). Every answer of this
-  # controller, the redirect, after a return or not, the 403 page and the 404 alike, says
-  # `Referrer-Policy: no-referrer`, so no page it leads to sends the link, with its
-  # `return`, on as a referrer.
+  # ended there. Where the session keeps "set-up" beside that nonce, an install started at
+  # the workspace set-up, the return leads to its Work source step,
+  # `/<org>/set-up?step=source`, in place of the integration's page. A return the person
+  # did not start in this browser is answered with a page that says so; a link that names
+  # no connection they reach, and a return that is bad, expired or used, as a path that
+  # does not exist, whoever asks, so the link does not tell whether one exists. Behind
+  # sign-in: an anonymous visitor is sent to log in first. `return` is kept out of the
+  # logs (`:filter_parameters`). Every answer of this controller, the redirect, after a
+  # return or not, the 403 page and the 404 alike, says `Referrer-Policy: no-referrer`, so
+  # no page it leads to sends the link, with its `return`, on as a referrer.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :controller
@@ -36,7 +38,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
         path = ~p"/#{scope.organisation}/settings/integrations/#{connection.adapter}"
 
         case params do
-          %{"return" => token} -> complete(conn, connection, token, path)
+          %{"return" => token} -> complete(conn, connection, token, path, scope.organisation)
           _none -> redirect(conn, to: path)
         end
 
@@ -45,7 +47,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
     end
   end
 
-  defp complete(conn, connection, token, path) do
+  defp complete(conn, connection, token, path, organisation) do
     session_nonce = ConnectSession.fetch(conn, connection.public_id)
 
     case Connections.complete_return(
@@ -55,10 +57,16 @@ defmodule ApiaryWeb.AdapterRedirectController do
            session_nonce
          ) do
       {:ok, outcome} ->
+        to =
+          case ConnectSession.back(conn, connection.public_id) do
+            "set-up" -> ~p"/#{organisation}/set-up?step=source"
+            nil -> path
+          end
+
         conn
         |> ConnectSession.drop(connection.public_id)
         |> told(outcome, connection.adapter.name)
-        |> redirect(to: path)
+        |> redirect(to: to)
 
       {:error, :wrong_person} ->
         conn

@@ -33,11 +33,6 @@ msgstr ""
 msgid "Change the model choices that use the key %{value} first: %{places}."
 msgstr ""
 
-#: lib/apiary/model_choices.ex
-#, elixir-autogen, elixir-format
-msgid "Choose a model from %{provider}'s list: %{model} is not on it."
-msgstr ""
-
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a type."
@@ -74,9 +69,9 @@ msgstr ""
 msgid "Choose one of %{provider}'s keys: %{value} is not one of them."
 msgstr ""
 
-#: lib/apiary/connections/provider_model.ex
+#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
-msgid "Edit the model already listed, or enter another ID. This provider already has %{model}."
+msgid "Choose one of the offered runtimes: %{runtime} is not one of them."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
@@ -97,6 +92,11 @@ msgstr ""
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Enter the host that runs reach over the network. %{host} is a name for the local machine."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Leave the effort empty: %{model} has no effort values to choose from."
 msgstr ""
 
 #: lib/apiary/targets.ex
@@ -124,11 +124,6 @@ msgstr ""
 msgid "Line %{line} repeats line %{first}."
 msgstr ""
 
-#: lib/apiary/connections/provider_model.ex
-#, elixir-autogen, elixir-format
-msgid "List at most %{count} effort values, each once."
-msgstr ""
-
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."
@@ -137,11 +132,6 @@ msgstr ""
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Percent-encode %{character} in the path, or remove it."
-msgstr ""
-
-#: lib/apiary/connections.ex
-#, elixir-autogen, elixir-format
-msgid "Remove a model first: a provider has at most %{count} models."
 msgstr ""
 
 #: lib/apiary/kinds/endpoint.ex
@@ -169,13 +159,11 @@ msgstr ""
 msgid "Together with %{target}, these come to %{bytes} characters; the most is 256."
 msgstr ""
 
-#: lib/apiary/connections/provider_model.ex
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
 msgstr ""
 
-#: lib/apiary/connections/provider_model.ex
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."

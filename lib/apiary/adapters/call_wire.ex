@@ -19,19 +19,25 @@ defmodule Apiary.Adapters.CallWire do
   #     no `token`; and no `placeholders`. `{:ok, credential}`, the document as decoded.
   #   * `resolve` (`resolve.schema.json`): `addresses`, 1 to 64, each once, 1 to 2,048
   #     printable ASCII characters. Its answer is `results`, one for each address, in the
-  #     call's order: `address`, then `grant_ref` and `resource_ref`, or `covered`,
-  #     false, and neither ref. `{:ok, [%{address:, grant_ref:, resource_ref:}
+  #     call's order: `address`, then `grant_ref` and `resource_ref`, with `public`, true,
+  #     and `public_ref` when given; or `resource_ref`, `public`, true, and `public_ref`,
+  #     with no `grant_ref`; or `covered`, false, and no ref. `{:ok, [%{address:,
+  #     grant_ref:, resource_ref:} | %{address:, grant_ref:, resource_ref:, public: true,
+  #     public_ref:} | %{address:, resource_ref:, public: true, public_ref:}
   #     | %{address:, covered: false}]}`.
   #   * `read` (`read.schema.json`): `grant_ref`, `resource_ref`, `path`, a relative path
   #     of 1 to 1,024 characters with no NUL, no empty part and no part `.` or `..`, and
   #     `at`, a version ref. Its answer is `resolved_at`, a version ref, and `content`, UTF-8
   #     of at most 262,144 bytes with no NUL, or `found`, false, and no `content`.
   #     `{:ok, %{resolved_at:, content: content | nil, found: boolean}}`.
+  #   * `read-public` (`read-public.schema.json`): the members of `read` but `grant_ref`,
+  #     with a public result's `public_ref` as `resource_ref`. Its answer is the answer to
+  #     `read`.
   #
   # A ref is 1 to 200 characters with no NUL; a version ref 1 to 255 of `A-Z`, `a-z`,
   # `0-9`, `.`, `_`, `/` and `-`.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   @revision 1
@@ -83,6 +89,11 @@ defmodule Apiary.Adapters.CallWire do
       version_ref?(body["at"])
   end
 
+  defp call_members?("read-public", body) do
+    keys?(body, ~w(at path resource_ref)) and ref?(body["resource_ref"]) and
+      document_path?(body["path"]) and version_ref?(body["at"])
+  end
+
   defp call_members?(_path, _body), do: false
 
   defp run_credential?(body),
@@ -120,7 +131,7 @@ defmodule Apiary.Adapters.CallWire do
     end
   end
 
-  defp read("read", body, _call, _now) do
+  defp read(path, body, _call, _now) when path in ["read", "read-public"] do
     with true <- version_ref?(body["resolved_at"]),
          {:ok, content, found} <- document(body) do
       {:ok, %{resolved_at: body["resolved_at"], content: content, found: found}}
@@ -197,8 +208,36 @@ defmodule Apiary.Adapters.CallWire do
       {%{"address" => address, "grant_ref" => grant, "resource_ref" => resource} = result,
        address},
       read ->
-        if map_size(result) == 3 and ref?(grant) and ref?(resource),
-          do: {:cont, [%{address: address, grant_ref: grant, resource_ref: resource} | read]},
+        covered = %{address: address, grant_ref: grant, resource_ref: resource}
+
+        cond do
+          not (ref?(grant) and ref?(resource)) ->
+            {:halt, :error}
+
+          map_size(result) == 3 ->
+            {:cont, [covered | read]}
+
+          map_size(result) == 5 and public?(result) ->
+            public = %{public: true, public_ref: result["public_ref"]}
+            {:cont, [Map.merge(covered, public) | read]}
+
+          true ->
+            {:halt, :error}
+        end
+
+      {%{"address" => address, "resource_ref" => resource} = result, address}, read ->
+        if map_size(result) == 4 and ref?(resource) and public?(result),
+          do:
+            {:cont,
+             [
+               %{
+                 address: address,
+                 resource_ref: resource,
+                 public: true,
+                 public_ref: result["public_ref"]
+               }
+               | read
+             ]},
           else: {:halt, :error}
 
       _other, _read ->
@@ -209,6 +248,9 @@ defmodule Apiary.Adapters.CallWire do
       read -> Enum.reverse(read)
     end
   end
+
+  # A public result: `public`, true, and `public_ref`, a ref.
+  defp public?(result), do: result["public"] === true and ref?(result["public_ref"])
 
   # A read answer's document: `content`, or `found`, false; not both, not neither.
   defp document(body) do

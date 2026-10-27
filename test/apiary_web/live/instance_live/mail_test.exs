@@ -42,21 +42,34 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   # The fields of the mail settings that hold a password, given or saved.
   @sealed Apiary.Mail.Settings.__schema__(:redact_fields)
 
-  # The page's state holds no byte of the saved password's ciphertext; no settings, form
-  # data or changeset in it holds a password, given or saved; and its form's changeset
-  # none in its data or its changes.
+  # The page's state, and its form's (`ApiaryWeb.InstanceLive.MailForm`), hold no byte of
+  # the saved password's ciphertext; no settings, form data or changeset in them holds a
+  # password, given or saved; and the form's changeset none in its data or its changes.
   defp refute_sealed_state(view, ciphertext) do
-    assigns = :sys.get_state(view.pid).socket.assigns
-    assert :binary.match(:erlang.term_to_binary(assigns), ciphertext) == :nomatch
-    refute_sealed(assigns)
+    state = :sys.get_state(view.pid)
+    form_assigns = form_assigns(state)
 
-    %Phoenix.HTML.Form{data: data, source: %Ecto.Changeset{} = changeset} = assigns.form
+    for assigns <- [state.socket.assigns, form_assigns] do
+      assert :binary.match(:erlang.term_to_binary(assigns), ciphertext) == :nomatch
+      refute_sealed(assigns)
+    end
+
+    %Phoenix.HTML.Form{data: data, source: %Ecto.Changeset{} = changeset} = form_assigns.form
 
     for field <- @sealed do
       assert Map.get(data, field) == nil
       assert Map.get(changeset.data, field) == nil
       refute Map.has_key?(changeset.changes, field)
     end
+  end
+
+  # The assigns of the page's form, the live component `ApiaryWeb.InstanceLive.MailForm`,
+  # as the page's process holds them.
+  defp form_assigns(%{components: {by_cid, _by_id, _uuids}}) do
+    Enum.find_value(by_cid, fn
+      {_cid, {ApiaryWeb.InstanceLive.MailForm, "mail", assigns, _private, _prints}} -> assigns
+      _other -> nil
+    end)
   end
 
   # Walks a term: wherever a map or a struct has one of the sealed fields, it is empty. A
@@ -121,6 +134,17 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   defp save(view, attrs \\ @attrs),
     do: view |> form("#mail_form", mail: attrs) |> render_submit()
 
+  # The mail form in `html` is sent with POST, and its password's field has no value.
+  defp assert_posts_without_password(html) do
+    form = LazyHTML.query(html, "#mail_form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.attribute(form, "action") == []
+
+    password = LazyHTML.query(form, ~s{input[type="password"]})
+    assert LazyHTML.attribute(password, "name") == ["mail[smtp_password]"]
+    assert LazyHTML.attribute(password, "value") == []
+  end
+
   # Nothing of mail is saved: no row of the instance's settings, or one that holds none of
   # the mail's columns, as the instance's set-up leaves it (`Apiary.Setup`).
   defp no_mail_saved? do
@@ -177,7 +201,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
       assert has_element?(
                view,
-               "#mail_form input[name='mail[smtp_password]'][type='password'][value=''][autocomplete='new-password']"
+               "#mail_form input[name='mail[smtp_password]'][type='password'][autocomplete='new-password']:not([value])"
              )
 
       assert text(view, "#mail-save") =~
@@ -197,7 +221,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute inspect(:sys.get_state(view.pid), limit: :infinity, printable_limit: :infinity) =~
                @password
 
-      assert has_element?(view, "#mail_form input[name='mail[smtp_password]'][value='']")
+      assert has_element?(view, "#mail_form input[name='mail[smtp_password]']:not([value])")
 
       assert has_element?(
                view,
@@ -283,8 +307,18 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
       old = DateTime.add(DateTime.utc_now(:second), -21, :minute)
 
+      # The page's scope, and its form's, which the page gave it.
       :sys.replace_state(view.pid, fn state ->
-        put_in(state.socket.assigns.current_scope.user.authenticated_at, old)
+        state = put_in(state.socket.assigns.current_scope.user.authenticated_at, old)
+        {by_cid, by_id, uuids} = state.components
+
+        by_cid =
+          Map.new(by_cid, fn {cid, {module, id, assigns, private, prints}} ->
+            assigns = put_in(assigns.current_scope.user.authenticated_at, old)
+            {cid, {module, id, assigns, private, prints}}
+          end)
+
+        %{state | components: {by_cid, by_id, uuids}}
       end)
 
       assert {:error, {:redirect, %{to: "/users/log-in"}}} = save(view)
@@ -358,6 +392,28 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute html =~ @password
       assert Process.alive?(view.pid)
       assert no_mail_saved?()
+    end
+
+    test "posts its form, and the password's field has no value", %{conn: conn} do
+      # The page before it connects: a submit there is the browser's, with the form's method.
+      html = conn |> get(~p"/instance/mail") |> html_response(200)
+      assert_posts_without_password(LazyHTML.from_document(html))
+
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      html = save(view)
+      refute html =~ @password
+      assert_posts_without_password(LazyHTML.from_fragment(html))
+
+      # With settings saved, a form of their changeset is `method="put"` unless it says
+      # otherwise, and a browser sends that as a GET.
+      html = conn |> get(~p"/instance/mail") |> html_response(200)
+      assert_posts_without_password(LazyHTML.from_document(html))
+
+      html = save(view, %{@attrs | "smtp_port" => "0", "smtp_password" => "s3cret-example"})
+
+      assert html =~ "aria-invalid"
+      refute html =~ "s3cret-example"
+      assert_posts_without_password(LazyHTML.from_fragment(html))
     end
 
     test "a refused save shows what to change, and keeps no password", %{conn: conn} do

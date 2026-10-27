@@ -11,7 +11,7 @@ defmodule Apiary.Policy.Render do
   never writes the contract's `credentials` member.
   """
 
-  # With the features `factory` and `secrets`, which the documentation leaves out:
+  # With the features `factory` and `secrets`:
   # `credentials` and `model_credential` are written in the document composed for a run
   # that its claim set a model provider for (`Apiary.Policy.ComposedConfiguration`,
   # `Apiary.Runs.ProviderCredential`), never in a policy's.

@@ -24,10 +24,10 @@ defmodule Apiary.Connections do
     * A **model provider** is an integration added from a description of the catalogue
       (`Apiary.Kinds.Providers`), with no release. It links one organisation's secret,
       whose values are its keys (`Apiary.Secrets.create_provider_keys/2`), one of them its
-      default key, and keeps a list of models (`Apiary.Connections.ProviderModel`),
-      started from the description's, the first the default. The functions under "Model
-      providers" below read and change them; `list_connections/1`, `get_connection/2` and
-      `list_for_rendering/1` leave providers out.
+      default key. It keeps no list of models: its models are its description's
+      (`provider_models/1`), the first its default model (`default_model/1`). The
+      functions under "Model providers" below read and change it; `list_connections/1`,
+      `get_connection/2` and `list_for_rendering/1` leave providers out.
 
   No connection holds a secret, and the audit trail never carries a value.
 
@@ -54,7 +54,7 @@ defmodule Apiary.Connections do
   A change to a provider takes the organisation's integrations lock, then the provider's
   row `FOR UPDATE`, then, to change its keys, the organisation's lock for its secrets and
   its keys' secret row `FOR UPDATE`, or that row `FOR SHARE` to choose a default key. Deleting it
-  deletes its models and its keys' secret with it (`Apiary.Secrets.delete_provider_keys/3`).
+  deletes its keys' secret with it (`Apiary.Secrets.delete_provider_keys/3`).
 
   ## Where a connection applies
 
@@ -86,7 +86,7 @@ defmodule Apiary.Connections do
 
   Reading is `connection.read`, every member. A change is asked under the action for what
   it writes (`write_action/1`), owners and admins in each case, all asked of the
-  organisation: `provider.write` for a model provider, its keys and its models,
+  organisation: `provider.write` for a model provider and its keys,
   `runtime.write` for a runtime, and `connection.write` for an integration, a service, a
   release of an integration and a service definition. A change leaves one entry in the
   organisation's audit trail, in its transaction, of the action it was asked under,
@@ -124,7 +124,6 @@ defmodule Apiary.Connections do
     Connection,
     ConnectionWorkspace,
     Overlap,
-    ProviderModel,
     ServiceDefinition
   }
 
@@ -274,12 +273,11 @@ defmodule Apiary.Connections do
       workspaces: from(w in ConnectionWorkspace, order_by: w.workspace_id)
     ]
 
-  # A provider's: its workspaces, its models in their order, and its keys' secret with its
-  # values, never their ciphertext.
+  # A provider's: its workspaces, and its keys' secret with its values, never their
+  # ciphertext.
   defp preloads(%Connection{provider_kind: kind}) when is_binary(kind),
     do: [
       workspaces: from(w in ConnectionWorkspace, order_by: w.workspace_id),
-      models: from(m in ProviderModel, order_by: [asc: m.position, asc: m.id]),
       secret: [
         values: from(v in Value, select: struct(v, ^Value.public_fields()), order_by: v.value_id)
       ]
@@ -1110,10 +1108,10 @@ defmodule Apiary.Connections do
 
   @doc """
   list_providers/1 is the scope's organisation's model providers, by name, each with its
-  workspaces, its models in their order, its keys' secret with the value ids of its
-  values, never a value, and `intact` set: `{:ok, providers}` for a reader who may
-  `connection.read`, where the features `factory` and `secrets` are shown to the scope;
-  else `{:error, reason}`, `:not_found` with either off.
+  workspaces, its keys' secret with the value ids of its values, never a value, and
+  `intact` set: `{:ok, providers}` for a reader who may `connection.read`, where the
+  features `factory` and `secrets` are shown to the scope; else `{:error, reason}`,
+  `:not_found` with either off.
 
   `chain` is the chain whose providers are listed, `"organisation"` by default. The
   providers of the chain `"operator"` are listed only where the edition says that the scope
@@ -1181,8 +1179,37 @@ defmodule Apiary.Connections do
   end
 
   @doc """
+  provider_models/1 is the models of a model provider: those of its description, in the
+  description's order, each a map of `id`, `title` and, when the description lists them,
+  `effort`, the effort values the model accepts. Given a provider connection, the
+  description it was added from (`provider/1`), and `[]` once the catalogue changed or no
+  longer has it. A model choice may name any other model id too.
+  """
+  @spec provider_models(Connection.t() | Provider.t()) :: [map]
+  def provider_models(%Provider{models: models}), do: models
+
+  def provider_models(%Connection{} = provider) do
+    case provider(provider) do
+      {:ok, description} -> provider_models(description)
+      {:error, _changed} -> []
+    end
+  end
+
+  @doc """
+  default_model/1 is the id of a model provider's default model, the first of
+  `provider_models/1`: nil for a provider whose description lists no model.
+  """
+  @spec default_model(Connection.t() | Provider.t()) :: String.t() | nil
+  def default_model(provider) do
+    case provider_models(provider) do
+      [%{"id" => id} | _rest] -> id
+      [] -> nil
+    end
+  end
+
+  @doc """
   create_provider/2 adds a model provider of the catalogue to the scope's organisation
-  (`provider.write`), in one transaction with its keys and its models. `attrs` has:
+  (`provider.write`), in one transaction with its keys. `attrs` has:
 
     * `provider`, the name of a provider of the catalogue, else `:provider_unknown`;
     * `name`, the description's title by default; `applies_to` (`all` by default) and
@@ -1196,11 +1223,12 @@ defmodule Apiary.Connections do
       chain, which is refused with `:forbidden` unless the edition says that the scope
       writes that chain (`operator_chain_writer?/1`).
 
-  The keys are stored as an organisation's secret that the provider links; the models
-  are the description's, in its order, the first the default. `{:ok, provider}`, loaded as
-  `get_provider/2` loads it, or `{:error, refusal}`: a changeset of the provider whose
-  errors are on `name`, `applies_to`, `settings` or `default_value_id`, a changeset of the
-  keys' secret whose errors are on `values`, or a refusal of the settings.
+  The keys are stored as an organisation's secret that the provider links. The provider
+  keeps no models: `provider_models/1` reads them from its description.
+  `{:ok, provider}`, loaded as `get_provider/2` loads it, or `{:error, refusal}`: a
+  changeset of the provider whose errors are on `name`, `applies_to`, `settings` or
+  `default_value_id`, a changeset of the keys' secret whose errors are on `values`, or a
+  refusal of the settings.
   """
   @spec create_provider(Scope.t(), map) :: {:ok, Connection.t()} | {:error, refusal}
   def create_provider(%Scope{} = scope, attrs) do
@@ -1226,7 +1254,6 @@ defmodule Apiary.Connections do
              default_key(changeset, provider, secret, attrs["default_key"] || first_key(attrs)),
            {:ok, inserted} <- insert_sealed(changeset),
            :ok <- insert_workspaces(inserted, workspace_ids),
-           :ok <- insert_models(inserted, provider.models),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"provider.write", inserted, %{
                after: provider_audited(inserted),
@@ -1378,29 +1405,6 @@ defmodule Apiary.Connections do
   defp default_address({:ok, default}), do: default
   defp default_address(:error), do: nil
 
-  defp insert_models(%Connection{} = provider, models) do
-    now = DateTime.utc_now()
-
-    rows =
-      for {model, position} <- Enum.with_index(models) do
-        %{
-          id: Ecto.UUID.generate(),
-          organisation_id: provider.organisation_id,
-          connection_id: provider.id,
-          model_id: model["id"],
-          title: model["title"],
-          effort: model["effort"],
-          position: position,
-          is_default: position == 0,
-          inserted_at: now,
-          updated_at: now
-        }
-      end
-
-    {_count, _} = Repo.insert_all(ProviderModel, rows)
-    :ok
-  end
-
   @doc """
   update_provider/3 changes a model provider (`provider.write`): its `name`,
   `applies_to` and `settings`, checked as `create_provider/2` checks them. A change of its
@@ -1486,8 +1490,8 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  delete_provider/2 removes a model provider (`provider.write`) with its workspaces, its
-  models and its keys' secret: `{:ok, provider}`, the provider as it was, or
+  delete_provider/2 removes a model provider (`provider.write`) with its workspaces and
+  its keys' secret: `{:ok, provider}`, the provider as it was, or
   `{:error, refusal}`: `{:model_in_use, places}` while a model choice uses it, with the
   places of those choices; `{:provider_in_use, %{places: places, runs: run_public_ids}}`
   while a run that is pending or running uses it, with the public ids of those runs, and
@@ -1722,203 +1726,6 @@ defmodule Apiary.Connections do
         preload: [values: ^from(v in Value, select: struct(v, [:id, :value_id]))]
     )
   end
-
-  @doc """
-  add_provider_model/3 adds a model to the end of a model provider's list
-  (`provider.write`): `attrs` has `model_id`, `title` (the model id by default) and
-  `effort`, a list of effort values, none by default. A provider with no default model
-  takes it as its default. `{:ok, provider}`, or `{:error, refusal}`: a changeset whose
-  errors are on `model_id`, `title` or `effort`, `model_id`'s when the provider has the
-  model already or has `Apiary.Connections.ProviderModel.models_max/0` models.
-  """
-  @spec add_provider_model(Scope.t(), Connection.t(), map) ::
-          {:ok, Connection.t()} | {:error, refusal}
-  def add_provider_model(%Scope{} = scope, %Connection{} = provider, attrs) do
-    write_provider(scope, provider, fn scope, _organisation, current ->
-      changeset = ProviderModel.changeset(%ProviderModel{}, stringify(attrs))
-      model_id = get_field(changeset, :model_id)
-
-      with :ok <- valid(changeset),
-           :ok <- room_for_model(changeset, current),
-           :ok <- model_not_listed(changeset, current, model_id),
-           {:ok, model} <-
-             changeset
-             |> change(
-               organisation_id: current.organisation_id,
-               connection_id: current.id,
-               position: next_position(current),
-               is_default: not Enum.any?(current.models, & &1.is_default)
-             )
-             |> Repo.insert(),
-           {:ok, _entry} <-
-             model_entry(scope, current, "provider_model_added", %{
-               after: model_audited(model),
-               details: %{model_id: model.model_id}
-             }),
-           do: {:ok, current}
-    end)
-  end
-
-  defp room_for_model(changeset, %Connection{models: models}) do
-    if length(models) < ProviderModel.models_max(),
-      do: :ok,
-      else:
-        {:error,
-         add_error(
-           changeset,
-           :model_id,
-           dgettext_noop(
-             "errors",
-             "Remove a model first: a provider has at most %{count} models."
-           ),
-           count: ProviderModel.models_max()
-         )}
-  end
-
-  defp model_not_listed(changeset, %Connection{models: models}, model_id) do
-    if Enum.any?(models, &(&1.model_id == model_id)),
-      do: {:error, ProviderModel.taken(changeset, model_id)},
-      else: :ok
-  end
-
-  defp next_position(%Connection{models: []}), do: 0
-
-  defp next_position(%Connection{models: models}),
-    do: Enum.max_by(models, & &1.position).position + 1
-
-  @doc """
-  update_provider_model/4 changes the `title` and `effort` of the model with the exact id
-  `model_id` on a model provider's list (`provider.write`). `{:ok, provider}`, or
-  `{:error, refusal}`: `:not_found` for a model the list does not have, a changeset whose
-  errors are on `title` or `effort`. A change that changes nothing leaves no entry.
-  """
-  @spec update_provider_model(Scope.t(), Connection.t(), String.t(), map) ::
-          {:ok, Connection.t()} | {:error, refusal}
-  def update_provider_model(%Scope{} = scope, %Connection{} = provider, model_id, attrs) do
-    write_provider(scope, provider, fn scope, _organisation, current ->
-      with {:ok, model} <- listed_model(current, model_id),
-           changeset =
-             ProviderModel.changeset(
-               model,
-               attrs
-               |> stringify()
-               |> Map.take(["title", "effort"])
-               |> Map.put("model_id", model_id)
-             ),
-           :ok <- valid(changeset) do
-        case Audit.changed(model, apply_changes(changeset), [:title, :effort]) do
-          nil ->
-            {:ok, current}
-
-          changed ->
-            with {:ok, _model} <- Repo.update(changeset),
-                 {:ok, _entry} <-
-                   model_entry(
-                     scope,
-                     current,
-                     "provider_model_changed",
-                     Map.put(changed, :details, %{model_id: model_id})
-                   ),
-                 do: {:ok, current}
-        end
-      end
-    end)
-  end
-
-  @doc """
-  delete_provider_model/3 removes the model with the exact id `model_id` from a model
-  provider's list (`provider.write`). When it was the default, the first model left on
-  the list becomes the default. `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for
-  a model the list does not have, `{:model_in_use, places}` while a model choice uses the
-  model, by its model or a tier, with the places of those choices.
-  """
-  @spec delete_provider_model(Scope.t(), Connection.t(), String.t()) ::
-          {:ok, Connection.t()} | {:error, refusal}
-  def delete_provider_model(%Scope{} = scope, %Connection{} = provider, model_id) do
-    write_provider(scope, provider, fn scope, _organisation, current ->
-      with {:ok, model} <- listed_model(current, model_id),
-           :ok <- not_used(ModelChoices.places_using(current, model_id), []),
-           {:ok, _deleted} <- Repo.delete(model),
-           {:ok, default} <- default_after(current, model),
-           {:ok, _entry} <-
-             model_entry(scope, current, "provider_model_removed", %{
-               before: model_audited(model),
-               details: %{model_id: model_id, default_model_id: default}
-             }),
-           do: {:ok, current}
-    end)
-  end
-
-  # The default model once `removed` is gone: the same, or, when `removed` was the
-  # default, the first model left, made the default.
-  defp default_after(%Connection{models: models}, %ProviderModel{is_default: false}),
-    do: {:ok, Enum.find_value(models, &(&1.is_default && &1.model_id))}
-
-  defp default_after(%Connection{models: models}, %ProviderModel{id: id}) do
-    case Enum.reject(models, &(&1.id == id)) do
-      [] ->
-        {:ok, nil}
-
-      [first | _rest] ->
-        with {:ok, model} <- first |> change(is_default: true) |> Repo.update(),
-             do: {:ok, model.model_id}
-    end
-  end
-
-  @doc """
-  put_default_model/3 makes the model with the exact id `model_id` the model provider's
-  default model (`provider.write`). `{:ok, provider}`, or `{:error, refusal}`:
-  `:not_found` for a model the list does not have.
-  """
-  @spec put_default_model(Scope.t(), Connection.t(), String.t()) ::
-          {:ok, Connection.t()} | {:error, refusal}
-  def put_default_model(%Scope{} = scope, %Connection{} = provider, model_id) do
-    write_provider(scope, provider, fn scope, _organisation, current ->
-      with {:ok, model} <- listed_model(current, model_id) do
-        case Enum.find(current.models, & &1.is_default) do
-          %ProviderModel{id: id} when id == model.id ->
-            {:ok, current}
-
-          before ->
-            with :ok <- not_default(before),
-                 {:ok, _model} <- model |> change(is_default: true) |> Repo.update(),
-                 {:ok, _entry} <-
-                   model_entry(scope, current, "provider_default_model_changed", %{
-                     before: %{default_model_id: before && before.model_id},
-                     after: %{default_model_id: model_id}
-                   }),
-                 do: {:ok, current}
-        end
-      end
-    end)
-  end
-
-  defp not_default(nil), do: :ok
-
-  defp not_default(%ProviderModel{} = model) do
-    with {:ok, _model} <- model |> change(is_default: false) |> Repo.update(), do: :ok
-  end
-
-  defp listed_model(%Connection{models: models}, model_id) do
-    case Enum.find(models, &(&1.model_id == model_id)) do
-      %ProviderModel{} = model -> {:ok, model}
-      nil -> {:error, :not_found}
-    end
-  end
-
-  defp model_entry(scope, %Connection{} = provider, change, entry) do
-    details =
-      Map.merge(Map.get(entry, :details, %{}), %{
-        change: change,
-        connection_id: provider.public_id,
-        name: provider.name
-      })
-
-    Audit.record(Repo, scope, :"provider.write", provider, Map.put(entry, :details, details))
-  end
-
-  defp model_audited(%ProviderModel{} = model),
-    do: Map.take(model, [:model_id, :title, :effort])
 
   defp provider_audited(%Connection{} = provider),
     do:

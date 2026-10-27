@@ -212,11 +212,19 @@ the console keeps. Every other act happens on a page, in place:
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
-  from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and the
-  breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A save goes back
-  with a flash; a refused one stays, the error under its field. What a save shows once,
+  from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and
+  the breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A step of
+  the set-up has Back at its foot instead (The set-up, below). A save goes back with a
+  flash; a refused one stays, the error under its field. What a save shows once,
   such as a generated key's secret, it shows on the page the save leads to, never again
   once the reader leaves it.
+  A settings page whose form needs context has a column beside the form, **About this
+  page** (`PageComponents.context_column/1`, the `context` slot of `settings_page/1` and
+  `SettingsComponents.layout/1`): why the page exists, what it changes, and the steps the
+  reader takes outside it, never a field, an option or a button the form shows. It is
+  300 px wide beside the form once the section has 840 px for both (from a 1366 px screen
+  with the sidebar and the second column open), the form keeping up to 720 px, and under
+  the form below that; in reading order it comes after the form.
   A form is a page, under Settings, says the rest.
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
   Revoke, Remove, Suspend or Clear turns that row into the question, what is lost,
@@ -1172,6 +1180,47 @@ The classes of the shell are in `app.css`'s shell block, and they are
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
 hides its parts on phones in that block.
 
+## The set-up
+
+The set-up is the pages a person goes through before the console: the set-up link
+(`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
+(`/instance/set-up?step=<adapter id>|mail`) and Set up your workspace
+(`/<org>/set-up?step=type|source`). Each step has its URL, so a reload or a link opens
+that step. The signed-in pages show the top bar and no sidebar; the pages read signed
+out use `Layouts.set_up/1`, a header with the product's mark and the theme menu.
+
+- **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
+  form, and an `<aside>` headed **About this step** with what the step does, styled as a
+  settings page's column **About this page** (`.q-context`): the muted colour, no box.
+  From 1280 px they stand side by side, 220 · 480 · 320 px with 48 px gaps, from the
+  page's left edge. From 1024 px the indicator is a bar on top, and
+  the form and the aside stand side by side, 480 · 320 px. Below 1024 px the aside goes
+  under the form. In reading order the aside comes after the form. Steps done in another
+  system, such as an adapter's set-up in a new tab, are a numbered list in the aside,
+  headed by where they happen ("In the new tab", "On GitHub"); the form never repeats
+  them.
+- **The steps indicator** (`SetUpComponents.steps/1`) lists the steps that
+  `SetUpComponents.steps_for/3` builds for the person and the instance, after the
+  edition's answer (`c:Apiary.Edition.set_up_steps/2`). Above it: "Step 4 of 5" and a
+  progress bar, never a count of the steps left. The steps stand under their groups,
+  Connect Qory Apiary and Set up your workspace, each with its mark: a filled check when
+  done, a ring in the primary colour and `aria-current="step"` when current, a dash and
+  **Skipped** under a step passed over. Each step done or skipped is a link to that step
+  where it has a page, before the current step or after it; Your account is not, and on
+  the pages read signed out, only Invitation is. An edition's note about a step goes
+  under its name. Under the last step, "Next: on the Overview, Machines for runs, Model
+  key and Test run" where the factory is on. Below
+  1280 px the indicator is a bar, "Step 4 of 5: Workspace", with **All steps**, a
+  disclosure that opens the list; Escape closes it. A page with one step shows no
+  indicator.
+- **Back** (`SetUpComponents.back/1`) is the first button at the form's foot, left of the
+  primary one, and opens the step before the current one; its `aria-label` names that
+  step ("Back to Mail"). A step with no page before it, such as the one after Your
+  account, has no Back. It is the one Back at a form's foot in the console: a step has
+  no Cancel, since there is nowhere to go back to but the step before. A step opened
+  again shows what was saved there and can be changed. The step Workspace, opened again,
+  shows the workspace and its type, read only, with **Continue**: the type can't change.
+
 ## Components
 
 A page composes components; it never writes a custom button, input, table, modal or
@@ -1193,7 +1242,9 @@ needs becomes a component, or an attribute of one, not a copy.
   `page_form_foot/1`, a form as a separate page, its title, one line and the form, with
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads stays
-  where a page has one); and
+  where a page has one); `context_column/1`, a form with **About this page** beside it,
+  an `<aside>` named by that heading, in the muted text with no box (A form is a page,
+  under No modals); and
   `not_on_runs/1`, the one plain line a page over data no run receives says, in the
   page's sentence (`inner_block`, required): the component adds no words.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
@@ -1207,6 +1258,39 @@ needs becomes a component, or an attribute of one, not a copy.
   input shows, in mono before the value and as one field, what the value completes: the path of the
   organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
   field's descriptions (its hint, its errors), never replaced by it.
+- **`<.input type="choice">`** is a select whose options each have a title and a line
+  under it (`%{value:, title:, subtitle:}`), where a native select would join the two in
+  one line of text. It is a button, styled as a select, that shows the chosen option's
+  title and subtitle, or the `prompt` in the faint colour. Options may come in groups,
+  `{heading, [option]}`, such as Source's linked repositories, assigned sources and
+  public address: each heading shows above its options, an empty group's too, and the
+  radios stay one radio group, each described by its heading and its subtitle. An option
+  with `disabled: true` shows faint and cannot be chosen, such as Reading… while a list
+  loads; the keys pass over it and its radio is never sent. The button opens a panel in
+  place, under it and in the flow, never a dialog (No modals, above): a native radio
+  group named like the field, so the form sends the value as it sent the select's, and
+  `form/3` in a test sets it as it sets a select. The chosen option has a check mark;
+  the radios' circles are hidden, and the row shows the focus ring. The `Choice` hook
+  (`assets/js/hooks/choice.js`) has the menus' keys (below): a click opens the panel and
+  leaves the focus on the button; Enter, Space and ArrowDown open it and focus the
+  search box, else the chosen radio, else the first. The arrow keys move among the
+  radios and check them, as radios do; Enter or Space, or a click on an option, chooses
+  it, closes the panel and returns the focus to the button. Escape closes it and puts
+  back the option chosen when it opened; with none chosen then, it keeps the one checked
+  since, as a form with no value for the field would send no key for it. Tab and a click
+  elsewhere close it and keep the choice. Without a search box a letter goes to the next
+  option whose title starts with it. The button's `aria-expanded` and `aria-controls`
+  point to the panel, its name is the label and the chosen title and subtitle, and each
+  option is described by its subtitle; an error marks the button `aria-invalid` and
+  describes it, so a failed submit focuses the button. Above eight options, or with
+  `search`, the panel has a search box that narrows the options in the browser by title
+  and subtitle, keeps the chosen option and any marked `keep` in view, hides a heading
+  none of whose options show, and says the count across every group in a polite status,
+  or that nothing matches. The box has no name and the hook stops its input events, so
+  it never sends a change. The hook sets the panel's `hidden`, the button's
+  `aria-expanded` and the hidden options, which a patch leaves alone
+  (`JS.ignore_attributes`), and the box sits in a `phx-update="ignore"` block, so the
+  patch that answers an arrow key's change leaves the panel open and narrowed.
 - **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
   asks for them without mail, and a password link's page. The server never writes a password back: each input is the
   browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under

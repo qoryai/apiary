@@ -19,7 +19,7 @@ defmodule ApiaryWeb.BacklogComponents do
   # and `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
   # renderer that sanitises formatted text.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 
@@ -632,6 +632,157 @@ defmodule ApiaryWeb.BacklogComponents do
     """
   end
 
+  ## Take in
+
+  @doc """
+  The Take in block of a ticket, over the list and as a page (`ticket/1`'s `take_in`):
+  what Take in does and how, then Take in, a press of which sends `take_in` (`phx-click`,
+  an event name or a `Phoenix.LiveView.JS`) with the ticket's id as `phx-value-id`. To
+  whoever may not take a ticket in, `refused` says why in place of Take in.
+
+  The help names the workspace. Where the workspace's domain reads a target's harness file
+  (`Apiary.Lingo.Domain.harness_file?/1`), it says that one there stands in for the
+  workflow; where the domain needs a target (`Apiary.Lingo.Domain.target_required?/1`),
+  that the ticket must be in a repository assigned to the workspace.
+  """
+  attr :id, :string, required: true, doc: "the block's DOM id"
+  attr :ticket_id, :string, required: true, doc: "the ticket's public id, `\"tk_…\"`"
+  attr :workspace, :string, required: true, doc: "the workspace's name"
+  attr :harness_file, :boolean, default: false, doc: "whether the domain reads a harness file"
+  attr :target_required, :boolean, default: false, doc: "whether the domain needs a target"
+  attr :take_in, :any, default: "take_in", doc: "Take in's `phx-click`"
+  attr :refused, :string, default: nil, doc: "why the reader may not take it in; nil if they may"
+
+  def take_in_block(assigns) do
+    ~H"""
+    <div id={@id} class="q-bl-ti">
+      <div id={"#{@id}-help"} class="grid gap-1.5 text-[0.78125rem]/[1.1875rem] text-muted">
+        <p :if={@harness_file}>
+          <.rich text={
+            rich_gettext(
+              "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's target has a %{harness} or %{qory}.",
+              workspace: @workspace,
+              harness: {:code, "harness.yaml"},
+              qory: {:code, "qory.yaml"}
+            )
+          } />
+        </p>
+        <p :if={!@harness_file}>
+          {gettext(
+            "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow.",
+            workspace: @workspace
+          )}
+        </p>
+        <ol class="grid list-decimal gap-0.5 pl-5">
+          <li>
+            <.rich text={rich_gettext("Open %{backlog}.", backlog: {:b, gettext("Backlog")})} />
+          </li>
+          <li>{gettext("Press a ticket's title. Its panel opens.")}</li>
+          <li>
+            <.rich text={rich_gettext("Press %{take_in}.", take_in: {:b, gettext("Take in")})} />
+          </li>
+        </ol>
+        <p :if={@target_required}>
+          {gettext(
+            "In a software workspace, the ticket must be in a target assigned to %{workspace}.",
+            workspace: @workspace
+          )}
+        </p>
+      </div>
+      <div class="q-bl-ti-act">
+        <.button
+          :if={!@refused}
+          id={"#{@id}-button"}
+          type="button"
+          variant="primary"
+          phx-click={@take_in}
+          phx-value-id={@ticket_id}
+        >
+          {gettext("Take in")}
+        </.button>
+        <p :if={@refused} id={"#{@id}-refused"} class="text-[0.8125rem] text-muted">{@refused}</p>
+      </div>
+    </div>
+    """
+  end
+
+  @doc false
+  # take_in_refused/3 is what the page says when `Apiary.WorkItems.take_in/3` refuses a
+  # ticket of the scope's workspace, as `refusal`, in its source's words for one of its
+  # items (`item_noun`, `SourceComponents.item/1`): the ticket no longer in the Backlog
+  # (`:not_found`, `:not_linked`), closed at its source, without a target or with one the
+  # domain does not accept, taken in already, a person who may not take one in
+  # (`ApiaryWeb.Access.reads_only/1`, `ApiaryWeb.Access.who_may/3`), or a work item that
+  # was not saved.
+  @spec take_in_refused(term, Apiary.Accounts.Scope.t(), map) :: String.t()
+  def take_in_refused(refusal, scope, %{integration: integration} = facts) do
+    item = SourceComponents.item(facts[:item_noun])
+    workspace = scope.workspace.name
+
+    case refusal do
+      reason when reason in [:not_found, :not_linked] ->
+        gettext("This %{item} is no longer in %{workspace}'s Backlog, so it was not taken in.",
+          item: item,
+          workspace: workspace
+        )
+
+      :ticket_closed ->
+        gettext("This %{item} is closed at %{integration}, so it was not taken in.",
+          item: item,
+          integration: integration
+        )
+
+      :no_target ->
+        gettext(
+          "%{integration} sent no target for this %{item}, so it was not taken in. Each work item in %{workspace} needs one.",
+          integration: integration,
+          item: item,
+          workspace: workspace
+        )
+
+      :target_invalid ->
+        gettext(
+          "%{integration} sent a target for this %{item} that is not valid, so it was not taken in.",
+          integration: integration,
+          item: item
+        )
+
+      {:taken, %{number: number}} when is_integer(number) ->
+        gettext("Someone took this %{item} in already, as work item #%{number}.",
+          item: item,
+          number: number
+        )
+
+      {:taken, _elsewhere} ->
+        gettext("Someone took this %{item} in already, in another workspace.", item: item)
+
+      :forbidden ->
+        take_in_who_may(scope)
+
+      _unsaved ->
+        gettext("Qory Apiary could not save the work item, so the %{item} was not taken in.",
+          item: item
+        )
+    end
+  end
+
+  @doc false
+  # take_in_who_may/1 is why the person of `scope` may not take a ticket in: a reader is
+  # told what they may do, anyone else who may.
+  @spec take_in_who_may(Apiary.Accounts.Scope.t()) :: String.t()
+  def take_in_who_may(scope) do
+    if Apiary.Access.reader(scope),
+      do: ApiaryWeb.Access.reads_only(scope),
+      else:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"work_item.take_in",
+          gettext("Only members of %{workspace} take tickets in.",
+            workspace: scope.workspace.name
+          )
+        )
+  end
+
   ## The empty Backlog
 
   @doc """
@@ -640,9 +791,9 @@ defmodule ApiaryWeb.BacklogComponents do
   `Apiary.Sources.Backlog.backlog_facts/1` gives, a plain map. `state` is the page's
   reading of the facts, the first that holds:
 
-    * `:none` - no integration the organisation is connected through sends tickets. The
-      instance's other integrations that do are offered as cards, each with Install to
-      whoever may install one; with none, the line says that an instance admin adds them;
+    * `:no_source` - no integration that sends tickets connects the organisation: the
+      line that says so, and Connect a work source, to the workspace set-up
+      (`set_up_path`), to whoever may install an integration;
     * `:unlisted` - none of those integrations has listed its collections yet: a box for
       each, with Open to whoever may install one;
     * `:unassigned` - no collection is assigned to the workspace: with one integration,
@@ -663,57 +814,42 @@ defmodule ApiaryWeb.BacklogComponents do
 
   attr :state, :atom,
     required: true,
-    values: [:none, :unlisted, :unassigned, :itemless, :off, :waiting]
+    values: [:no_source, :unlisted, :unassigned, :itemless, :off, :waiting]
 
   attr :facts, :map, required: true, doc: "the facts, as above"
   attr :organisation, :string, required: true, doc: "the organisation's name"
   attr :workspace, :string, required: true, doc: "the workspace's name"
   attr :integrations_path, :string, required: true, doc: "Organisation settings › Integrations"
   attr :integration_path, :any, required: true, doc: "an integration's page, of its public id"
+  attr :set_up_path, :string, default: nil, doc: "`:no_source`: the workspace set-up"
 
-  def empty_backlog(%{state: :none} = assigns) do
+  def empty_backlog(%{state: :no_source} = assigns) do
     ~H"""
-    <div id={@id} data-state="none">
-      <.empty_state
-        icon="hero-squares-plus"
-        tone="neutral"
-        title={
-          gettext("%{organisation} has no integration that sends tickets",
-            organisation: @organisation
-          )
-        }
+    <div
+      id={@id}
+      data-state="no_source"
+      class="grid justify-items-center gap-3.5 rounded-box border border-dashed border-line-strong px-6 py-10 text-center"
+    >
+      <p id={"#{@id}-line"} class="max-w-[46ch] text-[13.5px]/5 text-muted">
+        {gettext(
+          "No work source is connected to %{workspace}. Connect one to bring its tickets here.",
+          workspace: @workspace
+        )}
+      </p>
+      <.button
+        :if={@facts.may.install}
+        id={"#{@id}-connect"}
+        variant="primary"
+        navigate={@set_up_path}
       >
-        <p id={"#{@id}-line"}>
-          {pgettext(
-            "plain",
-            "Tickets come into the Backlog from another system, such as an issue tracker, a support desk or a forge, through an integration that %{organisation} installs.",
-            organisation: @organisation
-          )}
-        </p>
-        <p :if={@facts.offered == []} id={"#{@id}-instance"} class="mt-1.5">
-          {gettext("An instance admin adds integrations in Instance settings › Adapters.")}
-          {gettext(
-            "%{organisation} can then install them in Organisation settings › Integrations.",
-            organisation: @organisation
-          )}
-        </p>
-        <:actions :if={@facts.offered != []}>
-          <.offered
-            id={"#{@id}-offered"}
-            offered={@facts.offered}
-            install={@facts.may.install}
-            organisation={@organisation}
-            integrations_path={@integrations_path}
-            integration_path={@integration_path}
-          />
-          <.ask_install
-            :if={!@facts.may.install}
-            id={@id}
-            names={@facts.ask.install}
-            organisation={@organisation}
-          />
-        </:actions>
-      </.empty_state>
+        {gettext("Connect a work source")}
+      </.button>
+      <.ask_install
+        :if={!@facts.may.install}
+        id={@id}
+        names={@facts.ask.install}
+        organisation={@organisation}
+      />
     </div>
     """
   end

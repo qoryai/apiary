@@ -19,7 +19,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   # (any member's) or a name (the list filtered to that owner), or `nil` when nothing
   # waits.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 
@@ -491,7 +491,8 @@ defmodule ApiaryWeb.WorkItemListComponents do
   @doc """
   A work item's row: its mark, its number, its title (the only strong text; its number
   again where the title has nothing left to show, as a text from an external system is
-  shown), its ticket's key with the integration's mark (the mark alone without a key),
+  shown), the mark Test for a test work item (`:test`), its ticket's key with the
+  integration's mark (the mark alone without a key; neither for a test work item),
   its status in words (Waits for you to confirm the one strong status), its owner's
   mark, and when it last changed. The whole row is a link to
   the work item (`navigate`). In a narrow list the number and the status go under the
@@ -499,7 +500,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   """
   attr :id, :string, required: true, doc: "the row's DOM id, with the work item's number"
   attr :work_item, :map, required: true, doc: "the work item"
-  attr :integration, :string, required: true, doc: "the integration's name"
+
+  attr :integration, :string,
+    required: true,
+    doc: "the integration's name; nil for a test work item, which came through none"
+
   attr :navigate, :string, required: true, doc: "the work item's page"
 
   attr :can_act, :boolean,
@@ -530,10 +535,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
           <b>
             <.external_text :if={@title} text={@title} />{if !@title, do: "##{@work_item.number}"}
           </b>
+          <.badge :if={@work_item[:test]} class="q-wl-test">{gettext("Test")}</.badge>
           <span class="q-wl-sub">#{@work_item.number} · {@words}</span>
         </span>
         <span class="q-wl-tk">
-          <BacklogComponents.integration_tile name={@integration} />
+          <BacklogComponents.integration_tile :if={@integration} name={@integration} />
           <span :if={@work_item[:key]} title={Apiary.ExternalText.line(@work_item[:key])}>
             <.external_text text={@work_item[:key]} />
           </span>

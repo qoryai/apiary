@@ -19,7 +19,7 @@ defmodule Apiary.Adapters.CallFailure do
   #
   # It holds no body and no header value: a log line or an error may show all of it.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   @enforce_keys [:adapter_id, :adapter_public_id, :adapter_name, :path, :cause]

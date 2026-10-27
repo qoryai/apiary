@@ -11,7 +11,7 @@ defmodule Apiary.Sources.Listing do
   #
   # A listing is of its collection's organisation, held to it by the composite key.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Ecto.Schema
 

@@ -916,8 +916,8 @@ defmodule Apiary.Nodes do
   whatever the batch locks after it, the run's row among them. Raises outside a
   transaction. `admit/4` is the whole of it, with the refusal counted.
   """
-  # With the `factory` feature, which the documentation leaves out, the runs alive counted
-  # are those that were not dispatched, and the slots the node's claims hold count its
+  # With the `factory` feature, the runs alive counted are those that were not
+  # dispatched, and the slots the node's claims hold count its
   # dispatched runs (`Apiary.Dispatches.Slots.held/1`).
   @spec check_instance_limit(Node.t(), String.t(), DateTime.t()) ::
           :ok | :already_counted | {:error, :instance_limit}

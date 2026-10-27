@@ -27,7 +27,9 @@ defmodule ApiaryWeb.OverviewComponents do
       button: 1,
       code_block: 1,
       icon: 1,
+      input: 1,
       listening: 1,
+      notice: 1,
       sparkline: 1,
       steps: 1
     ]
@@ -2136,6 +2138,488 @@ defmodule ApiaryWeb.OverviewComponents do
     </p>
     """
   end
+
+  ## The setup list
+
+  # The setup list of a workspace, with the `factory` feature, in place of the empty
+  # workspace's box: four steps, each marked done by its rule (`Apiary.WorkspaceSetup`),
+  # with a line, why the step exists under it, and its action. Machines for runs has its
+  # steps on another page folded under Check the nodes, open while it is the first step
+  # not done.
+  #
+  # - **Work source** links to the set-up's Work source step while it is not done
+  #   (Connect), and to the set-up once it is (Change).
+  # - **Machines for runs** links to the nodes that serve the workspace: the instance's on
+  #   Instance settings › Nodes, or the workspace's on its Nodes page.
+  # - **Model key** links to the organisation's model providers.
+  # - **Test run** has the field Say hi to your agent and Run the test (the caller's
+  #   `run_test` event), disabled until the machines and the model key are done; then the
+  #   latest test run's state: waiting, running, passed with See the run, or failed with
+  #   the line that says what to fix first. A failed one offers Run the test again with its
+  #   line.
+  #
+  # Where the reader may not take a step's action (`may`), the step says who may in its
+  # place.
+  #
+  # Of the `factory` feature, and left out of the module reference.
+  @doc false
+  attr :id, :string, default: "setup"
+  attr :scope, :map, required: true, doc: "the caller's scope: its organisation and workspace"
+
+  attr :setup, :map,
+    required: true,
+    doc: "what `Apiary.WorkspaceSetup.read/2` read: the four rules and the latest test run"
+
+  attr :may, :map,
+    required: true,
+    doc:
+      "whether the reader may take each step's action: `%{source:, machines:, model_key:, test:}`, `machines` `:instance`, `:workspace` or false"
+
+  attr :who, :map,
+    required: true,
+    doc: "for each step the reader may not act on, who may, as a sentence"
+
+  attr :form, :any, required: true, doc: "the form of Say hi to your agent, `test[line]`"
+
+  attr :notice, :any,
+    default: nil,
+    doc: "`:test_running` once Run the test was refused while a test run is in progress"
+
+  def setup_list(assigns) do
+    setup = assigns.setup
+    test = setup.test_run
+    test_state = test && test.state
+    ready? = setup.machines != nil and setup.model_key
+    passed? = test_state == :passed
+    failed? = match?({:failed, _cause}, test_state)
+
+    done = %{
+      source: setup.work_source != [],
+      machines: setup.machines != nil,
+      model_key: setup.model_key,
+      test: passed?
+    }
+
+    current = Enum.find([:source, :machines, :model_key, :test], &(not done[&1]))
+
+    assigns =
+      assign(assigns,
+        done: done,
+        current: current,
+        ready?: ready?,
+        test: test,
+        test_state: test_state,
+        failed?: failed?,
+        org: assigns.scope.organisation,
+        workspace: assigns.scope.workspace
+      )
+
+    ~H"""
+    <section
+      id={@id}
+      class="grid max-w-[1040px] rounded-box border border-line bg-base-100 px-6 pt-5 pb-2 max-[479px]:px-4"
+      aria-labelledby={"#{@id}-h"}
+    >
+      <h2 id={"#{@id}-h"} class="mb-2 text-lg/[1.625rem] font-semibold">
+        {gettext("Set up %{workspace}", workspace: @workspace.name)}
+      </h2>
+
+      <.setup_step
+        id={"#{@id}-source"}
+        name={gettext("Work source")}
+        state={if @done.source, do: :done}
+      >
+        <:line>
+          <span :for={source <- @setup.work_source} class="block">
+            {source_line(source)}
+          </span>
+          <span :if={!@done.source}>
+            {pgettext("plain", "Bring tickets in from a system this instance has set up.")}
+          </span>
+        </:line>
+        <:act>
+          <%= cond do %>
+            <% !@may.source -> %>
+              <.who_may id={"#{@id}-source-who"} text={@who.source} />
+            <% @done.source -> %>
+              <.link id={"#{@id}-source-act"} navigate={~p"/#{@org}/set-up"} class="q-link">
+                {gettext("Change")}
+              </.link>
+            <% true -> %>
+              <.button
+                id={"#{@id}-source-act"}
+                variant={if @current == :source, do: "primary", else: "default"}
+                navigate={~p"/#{@org}/set-up?step=source"}
+              >
+                {gettext("Connect")}
+              </.button>
+          <% end %>
+        </:act>
+        <:context>
+          {gettext(
+            "The step is done when %{workspace} has a collection from a work source and Qory Apiary has read its list of collections.",
+            workspace: @workspace.name
+          )}
+        </:context>
+      </.setup_step>
+
+      <.setup_step
+        id={"#{@id}-machines"}
+        name={gettext("Machines for runs")}
+        state={if @done.machines, do: :done}
+        open={@current == :machines}
+        fold={gettext("Check the nodes")}
+      >
+        <:line>{machines_line(@setup.machines, @workspace)}</:line>
+        <:act>
+          <%= case @may.machines do %>
+            <% :instance -> %>
+              <.link id={"#{@id}-machines-act"} navigate={~p"/instance/nodes"} class="q-link">
+                {gettext("View")}
+              </.link>
+            <% :workspace -> %>
+              <.link
+                id={"#{@id}-machines-act"}
+                navigate={~p"/#{@org}/#{@workspace}/nodes"}
+                class="q-link"
+              >
+                {gettext("View")}
+              </.link>
+            <% _no -> %>
+              <.who_may id={"#{@id}-machines-who"} text={@who.machines} />
+          <% end %>
+        </:act>
+        <:context>
+          {gettext(
+            "Runs need a node pool, whose machines run the agents, and a gateway, which passes their model calls on. Qory Apiary keeps the model key and seals it to the gateway for each run."
+          )}
+        </:context>
+        <:help>
+          <h3 class="font-semibold">
+            {gettext("On Instance settings › Nodes")}
+          </h3>
+          <ol>
+            <li>
+              <.rich text={
+                rich_gettext(
+                  "Find the pool and the gateway in the table. Each one is ready when %{state} shows %{running} or %{last_seen}.",
+                  state: {:b, gettext("State")},
+                  running: {:b, gettext("Running")},
+                  last_seen: {:b, gettext("Last seen")}
+                )
+              } />
+            </li>
+            <li>
+              <.rich text={
+                rich_gettext(
+                  "If one shows %{never_seen}, open the logs of the pool and the gateway on the instance's host, as your host's install guide says.",
+                  never_seen: {:b, gettext("Never seen")}
+                )
+              } />
+            </li>
+          </ol>
+          <p>{gettext("If you are not an instance admin, ask one to check the Nodes page.")}</p>
+        </:help>
+      </.setup_step>
+
+      <.setup_step
+        id={"#{@id}-model-key"}
+        name={gettext("Model key")}
+        state={if @done.model_key, do: :done}
+      >
+        <:line>
+          <span :if={!@done.model_key}>{gettext("Add a model key, so agents can run.")}</span>
+        </:line>
+        <:act>
+          <%= cond do %>
+            <% @done.model_key -> %>
+            <% !@may.model_key -> %>
+              <.who_may id={"#{@id}-model-key-who"} text={@who.model_key} />
+            <% true -> %>
+              <.button
+                id={"#{@id}-model-key-act"}
+                variant={if @current == :model_key, do: "primary", else: "default"}
+                href={~p"/#{@org}/settings/model-providers"}
+              >
+                {gettext("Add model key")}
+              </.button>
+          <% end %>
+        </:act>
+        <:context>
+          {gettext(
+            "Agents need a model key to run. The step is done when %{organisation} has a model provider with a key and %{workspace} has a model choice.",
+            organisation: @org.name,
+            workspace: @workspace.name
+          )}
+        </:context>
+      </.setup_step>
+
+      <.setup_step
+        id={"#{@id}-test"}
+        name={gettext("Test run")}
+        state={
+          cond do
+            @test_state == :passed -> :done
+            @failed? -> :failed
+            true -> nil
+          end
+        }
+      >
+        <:line>
+          <%= case @test_state do %>
+            <% :waiting -> %>
+              {gettext("The test run is queued for a machine.")}
+            <% :running -> %>
+              {gettext("The test run is running.")}
+            <% state when state == :passed or is_tuple(state) -> %>
+            <% _none -> %>
+              {gettext("Runs once machines and model key are done.")}
+          <% end %>
+        </:line>
+        <:act>
+          <%= cond do %>
+            <% @test_state == :passed -> %>
+            <% !@may.test -> %>
+              <.who_may id={"#{@id}-test-who"} text={@who.test} />
+            <% @test_state in [:waiting, :running] -> %>
+              <.link
+                :if={@test.run}
+                id={"#{@id}-test-run"}
+                navigate={~p"/#{@org}/#{@workspace}/runs/#{@test.run.public_id}"}
+                class="q-link"
+              >
+                {gettext("See the run")}
+              </.link>
+            <% @failed? -> %>
+              <.button
+                id={"#{@id}-test-again"}
+                phx-click="run_test"
+                phx-value-line={@test.work_item.title}
+                disabled={!@ready?}
+              >
+                {gettext("Run the test")}
+              </.button>
+            <% !@ready? -> %>
+              <.button id={"#{@id}-test-act"} disabled>{gettext("Run the test")}</.button>
+            <% true -> %>
+          <% end %>
+        </:act>
+        <:context>
+          {gettext(
+            "The test run checks the other steps together: an agent answers your line on a machine of the pool, through the gateway, with the model key. The run's log has its answer."
+          )}
+        </:context>
+        <:more>
+          <.form
+            :if={@may.test and @ready? and is_nil(@test_state)}
+            for={@form}
+            id={"#{@id}-test-form"}
+            phx-submit="run_test"
+            novalidate
+            class="flex flex-wrap items-end gap-2 [&>fieldset]:min-w-0 [&>fieldset]:flex-[1_1_16rem]"
+          >
+            <.input
+              field={@form[:line]}
+              label={gettext("Say hi to your agent")}
+              maxlength="1024"
+              debounce="blur"
+            />
+            <.button id={"#{@id}-test-act"} type="submit" variant="primary" class="mb-1">
+              {gettext("Run the test")}
+            </.button>
+          </.form>
+          <p
+            :if={@notice == :test_running}
+            id={"#{@id}-test-running"}
+            class="text-[13px]/5 text-muted"
+          >
+            <.rich text={
+              rich_gettext(
+                "Wait until the test run in progress ends, then press %{run} again.",
+                run: {:b, gettext("Run the test")}
+              )
+            } />
+          </p>
+          <.notice :if={@test_state == :passed} kind={:success}>
+            <span id={"#{@id}-test-passed"}>
+              {passed_line(@test.run)}
+              <.link
+                navigate={~p"/#{@org}/#{@workspace}/runs/#{@test.run.public_id}"}
+                class="q-link"
+              >
+                {gettext("See the run")}
+              </.link>
+            </span>
+          </.notice>
+          <.notice :if={@failed?} kind={:error}>
+            <span id={"#{@id}-test-failed"} data-cause={elem(@test_state, 1)}>
+              {failed_line(elem(@test_state, 1), @test.run)}
+              <.link
+                :if={elem(@test_state, 1) == :other and @test.run}
+                navigate={~p"/#{@org}/#{@workspace}/runs/#{@test.run.public_id}"}
+                class="q-link"
+              >
+                {gettext("See the run")}
+              </.link>
+            </span>
+          </.notice>
+        </:more>
+      </.setup_step>
+    </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :state, :atom, default: nil, doc: "`:done`, `:failed`, or nil for a step not done"
+  attr :fold, :string, default: nil, doc: "the summary of the fold that holds `help`"
+  attr :open, :boolean, default: false, doc: "whether the fold is open"
+  slot :line
+  slot :context, doc: "why the step exists, in the faint text under the line"
+  slot :act
+  slot :help, doc: "steps on another page, folded under `fold`"
+  slot :more
+
+  # One step of the setup list: its mark, its name, its line with its context under it,
+  # and its action on one row; its fold and anything more under them. The fold's id
+  # changes with `open`, so a step that becomes current, or done, shows it as the list
+  # now says, and otherwise stays as the reader leaves it.
+  defp setup_step(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      data-state={@state || "todo"}
+      class="grid grid-cols-[22px_minmax(8rem,10rem)_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 border-t border-line py-3.5 first-of-type:border-t-0 max-[479px]:grid-cols-[22px_minmax(0,1fr)]"
+    >
+      <span class={[
+        "mt-px grid size-5 place-items-center rounded-full border",
+        @state == :done && "border-transparent bg-primary text-primary-content",
+        @state == :failed && "border-error bg-error-soft text-error-soft-content",
+        @state == nil && "border-line-strong"
+      ]}>
+        <.icon :if={@state == :done} name="hero-check-micro" class="size-3" />
+        <.icon :if={@state == :failed} name="hero-x-mark-micro" class="size-3" />
+        <span :if={@state} class="sr-only">
+          {if @state == :done, do: gettext("Done"), else: gettext("Failed")}
+        </span>
+      </span>
+      <span class="font-medium">{@name}</span>
+      <div class="grid min-w-0 gap-0.5 max-[479px]:col-start-2">
+        <span id={"#{@id}-line"} class="text-muted">{render_slot(@line)}</span>
+        <span
+          :if={@context != []}
+          id={"#{@id}-context"}
+          class="max-w-[78ch] text-[13px]/[19px] text-faint"
+        >
+          {render_slot(@context)}
+        </span>
+      </div>
+      <span class="justify-self-end max-[479px]:col-start-2 max-[479px]:justify-self-start">
+        {render_slot(@act)}
+      </span>
+      <div
+        :if={@help != [] or @more != []}
+        class="col-[2/-1] grid gap-2.5 pt-1.5 max-[479px]:col-start-2"
+      >
+        <details
+          :if={@help != []}
+          id={"#{@id}-fold-#{@open}"}
+          open={@open}
+          phx-mounted={JS.ignore_attributes(["open"])}
+          class="group"
+        >
+          <summary class="inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-muted group-open:mb-2">
+            <.icon name="hero-chevron-right-micro" class="size-3 group-open:rotate-90" />
+            {@fold}
+          </summary>
+          <div class="grid gap-1.5 rounded-box border border-line bg-base-200 px-4 py-3 text-[13px]/5 [&_ol]:grid [&_ol]:list-decimal [&_ol]:gap-1 [&_ol]:pl-5">
+            {render_slot(@help)}
+          </div>
+        </details>
+        {render_slot(@more)}
+      </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :text, :string, required: true
+
+  defp who_may(assigns) do
+    ~H"""
+    <span id={@id} class="text-[13px]/5 text-muted">{@text}</span>
+    """
+  end
+
+  # "GitHub is connected, with 3 repositories.", in the words the adapter's description
+  # gives its collections.
+  defp source_line(%{adapter: adapter, collections: count}) do
+    noun = Apiary.Adapters.collection_noun(adapter)
+
+    ngettext(
+      "%{integration} is connected, with %{number} %{collection}.",
+      "%{integration} is connected, with %{number} %{collections}.",
+      count,
+      integration: adapter.name,
+      number: Format.number(count),
+      collection: ApiaryWeb.SourceComponents.collection(noun),
+      collections: ApiaryWeb.SourceComponents.collections(noun)
+    )
+  end
+
+  defp machines_line(nil, workspace),
+    do:
+      gettext("%{workspace}'s runs need a node pool and a gateway, each with a key.",
+        workspace: workspace.name
+      )
+
+  defp machines_line(%{pool: pool, gateway: gateway}, _workspace) do
+    if instance_node?(pool) and instance_node?(gateway),
+      do: gettext("The instance's pool and gateway are ready."),
+      else: gettext("%{pool} and %{gateway} are ready.", pool: pool.name, gateway: gateway.name)
+  end
+
+  defp instance_node?(node), do: is_nil(node.organisation_id) and is_nil(node.workspace_id)
+
+  defp passed_line(%{node: %{name: name} = pool}) do
+    if instance_node?(pool),
+      do: gettext("Test run passed: the agent answered on a machine of the instance's pool."),
+      else: gettext("Test run passed: the agent answered on a machine of %{pool}.", pool: name)
+  end
+
+  # A run has no node when its key named none, or when its node was purged.
+  defp passed_line(_run), do: gettext("Test run passed: the agent answered on a machine.")
+
+  # Each failure, the fix first.
+  defp failed_line(:no_machine, _run),
+    do:
+      gettext(
+        "Check the pool in Instance settings › Nodes. No machine has taken the test run yet."
+      )
+
+  defp failed_line(:model_key_missing, _run),
+    do:
+      gettext(
+        "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
+      )
+
+  defp failed_line(:silent, _run),
+    do:
+      gettext(
+        "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
+      )
+
+  defp failed_line(:other, nil),
+    do:
+      gettext(
+        "Check the other steps of this list, then press Run the test again. The test run ended before a machine started it."
+      )
+
+  defp failed_line(:other, _run),
+    do:
+      gettext(
+        "Read the run's log, then press Run the test again. The test run ended without passing."
+      )
 
   # The two ways to connect a node or pool, its kind's way first: a machine runs a
   # command, a pool's shared key is generated in the browser.

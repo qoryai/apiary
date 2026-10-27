@@ -47,7 +47,7 @@ defmodule Apiary.WorkItems.Proposal do
   # `encode/1` and `decode/1` turn changes into the JSON object a confirmation keeps
   # (`Apiary.WorkItems.Confirmation`), and back.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   # result.schema.json: `$defs/short_text` and `$defs/long_text`, the most `questions` and

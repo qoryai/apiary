@@ -26,7 +26,7 @@ defmodule Apiary.Runs.RunCredentials do
   # The claim writes the entry with its run (`insert!/2`), once. `work/1` reads it back for
   # the run's documents and its secrets request.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, only: [from: 2]

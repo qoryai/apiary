@@ -232,6 +232,65 @@ defmodule Apiary.StacksTest do
   end
 
   describe "the save rules" do
+    @allowed_refs [
+      "HEAD",
+      "main",
+      "release/1.0",
+      "v1.2.0",
+      "refs/heads/main",
+      "refs/tags/v1.2.0",
+      String.duplicate("0a", 20),
+      String.duplicate("b1", 32)
+    ]
+    @refused_refs [
+      "refs/pull/1/head",
+      "refs/merge-requests/1/head",
+      "refs/remotes/x",
+      "pull/1/head",
+      "merge-requests/1/head",
+      "remotes/x",
+      "refs/heads/",
+      "refs/notes/x",
+      "pull-requests/1/from",
+      "changes/01/1/1",
+      "notes/x",
+      "refs/tags/../pull/1/head",
+      "./pull/1/head",
+      "/x",
+      "a//b"
+    ]
+
+    test "take a ref that is HEAD, a branch or tag name, refs/heads/*, refs/tags/* or a full commit id",
+         ctx do
+      for ref <- @allowed_refs,
+          document <- [
+            "extends: {git: #{@stacks}, ref: '#{ref}'}\n",
+            "modules: [{source: {git: #{@stacks}, ref: '#{ref}'}}]\n"
+          ] do
+        assert {:ok, stack} =
+                 Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document),
+               document
+
+        Repo.delete!(stack)
+      end
+    end
+
+    test "refuse any other ref under refs/, a short name in another namespace, and an empty or dot part, in the base and in a module",
+         ctx do
+      for ref <- @refused_refs,
+          document <- [
+            "extends: {git: #{@stacks}, ref: '#{ref}'}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nmodules:\n  - source: {git: #{@stacks}, ref: '#{ref}'}\n"
+          ] do
+        assert refused(ctx, document) == [
+                 "write the ref #{ref} as HEAD, a branch or tag name, refs/heads/<name>, " <>
+                   "refs/tags/<name> or a full commit id: people without write access can " <>
+                   "change other refs, such as a pull request's"
+               ],
+               document
+      end
+    end
+
     test "take a base by export, by a folder, and at the root of a remote source", ctx do
       for base <- [
             "{git: #{@stacks}, ref: v2, stack: web}",

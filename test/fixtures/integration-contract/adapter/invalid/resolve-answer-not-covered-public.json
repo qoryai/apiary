@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "revision": 1,
+  "results": [
+    {
+      "address": "https://code.example.com/acme/public-stack",
+      "covered": false,
+      "public": true
+    }
+  ]
+}

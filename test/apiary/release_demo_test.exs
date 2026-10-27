@@ -214,7 +214,7 @@ defmodule Apiary.ReleaseDemoTest do
     assert {{:error, :no_main}, stdout, ""} = demo()
 
     assert stdout ==
-             "Run this command on an instance set up with the organisation name Acme. The " <>
+             "Create the workspace Main at /acme/set-up, then run this command again. The " <>
                "organisation acme has no workspace main.\n"
   end
 end

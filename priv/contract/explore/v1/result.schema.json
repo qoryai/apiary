@@ -15,7 +15,7 @@
       "const": 1
     },
     "verdict": {
-      "description": "understood, when the agent understood the ticket; not_understood, when it did not and asks its questions.",
+      "description": "understood, when the agent understood the work item; not_understood, when it did not and asks its questions.",
       "type": "string",
       "enum": [
         "understood",
@@ -23,7 +23,7 @@
       ]
     },
     "complexity": {
-      "description": "How much work the ticket is, and why.",
+      "description": "How much work the work item is, and why.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -41,13 +41,13 @@
           ]
         },
         "reason": {
-          "description": "Why the ticket is at that level.",
+          "description": "Why the work item is at that level.",
           "$ref": "#/$defs/short_text"
         }
       }
     },
     "understanding": {
-      "description": "The agent's understanding of the ticket.",
+      "description": "The agent's understanding of the work item.",
       "$ref": "#/$defs/long_text"
     },
     "scope": {

@@ -13,7 +13,9 @@ defmodule Apiary.Dispatches.RunSettings do
   #
   # Only an explore run has `run_settings`, and only with both features `factory` and
   # `secrets` on; without either, the documents have none. With them on and no choice at any
-  # level, it has `runtime` alone, and the run uses the gateway's key.
+  # level, it has `runtime` alone, the catalogue's default
+  # (`Apiary.ModelChoices.default_runtime/0`), and the run uses the gateway's key. With a
+  # choice, `runtime` is the runtime the choice resolves to.
   #
   # ## What it holds
   #
@@ -37,13 +39,17 @@ defmodule Apiary.Dispatches.RunSettings do
   #   * `provider_gone`: the provider is not there, fails its integrity code
   #     (`Apiary.Connections.intact?/1`), does not apply to the workspace any more, or is
   #     no longer in the catalogue as it was added;
-  #   * `runtime_unserved`: no API of the provider serves the run's runtime
+  #   * `runtime_unserved`: the runtime the choice names is no longer in the catalogue
+  #     (`Apiary.Kinds.Runtimes`), or no API of the provider serves the run's runtime
   #     (`Apiary.Kinds.Providers.api/2`);
   #   * `provider_gone`: the endpoint of that API is a setting whose address
   #     `Apiary.Kinds.Endpoint` refuses;
   #   * `key_gone`: the chosen key is no longer one of the provider's keys;
-  #   * `model_gone`: the chosen model is no longer on the provider's list, or its effort
-  #     value is no longer among both the model's and the runtime's effort values.
+  #   * `model_gone`: no model resolves, for a choice with no model of a provider whose
+  #     description lists none; or the chosen effort value is no longer among both the
+  #     model's effort values in the description and the runtime's, which a model the
+  #     description no longer lists has none of. A model the description does not list
+  #     ends no run by itself.
   #
   # A deny rule of the security policy is not asked: it never blocks a host of an
   # integration.
@@ -51,10 +57,10 @@ defmodule Apiary.Dispatches.RunSettings do
   # ## What it writes
   #
   # `run_settings`, in the schema's order: `runtime`, `model`, `effort` when the choice has
-  # one, `provider_models` (every model of the provider's list with the effort values that
-  # both it and the runtime have) and `tiers`, a tier left out when no choice maps it to a
-  # model the provider lists; then `time_limit_minutes`, the minutes the time limits of the
-  # run's workspace and target come to for the run's workflow
+  # one, `provider_models` and `tiers`, a tier left out when no choice maps it to a model
+  # that goes with the provider (`Apiary.ModelChoices.Resolution`); then
+  # `time_limit_minutes`, the minutes the time limits of the run's workspace and target
+  # come to for the run's workflow
   # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), left out when no limit
   # resolves or the run has no workflow. The workflow and the limits are read without a
   # lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
@@ -65,6 +71,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # the reads that follow the claim. The run settings take at most 64 KiB encoded; more
   # refuses the claim.
   #
+  # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
+  # in its order, each with the effort values that both it and the runtime have, then the
+  # chosen model and each tier's model that the description does not list, each once,
+  # with no effort, in the order `model`, `light`, `fast`, `thinking`. A description has
+  # at most 200 models (`Apiary.Kinds.Provider.load!/1`), so the list stays within the
+  # schema's 256.
+  #
   # Reads, and takes the locks above; writes nothing. It logs a provider that fails its
   # integrity code, by its public id.
 
@@ -73,9 +86,9 @@ defmodule Apiary.Dispatches.RunSettings do
   require Logger
 
   alias Apiary.{Connections, Features, ModelChoices, Repo, Stacks, TimeLimits}
-  alias Apiary.Connections.{Connection, ProviderModel}
+  alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime, Runtimes}
+  alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime}
   alias Apiary.ModelChoices.Resolution
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
@@ -240,16 +253,16 @@ defmodule Apiary.Dispatches.RunSettings do
 
     case resolved do
       :none ->
-        sealed(with_time_limit(runtime_only(), held))
+        sealed(with_time_limit(runtime_only(ModelChoices.default_runtime()), held))
 
       {:error, :provider_removed} ->
         {:end, :provider_gone}
 
       {:ok, %Resolution{} = resolution} ->
         provider = Map.fetch!(providers, resolution.connection_id)
-        {:ok, runtime} = Runtimes.fetch(ModelChoices.runtime_name())
 
-        with :ok <- intact(provider),
+        with {:ok, runtime} <- runtime(resolution),
+             :ok <- intact(provider),
              {:ok, built} <-
                form(
                  resolution,
@@ -262,8 +275,8 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The providers the choices name, as they are now: with their models, the workspaces
-  # they apply to and their keys' secret's value ids, by row id.
+  # The providers the choices name, as they are now: with the workspaces they apply to and
+  # their keys' secret's value ids, by row id.
   defp providers(%{organisation: organisation, input: input}) do
     {chain, owner} = ModelChoices.chain_owner(organisation.id)
     ids = for %{connection_id: id} <- input.choices, is_binary(id), uniq: true, do: id
@@ -277,7 +290,6 @@ defmodule Apiary.Dispatches.RunSettings do
         where: c.id in ^ids and c.organisation_id == ^owner,
         where: not is_nil(c.provider_kind) and c.chain == ^chain,
         preload: [
-          models: ^from(m in ProviderModel, order_by: [asc: m.position]),
           workspaces: [],
           secret: [values: ^from(v in Value, select: struct(v, [:id, :value_id]))]
         ]
@@ -301,10 +313,19 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  defp runtime_only do
+  # The runtime the choice resolved to, or the run ends `runtime_unserved` for one the
+  # catalogue no longer has: no provider serves it.
+  defp runtime(%Resolution{runtime: name}) do
+    case ModelChoices.runtime(name) do
+      {:ok, runtime} -> {:ok, runtime}
+      :error -> {:end, :runtime_unserved}
+    end
+  end
+
+  defp runtime_only(%Runtime{name: name}) do
     %{
-      wire: Jason.OrderedObject.new([{"runtime", ModelChoices.runtime_name()}]),
-      stored: %{"runtime" => ModelChoices.runtime_name()},
+      wire: Jason.OrderedObject.new([{"runtime", name}]),
+      stored: %{"runtime" => name},
       columns: %{}
     }
   end
@@ -341,8 +362,9 @@ defmodule Apiary.Dispatches.RunSettings do
          {:ok, api} <- api(description, runtime),
          {:ok, endpoint} <- endpoint(api, provider),
          :ok <- key(provider, resolution.value_id),
-         {:ok, model} <- model(provider, resolution, runtime) do
-      {:ok, built(resolution, provider, model, runtime, %{api | "endpoint" => endpoint})}
+         models = Connections.provider_models(description),
+         :ok <- model(models, resolution, runtime) do
+      {:ok, built(resolution, provider, models, runtime, %{api | "endpoint" => endpoint})}
     end
   end
 
@@ -384,35 +406,26 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp key(%Connection{}, _value_id), do: {:end, :key_gone}
 
-  # The chosen model on the provider's list, with an effort value that both the model's
-  # and the runtime's lists have, or none.
-  defp model(%Connection{models: models}, %Resolution{} = resolution, runtime) do
-    case Enum.find(models, &(&1.model_id == resolution.model_id)) do
-      %ProviderModel{} = model ->
-        if is_nil(resolution.effort) or resolution.effort in offered(model, runtime),
-          do: {:ok, model},
-          else: {:end, :model_gone}
+  # A chosen model, with no effort or one of its offered effort values.
+  defp model(_models, %Resolution{model_id: nil}, _runtime), do: {:end, :model_gone}
+  defp model(_models, %Resolution{effort: nil}, _runtime), do: :ok
 
-      nil ->
-        {:end, :model_gone}
+  defp model(models, %Resolution{model_id: id, effort: effort}, runtime) do
+    case Enum.find(models, &(&1["id"] == id)) do
+      %{} = model -> if effort in offered(model, runtime), do: :ok, else: {:end, :model_gone}
+      nil -> {:end, :model_gone}
     end
   end
 
   # The effort values of `model` that the runtime's list has too, in the model's order.
-  defp offered(%ProviderModel{effort: effort}, %Runtime{effort_values: values}),
-    do: Enum.filter(effort || [], &(&1 in values))
+  defp offered(%{} = model, %Runtime{effort_values: values}),
+    do: Enum.filter(model["effort"] || [], &(&1 in values))
 
-  defp built(
-         %Resolution{} = resolution,
-         %Connection{} = provider,
-         %ProviderModel{} = model,
-         runtime,
-         api
-       ) do
+  defp built(%Resolution{} = resolution, %Connection{} = provider, models, runtime, api) do
     members =
-      [{"runtime", ModelChoices.runtime_name()}, {"model", model.model_id}] ++
+      [{"runtime", runtime.name}, {"model", resolution.model_id}] ++
         if(resolution.effort, do: [{"effort", resolution.effort}], else: []) ++
-        [{"provider_models", Enum.map(provider.models, &listed(&1, runtime))}] ++
+        [{"provider_models", provider_models(models, resolution, runtime)}] ++
         tiers(resolution.tiers)
 
     wire = Jason.OrderedObject.new(members)
@@ -430,7 +443,23 @@ defmodule Apiary.Dispatches.RunSettings do
     }
   end
 
-  defp listed(%ProviderModel{model_id: id} = model, runtime) do
+  # The description's models, then each chosen model it does not list (the moduledoc).
+  defp provider_models(models, %Resolution{} = resolution, runtime) do
+    listed = Enum.map(models, & &1["id"])
+
+    chosen =
+      for tier <- Resolution.tiers(),
+          entry = resolution.tiers[tier],
+          entry != nil,
+          do: entry["model"]
+
+    others = Enum.uniq([resolution.model_id | chosen]) -- listed
+
+    Enum.map(models, &listed(&1, runtime)) ++
+      Enum.map(others, &Jason.OrderedObject.new([{"id", &1}]))
+  end
+
+  defp listed(%{"id" => id} = model, runtime) do
     case offered(model, runtime) do
       [] -> Jason.OrderedObject.new([{"id", id}])
       effort -> Jason.OrderedObject.new([{"id", id}, {"effort", effort}])

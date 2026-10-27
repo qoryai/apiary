@@ -18,6 +18,10 @@ or the last rebased commit, whichever merge method was used. It is not always th
 `main`, since another pull request may land first. The release workflow refuses a tag whose
 version `mix.exs` does not carry.
 
+Before the release pull request, run `mix apiary.models.update` and commit the
+`priv/models/suggestions.json` it writes. The file contains the Model field's suggestions
+from models.dev.
+
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for
 `linux/amd64` and `linux/arm64`, and publishes it as `ghcr.io/qoryai/apiary`, tagged

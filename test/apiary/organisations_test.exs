@@ -811,7 +811,13 @@ defmodule Apiary.OrganisationsTest do
                    })
 
           assert [_main] = Organisations.list_workspaces(scope)
-          refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+
+          refute Repo.exists?(
+                   from e in Entry,
+                     where:
+                       e.action == "workspace.create" and
+                         e.organisation_id == ^scope.organisation.id
+                 )
 
           scope = mark_only_workspace(scope)
 
@@ -855,12 +861,222 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, :forbidden} =
                Organisations.create_workspace(member, %{"domain" => "software", "name" => "Data"})
 
-      refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+      refute Repo.exists?(
+               from e in Entry,
+                 where:
+                   e.action == "workspace.create" and
+                     e.organisation_id == ^owner.organisation.id
+             )
     end
 
     test "the core's edition is told and adds nothing" do
       %{scope: scope} = sign_up_fixture()
       assert Apiary.Edition.Core.workspace_created(Repo, scope.workspace, scope) == :ok
+    end
+  end
+
+  describe "an organisation with no workspace" do
+    defp sign_up_without_workspace(attrs \\ %{}) do
+      attrs =
+        Map.merge(%{email: unique_user_email(), organisation_name: "Acme Studio"}, attrs)
+
+      {:ok, %{user: user} = signed_up} =
+        Organisations.sign_up_user(attrs, nil, open: true, workspace: false)
+
+      Map.put(signed_up, :scope, Organisations.load_scope(Scope.for_user(user)))
+    end
+
+    # A person of `level` in the scope's organisation, joined with no invitation: an
+    # invitation is to a workspace.
+    defp joined_scope(%Scope{organisation: organisation}, level) do
+      user = user_fixture()
+
+      %Membership{organisation_id: organisation.id, user_id: user.id}
+      |> Membership.changeset(%{level: level})
+      |> Repo.insert!()
+
+      Organisations.load_scope(Scope.for_user(user), organisation.id)
+    end
+
+    test "sign_up_user/3 with workspace: false creates the account, the organisation and its owner" do
+      workspaces = Repo.aggregate(Workspace, :count)
+
+      %{user: user, organisation: organisation, workspace: nil, membership: membership} =
+        signed_up = sign_up_without_workspace()
+
+      assert organisation.name == "Acme Studio"
+      assert %{level: :owner, user_id: user_id, organisation_id: organisation_id} = membership
+      assert user_id == user.id
+      assert organisation_id == organisation.id
+      assert Repo.aggregate(Workspace, :count) == workspaces
+      refute Organisations.has_workspace?(organisation)
+
+      # The scope is in the organisation, at no workspace.
+      assert %Scope{organisation: %{id: ^organisation_id}, workspace: nil} = signed_up.scope
+
+      assert %Entry{workspace_id: nil, details: details} =
+               Repo.one!(
+                 from e in Entry,
+                   where:
+                     e.organisation_id == ^organisation.id and e.action == "organisation.create"
+               )
+
+      assert details["membership_id"] == membership.id
+      refute Map.has_key?(details, "workspace_id")
+    end
+
+    test "with workspace: false, no domain is asked, even with domain: :required" do
+      assert {:ok, %{workspace: nil}} =
+               Organisations.sign_up_user(
+                 %{email: unique_user_email(), organisation_name: "Acme Lab"},
+                 nil,
+                 open: true,
+                 workspace: false,
+                 domain: :required
+               )
+    end
+
+    test "every caller without the option still gets Main" do
+      %{workspace: workspace, organisation: organisation} = sign_up_fixture()
+
+      assert %Workspace{name: "Main"} = workspace
+      assert Organisations.has_workspace?(organisation)
+    end
+
+    test "create_first_workspace/2 creates Main of the domain given, once" do
+      %{scope: scope, organisation: organisation} = sign_up_without_workspace()
+
+      assert {:ok, %Workspace{name: "Main", slug: "main", domain: "general"} = main} =
+               Organisations.create_first_workspace(scope, %{
+                 "domain" => "general",
+                 "name" => "Other"
+               })
+
+      assert main.organisation_id == organisation.id
+      assert main.egress_mode == "observe"
+      assert Organisations.has_workspace?(scope)
+      assert Enum.map(Organisations.list_workspaces(scope), & &1.id) == [main.id]
+
+      assert %Entry{workspace_id: nil, subject_id: subject_id} =
+               Repo.one!(
+                 from e in Entry,
+                   where: e.organisation_id == ^organisation.id and e.action == "workspace.create"
+               )
+
+      assert subject_id == main.id
+
+      # A second call is refused in every edition, and creates nothing.
+      assert {:error, :exists} =
+               Organisations.create_first_workspace(scope, %{domain: "software"})
+
+      assert [_main] = Organisations.list_workspaces(scope)
+
+      # The scope loaded again is at Main.
+      assert %Scope{workspace: %{id: main_id}} =
+               Organisations.load_scope(Scope.for_user(scope.user), organisation.id)
+
+      assert main_id == main.id
+    end
+
+    test "an organisation that has Main gets no first workspace" do
+      %{scope: scope} = sign_up_fixture()
+
+      assert {:error, :exists} =
+               Organisations.create_first_workspace(scope, %{"domain" => "software"})
+
+      assert [_main] = Organisations.list_workspaces(scope)
+    end
+
+    test "the domain is required, and one of the domains there are" do
+      %{scope: scope} = sign_up_without_workspace()
+
+      assert {:error, changeset} = Organisations.create_first_workspace(scope, %{})
+      assert %{domain: ["Choose a type."]} = errors_on(changeset)
+
+      assert {:error, changeset} =
+               Organisations.create_first_workspace(scope, %{"domain" => "unknown"})
+
+      assert %{domain: ["is invalid"]} = errors_on(changeset)
+      refute Organisations.has_workspace?(scope)
+
+      assert {:ok, %{domain: "software"}} =
+               Organisations.create_first_workspace(scope, %{domain: "software"})
+    end
+
+    test "only a person workspace.create allows creates it: in the core's edition an owner" do
+      %{scope: owner} = sign_up_without_workspace()
+
+      for level <- [:admin, :member] do
+        assert {:error, :forbidden} =
+                 owner
+                 |> joined_scope(level)
+                 |> Organisations.create_first_workspace(%{"domain" => "software"})
+      end
+
+      refute Organisations.has_workspace?(owner)
+
+      refute Repo.exists?(
+               from e in Entry,
+                 where:
+                   e.action == "workspace.create" and
+                     e.organisation_id == ^owner.organisation.id
+             )
+
+      assert {:ok, %Workspace{name: "Main"}} =
+               owner
+               |> joined_scope(:owner)
+               |> Organisations.create_first_workspace(%{"domain" => "software"})
+    end
+
+    test "the first workspace counts against the edition's limit" do
+      %{scope: scope} = sign_up_without_workspace()
+      assert {:ok, _main} = Organisations.create_first_workspace(scope, %{"domain" => "software"})
+
+      case Apiary.Edition.limits().workspaces do
+        1 ->
+          assert {:error, :limit} =
+                   Organisations.create_workspace(scope, %{
+                     "domain" => "software",
+                     "name" => "Data"
+                   })
+
+        :unlimited ->
+          assert {:ok, _data} =
+                   Organisations.create_workspace(scope, %{
+                     "domain" => "software",
+                     "name" => "Data"
+                   })
+      end
+    end
+
+    test "has_workspace?/1 counts only workspaces in use; a marked Main keeps its name" do
+      %{scope: scope, organisation: organisation, workspace: main} = sign_up_fixture()
+      assert Organisations.has_workspace?(organisation)
+
+      now = DateTime.utc_now()
+
+      main
+      |> Ecto.Changeset.change(
+        deletion_marked_at: now,
+        purge_after: DateTime.add(now, 30, :day),
+        purge_trigger: "grace_period"
+      )
+      |> Repo.update!()
+
+      refute Organisations.has_workspace?(scope)
+
+      # Main marked for deletion keeps its name, so no first workspace is created. The
+      # scope loaded again is at no workspace.
+      scope = Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
+      assert scope.workspace == nil
+
+      assert {:error, changeset} =
+               Organisations.create_first_workspace(scope, %{"domain" => "software"})
+
+      assert %{name: ["is already the name of a workspace in this organisation"]} =
+               errors_on(changeset)
+
+      assert Organisations.list_workspaces(scope) == []
     end
   end
 

@@ -10,6 +10,7 @@ defmodule ApiaryWeb.SetupLiveTest do
 
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
+  import ApiaryWeb.SetUpSteps
 
   alias Apiary.Setup
 
@@ -29,8 +30,7 @@ defmodule ApiaryWeb.SetupLiveTest do
       "email" => unique_user_email(),
       "organisation_name" => "Acme Ltd",
       "password" => @password,
-      "password_confirmation" => @password,
-      "domain" => "software"
+      "password_confirmation" => @password
     })
   end
 
@@ -55,14 +55,31 @@ defmodule ApiaryWeb.SetupLiveTest do
              |> String.trim() ==
                Apiary.Edition.first_sign_up_line()
 
-      assert has_element?(lv, "#setup-admin", "You become this instance's admin.")
+      assert has_element?(
+               lv,
+               "#set-up-context #setup-admin",
+               "You create the first account of Qory Apiary and its organisation. As the " <>
+                 "instance admin, you connect Qory Apiary to mail and to the systems that " <>
+                 "bring in work, then set up the organisation's first workspace."
+             )
+
+      refute render(lv) =~ "You become this instance's admin."
+
+      # The first step of the set-up: the instance's connections and the workspace after it.
+      assert [{"Your account", :current} | rest] = steps(lv)
+      names = Enum.map(rest, &elem(&1, 0))
+
+      assert Enum.find_index(names, &(&1 == "Mail")) <
+               Enum.find_index(names, &(&1 == "Workspace"))
+
+      assert Enum.all?(rest, &(elem(&1, 1) in [:to_come, :done]))
+      assert count(lv) == "Step 1 of #{length(rest) + 1}"
 
       assert fields(lv) == [
                "user[email]",
                "user[password]",
                "user[password_confirmation]",
                "user[organisation_name]"
-               | List.duplicate("user[domain]", length(Apiary.Lingo.Domain.choices()))
              ]
 
       assert has_element?(lv, "#setup_form button", "Set up")
@@ -72,82 +89,17 @@ defmodule ApiaryWeb.SetupLiveTest do
       refute render(lv) =~ code
     end
 
-    test "offers the type of Main, each type with its line, and none chosen",
-         %{conn: conn, code: code} do
-      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
-
-      assert has_element?(lv, "#user_domain legend", "Workspace type")
-
-      assert has_element?(
-               lv,
-               "#user_domain-hint",
-               "Main, your first workspace, gets this type. A workspace's type can't be changed after it is created."
-             )
-
-      assert has_element?(lv, "#user_domain-0[value=software]")
-      assert has_element?(lv, "label[for=user_domain-0]", "Software workspace")
-
-      assert has_element?(
-               lv,
-               "#user_domain-0-line",
-               "For work on code. Each ticket needs a repository, and Qory reads the repository's code."
-             )
-
-      general = Enum.find_index(Apiary.Lingo.Domain.choices(), &(&1.name() == "general"))
-      assert has_element?(lv, "#user_domain-#{general}[value=general]")
-      assert has_element?(lv, "label[for=user_domain-#{general}]", "General workspace")
-
-      assert has_element?(
-               lv,
-               "#user_domain-#{general}-line",
-               "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
-             )
-
-      refute has_element?(lv, "#user_domain input[checked]")
-    end
-
-    test "says nothing of the type while the person fills in the other fields",
-         %{conn: conn, code: code} do
-      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
-
-      lv
-      |> form("#setup_form", user: Map.delete(params(), "domain"))
-      |> render_change()
-
-      refute has_element?(lv, "#user_domain-error")
-      assert has_element?(lv, "#user_domain-hint")
-    end
-
-    test "sent with no type, says to choose one and sets nothing up",
-         %{conn: conn, code: code} do
+    test "makes the organisation with no workspace", %{conn: conn, code: code} do
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
       email = unique_user_email()
 
       lv
-      |> form("#setup_form", user: Map.delete(params(%{"email" => email}), "domain"))
-      |> render_submit()
-
-      assert has_element?(lv, "#user_domain-error", "Choose a type.")
-      assert has_element?(lv, "#user_domain[aria-invalid]")
-      refute Apiary.Accounts.get_user_by_email(email)
-      assert Setup.valid_code?(code)
-    end
-
-    test "makes Main of the type chosen", %{conn: conn, code: code} do
-      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
-      email = unique_user_email()
-
-      lv
-      |> form("#setup_form", user: params(%{"email" => email, "domain" => "general"}))
+      |> form("#setup_form", user: params(%{"email" => email}))
       |> render_submit()
 
       user = Apiary.Accounts.get_user_by_email(email)
       [membership] = Apiary.Organisations.list_memberships(user)
-
-      assert %{name: "Main", domain: "general"} =
-               Apiary.Repo.get_by!(Apiary.Organisations.Workspace,
-                 organisation_id: membership.organisation.id
-               )
+      refute Apiary.Organisations.has_workspace?(membership.organisation)
     end
 
     test "sets the instance up and signs the person in", %{conn: conn, code: code} do
@@ -159,8 +111,8 @@ defmodule ApiaryWeb.SetupLiveTest do
       render_submit(form)
       conn = follow_trigger_action(form, conn)
 
-      # Signed in, and at the new organisation's workspace Main.
-      assert redirected_to(conn) == ~p"/acme-ltd/main"
+      # Signed in, and at the instance's connections, its admin's first step.
+      assert redirected_to(conn) == ~p"/instance/set-up"
       assert get_session(conn, :user_token)
 
       user = Apiary.Accounts.get_user_by_email(email)
@@ -276,7 +228,7 @@ defmodule ApiaryWeb.SetupLiveTest do
       render_submit(form)
       conn = follow_trigger_action(form, conn)
 
-      assert redirected_to(conn) == ~p"/acme-ltd/main"
+      assert redirected_to(conn) == ~p"/instance/set-up"
       user = Apiary.Accounts.get_user_by_email(email)
       assert Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(user))
       assert Setup.set_up?()

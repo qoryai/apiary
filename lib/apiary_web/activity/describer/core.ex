@@ -292,9 +292,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   end
 
   # A ticket taken in names the items of the work item's source (`Apiary.Audit.names/2`'s
-  # `item_nouns`), else tickets; a take in again is the work item's.
+  # `item_nouns`), else tickets; a take in again is the work item's. A test work item,
+  # made from a typed line, has no ticket (`Apiary.WorkItems.take_in_test/2`).
   def sentence(:"work_item.take_in", %{details: %{"again" => true}}, _names),
     do: gettext("Took a work item in again")
+
+  def sentence(:"work_item.take_in", %{details: %{"test" => true}}, _names),
+    do: gettext("Started a test run")
 
   def sentence(:"work_item.take_in", entry, names) do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])

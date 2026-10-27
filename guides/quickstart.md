@@ -79,28 +79,53 @@ Set up Qory Apiary at http://localhost:4100/setup/<code>.
 
 Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
-same password again, the **Organisation name**, usually your company's, `Acme` say, and
-the **Workspace type**: pick **Software workspace**, whose words this guide uses. Then
-select **Set up**. You are signed in, and land on the overview of your workspace.
+same password again, and the **Organisation name**, usually your company's, `Acme` say.
+Then select **Set up**. It creates your account and the organisation, with no workspace
+yet, and signs you in. Each page of the set-up lists its steps, with the current one
+marked; **Back**, at the foot of a step's form, opens the step before it. Two pages
+follow:
+
+1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
+   step, select **Skip**, or **Continue** where it shows the server's mail settings. You
+   can set mail up later in **Instance settings › Mail**.
+2. **Set up your workspace**, at `http://localhost:4100/acme/set-up?step=type`. In
+   **Type**, choose **Software**, whose words this guide uses; no type is chosen before
+   you choose one. Then select **Create workspace**.
+
+You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
 Connect it, See runs here. Steps 5 to 7 below are those steps.
 
-The link works once: after it, it says "This Qory Apiary is already set up.", and you log
-in at `http://localhost:4100/users/log-in` with your email address and password. Until it
-is used nobody can sign up, and anyone who reads the log can use it, so open it as soon as
-the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
+<!-- feature: factory -->
+With the `factory` feature, **Connect Qory Apiary** has one step for each adapter that
+**Instance settings › Adapters** lists, before **Mail**: select **Skip**, or **Continue**
+where the step is set up already, or set the adapter up as [Set up a new
+instance](install.md#set-up-a-new-instance) shows. **Create workspace** then opens
+**Connect a work source to Main**, the step **Work source**, at
+`http://localhost:4100/acme/set-up?step=source`: select **Skip**, or **Continue** where
+no work source is set up. The overview of Main shows **Set up Main** in
+place of the box, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
+to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
+sidebar, but the overview has no box for them, and their node does not count for **Set up
+Main**: its step **Machines for runs** counts node pools only.
+<!-- /feature -->
 
-Setting it up created an organisation with the name you gave, one workspace in it named
-*Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
-foot of the sidebar: the workspace's on any page of the workspace, the organisation's on its
-overview, which its name in the top bar opens. As the person who set the instance up you
-are also its **instance admin**: your organisation is the instance owner, and its owners
-are the instance's admins. Nobody else can sign up without an invitation
-([Install and configure](install.md#sign-up-and-invitations)), so invite your colleagues
-from **People** in the organisation's settings. Without mail the page shows the
-invitation's link once, for you to copy and send yourself. Someone who signs up through an
-invitation joins the organisation as a member, chooses a password, and is not asked for a
-name.
+The link works once: after it, its page shows "This Qory Apiary is already set up.", and
+you log in at `http://localhost:4100/users/log-in` with your email address and password.
+Until it is used nobody can sign up, and anyone who reads the log can use it, so open it
+as soon as the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
+
+Setting it up created an organisation with the name you gave and your membership as its
+owner, and **Create workspace** created one workspace in it named *Main*. Both can be
+renamed in their **Settings**, at the foot of the sidebar: the workspace's on any page of
+the workspace, the organisation's on its overview, which its name in the top bar opens. As
+the person who set the instance up you are also its **instance admin**: your organisation
+is the instance owner, and its owners are the instance's admins. Nobody else can sign up
+without an invitation ([Install and configure](install.md#sign-up-and-invitations)), so
+invite your colleagues from **People** in the organisation's settings. Without mail the
+page shows the invitation's link once, for you to copy and send yourself. Someone who signs
+up through an invitation joins the organisation as a member, chooses a password, and is not
+asked for a name.
 
 Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
 from the names given at set-up: an organisation named `Acme` gives `/acme/main`, and the runs
@@ -252,6 +277,69 @@ in the filter, lists its runs alone.
 On the node's **Overview**, the machine is now its instance, with its run. On its **Access
 key** tab, the key's card shows when it was last used, its last heartbeat and Forager's
 version.
+
+<!-- feature: factory -->
+## 8. Set up Main and run the test
+
+With the `factory` feature, the overview of Main, `http://localhost:4100/acme/main`,
+shows **Set up Main** until a test run passes. Each of its four steps shows a check mark
+once it is done, and a second line, under its first, that says why the step exists:
+
+| Step | Done when |
+|---|---|
+| **Work source** | Main has a collection from a work source, and Qory Apiary has read the list of collections through its adapter. |
+| **Machines for runs** | A node pool that serves Main's runs has a key in use, and so does the gateway that the pool's **Gateway** choice leads to. While Main has no node pool, the instance's pool and gateway serve its runs, on an install that has them. |
+| **Model key** | Acme has a model provider with a key, and Main has a model choice. |
+| **Test run** | The step shows **Test run passed**. |
+
+**Run the test** is on once **Machines for runs** and **Model key** are done, so you can
+leave the work source for later.
+
+1. **Work source.** Select **Connect**: the Work source step of the workspace set-up
+   opens, at `/acme/set-up?step=source`. Select **Connect** beside a work source, and
+   follow the steps the page shows for it. Only owners and admins connect a work source.
+2. **Machines for runs.** The test run passes only through the instance's gateway, set
+   with `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
+   `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
+   pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added on
+   **Nodes** gets a key without stored secrets, so a test run through it ends before a
+   machine starts it. On an install with the instance's pool and gateway, an instance
+   admin selects **View**, which opens **Instance settings › Nodes**: each is ready when
+   **State** shows **Running** or **Last seen**.
+3. **Model key.** Select **Add model key**, which opens **Organisation settings › Model
+   providers**, `/acme/settings/model-providers`, then select **New model provider**. In
+   **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
+   this page**, beside the form, says where to get a key for the provider you choose.
+   Paste the key in **Key**. For LiteLLM, also enter the proxy's https address in
+   **Address**, such as `https://litellm.example.com`. Select **Save**. Only owners and
+   admins add a model provider.
+4. **Model.** Open **Workspace settings › Model**, `/acme/main/settings/model`. **Model**
+   shows the first model of the first provider: keep it or choose another, and select
+   **Save**. The step **Model key** is then done.
+5. **Test run.** Back on the overview, in **Say hi to your agent**, keep
+   `Hi! Where are you running?`, or write another greeting, and select **Run the test**.
+   The step shows "The test run is queued for a machine.", then "The test run is
+   running.", with **See the run** once a machine has registered the run.
+
+A pass shows "Test run passed: the agent answered on a machine of the instance's pool.",
+with Main's node pool by name in place of the instance's pool, or "…on a machine." for a
+run with no node, and **See the run**: the agent's output is in the run's log. Owners,
+admins and members run the test. If the step shows another line, follow its first
+sentence, then select **Run the test** again. When no machine takes the test run within 5
+minutes, for example, the step shows "Check the pool in Instance settings › Nodes. No
+machine has taken the test run yet." After a pass, the overview shows **Set up Main** no
+more the next time it opens.
+
+The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,
+`/acme/main/settings/workflow`, which opens for owners and admins. In **Source**, choose
+the harness repository, such as `example-org/harness`: the list has the repositories
+linked to Acme that have a `qory-stack.yaml` file, and the harness sources an instance
+admin assigned to Acme. For a public repository that is not in the list, choose **Enter an
+address**, and enter its address in **Public address**, such as
+`https://github.com/example-org/harness`, without a password or token in it. In
+**Workflow**, choose one of the workflows that the repository's stack lists, and select
+**Save**.
+<!-- /feature -->
 
 ## Next
 

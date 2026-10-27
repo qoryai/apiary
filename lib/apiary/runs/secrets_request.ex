@@ -1,8 +1,8 @@
 defmodule Apiary.Runs.SecretsRequest do
   @moduledoc false
 
-  # With the `factory` and `secrets` features, or the `registry` feature, which the
-  # documentation leaves out: the secrets request of the Forager contract
+  # With the `factory` and `secrets` features, or the `registry` feature (which the
+  # documentation leaves out): the secrets request of the Forager contract
   # (`secrets-request.schema.json`), a gateway's signed POST for the values of credentials
   # of a run's run configuration, and its answer, the values sealed to the gateway's access
   # key (`Apiary.Secrets.Sealing`). The gateway names every credential when the run starts,

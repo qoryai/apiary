@@ -87,10 +87,14 @@ and do not go through Gettext.
 ## Domains and their words
 
 A workspace's domain is its **type**, chosen when the workspace is created and fixed
-after: on the set-up page for the instance's first workspace, and on an edition's form
-for any other. Each domain has a label and a line under it, which the forms and the
-workspace's settings show (`c:Apiary.Lingo.Domain.label/0`, `description/0`): "Software
-workspace", for work on code, and "General workspace", for any other work.
+after: on the workspace set-up page, `/:org/set-up`, for an organisation's first
+workspace, and on an edition's form for any other. The Type field of those forms
+(`ApiaryWeb.WorkspaceComponents.type_field/1`) shows each domain's name and line
+(`c:Apiary.Lingo.Domain.type_name/0`, `type_line/0`): "Software", "For work on code.
+Each ticket needs a repository.", and "General", "For any other work, such as
+marketing, incidents or customer care." The workspace's settings show its label and
+line (`c:Apiary.Lingo.Domain.label/0`, `description/0`): "Software workspace" and
+"General workspace".
 `Apiary.Lingo.Domain.choices/0` lists the domains in the order a form offers them.
 
 - **No source string uses a software word**: repository, forge, pull request, branch,

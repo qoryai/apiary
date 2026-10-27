@@ -55,6 +55,14 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule SignUpOpen do
+    @moduledoc """
+    A sign-up without an invitation creates an organisation
+    (`c:Apiary.Edition.sign_up_open?/0`), as an edition that opens one does.
+    """
+    def sign_up_open?, do: true
+  end
+
   defmodule WritesOperatorChain do
     @moduledoc """
     A person of the scope writes the operator's chain of model providers and choices in
@@ -657,6 +665,19 @@ defmodule Apiary.EditionStubs do
     def sentence, do: "Only the stub's owners lock, unlock or change a locked rule."
   end
 
+  defmodule ConnectWorded do
+    @moduledoc """
+    The pages say who may connect a work source in the edition's words
+    (`c:ApiaryWeb.Edition.who_may_sentence/2`, `adapter.connect`), and the core's words for
+    anything else.
+    """
+    def who_may_sentence(:"adapter.connect", _scope), do: sentence()
+    def who_may_sentence(_about, _scope), do: nil
+
+    @doc "The sentence it says."
+    def sentence, do: "Only the stub's operator connects a work source here."
+  end
+
   defmodule GatewaysEmptyWorded do
     @moduledoc """
     Organisations of many workspaces (`ManyWorkspaces`), whose empty Gateways page says its
@@ -748,6 +769,34 @@ defmodule Apiary.EditionStubs do
     @moduledoc "Nobody changes model providers (`provider.write`), whoever asks."
     def check(_scope, :"provider.write", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoTakeIn do
+    @moduledoc "Nobody takes an item in as a work item (`work_item.take_in`), whoever asks."
+    def check(_scope, :"work_item.take_in", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule SetupReady do
+    @moduledoc """
+    The machines and the model key of the Overview's setup list are done for every
+    workspace (`c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1`),
+    as an edition that counts what serves a workspace from another organisation may
+    answer: a pool `shared-pool` and a gateway `shared-gateway` of an organisation no test
+    reads. The work source and the test run are the core's.
+    """
+    alias Apiary.Nodes.Node
+
+    @organisation_id "00000000-0000-4000-8000-00000000c0de"
+
+    def machines_ready(_workspace) do
+      %{
+        pool: %Node{kind: :pool, name: "shared-pool", organisation_id: @organisation_id},
+        gateway: %Node{kind: :gateway, name: "shared-gateway", organisation_id: @organisation_id}
+      }
+    end
+
+    def model_key_ready?(_workspace), do: true
   end
 
   defmodule NoLimitWorded do

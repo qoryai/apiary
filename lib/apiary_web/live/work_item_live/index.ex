@@ -33,7 +33,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # its counts, the filters' values and the sidebar's count again with its scope, and
   # never shows what a message says.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -485,6 +485,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     %{
       number: row.number,
       title: row.title,
+      test: row.test,
       key: row.key,
       repository: row.repository,
       status: status(row),

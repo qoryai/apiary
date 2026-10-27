@@ -11,6 +11,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.SetUpSteps
 
   # The page of an invitation of `email` into a fresh organisation's workspace, opened
   # with the instance's mail from `mail`: the sign-up and the invitation before it are made
@@ -20,7 +21,16 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
     %{token: token} = invitation_fixture(scope, %{"email" => email})
     Apiary.Mail.put_test_source(mail)
     {:ok, lv, html} = live(conn, ~p"/users/register?invitation=#{token}")
-    %{lv: lv, html: html, email: email, scope: scope}
+    %{lv: lv, html: html, email: email, scope: scope, token: token}
+  end
+
+  # The sign-up form in `html` is sent with POST to the page, and has no password field, so
+  # none with a value.
+  defp assert_posts_without_password(html) do
+    form = LazyHTML.query(html, "#registration_form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.attribute(form, "action") == []
+    assert LazyHTML.query(form, ~s{input[type="password"]}) |> Enum.to_list() == []
   end
 
   describe "Registration page" do
@@ -123,8 +133,12 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
          %{conn: conn} do
       %{lv: lv, html: html, email: email} = invited(conn, unique_user_email(), :none)
 
-      assert html =~ "Choose a password to sign in with."
+      refute html =~ "Choose a password to sign in with."
       refute html =~ "no password needed"
+      refute has_element?(lv, "#sign-up-context")
+
+      # An invitation into a workspace: the account is the one step, and no indicator shows.
+      assert steps(lv) == []
       assert html =~ "Your account joins it as soon as you create it."
 
       assert has_element?(
@@ -141,6 +155,8 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
 
       # The page never writes a password back.
       refute has_element?(lv, "#registration_form input[type=password][value]")
+      # Once the account is made, the form is submitted to the log-in controller.
+      assert has_element?(lv, "#registration_form[action='/users/log-in'][method=post]")
     end
 
     test "an invited sign-up makes the account, joins the workspace and signs the person in",
@@ -223,6 +239,34 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       refute has_element?(lv, "#registration_form[phx-trigger-action]")
     end
 
+    test "posts its form, and shows no password, first or after a refused sign-up", %{
+      conn: conn
+    } do
+      user = user_fixture()
+      %{token: token} = invited(conn, user.email)
+
+      # The page before it connects: a submit there is the browser's, with the form's method.
+      html = conn |> get(~p"/users/register?invitation=#{token}") |> html_response(200)
+      assert_posts_without_password(LazyHTML.from_document(html))
+
+      {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
+
+      html =
+        lv
+        |> element("#registration_form")
+        |> render_submit(%{
+          "user" => %{
+            "email" => user.email,
+            "password" => "s3cret-example",
+            "password_confirmation" => "s3cret-example"
+          }
+        })
+
+      assert html =~ "has already been taken"
+      refute html =~ "s3cret-example"
+      assert_posts_without_password(LazyHTML.from_fragment(html))
+    end
+
     test "a password sent all the same is dropped, and the address is confirmed by email",
          %{conn: conn} do
       %{lv: lv, email: email} = invited(conn)
@@ -254,6 +298,101 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       assert html =~ "Your account joins it as soon as you confirm."
       refute has_element?(lv, "#registration_form input[type=password]")
       refute has_element?(lv, "#registration_form input[name='user[email]'][readonly]")
+    end
+  end
+
+  describe "a sign-up that creates an organisation" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SignUpOpen)
+    end
+
+    test "says the first workspace is set up next, with mail or without", %{conn: conn} do
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+
+      assert has_element?(
+               lv,
+               "#set-up-line",
+               "Start an organisation. You set up its first workspace next."
+             )
+
+      assert has_element?(
+               lv,
+               "#set-up-context #sign-up-context",
+               "We will email you a link to confirm; no password needed."
+             )
+
+      source = if Apiary.Features.on?(:factory), do: [{"Work source", :to_come}], else: []
+
+      assert steps(lv) ==
+               [{"Your account", :current}, {"Workspace", :to_come} | source]
+
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+
+      assert has_element?(
+               lv,
+               "#set-up-line",
+               "Start an organisation. You set up its first workspace next."
+             )
+
+      refute has_element?(lv, "#set-up-context")
+      refute render(lv) =~ "Choose a password to sign in with."
+    end
+
+    test "creates the organisation with no workspace, and lands its owner on its set-up", %{
+      conn: conn
+    } do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+      email = unique_user_email()
+      password = "a long pass phrase"
+
+      form =
+        form(lv, "#registration_form",
+          user: %{
+            "email" => email,
+            "organisation_name" => "Signup Studio",
+            "password" => password,
+            "password_confirmation" => password
+          }
+        )
+
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert [membership] = Apiary.Organisations.list_memberships(user)
+      assert membership.level == :owner
+
+      organisation =
+        Apiary.Repo.get!(Apiary.Organisations.Organisation, membership.organisation_id)
+
+      refute Apiary.Organisations.has_workspace?(organisation)
+      assert redirected_to(conn) == ~p"/#{organisation}/set-up"
+    end
+
+    test "with mail, creates the organisation with no workspace too", %{conn: conn} do
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+      email = unique_user_email()
+
+      html =
+        lv
+        |> form("#registration_form",
+          user: %{"email" => email, "organisation_name" => "Signup Mail Studio"}
+        )
+        |> render_submit()
+
+      assert html =~ "Check your email"
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert [membership] = Apiary.Organisations.list_memberships(user)
+
+      organisation =
+        Apiary.Repo.get!(Apiary.Organisations.Organisation, membership.organisation_id)
+
+      refute Apiary.Organisations.has_workspace?(organisation)
     end
   end
 

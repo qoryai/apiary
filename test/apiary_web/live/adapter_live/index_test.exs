@@ -5,9 +5,12 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
   # unassigned; Add for an owner or an admin, the chevron to an installed one's page, and
   # the foot notes, the members' by the organisation's workspaces; with no adapter, an
   # empty state in place of the table; behind the feature, for members.
-  # Add an integration (`:new`), for an owner or an admin: a block for each adapter not
-  # installed, Install, which posts to the Install path, or not ready yet; with every one
-  # installed, a line that says so, in place of the lead.
+  # Add an integration (`:new`), for an owner or an admin: a block for each configured
+  # adapter not installed that serves a workspace's domain, Install, which posts to the
+  # Install path, every domain's while the organisation has no workspace; with none
+  # configured, a line that says an instance admin sets one up; with some configured but
+  # none for the workspaces' domains, a line that says none serves them; with
+  # every one installed, a line that says so; each in place of the lead.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -325,10 +328,6 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     end
 
     test "with every integration installed, says so, with no lead", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, new_path(scope))
-      refute has_element?(lv, "#add-none")
-      assert has_element?(lv, ".q-settings-head-sub")
-
       for base <- ["Acme tracker", "Platform tracker"] do
         %{adapter: adapter} = connectable_adapter_fixture(%{name: unique_adapter_name(base)})
         connection_fixture(scope, adapter, :listed)
@@ -363,18 +362,115 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       assert conn.resp_body =~ "https://tracker.example.com/connect?state="
     end
 
-    test "an integration not set up yet: Install disabled, and why", %{conn: conn, scope: scope} do
-      adapter = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+    test "with no integration set up on the instance, says so, with no lead", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Installed adapters that are not set up yet are offered nowhere.
+      adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+      settable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
+
+      {:ok, lv, html} = live(conn, new_path(scope))
+
+      assert words(lv, "#add-none-set-up") ==
+               "No integration is set up on this instance yet. An instance admin sets one up " <>
+                 "in Instance settings › Adapters."
+
+      assert has_element?(lv, "h1", "Add an integration")
+      refute has_element?(lv, ".q-settings-head-sub")
+      refute has_element?(lv, "#add-none")
+      refute has_element?(lv, "#add-none-for-type")
+      refute has_element?(lv, "[id^=add-na_]")
+      refute html =~ "can't be installed yet"
+    end
+
+    test "with configured integrations for no domain of the workspaces, says none serves them",
+         %{conn: conn, scope: scope} do
+      %{adapter: desk} = connectable_adapter_fixture(%{name: unique_adapter_name("Help desk")})
+
+      {1, _} =
+        Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^desk.id),
+          set: [domains: ["general"]]
+        )
+
       {:ok, lv, _html} = live(conn, new_path(scope))
 
-      id = "#add-#{adapter.public_id}"
-      assert has_element?(lv, "#{id}-form-install[disabled]")
+      assert words(lv, "#add-none-for-type") ==
+               "No integration that serves this organisation's workspaces is set up on this " <>
+                 "instance. An instance admin sets one up in Instance settings › Adapters."
 
-      assert words(lv, "#{id}-not-ready") ==
-               "#{adapter.name} can't be installed yet: this instance's admins are still setting it up."
+      refute has_element?(lv, "#add-none-set-up")
+      refute has_element?(lv, ".q-settings-head-sub")
+      refute has_element?(lv, "[id^=add-na_]")
+    end
 
-      render_submit(form(lv, "#{id}-form"))
-      refute has_element?(lv, "#{id}-sending")
+    test "with no workspace, offers the configured adapters of every domain", %{
+      conn: conn,
+      scope: scope
+    } do
+      %{adapter: desk} = connectable_adapter_fixture(%{name: unique_adapter_name("Help desk")})
+
+      {1, _} =
+        Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^desk.id),
+          set: [domains: ["general"]]
+        )
+
+      {1, _} =
+        Apiary.Repo.update_all(
+          from(w in Apiary.Organisations.Workspace,
+            where: w.organisation_id == ^scope.organisation.id
+          ),
+          set: [
+            deletion_marked_at: DateTime.utc_now(),
+            purge_after: DateTime.add(DateTime.utc_now(), 30, :day),
+            purge_trigger: "grace_period"
+          ]
+        )
+
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert has_element?(lv, "#add-#{desk.public_id}")
+      refute has_element?(lv, "#add-none-set-up")
+      refute has_element?(lv, "#add-none-for-type")
+    end
+
+    test "offers only the configured adapters that serve a workspace's domain", %{
+      conn: conn,
+      scope: scope
+    } do
+      %{adapter: any} = connectable_adapter_fixture(%{name: unique_adapter_name("Any tracker")})
+      %{adapter: code} = connectable_adapter_fixture(%{name: unique_adapter_name("Code forge")})
+      %{adapter: desk} = connectable_adapter_fixture(%{name: unique_adapter_name("Help desk")})
+      not_set_up = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
+      %{adapter: settable} = settable_adapter_fixture(%{name: unique_adapter_name("Set up")})
+
+      for {adapter, domains} <- [{code, ["software"]}, {desk, ["general"]}] do
+        {1, _} =
+          Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
+            set: [domains: domains]
+          )
+      end
+
+      offered = fn ->
+        {:ok, _lv, html} = live(conn, new_path(scope))
+
+        for [_whole, id] <- Regex.scan(~r/<div[^>]* id="add-(na_[^"]+)"/, html),
+            uniq: true,
+            do: id
+      end
+
+      # Main is a software workspace: the general adapter waits for a general workspace.
+      assert Enum.sort(offered.()) == Enum.sort([any.public_id, code.public_id])
+
+      workspace_fixture(scope.organisation, "Support")
+      |> Ecto.Changeset.change(domain: "general")
+      |> Apiary.Repo.update!()
+
+      assert Enum.sort(offered.()) ==
+               Enum.sort([any.public_id, code.public_id, desk.public_id])
+
+      refute not_set_up.public_id in offered.()
+      refute settable.public_id in offered.()
     end
 
     test "names the collections in each adapter's words", %{conn: conn, scope: scope} do

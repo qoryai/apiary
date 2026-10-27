@@ -101,7 +101,8 @@ defmodule Apiary.Explore.ResultTest do
                "first-attempt-loopback.json",
                "first-attempt.json",
                "third-attempt.json",
-               "without-target.json"
+               "without-target.json",
+               "without-ticket.json"
              ]
     end
   end

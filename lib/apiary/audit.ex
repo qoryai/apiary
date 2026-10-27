@@ -591,8 +591,8 @@ defmodule Apiary.Audit do
   or a row that is gone has no key: the page says so. A workspace marked for deletion is
   still named until it is purged.
   """
-  # For the entries of the `factory` feature, which the documentation leaves out, names/2
-  # also looks up the title of each source's collection; for the target of each entry
+  # For the entries of the `factory` feature, names/2 also looks up the title of each
+  # source's collection; for the target of each entry
   # that turned a Backlog on or off (`collection.set_backlog`), what its sources call its
   # items, where they name it (Apiary.Adapters.target_item_nouns/2); for the work item of
   # each take in (`work_item.take_in`), what its source calls its items, where it names

@@ -56,7 +56,7 @@ defmodule Apiary.Adapters do
   # the adapter learns from its change feed (`Apiary.Adapters.Feed`). When it was last
   # seen is its keys' latest use (`last_seen/2`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -70,6 +70,7 @@ defmodule Apiary.Adapters do
     Audit,
     Dispatches,
     Features,
+    Organisations,
     PublicId,
     Repo,
     WorkItems
@@ -91,6 +92,7 @@ defmodule Apiary.Adapters do
   }
 
   alias Apiary.Contract.Ed25519
+  alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
@@ -166,6 +168,35 @@ defmodule Apiary.Adapters do
   end
 
   @doc false
+  # The instance's adapters in use, by name, with the `factory` feature, for the set-up
+  # link's page (`ApiaryWeb.SetupLive`), which nobody is signed in to: its reader becomes
+  # the instance admin, and its progress indicator lists the adapters they set up next.
+  # None without the feature.
+  @spec list_for_set_up() :: [Node.t()]
+  def list_for_set_up do
+    if Features.on?(:factory),
+      do: live_query() |> order_by([n], asc: n.name, asc: n.id) |> Repo.all(),
+      else: []
+  end
+
+  @doc false
+  # The set-up's adapters, from `adapters`, the instance's adapters in use: with the
+  # `factory` feature, one for each name `QORY_INSTALLED_ADAPTERS` lists
+  # (`Apiary.Adapters.Installed.names/0`), in the setting's order: the adapter in use
+  # installed as it, or `{:installing, name}` until the installer makes it (`install/2`);
+  # then the other adapters, in the order of `adapters`.
+  @spec set_up_list([Node.t()]) :: [Node.t() | {:installing, String.t()}]
+  def set_up_list(adapters) do
+    names = if Features.on?(:factory), do: Installed.names(), else: []
+
+    installed =
+      for %Node{installed_as: name} = a <- adapters, is_binary(name), into: %{}, do: {name, a}
+
+    Enum.map(names, &Map.get(installed, &1, {:installing, &1})) ++
+      Enum.reject(adapters, &(&1.installed_as in names))
+  end
+
+  @doc false
   # The instance's adapter in use whose public id is `public_id`, with the account that
   # made it, to whoever may read it (`readable?/1`); nil for one deleted, a node of another
   # kind, none, or anyone else.
@@ -181,6 +212,64 @@ defmodule Apiary.Adapters do
 
   def get_adapter(%Scope{}, _public_id), do: nil
 
+  @doc false
+  # Whether `adapter` is configured: it declares no `setup_url`, which it declares only
+  # while it is not set up; it may be connected (`connectable/1`: it declared a connect
+  # address and holds an access key in use); and it is listed for organisations: one
+  # installed with Qory Apiary while `QORY_INSTALLED_ADAPTERS` lists it (`listed?/1`),
+  # one an instance admin added at any time. `setup/2` and `seal_app_values/4` return an
+  # error for an installed adapter the list no longer has.
+  @spec configured?(Node.t()) :: boolean
+  def configured?(%Node{kind: :adapter, setup_url: setup_url} = adapter),
+    do:
+      is_nil(setup_url) and connectable(adapter) == :ok and
+        (not installed?(adapter) or listed?(adapter))
+
+  @doc false
+  # The instance's adapters in use that are configured (`configured?/1`), so none that
+  # `QORY_INSTALLED_ADAPTERS` no longer lists, and serve `domain`, a module of
+  # `Apiary.Lingo.Domain.domains/0`, by name, as `list_adapters/1` orders them. An
+  # adapter serves the domains its latest start listed, and every domain where it listed
+  # none, as `Apiary.Lingo.Domain.serves?/2` has it. None where the instance does not
+  # have the feature `factory`. The caller decides who may read them.
+  @spec list_configured(module) :: [Node.t()]
+  def list_configured(domain) when is_atom(domain) do
+    if Features.on?(:factory) do
+      name = domain.name()
+
+      live_query()
+      |> where([n], is_nil(n.domains) or ^name in n.domains)
+      |> order_by([n], asc: n.name, asc: n.id)
+      |> Repo.all()
+      |> Enum.filter(&configured?/1)
+    else
+      []
+    end
+  end
+
+  @doc false
+  # The domains whose adapters the scope's organisation is offered, modules of
+  # `Apiary.Lingo.Domain.domains/0`: those of its workspaces, each once, or every domain
+  # (`Apiary.Lingo.Domain.choices/0`) while it has none.
+  @spec offered_domains(Scope.t()) :: [module]
+  def offered_domains(%Scope{} = scope) do
+    case scope |> Organisations.list_workspaces() |> Enum.map(&Domain.for_workspace/1) do
+      [] -> Domain.choices()
+      domains -> Enum.uniq(domains)
+    end
+  end
+
+  @doc false
+  # Whether the scope's organisation is offered `adapter`: it is configured
+  # (`configured?/1`) and serves one of `offered_domains/1`, as `list_configured/1` has
+  # it. Install asks it (`connect/2`), so an adapter Add an integration does not list is
+  # not installed by a request made without the page.
+  @spec offered?(Scope.t(), Node.t()) :: boolean
+  def offered?(%Scope{} = scope, %Node{domains: domains} = adapter) do
+    configured?(adapter) and
+      (is_nil(domains) or Enum.any?(offered_domains(scope), &(&1.name() in domains)))
+  end
+
   # The instance's adapters are read by a person of an organisation who may read them
   # there (`adapter.read`, where they are shown the feature), and by an instance admin
   # where the instance has it (`authorize_instance/2`).
@@ -195,6 +284,28 @@ defmodule Apiary.Adapters do
       where: is_nil(n.organisation_id) and is_nil(n.workspace_id),
       where: n.kind == :adapter and is_nil(n.deleted_at)
   end
+
+  ## The guide
+
+  @doc false
+  # guide/2 is the steps `adapter`'s description gives for `part`, `:setup` or `:connect`
+  # (`Apiary.Nodes.Node`'s `source_guide`): `%{before: line | nil, steps: [line],
+  # after: line | nil}`, each line the integration's words, shown as plain text; nil where
+  # it gives none for that part.
+  @spec guide(Node.t(), :setup | :connect) ::
+          %{before: String.t() | nil, steps: [String.t()], after: String.t() | nil} | nil
+  def guide(%Node{kind: :adapter, source_guide: %{} = guide}, part)
+      when part in [:setup, :connect] do
+    case guide[Atom.to_string(part)] do
+      %{"steps" => [_ | _] = steps} = given ->
+        %{before: given["before"], steps: steps, after: given["after"]}
+
+      _none ->
+        nil
+    end
+  end
+
+  def guide(%Node{kind: :adapter}, part) when part in [:setup, :connect], do: nil
 
   ## The words for a source's items
 
@@ -476,7 +587,8 @@ defmodule Apiary.Adapters do
   # entry `adapter.install` by the instance, in the instance's trail, in its transaction;
   # one found leaves none. Made beside another pass, or beside a person who takes the same
   # name, the insert finds the conflict, reads again, and takes the adapter made or the
-  # next name.
+  # next name. Once a new one commits, the pages subscribed to the adapters installed
+  # (`subscribe_installs/1`) receive `{:adapter_installed, %{node_id: id}}`.
   # `{:ok, adapter}`; `{:error, :invalid}` for a name `Apiary.Adapters.Installed.valid_name?/1`
   # refuses; `{:error, changeset}`; `{:error, :forbidden}`; `{:error, :not_found}` where the
   # feature is off.
@@ -487,15 +599,45 @@ defmodule Apiary.Adapters do
       Repo.transact(fn ->
         with :ok <- authorize_install(scope), do: find_or_install(scope, name, 3)
       end)
+      |> case do
+        {:ok, {:made, adapter}} ->
+          :ok = broadcast_installed(adapter)
+          {:ok, adapter}
+
+        {:ok, {:found, adapter}} ->
+          {:ok, adapter}
+
+        {:error, _reason} = error ->
+          error
+      end
     else
       {:error, :invalid}
     end
   end
 
+  @installs_topic "adapters:installs"
+
+  @doc false
+  # Subscribes an instance admin (`authorize_instance/2`) to the adapters the installer
+  # makes (`install/2`): `{:adapter_installed, %{node_id: id}}` once each new one commits.
+  @spec subscribe_installs(Scope.t()) :: :ok | {:error, term}
+  def subscribe_installs(%Scope{} = scope) do
+    with :ok <- authorize_instance(scope),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, @installs_topic)
+  end
+
+  defp broadcast_installed(%Node{id: id}),
+    do:
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        @installs_topic,
+        {:adapter_installed, %{node_id: id}}
+      )
+
   defp find_or_install(scope, name, tries) do
     case live_query() |> where([n], n.installed_as == ^name) |> Repo.one() do
       %Node{} = adapter ->
-        {:ok, adapter}
+        {:ok, {:found, adapter}}
 
       nil when tries > 0 ->
         changeset =
@@ -547,7 +689,7 @@ defmodule Apiary.Adapters do
            Audit.record(Repo, scope, :"adapter.install", adapter, %{
              after: Map.take(adapter, [:name, :kind, :public_id, :installed_as])
            }),
-         do: {:ok, adapter}
+         do: {:ok, {:made, adapter}}
   end
 
   @doc false
@@ -600,12 +742,20 @@ defmodule Apiary.Adapters do
   # `{:error, :too_soon}` when the organisation's connected connection would need a pass
   # that expires too far ahead, as for a second press in the same second;
   # `{:error, :no_connect_url}` while the adapter declared no address; `{:error, :no_key}`
-  # while it holds no access key in use; `{:error, :forbidden}`; `{:error, :not_found}`;
-  # none of them changes anything or leaves an entry.
+  # while it holds no access key in use; `{:error, :not_offered}` for an adapter the
+  # organisation is not offered (`offered?/2`: not configured, or serving none of its
+  # workspaces' domains); `{:error, :forbidden}`; `{:error, :not_found}`; none of them
+  # changes anything or leaves an entry.
   @spec connect(Scope.t(), Node.t()) ::
           {:ok, String.t(), {String.t(), String.t()}}
           | {:error,
-             :too_soon | :no_connect_url | :no_key | :invalid | :too_long | Access.reason()}
+             :too_soon
+             | :no_connect_url
+             | :no_key
+             | :not_offered
+             | :invalid
+             | :too_long
+             | Access.reason()}
   def connect(%Scope{} = scope, %Node{id: id}) do
     result =
       Repo.transact(fn ->
@@ -614,6 +764,7 @@ defmodule Apiary.Adapters do
                live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
                  {:error, :not_found},
              :ok <- connectable(current),
+             true <- offered?(scope, current) || {:error, :not_offered},
              nonce = ConnectPass.new_nonce(),
              {:ok, connection, pass, replaced} <- Connections.start(scope, current, nonce),
              {:ok, _entry} <-
@@ -986,7 +1137,10 @@ defmodule Apiary.Adapters do
   # the integration shows them; a start that changes none of them tells none. The start is
   # stored by then: where the database fails to read those connections, the failure is
   # logged, no organisation is told, and the start answers as stored. `opts[:connections]`
-  # replaces that read, a function of the adapter, for a test that makes it fail.
+  # replaces that read, a function of the adapter, for a test that makes it fail. A start
+  # that changes the adapter's `setup_url` or `connect_url` tells, after the commit, the
+  # pages subscribed to its keys (`subscribe_keys/2`), as the instance's connections show
+  # whether it is configured (`configured?/1`).
   # `{:ok, adapter}`, `{:error, changeset}`, `{:error, :forbidden}`, or
   # `{:error, :not_found}`.
   @spec declare(Scope.t(), Wire.declaration(), keyword) ::
@@ -1017,14 +1171,17 @@ defmodule Apiary.Adapters do
            :ok <- record_declaration(scope, current, declared),
            {:ok, relinked} <- Collections.relink_adapter(current, declared),
            :ok <- tell_first(current, declared) do
-        {:ok, {declared, relinked, shown_changed?(current, declared)}}
+        {:ok,
+         {declared, relinked, shown_changed?(current, declared),
+          set_up_changed?(current, declared)}}
       end
     end)
     |> case do
-      {:ok, {declared, relinked, shown_changed?}} ->
+      {:ok, {declared, relinked, shown_changed?, set_up_changed?}} ->
         :ok = Collections.broadcast_relinked(relinked)
         connections = Keyword.get(opts, :connections, &connections_told/1)
         if shown_changed?, do: :ok = broadcast_shown(declared, connections)
+        if set_up_changed?, do: :ok = broadcast_declared(declared)
         {:ok, declared}
 
       {:error, _reason} = refused ->
@@ -1044,6 +1201,23 @@ defmodule Apiary.Adapters do
 
   defp shown_changed?(current, declared),
     do: Map.take(current, @shown) != Map.take(declared, @shown)
+
+  # Whether a start changed what `configured?/1` reads of the adapter: where to set it up
+  # and where to connect to it.
+  defp set_up_changed?(current, declared),
+    do:
+      Map.take(current, [:setup_url, :connect_url]) !=
+        Map.take(declared, [:setup_url, :connect_url])
+
+  # After the start commits: tells the pages subscribed to the adapter's keys
+  # (`subscribe_keys/2`) that whether it is configured may have changed.
+  defp broadcast_declared(%Node{id: id} = adapter),
+    do:
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        AccessKeys.topic(AccessKeys.place_id(adapter), id),
+        {:adapter_declared, %{node_id: id}}
+      )
 
   # After the start commits: tells each organisation with a connection to the adapter that
   # it changed (`Apiary.Adapters.Collections.broadcast_connection/1`), once, naming the
@@ -1175,7 +1349,9 @@ defmodule Apiary.Adapters do
       do: AccessKeys.cancel_code(scope, code)
 
   @doc false
-  # Subscribes an instance admin to `adapter`'s keys and codes (`Apiary.AccessKeys.topic/2`).
+  # Subscribes an instance admin to `adapter`'s keys and codes (`Apiary.AccessKeys.topic/2`),
+  # and to its starts that change where to set it up or to connect to it
+  # (`{:adapter_declared, %{node_id: id}}`, `declare/3`).
   @spec subscribe_keys(Scope.t(), Node.t()) :: :ok | {:error, term}
   def subscribe_keys(%Scope{} = scope, %Node{kind: :adapter} = adapter),
     do: AccessKeys.subscribe(scope, adapter)

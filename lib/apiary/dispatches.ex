@@ -355,7 +355,9 @@ defmodule Apiary.Dispatches do
           organisation_id: w.organisation_id,
           workspace_id: w.workspace_id,
           target_system: w.target_system,
-          target_path: w.target_path
+          target_path: w.target_path,
+          test: w.test,
+          connection_id: w.connection_id
         }
     )
   end
@@ -383,11 +385,17 @@ defmodule Apiary.Dispatches do
       |> Repo.insert()
 
     with {:ok, run} <- result,
-         {:ok, _walk} <- WalkJob.queue(run, target(work_item)) do
+         {:ok, _walk} <- WalkJob.queue(run, harness_place(work_item)) do
       broadcast([workspace_id])
       {:ok, run}
     end
   end
+
+  # What the run's harness walk is for: `:test` for a test work item, `test` set and no
+  # connection, as the database holds them together (`work_items_test_check`), which gets
+  # the built-in harness (`Apiary.Harnesses.Builtin`); else the work item's target.
+  defp harness_place(%{test: true, connection_id: nil}), do: :test
+  defp harness_place(work_item), do: target(work_item)
 
   defp target(%{target_system: system, target_path: path})
        when is_binary(system) and is_binary(path),
@@ -558,6 +566,8 @@ defmodule Apiary.Dispatches do
             workspace_id: w.workspace_id,
             target_system: w.target_system,
             target_path: w.target_path,
+            test: w.test,
+            connection_id: w.connection_id,
             state: w.state,
             take_in: w.take_in
           }
@@ -963,6 +973,10 @@ defmodule Apiary.Dispatches do
   # for any other (closed, declined, its connection ended, moved to another workspace,
   # or gone). Read without a lock: the run is locked, so an undo waits for the claim and
   # is then refused; a close that commits meanwhile finds the run claimed.
+  #
+  # A test work item has no connection to check (`WorkItem.test_changeset/2`): only one
+  # with `test` set and no `connection_id` skips that check, and the database holds both
+  # together (`work_items_test_check`). Every other work item keeps it.
   defp work_item_of(%DispatchRun{work_item_id: work_item_id, workspace_id: workspace_id}) do
     found =
       Repo.one(
@@ -976,6 +990,14 @@ defmodule Apiary.Dispatches do
     case found do
       {%WorkItem{state: :exploring, workspace_id: ^workspace_id} = work_item, connection}
       when connection in [:pending, :connected] ->
+        {:ok, work_item}
+
+      {%WorkItem{
+         state: :exploring,
+         workspace_id: ^workspace_id,
+         test: true,
+         connection_id: nil
+       } = work_item, nil} ->
         {:ok, work_item}
 
       {%WorkItem{state: :undone}, _connection} ->

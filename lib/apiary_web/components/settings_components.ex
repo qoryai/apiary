@@ -89,6 +89,17 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-puzzle-piece",
           path: ~p"/#{organisation}/settings/integrations",
           place: :organisation
+        },
+      # The organisation's model providers and their keys, with the features `factory`
+      # and `secrets`, for whoever may read them; each change there asks its action again.
+      providers?(scope) && can?(scope, :"connection.read") &&
+        %Entry{
+          section: :main,
+          key: :model_providers,
+          label: gettext("Model providers"),
+          icon: "hero-cpu-chip",
+          path: ~p"/#{organisation}/settings/model-providers",
+          place: :organisation
         }
     ]
 
@@ -132,6 +143,25 @@ defmodule ApiaryWeb.SettingsComponents do
           label: gettext("Secrets and variables"),
           icon: "hero-lock-closed",
           path: ~p"/#{organisation}/#{workspace}/settings/secrets"
+        },
+      # The model the workspace's runs use, with the features `factory` and `secrets`.
+      providers?(scope) && Access.can?(scope, :"connection.read", workspace) &&
+        %Entry{
+          section: :main,
+          key: :model,
+          label: gettext("Model"),
+          icon: "hero-cpu-chip",
+          path: ~p"/#{organisation}/#{workspace}/settings/model"
+        },
+      # The workflow of the workspace's runs, with the `factory` feature, for whoever may
+      # save it.
+      Access.can?(scope, :"harness.save", workspace) &&
+        %Entry{
+          section: :main,
+          key: :workflow,
+          label: gettext("Workflow"),
+          icon: "hero-arrow-path-rounded-square",
+          path: ~p"/#{organisation}/#{workspace}/settings/workflow"
         },
       %Entry{
         section: :main,
@@ -186,6 +216,10 @@ defmodule ApiaryWeb.SettingsComponents do
   defp title_level(_scope, :person), do: [gettext("Your settings")]
   defp title_level(_scope, :instance), do: [gettext("Instance settings")]
 
+  # Model providers and model choices need the features `factory` and `secrets` both.
+  defp providers?(scope),
+    do: Features.visible?(scope, :factory) and Features.visible?(scope, :secrets)
+
   # The settings' actions are asked of the organisation: listing its workspaces, whose
   # deletion is its.
   defp can?(%Scope{organisation: organisation} = scope, action),
@@ -206,6 +240,8 @@ defmodule ApiaryWeb.SettingsComponents do
 
   A section of forms keeps a 720 px column (`measure="read"`); one that is a list, such
   as the people or the access keys, a 960 px one (`measure="list"`).
+  The `context` slot, why the section exists, is a column beside the 720 px one, under
+  it on a narrow page (`ApiaryWeb.PageComponents.context_column/1`).
   """
   attr :scope, :any, required: true
   attr :kind, :atom, required: true, values: [:organisation, :workspace, :node]
@@ -228,6 +264,11 @@ defmodule ApiaryWeb.SettingsComponents do
 
   slot :subtitle, doc: "one sentence: what the section is for"
   slot :actions, doc: "at most one primary and one default action"
+
+  slot :context,
+    doc:
+      "why the section exists and what it changes, in a column beside it (`ApiaryWeb.PageComponents.context_column/1`)"
+
   slot :inner_block, required: true
 
   def layout(assigns) do
@@ -257,7 +298,11 @@ defmodule ApiaryWeb.SettingsComponents do
            region (`<.table label>`), so no two landmarks share the section's name. --%>
       <section
         id={"settings-section-#{@current}"}
-        class={["q-settings-main", "q-settings-main-#{@measure}"]}
+        class={[
+          "q-settings-main",
+          "q-settings-main-#{@measure}",
+          @context != [] && "q-settings-main-context"
+        ]}
       >
         <header class="q-settings-head">
           <div class="min-w-0">
@@ -282,7 +327,14 @@ defmodule ApiaryWeb.SettingsComponents do
           </div>
           <div :if={@actions != []} class="q-settings-actions">{render_slot(@actions)}</div>
         </header>
-        {render_slot(@inner_block)}
+        <%= if @context == [] do %>
+          {render_slot(@inner_block)}
+        <% else %>
+          <.context_column>
+            {render_slot(@inner_block)}
+            <:context>{render_slot(@context)}</:context>
+          </.context_column>
+        <% end %>
       </section>
     </div>
     """

@@ -123,6 +123,11 @@ defmodule Apiary.Nodes.Node do
     # the description, once its schema has checked it (`source_role_changeset/2`), and
     # never cast.
     field :source_access, :string
+    # An adapter's alone (`nodes_source_guide_check`): its description's source role's
+    # `guide`, the steps for setting it up and for connecting it, as the description has
+    # it; nil where its description has none, and before its first start. Set at each
+    # start (`source_role_changeset/2`) and never cast.
+    field :source_guide, :map
     # An adapter's alone (`nodes_domains_check`): the domains its latest start's
     # description lists, each a domain's name (`Apiary.Lingo.Domain`); nil where it lists
     # none, which serves every domain, and before its first start. Set at each start
@@ -404,11 +409,12 @@ defmodule Apiary.Nodes.Node do
   # (`Apiary.Integrations.Description.source_secrets/1`, nil for none), and the apply
   # items of its work credential with the description's exact `egress_hosts`
   # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
-  # none). A description with no source role gives the defaults: no words, items, no
-  # line, no names and no apply items. The database holds the words and items to the
-  # same (`nodes_items_check`, `nodes_collection_noun_check`), and the line, the names
-  # and the apply items to adapters (`nodes_source_access_check`,
-  # `nodes_secret_names_check`, `nodes_source_apply_check`).
+  # none), and its guide (`Apiary.Integrations.Description.source_guide/1`, nil for none).
+  # A description with no source role gives the defaults: no words, items, no line, no
+  # names, no apply items and no guide. The database holds the words and items to the
+  # same (`nodes_items_check`, `nodes_collection_noun_check`), and the line, the names,
+  # the apply items and the guide to adapters (`nodes_source_access_check`,
+  # `nodes_secret_names_check`, `nodes_source_apply_check`, `nodes_source_guide_check`).
   # `Apiary.Adapters.declare/2` calls it at each start, on
   # the changeset of the declaration, so the latest start's description replaces what an
   # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
@@ -437,13 +443,15 @@ defmodule Apiary.Nodes.Node do
       source_access: Description.access(description),
       secret_names: Description.source_secrets(description),
       source_apply: Description.source_apply(description),
-      egress_hosts: Description.exact_egress_hosts(description)
+      egress_hosts: Description.exact_egress_hosts(description),
+      source_guide: Description.source_guide(description)
     )
     |> check_constraint(:items, name: :nodes_items_check)
     |> check_constraint(:secret_names, name: :nodes_secret_names_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)
     |> check_constraint(:source_apply, name: :nodes_source_apply_check)
+    |> check_constraint(:source_guide, name: :nodes_source_guide_check)
   end
 
   @doc false

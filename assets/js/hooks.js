@@ -4,6 +4,7 @@
 // timer, which app.js also runs for a page a controller rendered.
 import {CopyToClipboard} from "./hooks/copy_to_clipboard"
 import {Menu} from "./hooks/menu"
+import {Choice} from "./hooks/choice"
 import {NavDrawer} from "./hooks/nav_drawer"
 import {Switcher} from "./hooks/switcher"
 import {Palette} from "./hooks/palette"
@@ -27,6 +28,7 @@ export {autoDismiss}
 export const hooks = {
   CopyToClipboard,
   Menu,
+  Choice,
   NavDrawer,
   Switcher,
   Palette,

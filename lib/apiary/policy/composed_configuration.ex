@@ -47,7 +47,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   goes with its run configuration, and with its workspace.
   """
 
-  # With the `factory` feature, which the documentation leaves out, a run that must build
+  # With the `factory` feature, a run that must build
   # on its pool's default image is a prebuild: a run of a workspace's queue for the step
   # `prebuild` (`prebuild?/1`). No other run is one.
   #

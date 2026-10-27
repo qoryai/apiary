@@ -465,7 +465,7 @@ defmodule E2E do
   # instance's start logged, read from its log and followed, on its fresh database, which
   # makes the instance's own organisation. Anyone else would need an invitation from it.
   # Without mail the owner then signs in with the password the set-up was given, with the
-  # call the log-in form's post makes.
+  # call the log-in form's post makes, and creates the workspace (`with_first_workspace/1`).
   defp owner_scope do
     email = "owner@e2e.test"
     password = new_password()
@@ -473,11 +473,23 @@ defmodule E2E do
 
     case Apiary.Accounts.get_user_by_email_and_password(email, password) do
       %Apiary.Accounts.User{} = user ->
-        %Scope{workspace: %{}} = scope = Organisations.load_scope(Scope.for_user(user))
+        %Scope{workspace: %{}} = scope = with_first_workspace(user)
         scope
 
       nil ->
         fail("the owner cannot sign in with the password given at the set-up")
+    end
+  end
+
+  # The organisation's first workspace, created the way the owner creates it on
+  # `/<org>/set-up` with the type Software (`Organisations.create_first_workspace/2`): the
+  # set-up creates the organisation with no workspace. Returns the owner's scope with it.
+  defp with_first_workspace(owner) do
+    scope = Organisations.load_scope(Scope.for_user(owner))
+
+    case Organisations.create_first_workspace(scope, %{"domain" => "software"}) do
+      {:ok, _workspace} -> Organisations.load_scope(Scope.for_user(owner))
+      other -> fail("the owner could not create the first workspace: #{inspect(other)}")
     end
   end
 
@@ -508,8 +520,8 @@ defmodule E2E do
 
   # The instance with mail, through the job's SMTP sink: the set-up with its logged link,
   # the owner's log-in link, which confirms the address, as it must be before anyone
-  # sends an invitation by mail, and a member's invitation, each read from the sink as it
-  # arrived there.
+  # sends an invitation by mail, the owner's first workspace, and a member's invitation,
+  # each mail read from the sink as it arrived there.
   defp mailed do
     step("an instance with mail through the sink, set up with its logged link")
 
@@ -543,8 +555,7 @@ defmodule E2E do
 
     step("a member's invitation, mailed")
 
-    %Scope{workspace: %{id: workspace_id}} =
-      scope = Organisations.load_scope(Scope.for_user(owner))
+    %Scope{workspace: %{id: workspace_id}} = scope = with_first_workspace(owner)
 
     member_email = "member@e2e.test"
 

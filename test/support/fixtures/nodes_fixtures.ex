@@ -167,6 +167,49 @@ defmodule Apiary.NodesFixtures do
 
   @setup_url "https://tracker.example.com/setup?site=main"
 
+  # The guide of a source adapter for a code forge, as such an adapter's description has
+  # it (`roles.source.guide`).
+  @source_guide %{
+    "setup" => %{
+      "before" =>
+        "Sign in to GitHub first, as the user you create the App for, or as an owner of the organisation you create it for.",
+      "steps" => [
+        "The page Set up the GitHub App opens. In GitHub account for the App, enter the organisation or user to create the App for, such as example-org.",
+        "Under Who can install the App, keep Only this account (private), or choose Any GitHub account (public) if other GitHub accounts must install the App.",
+        "Press Continue. GitHub opens with the App filled in, named qory-example-org; you can change the name there.",
+        "On GitHub, press Create GitHub App.",
+        "When the page shows that the GitHub App is set up, click Back to Qory Apiary."
+      ]
+    },
+    "connect" => %{
+      "before" =>
+        "You need to be the GitHub user whose repositories you connect, or an owner of the organisation they belong to.",
+      "steps" => [
+        "If GitHub shows its sign-in page, sign in.",
+        "If GitHub shows a page to authorise the App, press Authorize.",
+        "If GitHub shows a list of accounts, choose the account to install the App on, such as example-org.",
+        "Choose All repositories, or choose Only select repositories and pick the repositories to bring in.",
+        "Press Install. GitHub then sends you back to Qory Apiary."
+      ],
+      "after" =>
+        "If a page shows The App is already installed, press Continue on GitHub, choose the account, then press Save."
+    }
+  }
+
+  @doc """
+  The guide of a source adapter for a code forge (`roles.source.guide`), with steps for
+  setting it up and for connecting it, and a line before or after them.
+  """
+  def source_guide_example, do: @source_guide
+
+  @doc "`adapter` with `guide` as its description's guide, as a start stores one."
+  def guided_adapter(adapter, guide) do
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [source_guide: guide])
+
+    Repo.get!(Node, adapter.id)
+  end
+
   @doc """
   An adapter an instance admin may set up (`connectable_adapter_fixture/1`): with its key,
   and an address to be set up at, #{@setup_url}, as an adapter that is not set up yet

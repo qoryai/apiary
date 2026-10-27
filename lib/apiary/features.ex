@@ -7,6 +7,7 @@ defmodule Apiary.Features do
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
   | `secrets` | stored secrets and variables, and the organisation's integrations; opt-in | `security` |
+  | `factory` | the work items of a workspace and what they are taken in from; opt-in | `observability`, `security` and `secrets` |
 
   An edition adds more features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, whether it is opt-in, and its parts.
@@ -74,22 +75,28 @@ defmodule Apiary.Features do
   # `path_rules` is the Paths field of a policy rule's form, opt-in: an instance without it
   # draws the form without its Paths row (`ApiaryWeb.PolicyComponents.rule_form/1`,
   # `paths`), and the rules, their paths and everything else about paths stay as they are.
-  # Every instance is served the same documentation with it on or off (`docs: false`): the
-  # module reference is served where it is off, so the table above has no row for it and
-  # no doc names it.
+  # The served documentation is the same with it on or off (`docs: false`): the guides
+  # describe a rule's paths, which every instance keeps.
   #
-  # `factory` is the work items of a workspace and what they are taken in from, opt-in
-  # until it is announced, and served the same documentation on or off (`docs: false`).
+  # `factory` is the work items of a workspace and what they are taken in from, opt-in,
+  # and the documentation differs by it: an instance without it is served none of the
+  # text marked for it. It needs `secrets`: the model providers' pages, where the model
+  # key its runs need is set, are of `secrets` (`ApiaryWeb.ProviderLive.Index`).
   #
   # `registry` is the private image registry's tokens and each run's registry credential
-  # (`Apiary.Registry`), opt-in, and served the same documentation on or off
-  # (`docs: false`).
+  # (`Apiary.Registry`), opt-in. The served documentation is the same with it on or off
+  # (`docs: false`): no guide describes it, and the docs of its modules are hidden.
   @core [
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
     secrets: [needs: [:security], built: true, default: false],
     path_rules: [needs: [:security], built: true, default: false, docs: false],
-    factory: [needs: [:observability, :security], built: true, default: false, docs: false],
+    factory: [
+      needs: [:observability, :security, :secrets],
+      built: true,
+      default: false,
+      docs: true
+    ],
     registry: [needs: [:security], built: true, default: false, docs: false]
   ]
 

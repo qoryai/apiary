@@ -27,6 +27,22 @@ defmodule ApiaryWeb.UserLive.PasswordTest do
       "user" => %{"password" => password, "password_confirmation" => confirmation || password}
     }
 
+  # The form in `html` is sent with POST, and its two password fields have no value.
+  defp assert_posts_without_password(html) do
+    form = LazyHTML.query(html, "#password_form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.attribute(form, "action") == []
+
+    passwords = LazyHTML.query(form, ~s{input[type="password"]})
+
+    assert LazyHTML.attribute(passwords, "name") == [
+             "user[password]",
+             "user[password_confirmation]"
+           ]
+
+    assert LazyHTML.attribute(passwords, "value") == []
+  end
+
   # The account is signed up with the suite's mail; the page is then opened without.
   setup do
     user = user_fixture()
@@ -85,6 +101,25 @@ defmodule ApiaryWeb.UserLive.PasswordTest do
 
     assert {:error, {:redirect, %{to: "/users/log-in"}}} =
              lv |> form("#password_form", params(@password)) |> render_submit()
+  end
+
+  test "posts its form, and the password's fields have no value", %{conn: conn, user: user} do
+    token = link(user)
+
+    # The page before it connects: a submit there is the browser's, with the form's method.
+    html = conn |> get(~p"/users/password/#{token}") |> html_response(200)
+    assert_posts_without_password(LazyHTML.from_document(html))
+
+    {:ok, lv, _html} = live(conn, ~p"/users/password/#{token}")
+
+    html =
+      lv
+      |> form("#password_form", params("s3cret-example", "s3cret-example-2"))
+      |> render_submit()
+
+    assert html =~ "does not match password"
+    refute html =~ "s3cret-example"
+    assert_posts_without_password(LazyHTML.from_fragment(html))
   end
 
   test "a link that is none, expired or ended by a newer one says the same", %{

@@ -23,7 +23,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   # which posts to `ApiaryWeb.AdapterInstallController`. An adapter that cannot be
   # installed yet (`ready?/1`) has Install disabled, and a line that says so.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 
@@ -141,6 +141,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :sending, :boolean, default: false
   attr :variant, :string, default: "primary", values: ~w(primary default)
   attr :size, :string, default: "sm", values: ~w(xs sm)
+  attr :label, :string, default: nil, doc: "the button's words; Install by default"
 
   @doc false
   # Install for `adapter`: a form that the page submits to `action` once pressed, with
@@ -171,9 +172,8 @@ defmodule ApiaryWeb.IntegrationComponents do
         class={@sending && "pointer-events-none"}
       >
         <span :if={@sending} class="loading loading-spinner loading-xs" aria-hidden="true" />
-        <.icon :if={!@sending} name="hero-arrow-top-right-on-square-micro" class="size-4" />{gettext(
-          "Install"
-        )}
+        <.icon :if={!@sending} name="hero-arrow-top-right-on-square-micro" class="size-4" />{@label ||
+          gettext("Install")}
       </.button>
     </.form>
     """

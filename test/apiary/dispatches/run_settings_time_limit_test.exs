@@ -16,6 +16,9 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
   @moduletag needs: :factory
 
+  # The catalogue's runtime, read from the list rather than named here.
+  @runtime hd(Apiary.Kinds.Runtimes.list()).name
+
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @harness "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
   @version "0123456789abcdef0123456789abcdef01234567"
@@ -79,10 +82,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
                harness: section
              }
 
-      assert settings(claimed) == %{"runtime" => "claude", "time_limit_minutes" => 90}
+      assert settings(claimed) == %{"runtime" => @runtime, "time_limit_minutes" => 90}
       assert keys(claimed) == ~w(runtime time_limit_minutes)
 
-      assert %Run{run_settings: %{"runtime" => "claude", "time_limit_minutes" => 90}} =
+      assert %Run{run_settings: %{"runtime" => @runtime, "time_limit_minutes" => 90}} =
                Repo.get!(Run, claimed.run.id)
     end
 
@@ -99,10 +102,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     test "leaves the member out with no limit, or a limit of another workflow", ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)
-      assert settings(claim!(ctx, place)) == %{"runtime" => "claude"}
+      assert settings(claim!(ctx, place)) == %{"runtime" => @runtime}
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "review", 90)
-      assert settings(claim!(ctx, place)) == %{"runtime" => "claude"}
+      assert settings(claim!(ctx, place)) == %{"runtime" => @runtime}
     end
 
     test "sends the limit after the model choice's members", ctx do
@@ -176,7 +179,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
     claimed = claim!(ctx, place)
-    assert settings(claimed) == %{"runtime" => "claude"}
+    assert settings(claimed) == %{"runtime" => @runtime}
     assert claimed.harness == nil
   end
 
@@ -187,7 +190,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
     claimed = claim!(ctx, place)
-    assert settings(claimed) == %{"runtime" => "claude"}
+    assert settings(claimed) == %{"runtime" => @runtime}
     assert claimed.harness == nil
   end
 

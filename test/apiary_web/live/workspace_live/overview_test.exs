@@ -115,6 +115,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "the empty workspace" do
+    # Without the `factory` feature, whose setup list takes the box's place
+    # (`ApiaryWeb.WorkspaceLive.OverviewSetupTest`).
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      Apiary.EditionStubs.HidesNamed.put([:factory])
+    end
+
     @step_2_text "Run one command on the machine, or generate a key for a CI or another system."
 
     @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key in the browser. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each node, once you have added it."
@@ -697,13 +704,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "the nodes hidden from the reader" do
+    # Without the `factory` feature, whose setup list takes the box's place
+    # (`ApiaryWeb.WorkspaceLive.OverviewSetupTest`).
     setup do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      Apiary.EditionStubs.HidesNamed.put([:factory])
     end
 
     test "the empty workspace has no box, only the line under it", %{conn: conn, scope: scope} do
       node_fixture(scope, name: "build-01")
-      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes, :factory])
       view = open(conn, scope)
 
       refute has_element?(view, "#onboarding")
@@ -720,11 +730,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       scope: scope
     } do
       node_fixture(scope, name: "build-01")
-      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
       view = open(conn, scope)
       assert has_element?(view, "#onboarding-enrol")
 
-      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes, :factory])
       render_click(view, "get_command", %{})
 
       refute has_element?(view, "#onboarding")
@@ -746,12 +756,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       lost_run(scope)
       idle = node_key(scope, "old-runner")
       long_ago(idle, 34)
-      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
       view = open(conn, scope)
       assert has_element?(view, "#att-key-#{idle.id}")
       shown = String.to_integer(text(view, "#attention-n"))
 
-      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes, :factory])
       send(view.pid, {:membership_changed, :level})
 
       refute has_element?(view, "#att-key-#{idle.id}")
@@ -761,7 +771,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     test "shown again, the box is back", %{conn: conn, scope: scope} do
-      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
       view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='1']")
@@ -788,7 +798,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       started_run(scope, shop(), heartbeat: {45, 100, 30})
 
       # Shown the nodes, the list overflows from the enforce nudge, then the idle key.
-      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
 
       assert has_element?(
                open(conn, scope),
@@ -796,7 +806,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "and 2 more"
              )
 
-      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes, :factory])
       view = open(conn, scope)
 
       assert text(view, "#attention-n") == "5"
@@ -828,13 +838,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       started_run(scope, shop(), heartbeat: {45, 100, 30})
       started_run(scope, shop(), heartbeat: {45, 100, 30})
 
-      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
       view = open(conn, scope)
       assert has_element?(view, "#attention-more[href='#{workspace_path(scope, "/policy")}']")
 
       # The policy is hidden from the reader while the page is open: once the scope is read
       # again and the list weighed again, the link goes.
-      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security, :factory])
       send(view.pid, {:membership_changed, :level})
       send(view.pid, :quiet_tick)
 
@@ -861,7 +871,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       started_run(scope, shop(), heartbeat: {45, 100, 30})
       started_run(scope, shop(), heartbeat: {45, 100, 30})
 
-      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:factory])
 
       assert has_element?(
                open(conn, scope),
@@ -869,7 +879,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "and 1 more"
              )
 
-      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
+      :ok = Apiary.EditionStubs.HidesNamed.put([:nodes, :factory])
       view = open(conn, scope)
 
       assert text(view, "#attention-n") == "5"

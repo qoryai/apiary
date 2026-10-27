@@ -19,6 +19,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # turns them into what the components draw. A number that names no work item the
   # reader may read is not found.
   #
+  # **A test work item** has no ticket and no integration: no Ticket tab (its address
+  # patches to Explore's tab), no ticket in the header, Details or the Thread, and no
+  # Take in again. Its parts call the line it was made from "the line", where they call
+  # a ticket "the ticket".
+  #
   # **Live.** The page listens on its workspace's work items
   # (`Apiary.WorkItems.subscribe/1`) and reads everything again when a message names its
   # work item; a work item that moved to another workspace is then not found here.
@@ -37,7 +42,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # the comments' assigns, and passes their events to that module; Cancel closes the
   # question showing, the page's or a comment's.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -69,7 +74,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/work"}>
         {gettext("Work items")}
       </:crumb>
-      <:crumb patch={@tab != :ticket && tab_path(@current_scope, @number, :ticket)}>
+      <:crumb patch={@tab != home(@row) && tab_path(@current_scope, @number, home(@row))}>
         {gettext("Work item #%{number}", number: @number)}
       </:crumb>
 
@@ -94,6 +99,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           <.close_question
             :if={@asking == :close and @can.close}
             number={@number}
+            test={@item.test}
             integration={@source.integration}
             uninstalled={@source.uninstalled}
             backlog_off={@backlog_off}
@@ -154,6 +160,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               thread_path={tab_path(@current_scope, @number, :thread)}
               comment_count={@comment_count}
               item_noun={@source.item_noun}
+              ticket={!@item.test}
             />
             <.ticket_tab
               :if={@tab == :ticket and @source.ticket != nil}
@@ -252,8 +259,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   @impl true
   def handle_params(_params, _uri, socket) do
-    {:noreply, socket |> assign(:tab, socket.assigns.live_action) |> load() |> editable()}
+    {:noreply,
+     socket |> assign(:tab, socket.assigns.live_action) |> load() |> ticketed() |> editable()}
   end
+
+  # A test work item has no Ticket tab: its address is Explore's tab.
+  defp ticketed(%{assigns: %{row: %{test: true}, tab: :ticket}} = socket),
+    do: push_patch(socket, to: tab_path(scope(socket), socket.assigns.number, :explore))
+
+  defp ticketed(socket), do: socket
+
+  # The tab the work item's address opens: Explore's for a test work item, which has no
+  # ticket.
+  defp home(%{test: true}), do: :explore
+  defp home(_row), do: :ticket
 
   # The edit page is there while Qory's proposal waits for a reader who may confirm it;
   # anywhere else it is Explore's tab.
@@ -473,7 +492,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         row: row,
         now: now,
         page_title: gettext("Work item #%{number}", number: row.number),
-        source: source,
+        source: words(row, source),
         backlog_off: backlog_off,
         again_path:
           names[:ticket_id] &&
@@ -498,6 +517,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         |> push_navigate(to: tab_path(scope, socket.assigns.number, socket.assigns.tab))
     end
   end
+
+  # A test work item's parts call its line "the line", where they call a ticket "the
+  # ticket".
+  defp words(%{test: true}, source) do
+    %{
+      source
+      | item_noun: %{
+          one: pgettext("the line a test work item was made from", "line"),
+          other: pgettext("the line a test work item was made from", "lines")
+        }
+    }
+  end
+
+  defp words(_row, source), do: source
 
   # The Thread: what happened at Explore and people's comments, the one place the page
   # reads them.

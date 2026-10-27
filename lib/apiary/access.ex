@@ -142,7 +142,7 @@ defmodule Apiary.Access do
     # The workspace.
     Action.new(
       :"workspace.create",
-      "create a workspace of the organisation, which starts empty, while the edition's limit allows another; no page of the core offers it",
+      "create a workspace of the organisation, which starts empty, while the edition's limit allows another; in the core, the first one, on the workspace set-up page",
       roles: @owners,
       asked_of: :organisation
     ),
@@ -302,7 +302,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"provider.write",
-      "add, change and remove a model provider, its keys and its models, and where and how it applies; set the organisation's default model choice",
+      "add, change and remove a model provider and its keys, and where and how it applies; set the organisation's default model choice",
       feature: :secrets,
       roles: @admins,
       asked_of: :organisation
@@ -553,7 +553,7 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited:
         {:not,
-         "no route or page saves a harness document: Apiary.Stacks.put_stack/3, which only tests and the demo call, checks no access and writes no entry"}
+         "Workspace settings › Workflow saves the workspace's document through Apiary.Stacks.Sources.save/3, which writes no entry, as Apiary.Stacks.put_stack/3 writes none"}
     ),
     Action.new(
       :"harness.assigned",

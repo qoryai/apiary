@@ -1,5 +1,5 @@
 defmodule Apiary.ModelChoicesInUseTest do
-  # What stops a model provider, one of its models or one of its keys from being removed
+  # What stops a model provider or one of its keys from being removed
   # while a model choice uses it, and the words of the refusal. The live runs that use a
   # provider are not read yet: a run keeps its provider only once the handover writes it.
   use Apiary.DataCase, async: true
@@ -81,21 +81,6 @@ defmodule Apiary.ModelChoicesInUseTest do
       {:ok, _} = ModelChoices.delete_choice(scope, :organisation)
       {:ok, _} = ModelChoices.delete_choice(scope, {Repo.one!(Target), "hello"})
       assert {:ok, _} = Connections.delete_provider(scope, provider)
-    end
-
-    test "a model is not removed while a model or a tier names it (T27)", ctx do
-      %{scope: scope, provider: provider} = ctx
-
-      assert {:error, {:model_in_use, [%{level: 2}]}} =
-               Connections.delete_provider_model(scope, provider, "claude-haiku-5-5")
-
-      assert {:error, {:model_in_use, [%{level: 2}]}} =
-               Connections.delete_provider_model(scope, provider, @model)
-
-      assert {:ok, provider} =
-               Connections.delete_provider_model(scope, provider, "claude-fable-5-1")
-
-      refute "claude-fable-5-1" in Enum.map(provider.models, & &1.model_id)
     end
 
     test "a key is not removed or renamed while a choice names it (T34)", %{

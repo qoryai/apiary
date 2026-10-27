@@ -43,9 +43,11 @@ docker compose logs apiary | grep 'Set up Qory Apiary'
 ```
 
 Open the link, `http://localhost:4100/setup/<code>`, and enter your email address, a
-password and your organisation's name. That creates the instance's organisation, its
-workspace Main and your account as its owner, the instance's admin; everyone else joins by
-invitation.
+password and your organisation's name. That creates the instance's organisation and your
+account as its owner, the instance's admin, with no workspace yet; everyone else joins by
+invitation. Two pages follow: **Connect Qory Apiary**, where you set up mail, skip it or
+continue with the server's mail settings, and **Set up your workspace**, where you choose
+the workspace's type and **Create workspace** creates Main.
 
 Mail is optional: with the mail lines of `.env` empty, Qory Apiary sends no email, you sign
 in with your password, and an invitation is a link you copy and send. To send mail, set

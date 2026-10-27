@@ -43,22 +43,34 @@ defmodule ApiaryWeb.BacklogLive.Index do
   #
   # **Empty.** A Backlog with no ticket, under no search and no filter, says why it is
   # empty and what to do next, in the first of its states that holds
-  # (`ApiaryWeb.BacklogComponents.empty_backlog/1`): no integration that sends tickets;
-  # none has listed its collections yet; none of them is assigned to the workspace; those
-  # assigned have no items; the Backlog is off for every one of them with items; or one
-  # is linked and no ticket has arrived yet.
+  # (`ApiaryWeb.BacklogComponents.empty_backlog/1`): no integration that sends tickets
+  # connects the organisation; none of them has listed its collections yet; no collection
+  # of theirs is assigned to the workspace; those assigned have no items; the Backlog is
+  # off for every one of them with items; or one is linked and no ticket has arrived yet.
+  # The first, no work source, has Connect a work source to the workspace set-up
+  # (`/<org>/set-up`).
   #
-  # The ticket over the list (`?ticket=`) and Take in are later steps of this page: a
-  # row's link puts the ticket's id in the address, and the page draws nothing for it yet.
+  # **The ticket.** A row's title puts the ticket's id in the address (`ticket`, `tk_…`),
+  # and the ticket opens over the list (`ApiaryWeb.BacklogComponents.ticket/1`, frame
+  # `:list`), read with the page's scope (`Apiary.Sources.Backlog.get_ticket/2`): an id of
+  # no ticket of this Backlog opens nothing. Its Close, and the scrim, take the id away;
+  # the list keeps its page. An open ticket with no work item has the Take in block
+  # (`ApiaryWeb.BacklogComponents.take_in_block/1`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # **Take in.** The block's Take in, and a row's, take the ticket in
+  # (`Apiary.WorkItems.take_in/3`) and lead to the new work item's page. A refusal is a
+  # flash in the page's words (`ApiaryWeb.BacklogComponents.take_in_refused/3`), and the
+  # page reads what it shows again. Take in again, on a row, does nothing yet.
+  #
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
-  alias Apiary.Adapters
+  alias Apiary.{Access, Adapters, WorkItems}
+  alias Apiary.Lingo.Domain
   alias Apiary.Runs.Filters
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
@@ -95,6 +107,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
         workspace={@current_scope.workspace.name}
         integrations_path={~p"/#{@current_scope.organisation}/settings/integrations"}
         integration_path={&~p"/#{@current_scope.organisation}/settings/integrations/#{&1}"}
+        set_up_path={set_up_path(@current_scope)}
       />
 
       <div :if={@page && !empty_backlog?(@page, @params)} id="backlog" class="q-bl">
@@ -248,9 +261,11 @@ defmodule ApiaryWeb.BacklogLive.Index do
                 id={dom_id}
                 ticket={ticket}
                 integration={ticket.integration.name}
-                patch={list_path(@current_scope, @params, ticket: ticket.id)}
+                patch={list_path(@current_scope, @params, ticket: ticket.id, page: :kept)}
+                selected={@ticket != nil and @ticket.id == ticket.id}
                 now={@now}
                 reader={@current_scope.user.email}
+                take_in="take_in"
               />
             </ul>
           </section>
@@ -268,6 +283,48 @@ defmodule ApiaryWeb.BacklogLive.Index do
             next_label={gettext("Older")}
           />
         </div>
+
+        <BacklogComponents.ticket
+          :if={@ticket}
+          id="backlog-ticket"
+          ticket={@ticket}
+          integration={@ticket.integration.name}
+          comments={@comments}
+          now={@now}
+          close_patch={list_path(@current_scope, @params, page: :kept)}
+          full_path={
+            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/backlog/#{@ticket.id}"
+          }
+          item_noun={@item_noun}
+          collection_noun={collection_noun(@facts.collection_nouns)}
+        >
+          <:take_in :if={take_in?(@ticket)}>
+            <BacklogComponents.take_in_block
+              id="backlog-ticket-take-in"
+              ticket_id={@ticket.id}
+              workspace={@current_scope.workspace.name}
+              harness_file={Domain.harness_file?(@current_scope.workspace)}
+              target_required={Domain.target_required?(@current_scope.workspace)}
+              refused={@refused}
+            />
+          </:take_in>
+          <:rendered_body>
+            <SourceComponents.body
+              id="backlog-ticket-body"
+              body={@ticket.body}
+              format={@ticket.body_format}
+              item_noun={@item_noun}
+            />
+          </:rendered_body>
+          <:rendered_comment :let={comment}>
+            <SourceComponents.body
+              id={"backlog-ticket-comment-#{comment.id}-body"}
+              body={comment.body}
+              format={comment.body_format}
+              item_noun={@item_noun}
+            />
+          </:rendered_comment>
+        </BacklogComponents.ticket>
       </div>
     </Layouts.app>
     """
@@ -290,7 +347,13 @@ defmodule ApiaryWeb.BacklogLive.Index do
        row_count: 0,
        now: DateTime.utc_now(),
        narrow: %{},
-       narrowed: %{}
+       narrowed: %{},
+       ticket: nil,
+       comments: [],
+       refused:
+         if(!Access.can?(scope, :"work_item.take_in", scope.workspace),
+           do: BacklogComponents.take_in_who_may(scope)
+         )
      )
      |> load_options()
      |> load_facts()
@@ -300,7 +363,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, socket |> assign(:params, read(params)) |> load()}
+    {:noreply, socket |> assign(:params, read(params)) |> load() |> load_ticket()}
   end
 
   @impl true
@@ -344,11 +407,35 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
+  # Take in, the open ticket's or a row's: the new work item's page, or why not.
+  def handle_event("take_in", %{"id" => id}, socket) when is_binary(id) do
+    scope = socket.assigns.current_scope
+
+    case WorkItems.take_in(scope, id) do
+      {:ok, work_item} ->
+        {:noreply,
+         push_navigate(socket,
+           to: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}"
+         )}
+
+      {:error, refusal} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, refused_words(socket, refusal, id))
+         |> load_options()
+         |> load_facts()
+         |> load()
+         |> load_ticket()}
+    end
+  end
+
+  def handle_event("take_in", _params, socket), do: {:noreply, socket}
+
   # A ticket of the workspace's Backlog was written, ended, closed or taken in: the page
   # reads what it shows again, with its scope, whatever the message names.
   @impl true
   def handle_info({:tickets_changed, _ids}, socket),
-    do: {:noreply, socket |> load_options() |> load_facts() |> load()}
+    do: {:noreply, socket |> load_options() |> load_facts() |> load() |> load_ticket()}
 
   ## Reads
 
@@ -361,6 +448,20 @@ defmodule ApiaryWeb.BacklogLive.Index do
     socket
     |> assign(page: page, row_count: length(page.rows), now: now)
     |> stream(:tickets, page.rows, reset: true)
+  end
+
+  # The ticket the address opens, with its comments, read with the page's scope: none for
+  # no id, or an id of no ticket of this Backlog.
+  defp load_ticket(socket) do
+    scope = socket.assigns.current_scope
+
+    case socket.assigns.params.ticket && Backlog.get_ticket(scope, socket.assigns.params.ticket) do
+      %{} = ticket ->
+        assign(socket, ticket: ticket, comments: Backlog.list_comments(scope, ticket))
+
+      _none ->
+        assign(socket, ticket: nil, comments: [])
+    end
   end
 
   # What each filter offers, most tickets first; and a section's narrowed values, read
@@ -429,7 +530,8 @@ defmodule ApiaryWeb.BacklogLive.Index do
       updated: one(params["updated"]),
       sort: choice(params["sort"], @sorts, :updated),
       after: one(params["after"]),
-      before: one(params["before"])
+      before: one(params["before"]),
+      ticket: one(params["ticket"])
     }
   end
 
@@ -458,16 +560,18 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   # The list with `changes` made to the params, of the socket or given: a change of the
   # view, the search, a filter or the order shows the first page; `after:` and `before:`
-  # name a page; `ticket:` the ticket open over the list.
+  # name a page, and `page: :kept` keeps the one shown; `ticket:` the ticket open over
+  # the list.
   defp list_path(%Phoenix.LiveView.Socket{} = socket, changes),
     do: list_path(socket.assigns.current_scope, socket.assigns.params, changes)
 
   defp list_path(scope, params, changes) do
     changes = Map.new(changes)
 
+    {kept, changes} = Map.pop(changes, :page)
+
     params =
-      params
-      |> Map.merge(%{after: nil, before: nil})
+      if(kept == :kept, do: params, else: Map.merge(params, %{after: nil, before: nil}))
       |> Map.merge(Map.delete(changes, :ticket))
 
     query =
@@ -705,13 +809,41 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # `ApiaryWeb.BacklogComponents.empty_backlog/1` names them.
   defp empty_reason(facts) do
     cond do
-      facts.integrations == [] -> :none
+      facts.integrations == [] -> :no_source
       not Enum.any?(facts.sources, & &1.listed?) -> :unlisted
       facts.assigned_collections == 0 -> :unassigned
       facts.linked_collections == 0 and facts.switched_off == 0 -> :itemless
       facts.linked_collections == 0 -> :off
       true -> :waiting
     end
+  end
+
+  # The workspace set-up, where a work source is connected. Written out, not verified:
+  # the router has no route for it yet.
+  defp set_up_path(scope), do: "/#{Phoenix.Param.to_param(scope.organisation)}/set-up"
+
+  # An open ticket with no work item has the Take in block.
+  defp take_in?(ticket), do: ticket.state == :open and is_nil(ticket.work_item)
+
+  # The collections' word the ticket's facts take: the sources' one word, else none.
+  defp collection_noun([{noun, _count}]), do: noun
+  defp collection_noun(_none_or_several), do: nil
+
+  # Why a take in of the ticket `id` was refused, naming the integration the ticket came
+  # through while it is still in the Backlog.
+  defp refused_words(socket, refusal, id) do
+    scope = socket.assigns.current_scope
+
+    integration =
+      case Backlog.get_ticket(scope, id) do
+        %{integration: %{name: name}} -> name
+        nil -> nil
+      end
+
+    BacklogComponents.take_in_refused(refusal, scope, %{
+      integration: integration,
+      item_noun: socket.assigns.item_noun
+    })
   end
 
   defp match_words(page, params, item_noun) do

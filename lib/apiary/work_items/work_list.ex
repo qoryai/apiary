@@ -25,7 +25,8 @@ defmodule Apiary.WorkItems.WorkList do
   # workspace, its title as taken in, its ticket's key at the source or nil, shown as text
   # and never parsed, the title of the collection that holds its ticket (`repository`, as
   # `Apiary.WorkItems.ticket_names/2` names it), the name of the integration its ticket
-  # came through (`integration`), its state and take in, where Explore stands for it
+  # came through (`integration`; nil for a test work item, which came through none, and
+  # `test` true), its state and take in, where Explore stands for it
   # (`status`; for an ended one, that of its last take in), the attempt and the run limit
   # of its take in's latest run (`attempt`, `of`, nil before its first run), its owner's
   # account id, when it was taken in (`taken_in_at`, at its latest take in), created
@@ -49,7 +50,7 @@ defmodule Apiary.WorkItems.WorkList do
   # Every input a person gives (a search, a filter value, a cursor) is bounded and checked
   # before a query reads it.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false
@@ -116,7 +117,8 @@ defmodule Apiary.WorkItems.WorkList do
           title: String.t(),
           key: String.t() | nil,
           repository: String.t(),
-          integration: String.t(),
+          integration: String.t() | nil,
+          test: boolean,
           state: Apiary.WorkItems.State.state(),
           take_in: pos_integer,
           status: Explore.status(),
@@ -330,6 +332,8 @@ defmodule Apiary.WorkItems.WorkList do
     |> Repo.all()
   end
 
+  # A test work item has no collection, so it offers none: the title it keeps for the
+  # column (`Apiary.WorkItems.WorkItem.test_collection_title/0`) is not one.
   defp offered(query, :collection, pattern) do
     query =
       case pattern do
@@ -345,6 +349,7 @@ defmodule Apiary.WorkItems.WorkList do
       end
 
     query
+    |> where([work_item: w], not w.test)
     |> group_by([work_item: w, ticket: t], coalesce(t.title, w.collection_title))
     |> order_by([work_item: w, ticket: t],
       desc: count(w.id),
@@ -519,13 +524,14 @@ defmodule Apiary.WorkItems.WorkList do
 
   defp collections(query, nil), do: query
 
+  # A test work item is in no collection: the title it keeps for the column is not one.
   defp collections(query, titles) do
     if is_list(titles) and length(titles) <= @max_filter_values and Enum.all?(titles, &title?/1),
       do:
         where(
           query,
           [work_item: w, ticket: t],
-          coalesce(t.title, w.collection_title) in ^titles
+          not w.test and coalesce(t.title, w.collection_title) in ^titles
         ),
       else: where(query, false)
   end
@@ -629,7 +635,7 @@ defmodule Apiary.WorkItems.WorkList do
     sort_field = sort_field(sort)
 
     query
-    |> join(:inner, [work_item: w], n in Node, on: n.id == w.adapter_id, as: :adapter)
+    |> join(:left, [work_item: w], n in Node, on: n.id == w.adapter_id, as: :adapter)
     |> join(
       :left_lateral,
       [work_item: w],
@@ -659,6 +665,7 @@ defmodule Apiary.WorkItems.WorkList do
         key: t.key,
         repository: coalesce(t.title, w.collection_title),
         integration: n.name,
+        test: w.test,
         state: w.state,
         take_in: w.take_in,
         status: s.status,

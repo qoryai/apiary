@@ -55,12 +55,16 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Enrolment
   alias Apiary.Days
+  alias Apiary.Dispatches
+  alias Apiary.Features
   alias Apiary.Gateways
   alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Retention
   alias Apiary.Runs
   alias Apiary.Runs.Run
+  alias Apiary.WorkItems
+  alias Apiary.WorkspaceSetup
 
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.{NodeComponents, UserAuth}
@@ -116,6 +120,16 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         <div id="overview-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
           {@announce}
         </div>
+
+        <.setup_list
+          :if={@setup?}
+          scope={@current_scope}
+          setup={@setup}
+          may={@setup_may}
+          who={@setup_who}
+          form={@test_form}
+          notice={@test_notice}
+        />
 
         <.onboarding
           :if={@checklist?}
@@ -250,12 +264,18 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     alive = Runs.count_alive(scope)
     posted? = alive > 0 or Runs.recent_runs(scope, 1) != []
     security? = Common.may?(scope, :"security_policy.read")
+    # With the `factory` feature, the setup list takes the box's place until a test run of
+    # the workspace has passed; once shown, it stays while the page is open.
+    factory? = Features.visible?(scope, :factory)
+    setup = if factory?, do: WorkspaceSetup.read(scope.workspace, now)
+    setup? = factory? and not setup.test_passed
 
     if connected?(socket) do
       Runs.subscribe(scope)
       if security?, do: Policy.subscribe(scope)
       Process.send_after(self(), :quiet_tick, window(:quiet_tick, 5_000))
       Process.send_after(self(), :refresh, window(:refresh, 60_000))
+      if setup?, do: Dispatches.subscribe(scope.workspace.id)
     end
 
     socket =
@@ -268,12 +288,19 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         alive: alive,
         security?: security?,
         mode: if(security?, do: Policy.mode_summary(scope)),
-        checklist?: not posted?,
+        checklist?: not posted? and not factory?,
         live?: posted?,
         landed: nil,
         now: now,
         today: Format.today(now),
-        onboarding: if(posted?, do: nil, else: read_onboarding(scope)),
+        onboarding: if(posted? or factory?, do: nil, else: read_onboarding(scope)),
+        setup?: setup?,
+        setup: setup,
+        setup_may: if(setup?, do: setup_may(scope)),
+        setup_who: if(setup?, do: setup_who(scope)),
+        setup_timer: nil,
+        test_form: test_form(gettext("Hi! Where are you running?")),
+        test_notice: nil,
         command: nil,
         table?: false,
         chart_w: 640,
@@ -307,6 +334,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       )
       |> UserAuth.on_membership_change(&membership_changed/1)
 
+    socket = if connected?(socket), do: wait_for_machine(socket), else: socket
     {:ok, if(connected?(socket) and posted?, do: load(socket), else: socket)}
   end
 
@@ -700,6 +728,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     # and the cards render under it.
     socket =
       socket
+      |> test_run_changed(run)
       |> assign(live?: true, landed: run, alive: Runs.count_alive(socket.assigns.current_scope))
       |> remember([run])
       |> load()
@@ -711,7 +740,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     # Remembered before the patch, whose recompute reads what the page has seen: a quiet
     # run the check has just found lost leaves the alive runs there, and with the struct
     # it had before, its row would be struck as resumed instead of turning Lost.
-    socket = socket |> remember([run]) |> patch_run(run)
+    socket = socket |> test_run_changed(run) |> remember([run]) |> patch_run(run)
 
     case {socket.assigns.run_window, window(:coalesce, 250)} do
       # No window (a test): the read follows the message at once.
@@ -769,20 +798,31 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, window(:refresh, 60_000))
+    socket = reread_setup(socket)
 
-    if socket.assigns.live? do
-      {:noreply, read(socket, :attention)}
-    else
-      # The box reads its steps from the record: a node, a key, a key used since.
-      {:noreply,
-       socket
-       |> assign(
-         onboarding: read_onboarding(socket.assigns.current_scope),
-         now: DateTime.utc_now()
-       )
-       |> keep_command()}
+    cond do
+      socket.assigns.live? ->
+        {:noreply, read(socket, :attention)}
+
+      not socket.assigns.checklist? ->
+        {:noreply, socket}
+
+      true ->
+        # The box reads its steps from the record: a node, a key, a key used since.
+        {:noreply,
+         socket
+         |> assign(
+           onboarding: read_onboarding(socket.assigns.current_scope),
+           now: DateTime.utc_now()
+         )
+         |> keep_command()}
     end
   end
+
+  # The queue of the workspace changed, or the test run's wait for a machine ran out: the
+  # setup list reads its steps again.
+  def handle_info({Dispatches, :changed}, socket), do: {:noreply, reread_setup(socket)}
+  def handle_info(:setup_tick, socket), do: {:noreply, reread_setup(socket)}
 
   # The machine ran the box's command: the box reads its steps again and moves on, and
   # the command, spent, is let go.
@@ -900,6 +940,32 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   def handle_event("chart_size", _params, socket), do: {:noreply, socket}
+
+  # Run the test, in the setup list: a test work item of the line the reader typed, or of
+  # a failed test's line, taken in (`Apiary.WorkItems.take_in_test/2`), once the machines
+  # and the model key are done. While a test run is in progress the step says to wait; a
+  # line the work item refuses is the field's error.
+  def handle_event("run_test", params, %{assigns: %{setup?: true, setup: setup}} = socket) do
+    line =
+      case params do
+        %{"test" => %{"line" => line}} -> line
+        %{"line" => line} -> line
+        _other -> nil
+      end
+
+    cond do
+      not is_binary(line) ->
+        {:noreply, socket}
+
+      is_nil(setup.machines) or not setup.model_key ->
+        {:noreply, reread_setup(socket)}
+
+      true ->
+        run_test(socket, line)
+    end
+  end
+
+  def handle_event("run_test", _params, socket), do: {:noreply, socket}
 
   # Get the command, in the box: a code made at once for the box's node, with the defaults
   # (stored secrets not allowed, no label hint), whatever the event carries, as on the
@@ -1764,6 +1830,135 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     |> Enum.filter(&(&1.kind in Nodes.Node.kinds()))
     |> Enum.reject(&MapSet.member?(keyed, &1.id))
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.public_id}, fn -> nil end)
+  end
+
+  defp run_test(socket, line) do
+    scope = socket.assigns.current_scope
+
+    case WorkItems.take_in_test(scope, line) do
+      {:ok, _work_item} ->
+        {:noreply,
+         socket |> assign(test_notice: nil, test_form: test_form(line)) |> reread_setup()}
+
+      {:error, :test_running} ->
+        {:noreply, socket |> assign(:test_notice, :test_running) |> reread_setup()}
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        {:noreply, assign(socket, test_notice: nil, test_form: test_form(line, errors[:title]))}
+
+      {:error, :forbidden} ->
+        {:noreply, socket |> reread_setup() |> put_flash(:error, setup_who(scope).test)}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket |> reread_setup() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+    end
+  end
+
+  ## The setup list
+
+  # The setup list reads its steps again, and who may act on each; nothing while it is not
+  # shown.
+  defp reread_setup(%{assigns: %{setup?: true}} = socket) do
+    scope = socket.assigns.current_scope
+
+    setup = WorkspaceSetup.read(scope.workspace, DateTime.utc_now())
+
+    # The line that says to wait goes once no test run is in progress.
+    notice =
+      if match?(%{test_run: %{dispatch_run: %{state: state}}} when state != :ended, setup),
+        do: socket.assigns.test_notice
+
+    socket
+    |> assign(
+      setup: setup,
+      setup_may: setup_may(scope),
+      setup_who: setup_who(scope),
+      test_notice: notice
+    )
+    |> wait_for_machine()
+  end
+
+  defp reread_setup(socket), do: socket
+
+  # A change of the test run's registered run: the list reads its steps again. A change of
+  # any other run is left to the queue's message.
+  defp test_run_changed(
+         %{assigns: %{setup?: true, setup: %{test_run: %{dispatch_run: %{id: id}}}}} = socket,
+         %Run{dispatch_run_id: id}
+       ),
+       do: reread_setup(socket)
+
+  defp test_run_changed(socket, _run), do: socket
+
+  # While the test run waits for a machine, the list reads its steps again once the wait
+  # passes `Apiary.WorkspaceSetup.machine_wait_seconds/0`, and says that no machine took it.
+  defp wait_for_machine(%{assigns: %{setup_timer: timer}} = socket) do
+    if timer, do: Process.cancel_timer(timer)
+
+    case socket.assigns do
+      %{setup?: true, setup: %{test_run: %{state: :waiting, dispatch_run: dispatch_run}}} ->
+        at = DateTime.add(dispatch_run.queued_at, WorkspaceSetup.machine_wait_seconds(), :second)
+        wait = DateTime.diff(at, DateTime.utc_now(), :millisecond)
+
+        assign(
+          socket,
+          :setup_timer,
+          Process.send_after(self(), :setup_tick, max(wait, 0) + 1_000)
+        )
+
+      _other ->
+        assign(socket, :setup_timer, nil)
+    end
+  end
+
+  # Whether the reader may take each step's action: connect a work source, look at the
+  # machines (an instance admin the instance's, a reader of the nodes the workspace's),
+  # add a model key, and run the test.
+  defp setup_may(scope) do
+    %{
+      source: Apiary.Access.can?(scope, :"adapter.connect", scope.organisation),
+      machines:
+        cond do
+          not WorkspaceSetup.instance_pool?(scope.workspace) ->
+            Common.may?(scope, :"node.read") && :workspace
+
+          Apiary.Access.instance_admin?(scope) ->
+            :instance
+
+          true ->
+            false
+        end,
+      model_key: Apiary.Access.can?(scope, :"provider.write", scope.organisation),
+      test: Common.may?(scope, :"work_item.take_in")
+    }
+  end
+
+  # Who may take each step's action, in the edition's words where it has some.
+  defp setup_who(scope) do
+    who = &ApiaryWeb.Access.who_may(scope, &1, &2)
+
+    %{
+      source: who.(:"adapter.connect", gettext("Only owners and admins connect a work source.")),
+      machines:
+        if(WorkspaceSetup.instance_pool?(scope.workspace),
+          do:
+            who.(
+              :"node.install",
+              gettext("Only an instance admin checks the instance's pool and gateway.")
+            ),
+          else: who.(:"node.read", gettext("Only members of this workspace see its node pools."))
+        ),
+      model_key: who.(:"provider.write", gettext("Only owners and admins add a model key.")),
+      test: who.(:"work_item.take_in", gettext("Only owners, admins and members run the test."))
+    }
+  end
+
+  # The form of Say hi to your agent, with the work item's refusal of the line, if any.
+  defp test_form(line, error \\ nil) do
+    if error,
+      do: to_form(%{"line" => line}, as: "test", errors: [line: error], action: :insert),
+      else: to_form(%{"line" => line}, as: "test")
   end
 
   defp not_loaded,

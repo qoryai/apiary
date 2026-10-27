@@ -10,20 +10,25 @@ defmodule Apiary.ModelChoices.ResolutionTest do
   @other_target "00000000-0000-0000-0000-0000000000b2"
   @alpha "00000000-0000-0000-0000-0000000000c1"
   @beta "00000000-0000-0000-0000-0000000000c2"
+  @gamma "00000000-0000-0000-0000-0000000000c3"
 
   @providers %{
     @alpha => %{
       default_value_id: "main",
+      default_model_id: "big",
       models: [
-        %{model_id: "big", effort: ["low", "high"], is_default: true},
-        %{model_id: "small", effort: nil, is_default: false},
-        %{model_id: "mid", effort: ["high"], is_default: false}
+        %{model_id: "big", effort: ["low", "high"]},
+        %{model_id: "small", effort: nil},
+        %{model_id: "mid", effort: ["high"]}
       ]
     },
     @beta => %{
       default_value_id: "team",
-      models: [%{model_id: "other", effort: nil, is_default: true}]
-    }
+      default_model_id: "other",
+      models: [%{model_id: "other", effort: nil}]
+    },
+    # A provider whose description lists no model.
+    @gamma => %{default_value_id: "main", default_model_id: nil, models: []}
   }
 
   defp input(choices, opts \\ []) do
@@ -82,6 +87,13 @@ defmodule Apiary.ModelChoices.ResolutionTest do
 
     test "take a choice without a model from the provider's default model, with no effort" do
       assert %{model_id: "big", effort: nil} = resolved(input([at(5)]))
+    end
+
+    test "leave the model unset for a provider with no default model" do
+      assert %{model_id: nil, effort: nil} = resolved(input([at(5, connection_id: @gamma)]))
+
+      assert %{model_id: "team-large"} =
+               resolved(input([at(5, connection_id: @gamma, model_id: "team-large")]))
     end
 
     test "leave the effort unset when the winning level sets none, whatever a level below sets" do
@@ -160,7 +172,7 @@ defmodule Apiary.ModelChoices.ResolutionTest do
   end
 
   describe "the tiers" do
-    test "are each the most specific entry that the provider lists" do
+    test "are each the most specific entry that goes with the provider" do
       choices = [
         at(2, tiers: %{"light" => "small"}),
         at(3, tiers: %{"light" => "mid", "fast" => %{"model" => "big", "effort" => "low"}}),
@@ -184,10 +196,22 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       assert %{tiers: %{}} = resolved(input([at(5)]))
     end
 
-    test "skip a level whose model the provider does not list, then read the next level" do
+    test "take a model the provider does not list, with no effort" do
+      choices = [at(2, tiers: %{"fast" => "not-listed", "light" => "small"})]
+      assert %{tiers: tiers} = resolved(input(choices))
+      assert tiers == %{"fast" => %{"model" => "not-listed"}, "light" => %{"model" => "small"}}
+
+      choices = [at(5, connection_id: @gamma, tiers: %{"fast" => "team-small"})]
+      assert %{tiers: %{"fast" => %{"model" => "team-small"}}} = resolved(input(choices))
+    end
+
+    test "skip a level whose effort does not go with its model, then read the next level" do
       choices = [
         at(2,
-          tiers: %{"fast" => "not-listed", "light" => %{"model" => "mid", "effort" => "low"}}
+          tiers: %{
+            "fast" => %{"model" => "not-listed", "effort" => "low"},
+            "light" => %{"model" => "mid", "effort" => "low"}
+          }
         ),
         at(5, tiers: %{"fast" => "small", "light" => "small"})
       ]
@@ -197,8 +221,12 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       assert levels == %{"fast" => 5, "light" => 5}
     end
 
-    test "are taken from the resolved provider's list, whatever provider a level chose" do
-      choices = [at(2, connection_id: @beta, tiers: %{"fast" => "small"}), at(5, model_id: "mid")]
+    test "go with the resolved provider's models, whatever provider a level chose" do
+      choices = [
+        at(2, connection_id: @beta, tiers: %{"fast" => %{"model" => "big", "effort" => "low"}}),
+        at(5, model_id: "mid")
+      ]
+
       assert %{connection_id: @beta, tiers: %{}} = resolved(input(choices))
 
       choices = [at(2, connection_id: @beta, tiers: %{"fast" => "other"})]

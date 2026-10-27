@@ -2,13 +2,17 @@ defmodule ApiaryWeb.SetupLive do
   @moduledoc """
   The set-up page, `/setup/<code>`, the link a new instance logs at every start until it
   is used (`Apiary.Setup`). With the stored code it asks for an email address, a password
-  and its confirmation, the organisation's name, and the type of Main, its domain, with
-  no type chosen until the person picks one (`Apiary.Lingo.Domain.choices/0`); it makes
-  the instance's first account, an instance admin, its organisation and the workspace Main
+  and its confirmation, and the organisation's name; it makes the instance's first
+  account, an instance admin, and its organisation, with no workspace
   (`Apiary.Setup.set_up/3`), and the edition says what is created
-  (`c:Apiary.Edition.first_sign_up_line/0`). Once it is accepted, the same form is
+  (`c:Apiary.Edition.first_sign_up_line/0`). The page is the first step of the set-up's
+  progress indicator (`ApiaryWeb.SetUpComponents.steps_for/3`): its reader becomes the
+  instance admin, who connects the instance and sets up the workspace next. Once it is
+  accepted, the same form is
   submitted to the log-in controller (`phx-trigger-action`, as the sign-up page does),
-  which signs the person in with the password the browser holds.
+  which signs the person in with the password the browser holds, and sends them on to
+  the instance's connections and then the workspace set-up
+  (`ApiaryWeb.UserAuth.signed_in_path/1`).
 
   Once the instance is set up, any code gets "already set up" and the way to log in.
   Before, a code that is not the stored one is a path that does not exist
@@ -21,7 +25,7 @@ defmodule ApiaryWeb.SetupLive do
   use ApiaryWeb, :live_view
 
   alias Apiary.{Organisations, Setup}
-  alias Apiary.Lingo.Domain
+  alias ApiaryWeb.SetUpComponents
 
   defmodule HeldCode do
     @moduledoc false
@@ -34,41 +38,40 @@ defmodule ApiaryWeb.SetupLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.auth flash={@flash} current_scope={@current_scope}>
-      <div :if={@state == :set_up} id="setup-done" class="grid gap-4">
-        <Layouts.auth_heading>
-          {if name = Apiary.ProductName.get(),
-            do: gettext("%{name} is already set up.", name: name),
-            else: gettext("This Qory Apiary is already set up.")}
-        </Layouts.auth_heading>
-        <.button
-          :if={@current_scope && @current_scope.user}
-          variant="primary"
-          size="md"
-          class="btn-block"
-          href={~p"/"}
-        >
-          {gettext("Go to your workspace")}
-        </.button>
-        <.button
-          :if={!(@current_scope && @current_scope.user)}
-          variant="primary"
-          size="md"
-          class="btn-block"
-          navigate={~p"/users/log-in"}
-        >
-          {gettext("Log in")}
-        </.button>
-      </div>
+    <Layouts.set_up flash={@flash} current_scope={@current_scope}>
+      <SetUpComponents.frame :if={@state == :set_up}>
+        <div id="setup-done" class="grid gap-4">
+          <SetUpComponents.heading>
+            {if name = Apiary.ProductName.get(),
+              do: gettext("%{name} is already set up.", name: name),
+              else: gettext("This Qory Apiary is already set up.")}
+          </SetUpComponents.heading>
+          <.button
+            :if={@current_scope && @current_scope.user}
+            variant="primary"
+            size="md"
+            class="btn-block"
+            href={~p"/"}
+          >
+            {gettext("Go to your workspace")}
+          </.button>
+          <.button
+            :if={!(@current_scope && @current_scope.user)}
+            variant="primary"
+            size="md"
+            class="btn-block"
+            navigate={~p"/users/log-in"}
+          >
+            {gettext("Log in")}
+          </.button>
+        </div>
+      </SetUpComponents.frame>
 
-      <div :if={@state == :form} class="grid gap-4">
-        <Layouts.auth_heading>
+      <SetUpComponents.frame :if={@state == :form} steps={@steps} next={SetUpComponents.next?(nil)}>
+        <SetUpComponents.heading>
           {gettext("Set up %{name}", name: Apiary.ProductName.name())}
           <:subtitle>{@line}</:subtitle>
-        </Layouts.auth_heading>
-        <p id="setup-admin" class="text-sm/5 text-muted">
-          {gettext("You become this instance's admin.")}
-        </p>
+        </SetUpComponents.heading>
 
         <.form
           for={@form}
@@ -108,27 +111,22 @@ defmodule ApiaryWeb.SetupLive do
             }
             required
           />
-          <.input
-            field={@form[:domain]}
-            type="radio"
-            label={gettext("Workspace type")}
-            options={
-              for domain <- Domain.choices(),
-                  do: {domain.label(), domain.name(), domain.description()}
-            }
-            hint={
-              gettext(
-                "%{workspace}, your first workspace, gets this type. A workspace's type can't be changed after it is created.",
-                workspace: Organisations.default_workspace_name()
-              )
-            }
-          />
           <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Setting up")}>
             {gettext("Set up")}
           </.button>
         </.form>
-      </div>
-    </Layouts.auth>
+
+        <:context>
+          <p id="setup-admin">
+            {pgettext(
+              "plain",
+              "You create the first account of %{name} and its organisation. As the instance admin, you connect %{name} to mail and to the systems that bring in work, then set up the organisation's first workspace.",
+              name: Apiary.ProductName.name()
+            )}
+          </p>
+        </:context>
+      </SetUpComponents.frame>
+    </Layouts.set_up>
     """
   end
 
@@ -158,6 +156,7 @@ defmodule ApiaryWeb.SetupLive do
         |> assign(:state, :form)
         |> assign(:code, %HeldCode{value: code})
         |> assign(:line, Apiary.Edition.first_sign_up_line())
+        |> assign(:steps, SetUpComponents.steps_for(nil, :account, first: true))
         |> assign(:trigger_submit, false)
         # Where the set-up comes from, for its audit entry: known while the page mounts.
         |> assign(:origin, ApiaryWeb.Origin.from_socket(socket))
@@ -184,11 +183,7 @@ defmodule ApiaryWeb.SetupLive do
   def handle_event("save", %{"user" => params}, %{assigns: %{state: :form}} = socket) do
     %HeldCode{value: code} = socket.assigns.code
 
-    case Setup.set_up(code, params,
-           password: :required,
-           domain: :required,
-           origin: socket.assigns.origin
-         ) do
+    case Setup.set_up(code, params, password: :required, origin: socket.assigns.origin) do
       # The same form goes to the log-in controller, with the address the account has,
       # and signs the person in with the password the browser holds.
       {:ok, %{user: user}} ->
@@ -232,12 +227,7 @@ defmodule ApiaryWeb.SetupLive do
   end
 
   defp change_set_up(params),
-    do:
-      Organisations.change_sign_up(params,
-        validate_unique: false,
-        password: :required,
-        domain: :required
-      )
+    do: Organisations.change_sign_up(params, validate_unique: false, password: :required)
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset),
     do: assign(socket, :form, to_form(changeset, as: "user"))
