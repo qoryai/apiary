@@ -97,6 +97,7 @@ defmodule ApiaryWeb.UserLive.Registration do
           for={@form}
           id="registration_form"
           action={!@mail? && ~p"/users/log-in"}
+          method="post"
           phx-submit="save"
           phx-change="validate"
           phx-trigger-action={@trigger_submit}

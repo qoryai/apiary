@@ -20,7 +20,16 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
     %{token: token} = invitation_fixture(scope, %{"email" => email})
     Apiary.Mail.put_test_source(mail)
     {:ok, lv, html} = live(conn, ~p"/users/register?invitation=#{token}")
-    %{lv: lv, html: html, email: email, scope: scope}
+    %{lv: lv, html: html, email: email, scope: scope, token: token}
+  end
+
+  # The sign-up form in `html` is sent with POST to the page, and has no password field, so
+  # none with a value.
+  defp assert_posts_without_password(html) do
+    form = LazyHTML.query(html, "#registration_form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.attribute(form, "action") == []
+    assert LazyHTML.query(form, ~s{input[type="password"]}) |> Enum.to_list() == []
   end
 
   describe "Registration page" do
@@ -141,6 +150,8 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
 
       # The page never writes a password back.
       refute has_element?(lv, "#registration_form input[type=password][value]")
+      # Once the account is made, the form is submitted to the log-in controller.
+      assert has_element?(lv, "#registration_form[action='/users/log-in'][method=post]")
     end
 
     test "an invited sign-up makes the account, joins the workspace and signs the person in",
@@ -221,6 +232,34 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
 
       refute has_element?(lv, "#registration_form[action]")
       refute has_element?(lv, "#registration_form[phx-trigger-action]")
+    end
+
+    test "posts its form, and shows no password, first or after a refused sign-up", %{
+      conn: conn
+    } do
+      user = user_fixture()
+      %{token: token} = invited(conn, user.email)
+
+      # The page before it connects: a submit there is the browser's, with the form's method.
+      html = conn |> get(~p"/users/register?invitation=#{token}") |> html_response(200)
+      assert_posts_without_password(LazyHTML.from_document(html))
+
+      {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
+
+      html =
+        lv
+        |> element("#registration_form")
+        |> render_submit(%{
+          "user" => %{
+            "email" => user.email,
+            "password" => "s3cret-example",
+            "password_confirmation" => "s3cret-example"
+          }
+        })
+
+      assert html =~ "has already been taken"
+      refute html =~ "s3cret-example"
+      assert_posts_without_password(LazyHTML.from_fragment(html))
     end
 
     test "a password sent all the same is dropped, and the address is confirmed by email",

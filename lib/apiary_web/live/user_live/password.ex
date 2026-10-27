@@ -61,6 +61,7 @@ defmodule ApiaryWeb.UserLive.Password do
       <.form
         for={@form}
         id="password_form"
+        method="post"
         phx-change="validate"
         phx-submit="save"
         class="grid gap-4"
