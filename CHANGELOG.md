@@ -192,7 +192,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Workspace settings › Workflow** have a column **About this page** beside the form.
   **Provider**, **Model** and **Source** are choice fields. **Connect** on the set-up's
   **Work source** step returns there after the adapter's steps, and a work source already
-  connected shows **Connected**. Under the set-up's list, a line names the steps that
+  connected shows **Connected**. Under the set-up's list, a line shows the steps that
   follow on the Overview.
 - The `factory` feature needs `secrets` as well as `observability` and `security`: a
   `QORY_FEATURES` list with `factory` and without `secrets` stops the boot. Set

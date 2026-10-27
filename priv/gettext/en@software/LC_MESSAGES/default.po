@@ -15636,6 +15636,11 @@ msgstr ""
 msgid "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half."
 msgstr ""
 
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "The invitation adds you to %{organisation}. %{organisation} has no workspace yet: its first one is set up after your account."
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The invitation could not be sent, and is still pending. Revoke it under Pending invitations, then try again."
@@ -15654,11 +15659,6 @@ msgstr ""
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "The invitation is valid for seven days. If you were not expecting it, ignore this email."
-msgstr ""
-
-#: lib/apiary_web/live/invitation_live/accept.ex
-#, elixir-autogen, elixir-format
-msgid "The invitation makes you a member of %{organisation}. %{organisation} has no workspace yet: its first one is set up after your account."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
