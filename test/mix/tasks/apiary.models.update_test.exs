@@ -72,13 +72,24 @@ defmodule Mix.Tasks.Apiary.Models.UpdateTest do
 
     assert left_out == [
              ~s|Left out deepseek "deepseek-v4-flash": models.dev marks it deprecated.|,
+             ~s|Left out deepseek "deepseek-v4-pro": another model has the same id.|,
              ~s|Left out openrouter "example bad id": the id is not 1 to 128 letters, digits and ._:/@+-, from a letter or digit.|,
              ~s|Left out openrouter "example/markup": the title is not 1 to 128 letters, digits, spaces and .,:()/+&'_-, from a letter or digit.|,
              ~s|Left out openrouter "example/no-title": it has no title string.|,
              ~s|Left out openrouter "google/gemini-2.5-pro": models.dev marks it deprecated.|,
+             ~s|Left out openrouter "openai/o3-mini": another model has the same id.|,
              ~s|Left out openrouter "~anthropic/claude-opus-latest": the id is not 1 to 128 letters, digits and ._:/@+-, from a letter or digit.|,
              "Left out openrouter nil: it is not an object with an id."
            ]
+  end
+
+  test "keeps one model per id, the first in the order of the title, and leaves out the rest" do
+    api = Jason.decode!(File.read!(@fixture))
+    {[{"deepseek", models}], left_out} = Update.build(api, ["deepseek"])
+
+    assert %{id: "deepseek-v4-pro", title: "DeepSeek V4 Pro"} in models
+    assert Enum.count(models, &(&1.id == "deepseek-v4-pro")) == 1
+    assert {"deepseek", "deepseek-v4-pro", "another model has the same id"} in left_out
   end
 
   test "maps claude-subscription to Anthropic's ids and gives litellm none" do

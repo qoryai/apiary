@@ -18,12 +18,15 @@ defmodule Mix.Tasks.Apiary.Models.Update do
   # `@sources` does not map stops the task, so a new description needs a line there.
   #
   # The download goes to the one fixed URL over HTTPS, with no redirect and no retry, the
-  # server's certificate verified against the system's CA certificates and its host name,
-  # in at most 60 seconds; a body over 32 MB, like a saved copy over 32 MB, stops the task.
+  # server's certificate verified against the system's CA certificates and its host name.
+  # The connection has 15 seconds to open and each read 30 seconds; the whole download
+  # runs in a separate process that the task stops after 60 seconds. A body over 32 MB,
+  # like a saved copy over 32 MB, stops the task.
   # The input is decoded with Jason alone and must be a JSON object whose mapped providers
   # are each an object with a `models` object. A model is kept when it is an object whose
   # `id` matches `@id` and whose `name`, the title, matches `@title`, and its `status` is
-  # not `deprecated`; each model left out is printed with the reason. A provider with more
+  # not `deprecated`, and no other kept model with the same id comes before it in the
+  # order of id, then title; each model left out is printed with the reason. A provider with more
   # than 1,000 kept models stops the task, and nothing is written.
   #
   # The file is one JSON object: the providers in the order of their name, each a list of
@@ -140,12 +143,20 @@ defmodule Mix.Tasks.Apiary.Models.Update do
         end
       end)
 
-    kept = kept |> Enum.sort_by(&{&1.id, &1.title}) |> Enum.uniq_by(& &1.id)
+    {kept, repeated} =
+      kept
+      |> Enum.sort_by(&{&1.id, &1.title})
+      |> Enum.chunk_by(& &1.id)
+      |> Enum.map_reduce([], fn [first | rest], repeated ->
+        {first, repeated ++ for(model <- rest, do: {model.id, "another model has the same id"})}
+      end)
+
+    left_out = left_out ++ repeated
 
     if length(kept) > @max_models,
       do: Mix.raise("models.dev lists #{length(kept)} models for #{source}, over #{@max_models}.")
 
-    {kept, Enum.sort_by(left_out, &inspect(elem(&1, 0)))}
+    {kept, Enum.sort_by(left_out, &inspect(elem(&1, 0), printable_limit: 80, limit: 5))}
   end
 
   defp check(%{"id" => id, "name" => title} = entry) when is_binary(id) and is_binary(title) do
@@ -178,31 +189,38 @@ defmodule Mix.Tasks.Apiary.Models.Update do
   defp download do
     {:ok, _apps} = Application.ensure_all_started(:req)
 
-    response =
-      Req.get(@url,
-        into: &collect/2,
-        redirect: false,
-        retry: false,
-        raw: true,
-        connect_options: [timeout: 15_000, transport_opts: [verify: :verify_peer]],
-        receive_timeout: 30_000,
-        request_timeout: 60_000
-      )
+    task =
+      Task.async(fn ->
+        Req.get(@url,
+          into: &collect/2,
+          redirect: false,
+          retry: false,
+          raw: true,
+          connect_options: [timeout: 15_000, transport_opts: [verify: :verify_peer]],
+          receive_timeout: 30_000
+        )
+      end)
 
-    case response do
-      {:ok, %Req.Response{private: %{too_big: true}}} ->
-        Mix.raise("The download of #{@url} stopped at the limit of #{@max_bytes} bytes.")
+    case Task.yield(task, 60_000) || Task.shutdown(task, :brutal_kill) do
+      nil ->
+        Mix.raise("The download of #{@url} took more than 60 seconds and was stopped.")
 
-      {:ok, %Req.Response{status: 200} = resp} ->
-        resp |> Req.Response.get_private(:body, []) |> IO.iodata_to_binary()
-
-      {:ok, %Req.Response{status: status}} ->
-        Mix.raise("The download of #{@url} returned HTTP #{status}.")
-
-      {:error, exception} ->
-        Mix.raise("The download of #{@url} failed: #{Exception.message(exception)}")
+      {:ok, response} ->
+        body(response)
     end
   end
+
+  defp body({:ok, %Req.Response{private: %{too_big: true}}}),
+    do: Mix.raise("The download of #{@url} stopped at the limit of #{@max_bytes} bytes.")
+
+  defp body({:ok, %Req.Response{status: 200} = resp}),
+    do: resp |> Req.Response.get_private(:body, []) |> IO.iodata_to_binary()
+
+  defp body({:ok, %Req.Response{status: status}}),
+    do: Mix.raise("The download of #{@url} returned HTTP #{status}.")
+
+  defp body({:error, exception}),
+    do: Mix.raise("The download of #{@url} failed: #{Exception.message(exception)}")
 
   defp collect({:data, data}, {req, resp}) do
     size = Req.Response.get_private(resp, :size, 0) + byte_size(data)

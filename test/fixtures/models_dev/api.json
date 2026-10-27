@@ -89,6 +89,10 @@
         "family": "deepseek-flash",
         "reasoning": true,
         "release_date": "2026-10-17"
+      },
+      "example/duplicate": {
+        "id": "deepseek-v4-pro",
+        "name": "DeepSeek V4 Pro copy"
       }
     }
   },
