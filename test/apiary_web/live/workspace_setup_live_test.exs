@@ -176,6 +176,34 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       else: assert(to == ~p"/#{organisation}/#{main}")
   end
 
+  test "a type chosen is checked and shown on the button, through a later render", %{
+    conn: conn
+  } do
+    %{user: user, organisation: organisation} = sign_up_without_workspace()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+    radio = "#set-up-form input[type=radio][name='workspace[domain]']"
+
+    chosen? = fn value, title ->
+      has_element?(lv, "#{radio}[value='#{value}'][checked]") and
+        not has_element?(lv, "#{radio}[checked]:not([value='#{value}'])") and
+        has_element?(lv, "button#workspace_domain:not(.is-prompt) .q-pick-t", title)
+    end
+
+    for {value, title} <- [{"general", "General"}, {"software", "Software"}] do
+      lv |> form("#set-up-form", workspace: %{domain: value}) |> render_change()
+      assert chosen?.(value, title)
+
+      # The page renders again with nothing changed: `handle_info/2` ignores :tick.
+      send(lv.pid, :tick)
+      assert chosen?.(value, title)
+    end
+
+    # A value that is no type's checks none, and the button shows the prompt.
+    lv |> element("#set-up-form") |> render_change(%{"workspace" => %{"domain" => "unknown"}})
+    refute has_element?(lv, "#{radio}[checked]")
+    assert has_element?(lv, "button#workspace_domain.is-prompt", "Choose a type")
+  end
+
   test "Workspace, once the workspace exists, shows what was made, read only", %{conn: conn} do
     %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
 

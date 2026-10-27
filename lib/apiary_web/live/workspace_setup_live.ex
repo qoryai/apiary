@@ -197,6 +197,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
+  # The type chosen, kept in the form, so that a later render of the page shows it. A
+  # value that is no domain's keeps none.
+  def handle_event("choose", params, %{assigns: %{step: :type}} = socket) do
+    names = Enum.map(Domain.choices(), & &1.name())
+
+    domain =
+      case params do
+        %{"workspace" => %{"domain" => domain}} -> if domain in names, do: domain
+        _no_type -> nil
+      end
+
+    {:noreply, assign(socket, :form, to_form(%{"domain" => domain}, as: "workspace"))}
+  end
+
   def handle_event(
         "install",
         %{"integration" => public_id},
@@ -338,7 +352,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </span>
       </.notice>
 
-      <.form for={@form} id="set-up-form" phx-submit="create" class="grid gap-5" novalidate>
+      <.form
+        for={@form}
+        id="set-up-form"
+        phx-change="choose"
+        phx-submit="create"
+        class="grid gap-5"
+        novalidate
+      >
         <WorkspaceComponents.type_field field={@form[:domain]} />
         <div class="q-su-acts">
           <SetUpComponents.back steps={@steps} page={~p"/#{@scope.organisation}/set-up"} />
