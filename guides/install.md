@@ -611,12 +611,13 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 A new instance is set up with its **set-up link**
 ([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
-instance's organisation and is its owner, then creates its workspace **Main**. The instance has
-that one organisation and that one workspace. The organisation is the instance owner, and
-its owners are the instance's **instance admins**
-([The instance admins](#the-instance-admins)); to everyone in it, it is an organisation
-like any other. Until the link is used nobody signs up: the sign-up and log-in pages say
-"This Qory Apiary is not set up yet: use the set-up link from its install."
+instance's organisation and is its owner, then creates its workspace **Main** on
+**Set up your workspace**. The instance has that one organisation and that one workspace.
+The organisation is the instance owner, and its owners are the instance's **instance
+admins** ([The instance admins](#the-instance-admins)); to everyone in it, it is an
+organisation like any other. Until the link is used nobody signs up: the sign-up and
+log-in pages show "This Qory Apiary is not set up yet: use the set-up link from its
+install."
 
 After it, nobody signs up without an invitation: the sign-up page says sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
@@ -702,14 +703,26 @@ Set up Qory Apiary at https://qory.example.com/setup/<code>.
 
 With `compose.yaml`, `docker compose logs apiary | grep 'Set up Qory Apiary'` finds it:
 the log is one JSON object per line ([Logs](#logs)), and the sentence above is the line's
-`message`. Open the link: its page asks for your email address, a password and its
-confirmation, and your organisation's name. **Set up** creates the instance's
-organisation and your account as its owner, an instance admin, and signs you in. Two
-pages follow. **Connect Qory Apiary** ends with mail, the form of **Instance settings ›
-Mail**; **Skip** leaves it for later. **Set up your workspace** asks for the **Type** of
-the organisation's workspace Main: **Software**, for work on code, or **General**, for any
-other work. The type can't be changed after. **Create workspace** creates Main. The code is 32 random bytes, kept in the database until it is used; it does
-not expire before, and it works once: after it, any set-up link says "This Qory Apiary is
+`message`. Open the link. Its page, **Set up Qory Apiary**, has the fields **Email**,
+**Password**, **Confirm password** and **Organisation name**. **Set up** creates the
+instance's organisation and your account as its owner, an instance admin, and signs you
+in. It creates no workspace. Two pages follow:
+
+1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step with the form of
+   **Instance settings › Mail**. **Save and send a test** saves the mail server and
+   emails you a test link; mail turns on when you follow that link while signed in.
+   **Skip** leaves mail for later. Where the server's environment sets mail, the step
+   shows those settings and **Continue**. Until an instance admin finishes or skips this
+   step, each sign-in of an instance admin opens this page first.
+2. **Set up your workspace**, at `/<organisation>/set-up`, creates the organisation's
+   workspace Main. In **Type**, choose **Software**, for work on code, or **General**, for
+   any other work; no type is chosen before you choose one. The type can't be changed
+   after. **Create workspace** creates Main and opens its overview: `/acme/main` for an
+   organisation named `Acme`. Until Main exists, a sign-in of a member of the organisation
+   opens this page.
+
+The code is 32 random bytes, kept in the database until it is used; it does
+not expire before, and it works once: after it, any set-up link shows "This Qory Apiary is
 already set up." and leads to the log-in page. Anyone who can read the log can use the
 link before you do, so open it as soon as the instance is up. On an instance that is set
 up, a restored one included, a start writes no such line. The address in the link is the
@@ -783,12 +796,14 @@ bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")
 
 On an instance that is not set up, it sets it up: it creates the organisation, its
 workspace Main and the account as its owner, makes the set-up link work no more, and
-emails the account its log-in link. Without the name it is refused and says so. Should
-the email not go out, the instance is set up all the same, and the command says to ask
-for a link at `/users/log-in` once the mail settings work; it never prints the address or
-the link. Without mail it prints a password link for the account instead, which works
-once, for an hour, and never the address: open it to set your password. Should the set-up
-link be used a moment before, the command does what it does on any instance.
+emails the account its log-in link. Unlike the set-up link, it creates Main itself, of the
+type **Software**, so **Set up your workspace** does not open. Without the name it is
+refused and says so. Should the email not go out, the instance is set up all the same,
+and the command says to ask for a link at `/users/log-in` once the mail settings work; it
+never prints the address or the link. Without mail it prints a password link for the
+account instead, which works once, for an hour, and never the address: open it to set
+your password. Should the set-up link be used a moment before, the command does what it
+does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,
 adding it to the organisation when it is not there yet; the account must exist, so the
@@ -853,8 +868,8 @@ To try Qory Apiary with data in it, load the demo into a new instance: synthetic
 people and nodes, all under `example.com` and other example names. Never load it into an
 instance people work in.
 
-1. Set up the instance with the organisation name **Acme**
-   ([Set up a new instance](#set-up-a-new-instance)).
+1. Set up the instance with the organisation name **Acme**, and create its workspace Main
+   at `/acme/set-up` ([Set up a new instance](#set-up-a-new-instance)).
 2. Run on the release:
 
    ```sh
@@ -877,8 +892,8 @@ bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
 ```
 
 The command makes nothing and stops when the instance is not set up, its organisation is
-not Acme, or its workspace Main already has runs or nodes. Otherwise it prints what it
-made, and last the address to open.
+not Acme, Acme has no workspace Main yet, or Main already has runs or nodes. Otherwise it
+prints what it made, and last the address to open.
 
 ## Backups
 
