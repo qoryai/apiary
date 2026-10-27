@@ -4,8 +4,10 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
   # mail, each at its key, in the set-up's progress indicator; an adapter's state, Set up
   # in a new tab while it is not set up, and Continue once it is configured, read again as
   # it declares; Skip to the next step, Back to the one before; and a path that does not
-  # exist for anyone but an instance admin. `ApiaryWeb.InstanceLive.SetUpMailTest`
-  # has the mail step, and the page without the feature adapters belong to.
+  # exist for anyone but an instance admin. The tests run with no mail set, so the page
+  # has its mail step. `ApiaryWeb.InstanceLive.SetUpMailTest` has the mail step,
+  # and the page without the feature adapters belong to;
+  # `ApiaryWeb.InstanceLive.SetUpEnvMailTest` the page where the environment sets mail.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -20,6 +22,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
   @moduletag needs: :factory
 
   setup do
+    Apiary.Mail.put_test_source(:none)
     admin = instance_admin_scope()
     %{admin: admin, conn: log_in_user(build_conn(), admin.user)}
   end
@@ -37,6 +40,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
   defp named(prefix), do: "#{prefix}-#{System.unique_integer([:positive])}"
 
   test "is a path that does not exist for anyone but an instance admin" do
+    # The fixture signs up without a password, as with mail.
+    Apiary.Mail.put_test_source(:env)
     %{user: user} = sign_up_fixture()
     conn = log_in_user(build_conn(), user)
 
@@ -57,8 +62,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     assert has_element?(lv, "#set-up-#{first.public_id} h2", first.name)
     refute has_element?(lv, "#shell .drawer")
 
-    # The organisation has Main; its work source is not connected. Mail is done where the
-    # test's environment sets it.
+    # The organisation has Main; its work source is not connected. Mail is not set up.
     assert [
              {"Your account", :done},
              {first_name, :current},
@@ -407,8 +411,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   # The mail step of the instance's connections (`ApiaryWeb.InstanceLive.SetUp`): its
   # context and the form of Instance settings › Mail, whose test link done or Skip marks
   # the connections reviewed and leads on, to Work source while it is not done; the saved
-  # settings with Continue; the environment's mail with Continue; and the page without the
-  # feature adapters belong to, mail its one step of the instance.
+  # settings with Continue; and the page without the feature adapters belong to, mail its
+  # one step of the instance.
   # Not async: hiding the instance's organisation acts on the row every test shares, and
   # the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -599,33 +603,6 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
              Apiary.Repo.query!("SELECT connections_reviewed_at FROM instance_settings WHERE id")
   end
 
-  test "where the environment sets mail, shows its settings and no form", %{conn: conn} do
-    Mail.put_test_source(:env)
-    lv = mail_step(conn)
-
-    assert has_element?(lv, "#mail-env #mail-status", "Set by the server's environment")
-    refute has_element?(lv, "#mail_form")
-  end
-
-  test "where the environment sets mail, shows no context and no line to press Continue",
-       %{conn: conn, scope: scope} do
-    Mail.put_test_source(:env)
-    lv = mail_step(conn)
-
-    refute has_element?(lv, "#set-up-context")
-    refute has_element?(lv, "#set-up-help")
-    refute render(lv) =~ "Save and send a test"
-    refute render(lv) =~ "Press Continue"
-    refute has_element?(lv, "#set-up-skip-button")
-    assert has_element?(lv, "#set-up-continue", "Continue")
-    assert {"Mail", :current} in steps(lv)
-
-    lv |> element("#set-up-continue") |> render_click()
-    {to, _flash} = assert_redirect(lv)
-    assert to == after_mail(scope)
-    assert Setup.connections_reviewed?()
-  end
-
   @tag with_features: [:observability]
   test "without the feature adapters belong to, mail is the one step", %{conn: conn} do
     # Made where the feature is on, before it went.
@@ -639,5 +616,120 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
     refute has_element?(lv, "#set-up-#{adapter.public_id}")
     assert steps(lv) == [{"Your account", :done}, {"Mail", :current}, {"Workspace", :done, :link}]
     refute has_element?(lv, "#set-up-next")
+  end
+end
+
+defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
+  # The instance's connections (`ApiaryWeb.InstanceLive.SetUp`) where the server's
+  # environment sets mail: no mail step. With an adapter, its step is the last, and
+  # finishing or skipping it marks the connections reviewed and leads to Workspace. With
+  # none, the page has no step and sends the admin on through `/`, as a sign-in does,
+  # without marking anything.
+  # Not async: the instance's organisation is made again, with no workspace, on the row
+  # every test shares.
+  use ApiaryWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+  import Apiary.NodesFixtures
+  import ApiaryWeb.SetUpSteps
+
+  alias Apiary.{Mail, Setup}
+
+  setup %{conn: conn} do
+    Apiary.EditionKit.hide_instance_organisation()
+    Mail.put_test_source(:env)
+
+    {:ok, %{user: user, organisation: organisation}} =
+      Setup.set_up(Setup.code!(), Apiary.AccountsFixtures.valid_user_attributes())
+
+    # Confirms the account, as an adapter's fixture does, before the session is made.
+    ^organisation = Apiary.OrganisationsFixtures.ensure_instance_organisation!()
+
+    %{conn: log_in_user(conn, user), organisation: organisation}
+  end
+
+  defp named(prefix), do: "#{prefix}-#{System.unique_integer([:positive])}"
+
+  # Work source follows Workspace with the `factory` feature.
+  defp workspace_steps(current) do
+    if Apiary.Features.on?(:factory),
+      do: [{"Workspace", current}, {"Work source", :to_come}],
+      else: [{"Workspace", current}]
+  end
+
+  test "with no adapter, the page has no step and sends the admin on as a sign-in does",
+       %{conn: conn, organisation: organisation} do
+    for path <- [~p"/instance/set-up", ~p"/instance/set-up?step=mail"] do
+      assert {:error, {:redirect, %{to: "/"}}} = live(conn, path)
+      assert conn |> get(path) |> redirected_to() == ~p"/"
+    end
+
+    assert conn |> get(~p"/") |> redirected_to() == ~p"/#{organisation}/set-up"
+    refute Setup.connections_reviewed?()
+
+    # The workspace set-up lists no step under Connect Qory Apiary.
+    {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up")
+    assert steps(lv) == [{"Your account", :done} | workspace_steps(:current)]
+    assert count(lv) == "Step 2 of #{length(steps(lv))}"
+    refute has_element?(lv, "#set-up-group-connect")
+    refute has_element?(lv, "#set-up-steps-mail")
+  end
+
+  describe "with an adapter" do
+    @describetag needs: :factory
+
+    test "has no mail step; Skip on the adapter's step marks the connections reviewed",
+         %{conn: conn, organisation: organisation} do
+      %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+
+      assert has_element?(lv, "#set-up-#{adapter.public_id}")
+
+      assert steps(lv) ==
+               [{"Your account", :done}, {adapter.name, :current} | workspace_steps(:to_come)]
+
+      assert count(lv) == "Step 2 of 4"
+      assert has_element?(lv, "#set-up-group-connect", "Connect Qory Apiary")
+      refute has_element?(lv, "#set-up-steps-mail")
+      refute has_element?(lv, "#set-up-mail")
+
+      lv |> element("#set-up-skip-button") |> render_click()
+
+      assert {to, _flash} = assert_redirect(lv)
+      assert to == ~p"/#{organisation}/set-up?step=type"
+      assert Setup.connections_reviewed?()
+    end
+
+    test "Continue on the adapter's step, set up, leads on to Workspace",
+         %{conn: conn, organisation: organisation} do
+      %{adapter: adapter} = connectable_adapter_fixture(%{name: named("tracker")})
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{adapter.public_id}")
+      lv |> element("#set-up-continue") |> render_click()
+
+      assert {to, _flash} = assert_redirect(lv)
+      assert to == ~p"/#{organisation}/set-up?step=type"
+      assert Setup.connections_reviewed?()
+    end
+
+    test "?step=mail opens the first step", %{conn: conn} do
+      %{adapter: first} = connectable_adapter_fixture(%{name: named("a-tracker")})
+      %{adapter: second} = settable_adapter_fixture(%{name: named("b-tracker")})
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=mail")
+      assert has_element?(lv, "#set-up-#{first.public_id}")
+
+      # Without a step, the first step not done.
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+      assert has_element?(lv, "#set-up-#{second.public_id}")
+    end
+
+    test "a sign-in sends the instance admin to the connections until they are reviewed",
+         %{conn: conn} do
+      settable_adapter_fixture(%{name: named("tracker")})
+
+      assert conn |> get(~p"/") |> redirected_to() == ~p"/instance/set-up"
+    end
   end
 end

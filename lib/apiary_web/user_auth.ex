@@ -750,7 +750,8 @@ defmodule ApiaryWeb.UserAuth do
 
   @doc """
   signed_in_path/1 is where a signed-in user is sent, from `/` and after log-in: an
-  instance admin, the instance's connections, `/instance/set-up`, until an instance admin
+  instance admin, the instance's connections, `/instance/set-up`, while the connections
+  have a step (`ApiaryWeb.SetUpComponents.connect_steps?/1`), until an instance admin
   finishes or skips their last step (`Apiary.Setup.connections_reviewed?/0`); else the
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
@@ -791,10 +792,12 @@ defmodule ApiaryWeb.UserAuth do
 
   defp signed_in_path(_conn, nil), do: ~p"/"
 
-  # Whether the person is an instance admin, sent to the instance's connections until one
-  # finishes or skips their last step.
+  # Whether the person is an instance admin, sent to the instance's connections while the
+  # connections have a step, until an instance admin finishes or skips their last step.
   defp connections_to_review?(scope),
-    do: not Apiary.Setup.connections_reviewed?() and Apiary.Access.instance_admin?(scope)
+    do:
+      not Apiary.Setup.connections_reviewed?() and Apiary.Access.instance_admin?(scope) and
+        ApiaryWeb.SetUpComponents.connect_steps?(scope)
 
   @doc """
   home_scope/1 is the request's scope as a person's pages and the Instance's have it:

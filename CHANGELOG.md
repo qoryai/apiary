@@ -39,10 +39,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Connect Qory Apiary**, at `/instance/set-up`, opens after the set-up link, one step a
   page. Its **Mail** step has the form of Instance settings › Mail: **Save and send a
   test** saves the mail server and emails a test link, and **Skip** leaves mail for later.
-  Where the server's environment sets mail, the step shows those settings and
-  **Continue**. Each sign-in of an instance admin opens this page until an instance admin
-  finishes or skips its last step. On an instance set up before the upgrade, the next
-  sign-in of an instance admin opens it too.
+  Where the server's environment sets mail, the page has no **Mail** step, because there
+  is nothing to configure. Each sign-in of an instance admin opens this page until an
+  instance admin finishes or skips its last step. On an instance set up before the
+  upgrade, the next sign-in of an instance admin opens it too. Where the page has no
+  step, a sign-in of an instance admin opens what it opens for anyone else.
 - While an organisation has no workspace, its owners and admins invite people from
   **People** into the organisation. The invitation page and the sign-up show the
   organisation's name, and **People** lists the invitation with **None** as its workspace.
@@ -67,11 +68,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gives no line.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
-  Adapters** lists, before **Mail**. **Create workspace** then opens **Connect a work
-  source to Main**, which lists the work sources the instance has set up for the
-  workspace's type, each with **Connect**. Where an adapter's description has steps for
-  setting it up or connecting it, both pages list them in the column **About this step**,
-  under **In the new tab** or **On** and the adapter's name.
+  Adapters** lists, before **Mail** where the page has that step. **Create workspace**
+  then opens **Connect a work source to Main**, which lists the work sources the instance
+  has set up for the workspace's type, each with **Connect**. Where an adapter's
+  description has steps for setting it up or connecting it, both pages list them in the
+  column **About this step**, under **In the new tab** or **On** and the adapter's name.
   Qory Apiary stores those steps at each start of the adapter.
 - The overview of a workspace shows **Set up Main**, with the workspace's name, in place
   of **Send your first run** until a test run passes. Its steps are **Work source**,

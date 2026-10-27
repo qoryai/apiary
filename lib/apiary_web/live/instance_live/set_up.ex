@@ -10,8 +10,12 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # `factory` feature (`Apiary.Adapters.set_up_list/1`), `?step=<public id>`: first those
   # `QORY_INSTALLED_ADAPTERS` lists, in its order, then the others by name, as Instance
   # settings › Adapters lists them (`ApiaryWeb.InstanceLive.Adapters`); then mail,
-  # `?step=mail`. Without a step, or with one the page does not have, the first step that
-  # is not done, else mail. The context column says why the step exists.
+  # `?step=mail`, unless the server's environment sets mail (`Apiary.Mail.source/0` is
+  # `:env`), which leaves nothing to configure. Without a step, or with one the page does
+  # not have, the first step that is not done, else the last; `?step=mail` without the
+  # mail step, the first step. With no step at all, the page sends the admin on as a
+  # sign-in does, through `/`, and marks nothing. The context column says why the step
+  # exists.
   #
   # An adapter listed that the installer has not made yet is a step by its name,
   # `?step=<name>`, which shows that Qory Apiary is adding it, with Back and Skip. The
@@ -33,15 +37,15 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   #
   # The mail step holds the form of Instance settings › Mail
   # (`ApiaryWeb.InstanceLive.MailForm`), with "Save and send a test", and the saved
-  # settings once there are any, with Continue; where the server's environment sets mail,
-  # its settings, with Continue. Once the test link is sent, the step is done.
+  # settings once there are any, with Continue. Once the test link is sent, the step is
+  # done.
   #
   # Every step has Back to the step before it, where that step has a page, and Skip while
   # it is not done, which leaves the connection as it is: it can be finished later in
   # Instance settings. Finishing or skipping the last step marks the connections reviewed
-  # (`Apiary.Setup.review_connections/1`) and sends the admin to the first step after mail
-  # that is not done: the workspace set-up's Workspace or Work source; else on, as a
-  # sign-in sends them (`ApiaryWeb.UserAuth.signed_in_path/1`).
+  # (`Apiary.Setup.review_connections/1`) and sends the admin to the first step after the
+  # connections that is not done: the workspace set-up's Workspace or Work source; else
+  # on, as a sign-in sends them (`ApiaryWeb.UserAuth.signed_in_path/1`).
   #
   # The page asks for a recent sign-in, as Instance settings › Mail does
   # (`ApiaryWeb.UserAuth`'s sudo mode), for every step: the mail step saves the mail
@@ -70,15 +74,22 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     if connected?(socket), do: Adapters.subscribe_installs(scope)
     adapters = adapters(scope)
 
-    if connected?(socket),
-      do: for(%{adapter: %{} = adapter} <- adapters, do: Adapters.subscribe_keys(scope, adapter))
+    mail = Mail.source() != :env
 
-    {:ok,
-     assign(socket,
-       page_title: gettext("Connect %{name}", name: Apiary.ProductName.name()),
-       adapters: adapters,
-       mail_source: Mail.source()
-     )}
+    if keys(adapters, mail) == [] do
+      {:ok, redirect(socket, to: ~p"/")}
+    else
+      if connected?(socket),
+        do:
+          for(%{adapter: %{} = adapter} <- adapters, do: Adapters.subscribe_keys(scope, adapter))
+
+      {:ok,
+       assign(socket,
+         page_title: gettext("Connect %{name}", name: Apiary.ProductName.name()),
+         adapters: adapters,
+         mail: mail
+       )}
+    end
   end
 
   # The instance's adapters, with the `factory` feature, each with its step's key, whether
@@ -127,16 +138,20 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, assign_step(socket, step_of(socket.assigns.adapters, params["step"]))}
+    %{adapters: adapters, mail: mail} = socket.assigns
+    {:noreply, assign_step(socket, step_of(adapters, mail, params["step"]))}
   end
 
   # The step `?step=` names: an adapter by its public id, one the installer has not made
-  # yet by its name, or `mail`. Without one, or with one the page does not have, the
-  # first step that is not done, else the last, mail.
-  defp step_of(adapters, key) do
+  # yet by its name, or `mail`, which opens the first step where the page has no mail
+  # step. Without one, or with one the page does not have, the first step that is not
+  # done, else the last.
+  defp step_of(adapters, mail, key) do
+    keys = keys(adapters, mail)
+
     cond do
       key == "mail" ->
-        :mail
+        if mail, do: :mail, else: hd(keys)
 
       row = Enum.find(adapters, &(&1.key in [{:adapter, key}, {:installing, key}])) ->
         row.key
@@ -148,7 +163,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         row.key
 
       true ->
-        :mail
+        List.last(keys)
     end
   end
 
@@ -166,8 +181,9 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   defp made(_adapters, _step), do: nil
 
-  # The page's steps, in order: the adapters', then mail.
-  defp keys(adapters), do: Enum.map(adapters, & &1.key) ++ [:mail]
+  # The page's steps, in order: the adapters', then mail, where it has a step.
+  defp keys(adapters, mail),
+    do: Enum.map(adapters, & &1.key) ++ if(mail, do: [:mail], else: [])
 
   defp path_of({:adapter, public_id}), do: ~p"/instance/set-up?#{[step: public_id]}"
   defp path_of({:installing, name}), do: ~p"/instance/set-up?#{[step: name]}"
@@ -176,9 +192,10 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # The adapters read again while the page is open, and the steps counted again. The step
   # stays on what it showed: the same adapter, by its public id, or mail; an adapter the
   # installer has made since, its step; where that adapter is gone, the step at its
-  # place, at most the last. An adapter added since is listened to as the others are.
+  # place, at most the last; with no step left, on through `/`. An adapter added since is
+  # listened to as the others are.
   defp reload_adapters(socket) do
-    %{adapters: before, step: step, current_scope: scope} = socket.assigns
+    %{adapters: before, step: step, current_scope: scope, mail: mail} = socket.assigns
     adapters = adapters(scope)
     known = for %{adapter: %{id: id}} <- before, into: MapSet.new(), do: id
 
@@ -186,26 +203,36 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         adapter.id not in known,
         do: Adapters.subscribe_keys(scope, adapter)
 
-    keys = keys(adapters)
+    keys = keys(adapters, mail)
 
     moved =
       cond do
-        step in keys -> step
-        made = made(adapters, step) -> made.key
-        true -> Enum.at(keys, Enum.find_index(keys(before), &(&1 == step)) || 0, :mail)
+        step in keys ->
+          step
+
+        made = made(adapters, step) ->
+          made.key
+
+        true ->
+          Enum.at(keys, Enum.find_index(keys(before, mail), &(&1 == step)) || 0) ||
+            List.last(keys)
       end
 
-    socket = socket |> assign(:adapters, adapters) |> assign_step(moved)
+    if is_nil(moved) do
+      redirect(socket, to: ~p"/")
+    else
+      socket = socket |> assign(:adapters, adapters) |> assign_step(moved)
 
-    if moved != step,
-      do: push_patch(socket, to: path_of(moved), replace: true),
-      else: socket
+      if moved != step,
+        do: push_patch(socket, to: path_of(moved), replace: true),
+        else: socket
+    end
   end
 
   @impl true
   # Skip, or Continue once a step is done: the next step, or, after the last, on.
-  def handle_event("next", _params, %{assigns: %{step: step, adapters: adapters}} = socket) do
-    case Enum.drop_while(keys(adapters), &(&1 != step)) do
+  def handle_event("next", _params, %{assigns: %{step: step} = assigns} = socket) do
+    case Enum.drop_while(keys(assigns.adapters, assigns.mail), &(&1 != step)) do
       [_step, next | _rest] -> {:noreply, push_patch(socket, to: path_of(next))}
       _last -> {:noreply, finish(socket)}
     end
@@ -239,18 +266,18 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # The connections are reviewed, and the admin goes on to the first step after mail that
+  # The connections are reviewed, and the admin goes on to the first step after them that
   # is not done, such as the workspace's Work source; else as a sign-in sends them.
   defp finish(socket) do
-    scope = socket.assigns.current_scope
+    %{current_scope: scope, step: step} = socket.assigns
 
     case Setup.review_connections(scope) do
       :ok ->
         to =
           scope
-          |> SetUpComponents.steps_for(:mail)
-          |> Enum.drop_while(&(&1.id != :mail))
-          |> Enum.drop(1)
+          |> SetUpComponents.steps_for(step)
+          |> Enum.drop_while(&(&1.group != :connect))
+          |> Enum.drop_while(&(&1.group == :connect))
           |> Enum.find(&(&1.state != :done and is_binary(&1.path)))
 
         redirect(socket, to: (to && to.path) || ~p"/")
@@ -295,7 +322,6 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         <.installing_step :if={@installing} name={@installing} steps={@steps} />
         <.mail_step
           :if={@step == :mail}
-          source={@mail_source}
           state={@mail_state}
           steps={@steps}
           current_scope={@current_scope}
@@ -315,7 +341,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
             guide={@guide}
           />
         </:context>
-        <:context :if={@step == :mail and @mail_source != :env}>
+        <:context :if={@step == :mail}>
           <p id="set-up-what">
             {gettext(
               "Qory Apiary sends invitations, log-in links and password links by mail; without mail, an admin copies each link by hand. Get the SMTP server's host name, port, username and password from your mail provider. Mail turns on when you follow the test link that Qory Apiary emails you, while you are signed in."
@@ -429,14 +455,12 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         adapter: name
       )
 
-  attr :source, :atom, required: true
   attr :state, :atom, required: true
   attr :steps, :list, required: true
   attr :current_scope, :map, required: true
 
   # The mail step: the form of Instance settings › Mail, with Back, Save and send a test,
-  # and Skip, or Continue once settings are saved; where the environment sets mail, its
-  # settings, with Back and Continue.
+  # and Skip, or Continue once settings are saved.
   defp mail_step(assigns) do
     ~H"""
     <section id="set-up-mail" class="grid gap-4" aria-labelledby="set-up-name">
@@ -457,13 +481,6 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         </:actions>
         <:actions :if={@state not in [:pending, :on]}><.skip /></:actions>
       </.live_component>
-
-      <div :if={@source == :env} class="q-su-acts">
-        <SetUpComponents.back steps={@steps} page={~p"/instance/set-up"} />
-        <.button id="set-up-continue" type="button" variant="primary" size="md" phx-click="next">
-          {gettext("Continue")}
-        </.button>
-      </div>
     </section>
     """
   end
