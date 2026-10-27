@@ -18,7 +18,8 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
 
   for {name, features} <- [
         {"factory", [:observability, :security, :secrets]},
-        {"secrets", [:observability, :security, :factory]}
+        # An instance without secrets is without factory too, which needs it.
+        {"secrets", [:observability, :security]}
       ] do
     @tag with_features: features
     test "without #{name}, the sections are not listed and their paths are not found",

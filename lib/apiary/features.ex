@@ -80,6 +80,8 @@ defmodule Apiary.Features do
   #
   # `factory` is the work items of a workspace and what they are taken in from, opt-in
   # until it is announced, and served the same documentation on or off (`docs: false`).
+  # It needs `secrets`: the model providers' pages, where the model key its runs need is
+  # set, are of `secrets` (`ApiaryWeb.ProviderLive.Index`).
   #
   # `registry` is the private image registry's tokens and each run's registry credential
   # (`Apiary.Registry`), opt-in, and served the same documentation on or off
@@ -89,7 +91,12 @@ defmodule Apiary.Features do
     security: [needs: [:observability], built: true],
     secrets: [needs: [:security], built: true, default: false],
     path_rules: [needs: [:security], built: true, default: false, docs: false],
-    factory: [needs: [:observability, :security], built: true, default: false, docs: false],
+    factory: [
+      needs: [:observability, :security, :secrets],
+      built: true,
+      default: false,
+      docs: false
+    ],
     registry: [needs: [:security], built: true, default: false, docs: false]
   ]
 
