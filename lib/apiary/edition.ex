@@ -213,6 +213,37 @@ defmodule Apiary.Edition do
               source :: Apiary.Harnesses.source()
             ) :: boolean
 
+  # With the `factory` feature, which the documentation leaves out: the four rules of the
+  # Overview's setup list for `workspace` (`Apiary.WorkspaceSetup`), each asked once per
+  # read of the list, without a lock. An edition may count what serves the workspace from
+  # another organisation; the core counts the workspace's and its organisation's alone, and
+  # the instance's pool and gateway:
+  #
+  # - `work_source_ready/1`: the adapters whose live collections are assigned to the
+  #   workspace, through a connection that is connected and listed, each with how many,
+  #   by name; `[]` while the step is not done (`Apiary.WorkspaceSetup.work_source/1`);
+  # - `machines_ready/1`: a node pool that serves the workspace's runs and the gateway its
+  #   choice resolves to, both with an active key; nil while the step is not done
+  #   (`Apiary.WorkspaceSetup.machines/1`);
+  # - `model_key_ready?/1`: whether the organisation has a model provider with a key and
+  #   the workspace has a model choice (`Apiary.WorkspaceSetup.model_key?/1`);
+  # - `test_run_passed?/1`: whether a test run of the workspace passed
+  #   (`Apiary.WorkspaceSetup.test_passed?/1`).
+  @doc false
+  @callback work_source_ready(%Workspace{}) :: [
+              %{adapter: Apiary.Nodes.Node.t(), collections: pos_integer}
+            ]
+
+  @doc false
+  @callback machines_ready(%Workspace{}) ::
+              %{pool: Apiary.Nodes.Node.t(), gateway: Apiary.Nodes.Node.t()} | nil
+
+  @doc false
+  @callback model_key_ready?(%Workspace{}) :: boolean
+
+  @doc false
+  @callback test_run_passed?(%Workspace{}) :: boolean
+
   # With the `factory` feature, which the documentation leaves out: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
   # the edition, so that a client of an operator is not shown the operator's model
@@ -657,6 +688,10 @@ defmodule Apiary.Edition do
     operated?: 1,
     harness_owner: 1,
     harness_source_allowed?: 3,
+    work_source_ready: 1,
+    machines_ready: 1,
+    model_key_ready?: 1,
+    test_run_passed?: 1,
     client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,

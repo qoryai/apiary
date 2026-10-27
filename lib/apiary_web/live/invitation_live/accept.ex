@@ -102,7 +102,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   defp invitation_summary(assigns) do
     ~H"""
     <Layouts.auth_heading>
-      {gettext("Join %{name}", name: @invitation.workspace.name)}
+      {gettext("Join %{name}", name: (@invitation.workspace || @invitation.organisation).name)}
       <:subtitle><.rich text={invitation_sentence(@invitation)} /></:subtitle>
     </Layouts.auth_heading>
     """
@@ -147,12 +147,28 @@ defmodule ApiaryWeb.InvitationLive.Accept do
     end
   end
 
-  # The workspace the invitation brings the user into: its own page, which the path names,
-  # loaded afresh so the session remembers it for `/`.
+  # The workspace the invitation brings the user into: the workspace's page, which the
+  # path names, loaded afresh so the session remembers it for `/`. An invitation without
+  # a workspace brings them into the organisation: its workspace set-up while it has no
+  # workspace in use, else its overview, as `ApiaryWeb.UserAuth.signed_in_path/1` sends
+  # a person of an organisation they reach no workspace of yet.
+  defp workspace_path(%{organisation: organisation, workspace: nil}) do
+    if Organisations.has_workspace?(organisation),
+      do: ~p"/#{organisation}",
+      else: ~p"/#{organisation}/set-up"
+  end
+
   defp workspace_path(%{organisation: organisation, workspace: workspace}),
     do: ~p"/#{organisation}/#{workspace}"
 
   # An invitation makes a member, whatever its sender may be.
+  defp invitation_sentence(%{workspace: nil} = invitation) do
+    rich_gettext(
+      "You are invited to the %{organisation} organisation, as a member.",
+      organisation: {:b, invitation.organisation.name, "font-medium text-base-content"}
+    )
+  end
+
   defp invitation_sentence(invitation) do
     rich_gettext(
       "You are invited to the %{workspace} workspace of the %{organisation} organisation, as a member.",

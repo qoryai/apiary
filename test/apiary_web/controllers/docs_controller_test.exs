@@ -61,8 +61,11 @@ defmodule ApiaryWeb.DocsControllerTest do
       assert served(conn, "/docs/index.html") == @every
     end
 
-    @tag with_features: [:observability, :security | @undocumented]
+    # The features the documentation does not differ by that need no more than security:
+    # `factory` is left out, as it needs `secrets`, which the documentation differs by.
+    @tag with_features: Apiary.Features.closed([:observability, :security | @undocumented])
     test "a feature the documentation does not differ by, on, adds no tree", %{conn: conn} do
+      assert Enum.any?(@undocumented, &Apiary.Features.on?/1)
       assert served(conn, "/docs/index.html") == security_tree()
     end
 

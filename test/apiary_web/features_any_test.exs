@@ -143,7 +143,13 @@ defmodule ApiaryWeb.FeaturesAnyTest do
   end
 
   describe "with factory and not secrets" do
-    @describetag with_features: [:observability, :security, :factory]
+    @describetag with_features: [:observability, :security, :secrets, :factory]
+
+    # `factory` needs `secrets`, so no value of QORY_FEATURES gives these features: they
+    # are set here to show the page there on the second feature it names alone.
+    setup do
+      Application.put_env(:apiary, :features, [:observability, :security, :factory])
+    end
 
     test "the page is there, and a page of secrets alone is not" do
       assert answer("/either") == {200, "either"}
@@ -225,18 +231,18 @@ defmodule ApiaryWeb.FeaturesAnyTest do
       refute ApiaryWeb.Features.instance?(Router)
     end
 
-    @tag with_features: [:observability, :security, :factory]
+    @tag with_features: [:observability, :security, :secrets, :factory]
     test "with the feature, an open page stays there, whatever the scope hides" do
       assert ApiaryWeb.Features.page_shown?(InstanceController, person([:factory]))
       assert ApiaryWeb.Features.page_shown?(InstanceController, nil)
 
       # A page of the organisation asks what the scope shows; a page of no feature is there.
-      refute ApiaryWeb.Features.page_shown?(EitherController, person([:factory]))
+      refute ApiaryWeb.Features.page_shown?(EitherController, person([:secrets, :factory]))
       assert ApiaryWeb.Features.page_shown?(EitherController, person([]))
       assert ApiaryWeb.Features.page_shown?(Router, person([:factory]))
     end
 
-    @tag with_features: [:observability, :security, :factory]
+    @tag with_features: [:observability, :security, :secrets, :factory]
     test "with the feature, it is there to whoever opens it, whatever the scope hides" do
       assert answer("/instance") == {200, "instance"}
       assert answer("/instance", person([:factory])) == {200, "instance"}
