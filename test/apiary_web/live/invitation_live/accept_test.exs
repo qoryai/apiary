@@ -20,7 +20,12 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     token: token,
     owner: owner
   } do
-    {:ok, _lv, html} = live(conn, ~p"/invitations/#{token}")
+    {:ok, lv, html} = live(conn, ~p"/invitations/#{token}")
+
+    # An invitation into a workspace starts no set-up: no indicator, no context.
+    assert ApiaryWeb.SetUpSteps.steps(lv) == []
+    refute has_element?(lv, "#set-up-context")
+    assert has_element?(lv, "#invitation-email", "The invitation is for bee@example.com.")
 
     assert html =~ "Join #{owner.workspace.name}"
     assert html =~ owner.organisation.name

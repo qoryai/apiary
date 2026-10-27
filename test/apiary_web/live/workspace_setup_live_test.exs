@@ -1,13 +1,16 @@
 defmodule ApiaryWeb.WorkspaceSetupLiveTest do
-  # The workspace set-up, `/:org/set-up` (`ApiaryWeb.WorkspaceSetupLive`): its first step,
-  # the Type field and Create workspace, for a person `workspace.create` allows, and the
-  # line for anyone else; the refusals; and the landing that sends an organisation with no
-  # workspace to it. `ApiaryWeb.WorkspaceSetupLive.SourceTest` has the second step.
+  # The workspace set-up, `/:org/set-up` (`ApiaryWeb.WorkspaceSetupLive`): its Workspace
+  # step, the Type field and Create workspace, for a person `workspace.create` allows, and
+  # the line for anyone else; the refusals; the summary once the workspace exists; the page
+  # that moves on when anyone creates the workspace; and the landing that sends an
+  # organisation with no workspace to it. `ApiaryWeb.WorkspaceSetupLive.SourceTest` has
+  # Work source.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.SetUpSteps
 
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.Scope
@@ -55,13 +58,31 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
     assert html =~ ~r{<title[^>]*>\s*Set up your workspace}
     assert has_element?(lv, "h1", "Set up your workspace")
-    assert words(lv, "#set-up-line") == "Main is this instance's only workspace."
-    refute has_element?(lv, "#set-up-step")
     refute has_element?(lv, "#shell .drawer")
+    refute has_element?(lv, "#set-up-help")
 
-    assert words(lv, "#set-up-help") ==
-             "In Type, choose Software if Main works on code in repositories, or General for any other work. " <>
-               "Press Create workspace."
+    assert words(lv, "#set-up-what") ==
+             "Main is where Qory Apiary takes in tickets and runs agents on them. Its type sets " <>
+               "which work sources it can connect, and whether each ticket needs a repository."
+
+    assert words(lv, "#set-up-line") == "Main is this instance's only workspace."
+    assert has_element?(lv, "#set-up-context #set-up-line")
+
+    # Your account, then Workspace, and Work source with the feature; no Back before it.
+    if Apiary.Features.on?(:factory) do
+      assert steps(lv) == [
+               {"Your account", :done},
+               {"Workspace", :current},
+               {"Work source", :to_come}
+             ]
+
+      assert count(lv) == "Step 2 of 3"
+    else
+      assert steps(lv) == [{"Your account", :done}, {"Workspace", :current}]
+      assert count(lv) == "Step 2 of 2"
+    end
+
+    refute has_element?(lv, "#set-up-back")
 
     assert has_element?(
              lv,
@@ -104,8 +125,55 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     {to, _flash} = assert_redirect(lv)
 
     if Apiary.Features.on?(:factory),
-      do: assert(to == ~p"/#{organisation}/set-up"),
+      do: assert(to == ~p"/#{organisation}/set-up?step=source"),
       else: assert(to == ~p"/#{organisation}/#{main}")
+  end
+
+  test "Workspace, once the workspace exists, shows what was made, read only", %{conn: conn} do
+    %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=type")
+
+    assert has_element?(lv, "h1", "Set up your workspace")
+
+    assert words(lv, "#set-up-made") ==
+             "Main is a Software workspace. You can't change the type after you create the workspace."
+
+    refute has_element?(lv, "#set-up-form")
+    assert {"Workspace", :current} in steps(lv)
+
+    if Apiary.Features.on?(:factory) do
+      lv |> element("#set-up-continue") |> render_click()
+      assert_patch(lv, ~p"/#{organisation}/set-up?step=source")
+      assert {"Workspace", :done, :link} in steps(lv)
+    else
+      assert has_element?(
+               lv,
+               ~s{#set-up-continue[href="#{ApiaryWeb.Layouts.workspace_landing(%{Scope.for_user(user) | organisation: organisation, workspace: main})}"]}
+             )
+    end
+  end
+
+  test "once anyone creates the workspace, the page moves on", %{conn: conn} do
+    %{user: owner, organisation: organisation} = sign_up_without_workspace()
+    member = joined(organisation, :member)
+
+    {:ok, waiting, _html} = conn |> log_in_user(member) |> live(~p"/#{organisation}/set-up")
+    assert has_element?(waiting, "#set-up-waiting")
+    assert steps(waiting) == []
+
+    {:ok, other, _html} = build_conn() |> log_in_user(owner) |> live(~p"/#{organisation}/set-up")
+
+    {:ok, _main} =
+      Organisations.create_first_workspace(
+        Organisations.load_scope(Scope.for_user(owner), organisation.id),
+        %{"domain" => "general"}
+      )
+
+    for lv <- [waiting, other] do
+      {to, _flash} = assert_redirect(lv)
+      assert to == ~p"/#{organisation}/set-up?step=source"
+    end
   end
 
   test "with no type chosen, says to choose one", %{conn: conn} do
@@ -152,6 +220,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                "An owner sets up this organisation's first workspace."
 
       refute has_element?(lv, "#set-up-form")
+      refute has_element?(lv, "#set-up-steps")
     end
   end
 
@@ -216,6 +285,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
   # Skip; with none, the line and Continue; and who it is for.
   use ApiaryWeb.ConnCase, async: true
 
+  import ApiaryWeb.SetUpSteps
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
@@ -255,8 +325,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
 
     assert html =~ ~r{<title[^>]*>\s*Connect a work source to Main}
     assert has_element?(lv, "h1", "Connect a work source to Main")
-    assert words(lv, "#set-up-step") == "Step 2 of 2"
-    assert words(lv, "#set-up-line") == "Bring tickets in from a system this instance has set up."
+    assert words(lv, "#set-up-what") == "Bring tickets in from a system this instance has set up."
+
+    assert words(lv, "#set-up-backlog") ==
+             "Main's Backlog lists the tickets of the work sources it connects. Connect opens " <>
+               "#{adapter.name} in this tab, and #{adapter.name} sends you back to Qory Apiary " <>
+               "after its steps."
+
+    assert Enum.take(steps(lv), -2) == [{"Workspace", :done, :link}, {"Work source", :current}]
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-back[href="/#{organisation.slug}/set-up?step=type"][aria-label="Back to Workspace"]}
+           )
 
     assert has_element?(lv, "#set-up-source-#{adapter.public_id}", adapter.name)
 
@@ -311,11 +392,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
       help = "#set-up-help-#{adapter.public_id}"
 
-      assert texts(lv, help, "li") ==
-               [
-                 "Press Connect beside #{adapter.name}. #{adapter.name} opens."
-                 | guide["connect"]["steps"]
-               ]
+      assert has_element?(lv, "#set-up-context #{help} h3", "On #{adapter.name}")
+      assert texts(lv, help, "li") == guide["connect"]["steps"]
 
       assert texts(lv, help, "p") == [
                guide["connect"]["before"],
@@ -335,8 +413,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
       connect = "#set-up-source-#{adapter.public_id}-connect-install"
 
       assert has_element?(lv, "#set-up-source-#{adapter.public_id} p", "GitHub")
-      assert [first | _] = texts(lv, help, "li")
-      assert first == "Press Connect beside GitHub. GitHub opens."
+      assert has_element?(lv, "#{help} h3", "On GitHub")
+      refute render(lv) =~ "Press Connect beside"
       assert has_element?(lv, connect, "Connect")
       refute has_element?(lv, "#{connect}[disabled]")
 
@@ -385,10 +463,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
       help = "#set-up-help-#{adapter.public_id}"
 
-      assert texts(lv, help, "li") == [
-               "Press Connect beside #{adapter.name}. #{adapter.name} opens.",
-               "Press **Allow** <b>now</b>."
-             ]
+      assert texts(lv, help, "li") == ["Press **Allow** <b>now</b>."]
 
       assert texts(lv, help, "p") == [~s(<a href="x">y</a>)]
       refute has_element?(lv, "#{help} a")

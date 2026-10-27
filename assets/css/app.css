@@ -2122,6 +2122,288 @@
     gap: 16px;
   }
 
+  /* ---- The set-up frame (SetUpComponents.frame): steps, form, context ----
+     From 1280 px three columns: the steps 220 px, the form 480 px, the context 320 px.
+     From 1024 px the steps are a bar on top, the form and its context beside each other
+     under it. Below 1024 px one column: the bar, the form, the context. */
+  .q-su-frame {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    max-width: 30rem;
+  }
+  @media (min-width: 1024px) {
+    .q-su-frame.q-su-has-ctx {
+      max-width: none;
+      grid-template-columns: minmax(0, 480px) minmax(0, 320px);
+      column-gap: 40px;
+    }
+    .q-su-frame > .q-su-steps {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (min-width: 1280px) {
+    .q-su-frame.q-su-has-steps {
+      max-width: none;
+      grid-template-columns: 220px minmax(0, 480px);
+      gap: 48px;
+    }
+    .q-su-frame.q-su-has-steps.q-su-has-ctx {
+      grid-template-columns: 220px minmax(0, 480px) minmax(0, 320px);
+    }
+    .q-su-frame > .q-su-steps {
+      grid-column: auto;
+    }
+  }
+  .q-su-form {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: 20px;
+  }
+  .q-su-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    padding-top: 4px;
+  }
+  .q-su-acts > .grow {
+    flex: 1;
+  }
+  .q-su-back {
+    color: var(--color-base-content);
+  }
+
+  /* The context: plain muted text, no box; steps in another system under a heading. */
+  .q-su-ctx {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: 10px;
+    padding-top: 4px;
+    color: var(--q-muted);
+    font-size: 13.5px;
+    line-height: 21px;
+  }
+  .q-su-ctx h2,
+  .q-su-ctx h3 {
+    color: var(--color-base-content);
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+  .q-su-ctx h3 {
+    margin-top: 8px;
+  }
+  .q-su-ctx ol {
+    display: grid;
+    gap: 4px;
+    padding-left: 1.25rem;
+    list-style: decimal;
+  }
+  .q-su-ctx ol li::marker {
+    color: var(--q-faint);
+  }
+
+  /* ---- The set-up's progress indicator (SetUpComponents.steps) ----
+     From 1280 px a column: the count, its bar, the list. Below it a bar on top, "Step 4
+     of 5: Workspace", whose All steps opens the list in place. */
+  .q-su-steps {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+  }
+  .q-su-count {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px 12px;
+  }
+  .q-su-count-wide {
+    display: none;
+  }
+  .q-su-count-bar {
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+  .q-su-disc {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .q-su-disc:hover {
+    color: var(--color-base-content);
+  }
+  .q-su-disc[aria-expanded="true"] > svg,
+  .q-su-disc[aria-expanded="true"] > .hero-chevron-down-micro {
+    transform: rotate(180deg);
+  }
+  .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-list,
+  .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-next {
+    display: none;
+  }
+  .q-su-progress {
+    grid-column: 1 / -1;
+    display: block;
+    width: 100%;
+    height: 4px;
+    appearance: none;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--color-base-300);
+    overflow: hidden;
+  }
+  .q-su-progress::-webkit-progress-bar {
+    background: var(--color-base-300);
+    border-radius: 9999px;
+  }
+  .q-su-progress::-webkit-progress-value {
+    background: var(--color-primary);
+    border-radius: 9999px;
+  }
+  .q-su-progress::-moz-progress-bar {
+    background: var(--color-primary);
+    border-radius: 9999px;
+  }
+  @media (min-width: 1280px) {
+    .q-su-steps {
+      position: sticky;
+      top: 24px;
+      gap: 14px;
+      padding: 0;
+      border: 0;
+      background: none;
+    }
+    .q-su-count {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+    .q-su-count-wide {
+      display: block;
+      color: var(--q-muted);
+      font-size: 13px;
+    }
+    .q-su-count-bar,
+    .q-su-disc {
+      display: none;
+    }
+    .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-list {
+      display: grid;
+    }
+    .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-next {
+      display: block;
+    }
+  }
+  .q-su-list,
+  .q-su-list ol {
+    display: grid;
+    gap: 2px;
+  }
+  .q-su-grp-h {
+    padding: 12px 8px 4px;
+    color: var(--q-faint);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .q-su-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+    padding: 4px 8px;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 13.5px;
+  }
+  a.q-su-step:hover {
+    background: var(--color-base-300);
+  }
+  @media (min-width: 1280px) {
+    a.q-su-step:hover {
+      background: var(--color-base-200);
+    }
+  }
+  .q-su-text {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+  }
+  a.q-su-step .q-su-nm {
+    color: var(--color-base-content);
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-strong);
+    text-underline-offset: 3px;
+  }
+  .q-su-note,
+  .q-su-skipped {
+    color: var(--q-faint);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 400;
+  }
+  .q-su-mark {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    border-radius: 9999px;
+    border: 1.5px solid var(--q-border-strong);
+    background: var(--color-base-100);
+    color: var(--q-faint);
+  }
+  .q-su-step.is-done .q-su-mark {
+    border-color: transparent;
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+  .q-su-step.is-skipped .q-su-mark::before {
+    content: "";
+    width: 7px;
+    height: 1.5px;
+    background: var(--q-faint);
+  }
+  .q-su-step.is-current {
+    background: var(--color-base-100);
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  @media (min-width: 1280px) {
+    .q-su-step.is-current {
+      background: var(--color-base-200);
+    }
+  }
+  .q-su-step.is-current .q-su-mark {
+    border: 2px solid var(--color-primary);
+    box-shadow: 0 0 0 3px var(--q-primary-soft);
+  }
+  .q-su-step.is-current .q-su-mark::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+  }
+  .q-su-next {
+    margin: 6px 8px 0;
+    padding-top: 10px;
+    border-top: 1px dashed var(--q-border-strong);
+    color: var(--q-faint);
+    font-size: 12.5px;
+    line-height: 18px;
+  }
+
   /* ---- What a run receives (PageComponents.not_on_runs) ---- */
   .q-not-on-runs {
     display: flex;
