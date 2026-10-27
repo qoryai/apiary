@@ -95,7 +95,8 @@ defmodule Apiary.Edition do
   @doc """
   Adds the edition's steps to the transaction that creates an organisation
   (`Apiary.Organisations.build_organisation/2`), after the organisation
-  (`:organisation`), its workspace Main (`:workspace`) and its first owner's membership
+  (`:organisation`), its workspace Main (`:workspace`, nil for one whose first workspace
+  its owner creates later) and its first owner's membership
   (`:membership`, nil for one whose first owner joins later), and before the entry that
   begins its trail. `how` says how it is created: `:first_sign_up`, the instance's first
   sign-up, which creates the instance's organisation; `{:sign_up, extra}`, a later
@@ -217,7 +218,8 @@ defmodule Apiary.Edition do
   # Overview's setup list for `workspace` (`Apiary.WorkspaceSetup`), each asked once per
   # read of the list, without a lock. An edition may count what serves the workspace from
   # another organisation; the core counts the workspace's and its organisation's alone, and
-  # the instance's pool and gateway:
+  # the instance's pool and gateway, but for the model key, which it reads on the chain the
+  # edition names:
   #
   # - `work_source_ready/1`: the adapters whose live collections are assigned to the
   #   workspace, through a connection that is connected and listed, each with how many,
@@ -225,8 +227,10 @@ defmodule Apiary.Edition do
   # - `machines_ready/1`: a node pool that serves the workspace's runs and the gateway its
   #   choice resolves to, both with an active key; nil while the step is not done
   #   (`Apiary.WorkspaceSetup.machines/1`);
-  # - `model_key_ready?/1`: whether the organisation has a model provider with a key and
-  #   the workspace has a model choice (`Apiary.WorkspaceSetup.model_key?/1`);
+  # - `model_key_ready?/1`: whether the chain of model choices that resolves for the
+  #   workspace's runs, the organisation's or an operator's (`c:model_choice_chain/1`,
+  #   `c:operator_chain_organisation/1`), has a model provider with a key and a choice a
+  #   run reads (`Apiary.WorkspaceSetup.model_key?/1`);
   # - `test_run_passed?/1`: whether a test run of the workspace passed
   #   (`Apiary.WorkspaceSetup.test_passed?/1`).
   @doc false

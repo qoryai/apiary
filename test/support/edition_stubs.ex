@@ -55,6 +55,14 @@ defmodule Apiary.EditionStubs do
     def model_choice_chain(_organisation_id), do: "operator"
   end
 
+  defmodule SignUpOpen do
+    @moduledoc """
+    A sign-up without an invitation creates an organisation
+    (`c:Apiary.Edition.sign_up_open?/0`), as an edition that opens one does.
+    """
+    def sign_up_open?, do: true
+  end
+
   defmodule WritesOperatorChain do
     @moduledoc """
     A person of the scope writes the operator's chain of model providers and choices in

@@ -15,9 +15,11 @@ defmodule Apiary.WorkspaceSetup do
   #     (`Apiary.Gateways.resolve/1`). The pools that serve them are the workspace's pools
   #     in use, or, while it has none, the instance's pool, as a claim takes them
   #     (`Apiary.Dispatches.no_pool_in_use/0`);
-  #   * `model_key?/1`: a model provider of the organisation's chain with at least one
-  #     key, and a model choice of the workspace itself (level 5,
-  #     `Apiary.ModelChoices.ModelChoice`);
+  #   * `model_key?/1`: on the chain of model choices that resolves for the workspace's
+  #     runs (`Apiary.ModelChoices.chain_owner/1`), a model provider with at least one key,
+  #     and a choice that a run reads: for the organisation's chain, a choice of the
+  #     workspace (level 5, `Apiary.ModelChoices.ModelChoice`); for an operator's chain,
+  #     the operator's default (level 6), the one level a run reads of it;
   #   * `test_passed?/1`: a run of one of the workspace's test work items
   #     (`Apiary.WorkItems.take_in_test/2`) that ended by its exit, `run_ended`, with its
   #     registered run `completed`.
@@ -30,7 +32,7 @@ defmodule Apiary.WorkspaceSetup do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{AccessKeys, Edition, Gateways, Repo}
+  alias Apiary.{AccessKeys, Edition, Gateways, ModelChoices, Repo}
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Connections.Connection, as: ModelProvider
   alias Apiary.Dispatches.DispatchRun
@@ -159,23 +161,39 @@ defmodule Apiary.WorkspaceSetup do
   end
 
   @doc false
-  # model_key?/1 is whether `workspace`'s organisation has a model provider of its chain
-  # with a key, and `workspace` has a model choice at the workspace level (level 5).
+  # model_key?/1 is whether the chain of model choices that resolves for `workspace`'s runs
+  # has a model provider with a key, and a choice a run reads: the workspace's (level 5)
+  # on the organisation's chain, the operator's default (level 6) on an operator's. False
+  # on an operator's chain whose operator the edition does not name.
   @spec model_key?(Workspace.t()) :: boolean
-  def model_key?(%Workspace{id: workspace_id, organisation_id: organisation_id}) do
-    provider_with_key =
-      from c in ModelProvider,
-        join: v in Value,
-        on: v.secret_id == c.secret_id,
-        where: c.organisation_id == ^organisation_id and not is_nil(c.provider_kind),
-        where: c.chain == "organisation"
+  def model_key?(%Workspace{organisation_id: organisation_id} = workspace) do
+    case ModelChoices.chain_owner(organisation_id) do
+      {_chain, nil} ->
+        false
 
-    choice =
-      from m in ModelChoice,
-        where: m.organisation_id == ^organisation_id and m.workspace_id == ^workspace_id,
-        where: is_nil(m.target_id) and is_nil(m.workflow) and m.chain == "organisation"
+      {chain, owner_id} ->
+        provider_with_key =
+          from c in ModelProvider,
+            join: v in Value,
+            on: v.secret_id == c.secret_id,
+            where: c.organisation_id == ^owner_id and not is_nil(c.provider_kind),
+            where: c.chain == ^chain
 
-    Repo.exists?(provider_with_key) and Repo.exists?(choice)
+        Repo.exists?(provider_with_key) and Repo.exists?(choice(chain, owner_id, workspace))
+    end
+  end
+
+  # The choice a run of `workspace` reads on `chain`, of the organisation `owner_id`.
+  defp choice("operator", owner_id, _workspace) do
+    from m in ModelChoice,
+      where: m.organisation_id == ^owner_id and m.chain == "operator",
+      where: is_nil(m.workspace_id) and is_nil(m.target_id) and is_nil(m.workflow)
+  end
+
+  defp choice(chain, owner_id, %Workspace{id: workspace_id}) do
+    from m in ModelChoice,
+      where: m.organisation_id == ^owner_id and m.workspace_id == ^workspace_id,
+      where: is_nil(m.target_id) and is_nil(m.workflow) and m.chain == ^chain
   end
 
   @doc false
