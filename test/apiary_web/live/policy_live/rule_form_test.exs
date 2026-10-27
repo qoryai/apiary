@@ -149,6 +149,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       :ok
     end
 
+    @tag :feature_sets
     test "opens from Add rule: a page of its own, empty, Allow picked, the button on",
          %{conn: conn, scope: scope} do
       view = new_rule(open(conn, scope))
@@ -630,6 +631,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       assert text(view, "#flash-info") =~ "api.example is allowed for the workspace. Version"
     end
 
+    @tag :feature_sets
     test "a deny's Edit offers Allow, and the button says it replaces it",
          %{conn: conn, scope: scope} do
       {:ok, rule} = Policy.deny(scope, nil, %{host: "telemetry.example"})

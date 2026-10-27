@@ -27,6 +27,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
   alias Apiary.Runs.{Event, Projector, Run}
 
   @moduletag :contract
+  @moduletag :feature_sets
 
   @clock 1_700_000_000
   @served ["/.well-known/qory-configuration", "/v1/events", "/v1/runs"]

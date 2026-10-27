@@ -310,6 +310,7 @@ defmodule Apiary.TestSetupNeedsTest do
              Enum.filter(Apiary.TestSetup.unhooked(), fn {module, _} -> module == NoHook end)
   end
 
+  @tag :feature_sets
   test "off/0 is the features the suite runs without" do
     :persistent_term.erase({Apiary.TestSetup, :off})
 

@@ -84,6 +84,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
     setup :register_and_log_in_user
 
+    @tag :feature_sets
     test "shows the instance's settings, with a field for each the environment does not set",
          %{conn: conn, scope: scope} do
       assert Apiary.Access.instance_admin?(scope)
@@ -153,6 +154,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       end
     end
 
+    @tag :feature_sets
     test "shows a value the environment sets read only, with the variable that sets it",
          %{conn: conn} do
       put_settings(
@@ -248,6 +250,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       end
     end
 
+    @tag :feature_sets
     test "says the default where whoever runs the server set nothing, or an empty value, for the values read at start",
          %{conn: conn} do
       put_settings(features_setting: nil, integration_url_sources_setting: nil)

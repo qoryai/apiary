@@ -76,6 +76,21 @@ with a feature off, ExUnit logs an ArgumentError, leaves every test of the modul
 result, and `mix test` exits 0. A row of `ApiaryWeb.RefusalsCase` takes
 `needs:` in the same way. The core's suite checks `Apiary.TestSetup.unhooked/0` for such modules.
 
+CI runs every test once, with every feature on, and runs only the tests tagged
+`@tag :feature_sets` again, under `QORY_FEATURES=all` and `QORY_FEATURES=observability`
+(`mix test --only feature_sets`). Tag a test `:feature_sets` (or `@describetag`,
+`@moduletag`) when it reads the instance's features before it sets them, in its body, a
+`setup` or a helper: `Apiary.Features.on?/1`, `enabled/0`, `visible?/2` or `hidden_of/1`,
+`ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env(:apiary,
+:features)`. A test that sets its features first, with `with_features:`, `without_registry`
+or a `put_env` that `on_exit` puts back, takes no tag. The guard
+`test/apiary/feature_sets_tag_test.exs` fails for a test file that reads the features with
+neither, for a tagged file that reads nothing, for a test with both `with_features:` and the
+tag, and for a helper of `test/support` that reads the features and is not on its list
+(`Apiary.FeatureSetsScan`). The guard sees files, not call paths: a reviewer checks which
+test of a file carries the tag. Before you report a chunk done, run the full suite locally
+under all 3 sets: `QORY_FEATURES` blank, `all` and `observability`.
+
 A template that makes many people and places for each of many tests may make them once
 for its module (`cast: :module` of `Apiary.AccessCase` and `ApiaryWeb.RefusalsCase`, on
 `Apiary.DataCase.setup_module_sandbox/2`): one sandbox for the module, and each test

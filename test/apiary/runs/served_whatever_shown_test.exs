@@ -81,6 +81,7 @@ defmodule Apiary.Runs.ServedWhateverShownTest do
 
   defp in_force(conn), do: get_resp_header(conn, "x-qory-run-configuration")
 
+  @tag :feature_sets
   test "the edition hides the features from a person of the organisation", ctx do
     scope = Apiary.Access.reload(ctx.scope)
     refute Apiary.Features.visible?(scope, :observability)

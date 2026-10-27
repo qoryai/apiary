@@ -10,6 +10,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
+    @tag :feature_sets
     test "lists the members", %{conn: conn, user: user, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
       assert html =~ user.email
