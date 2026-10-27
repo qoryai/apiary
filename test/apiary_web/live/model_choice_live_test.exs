@@ -111,6 +111,22 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
            )
   end
 
+  test "a model chosen is checked and shown on the button", ctx do
+    %{conn: conn, scope: scope, provider: provider} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+    radio = "#model_choice_model-options input[type=radio]"
+
+    # Not the default, which the page checks when it opens.
+    second = provider |> ModelChoices.suggestions(ModelChoices.default_runtime()) |> Enum.at(1)
+    value = option(provider, second.id)
+
+    lv |> form("#model-form", model_choice: %{model: value}) |> render_change()
+
+    assert has_element?(lv, ~s{#{radio}[value="#{value}"][checked]})
+    refute has_element?(lv, ~s{#{radio}[checked]:not([value="#{value}"])})
+    assert has_element?(lv, "button#model_choice_model .q-pick-t", second.title)
+  end
+
   test "with two providers, Model groups the models under each provider's name", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
 

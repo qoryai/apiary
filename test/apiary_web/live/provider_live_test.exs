@@ -199,6 +199,21 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(lv, "#new-provider-address")
     end
 
+    test "a provider chosen is checked and shown on the button", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      radio = ~s{#new-provider-form input[type=radio][name="provider[provider]"]}
+      [first | _rest] = providers = Providers.list()
+      provider = List.last(providers)
+      refute provider.name == first.name
+
+      lv |> form("#new-provider-form", provider: %{provider: provider.name}) |> render_change()
+
+      assert has_element?(lv, ~s{#{radio}[value="#{provider.name}"][checked]})
+      refute has_element?(lv, ~s{#{radio}[checked]:not([value="#{provider.name}"])})
+      assert has_element?(lv, "button#provider_provider .q-pick-t", provider.title)
+    end
+
     test "Anthropic's terms are plain words where the description has no address" do
       provider = %Provider{
         name: "claude-subscription",
