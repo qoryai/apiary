@@ -1,6 +1,7 @@
 defmodule Apiary.Adapters.DocsTest do
   # An adapter belongs to `factory`. No type or spec the module reference shows mentions
-  # the adapter kind, so an instance without factory is served no mention of the kind.
+  # the adapter kind, so no type or spec served to an instance without factory mentions the
+  # kind.
   # ExDoc shows the definition of every type whose docs are not hidden, and the specs of
   # every function whose docs are not hidden, of every module whose docs are not hidden. A
   # private type (`@typep`) is shown by its name alone.
