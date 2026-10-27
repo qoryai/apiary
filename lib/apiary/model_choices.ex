@@ -99,6 +99,17 @@ defmodule Apiary.ModelChoices do
   @model_id ~r/\A[A-Za-z0-9][!-~]{0,199}\z/
   @effort ~r/\A[a-z][a-z0-9-]{0,31}\z/
 
+  # The model ids and titles of models.dev for each provider of the catalogue, by the name
+  # of its description, as `mix apiary.models.update` wrote them; read when the module is
+  # compiled, so a release has the file's models and nothing reads it while it runs.
+  @suggestions_path Path.expand("../../priv/models/suggestions.json", __DIR__)
+  @external_resource @suggestions_path
+  @suggestions (for {kind, models} <- @suggestions_path |> File.read!() |> Jason.decode!(),
+                    into: %{} do
+                  {kind,
+                   for(%{"id" => id, "title" => title} <- models, do: %{id: id, title: title})}
+                end)
+
   @typedoc "Whose choice: the organisation's default, the scope's workspace, or a target of it."
   @type holder :: :organisation | :workspace | Target.t()
 
@@ -306,22 +317,35 @@ defmodule Apiary.ModelChoices do
   @doc false
   # suggestions/2 is the models that Workspace settings › Model offers for the model
   # provider `provider` and the runs of `runtime`, each a map of `id`, `title` and
-  # `effort`, its offered effort values: the models of its description
-  # (`Connections.provider_models/1`), its default model (`Connections.default_model/1`)
-  # first. The page reads its list here alone, so the
-  # list may come from elsewhere without a change to the page. A choice may name any other
-  # model id too.
+  # `effort`: the models of `@suggestions` for the provider's description, in the order
+  # of their id, with its default model (`Connections.default_model/1`) first. A model's
+  # effort is its offered effort values, `[]` for a model the description does not list.
+  # A default model the file lacks comes first all the same, with the description's title,
+  # as a choice that names no model runs it. The page reads its list here alone, and a
+  # choice may name any other model id too.
   @spec suggestions(Connection.t(), Runtime.t()) :: [
           %{id: String.t(), title: String.t(), effort: [String.t()]}
         ]
-  def suggestions(%Connection{} = provider, %Runtime{} = runtime) do
+  def suggestions(%Connection{provider_kind: kind} = provider, %Runtime{} = runtime) do
+    described = Map.new(Connections.provider_models(provider), &{&1["id"], &1})
     default = Connections.default_model(provider)
 
-    provider
-    |> Connections.provider_models()
-    |> Enum.map(&%{id: &1["id"], title: &1["title"], effort: offered(&1, runtime)})
-    |> Enum.sort_by(&(&1.id != default))
+    models =
+      for %{id: id} = model <- Map.get(@suggestions, kind, []),
+          do: Map.put(model, :effort, effort_of(described[id], runtime))
+
+    case Enum.split_with(models, &(&1.id == default)) do
+      {[], rest} when is_binary(default) ->
+        entry = described[default]
+        [%{id: default, title: entry["title"], effort: offered(entry, runtime)} | rest]
+
+      {first, rest} ->
+        first ++ rest
+    end
   end
+
+  defp effort_of(nil, _runtime), do: []
+  defp effort_of(%{} = model, runtime), do: offered(model, runtime)
 
   ## Writing
 

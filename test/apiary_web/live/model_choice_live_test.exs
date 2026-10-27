@@ -41,7 +41,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     do: if(model, do: "#{provider.public_id}/#{model}", else: provider.public_id)
 
   # A software workspace says repository for target (`docs/lingo.md`).
-  test "offers the description's models, the default first, then Another model", ctx do
+  test "offers the suggested models, the default first, then Another model", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
     {:ok, lv, html} = live(conn, path(scope))
 
@@ -54,14 +54,10 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
              "#{scope.workspace.name}'s default model. A workflow or a repository can set another model for its runs. If #{scope.workspace.name} sets none, its runs use #{scope.organisation.name}'s model."
            )
 
-    titles =
-      for model <- ModelChoices.suggestions(provider, ModelChoices.default_runtime()),
-          do: model.title
+    suggestions = ModelChoices.suggestions(provider, ModelChoices.default_runtime())
+    titles = Enum.map(suggestions, & &1.title)
 
-    assert titles == Enum.map(Connections.provider_models(provider), & &1["title"])
-
-    assert hd(ModelChoices.suggestions(provider, ModelChoices.default_runtime())).id ==
-             Connections.default_model(provider)
+    assert hd(suggestions).id == Connections.default_model(provider)
 
     options =
       Regex.scan(~r{<option[^>]*>([^<]+)</option>}, html, capture: :all_but_first)
