@@ -115,23 +115,27 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   end
 
   describe "the page" do
-    test "what the page sets and its steps, and in a software workspace the harness file comes first",
+    test "About this page says what the page sets, and in a software workspace the harness file comes first",
          %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
+      assert has_element?(view, "aside#page-context h2", "About this page")
+
       assert has_element?(
                view,
-               "#workflow-help > p#workflow-what:first-child",
+               "#page-context p#workflow-what",
                "#{scope.workspace.name}'s runs follow the workflow you choose here, from a harness repository."
              )
 
-      assert has_element?(view, "#workflow-help li", "Press Save.")
-
       assert has_element?(
                view,
-               "#workflow-help p",
+               "#page-context p#workflow-list",
                "The list shows the repositories linked to #{scope.organisation.name} that have a stack"
              )
+
+      # The steps that repeated the form are gone.
+      refute has_element?(view, "#workflow-help")
+      refute render(view) =~ "Press Save."
 
       assert has_element?(
                view,
@@ -148,7 +152,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       with_domain(scope, "general")
       view = open(conn, path)
 
-      assert has_element?(view, "#workflow-help")
+      assert has_element?(view, "#page-context")
       refute has_element?(view, "#workflow-file-first")
     end
 
@@ -293,6 +297,12 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       view = open(conn, path)
       change(view, %{source: "address"})
       calls()
+
+      assert has_element?(
+               view,
+               "#workflow_address-hint",
+               "The repository's address, without a password or token in it."
+             )
 
       change(view, %{source: "address", address: "https://deploy:s3cret@code.example.com/x"})
 

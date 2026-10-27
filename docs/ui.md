@@ -217,6 +217,13 @@ the console keeps. Every other act happens on a page, in place:
   with a flash; a refused one stays, the error under its field. What a save shows once,
   such as a generated key's secret, it shows on the page the save leads to, never again
   once the reader leaves it.
+  A settings page whose form needs context has a column beside the form, **About this
+  page** (`PageComponents.context_column/1`, the `context` slot of `settings_page/1` and
+  `SettingsComponents.layout/1`): why the page exists, what it changes, and the steps the
+  reader takes outside it, never a field, an option or a button the form shows. It is
+  300 px wide beside the form once the section has 840 px for both (from a 1366 px screen
+  with the sidebar and the second column open), the form keeping up to 720 px, and under
+  the form below that; in reading order it comes after the form.
   A form is a page, under Settings, says the rest.
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
   Revoke, Remove, Suspend or Clear turns that row into the question, what is lost,
@@ -1193,7 +1200,9 @@ needs becomes a component, or an attribute of one, not a copy.
   `page_form_foot/1`, a form as a separate page, its title, one line and the form, with
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads stays
-  where a page has one); and
+  where a page has one); `context_column/1`, a form with **About this page** beside it,
+  an `<aside>` named by that heading, in the muted text with no box (A form is a page,
+  under No modals); and
   `not_on_runs/1`, the one plain line a page over data no run receives says, in the
   page's sentence (`inner_block`, required): the component adds no words.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,

@@ -367,16 +367,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
         current={:model}
         title={gettext("Model")}
       >
-        <:subtitle>
-          <span id="model-line">
-            {gettext(
-              "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model.",
-              workspace: @current_scope.workspace.name,
-              organisation: @current_scope.organisation.name
-            )}
-          </span>
-        </:subtitle>
-
         <p :if={@applicable == []} id="model-no-provider" class="text-[13.5px]/5 text-muted">
           <.rich text={
             rich_gettext("Add a model provider in %{place}, then choose its model here.",
@@ -455,6 +445,15 @@ defmodule ApiaryWeb.ModelChoiceLive do
             </:note>
           </SettingsComponents.save>
         </.form>
+        <:context>
+          <p id="model-line">
+            {gettext(
+              "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model.",
+              workspace: @current_scope.workspace.name,
+              organisation: @current_scope.organisation.name
+            )}
+          </p>
+        </:context>
       </SettingsComponents.layout>
     </Layouts.app>
     """

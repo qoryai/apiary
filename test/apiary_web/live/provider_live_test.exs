@@ -89,13 +89,10 @@ defmodule ApiaryWeb.ProviderLiveTest do
   end
 
   describe "New model provider" do
-    test "shows the help and adds a provider with its key, never rendering it", ctx do
+    test "adds a provider with its key, never rendering it", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
 
-      assert has_element?(lv, "#new-provider-help", "First get a key from your model provider:")
-      assert has_element?(lv, "#new-provider-help", "claude setup-token")
-      assert has_element?(lv, "#new-provider-help", "choose a model for #{scope.workspace.name}")
       refute has_element?(lv, "#new-provider-address")
 
       {:error, {:live_redirect, %{to: to}}} =
@@ -112,6 +109,62 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(show, "#provider-key-key-1", "key-1")
       refute html =~ @key
       refute html =~ String.slice(@key, -4, 4)
+    end
+
+    test "About this page says what a key is for, and where to get the chosen one", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert has_element?(lv, "aside#page-context h2", "About this page")
+
+      assert has_element?(
+               lv,
+               "#page-context #new-provider-what",
+               "A model provider's key lets the agents of #{scope.organisation.name}'s runs " <>
+                 "call a model."
+             )
+
+      assert has_element?(
+               lv,
+               "#new-provider-get-key",
+               "Get the key from the provider first: create an API key in the Claude Console."
+             )
+
+      assert has_element?(
+               lv,
+               "#new-provider-next",
+               "After you save, choose #{scope.workspace.name}'s model in Workspace settings › Model."
+             )
+
+      # The help that repeated the form is gone.
+      refute has_element?(lv, "#new-provider-help")
+      refute render(lv) =~ "Press"
+
+      lv
+      |> form("#new-provider-form", provider: %{provider: "claude-subscription"})
+      |> render_change()
+
+      assert has_element?(lv, "#new-provider-get-key", "claude setup-token")
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-get-key a[href="https://code.claude.com/docs/en/legal-and-compliance"][target="_blank"]},
+               "Anthropic's terms"
+             )
+
+      lv |> form("#new-provider-form", provider: %{provider: "litellm"}) |> render_change()
+
+      assert has_element?(
+               lv,
+               "#new-provider-get-key",
+               "get a key that your LiteLLM proxy accepts"
+             )
+
+      assert has_element?(
+               lv,
+               "#new-provider-address-hint",
+               "The proxy's https address without /v1."
+             )
     end
 
     test "a refused key leaves the field empty and says why", %{conn: conn, scope: scope} do

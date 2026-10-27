@@ -2238,6 +2238,59 @@
     align-items: center;
     gap: 8px;
   }
+  /* A section with its context column (PageComponents.context_column/1): the form keeps
+     its 720 px, the column takes 300 px beside it once the section has 840 px, and goes
+     under the form below that. At 1440 px with the sidebar and the second column, the
+     section has 920 px: the form takes 580. */
+  .q-settings-main-context {
+    max-width: 66.25rem;
+    container-type: inline-size;
+  }
+  .q-context-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 45rem);
+    gap: 24px;
+    align-items: start;
+  }
+  @container (min-width: 52.5rem) {
+    .q-context-grid {
+      grid-template-columns: minmax(0, 45rem) 18.75rem;
+      column-gap: 40px;
+    }
+  }
+  .q-context-main {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 20px;
+  }
+  .q-context {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: 10px;
+    padding-top: 4px;
+    color: var(--q-muted);
+    font-size: 0.84375rem;
+    line-height: 1.3125rem;
+  }
+  .q-context-h,
+  .q-context h3 {
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+  }
+  .q-context h3 {
+    margin-top: 8px;
+  }
+  .q-context ol {
+    display: grid;
+    gap: 4px;
+    padding-left: 1.25rem;
+    list-style: decimal;
+  }
   /* From 1024 px: a column of sections at the page's left edge, the section beside it; the
      current one in the text colour on a light fill, no icon and no stripe. */
   @media (min-width: 1024px) {
