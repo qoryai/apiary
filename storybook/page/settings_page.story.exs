@@ -33,6 +33,17 @@ defmodule ApiaryWeb.Storybook.Page.SettingsPage do
         ]
       },
       %Variation{
+        id: :with_its_context,
+        description:
+          "A section whose form needs context: About this page beside the form, " <>
+            "or under it where the section has less than 840 px.",
+        attributes: %{section: :model, title: "Model"},
+        slots: [
+          ~s|<p class="text-sm">Model: Claude Opus 5.5</p>|,
+          ~s|<:context><p>Main's default model. A workflow or a target can set another model for its runs.</p></:context>|
+        ]
+      },
+      %Variation{
         id: :your_settings,
         description: "A person's own section: its title is the page's h1.",
         attributes: %{section: :user_preferences, title: "Preferences"},
