@@ -167,7 +167,9 @@ defmodule Apiary.MixProject do
       skip_code_autolink_to: [
         "c:Apiary.Edition.features_of/3",
         "Apiary.Features.of/2",
-        "Apiary.Features.on?/2"
+        "Apiary.Features.on?/2",
+        # A function with hidden docs, which `ApiaryWeb.TargetLive.FurtherRepositories` names.
+        "Apiary.Targets.set_further_repositories/3"
       ],
       extras: [
         "guides/quickstart.md",
