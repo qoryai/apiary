@@ -9198,6 +9198,180 @@
     font-size: 0.78125rem;
     line-height: 18px;
   }
+  /* A choice (`input/1`, `type="choice"`): a select's button that shows the chosen
+     option's title and subtitle, and opens its options in place under it, in the flow,
+     as radios. The radio's circle is hidden; a check marks the chosen option, and the row
+     shows the focus. */
+  .q-pick {
+    min-width: 0;
+  }
+  .q-pick-btn {
+    display: grid;
+    width: 100%;
+    min-height: 2.5rem;
+    grid-template-columns: minmax(0, 1fr) 1rem;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px 6px 12px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    box-shadow: var(--q-shadow-xs);
+    text-align: left;
+    cursor: pointer;
+    transition-property: border-color, box-shadow;
+    transition-duration: 120ms;
+    transition-timing-function: var(--q-ease-out);
+  }
+  .q-pick-btn::after {
+    width: 1rem;
+    height: 1rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23857f7a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 8 10 4.5 13.5 8M6.5 12l3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+    background-size: 1rem;
+    content: "";
+  }
+  .q-pick-btn:hover {
+    border-color: var(--q-muted);
+  }
+  .q-pick-btn:focus-visible,
+  .q-pick-btn[aria-expanded="true"] {
+    outline: none;
+    border-color: var(--q-ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--q-ring) 28%, transparent);
+  }
+  .q-pick-btn.q-pick-error {
+    border-color: var(--color-error);
+  }
+  .q-pick-btn.q-pick-error:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-error) 24%, transparent);
+  }
+  .q-pick-btn:disabled {
+    border-color: var(--q-border-strong);
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+  .q-pick-btn.is-prompt .q-pick-t {
+    color: var(--q-faint);
+  }
+  .q-pick-text {
+    display: grid;
+    min-width: 0;
+  }
+  .q-pick-t {
+    font-size: 0.875rem;
+    line-height: 20px;
+  }
+  .q-pick-md .q-pick-t {
+    font-size: 0.9375rem;
+  }
+  .q-pick-s {
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 17px;
+  }
+  .q-pick-t.mono,
+  .q-pick-s.mono {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .q-pick-s.mono {
+    font-size: 0.75rem;
+  }
+  .q-pick-panel {
+    display: grid;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--q-border-strong);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-pop);
+  }
+  .q-pick-panel[hidden] {
+    display: none;
+  }
+  .q-pick-find {
+    display: grid;
+    gap: 2px;
+    padding: 2px 2px 0;
+  }
+  .q-pick-find label {
+    position: relative;
+    display: block;
+  }
+  .q-pick-find-i {
+    position: absolute;
+    z-index: 1;
+    left: 10px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--q-faint);
+    pointer-events: none;
+  }
+  .q-pick-find input {
+    width: 100%;
+    padding-left: 32px;
+  }
+  .q-pick-status {
+    padding: 4px 6px 0;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 16px;
+  }
+  /* Empty, the status keeps its place in the accessibility tree, so its first words are
+     announced. */
+  .q-pick-status:empty {
+    padding: 0;
+  }
+  /* Eight options of two lines show whole; more scroll inside the panel. */
+  .q-pick-options {
+    display: grid;
+    max-height: 26.5rem;
+    gap: 1px;
+    overflow-y: auto;
+  }
+  .q-pick-opt {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    align-items: start;
+    gap: 0 10px;
+    padding: 7px 8px;
+    border-radius: var(--radius-selector);
+    cursor: pointer;
+  }
+  .q-pick-opt[hidden] {
+    display: none;
+  }
+  .q-pick-opt:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-pick-opt:has(:focus-visible) {
+    background-color: var(--color-base-300);
+    box-shadow: inset 0 0 0 2px var(--q-ring);
+  }
+  .q-pick-radio {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    opacity: 0;
+  }
+  .q-pick-ck {
+    margin-top: 2px;
+    color: var(--color-accent);
+    visibility: hidden;
+  }
+  .q-pick-opt:has(:checked) .q-pick-ck {
+    visibility: visible;
+  }
+  .q-pick-opt:has(:checked) .q-pick-t {
+    font-weight: 500;
+  }
   .q-modeopts {
     display: grid;
     grid-auto-columns: minmax(0, 1fr);

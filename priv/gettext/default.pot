@@ -2458,6 +2458,11 @@ msgstr[1] ""
 msgid "%{seconds} s"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{shown} of %{total} options"
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{shown} of %{total} shown"
@@ -7265,6 +7270,7 @@ msgstr ""
 msgid "Find a %{collection}"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Find a %{filter}"
@@ -10437,6 +10443,11 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "No open %{items}"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "No option matches. Clear the search to see every option."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
