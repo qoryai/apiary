@@ -821,10 +821,12 @@ defmodule Apiary.Adapters do
   # instance admin, `authorize_instance/2`, with no recent sign-in asked: the pass grants
   # nothing in Qory Apiary), with `adapter` as it is now, in use and held `FOR SHARE`: a
   # new setup pass for it (`Apiary.Adapters.SetupPass`), whose nonce nothing here keeps.
-  # `{:ok, url}`: the `setup_url` the adapter declared, with the pass as its query
-  # parameter `state`, where the page sends the instance admin. The entry is in the trail
-  # of the instance's organisation (`instance_scope/1`), about the adapter, naming it,
-  # never the pass or its nonce.
+  # Each pass has the slug of the instance's organisation (`instance_scope/1`) as its
+  # `organisation_slug`, from which the adapter may suggest a name at the system it
+  # reads from. `{:ok, url}`: the `setup_url` the adapter declared, with the pass as its
+  # query parameter `state`, where the page sends the instance admin. The entry is in the
+  # trail of the instance's organisation, about the adapter, naming it, never the pass or
+  # its nonce.
   #
   # `{:error, :unlisted}` for an adapter installed with Qory Apiary whose name
   # `QORY_INSTALLED_ADAPTERS` no longer lists (`listed?/1`): it is turned off there, and
@@ -839,12 +841,12 @@ defmodule Apiary.Adapters do
   def setup(%Scope{} = scope, %Node{id: id}) do
     Repo.transact(fn ->
       with :ok <- authorize_instance(scope),
-           {:ok, recorder} <- instance_scope(scope),
+           {:ok, %Scope{organisation: organisation} = recorder} <- instance_scope(scope),
            %Node{} = current <-
              live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
                {:error, :not_found},
            :ok <- settable(current),
-           {:ok, pass} <- SetupPass.issue(current.public_id),
+           {:ok, pass} <- SetupPass.issue(current.public_id, organisation.slug),
            {:ok, _entry} <-
              Audit.record(Repo, recorder, :"adapter.setup", current, %{
                details: Map.take(current, [:name, :public_id])

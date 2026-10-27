@@ -1,9 +1,9 @@
 defmodule Apiary.Adapters.SetupTest do
   # Starting an adapter's set-up (`Apiary.Adapters.setup/2`, `adapter.setup`): to an
-  # instance admin, a new setup pass each time, signed under the instance's key, on the
-  # adapter's setup_url as its `state`; one entry in the trail of the instance's
-  # organisation, without the pass; nothing kept of the pass; and the refusals, which
-  # change nothing.
+  # instance admin, a new setup pass each time, signed under the instance's key, with the
+  # slug of the instance's organisation, on the adapter's setup_url as its `state`; one
+  # entry in the trail of the instance's organisation, without the pass; nothing kept of
+  # the pass; and the refusals, which change nothing.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -14,6 +14,7 @@ defmodule Apiary.Adapters.SetupTest do
   alias Apiary.Adapters.SetupPass
   alias Apiary.Audit.Entry
   alias Apiary.Nodes.Node
+  alias Apiary.Organisations.Organisation
 
   @moduletag needs: :factory
 
@@ -50,6 +51,20 @@ defmodule Apiary.Adapters.SetupTest do
     # Each use gives a new pass.
     assert {:ok, again} = Adapters.setup(admin, adapter)
     assert pass_of(again) != pass
+  end
+
+  test "the pass has the slug of the instance's organisation as its organisation_slug, last",
+       %{admin: admin, adapter: adapter} do
+    %Organisation{slug: slug} = Repo.get!(Organisation, Edition.instance_organisation_id())
+    assert {:ok, url} = Adapters.setup(admin, adapter)
+    pass = pass_of(url)
+
+    assert {:ok, %{organisation_slug: ^slug}} =
+             SetupPass.verify(pass, SigningKey.public_key())
+
+    [payload, _signature] = String.split(pass, ".")
+    payload = Base.url_decode64!(payload, padding: false)
+    assert String.ends_with?(payload, ~s(,"organisation_slug":") <> slug <> ~s("}))
   end
 
   test "one entry each time, in the instance's trail, about the adapter, never with the pass",
