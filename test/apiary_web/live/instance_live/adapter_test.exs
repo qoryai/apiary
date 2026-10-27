@@ -467,7 +467,8 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
       assert page_title(lv) =~ "Rename #{adapter.name} · Adapters"
 
       assert words(lv, ".q-settings-head-sub") ==
-               "Organisations see the new name on their Integrations page and when they install it."
+               "Organisations see the new name on their Integrations page and when they install it, " <>
+                 "where the adapter's description gives no title."
 
       assert has_element?(lv, "#adapter-rename-form label", "Name")
       assert render(lv) =~ "At most 64 characters, and not the name of another adapter here."

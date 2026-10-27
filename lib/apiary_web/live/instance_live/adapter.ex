@@ -288,7 +288,7 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
       <.settings_page section={:adapters} title={rename_title(@adapter)}>
         <:subtitle>
           {gettext(
-            "Organisations see the new name on their Integrations page and when they install it."
+            "Organisations see the new name on their Integrations page and when they install it, where the adapter's description gives no title."
           )}
         </:subtitle>
 
