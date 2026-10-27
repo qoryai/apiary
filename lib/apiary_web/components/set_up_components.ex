@@ -252,10 +252,10 @@ defmodule ApiaryWeb.SetUpComponents do
       <aside
         :if={@context != []}
         id="set-up-context"
-        class="q-su-ctx"
+        class="q-context"
         aria-labelledby="set-up-context-h"
       >
-        <h2 id="set-up-context-h">{gettext("About this step")}</h2>
+        <h2 id="set-up-context-h" class="q-context-h">{gettext("About this step")}</h2>
         {render_slot(@context)}
       </aside>
     </div>

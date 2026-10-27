@@ -213,8 +213,8 @@ the console keeps. Every other act happens on a page, in place:
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
   from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and the
-  breadcrumb lead back (a step of the set-up has Back at its foot, The set-up below) (`PageComponents.page_form/1`, `page_form_foot/1`). A save goes back
-  with a flash; a refused one stays, the error under its field. What a save shows once,
+  breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A step of the
+  set-up has Back at its foot instead (The set-up, below). A save goes back with a flash; a refused one stays, the error under its field. What a save shows once,
   such as a generated key's secret, it shows on the page the save leads to, never again
   once the reader leaves it.
   A settings page whose form needs context has a column beside the form, **About this
@@ -1189,8 +1189,8 @@ that step. The pages have no sidebar and no top bar menus (`Layouts.set_up/1` fo
 pages read signed out).
 
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
-  form, and an `<aside>` headed **About this step** with what the step does, in the muted
-  colour and with no box. From 1280 px they stand side by side, 220 · 480 · 320 px with
+  form, and an `<aside>` headed **About this step** with what the step does, styled as a
+  settings page's column **About this page** (`.q-context`): the muted colour, no box. From 1280 px they stand side by side, 220 · 480 · 320 px with
   48 px gaps, from the page's left edge. From 1024 px the indicator is a bar on top, and
   the form and the aside stand side by side, 480 · 320 px. Below 1024 px the aside goes
   under the form. In reading order the aside comes after the form. Steps done in another

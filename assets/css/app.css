@@ -2176,34 +2176,9 @@
     color: var(--color-base-content);
   }
 
-  /* The context: plain muted text, no box; steps in another system under a heading. */
-  .q-su-ctx {
-    display: grid;
-    min-width: 0;
-    align-content: start;
-    gap: 10px;
-    padding-top: 4px;
-    color: var(--q-muted);
-    font-size: 13.5px;
-    line-height: 21px;
-  }
-  .q-su-ctx h2,
-  .q-su-ctx h3 {
-    color: var(--color-base-content);
-    font-size: 13px;
-    line-height: 20px;
-    font-weight: 600;
-  }
-  .q-su-ctx h3 {
-    margin-top: 8px;
-  }
-  .q-su-ctx ol {
-    display: grid;
-    gap: 4px;
-    padding-left: 1.25rem;
-    list-style: decimal;
-  }
-  .q-su-ctx ol li::marker {
+  /* The context is the settings pages' column (.q-context, PageComponents.context_column),
+     in the frame's third column; its numbered steps have faint numbers. */
+  .q-su-frame .q-context ol li::marker {
     color: var(--q-faint);
   }
 
