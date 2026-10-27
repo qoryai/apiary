@@ -80,29 +80,36 @@ Set up Qory Apiary at http://localhost:4100/setup/<code>.
 Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
 same password again, and the **Organisation name**, usually your company's, `Acme` say.
-Then select **Set up**. You are signed in, and land on **Connect Qory Apiary**: at its
-mail step, select **Skip**, or **Continue** where it shows the server's mail settings. On
-**Set up your workspace**, choose the **Type** **Software**, whose words this guide uses,
-and select **Create workspace**. You land on the overview of your workspace.
+Then select **Set up**. It creates your account and the organisation, with no workspace
+yet, and signs you in. Two pages follow:
+
+1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
+   step, select **Skip**, or **Continue** where it shows the server's mail settings. You
+   can set mail up later in **Instance settings › Mail**.
+2. **Set up your workspace**, at `http://localhost:4100/acme/set-up`. In **Type**, choose
+   **Software**, whose words this guide uses; no type is chosen before you choose one.
+   Then select **Create workspace**.
+
+You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
 Connect it, See runs here. Steps 5 to 7 below are those steps.
 
-The link works once: after it, it says "This Qory Apiary is already set up.", and you log
-in at `http://localhost:4100/users/log-in` with your email address and password. Until it
-is used nobody can sign up, and anyone who reads the log can use it, so open it as soon as
-the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
+The link works once: after it, its page shows "This Qory Apiary is already set up.", and
+you log in at `http://localhost:4100/users/log-in` with your email address and password.
+Until it is used nobody can sign up, and anyone who reads the log can use it, so open it
+as soon as the instance is up ([Set up a new instance](install.md#set-up-a-new-instance)).
 
 Setting it up created an organisation with the name you gave and your membership as its
-owner, and **Create workspace** created one workspace in it named *Main*. Both can be renamed in their **Settings**, at the
-foot of the sidebar: the workspace's on any page of the workspace, the organisation's on its
-overview, which its name in the top bar opens. As the person who set the instance up you
-are also its **instance admin**: your organisation is the instance owner, and its owners
-are the instance's admins. Nobody else can sign up without an invitation
-([Install and configure](install.md#sign-up-and-invitations)), so invite your colleagues
-from **People** in the organisation's settings. Without mail the page shows the
-invitation's link once, for you to copy and send yourself. Someone who signs up through an
-invitation joins the organisation as a member, chooses a password, and is not asked for a
-name.
+owner, and **Create workspace** created one workspace in it named *Main*. Both can be
+renamed in their **Settings**, at the foot of the sidebar: the workspace's on any page of
+the workspace, the organisation's on its overview, which its name in the top bar opens. As
+the person who set the instance up you are also its **instance admin**: your organisation
+is the instance owner, and its owners are the instance's admins. Nobody else can sign up
+without an invitation ([Install and configure](install.md#sign-up-and-invitations)), so
+invite your colleagues from **People** in the organisation's settings. Without mail the
+page shows the invitation's link once, for you to copy and send yourself. Someone who signs
+up through an invitation joins the organisation as a member, chooses a password, and is not
+asked for a name.
 
 Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
 from the names given at set-up: an organisation named `Acme` gives `/acme/main`, and the runs
