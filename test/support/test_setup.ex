@@ -30,6 +30,16 @@ defmodule Apiary.TestSetup do
       suite's (`Apiary.DataCase.setup_features/1`), and so passes or fails alike under
       each: it runs where the suite has every feature, and a run with fewer leaves it out
       (`:with_features`).
+    - A test tagged `:feature_sets` reads the instance's features while it runs, before it
+      sets them: in its body, a `setup` or a helper. CI runs every test once with every
+      feature, then `mix test --only feature_sets` under each other feature set, so the
+      tagged tests alone run again. ExUnit lets the include of `--only` win over an
+      exclude, so `__before_compile__/1` drops `:feature_sets` from a test the suite
+      leaves out, such as one whose `needs:` has a feature that is off, and such a run
+      leaves it out too (`run_tags/2`). A test tagged `with_features:` runs once, in the
+      run with every feature on, under the features it lists, and takes no
+      `:feature_sets`. `Apiary.FeatureSetsScan` finds the test files that read the
+      features without the tag.
     - The tests tagged `:load` measure the receiver under a gateway's backlog, for long and
       outside the sandbox: they run only when asked for, with `mix test --only load`.
     - The tests tagged `:database_tls` connect to a Postgres that serves TLS, which CI's
@@ -69,16 +79,11 @@ defmodule Apiary.TestSetup do
 
     off = Apiary.Features.all() -- Apiary.Features.enabled()
     :persistent_term.put({__MODULE__, :off}, off)
-
-    exclude =
-      List.wrap(exclude) ++
-        for(feature <- off, do: {:needs, feature}) ++
-        if(off == [], do: [], else: [:with_features]) ++
-        [:load, :database_tls]
+    :persistent_term.put({__MODULE__, :exclude}, List.wrap(exclude))
 
     [assert_receive_timeout: 5_000]
     |> Keyword.merge(opts)
-    |> Keyword.put(:exclude, exclude)
+    |> Keyword.put(:exclude, exclude(off))
     |> ExUnit.start()
 
     Apiary.OrganisationsFixtures.ensure_instance_organisation!()
@@ -131,6 +136,40 @@ defmodule Apiary.TestSetup do
 
   def needs_tag(needs, _off), do: needs
 
+  @doc """
+  exclude/1 is the tags the suite leaves out, given the features that are `off`: the
+  `exclude:` given to `start!/1`, then `{:needs, feature}` for each feature that is off,
+  `:with_features` when one is, `:load` and `:database_tls`.
+  """
+  @spec exclude([atom]) :: list
+  def exclude(off) do
+    :persistent_term.get({__MODULE__, :exclude}, []) ++
+      for(feature <- off, do: {:needs, feature}) ++
+      if(off == [], do: [], else: [:with_features]) ++
+      [:load, :database_tls]
+  end
+
+  @doc """
+  run_tags/2 is a test's tags as ExUnit's filter takes them, given the features that are
+  `off`: a list in `needs:` becomes its value of `needs_tag/2`, and `:feature_sets` is
+  dropped from a test that `exclude/1` leaves out. `mix test --only feature_sets` includes
+  each tagged test, and ExUnit's include wins over an exclude: without the drop, the run
+  would include a test whose feature is off, a `:load` test or a `:database_tls` test.
+  """
+  @spec run_tags(map, [atom]) :: map
+  def run_tags(tags, off) do
+    tags =
+      case tags do
+        %{needs: needs} when is_list(needs) -> %{tags | needs: needs_tag(needs, off)}
+        tags -> tags
+      end
+
+    case ExUnit.Filters.eval([], exclude(off), tags, []) do
+      {:excluded, _reason} -> Map.delete(tags, :feature_sets)
+      _run_or_skipped -> tags
+    end
+  end
+
   @doc false
   # Runs after the `__before_compile__` of ExUnit.Case, so `super()` is the `__ex_unit__/0`
   # that one defines. The runner calls it and filters on the tags of the tests it returns.
@@ -143,13 +182,7 @@ defmodule Apiary.TestSetup do
         module = super()
 
         tests =
-          Enum.map(module.tests, fn
-            %{tags: %{needs: needs} = tags} = test when is_list(needs) ->
-              %{test | tags: %{tags | needs: Apiary.TestSetup.needs_tag(needs, off)}}
-
-            test ->
-              test
-          end)
+          Enum.map(module.tests, &%{&1 | tags: Apiary.TestSetup.run_tags(&1.tags, off)})
 
         %{module | tests: tests}
       end

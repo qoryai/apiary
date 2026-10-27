@@ -154,6 +154,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "the header (U6)" do
+    @tag :feature_sets
     test "two lines: the title, then the state and the run's facts; the rest is the rail's", %{
       conn: conn,
       scope: scope
@@ -592,6 +593,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       %{run: demo(scope, "session-with-subagents")}
     end
 
+    @tag :feature_sets
     test "every kind of item, in sequence order", %{conn: conn, run: run, scope: scope} do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
@@ -686,6 +688,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#e-59 .q-well.q-well-err", "error")
     end
 
+    @tag :feature_sets
     test "a connection sits inside a call only when exactly one was open, and says while", %{
       conn: conn,
       run: run,
@@ -1518,6 +1521,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#cx-#{rows["api.example"]}-stack")
     end
 
+    @tag :feature_sets
     test "one row per destination, denied first, with the reason and the outcome", %{
       conn: conn,
       scope: scope
@@ -1628,6 +1632,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert hosts.(html) =~ ~r/second\.example.*first\.example/s
     end
 
+    @tag :feature_sets
     test "a tool invocation reads as a call to its tool, a refused request as a denial", %{
       conn: conn,
       scope: scope
@@ -1720,6 +1725,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    @tag :feature_sets
     test "the command, the policy in force and the record", %{conn: conn, scope: scope} do
       run = demo(scope, "session-with-subagents")
 
@@ -2303,6 +2309,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "a run with tools" do
+    @tag :feature_sets
     test "the timeline groups a tool's allowed calls under its name and lists the tools", %{
       conn: conn,
       scope: scope
@@ -3369,6 +3376,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute render(element(lv, "#run-meta")) =~ "\u202E"
     end
 
+    @tag :feature_sets
     test "how it ended, the session, the node's instance, the policy and the record: cleaned",
          %{conn: conn, scope: scope} do
       policy = %{

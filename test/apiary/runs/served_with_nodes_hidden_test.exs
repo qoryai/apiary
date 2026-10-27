@@ -28,6 +28,7 @@ defmodule Apiary.Runs.ServedWithNodesHiddenTest do
 
   defp run(run_id), do: Repo.one!(from r in Run, where: r.node_run_id == ^run_id)
 
+  @tag :feature_sets
   test "the edition hides the nodes from a person of the organisation", ctx do
     scope = Apiary.Access.reload(ctx.scope)
     assert scope.hidden == [:nodes]

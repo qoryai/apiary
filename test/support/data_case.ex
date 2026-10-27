@@ -150,6 +150,11 @@ defmodule Apiary.DataCase do
   feature; `Apiary.TestSetup.start!/1` leaves it out when the suite runs without that
   feature. `@tag needs: [:security, :secrets]` marks a test that exercises both, and the
   suite leaves it out when either is off.
+
+  A test that reads the suite's features is tagged
+  `@tag :feature_sets`, and CI runs it again under each feature set
+  (`Apiary.FeatureSetsScan`). A test tagged `with_features:` runs once, in the run with
+  every feature on, under the features it lists, and takes no `:feature_sets`.
   """
   def setup_features(%{with_features: features} = tags) when is_list(features) do
     if features == [] do

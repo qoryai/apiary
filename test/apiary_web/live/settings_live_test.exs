@@ -462,6 +462,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#settings-tab-secrets")
     end
 
+    @tag :feature_sets
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
       {:ok, lv, _html} = live(conn, base <> "/runs")

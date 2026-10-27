@@ -115,6 +115,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
       conn: conn,
       scope: scope
     } do
+      assert_uncounted(conn, scope)
+    end
+
+    # Without `security`, the page reads the connections for the count alone
+    # (`Apiary.Policy.denied_summary/2`), and the cap leaves them uncounted the same way.
+    @tag with_features: [:observability]
+    test "without security, the caption says the same", %{conn: conn, scope: scope} do
+      assert_uncounted(conn, scope)
+    end
+
+    defp assert_uncounted(conn, scope) do
       Application.put_env(:apiary, Apiary.Policy.Activity, cap: 2)
       on_exit(fn -> Application.delete_env(:apiary, Apiary.Policy.Activity) end)
 

@@ -26,6 +26,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   @moduletag :capture_log
   # The documentation is served from an empty directory of the test's own, built or not.
   @moduletag :tmp_dir
+  @moduletag :feature_sets
 
   import Phoenix.LiveViewTest
 
