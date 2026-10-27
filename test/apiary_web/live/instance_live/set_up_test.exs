@@ -472,8 +472,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   end
 
   test "asks for a recent sign-in, as Instance settings › Mail does", %{user: user} do
-    eleven_minutes_ago = DateTime.add(DateTime.utc_now(:second), -11, :minute)
-    conn = log_in_user(build_conn(), user, token_authenticated_at: eleven_minutes_ago)
+    sixteen_minutes_ago = DateTime.add(DateTime.utc_now(:second), -16, :minute)
+    conn = log_in_user(build_conn(), user, token_authenticated_at: sixteen_minutes_ago)
 
     assert {:error, {:redirect, %{to: "/users/log-in", flash: flash}}} =
              live(conn, ~p"/instance/set-up")

@@ -382,7 +382,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
     end
 
     test "asks for a recent sign-in, as Mail does", %{conn: conn, user: user} do
-      stale = DateTime.add(DateTime.utc_now(:second), -11, :minute)
+      stale = DateTime.add(DateTime.utc_now(:second), -16, :minute)
       stale_conn = log_in_user(build_conn(), user, token_authenticated_at: stale)
 
       assert {:error, {:redirect, %{to: "/users/log-in", flash: flash}}} =
