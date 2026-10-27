@@ -110,12 +110,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert shape(
                SetUpComponents.steps_for(nil, :invitation, invitation: invitation, token: token)
              ) ==
-               [
-                 {:invitation, :current},
-                 {:account, :to_come},
-                 {:workspace, :to_come},
-                 {:source, :to_come}
-               ]
+               [{:invitation, :current}, {:account, :to_come}, {:workspace, :to_come}]
 
       steps = SetUpComponents.steps_for(nil, :account, invitation: invitation, token: token)
       assert [%{id: :invitation, state: :done, path: path} | _] = steps

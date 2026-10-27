@@ -118,6 +118,18 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     assert has_element?(lv, "#set-up-form button", "Create workspace")
   end
 
+  test "?step=source before the workspace exists opens the Type step", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+    {:ok, lv, _html} =
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=source")
+
+    assert has_element?(lv, "h1", "Set up your workspace")
+    assert has_element?(lv, "#set-up-form #workspace_domain", "Choose a type")
+    assert {"Workspace", :current} in steps(lv)
+    refute has_element?(lv, "#set-up-sources")
+  end
+
   test "Create workspace makes Main of the type chosen", %{conn: conn} do
     %{user: user, organisation: organisation} = sign_up_without_workspace()
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")

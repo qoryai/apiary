@@ -61,11 +61,11 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
   test "signed out: the set-up starts with the invitation, then the account and the workspace",
        %{conn: conn, token: token} do
     {:ok, lv, _html} = live(conn, ~p"/invitations/#{token}")
-    source = if Apiary.Features.on?(:factory), do: [{"Work source", :to_come}], else: []
 
+    # No Work source, with the feature or without: the invitation makes a member, to whom
+    # the workspace set-up does not show it.
     assert steps(lv) ==
-             [{"Invitation", :current}, {"Your account", :to_come}, {"Workspace", :to_come}] ++
-               source
+             [{"Invitation", :current}, {"Your account", :to_come}, {"Workspace", :to_come}]
 
     assert has_element?(lv, "#invitation-email", "The invitation is for bee@example.com.")
     refute text(lv) =~ "Create an account with"
@@ -80,7 +80,9 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     # The sign-up after it: the invitation done, a link back to its page.
     {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
 
-    assert [{"Invitation", :done, :link}, {"Your account", :current} | _] = steps(lv)
+    assert [{"Invitation", :done, :link}, {"Your account", :current}, {"Workspace", :to_come}] =
+             steps(lv)
+
     assert has_element?(lv, ~s{#set-up-steps-invitation[href="/invitations/#{token}"]})
   end
 

@@ -168,7 +168,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             do: ~p"/#{organisation}/set-up?step=source",
             else: ~p"/#{organisation}/#{workspace}"
 
-        {:noreply, push_navigate(socket, to: to)}
+        # Off the Type step, so this page's own broadcast of the new workspace
+        # (`handle_info/2`) navigates no second time.
+        {:noreply, socket |> assign(:step, :created) |> push_navigate(to: to)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         if Keyword.has_key?(changeset.errors, :name),

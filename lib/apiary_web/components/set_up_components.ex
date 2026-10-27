@@ -41,7 +41,8 @@ defmodule ApiaryWeb.SetUpComponents do
      still to be made, or is the invitation's and has none.
   5. Work source, with the `factory` feature, for a person who may connect an adapter or
      whom the edition tells who may (`c:ApiaryWeb.Edition.who_may_sentence/2`): done by the
-     Overview's rule, the edition's `work_source_ready/1`.
+     Overview's rule, the edition's `work_source_ready/1`. Signed out, only where the
+     organisation is still to be made: an invitation makes a member, who may not connect.
 
   The step `current` names is current; a step before it that is not done is skipped;
   every other step is done or to come.
@@ -144,12 +145,14 @@ defmodule ApiaryWeb.SetUpComponents do
 
   defp workspace_steps(_scope, _invitation, true), do: []
 
-  # Signed out: the organisation the sign-up or the set-up link makes, or the
-  # invitation's while it has no workspace.
+  # Signed out: the organisation the sign-up or the set-up link makes, whose owner the
+  # reader becomes, or the invitation's while it has no workspace. Work source only where
+  # the workspace set-up shows it to the reader: to an owner, with the `factory` feature;
+  # an invitation makes a member, who may not connect an adapter (`adapter.connect`).
   defp workspace_steps(_scope, invitation, false) do
     if is_nil(invitation) or not Organisations.has_workspace?(invitation.organisation) do
       source =
-        if Features.on?(:factory),
+        if is_nil(invitation) and Features.on?(:factory),
           do: [step(:source, gettext("Work source"), :workspace, false, nil)],
           else: []
 
