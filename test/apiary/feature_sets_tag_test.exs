@@ -117,7 +117,7 @@ defmodule Apiary.FeatureSetsTagTest do
              }) == []
     end
 
-    test "passes a test under with_features:, its own, its describe's or its module's",
+    test "passes a test under with_features: of the test, its describe or its module",
          %{tmp_dir: dir} do
       describe = """
       describe "d" do

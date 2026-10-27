@@ -28,8 +28,8 @@ defmodule Apiary.FeatureSetsScan do
   directory it is given, and returns a violation for:
 
   - `:untagged`: a test that reads the features, is not tagged `:feature_sets`, and runs
-    under more than one feature set: it has no `with_features:` (its own, its describe's
-    or its module's), and its `needs:` has none of the features `once:` lists. A test
+    under more than one feature set: it has no `with_features:` on the test, its describe
+    or its module, and its `needs:` has none of the features `once:` lists. A test
     reads them in its body, in a `setup` of its module or describe, or in a function of
     its file that either calls;
   - `:reads_nothing`: a test file with a test tagged `:feature_sets`, none of whose tests
