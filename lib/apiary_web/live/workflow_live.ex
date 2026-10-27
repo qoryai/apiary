@@ -11,7 +11,7 @@ defmodule ApiaryWeb.WorkflowLive do
   # file comes first, and a line says which workflow the runs follow now, where the
   # workspace has one.
   #
-  # Source is one select in three groups: the organisation's linked repositories that
+  # Source is one choice in three groups: the organisation's linked repositories that
   # have a stack, read through the adapters when the page connects, so the group says it
   # is reading until then; the harness sources an instance admin assigned to the
   # organisation; and a public address, which shows a field for it. Choosing a source, or
@@ -384,7 +384,7 @@ defmodule ApiaryWeb.WorkflowLive do
         >
           <.input
             field={@form[:source]}
-            type="select"
+            type="choice"
             label={gettext("Source")}
             prompt={gettext("Choose a source")}
             options={source_options(assigns)}
@@ -468,25 +468,24 @@ defmodule ApiaryWeb.WorkflowLive do
     """
   end
 
-  # The groups of Source: the linked repositories, read when the page connects; the
-  # assigned sources; and the public address. Each group shows, an empty one too.
+  # The groups of Source: the linked repositories, read when the page connects, with
+  # Reading… until then, which cannot be chosen; the assigned sources; and the public
+  # address. Each group shows, an empty one too. A source is its label, in mono.
   defp source_options(assigns) do
     linked =
       case assigns.linked do
-        nil ->
-          [[key: gettext("Reading…"), value: "", disabled: true]]
-
-        linked ->
-          for source <- linked, do: {source.label, source.id}
+        nil -> [%{value: "", title: gettext("Reading…"), disabled: true}]
+        linked -> Enum.map(linked, &source_option/1)
       end
 
     [
       {pgettext("plain", "Linked repositories"), linked},
-      {gettext("Assigned by an instance admin"),
-       for(source <- assigns.assigned, do: {source.label, source.id})},
-      {gettext("Public address"), [{gettext("Enter an address"), "address"}]}
+      {gettext("Assigned by an instance admin"), Enum.map(assigns.assigned, &source_option/1)},
+      {gettext("Public address"), [%{value: "address", title: gettext("Enter an address")}]}
     ]
   end
+
+  defp source_option(source), do: %{value: source.id, title: source.label, mono: :title}
 
   # The workflows of the chosen source's stacks, each `<stack index>/<workflow>`: one
   # list for one stack, a group per stack named for it where there are several.

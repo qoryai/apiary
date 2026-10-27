@@ -167,24 +167,47 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       view = open(conn, path)
 
-      assert has_element?(
-               view,
-               ~s(#workflow_source optgroup[label="Linked repositories"] option[value="#{linked_id}"]),
-               "acme/harness"
-             )
+      refute has_element?(view, "select#workflow_source")
+      assert has_element?(view, "button#workflow_source", "Choose a source")
+      assert has_element?(view, "#workflow_source-g0", "Linked repositories")
+      assert has_element?(view, ~s(#workflow_source-g0 ~ label input[value="#{linked_id}"]))
+      assert has_element?(view, "#workflow_source-g0 ~ label .q-pick-t.mono", "acme/harness")
 
       refute render(view) =~ "acme/app"
 
-      assert has_element?(
-               view,
-               ~s(#workflow_source optgroup[label="Assigned by an instance admin"] option),
-               "example-org/team-harness"
-             )
+      assert has_element?(view, "#workflow_source-g1", "Assigned by an instance admin")
 
       assert has_element?(
                view,
-               ~s(#workflow_source optgroup[label="Public address"] option[value="address"])
+               "#workflow_source-g1 ~ label .q-pick-t.mono",
+               "example-org/team-harness"
              )
+
+      assert has_element?(view, "#workflow_source-g2", "Public address")
+      assert has_element?(view, ~s(#workflow_source-g2 ~ label input[value="address"]))
+      assert has_element?(view, "#workflow_source-g2 ~ label .q-pick-t", "Enter an address")
+      refute has_element?(view, "#workflow_source-g2 ~ label .q-pick-t.mono")
+
+      # Source's options have titles only.
+      refute has_element?(view, "#workflow_source-options .q-pick-s")
+    end
+
+    test "until the linked repositories are read, Reading… shows and cannot be chosen", %{
+      conn: conn,
+      path: path
+    } do
+      doc = conn |> get(path) |> html_response(200) |> LazyHTML.from_document()
+
+      reading = LazyHTML.query(doc, ~s(#workflow_source-g0 ~ label input[value=""]))
+      assert LazyHTML.attribute(reading, "disabled") == [""]
+      assert LazyHTML.attribute(reading, "checked") == []
+
+      assert doc |> LazyHTML.query("#workflow_source-g0 ~ label .q-pick-t") |> LazyHTML.text() =~
+               "Reading…"
+
+      # A blank field chooses nothing: the button shows the prompt.
+      assert doc |> LazyHTML.query("button#workflow_source") |> LazyHTML.text() =~
+               "Choose a source"
     end
   end
 
@@ -192,14 +215,9 @@ defmodule ApiaryWeb.WorkflowLiveTest do
     test "each shows when it is empty", %{conn: conn, path: path} do
       view = open(conn, path)
 
-      assert has_element?(view, ~s(#workflow_source optgroup[label="Linked repositories"]))
-
-      assert has_element?(
-               view,
-               ~s(#workflow_source optgroup[label="Assigned by an instance admin"])
-             )
-
-      refute has_element?(view, ~s(optgroup[label="Assigned by an instance admin"] option))
+      assert has_element?(view, "#workflow_source-g0", "Linked repositories")
+      assert has_element?(view, "#workflow_source-g1", "Assigned by an instance admin")
+      refute has_element?(view, "#workflow_source-g1 ~ label")
     end
 
     test "a third listing in a minute says when to reload", %{conn: conn, path: path} do
@@ -254,7 +272,11 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       view = open(conn, path)
       render_async(view, 2_000)
 
-      assert has_element?(view, ~s(#workflow_source option[value="#{linked_id}"][selected]))
+      assert has_element?(
+               view,
+               ~s(#workflow_source-options input[value="#{linked_id}"][checked])
+             )
+
       assert has_element?(view, ~s(#workflow_workflow option[value="0/fix"][selected]))
     end
   end

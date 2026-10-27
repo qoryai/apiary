@@ -2433,6 +2433,11 @@ msgstr[1] ""
 msgid "%{seconds} s"
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{shown} of %{total} models"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{shown} of %{total} options"
@@ -3072,6 +3077,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "A member confirms what Qory proposes"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "A model id this list leaves out."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
@@ -7238,6 +7248,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Find a host, e.g. *.github.example seen:no"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Find a model"
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
