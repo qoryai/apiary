@@ -18,11 +18,18 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   alias ApiaryWeb.UserAuth
 
   defmodule Waiting do
-    # An edition that lists, for a person who waits, a step of its own after their
-    # account, and has a line for the column About this step.
-    def set_up_steps(%Scope{}, [account]),
+    # An edition that lists, for a person who waits, their account and an extra step,
+    # and has a line for the column About this step.
+    def set_up_steps(%Scope{}, []),
       do: [
-        account,
+        %{
+          id: :account,
+          label: "Your account",
+          group: nil,
+          state: :done,
+          path: nil,
+          note: nil
+        },
         %{
           id: :client,
           label: "Client's workspace",
@@ -269,6 +276,24 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       refute has_element?(lv, "#set-up-steps")
       refute has_element?(lv, "#set-up-context")
     end
+  end
+
+  test "an instance admin who waits in another organisation sees no steps", %{conn: conn} do
+    %{organisation: organisation} = sign_up_without_workspace()
+    admin = instance_admin_scope()
+
+    %Membership{organisation_id: organisation.id, user_id: admin.user.id}
+    |> Membership.changeset(%{level: :member})
+    |> Repo.insert!()
+
+    {:ok, lv, _html} = conn |> log_in_user(admin.user) |> live(~p"/#{organisation}/set-up")
+
+    # The Connect steps are the instance's, not this page's: a person who waits gets the
+    # core's list, which has no step.
+    assert has_element?(lv, "#set-up-waiting")
+    assert steps(lv) == []
+    refute has_element?(lv, "#set-up-steps")
+    refute has_element?(lv, "#set-up-context")
   end
 
   test "a person who waits sees the edition's steps from 2 on, and its line for the step",

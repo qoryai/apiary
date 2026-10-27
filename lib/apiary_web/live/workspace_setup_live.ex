@@ -13,7 +13,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # is, with the edition's line on which workspace this is
   # (`c:Apiary.Edition.first_workspace_line/1`). Anyone else is told who sets it up
   # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with the indicator where the
-  # edition lists 2 steps or more (the core lists their account alone) and the context
+  # edition lists 2 steps or more (the core lists them none) and the context
   # where the edition has a line (`c:Apiary.Edition.set_up_context/2`). Where a workspace
   # marked for deletion still has the name Main, the page says to restore it.
   # The page listens to the organisation's workspaces
@@ -100,14 +100,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     assign(socket, steps: steps, current: Enum.find(steps, &(&1.id == current)))
   end
 
+  # A person who may not create the workspace waits: the core lists them no step, so the
+  # page shows no indicator unless the edition lists steps (`c:Apiary.Edition.set_up_steps/2`).
   defp assign_type_step(socket) do
     scope = socket.assigns.current_scope
-    socket = assign_steps(socket, :workspace)
+    creates = Access.can?(scope, :"workspace.create", scope.organisation)
+
+    socket =
+      if creates,
+        do: assign_steps(socket, :workspace),
+        else: assign(socket, steps: Apiary.Edition.set_up_steps(scope, []), current: nil)
 
     assign(socket,
       page_title: Apiary.Edition.set_up_title(scope, socket.assigns.current),
       step: :type,
-      creates: Access.can?(scope, :"workspace.create", scope.organisation),
+      creates: creates,
       refusal: nil,
       form: to_form(%{"domain" => nil}, as: "workspace")
     )
@@ -281,7 +288,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :refusal, :atom, required: true
 
   # The waiting line, for a person who may not create the workspace. The frame shows the
-  # steps where the edition lists 2 or more (the core lists the person's account alone),
+  # steps where the edition lists 2 or more (the core lists none),
   # and the column About this step where the edition has a line for it
   # (`c:Apiary.Edition.set_up_context/2`).
   defp type_step(%{creates: false} = assigns) do

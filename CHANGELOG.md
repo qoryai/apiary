@@ -49,13 +49,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Accepting it opens **Set up your workspace** while the organisation has no workspace,
   else the organisation's overview. Once the organisation has a workspace, an invitation
   needs a workspace again.
-- Every page of the set-up shows one list of its steps, from the set-up link, a sign-up
-  or an invitation to the organisation's first workspace: **Your account**, the steps
-  under **Connect Qory Apiary**, then those under **Set up your workspace**. Above the
-  list, “Step 2 of 4” and a bar; below 1280 px the list is a bar with **All steps**. A
-  step done or skipped is a link to it once you are signed in, **Back** at the foot of a
-  form opens the step before, and each step has an address, such as
-  `/instance/set-up?step=mail` and `/<organisation>/set-up?step=type`.
+- Each page of the set-up with more than one step shows one list of its steps, from the
+  set-up link, a sign-up or an invitation to the organisation's first workspace: **Your
+  account**, the steps under **Connect Qory Apiary**, then those under **Set up your
+  workspace**. Above the list, “Step 2 of 4” and a bar; below 1280 px the list is a bar
+  with **All steps**. A step done or skipped is a link to it where it has a page, once
+  you are signed in; **Your account** is not. **Back** at the foot of a form opens the
+  step before, and each step has an address, such as `/instance/set-up?step=mail` and
+  `/<organisation>/set-up?step=type`. A person who waits for another to create the first
+  workspace sees no list.
 - **Set up your workspace** moves on without a reload when another member creates the
   organisation's first workspace while the page is open.
 - An edition can change the set-up's steps, their notes and the title of **Set up your
@@ -180,8 +182,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   sign-up without an invitation, that sign-up creates no workspace either. Create Main
   before you load the demo: `Apiary.Release.demo()` writes nothing while Acme has no
   workspace Main.
-- Each page of the set-up has a column **About this step** beside its form, or under it
-  below 1024 px, that says what the step does; the help lines in the forms are gone.
+- Where a step of the set-up needs context, its page has a column **About this step**
+  beside the form, or under it below 1024 px, that says what the step does; the help
+  lines in the forms are gone.
   **Type** is a choice field, each type's name with its line under it, in place of a
   select.
 <!-- feature: factory -->
