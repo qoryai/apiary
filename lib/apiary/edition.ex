@@ -95,7 +95,8 @@ defmodule Apiary.Edition do
   @doc """
   Adds the edition's steps to the transaction that creates an organisation
   (`Apiary.Organisations.build_organisation/2`), after the organisation
-  (`:organisation`), its workspace Main (`:workspace`) and its first owner's membership
+  (`:organisation`), its workspace Main (`:workspace`, nil for one whose first workspace
+  its owner creates later) and its first owner's membership
   (`:membership`, nil for one whose first owner joins later), and before the entry that
   begins its trail. `how` says how it is created: `:first_sign_up`, the instance's first
   sign-up, which creates the instance's organisation; `{:sign_up, extra}`, a later

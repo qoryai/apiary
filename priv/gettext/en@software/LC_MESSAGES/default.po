@@ -14748,12 +14748,12 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
-msgid "Start an organisation and its first workspace. Choose a password to sign in with."
+msgid "Start an organisation. You set up its first workspace next. Choose a password to sign in with."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
-msgid "Start an organisation and its first workspace. We will email you a link to confirm; no password needed."
+msgid "Start an organisation. You set up its first workspace next. We will email you a link to confirm; no password needed."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
