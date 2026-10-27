@@ -84,6 +84,9 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert hd(ids) == :account
       assert {:adapter, adapter.public_id} in ids
       assert Enum.take(ids, -3) == [:mail, :workspace, :source]
+
+      # Signed out, no step has a page to open: Mail done by the environment is no link.
+      assert Enum.all?(steps, &is_nil(&1.path))
     end
 
     test "an invited sign-up whose invitation has no workspace starts with the invitation" do

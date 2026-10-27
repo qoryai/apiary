@@ -78,7 +78,9 @@ defmodule ApiaryWeb.SetUpComponents do
   defp invitation_step(_invitation, _token, _current), do: []
 
   defp instance_steps(scope, first) do
-    if first or Access.instance_admin?(scope) do
+    admin? = Access.instance_admin?(scope)
+
+    if first or admin? do
       adapters =
         cond do
           first -> Adapters.list_for_set_up()
@@ -94,11 +96,12 @@ defmodule ApiaryWeb.SetUpComponents do
                 adapter.name,
                 :connect,
                 Adapters.configured?(adapter),
-                ~p"/instance/set-up?#{[step: adapter.public_id]}"
+                if(admin?, do: ~p"/instance/set-up?#{[step: adapter.public_id]}")
               )
 
-      adapter_steps ++
-        [step(:mail, gettext("Mail"), :connect, mail_done?(), ~p"/instance/set-up?step=mail")]
+      # On the set-up link's page, signed out, the steps have no page to open yet.
+      mail_path = if(admin?, do: ~p"/instance/set-up?step=mail")
+      adapter_steps ++ [step(:mail, gettext("Mail"), :connect, mail_done?(), mail_path)]
     else
       []
     end
@@ -427,7 +430,7 @@ defmodule ApiaryWeb.SetUpComponents do
       navigate={!@patch && @before.path}
       aria-label={gettext("Back to %{step}", step: @before.label)}
     >
-      <.icon name="hero-arrow-left-micro" class="size-4" />{gettext("Back")}
+      <.icon name="hero-chevron-left-micro" class="size-4" />{gettext("Back")}
     </.button>
     """
   end
