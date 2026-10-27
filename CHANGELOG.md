@@ -59,8 +59,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Set up your workspace** moves on without a reload when another member creates the
   organisation's first workspace while the page is open.
 - An edition can change the set-up's steps, their notes and the title of **Set up your
-  workspace**, through the callbacks `set_up_steps/2` and `set_up_title/2` of
-  `Apiary.Edition`. The core keeps its steps and the title.
+  workspace**, and give a person who waits for the first workspace a line under **About
+  this step**, through the callbacks `set_up_steps/2`, `set_up_title/2` and
+  `set_up_context/2` of `Apiary.Edition`. The core keeps its steps and the title, and
+  gives no line.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
   Adapters** lists, before **Mail**. **Create workspace** then opens **Connect a work
