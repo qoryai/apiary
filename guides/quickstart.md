@@ -280,7 +280,7 @@ version.
 
 With the `factory` feature, the overview of Main, `http://localhost:4100/acme/main`,
 shows **Set up Main** until a test run passes. Each of its four steps shows a check mark
-once it is done, and has its help under **How to**:
+once it is done, and a second line, under its first, that says why the step exists:
 
 | Step | Done when |
 |---|---|
@@ -292,9 +292,9 @@ once it is done, and has its help under **How to**:
 **Run the test** is on once **Machines for runs** and **Model key** are done, so you can
 leave the work source for later.
 
-1. **Work source.** Select **Connect**: step 2 of the workspace set-up opens, at
-   `/acme/set-up`. Select **Connect** beside a work source, and follow the steps the page
-   shows for it. Only owners and admins connect a work source.
+1. **Work source.** Select **Connect**: the Work source step of the workspace set-up
+   opens, at `/acme/set-up?step=source`. Select **Connect** beside a work source, and
+   follow the steps the page shows for it. Only owners and admins connect a work source.
 2. **Machines for runs.** The test run passes only through the instance's gateway, set
    with `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
    `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
@@ -305,10 +305,11 @@ leave the work source for later.
    **State** shows **Running** or **Last seen**.
 3. **Model key.** Select **Add model key**, which opens **Organisation settings › Model
    providers**, `/acme/settings/model-providers`, then select **New model provider**. In
-   **Provider**, choose the provider of your key, such as **Anthropic API key**; the page
-   lists where to get a key for each one. Paste the key in **Key**. For LiteLLM, also
-   enter the proxy's https address in **Address**, such as `https://litellm.example.com`.
-   Select **Save**. Only owners and admins add a model provider.
+   **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
+   this page**, beside the form, says where to get a key for the provider you choose.
+   Paste the key in **Key**. For LiteLLM, also enter the proxy's https address in
+   **Address**, such as `https://litellm.example.com`. Select **Save**. Only owners and
+   admins add a model provider.
 4. **Model.** Open **Workspace settings › Model**, `/acme/main/settings/model`. **Model**
    shows the first model of the first provider: keep it or choose another, and select
    **Save**. The step **Model key** is then done.

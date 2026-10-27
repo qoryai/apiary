@@ -240,6 +240,8 @@ defmodule ApiaryWeb.SettingsComponents do
 
   A section of forms keeps a 720 px column (`measure="read"`); one that is a list, such
   as the people or the access keys, a 960 px one (`measure="list"`).
+  The `context` slot, why the section exists, is a column beside the 720 px one, under
+  it on a narrow page (`ApiaryWeb.PageComponents.context_column/1`).
   """
   attr :scope, :any, required: true
   attr :kind, :atom, required: true, values: [:organisation, :workspace, :node]
@@ -262,6 +264,11 @@ defmodule ApiaryWeb.SettingsComponents do
 
   slot :subtitle, doc: "one sentence: what the section is for"
   slot :actions, doc: "at most one primary and one default action"
+
+  slot :context,
+    doc:
+      "why the section exists and what it changes, in a column beside it (`ApiaryWeb.PageComponents.context_column/1`)"
+
   slot :inner_block, required: true
 
   def layout(assigns) do
@@ -291,7 +298,11 @@ defmodule ApiaryWeb.SettingsComponents do
            region (`<.table label>`), so no two landmarks share the section's name. --%>
       <section
         id={"settings-section-#{@current}"}
-        class={["q-settings-main", "q-settings-main-#{@measure}"]}
+        class={[
+          "q-settings-main",
+          "q-settings-main-#{@measure}",
+          @context != [] && "q-settings-main-context"
+        ]}
       >
         <header class="q-settings-head">
           <div class="min-w-0">
@@ -316,7 +327,14 @@ defmodule ApiaryWeb.SettingsComponents do
           </div>
           <div :if={@actions != []} class="q-settings-actions">{render_slot(@actions)}</div>
         </header>
-        {render_slot(@inner_block)}
+        <%= if @context == [] do %>
+          {render_slot(@inner_block)}
+        <% else %>
+          <.context_column>
+            {render_slot(@inner_block)}
+            <:context>{render_slot(@context)}</:context>
+          </.context_column>
+        <% end %>
       </section>
     </div>
     """

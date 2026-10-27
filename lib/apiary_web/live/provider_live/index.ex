@@ -4,7 +4,8 @@ defmodule ApiaryWeb.ProviderLive.Index do
   # many keys it has, its name leading to its page (`ApiaryWeb.ProviderLive.Show`), and
   # New model provider (`:new`), a separate page that adds one with its key
   # (`Apiary.Connections.create_provider/2`): Provider, Key, and an Address for a
-  # provider whose description has an address setting, such as LiteLLM.
+  # provider whose description has an address setting, such as LiteLLM. Beside the form,
+  # About this page says what a key is for and where to get the chosen provider's key.
   #
   # Every member reads the list (`connection.read`); owners and admins add one
   # (`provider.write`), and anyone else sees the list without New model provider and one
@@ -200,8 +201,6 @@ defmodule ApiaryWeb.ProviderLive.Index do
       <:crumb>{new_title()}</:crumb>
 
       <.settings_page section={:model_providers} title={new_title()}>
-        <.help workspace={@current_scope.workspace} />
-
         <.notice :if={@refusal} kind={:error}>
           <span id="new-provider-refusal">{@refusal}</span>
         </.notice>
@@ -217,9 +216,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
         >
           <.input
             field={@form[:provider]}
-            type="select"
+            type="choice"
             label={gettext("Provider")}
-            options={for p <- Providers.list(), do: {p.title, p.name}}
+            options={provider_options()}
           />
           <.input
             field={@form[:key]}
@@ -240,6 +239,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
             inputmode="url"
             label={setting_title(@chosen, name)}
             placeholder="https://litellm.example.com"
+            hint={gettext("The proxy's https address without /v1.")}
             autocomplete="off"
             spellcheck="false"
             required
@@ -255,6 +255,13 @@ defmodule ApiaryWeb.ProviderLive.Index do
             </.button>
           </.page_form_foot>
         </.form>
+        <:context>
+          <.context
+            organisation={@current_scope.organisation}
+            workspace={@current_scope.workspace}
+            chosen={@chosen}
+          />
+        </:context>
       </.settings_page>
     </Layouts.app>
     """
@@ -316,93 +323,102 @@ defmodule ApiaryWeb.ProviderLive.Index do
     """
   end
 
-  # The steps under New model provider's title: where to get a key, then how to add it.
-  # The last step names the workspace the reader is in, and is left out without one.
+  # The context of New model provider: what a key is for, where to get the chosen
+  # provider's key, and the model to choose next. The last sentence names the workspace the
+  # reader is in, and is left out without one.
+  attr :organisation, :any, required: true
   attr :workspace, :any, required: true
+  attr :chosen, :any, required: true
 
-  defp help(assigns) do
+  defp context(assigns) do
     ~H"""
-    <div id="new-provider-help" class="grid gap-2 text-[13.5px]/5 text-muted">
-      <p>{gettext("First get a key from your model provider:")}</p>
-      <ul class="grid list-disc gap-1 pl-5">
-        <li>
-          <.rich text={
-            rich_gettext("%{provider} create an API key in the Claude Console.",
-              provider: {:b, gettext("Anthropic API key:")}
-            )
-          } />
-        </li>
-        <li>
-          <.rich text={
-            rich_gettext(
-              "%{provider} run %{command} in a terminal where Claude Code is installed, and copy the token it prints. Anthropic's terms allow this for personal use only.",
-              provider: {:b, gettext("Claude subscription token:")},
-              command: {:m, "claude setup-token"}
-            )
-          } />
-        </li>
-        <li>
-          <.rich text={
-            rich_gettext("%{provider} create a DeepSeek API key.", provider: {:b, "DeepSeek:"})
-          } />
-        </li>
-        <li>
-          <.rich text={
-            rich_gettext("%{provider} create an OpenRouter API key.",
-              provider: {:b, "OpenRouter:"}
-            )
-          } />
-        </li>
-        <li>
-          <.rich text={
-            rich_gettext(
-              "%{provider} get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}.",
-              provider: {:b, "LiteLLM:"},
-              v1: {:m, "/v1"},
-              example: {:m, "https://litellm.example.com"}
-            )
-          } />
-        </li>
-      </ul>
-      <ol class="grid list-decimal gap-1 pl-5">
-        <li>
-          <.rich text={
-            rich_gettext("Open %{place}.",
-              place: {:b, gettext("Organisation settings › Model providers › New model provider")}
-            )
-          } />
-        </li>
-        <li>
-          <.rich text={
-            rich_gettext("In %{field}, choose the provider of your key, such as %{example}.",
-              field: {:b, gettext("Provider")},
-              example: {:b, gettext("Anthropic API key")}
-            )
-          } />
-        </li>
-        <li>
-          <.rich text={
-            rich_gettext(
-              "Paste the key in %{key}. For LiteLLM, also enter the proxy's address in %{address}.",
-              key: {:b, gettext("Key")},
-              address: {:b, gettext("Address")}
-            )
-          } />
-        </li>
-        <li>
-          <.rich text={rich_gettext("Press %{button}.", button: {:b, gettext("Save")})} />
-        </li>
-        <li :if={@workspace}>
-          <.rich text={
-            rich_gettext("In %{place}, choose a model for %{workspace}, and press %{button}.",
-              place: {:b, gettext("Workspace settings › Model")},
-              workspace: @workspace.name,
-              button: {:b, gettext("Save")}
-            )
-          } />
-        </li>
-      </ol>
-    </div>
+    <p id="new-provider-what">
+      {gettext("A model provider's key lets the agents of %{organisation}'s runs call a model.",
+        organisation: @organisation.name
+      )}
+    </p>
+    <p :if={get_key(@chosen)} id="new-provider-get-key">
+      <.rich text={get_key(@chosen)}>
+        <:part name={:terms}><.terms href={terms_url(@chosen)} /></:part>
+      </.rich>
+    </p>
+    <p :if={@workspace} id="new-provider-next">
+      {gettext("After you save, choose %{workspace}'s model in Workspace settings › Model.",
+        workspace: @workspace.name
+      )}
+    </p>
     """
   end
+
+  # Where to get the key of the chosen provider, none for one not in this list.
+  defp get_key(%Provider{name: "anthropic"}),
+    do: gettext("Get the key from the provider first: create an API key in the Claude Console.")
+
+  defp get_key(%Provider{name: "claude-subscription"}),
+    do:
+      rich_gettext(
+        "Get the key from the provider first: run %{command} in a terminal where Claude Code is installed, and copy the token it prints. %{terms} allow this for personal use only.",
+        command: {:m, "claude setup-token"},
+        terms: {:part, :terms}
+      )
+
+  defp get_key(%Provider{name: "deepseek"}),
+    do: gettext("Get the key from the provider first: create a DeepSeek API key.")
+
+  defp get_key(%Provider{name: "openrouter"}),
+    do: gettext("Get the key from the provider first: create an OpenRouter API key.")
+
+  defp get_key(%Provider{name: "litellm"}),
+    do:
+      rich_gettext(
+        "First get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}.",
+        v1: {:m, "/v1"},
+        example: {:m, "https://litellm.example.com"}
+      )
+
+  defp get_key(_chosen), do: nil
+
+  # Anthropic's terms, a link out to `href`, or plain words where the description has no
+  # address.
+  @doc false
+  attr :href, :string, required: true
+
+  def terms(assigns) do
+    ~H"""
+    <.external_link :if={@href} href={@href}>{gettext("Anthropic's terms")}</.external_link>
+    <span :if={!@href}>{gettext("Anthropic's terms")}</span>
+    """
+  end
+
+  # Each provider of the catalogue, its description's text under its title. A subtitle is
+  # plain text: the description's backticks and the address that ends it, which
+  # About this page links to (`terms_url/1`), are left out.
+  defp provider_options do
+    for provider <- Providers.list() do
+      %{value: provider.name, title: provider.title, subtitle: subtitle(provider)}
+    end
+  end
+
+  defp subtitle(%Provider{description: %{document: %{"description" => text}}})
+       when is_binary(text) do
+    text
+    |> String.replace(~r{\s*[^.]*:\s*https://\S+\s*$}, "")
+    |> String.replace("`", "")
+  end
+
+  defp subtitle(_provider), do: nil
+
+  # The address that ends the provider's description, such as the Claude subscription's
+  # link to Anthropic's terms, nil without one; a subtitle shows text only, so the link is
+  # here.
+  @doc false
+  def terms_url(%Provider{description: %{document: %{"description" => text}}})
+      when is_binary(text) do
+    case Regex.run(~r{(https://\S+)\s*$}, text) do
+      [_all, url] -> url
+      nil -> nil
+    end
+  end
+
+  def terms_url(_chosen), do: nil
 end
