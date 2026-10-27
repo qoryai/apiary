@@ -140,6 +140,25 @@ defmodule Apiary.NodesFixtures do
     adapter |> Node.source_role_changeset(description) |> Repo.update!()
   end
 
+  @doc """
+  Records on `adapter` the title of a description that gives `title`, the integrations
+  contract's `example-tracker.json` with `title` in place of its title, as a start does
+  (`Apiary.Nodes.Node.title_changeset/2`): kept where it passes the check, nil where it
+  fails it. Returns the adapter as it now is.
+  """
+  def describe_title(%Node{kind: :adapter} = adapter, title) do
+    {:ok, description} =
+      @descriptions
+      |> Path.join("example-tracker.json")
+      |> File.read!()
+      |> Jason.decode!()
+      |> Map.put("title", title)
+      |> Jason.encode!()
+      |> Apiary.Integrations.Description.parse()
+
+    adapter |> Ecto.Changeset.change() |> Node.title_changeset(description) |> Repo.update!()
+  end
+
   @connect_url "https://tracker.example.com/connect"
 
   @doc """

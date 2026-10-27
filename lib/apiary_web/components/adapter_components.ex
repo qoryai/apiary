@@ -159,7 +159,12 @@ defmodule ApiaryWeb.AdapterComponents do
     assigns = assign(assigns, :keys?, assigns.current == :keys)
 
     ~H"""
-    <.page_tabs id="adapter-tabs" label={@adapter.name} current={@current} place="section">
+    <.page_tabs
+      id="adapter-tabs"
+      label={Apiary.Adapters.title(@adapter)}
+      current={@current}
+      place="section"
+    >
       <:tab :if={@keys?} key={:overview} navigate={@paths.overview}>{gettext("Overview")}</:tab>
       <:tab :if={!@keys?} key={:overview} patch={@paths.overview}>{gettext("Overview")}</:tab>
       <:tab :if={@keys?} key={:keys} patch={@paths.keys}>{gettext("Access key")}</:tab>

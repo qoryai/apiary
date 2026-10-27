@@ -460,7 +460,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         >
           <IntegrationComponents.mark class="size-5" />
           <div class="min-w-0 flex-1">
-            <p class="truncate font-medium">{adapter.name}</p>
+            <p class="truncate font-medium">{Adapters.title(adapter)}</p>
             <p class="text-[12.5px]/4 text-muted">{source_line(adapter)}</p>
           </div>
           <span
@@ -553,14 +553,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <span :for={adapter <- @adapters} :if={adapter.id in @ready}>
             {gettext(
               "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps.",
-              adapter: adapter.name
+              adapter: Adapters.title(adapter)
             )}
           </span>
         </p>
         <SetUpComponents.outside
           :for={{adapter, guide} <- guides(@adapters, @ready)}
           id={"set-up-help-#{adapter.public_id}"}
-          title={gettext("On %{adapter}", adapter: adapter.name)}
+          title={gettext("On %{adapter}", adapter: Adapters.title(adapter))}
           guide={guide}
         >
           <:note :if={@one_workspace and Adapters.items?(adapter)}>
@@ -598,11 +598,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp source_line(adapter) do
     case Adapters.item_noun(adapter) do
       nil ->
-        gettext("Tickets from %{integration}.", integration: adapter.name)
+        gettext("Tickets from %{integration}.", integration: Adapters.title(adapter))
 
       noun ->
         gettext("Tickets from %{integration} %{items}.",
-          integration: adapter.name,
+          integration: Adapters.title(adapter),
           items: SourceComponents.items(noun)
         )
     end

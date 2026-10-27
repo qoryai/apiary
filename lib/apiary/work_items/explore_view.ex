@@ -128,7 +128,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp adapter_failure(%{failed_adapter: adapter} = dispatch_run) do
     %{
-      adapter: adapter.name,
+      adapter: Apiary.Adapters.title(adapter),
       cause: dispatch_run.adapter_failure,
       call: dispatch_run.adapter_failure_call,
       code: dispatch_run.adapter_failure_code

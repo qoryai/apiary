@@ -134,7 +134,7 @@ defmodule ApiaryWeb.SetUpComponents do
     do:
       step(
         {:adapter, adapter.public_id},
-        adapter.name,
+        Adapters.title(adapter),
         :connect,
         Adapters.configured?(adapter),
         if(admin?, do: ~p"/instance/set-up?#{[step: adapter.public_id]}")

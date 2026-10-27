@@ -2560,7 +2560,7 @@ defmodule ApiaryWeb.OverviewComponents do
       "%{integration} is connected, with %{number} %{collection}.",
       "%{integration} is connected, with %{number} %{collections}.",
       count,
-      integration: adapter.name,
+      integration: Apiary.Adapters.title(adapter),
       number: Format.number(count),
       collection: ApiaryWeb.SourceComponents.collection(noun),
       collections: ApiaryWeb.SourceComponents.collections(noun)

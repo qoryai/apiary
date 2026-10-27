@@ -331,7 +331,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
           <p id="set-up-what">
             {gettext(
               "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the %{adapter} adapter's set-up page in a new tab, and this step shows the new state without a reload.",
-              adapter: @row.adapter.name
+              adapter: Adapters.title(@row.adapter)
             )}
           </p>
           <SetUpComponents.outside
@@ -363,7 +363,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
     ~H"""
     <section id={"set-up-#{@adapter.public_id}"} class="grid gap-4" aria-labelledby="set-up-name">
-      <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{@adapter.name}</h2>
+      <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{Adapters.title(@adapter)}</h2>
 
       <p id="set-up-state" class="flex items-center gap-2 text-[13.5px]/5">
         <b class="font-semibold">{gettext("State:")}</b>
@@ -376,7 +376,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
       </p>
 
       <p :if={@row.blocked} id="set-up-blocked" class="text-[13.5px]/5 text-muted">
-        {blocked_line(@row.blocked, @adapter.name)}
+        {blocked_line(@row.blocked, Adapters.title(@adapter))}
       </p>
 
       <div class="q-su-acts">

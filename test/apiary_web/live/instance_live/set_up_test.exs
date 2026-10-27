@@ -98,6 +98,36 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     end
   end
 
+  test "names an adapter by the title its description gives, else by its name",
+       %{conn: conn} do
+    %{adapter: titled} = settable_adapter_fixture(%{name: named("a-tracker")})
+    %{adapter: untitled} = settable_adapter_fixture(%{name: named("b-tracker")})
+    %{adapter: refused} = settable_adapter_fixture(%{name: named("c-tracker")})
+    titled = describe_title(titled, "Acme Tracker")
+    refused = describe_title(refused, "Acme\u202ETracker")
+    assert refused.title == nil
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{titled.public_id}")
+
+    assert words(lv, "#set-up-#{titled.public_id} h2") == "Acme Tracker"
+    assert {"Acme Tracker", :current} in Enum.map(steps(lv), &{elem(&1, 0), elem(&1, 1)})
+
+    assert words(lv, "#set-up-what") ==
+             "Organisations on this instance bring in tickets from Acme Tracker once its " <>
+               "adapter is set up. Set up opens the Acme Tracker adapter's set-up page " <>
+               "in a new tab, and this step shows the new state without a reload."
+
+    for adapter <- [untitled, refused] do
+      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{adapter.public_id}")
+      assert words(lv, "#set-up-#{adapter.public_id} h2") == adapter.name
+    end
+
+    # The next start gives another title, and the page shows it.
+    describe_title(titled, "Acme Issues")
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=#{titled.public_id}")
+    assert words(lv, "#set-up-#{titled.public_id} h2") == "Acme Issues"
+  end
+
   test "shows the count and no number left over", %{conn: conn} do
     %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
 

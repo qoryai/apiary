@@ -226,14 +226,14 @@ defmodule ApiaryWeb.AdapterLive.Index do
               navigate={IntegrationComponents.paths(@current_scope, row.adapter).show}
               class="inline-flex min-w-0 items-center gap-2.5 hover:underline"
             >
-              <IntegrationComponents.mark /><span class="truncate">{row.adapter.name}</span>
+              <IntegrationComponents.mark /><span class="truncate">{Adapters.title(row.adapter)}</span>
             </.link>
             <span
               :if={!row.installed}
               id={"integration-#{row.adapter.public_id}-name"}
               class="inline-flex min-w-0 items-center gap-2.5"
             >
-              <IntegrationComponents.mark /><span class="truncate">{row.adapter.name}</span>
+              <IntegrationComponents.mark /><span class="truncate">{Adapters.title(row.adapter)}</span>
             </span>
           </:col>
           <:col
@@ -272,7 +272,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
               size="xs"
               class="btn-square"
               navigate={IntegrationComponents.paths(@current_scope, row.adapter).show}
-              aria-label={gettext("Open %{integration}", integration: row.adapter.name)}
+              aria-label={gettext("Open %{integration}", integration: Adapters.title(row.adapter))}
             >
               <.icon name="hero-chevron-right-micro" class="size-4" />
             </.button>

@@ -16,17 +16,17 @@ defmodule Apiary.Sources.Backlog do
   # anyone else: no rows, no counts, no ticket. `subscribe/1` asks the same with the
   # membership read again (`Apiary.Access.authorize/3`).
   #
-  # **A row** is a plain map, the shape `ApiaryWeb.BacklogComponents` draws (`row/0`).
-  # Its `id` is the ticket's public id (`tk_…`), the one id the pages address a ticket
-  # by; its `key` is the ticket's short name at its source, such as `#1231`, or nil,
-  # shown as text and never parsed. The source's ref is never in a row. Its
-  # `integration` is the adapter the ticket came through, by the adapter's name and its
-  # public id (`na_…`), read in the same query as the row. A row's work item
-  # is the one of the ticket's organisation, adapter and ref, the key that makes it one
-  # per ticket (`work_items` (`organisation_id`, `adapter_id`, `external_ref`)), never
-  # the ticket's id: a work item taken in from an earlier record of the same ticket is
-  # still its work item. A work item of another workspace of the organisation shows its
-  # state alone, with no number, page or name of that workspace.
+  # **A row** is a plain map, the shape `ApiaryWeb.BacklogComponents` draws (`row/0`). Its
+  # `id` is the ticket's public id (`tk_…`), the one id the pages address a ticket by; its
+  # `key` is the ticket's short name at its source, such as `#1231`, or nil, shown as text
+  # and never parsed. The source's ref is never in a row. Its `integration` is the adapter
+  # the ticket came through, by the adapter's title (`Apiary.Adapters.title/1`) and its
+  # public id (`na_…`), read in the same query as the row. A row's work item is the one of
+  # the ticket's organisation, adapter and ref, the key that makes it one per ticket
+  # (`work_items` (`organisation_id`, `adapter_id`, `external_ref`)), never the ticket's
+  # id: a work item taken in from an earlier record of the same ticket is still its work
+  # item. A work item of another workspace of the organisation shows its state alone, with
+  # no number, page or name of that workspace.
   #
   # **Views** (`list_tickets/2`): `:open`, the tickets open at their source with no work
   # item, or one undone or closed; `:taken`, the open ones whose work item is live;
@@ -37,7 +37,7 @@ defmodule Apiary.Sources.Backlog do
   #
   # **The facts** (`backlog_facts/1`) are what an empty Backlog says why it is empty
   # from: the integrations that bring items the organisation is connected through, each
-  # by its adapter's name and public id, with their words and their collections' counts;
+  # by its adapter's title and public id, with their words and their collections' counts;
   # the collections linked to the workspace; the adapters of the instance it could
   # install; and what the person may do and whom to ask. They are read with the
   # connections, after the same gate as every read.
@@ -101,8 +101,8 @@ defmodule Apiary.Sources.Backlog do
 
   @typedoc """
   The integration a ticket came through, or one the organisation is connected through: its
-  adapter's name and its public id (`na_…`), the id its page in Organisation settings ›
-  Integrations is addressed by.
+  adapter's title (`Apiary.Adapters.title/1`) and its public id (`na_…`), the id its
+  page in Organisation settings › Integrations is addressed by.
   """
   @type integration :: %{name: String.t(), id: String.t()}
 
@@ -214,7 +214,7 @@ defmodule Apiary.Sources.Backlog do
 
   @typedoc """
   An integration the organisation is connected through whose adapter has items: its
-  adapter's name, public id and words; whether a listing has named its connection and
+  adapter's title, public id and words; whether a listing has named its connection and
   whether one has been complete; the live collections its connection reaches and those
   of them assigned to no workspace; and the live collections it has assigned to the
   workspace, linked, with items and their Backlog off, and without items.
@@ -251,7 +251,7 @@ defmodule Apiary.Sources.Backlog do
 
   @typedoc """
   An adapter of the instance with items that the organisation is not connected through:
-  its name, its public id and its words.
+  its title (`Apiary.Adapters.title/1`), its public id and its words.
   """
   @type offered :: %{name: String.t(), id: String.t(), item_noun: noun, collection_noun: noun}
 
@@ -801,7 +801,7 @@ defmodule Apiary.Sources.Backlog do
       url: i.url,
       repository: c.title,
       repository_id: c.id,
-      integration_name: n.name,
+      integration_name: coalesce(n.title, n.name),
       integration_id: n.public_id,
       filed_by_name: i.filed_by_name,
       filed_by_kind: i.filed_by_kind,
@@ -1091,7 +1091,8 @@ defmodule Apiary.Sources.Backlog do
   #   * `connected?`, whether the organisation has a connection that is connected;
   #     `listed?`, whether an adapter's listing has named one of them (its `listed_at`);
   #   * `integrations`, the integrations of those connections whose adapter has items,
-  #     each by its adapter's name and public id, by name (`t:integration/0`);
+  #     each by its adapter's title and public id, by its adapter's name
+  #     (`t:integration/0`);
   #   * `sources`, the same integrations in the same order, each with its adapter's words
   #     for its items and its collections, whether a listing has named its connection
   #     (`listed?`) and whether one has been complete (`listing_complete?`), how many live
@@ -1108,7 +1109,7 @@ defmodule Apiary.Sources.Backlog do
   #     workspace for its collections, each once, in the order of `sources`, with how many
   #     of its collections are assigned (`{noun, count}`); the words alone are
   #     `collection_nouns/1`'s;
-  #   * `linked`, the first 5 linked collections, by their integration's name, then their
+  #   * `linked`, the first 5 linked collections, by their adapter's name, then their
   #     title, each with how many tickets of the Backlog are open in it (`t:linked/0`);
   #   * `open_tickets`, how many tickets the Backlog holds open at their source, whatever
   #     their work item; `take_in?`, whether Take in may take an open ticket of the Open
@@ -1265,7 +1266,7 @@ defmodule Apiary.Sources.Backlog do
 
       Map.merge(
         %{
-          name: adapter.name,
+          name: Adapters.title(adapter),
           id: adapter.public_id,
           item_noun: Adapters.item_noun(adapter),
           collection_noun: Adapters.collection_noun(adapter),
@@ -1324,7 +1325,7 @@ defmodule Apiary.Sources.Backlog do
       %{
         id: collection.public_id,
         title: collection.title,
-        integration: %{name: adapter.name, id: adapter.public_id},
+        integration: %{name: Adapters.title(adapter), id: adapter.public_id},
         item_noun: Adapters.item_noun(adapter),
         collection_noun: Adapters.collection_noun(adapter),
         listing_complete?: not is_nil(completed_at),
@@ -1369,7 +1370,7 @@ defmodule Apiary.Sources.Backlog do
         not MapSet.member?(connected, adapter.id),
         Domain.serves?(adapter.domains, scope.workspace) do
       %{
-        name: adapter.name,
+        name: Adapters.title(adapter),
         id: adapter.public_id,
         item_noun: Adapters.item_noun(adapter),
         collection_noun: Adapters.collection_noun(adapter)
