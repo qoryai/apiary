@@ -199,6 +199,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `QORY_FEATURES` list with `factory` and without `secrets` stops the boot. Set
   `QORY_FEATURES=observability,security,secrets,factory`; `all` leaves `factory` off, as
   it leaves off every opt-in feature.
+- A set-up pass now includes the instance organisation's short name (organisation_slug).
+  An adapter may use it to suggest a name, such as the GitHub App's name.
 <!-- /feature -->
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up
