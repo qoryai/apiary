@@ -1057,8 +1057,15 @@ defmodule Apiary.AdaptersTest do
       assert {:ok, _declared} = declare_with(key, titled("Acme Issues"))
       assert Adapters.title(reload(adapter)) == "Acme Issues"
 
-      assert {:ok, _declared} = declare_with(key, titled(String.duplicate("é", 1024)))
-      assert Adapters.title(reload(adapter)) == String.duplicate("é", 1024)
+      assert {:ok, _declared} = declare_with(key, titled(String.duplicate("é", 100)))
+      assert Adapters.title(reload(adapter)) == String.duplicate("é", 100)
+    end
+
+    test "a title of 101 characters is kept as nil, and the name stands in",
+         %{adapter: adapter, key: key} do
+      assert {:ok, _declared} = declare_with(key, titled(String.duplicate("é", 101)))
+      assert %Node{title: nil} = started = reload(adapter)
+      assert Adapters.title(started) == adapter.name
     end
 
     test "a title that fails the check is kept as nil, and the name stands in",
@@ -1070,7 +1077,7 @@ defmodule Apiary.AdaptersTest do
             "Acme\u202ETracker",
             "Acme\u200BTracker",
             "Acme\u2028Tracker",
-            String.duplicate("a", 1025)
+            String.duplicate("a", 101)
           ] do
         assert {:ok, _declared} = declare_with(key, titled("Acme Tracker"))
         assert reload(adapter).title == "Acme Tracker"
@@ -1081,14 +1088,14 @@ defmodule Apiary.AdaptersTest do
       end
     end
 
-    test "the database keeps one only on an adapter, 1 to 1024 characters",
+    test "the database keeps one only on an adapter, 1 to 100 characters",
          %{adapter: adapter, scope: scope} do
       node = node_fixture(scope)
 
       for {id, title} <- [
             {node.id, "Acme Tracker"},
             {adapter.id, ""},
-            {adapter.id, String.duplicate("a", 1025)}
+            {adapter.id, String.duplicate("a", 101)}
           ] do
         assert refused(fn ->
                  Repo.update_all(from(n in Node, where: n.id == ^id), set: [title: title])
@@ -1098,7 +1105,7 @@ defmodule Apiary.AdaptersTest do
 
       assert {1, _rows} =
                Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
-                 set: [title: String.duplicate("a", 1024)]
+                 set: [title: String.duplicate("a", 100)]
                )
     end
   end

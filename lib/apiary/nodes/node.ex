@@ -67,9 +67,9 @@ defmodule Apiary.Nodes.Node do
   # (`Apiary.Contract.GatewayUrl`).
   @max_gateway_url GatewayUrl.max_length()
   @max_adapter_name 64
-  # An adapter's title, at most as the server contract allows an account's title
-  # (`Apiary.Adapters.Wire`).
-  @max_adapter_title 1024
+  # An adapter's title, in code points: short enough that a flash naming it fits the
+  # session cookie (4096 bytes) with the rest of the session.
+  @max_adapter_title 100
   # An adapter's intervals, in seconds: a minute to a day (`nodes_sync_check`).
   @min_interval 60
   @max_interval 86_400
