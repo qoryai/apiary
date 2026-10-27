@@ -339,9 +339,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
     </p>
     <p :if={get_key(@chosen)} id="new-provider-get-key">
       <.rich text={get_key(@chosen)}>
-        <:part name={:terms}>
-          <.external_link href={terms_url(@chosen)}>{gettext("Anthropic's terms")}</.external_link>
-        </:part>
+        <:part name={:terms}><.terms href={terms_url(@chosen)} /></:part>
       </.rich>
     </p>
     <p :if={@workspace} id="new-provider-next">
@@ -373,22 +371,36 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp get_key(%Provider{name: "litellm"}),
     do:
       rich_gettext(
-        "Get the key from the provider first: get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}.",
+        "First get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}.",
         v1: {:m, "/v1"},
         example: {:m, "https://litellm.example.com"}
       )
 
   defp get_key(_chosen), do: nil
 
+  # Anthropic's terms, a link out to `href`, or plain words where the description has no
+  # address.
+  @doc false
+  attr :href, :string, required: true
+
+  def terms(assigns) do
+    ~H"""
+    <.external_link :if={@href} href={@href}>{gettext("Anthropic's terms")}</.external_link>
+    <span :if={!@href}>{gettext("Anthropic's terms")}</span>
+    """
+  end
+
   # The address that ends the provider's description, such as the Claude subscription's
-  # link to Anthropic's terms; a subtitle shows text only, so the link is here.
-  defp terms_url(%Provider{description: %{document: %{"description" => text}}})
-       when is_binary(text) do
+  # link to Anthropic's terms, nil without one; a subtitle shows text only, so the link is
+  # here.
+  @doc false
+  def terms_url(%Provider{description: %{document: %{"description" => text}}})
+      when is_binary(text) do
     case Regex.run(~r{(https://\S+)\s*$}, text) do
       [_all, url] -> url
       nil -> nil
     end
   end
 
-  defp terms_url(_chosen), do: nil
+  def terms_url(_chosen), do: nil
 end

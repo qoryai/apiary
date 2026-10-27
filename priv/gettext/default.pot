@@ -7337,6 +7337,11 @@ msgstr ""
 msgid "First and last seen"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "First get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "First instruction"
@@ -7805,11 +7810,6 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create an OpenRouter API key."
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Get the key from the provider first: get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex

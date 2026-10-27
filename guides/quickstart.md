@@ -280,7 +280,7 @@ version.
 
 With the `factory` feature, the overview of Main, `http://localhost:4100/acme/main`,
 shows **Set up Main** until a test run passes. Each of its four steps shows a check mark
-once it is done, and a line under its name that says why the step exists:
+once it is done, and a second line, under its first, that says why the step exists:
 
 | Step | Done when |
 |---|---|
@@ -308,7 +308,8 @@ leave the work source for later.
    **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
    this page**, beside the form, says where to get a key for the provider you choose.
    Paste the key in **Key**. For LiteLLM, also enter the proxy's https address in
-   **Address**, such as `https://litellm.example.com`. Select **Save**. Only owners and admins add a model provider.
+   **Address**, such as `https://litellm.example.com`. Select **Save**. Only owners and
+   admins add a model provider.
 4. **Model.** Open **Workspace settings › Model**, `/acme/main/settings/model`. **Model**
    shows the first model of the first provider: keep it or choose another, and select
    **Save**. The step **Model key** is then done.

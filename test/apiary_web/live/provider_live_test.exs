@@ -8,7 +8,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Connections
-  alias Apiary.Kinds.Providers
+  alias Apiary.Kinds.{Provider, Providers}
+  alias ApiaryWeb.ProviderLive.Index
 
   @moduletag needs: [:factory, :secrets]
 
@@ -157,7 +158,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#new-provider-get-key",
-               "get a key that your LiteLLM proxy accepts"
+               "First get a key that your LiteLLM proxy accepts, and the proxy's https address " <>
+                 "without /v1, such as https://litellm.example.com."
              )
 
       assert has_element?(
@@ -165,6 +167,23 @@ defmodule ApiaryWeb.ProviderLiveTest do
                "#new-provider-address-hint",
                "The proxy's https address without /v1."
              )
+    end
+
+    test "Anthropic's terms are plain words where the description has no address" do
+      provider = %Provider{
+        name: "claude-subscription",
+        title: "Claude subscription token",
+        description: %{document: %{"description" => "Runs use your Claude subscription."}}
+      }
+
+      assert Index.terms_url(provider) == nil
+
+      html = rendered_to_string(Index.terms(%{href: nil}))
+      refute html =~ "<a"
+      assert html =~ "Anthropic&#39;s terms"
+
+      html = rendered_to_string(Index.terms(%{href: "https://terms.example.com"}))
+      assert html =~ ~s(href="https://terms.example.com")
     end
 
     test "a refused key leaves the field empty and says why", %{conn: conn, scope: scope} do
