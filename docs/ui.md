@@ -217,6 +217,13 @@ the console keeps. Every other act happens on a page, in place:
   with a flash; a refused one stays, the error under its field. What a save shows once,
   such as a generated key's secret, it shows on the page the save leads to, never again
   once the reader leaves it.
+  A settings page whose form needs context has a column beside the form, **About this
+  page** (`PageComponents.context_column/1`, the `context` slot of `settings_page/1` and
+  `SettingsComponents.layout/1`): why the page exists, what it changes, and the steps the
+  reader takes outside it, never a field, an option or a button the form shows. It is
+  300 px wide beside the form once the section has 840 px for both (from a 1366 px screen
+  with the sidebar and the second column open), the form keeping up to 720 px, and under
+  the form below that; in reading order it comes after the form.
   A form is a page, under Settings, says the rest.
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
   Revoke, Remove, Suspend or Clear turns that row into the question, what is lost,
@@ -1231,7 +1238,9 @@ needs becomes a component, or an attribute of one, not a copy.
   `page_form_foot/1`, a form as a separate page, its title, one line and the form, with
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads stays
-  where a page has one); and
+  where a page has one); `context_column/1`, a form with **About this page** beside it,
+  an `<aside>` named by that heading, in the muted text with no box (A form is a page,
+  under No modals); and
   `not_on_runs/1`, the one plain line a page over data no run receives says, in the
   page's sentence (`inner_block`, required): the component adds no words.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
@@ -1248,30 +1257,36 @@ needs becomes a component, or an attribute of one, not a copy.
 - **`<.input type="choice">`** is a select whose options each have a title and a line
   under it (`%{value:, title:, subtitle:}`), where a native select would join the two in
   one line of text. It is a button, styled as a select, that shows the chosen option's
-  title and subtitle, or the `prompt` in the faint colour. The button opens a panel in
+  title and subtitle, or the `prompt` in the faint colour. Options may come in groups,
+  `{heading, [option]}`, such as Source's linked repositories, assigned sources and
+  public address: each heading shows above its options, an empty group's too, and the
+  radios stay one radio group, each described by its heading and its subtitle. An option
+  with `disabled: true` shows faint and cannot be chosen, such as Reading… while a list
+  loads; the keys pass over it and its radio is never sent. The button opens a panel in
   place, under it and in the flow, never a dialog (No modals, above): a native radio
   group named like the field, so the form sends the value as it sent the select's, and
   `form/3` in a test sets it as it sets a select. The chosen option has a check mark;
   the radios' circles are hidden, and the row shows the focus ring. The `Choice` hook
-  (`assets/js/hooks/choice.js`) has the menus' keys (below): a click opens the panel
-  and leaves the focus on the button; Enter, Space and ArrowDown open it and focus the
+  (`assets/js/hooks/choice.js`) has the menus' keys (below): a click opens the panel and
+  leaves the focus on the button; Enter, Space and ArrowDown open it and focus the
   search box, else the chosen radio, else the first. The arrow keys move among the
   radios and check them, as radios do; Enter or Space, or a click on an option, chooses
   it, closes the panel and returns the focus to the button. Escape closes it and puts
   back the option chosen when it opened; with none chosen then, it keeps the one checked
-  since, as a form with no value for the field would send no key for it. Tab and a
-  click elsewhere close it and keep the choice. Without a search box a letter goes to the next option whose title starts
-  with it. The button's `aria-expanded` and `aria-controls` point to the panel, its name
-  is the label and the chosen title and subtitle, and each option is described by its subtitle; an
-  error marks the button `aria-invalid` and describes it, so a failed submit focuses the
-  button. Above eight options, or with `search`, the panel has a search box that
-  narrows the options in the browser by title and subtitle, keeps the chosen option and
-  any marked `keep` in view, and says the count in a polite status, or that nothing
-  matches. The box has no name and the hook stops its input events, so it never sends a
-  change. The hook sets the panel's `hidden`, the button's `aria-expanded` and the
-  hidden options, which a patch leaves alone (`JS.ignore_attributes`), and the box sits
-  in a `phx-update="ignore"` block, so the patch that answers an arrow key's change
-  leaves the panel open and narrowed.
+  since, as a form with no value for the field would send no key for it. Tab and a click
+  elsewhere close it and keep the choice. Without a search box a letter goes to the next
+  option whose title starts with it. The button's `aria-expanded` and `aria-controls`
+  point to the panel, its name is the label and the chosen title and subtitle, and each
+  option is described by its subtitle; an error marks the button `aria-invalid` and
+  describes it, so a failed submit focuses the button. Above eight options, or with
+  `search`, the panel has a search box that narrows the options in the browser by title
+  and subtitle, keeps the chosen option and any marked `keep` in view, hides a heading
+  none of whose options show, and says the count across every group in a polite status,
+  or that nothing matches. The box has no name and the hook stops its input events, so
+  it never sends a change. The hook sets the panel's `hidden`, the button's
+  `aria-expanded` and the hidden options, which a patch leaves alone
+  (`JS.ignore_attributes`), and the box sits in a `phx-update="ignore"` block, so the
+  patch that answers an arrow key's change leaves the panel open and narrowed.
 - **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
   asks for them without mail, and a password link's page. The server never writes a password back: each input is the
   browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under

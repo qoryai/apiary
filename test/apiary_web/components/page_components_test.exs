@@ -160,6 +160,49 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "Organisation settings"
   end
 
+  test "a settings page with its context: an aside after the form, headed About this page" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.settings_page section={:model} title="Model">
+        <form id="f"></form>
+        <:context>
+          <p id="why">Main's default model.</p>
+        </:context>
+      </.settings_page>
+      """)
+
+    section = "#settings-section-model.q-settings-main-read.q-settings-main-context"
+    assert attribute(html, "#{section} .q-context-grid > .q-context-main > form", "id") == "f"
+
+    # After the form in reading order, named by its heading.
+    assert attribute(html, "#{section} .q-context-main + aside#page-context", "aria-labelledby") ==
+             "page-context-h"
+
+    assert text(html, "aside#page-context > h2#page-context-h") =~ "About this page"
+    assert text(html, "aside#page-context > h2 + p#why") == "Main's default model."
+
+    # Without it, the section is as before: no column, no h2.
+    html =
+      rendered_to_string(~H"""
+      <.settings_page section={:runs} title="Runs">
+        <p>body</p>
+      </.settings_page>
+      """)
+
+    refute html =~ "q-context"
+    refute html =~ "<h2"
+
+    # The column goes beside the form once the section has room for both, under it below.
+    css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+    assert css =~
+             ".q-settings-main-context {\n    max-width: 66.25rem;\n    container-type: inline-size;"
+
+    assert css =~ "@container (min-width: 52.5rem) {\n    .q-context-grid {"
+  end
+
   test "a settings page without a title block: the h1 holds the title's words, as before" do
     assigns = %{}
 
