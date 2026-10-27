@@ -412,7 +412,37 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
     refute has_element?(lv, "#set-up-sources")
   end
 
-  test "sends on anyone adapter.connect does not allow", %{conn: conn} do
+  test "shows anyone adapter.connect does not allow the edition's sentence of who may, and Skip",
+       %{conn: conn} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ConnectWorded)
+    %{organisation: organisation, workspace: main} = sign_up_fixture()
+    %{adapter: adapter} = connectable_adapter_fixture()
+    guided_adapter(adapter, source_guide_example())
+    user = user_fixture()
+
+    %Membership{organisation_id: organisation.id, user_id: user.id}
+    |> Membership.changeset(%{level: :member})
+    |> Repo.insert!()
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
+
+    assert has_element?(lv, "h1", "Connect a work source to Main")
+    assert has_element?(lv, "#set-up-source-#{adapter.public_id}", adapter.name)
+    refute has_element?(lv, "#set-up-source-#{adapter.public_id}-connect")
+    refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
+    assert words(lv, "#set-up-who-may") == Apiary.EditionStubs.ConnectWorded.sentence()
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-skip-button[href="/#{organisation.slug}/#{main.slug}"]},
+             "Skip"
+           )
+
+    refute has_element?(lv, "#set-up-skip p")
+  end
+
+  test "sends on anyone adapter.connect does not allow, where the edition says nothing of who may",
+       %{conn: conn} do
     %{organisation: organisation} = sign_up_fixture()
     user = user_fixture()
 

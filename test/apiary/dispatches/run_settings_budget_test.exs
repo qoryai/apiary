@@ -169,10 +169,12 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   end
 
   describe "with the feature secrets off" do
-    @tag with_features: [:observability, :security, :factory]
+    @tag with_features: [:observability, :security, :secrets, :factory]
     test "the documents have no run settings, and the run keeps none, whatever the gateway's keys",
          ctx do
-      off = Application.get_env(:apiary, :features)
+      # `factory` needs `secrets`, so no value of QORY_FEATURES gives these features: they
+      # are set here because `Apiary.Dispatches.RunSettings` asks for `secrets` as well.
+      off = Application.get_env(:apiary, :features) -- [:secrets]
 
       # The provider and the choice are made with every feature on, as on an instance that
       # turned `secrets` off later.

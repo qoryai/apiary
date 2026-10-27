@@ -21,8 +21,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # whose guide gives steps for connecting it (`Apiary.Adapters.guide/2`), those
   # steps after a first step of Qory Apiary's, Connect, and, while the organisation has one
   # workspace, a note that the workspace gets every collection picked. Skip and Continue
-  # lead to the workspace's Overview, and so does Create workspace without the feature. Anyone
-  # else, once there is a workspace, is sent on: to the workspace's first page, or to the
+  # lead to the workspace's Overview, and so does Create workspace without the feature. A
+  # person `adapter.connect` refuses sees the same step where the edition says who may
+  # connect one (`c:ApiaryWeb.Edition.who_may_sentence/2`), with no Connect and no steps:
+  # the adapters, that sentence, and Skip; with none, the line and Continue. Anyone else,
+  # once there is a workspace, is sent on: to the workspace's first page, or to the
   # organisation's page where they reach no workspace.
   #
   # Step 2 belongs to a feature hidden from the documentation, so the module is too.
@@ -46,9 +49,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       is_nil(scope.workspace) ->
         {:ok, push_navigate(socket, to: ~p"/#{organisation}")}
 
-      Features.visible?(scope, :factory) and
-          Access.can?(scope, :"adapter.connect", organisation) ->
-        {:ok, assign_source_step(socket)}
+      not Features.visible?(scope, :factory) ->
+        {:ok, push_navigate(socket, to: Layouts.workspace_landing(scope))}
+
+      Access.can?(scope, :"adapter.connect", organisation) ->
+        {:ok, assign_source_step(socket, nil)}
+
+      who_may = ApiaryWeb.Edition.who_may_sentence(:"adapter.connect", scope) ->
+        {:ok, assign_source_step(socket, who_may)}
 
       true ->
         {:ok, push_navigate(socket, to: Layouts.workspace_landing(scope))}
@@ -67,7 +75,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
-  defp assign_source_step(socket) do
+  # `who_may` is the edition's sentence of who may connect a work source, for a person
+  # `adapter.connect` refuses, or nil for one it allows.
+  defp assign_source_step(socket, who_may) do
     scope = socket.assigns.current_scope
     workspace = scope.workspace
 
@@ -76,7 +86,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       step: :source,
       adapters: Adapters.list_configured(Domain.for_workspace(workspace)),
       one_workspace: match?([_one], Organisations.list_workspaces(scope)),
-      sending: nil
+      sending: nil,
+      who_may: who_may
     )
   end
 
@@ -118,7 +129,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_event(
         "install",
         %{"integration" => public_id},
-        %{assigns: %{step: :source}} = socket
+        %{assigns: %{step: :source, who_may: nil}} = socket
       ) do
     if Enum.any?(socket.assigns.adapters, &(&1.public_id == public_id)),
       do: {:noreply, assign(socket, :sending, public_id)},
@@ -152,6 +163,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           adapters={@adapters}
           one_workspace={@one_workspace}
           sending={@sending}
+          who_may={@who_may}
         />
       </div>
     </Layouts.app>
@@ -235,6 +247,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :adapters, :list, required: true
   attr :one_workspace, :boolean, required: true
   attr :sending, :string, required: true
+  attr :who_may, :string, required: true
 
   defp source_step(assigns) do
     assigns =
@@ -243,6 +256,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         ready:
           for(
             a <- assigns.adapters,
+            is_nil(assigns.who_may),
             IntegrationComponents.ready?(a),
             into: MapSet.new(),
             do: a.id
@@ -293,6 +307,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <p class="text-[12.5px]/4 text-muted">{source_line(adapter)}</p>
         </div>
         <IntegrationComponents.install_form
+          :if={is_nil(@who_may)}
           id={"set-up-source-#{adapter.public_id}-connect"}
           adapter={adapter}
           action={IntegrationComponents.paths(@scope, adapter).install}
@@ -303,6 +318,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </li>
     </ul>
 
+    <p
+      :if={@adapters != [] and @who_may}
+      id="set-up-who-may"
+      class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+    >
+      {@who_may}
+    </p>
+
     <div :if={@adapters != []} id="set-up-skip" class="flex flex-wrap items-center gap-3">
       <.button
         id="set-up-skip-button"
@@ -311,7 +334,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       >
         {gettext("Skip")}
       </.button>
-      <p class="text-[12.5px]/4 text-muted">
+      <p :if={is_nil(@who_may)} class="text-[12.5px]/4 text-muted">
         {gettext("You can connect one later from %{workspace}'s Overview.",
           workspace: @workspace.name
         )}
