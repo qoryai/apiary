@@ -12562,11 +12562,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory answers the line when the run starts."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Qory asked %{number} question before it can propose what to do."
 msgid_plural "Qory asked %{number} questions before it can propose what to do."
 msgstr[0] "Qory asked %{number} question before it can propose how to build it."
@@ -12585,11 +12580,6 @@ msgid "Qory asked %{number} question, after %{duration}"
 msgid_plural "Qory asked %{number} questions, after %{duration}"
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory is answering the line."
-msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -13459,11 +13449,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} answers the line."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Run %{attempt} of %{of} is queued."
 msgstr ""
 
@@ -13479,13 +13464,13 @@ msgstr "Run %{attempt} of %{of} reads the %{item} and the code. It proposes how 
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It answers the line."
-msgstr ""
+msgid "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start."
+msgstr "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item}, the code and these answers, from the start."
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start."
-msgstr "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item}, the code and these answers, from the start."
+msgid "Run %{attempt} of %{of} starts when the workspace's node pool takes it. The agent answers the line in it."
+msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -14995,12 +14980,12 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
-msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5), unless the ticket's target has a %{harness} or %{qory}."
-msgstr "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5), unless the ticket's repository has a %{harness} or %{qory}."
+msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's target has a %{harness} or %{qory}."
+msgstr "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's repository has a %{harness} or %{qory}."
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
-msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first (section 5)."
+msgid "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -15453,6 +15438,21 @@ msgstr ""
 msgid "The address email comes from. Empty: %{address}."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The agent answers the line in run %{attempt} of %{of}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The agent answers the line when the run starts."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The agent is answering the line."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -15801,7 +15801,7 @@ msgstr[1] ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, add it to the GitHub App's installation, or ask an instance admin to assign it."
+msgid "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, link it to %{organisation}, or ask an instance admin to assign it."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

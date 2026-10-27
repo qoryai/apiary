@@ -410,7 +410,7 @@ defmodule ApiaryWeb.WorkflowLive do
             <.rich text={
               rich_pgettext(
                 "plain",
-                "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, add it to the GitHub App's installation, or ask an instance admin to assign it.",
+                "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, link it to %{organisation}, or ask an instance admin to assign it.",
                 organisation: @organisation,
                 file: {:code, "qory-stack.yaml"}
               )

@@ -19,7 +19,8 @@ or the last rebased commit, whichever merge method was used. It is not always th
 version `mix.exs` does not carry.
 
 Before the release pull request, run `mix apiary.models.update` and commit the
-`priv/models/suggestions.json` it writes, the Model field's suggestions from models.dev.
+`priv/models/suggestions.json` it writes. The file contains the Model field's suggestions
+from models.dev.
 
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for
