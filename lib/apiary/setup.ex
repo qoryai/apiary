@@ -361,6 +361,9 @@ defmodule Apiary.Setup do
   person's sign-up's is, and optional once it does; a password given is kept either way.
   `origin:` is where the set-up comes from, for its entry
   (`Apiary.Accounts.Scope.put_origin/2`); `Apiary.Setup` when none is given.
+
+  Once the set-up commits, the installer of the adapters `QORY_INSTALLED_ADAPTERS` lists
+  passes at once, without waiting the 10 seconds to its next pass.
   """
   @spec set_up(String.t(), map, keyword) ::
           {:ok, map} | {:error, :already_set_up | :invalid_code | Ecto.Changeset.t()}
@@ -386,9 +389,15 @@ defmodule Apiary.Setup do
                workspace: false,
                origin: Keyword.get(opts, :origin) || %{worker: "Apiary.Setup"}
              ) do
-          {:ok, _signed_up} = done -> done
-          {:error, :instance_claimed} -> {:error, :already_set_up}
-          {:error, _reason} = error -> error
+          {:ok, _signed_up} = done ->
+            :ok = Apiary.Adapters.Installed.nudge()
+            done
+
+          {:error, :instance_claimed} ->
+            {:error, :already_set_up}
+
+          {:error, _reason} = error ->
+            error
         end
     end
   end

@@ -12447,6 +12447,11 @@ msgstr ""
 msgid "Qory Apiary gives this adapter its codes itself."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary is adding %{name}. This page shows how to set it up once it is added."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format

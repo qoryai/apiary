@@ -31,10 +31,12 @@ defmodule ApiaryWeb.SetUpComponents do
   1. Invitation, with `invitation:`, an invitation without a workspace, and `token:`, its
      token: done, a link back to its page, unless it is the page's step.
   2. Your account: done once the person is signed in; never a link.
-  3. One step for each of the instance's adapters, by name, with the `factory` feature,
-     then Mail: for an instance admin, and with
-     `first: true` on the set-up link's page, whose reader becomes one. An adapter is
-     done once it is configured; Mail where the
+  3. One step for each of the instance's adapters, with the `factory` feature, then Mail:
+     for an instance admin, and with `first: true` on the set-up link's page, whose reader
+     becomes one. First the adapters `QORY_INSTALLED_ADAPTERS` lists, in its order:
+     before the installer makes one, its step is `{:installing, name}`, labelled with the
+     name, never done, with its page at `/instance/set-up?step=<name>`; then the other
+     adapters, by name. An adapter is done once it is configured; Mail where the
      environment sets it, or once settings are saved and their test link sent.
   4. Workspace: for a person of an organisation who may create its first workspace
      (`workspace.create`), or once it has one, done then
@@ -45,8 +47,9 @@ defmodule ApiaryWeb.SetUpComponents do
      Overview's rule, the edition's `work_source_ready/1`. Signed out, only where the
      organisation is still to be made: an invitation makes a member, who may not connect.
 
-  The step `current` names is current; a step before it that is not done is skipped;
-  every other step is done or to come.
+  The step `current` names is current; a step before it that is not done is skipped,
+  but for an `{:installing, name}` step on a page that is not of the instance's
+  connections; every other step is done or to come.
   """
   @spec steps_for(Scope.t() | nil, term, keyword) :: [Apiary.Edition.set_up_step()]
   def steps_for(scope, current, opts \\ []) do
@@ -95,16 +98,7 @@ defmodule ApiaryWeb.SetUpComponents do
           true -> []
         end
 
-      adapter_steps =
-        for adapter <- adapters,
-            do:
-              step(
-                {:adapter, adapter.public_id},
-                adapter.name,
-                :connect,
-                Adapters.configured?(adapter),
-                if(admin?, do: ~p"/instance/set-up?#{[step: adapter.public_id]}")
-              )
+      adapter_steps = for entry <- Adapters.set_up_list(adapters), do: adapter_step(entry, admin?)
 
       # On the set-up link's page, signed out, the steps have no page to open yet.
       mail_path = if(admin?, do: ~p"/instance/set-up?step=mail")
@@ -113,6 +107,28 @@ defmodule ApiaryWeb.SetUpComponents do
       []
     end
   end
+
+  # An adapter listed in `QORY_INSTALLED_ADAPTERS` that the installer has not made yet is
+  # a step by its name, never done.
+  defp adapter_step({:installing, name}, admin?),
+    do:
+      step(
+        {:installing, name},
+        name,
+        :connect,
+        false,
+        if(admin?, do: ~p"/instance/set-up?#{[step: name]}")
+      )
+
+  defp adapter_step(adapter, admin?),
+    do:
+      step(
+        {:adapter, adapter.public_id},
+        adapter.name,
+        :connect,
+        Adapters.configured?(adapter),
+        if(admin?, do: ~p"/instance/set-up?#{[step: adapter.public_id]}")
+      )
 
   # Mail is done where the environment sets it, or once settings are saved and their
   # test link sent, followed or not.
@@ -194,8 +210,11 @@ defmodule ApiaryWeb.SetUpComponents do
         (Access.can?(scope, :"adapter.connect", organisation) or
            ApiaryWeb.Edition.who_may_sentence(:"adapter.connect", scope) != nil)
 
+  # An adapter the installer has not made yet counts as skipped only on a page of the
+  # instance's connections, where the person passed its step; elsewhere it is to come.
   defp states(steps, current) do
     at = Enum.find_index(steps, &(&1.id == current))
+    connecting? = at != nil and Enum.at(steps, at).group == :connect
 
     steps
     |> Enum.with_index()
@@ -204,7 +223,7 @@ defmodule ApiaryWeb.SetUpComponents do
         cond do
           index == at -> :current
           step.state -> :done
-          at && index < at -> :skipped
+          at && index < at && (connecting? or not match?({:installing, _}, step.id)) -> :skipped
           true -> :to_come
         end
 

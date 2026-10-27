@@ -34,9 +34,10 @@ defmodule Apiary.Adapters.Installed do
   # listed again finds the adapter in use that is installed as it, or, once that one was
   # removed, makes a new one.
   #
-  # **The nudge.** A change that should bring a code at once, the revocation of an
-  # installed adapter's key, broadcasts on `topic/0` once it commits (`nudge/0`); the
-  # installer, which otherwise passes every 10 seconds, passes at once.
+  # **The nudge.** A change that should bring an adapter or a code at once, the
+  # instance's set-up (`Apiary.Setup.set_up/3`) or the revocation of an installed
+  # adapter's key, broadcasts on `topic/0` once it commits (`nudge/0`); the installer,
+  # which otherwise passes every 10 seconds, passes at once.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false

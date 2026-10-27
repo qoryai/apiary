@@ -180,6 +180,23 @@ defmodule Apiary.Adapters do
   end
 
   @doc false
+  # The set-up's adapters, from `adapters`, the instance's adapters in use: with the
+  # `factory` feature, one for each name `QORY_INSTALLED_ADAPTERS` lists
+  # (`Apiary.Adapters.Installed.names/0`), in the setting's order: the adapter in use
+  # installed as it, or `{:installing, name}` until the installer makes it (`install/2`);
+  # then the other adapters, in the order of `adapters`.
+  @spec set_up_list([Node.t()]) :: [Node.t() | {:installing, String.t()}]
+  def set_up_list(adapters) do
+    names = if Features.on?(:factory), do: Installed.names(), else: []
+
+    installed =
+      for %Node{installed_as: name} = a <- adapters, is_binary(name), into: %{}, do: {name, a}
+
+    Enum.map(names, &Map.get(installed, &1, {:installing, &1})) ++
+      Enum.reject(adapters, &(&1.installed_as in names))
+  end
+
+  @doc false
   # The instance's adapter in use whose public id is `public_id`, with the account that
   # made it, to whoever may read it (`readable?/1`); nil for one deleted, a node of another
   # kind, none, or anyone else.
@@ -570,7 +587,8 @@ defmodule Apiary.Adapters do
   # entry `adapter.install` by the instance, in the instance's trail, in its transaction;
   # one found leaves none. Made beside another pass, or beside a person who takes the same
   # name, the insert finds the conflict, reads again, and takes the adapter made or the
-  # next name.
+  # next name. Once a new one commits, the pages subscribed to the adapters installed
+  # (`subscribe_installs/1`) receive `{:adapter_installed, %{node_id: id}}`.
   # `{:ok, adapter}`; `{:error, :invalid}` for a name `Apiary.Adapters.Installed.valid_name?/1`
   # refuses; `{:error, changeset}`; `{:error, :forbidden}`; `{:error, :not_found}` where the
   # feature is off.
@@ -581,15 +599,45 @@ defmodule Apiary.Adapters do
       Repo.transact(fn ->
         with :ok <- authorize_install(scope), do: find_or_install(scope, name, 3)
       end)
+      |> case do
+        {:ok, {:made, adapter}} ->
+          :ok = broadcast_installed(adapter)
+          {:ok, adapter}
+
+        {:ok, {:found, adapter}} ->
+          {:ok, adapter}
+
+        {:error, _reason} = error ->
+          error
+      end
     else
       {:error, :invalid}
     end
   end
 
+  @installs_topic "adapters:installs"
+
+  @doc false
+  # Subscribes an instance admin (`authorize_instance/2`) to the adapters the installer
+  # makes (`install/2`): `{:adapter_installed, %{node_id: id}}` once each new one commits.
+  @spec subscribe_installs(Scope.t()) :: :ok | {:error, term}
+  def subscribe_installs(%Scope{} = scope) do
+    with :ok <- authorize_instance(scope),
+         do: Phoenix.PubSub.subscribe(Apiary.PubSub, @installs_topic)
+  end
+
+  defp broadcast_installed(%Node{id: id}),
+    do:
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        @installs_topic,
+        {:adapter_installed, %{node_id: id}}
+      )
+
   defp find_or_install(scope, name, tries) do
     case live_query() |> where([n], n.installed_as == ^name) |> Repo.one() do
       %Node{} = adapter ->
-        {:ok, adapter}
+        {:ok, {:found, adapter}}
 
       nil when tries > 0 ->
         changeset =
@@ -641,7 +689,7 @@ defmodule Apiary.Adapters do
            Audit.record(Repo, scope, :"adapter.install", adapter, %{
              after: Map.take(adapter, [:name, :kind, :public_id, :installed_as])
            }),
-         do: {:ok, adapter}
+         do: {:ok, {:made, adapter}}
   end
 
   @doc false

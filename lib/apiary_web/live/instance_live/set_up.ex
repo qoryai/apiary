@@ -7,10 +7,17 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   #
   # One step a page, in the set-up frame (`ApiaryWeb.SetUpComponents.frame/1`), with the
   # set-up's progress indicator: one step for each of the instance's adapters, with the
-  # `factory` feature, by name, as Instance settings › Adapters lists them
-  # (`ApiaryWeb.InstanceLive.Adapters`), `?step=<public id>`; then mail, `?step=mail`.
-  # Without a step, or with one the page does not have, the first step that is not done,
-  # else mail. The context column says why the step exists.
+  # `factory` feature (`Apiary.Adapters.set_up_list/1`), `?step=<public id>`: first those
+  # `QORY_INSTALLED_ADAPTERS` lists, in its order, then the others by name, as Instance
+  # settings › Adapters lists them (`ApiaryWeb.InstanceLive.Adapters`); then mail,
+  # `?step=mail`. Without a step, or with one the page does not have, the first step that
+  # is not done, else mail. The context column says why the step exists.
+  #
+  # An adapter listed that the installer has not made yet is a step by its name,
+  # `?step=<name>`, which shows that Qory Apiary is adding it, with Back and Skip. The
+  # page listens for the adapters the installer makes
+  # (`Apiary.Adapters.subscribe_installs/1`), and the step turns into the adapter's step,
+  # `?step=<public id>`, without a reload.
   #
   # Where an adapter's guide gives steps for setting it up (`Apiary.Adapters.guide/2`), an
   # adapter's step shows them in the context column, under "In the new tab", while Set up
@@ -58,10 +65,13 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     scope = socket.assigns.current_scope
     unless Access.instance_admin?(scope), do: raise(ApiaryWeb.NotFound)
 
+    # Subscribed before the adapters are read, so a row the installer commits in between
+    # still reaches the page.
+    if connected?(socket), do: Adapters.subscribe_installs(scope)
     adapters = adapters(scope)
 
     if connected?(socket),
-      do: Enum.each(adapters, &Adapters.subscribe_keys(scope, &1.adapter))
+      do: for(%{adapter: %{} = adapter} <- adapters, do: Adapters.subscribe_keys(scope, adapter))
 
     {:ok,
      assign(socket,
@@ -71,26 +81,39 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
      )}
   end
 
-  # The instance's adapters, with the `factory` feature, each with whether it is
-  # configured, whether it can be set up now, and, where neither, why not (`blocked/4`).
+  # The instance's adapters, with the `factory` feature, each with its step's key, whether
+  # it is configured, whether it can be set up now, and, where neither, why not
+  # (`blocked/4`). An adapter listed that the installer has not made yet has no adapter.
   defp adapters(scope) do
     if Adapters.authorize_instance(scope) == :ok do
-      for adapter <- Adapters.list_adapters(scope) do
-        connected = AccessKeys.active_key?(adapter)
-        listed = Adapters.listed?(adapter)
-        configured = Adapters.configured?(adapter)
-        settable = AdapterComponents.settable?(adapter, connected, listed)
-
-        %{
-          adapter: adapter,
-          configured: configured,
-          settable: settable,
-          blocked: blocked(adapter, configured or settable, connected, listed)
-        }
-      end
+      scope |> Adapters.list_adapters() |> Adapters.set_up_list() |> Enum.map(&row/1)
     else
       []
     end
+  end
+
+  defp row({:installing, name}),
+    do: %{
+      key: {:installing, name},
+      adapter: nil,
+      configured: false,
+      settable: false,
+      blocked: nil
+    }
+
+  defp row(adapter) do
+    connected = AccessKeys.active_key?(adapter)
+    listed = Adapters.listed?(adapter)
+    configured = Adapters.configured?(adapter)
+    settable = AdapterComponents.settable?(adapter, connected, listed)
+
+    %{
+      key: {:adapter, adapter.public_id},
+      adapter: adapter,
+      configured: configured,
+      settable: settable,
+      blocked: blocked(adapter, configured or settable, connected, listed)
+    }
   end
 
   # Why an adapter that is not set up can't be set up now, as
@@ -107,18 +130,22 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     {:noreply, assign_step(socket, step_of(socket.assigns.adapters, params["step"]))}
   end
 
-  # The step `?step=` names: an adapter by its public id, or `mail`. Without one, or with
-  # one the page does not have, the first step that is not done, else the last, mail.
+  # The step `?step=` names: an adapter by its public id, one the installer has not made
+  # yet by its name, or `mail`. Without one, or with one the page does not have, the
+  # first step that is not done, else the last, mail.
   defp step_of(adapters, key) do
     cond do
       key == "mail" ->
         :mail
 
-      Enum.any?(adapters, &(&1.adapter.public_id == key)) ->
-        {:adapter, key}
+      row = Enum.find(adapters, &(&1.key in [{:adapter, key}, {:installing, key}])) ->
+        row.key
+
+      row = made(adapters, {:installing, key}) ->
+        row.key
 
       row = Enum.find(adapters, &(not &1.configured)) ->
-        {:adapter, row.adapter.public_id}
+        row.key
 
       true ->
         :mail
@@ -133,31 +160,40 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     )
   end
 
+  # The adapter the installer made for the step `{:installing, name}`, if any.
+  defp made(adapters, {:installing, name}) when is_binary(name),
+    do: Enum.find(adapters, &match?(%{adapter: %{installed_as: ^name}}, &1))
+
+  defp made(_adapters, _step), do: nil
+
   # The page's steps, in order: the adapters', then mail.
-  defp keys(adapters), do: Enum.map(adapters, &{:adapter, &1.adapter.public_id}) ++ [:mail]
+  defp keys(adapters), do: Enum.map(adapters, & &1.key) ++ [:mail]
 
   defp path_of({:adapter, public_id}), do: ~p"/instance/set-up?#{[step: public_id]}"
+  defp path_of({:installing, name}), do: ~p"/instance/set-up?#{[step: name]}"
   defp path_of(:mail), do: ~p"/instance/set-up?step=mail"
 
   # The adapters read again while the page is open, and the steps counted again. The step
-  # stays on what it showed: the same adapter, by its public id, or mail; where that
-  # adapter is gone, the step at its place, at most the last. An adapter added since is
-  # listened to as the others are.
+  # stays on what it showed: the same adapter, by its public id, or mail; an adapter the
+  # installer has made since, its step; where that adapter is gone, the step at its
+  # place, at most the last. An adapter added since is listened to as the others are.
   defp reload_adapters(socket) do
     %{adapters: before, step: step, current_scope: scope} = socket.assigns
     adapters = adapters(scope)
-    known = MapSet.new(before, & &1.adapter.id)
+    known = for %{adapter: %{id: id}} <- before, into: MapSet.new(), do: id
 
-    for %{adapter: adapter} <- adapters,
+    for %{adapter: %{} = adapter} <- adapters,
         adapter.id not in known,
         do: Adapters.subscribe_keys(scope, adapter)
 
     keys = keys(adapters)
 
     moved =
-      if step in keys,
-        do: step,
-        else: Enum.at(keys, Enum.find_index(keys(before), &(&1 == step)) || 0, :mail)
+      cond do
+        step in keys -> step
+        made = made(adapters, step) -> made.key
+        true -> Enum.at(keys, Enum.find_index(keys(before), &(&1 == step)) || 0, :mail)
+      end
 
     socket = socket |> assign(:adapters, adapters) |> assign_step(moved)
 
@@ -195,10 +231,10 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
      |> finish()}
   end
 
-  # A key arrived at an adapter, or it declared where to set it up or connect to it: the
-  # adapters read again.
+  # A key arrived at an adapter, it declared where to set it up or connect to it, or the
+  # installer made one: the adapters read again.
   def handle_info({event, %{node_id: _id}}, socket)
-      when event in [:key_enrolled, :adapter_declared],
+      when event in [:key_enrolled, :adapter_declared, :adapter_installed],
       do: {:noreply, reload_adapters(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -226,15 +262,14 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   @impl true
   def render(assigns) do
-    row =
-      case assigns.step do
-        {:adapter, id} -> Enum.find(assigns.adapters, &(&1.adapter.public_id == id))
-        :mail -> nil
-      end
+    row = Enum.find(assigns.adapters, &(&1.key == assigns.step))
+    installing = match?(%{adapter: nil}, row)
+    row = if(installing, do: nil, else: row)
 
     assigns =
       assign(assigns,
         row: row,
+        installing: installing && elem(assigns.step, 1),
         guide: row && !row.configured && row.settable && Adapters.guide(row.adapter, :setup)
       )
 
@@ -257,8 +292,9 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         </SetUpComponents.heading>
 
         <.adapter_step :if={@row} row={@row} steps={@steps} />
+        <.installing_step :if={@installing} name={@installing} steps={@steps} />
         <.mail_step
-          :if={!@row}
+          :if={@step == :mail}
           source={@mail_source}
           state={@mail_state}
           steps={@steps}
@@ -279,7 +315,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
             guide={@guide}
           />
         </:context>
-        <:context :if={!@row and @mail_source != :env}>
+        <:context :if={@step == :mail and @mail_source != :env}>
           <p id="set-up-what">
             {gettext(
               "Qory Apiary sends invitations, log-in links and password links by mail; without mail, an admin copies each link by hand. Get the SMTP server's host name, port, username and password from your mail provider. Mail turns on when you follow the test link that Qory Apiary emails you, while you are signed in."
@@ -340,6 +376,32 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         />
         <span class="grow"></span>
         <.skip :if={!@row.configured} />
+      </div>
+    </section>
+    """
+  end
+
+  attr :name, :string, required: true
+  attr :steps, :list, required: true
+
+  # The step of an adapter listed that the installer has not made yet: its name, that
+  # Qory Apiary is adding it, and Back and Skip.
+  defp installing_step(assigns) do
+    ~H"""
+    <section id={"set-up-installing-#{@name}"} class="grid gap-4" aria-labelledby="set-up-name">
+      <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{@name}</h2>
+
+      <p id="set-up-installing" class="text-[13.5px]/5">
+        {gettext(
+          "Qory Apiary is adding %{name}. This page shows how to set it up once it is added.",
+          name: @name
+        )}
+      </p>
+
+      <div class="q-su-acts">
+        <SetUpComponents.back steps={@steps} page={~p"/instance/set-up"} />
+        <span class="grow"></span>
+        <.skip />
       </div>
     </section>
     """
