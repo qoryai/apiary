@@ -9,7 +9,9 @@ defmodule ApiaryWeb.MemberLive.Index do
   leave. A level the edition refuses is said in its words
   (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). An invitation is an email address
   and nothing else: it is sent from the workspace the page carries, grants it, and its
-  person joins as a member. Inviting is a form page of the section,
+  person joins as a member. One sent while the organisation had no workspace
+  (`Apiary.Organisations.invite_member/3`) is listed with None as its workspace, in an
+  organisation with no workspace too. Inviting is a form page of the section,
   `/:org/settings/people/invite` (`ApiaryWeb.PageComponents.page_form/1`: Back, its
   title, one sentence, the form, its button and Cancel back to People); a sent invitation
   goes back to People with a flash. Members see the page read-only. What each may is asked of
@@ -381,8 +383,12 @@ defmodule ApiaryWeb.MemberLive.Index do
                 <span class="q-title" title={i.email}>{i.email}</span>
               </span>
             </:col>
+            <%!-- None for an invitation sent while the organisation had no workspace. --%>
             <:col :let={i} label={gettext("Workspace")} from="sm">
-              <span id={"invitation-#{i.id}-workspace"}>{i.workspace.name}</span>
+              <span :if={i.workspace} id={"invitation-#{i.id}-workspace"}>{i.workspace.name}</span>
+              <span :if={!i.workspace} id={"invitation-#{i.id}-workspace"} class="q-faint">
+                {gettext("None")}
+              </span>
             </:col>
             <:col :let={i} label={gettext("Sent")} from="sm">
               <span class="tabular-nums">{Format.day(i.inserted_at)}</span>
@@ -1114,8 +1120,10 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     members = Organisations.list_members(scope)
 
+    # Asked of the organisation where there is no workspace: an invitation sent while it
+    # had none is pending there.
     invitations =
-      if Access.can?(scope, :"member.invite", scope.workspace),
+      if Access.can?(scope, :"member.invite", scope.workspace || scope.organisation),
         do: Organisations.list_invitations(scope),
         else: []
 

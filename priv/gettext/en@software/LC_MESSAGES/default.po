@@ -10853,6 +10853,7 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #: lib/apiary_web/live/integration_live/release.ex
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "None"
@@ -18166,9 +18167,24 @@ msgstr ""
 msgid "You are already a member of %{name}."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to %{organisation}. You can open it as soon as you confirm your email address."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to %{organisation}. You can open it as soon as you create your account."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "You are invited to join the organisation “%{organisation}” on %{name}. You can accept the invitation by visiting the URL below:"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{organisation} organisation, as a member."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex

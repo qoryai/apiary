@@ -1,14 +1,17 @@
 defmodule Apiary.Organisations.Invitation do
   @moduledoc """
-  An invitation to join an organisation's workspace, sent to an email address.
+  An invitation to join an organisation, through one of its workspaces while it has any,
+  sent to an email address.
 
   An invitation is the email address and nothing else the inviter writes: no level and no
   message. Its person joins as a member, of the workspace it was sent from, and an owner
   changes their level afterwards, unless the edition gives another level
-  (`c:Apiary.Edition.accepting/3`). An emailed invitation's inviter has a confirmed
-  account; without mail its link is copied instead. The organisation whose allowance it
-  counts against makes at most `Apiary.Instance.invitations_per_day/0` in 24 hours
-  (`Apiary.Organisations.invite_member/3`).
+  (`c:Apiary.Edition.accepting/3`). One sent while its organisation has no workspace has
+  none, `workspace_id` nil: its person joins the organisation, and its workspace set-up
+  comes next (`Apiary.Organisations.invite_member/3`). An emailed invitation's inviter
+  has a confirmed account; without mail its link is copied instead. The organisation
+  whose allowance it counts against makes at most `Apiary.Instance.invitations_per_day/0`
+  in 24 hours (`Apiary.Organisations.invite_member/3`).
 
   The URL token is never stored; only its SHA-256 hash is. A new token for the same
   invitation (`Apiary.Organisations.renew_invitation/3`) replaces the hash, so the old
