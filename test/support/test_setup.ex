@@ -36,8 +36,8 @@ defmodule Apiary.TestSetup do
       tagged tests alone run again. ExUnit lets the include of `--only` win over an
       exclude, so `__before_compile__/1` drops `:feature_sets` from a test the suite
       leaves out, such as one whose `needs:` has a feature that is off, and such a run
-      leaves it out too (`run_tags/2`). A test tagged `with_features:` runs under the
-      features it lists, whatever the set, and takes no `:feature_sets`.
+      leaves it out too (`run_tags/2`). A test tagged `with_features:` runs once, in the
+      run with every feature, under the features it lists, and takes no `:feature_sets`.
       `Apiary.FeatureSetsScan` finds the test files that read the features without the
       tag.
     - The tests tagged `:load` measure the receiver under a gateway's backlog, for long and

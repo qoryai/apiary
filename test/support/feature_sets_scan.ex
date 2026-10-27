@@ -18,11 +18,12 @@ defmodule Apiary.FeatureSetsScan do
   An edition adds the reads of its modules with `reads:`. The scan matches the code, not
   its comments, strings, `@moduledoc` or `@doc`.
 
-  A test sets its features first with `with_features:` (`Apiary.DataCase.setup_features/1`)
-  alone: it then runs under the features it lists, whatever the set. The scan does not
-  count a `put_env` of `:features` or `setup {Apiary.DataCase, :without_registry}` as
-  setting them, because `without_registry` keeps the set's other features, so a test
-  that reads them after either takes the tag.
+  A test sets its features first with `with_features:`
+  (`Apiary.DataCase.setup_features/1`) alone: it then runs once, in the run with every
+  feature on, under the features it lists. The scan does not count a `put_env` of
+  `:features` or `setup {Apiary.DataCase, :without_registry}` as setting them, because
+  `without_registry` keeps the set's other features, so a test that reads them after
+  either takes the tag.
 
   `violations/2` scans `<dir>/**/*_test.exs` and `<dir>/support/**/*.ex` of each
   directory it is given, and returns a violation for:
@@ -34,8 +35,8 @@ defmodule Apiary.FeatureSetsScan do
     its file that either calls;
   - `:reads_nothing`: a test file with a test tagged `:feature_sets`, none of whose tests
     reads the features;
-  - `:both_tags`: a test tagged both `with_features:` and `:feature_sets`, which runs
-    under the features it lists, whatever the set;
+  - `:both_tags`: a test tagged both `with_features:` and `:feature_sets`: the run with
+    every feature on is the only one that includes it, so `:feature_sets` adds no run;
   - `:unknown_helper`: a file of `support/` that reads the features and is not one of
     `helpers:`.
 
