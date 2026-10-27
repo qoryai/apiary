@@ -112,11 +112,11 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute html =~ String.slice(@key, -4, 4)
     end
 
-    test "About this page says what a key is for, and where to get the chosen one", ctx do
+    test "About this step says what a key is for, and where to get the chosen one", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
 
-      assert has_element?(lv, "aside#page-context h2", "About this page")
+      assert has_element?(lv, "aside#page-context h2", "About this step")
 
       assert has_element?(
                lv,
@@ -185,7 +185,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
         assert has_element?(lv, "label[for=provider_provider-#{index}]", provider.title)
       end
 
-      # A subtitle is plain text: no backticks, and the terms' address is on About this page.
+      # A subtitle is plain text: no backticks, and the terms' address is on About this step.
       subscription = Enum.find_index(Providers.list(), &(&1.name == "claude-subscription"))
       subtitle = lv |> element("#provider_provider-#{subscription}-s") |> render()
       assert subtitle =~ "an access token that claude setup-token creates."

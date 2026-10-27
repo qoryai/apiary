@@ -5,7 +5,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   # New model provider (`:new`), a separate page that adds one with its key
   # (`Apiary.Connections.create_provider/2`): Provider, Key, and an Address for a
   # provider whose description has an address setting, such as LiteLLM. Beside the form,
-  # About this page says what a key is for and where to get the chosen provider's key.
+  # About this step says what a key is for and where to get the chosen provider's key.
   #
   # Every member reads the list (`connection.read`); owners and admins add one
   # (`provider.write`), and anyone else sees the list without New model provider and one
@@ -392,7 +392,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   # Each provider of the catalogue, its description's text under its title. A subtitle is
   # plain text: the description's backticks and the address that ends it, which
-  # About this page links to (`terms_url/1`), are left out.
+  # About this step links to (`terms_url/1`), are left out.
   defp provider_options do
     for provider <- Providers.list() do
       %{value: provider.name, title: provider.title, subtitle: subtitle(provider)}

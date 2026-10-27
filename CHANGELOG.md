@@ -189,7 +189,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   select.
 <!-- feature: factory -->
 - **Organisation settings › Model providers**, **Workspace settings › Model** and
-  **Workspace settings › Workflow** have a column **About this page** beside the form.
+  **Workspace settings › Workflow** have a column **About this step** beside the form.
   **Provider**, **Model** and **Source** are choice fields. **Connect** on the set-up's
   **Work source** step returns there after the adapter's steps, and a work source already
   connected shows **Connected**. Under the set-up's list, a line shows the steps that

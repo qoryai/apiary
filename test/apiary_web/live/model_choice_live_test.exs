@@ -48,7 +48,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert has_element?(lv, "h1", "Model")
     assert has_element?(lv, ~s{#settings-tab-model[aria-current="page"]})
 
-    assert has_element?(lv, "aside#page-context h2", "About this page")
+    assert has_element?(lv, "aside#page-context h2", "About this step")
     refute has_element?(lv, ".q-settings-head-sub")
 
     assert has_element?(
