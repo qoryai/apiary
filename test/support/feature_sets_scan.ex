@@ -24,27 +24,35 @@ defmodule Apiary.FeatureSetsScan do
   `violations/2` scans `<dir>/**/*_test.exs` and `<dir>/support/**/*.ex` of each
   directory it is given, and returns a violation for:
 
-  - `:untagged`: a test file that reads the features, has no test tagged
-    `:feature_sets`, sets no features first, and has a test that runs under more than
-    one feature set, one whose `needs:` has none of the features `once:` lists;
-  - `:reads_nothing`: a test file with a test tagged `:feature_sets` that reads nothing;
+  - `:untagged`: a test that reads the features, sets none first, is not tagged
+    `:feature_sets`, and runs under more than one feature set: its `needs:` has none of
+    the features `once:` lists. A test reads them in its body, in a `setup` of its module
+    or describe, or in a function of its file that either calls; it sets them with its
+    `with_features:`, its describe's or its module's, or in its body or such a `setup`;
+  - `:reads_nothing`: a test file with a test tagged `:feature_sets`, none of whose tests
+    reads the features;
   - `:both_tags`: a test tagged both `with_features:` and `:feature_sets`, which runs
     under the features it lists, whatever the set;
   - `:unknown_helper`: a file of `support/` that reads the features and is not one of
     `helpers:`.
 
   The tests of a module of `use ExUnit.Case, register: false` do not run, and it skips
-  them.
+  them. A file whose test modules define no test, as a module of a template's tests,
+  is `:untagged` as a whole when it reads the features.
 
-  Its limit: it sees files, not call paths. A file with one tagged test passes, whatever
-  its other tests read; a test that reaches a listed helper is not checked. A reviewer
-  checks which test of a file carries the tag, and which test reaches a helper.
+  Its limits: it follows the calls within a file, not into another module, so a test that
+  reaches a listed helper of `support/` or a module of `lib/` is not checked, nor a
+  `setup {Module, :name}`. Functions of one name in two modules of a file count as one. A test that
+  sets the features after it reads them counts as setting them first. A `setup` that
+  reads counts for every test of its module or describe, though a test may set the
+  features first in its body. A reviewer checks those cases.
   """
 
   @reads ~r/Features\.(on\?|enabled\b|visible\?|hidden_of\b)|TestSetup\.off\b|(get|fetch)_env\(:apiary, :features\b|:features_setting\b/
 
   @type violation ::
-          {:untagged | :reads_nothing | :unknown_helper, Path.t()}
+          {:reads_nothing | :unknown_helper, Path.t()}
+          | {:untagged, Path.t(), String.t() | nil}
           | {:both_tags, Path.t(), String.t()}
 
   @doc "reads/0 is the pattern of the core's reads of the features."
@@ -90,10 +98,15 @@ defmodule Apiary.FeatureSetsScan do
 
   @doc "format/1 is a violation as a line that says what to change."
   @spec format(violation) :: String.t()
-  def format({:untagged, path}),
+  def format({:untagged, path, nil}),
     do:
-      "#{path}: tag :feature_sets on the tests that read the features, " <>
-        "or set the features first with with_features:"
+      "#{path}: the file reads the features and defines no test; tag :feature_sets " <>
+        "on the tests it makes, or set the features first"
+
+  def format({:untagged, path, test}),
+    do:
+      "#{path}: tag :feature_sets on #{inspect(test)}, which reads the features, " <>
+        "or set them first with with_features:"
 
   def format({:reads_nothing, path}),
     do: "#{path}: remove :feature_sets, as the file reads no feature"
@@ -106,13 +119,7 @@ defmodule Apiary.FeatureSetsScan do
 
   defp test_file(path, reads, once) do
     ast = path |> File.read!() |> Code.string_to_quoted!(file: path) |> without_docs()
-    tests = tests(ast, reads)
-    around? = ast |> Macro.prewalk(&without_test/1) |> reads?(reads)
-    tagged? = Enum.any?(tests, & &1.tags[:feature_sets])
-
-    exposed? =
-      (around? and tests == []) or
-        Enum.any?(tests, &((around? or &1.reads?) and not once?(&1, once)))
+    {tests, registered} = tests(ast, %{reads: reads, local: local_reads(ast, reads)})
 
     both =
       for test <- tests,
@@ -120,15 +127,23 @@ defmodule Apiary.FeatureSetsScan do
           test.tags[:with_features],
           do: {:both_tags, path, test.name}
 
+    untagged =
+      for test <- tests,
+          test.reads?,
+          not test.sets?,
+          !test.tags[:feature_sets],
+          not once?(test, once),
+          do: {:untagged, path, test.name}
+
     cond do
-      tagged? and not around? and not Enum.any?(tests, & &1.reads?) ->
+      tests == [] and registered > 0 and reads?(ast, reads) ->
+        [{:untagged, path, nil}]
+
+      Enum.any?(tests, & &1.tags[:feature_sets]) and not Enum.any?(tests, & &1.reads?) ->
         [{:reads_nothing, path} | both]
 
-      exposed? and not tagged? and not sets_first?(code(ast), tests) ->
-        [{:untagged, path} | both]
-
       true ->
-        both
+        untagged ++ both
     end
   end
 
@@ -137,8 +152,12 @@ defmodule Apiary.FeatureSetsScan do
       Enum.any?(List.wrap(test.tags[:needs]), &(&1 in once))
   end
 
-  defp sets_first?(code, tests) do
-    Enum.any?(tests, & &1.tags[:with_features]) or code =~ ":without_registry" or
+  # Whether `ast` sets the features and puts them back: `without_registry`, or a `put_env`
+  # of `:features` with an `on_exit` or an `after`.
+  defp sets?(ast) do
+    code = code(ast)
+
+    code =~ ":without_registry" or
       (code =~ "put_env(:apiary, :features," and code =~ ~r/\bon_exit\(|^\s*after$/m)
   end
 
@@ -157,7 +176,7 @@ defmodule Apiary.FeatureSetsScan do
     |> Macro.to_string()
   end
 
-  # A file's text without its comments, `@moduledoc`, `@doc` and `@typedoc`, which read
+  # A file's code without its comments, `@moduledoc`, `@doc` and `@typedoc`, which read
   # nothing.
   defp without_docs(ast) do
     Macro.prewalk(ast, fn
@@ -166,26 +185,104 @@ defmodule Apiary.FeatureSetsScan do
     end)
   end
 
-  defp without_test({:test, _, [_ | _]}), do: nil
-  defp without_test(node), do: node
-
-  # The tests of a file's modules, each with the tags ExUnit gives it: `@moduletag`, then
-  # `@describetag`, then `@tag`, a later key replacing an earlier one. A tag's value is
-  # kept where it is a literal, and is `:unknown` elsewhere. `reads?` is whether the
-  # test's body reads the features.
-  defp tests(ast, reads) do
-    {_ast, tests} =
-      Macro.prewalk(ast, [], fn
-        {:defmodule, _, [_name, [do: body]]}, acc ->
-          if registered?(body),
-            do: {nil, acc ++ block(body, {%{}, %{}, reads}, %{}, [])},
-            else: {nil, acc}
+  # The names of the functions the file defines that read the features, directly or
+  # through another of them. Clauses of every arity count as one name.
+  defp local_reads(ast, reads) do
+    {_ast, bodies} =
+      Macro.prewalk(ast, %{}, fn
+        {kind, _, [head, body]} = node, acc when kind in [:def, :defp] ->
+          {node, Map.update(acc, name_of(head), [body], &[body | &1])}
 
         node, acc ->
           {node, acc}
       end)
 
-    tests
+    direct = for {name, list} <- bodies, reads?(list, reads), into: MapSet.new(), do: name
+    close(direct, bodies)
+  end
+
+  defp close(names, bodies) do
+    more = for {name, list} <- bodies, calls?(list, names), into: names, do: name
+    if MapSet.equal?(more, names), do: names, else: close(more, bodies)
+  end
+
+  defp name_of({:when, _, [head | _]}), do: name_of(head)
+  defp name_of({name, _, _}), do: name
+
+  # Whether `ast` calls one of `names`, or captures it (`&name/1`).
+  defp calls?(ast, names) do
+    {_ast, found?} =
+      Macro.prewalk(ast, false, fn
+        {name, _, _} = node, found? when is_atom(name) -> {node, found? or name in names}
+        node, found? -> {node, found?}
+      end)
+
+    found?
+  end
+
+  # Whether a `setup` names one of `names`: `setup :name` or `setup [:a, :b]`.
+  defp names?({:setup, _, args}, names) do
+    {_ast, found?} =
+      Macro.prewalk(args, false, fn
+        atom, found? when is_atom(atom) -> {atom, found? or atom in names}
+        node, found? -> {node, found?}
+      end)
+
+    found?
+  end
+
+  defp names?(_statement, _names), do: false
+
+  # The tests of a file's modules, each with the tags ExUnit gives it: `@moduletag`, then
+  # `@describetag`, then `@tag`, a later key replacing an earlier one. A tag's value is
+  # kept where it is a literal, and is `:unknown` elsewhere. `reads?` is whether the test,
+  # a `setup` of its module or describe, or a function of the file either calls reads the
+  # features; `sets?` is whether the test or such a `setup` sets them.
+  # With them, the count of the file's modules whose tests run.
+  defp tests(ast, ctx) do
+    {_ast, found} =
+      Macro.prewalk(ast, {[], 0}, fn
+        {:defmodule, _, [_name, [do: body]]}, {tests, registered} = acc ->
+          if registered?(body) do
+            scope = scope(body, %{tags: %{}, reads?: false, sets?: false}, ctx)
+            {nil, {tests ++ block(body, scope, %{}, [], ctx), registered + 1}}
+          else
+            {nil, acc}
+          end
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    found
+  end
+
+  # A module or describe's scope: its tags, and whether a statement of it that is no
+  # test, describe or function reads or sets the features, as a `setup` does for each of
+  # its tests.
+  defp scope(body, outer, ctx) do
+    statements =
+      Enum.reject(statements(body), fn
+        {kind, _, _} -> kind in [:test, :describe, :for, :def, :defp, :defmacro, :defmacrop]
+        _statement -> false
+      end)
+
+    tags =
+      for {:@, _, [{tag, _, [value]}]} <- statements,
+          tag in [:moduletag, :describetag],
+          reduce: outer.tags,
+          do: (tags -> Map.merge(tags, tags(value)))
+
+    %{
+      tags: tags,
+      reads?:
+        outer.reads? or
+          Enum.any?(statements, fn statement ->
+            reads?(statement, ctx.reads) or calls?(statement, ctx.local) or
+              names?(statement, ctx.local)
+          end),
+      sets?: outer.sets? or Enum.any?(statements, &sets?/1)
+    }
   end
 
   # A module of `use ExUnit.Case, register: false` gives its tests to another test, which
@@ -197,10 +294,10 @@ defmodule Apiary.FeatureSetsScan do
     end)
   end
 
-  defp block(body, scope, pending, acc) do
-    {_scope, _pending, acc} =
-      Enum.reduce(statements(body), {scope, pending, acc}, fn statement, {scope, pending, acc} ->
-        statement(statement, scope, pending, acc)
+  defp block(body, scope, pending, acc, ctx) do
+    {_pending, acc} =
+      Enum.reduce(statements(body), {pending, acc}, fn statement, {pending, acc} ->
+        statement(statement, scope, pending, acc, ctx)
       end)
 
     acc
@@ -209,32 +306,31 @@ defmodule Apiary.FeatureSetsScan do
   defp statements({:__block__, _, statements}), do: statements
   defp statements(statement), do: [statement]
 
-  defp statement({:@, _, [{:moduletag, _, [tags]}]}, {module, describe, reads}, pending, acc),
-    do: {{Map.merge(module, tags(tags)), describe, reads}, pending, acc}
+  defp statement({:@, _, [{:tag, _, [tags]}]}, _scope, pending, acc, _ctx),
+    do: {Map.merge(pending, tags(tags)), acc}
 
-  defp statement({:@, _, [{:tag, _, [tags]}]}, scope, pending, acc),
-    do: {scope, Map.merge(pending, tags(tags)), acc}
+  defp statement({:describe, _, [_name, [do: body]]}, scope, _pending, acc, ctx),
+    do: {%{}, block(body, scope(body, scope, ctx), %{}, acc, ctx)}
 
-  defp statement({:describe, _, [_name, [do: body]]}, {module, _, reads} = scope, _, acc) do
-    describe =
-      for {:@, _, [{:describetag, _, [tags]}]} <- statements(body),
-          reduce: %{},
-          do: (describe -> Map.merge(describe, tags(tags)))
+  defp statement({:test, _, [name | _]} = test, scope, pending, acc, ctx) do
+    tags = Map.merge(scope.tags, pending)
 
-    {scope, %{}, block(body, {module, describe, reads}, %{}, acc)}
+    test = %{
+      name: name(name),
+      tags: tags,
+      reads?: scope.reads? or reads?(test, ctx.reads) or calls?(test, ctx.local),
+      sets?: scope.sets? or sets?(test) or Map.has_key?(tags, :with_features)
+    }
+
+    {%{}, acc ++ [test]}
   end
 
-  defp statement({:test, _, [name | _]} = test, {module, describe, reads} = scope, pending, acc) do
-    tags = module |> Map.merge(describe) |> Map.merge(pending)
-    {scope, %{}, acc ++ [%{name: name(name), tags: tags, reads?: reads?(test, reads)}]}
-  end
-
-  defp statement({:for, _, [_ | _] = args}, scope, pending, acc) do
+  defp statement({:for, _, [_ | _] = args}, scope, pending, acc, ctx) do
     [do: body] = List.last(args)
-    {scope, pending, block(body, scope, pending, acc)}
+    {pending, block(body, scope, pending, acc, ctx)}
   end
 
-  defp statement(_statement, scope, pending, acc), do: {scope, pending, acc}
+  defp statement(_statement, _scope, pending, acc, _ctx), do: {pending, acc}
 
   defp tags(tag) when is_atom(tag), do: %{tag => true}
 

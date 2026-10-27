@@ -1,6 +1,6 @@
 defmodule Apiary.FeatureSetsTagTest do
   # CI runs every test once with every feature on, and the tests tagged :feature_sets again
-  # under each other feature set. This guard fails for a test file of the core's suite that
+  # under each other feature set. This guard fails for a test of the core's suite that
   # reads the features without the tag (`Apiary.FeatureSetsScan`), and checks the scan's
   # rules on files written here.
   use ExUnit.Case, async: true
@@ -44,16 +44,69 @@ defmodule Apiary.FeatureSetsTagTest do
 
     @reads ~s|test "reads" do\n    assert Apiary.Features.on?(:security)\n  end\n|
 
-    test "fails for a file that reads the features in a test, untagged", %{tmp_dir: dir} do
-      assert scan(dir, %{"a_test.exs" => module(@reads)}) == [{:untagged, "a_test.exs"}]
+    test "fails for a test that reads the features, untagged", %{tmp_dir: dir} do
+      assert scan(dir, %{"a_test.exs" => module(@reads)}) ==
+               [{:untagged, "a_test.exs", "reads"}]
     end
 
-    test "fails for a file that reads them in a setup or a helper", %{tmp_dir: dir} do
-      helper = ~s|defp on?, do: Application.get_env(:apiary, :features)\n  test "a", do: on?()|
-      setup = ~s|setup do\n    %{off: Apiary.TestSetup.off()}\n  end\n  test "b", do: :ok|
+    test "fails for a test that reads them in a setup or a helper of its file",
+         %{tmp_dir: dir} do
+      helper = """
+      defp total, do: count() + 1
+        defp count, do: length(Application.get_env(:apiary, :features))
+        test "a", do: assert(total() > 0)
+        test "b", do: :ok
+      """
 
-      assert scan(dir, %{"a_test.exs" => module(helper), "b_test.exs" => module(setup)}) ==
-               [{:untagged, "a_test.exs"}, {:untagged, "b_test.exs"}]
+      setup = """
+      describe "c" do
+          setup do
+            %{off: Apiary.TestSetup.off()}
+          end
+
+          test "c", do: :ok
+        end
+
+        test "d", do: :ok
+      """
+
+      named =
+        ~s|setup :off\n  defp off(_), do: %{off: Apiary.TestSetup.off()}\n  test "e", do: :ok|
+
+      assert scan(dir, %{
+               "a_test.exs" => module(helper),
+               "b_test.exs" => module(setup),
+               "c_test.exs" => module(named)
+             }) ==
+               [
+                 {:untagged, "a_test.exs", "a"},
+                 {:untagged, "b_test.exs", "c"},
+                 {:untagged, "c_test.exs", "e"}
+               ]
+    end
+
+    test "decides for each test, not for its file", %{tmp_dir: dir} do
+      # Tests that set their features beside tests that read them through a helper, with
+      # neither with_features: nor :feature_sets.
+      body = """
+      defp total, do: if(Apiary.Features.on?(:factory), do: 2, else: 1)
+
+        @tag with_features: [:observability]
+        test "set", do: assert(total() == 1)
+
+        describe "set by the describe" do
+          @describetag with_features: [:observability, :security]
+          test "inherits", do: assert(total() == 1)
+        end
+
+        @tag :feature_sets
+        test "tagged", do: assert(total() > 0)
+
+        test "untagged", do: assert(total() > 0)
+      """
+
+      assert scan(dir, %{"a_test.exs" => module(body)}) ==
+               [{:untagged, "a_test.exs", "untagged"}]
     end
 
     test "passes a file with a test tagged :feature_sets, by @tag or @moduletag",
@@ -85,7 +138,7 @@ defmodule Apiary.FeatureSetsTagTest do
       assert scan(dir, %{"a_test.exs" => module("@tag needs: :factory\n  " <> @reads)}) == []
 
       assert scan(dir, %{"b_test.exs" => module("@tag needs: :security\n  " <> @reads)}) ==
-               [{:untagged, "b_test.exs"}]
+               [{:untagged, "b_test.exs", "reads"}]
     end
 
     test "fails for a file tagged :feature_sets that reads nothing", %{tmp_dir: dir} do
@@ -140,7 +193,7 @@ defmodule Apiary.FeatureSetsTagTest do
       assert scan(dir, %{"a_test.exs" => text}) == []
 
       assert scan(dir, %{}, reads: [~r/Edition\.Features\.of\b/]) ==
-               [{:untagged, "a_test.exs"}]
+               [{:untagged, "a_test.exs", "a"}]
     end
   end
 end

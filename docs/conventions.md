@@ -84,11 +84,12 @@ CI runs every test once, with every feature on, and runs only the tests tagged
 `ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env(:apiary,
 :features)`. A test that sets its features first, with `with_features:`, `without_registry`
 or a `put_env` that `on_exit` puts back, takes no tag. The guard
-`test/apiary/feature_sets_tag_test.exs` fails for a test file that reads the features with
-neither, for a tagged file that reads nothing, for a test with both `with_features:` and the
-tag, and for a helper of `test/support` that reads the features and is not on its list
-(`Apiary.FeatureSetsScan`). The guard sees files, not call paths: a reviewer checks which
-test of a file carries the tag. Before you report a chunk done, run the full suite locally
+`test/apiary/feature_sets_tag_test.exs` fails for a test that reads the features with
+neither, in its body, a `setup` of its module or describe, or a function of its file; for a
+tagged file that reads nothing; for a test with both `with_features:` and the tag; and for a
+helper of `test/support` that reads the features and is not on its list
+(`Apiary.FeatureSetsScan`). The guard follows calls within a file only: a reviewer checks a
+test that reaches a listed helper or a module of `lib/`. Before you report a chunk done, run the full suite locally
 under all 3 sets: `QORY_FEATURES` blank, `all` and `observability`.
 
 A template that makes many people and places for each of many tests may make them once
