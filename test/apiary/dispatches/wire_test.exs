@@ -358,23 +358,36 @@ defmodule Apiary.Dispatches.WireTest do
     # The bound the adapter wire's test holds a refused body to
     # (`test/apiary/sources/wire_test.exs`), as these bodies are decoded as an adapter's
     # are: @times the time to decode a flat body of 1 MiB, measured just before, plus
-    # @floor_ms. A busy machine slows both reads alike. A decoder whose cost grows with
-    # the square of the members takes hundreds of times the flat body's time.
+    # @floor_ms, and at most @ceiling_ms. While the machine's load stays the same between
+    # the two reads, it slows both alike. A decoder whose cost grows with the square of
+    # the members takes hundreds of times the flat body's time.
+    # The ceiling catches a decoder that grows faster than an array's length, which slows
+    # the flat body too: a linear one has taken at most 1.1 s on a shared runner.
     @times 10
     @floor_ms 200
+    @ceiling_ms 5000
 
     defp quick(fun) do
       flat = ~s({"a":[) <> String.duplicate("1,", div(Wire.max_bytes() - 9, 2)) <> "1]}"
-      {flat_microseconds, {:ok, _}} = :timer.tc(fn -> Wire.decode(flat) end)
-      {microseconds, result} = :timer.tc(fun)
-      flat_ms = div(flat_microseconds, 1000)
-      bound_ms = @times * flat_ms + @floor_ms
+      {flat_ms, true} = timed(fn -> match?({:ok, _}, Wire.decode(flat)) end)
+      bound_ms = min(@times * flat_ms + @floor_ms, @ceiling_ms)
+      {ms, result} = timed(fun)
 
-      assert div(microseconds, 1000) <= bound_ms,
-             "took #{div(microseconds, 1000)} ms, over #{bound_ms} ms " <>
-               "(#{@times} × #{flat_ms} ms for a flat body + #{@floor_ms} ms)"
+      assert ms <= bound_ms,
+             "took #{ms} ms, over #{bound_ms} ms (the lesser of #{@times} × #{flat_ms} ms " <>
+               "for a flat body + #{@floor_ms} ms, and #{@ceiling_ms} ms)"
 
       result
+    end
+
+    # A read in a task that is stopped at the ceiling, as a superlinear one runs for minutes.
+    defp timed(fun) do
+      task = Task.async(fn -> :timer.tc(fun) end)
+
+      case Task.yield(task, @ceiling_ms) || Task.shutdown(task, :brutal_kill) do
+        {:ok, {microseconds, result}} -> {div(microseconds, 1000), result}
+        nil -> flunk("took over #{@ceiling_ms} ms")
+      end
     end
 
     test "a raw body one byte over 1 MiB is refused undecoded, at once" do
