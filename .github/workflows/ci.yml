@@ -4,6 +4,10 @@ on:
   push:
     branches: [main, next]
   pull_request:
+  # The weekly full run, Monday 03:17 UTC, of Elixir tests alone; see the job.
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
 
 # A newer push to a pull request cancels its run in progress. A push to next or main is a
 # group of its own, the run's, so no later push cancels its run, in progress or waiting,
@@ -13,8 +17,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Five jobs side by side: Checks, the checks that do not depend on the features, run once;
-# the tests, under each set of features; the image, on each platform; Database over TLS;
-# and Compose install and upgrade.
+# Elixir tests; the image, on each platform; Database over TLS; and Compose install and
+# upgrade. The weekly run, and a run started by hand, run Elixir tests alone.
 #
 # A pull request whose head is next, of this repository, skips them: the push to next runs
 # them on the same commit, the pull request's head. GitHub does not evaluate the name of a
@@ -25,7 +29,7 @@ concurrency:
 jobs:
   checks:
     name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Checks · checked by the push run' || 'Checks' }}"
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -102,25 +106,24 @@ jobs:
           key: ${{ steps.restore.outputs.cache-primary-key }}
 
   test:
-    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Elixir tests · checked by the push run' || format('Elixir tests ({0})', matrix.name) }}"
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Elixir tests · checked by the push run' || 'Elixir tests' }}"
     if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
-    # The suite runs under each instance a launch may make: every feature, the opt-in
-    # ones included (QORY_FEATURES unset or empty, which the tests take for every
-    # feature); the default features, as `all` gives them to an instance; and the record
-    # alone. A test that exercises a feature is tagged `needs:` and left out where the
-    # feature is off. A test tagged `with_features:` runs under the features it names,
-    # whatever the leg's, so it runs once, in the "every feature" leg (test/test_helper.exs).
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: every feature
-            features: ""
-          - name: the default features
-            features: all
-          - name: the record alone
-            features: observability
+    # The suite runs once with every feature, the opt-in ones included (QORY_FEATURES empty,
+    # which the tests take for every feature). The tests tagged :feature_sets, which read the
+    # instance's features, run again under the default features, as `all` gives them to an
+    # instance, and under the record alone. A test tagged `needs:` is left out where its
+    # feature is off; a test tagged `with_features:` runs under the features it names, and
+    # only where every feature is on, so in the first step (test/support/test_setup.ex).
+    #
+    # The steps use the databases apiary_test, apiary_test2 and apiary_test3, one each
+    # (MIX_TEST_PARTITION, config/test.exs), so no suite finds rows an earlier step
+    # committed outside the sandbox. Once the dependencies are fetched, each step runs
+    # whether or not the one before it failed, so one run shows every failure.
+    #
+    # The weekly run, and a run started by hand, run the whole suite under the default
+    # features and under the record alone, in place of the three steps, to find a test
+    # that reads the features and lacks the tag.
     services:
       postgres:
         image: ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
@@ -161,10 +164,9 @@ jobs:
       - name: Give the directories times from their contents
         run: scripts/directory-mtimes.sh
 
-      # The legs compile the same build, as QORY_FEATURES is read when the suite runs and
-      # not when it compiles: each restores the tests' cache, and "every feature" alone
-      # saves it, so no leg's save races another's. As the checks' cache, it is saved under
-      # the commit by a push alone, and the newest is restored.
+      # The steps share one build, as QORY_FEATURES is read when the suite runs and not
+      # when it compiles. As the checks' cache, it is saved under the commit by a push
+      # alone, and the newest is restored.
       - name: Restore dependencies and build
         id: restore
         uses: actions/cache/restore@v6
@@ -178,21 +180,63 @@ jobs:
             mix-test-${{ runner.os }}-
 
       - name: Fetch dependencies
+        id: deps
         run: |
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
 
-      - name: Test
+      - name: Test with every feature
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
         env:
           MIX_ENV: test
           FORAGER_CONTRACT_DIR: ${{ github.workspace }}/tmp/forager/contracts/forager/v1
           CONTRACT_FIXTURES_REQUIRED: "1"
-          QORY_FEATURES: ${{ matrix.features }}
+          QORY_FEATURES: ""
+        run: mix test
+
+      - name: Rerun the tests tagged feature_sets under the default features
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'pull_request') }}
+        env:
+          MIX_ENV: test
+          FORAGER_CONTRACT_DIR: ${{ github.workspace }}/tmp/forager/contracts/forager/v1
+          CONTRACT_FIXTURES_REQUIRED: "1"
+          QORY_FEATURES: all
+          MIX_TEST_PARTITION: "2"
+        run: mix test --only feature_sets
+
+      - name: Rerun the tests tagged feature_sets under the record alone
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'pull_request') }}
+        env:
+          MIX_ENV: test
+          FORAGER_CONTRACT_DIR: ${{ github.workspace }}/tmp/forager/contracts/forager/v1
+          CONTRACT_FIXTURES_REQUIRED: "1"
+          QORY_FEATURES: observability
+          MIX_TEST_PARTITION: "3"
+        run: mix test --only feature_sets
+
+      - name: Test the whole suite under the default features
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        env:
+          MIX_ENV: test
+          FORAGER_CONTRACT_DIR: ${{ github.workspace }}/tmp/forager/contracts/forager/v1
+          CONTRACT_FIXTURES_REQUIRED: "1"
+          QORY_FEATURES: all
+          MIX_TEST_PARTITION: "2"
+        run: mix test
+
+      - name: Test the whole suite under the record alone
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+        env:
+          MIX_ENV: test
+          FORAGER_CONTRACT_DIR: ${{ github.workspace }}/tmp/forager/contracts/forager/v1
+          CONTRACT_FIXTURES_REQUIRED: "1"
+          QORY_FEATURES: observability
+          MIX_TEST_PARTITION: "3"
         run: mix test
 
       - name: Save dependencies and build
-        if: github.event_name == 'push' && matrix.features == '' && steps.restore.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -206,7 +250,7 @@ jobs:
   # build argument and cache.
   image:
     name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Image · checked by the push run' || format('Image ({0})', matrix.platform) }}"
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -289,7 +333,7 @@ jobs:
   # connects without TLS. The tests' own database is the service, as in the tests' job.
   database-tls:
     name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Database over TLS · checked by the push run' || 'Database over TLS' }}"
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -406,7 +450,7 @@ jobs:
   # the log; no value is printed.
   compose:
     name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Compose install and upgrade · checked by the push run' || 'Compose install and upgrade' }}"
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    if: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:

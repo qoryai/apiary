@@ -112,10 +112,11 @@ left out, and a line says so.
 CI (`.github/workflows/ci.yml`) runs five jobs side by side. **Checks**, the checks that
 do not depend on the features, runs once: the formatting check, the compile with warnings
 as errors, the Gettext check, the browser scripts' tests, the documentation build, and
-`MIX_ENV=prod mix assets.deploy` to prove the assets still build. **The tests** run under
-each of three sets of features: every feature, the default features, and the record
-alone. **The image** is built on each platform,
-`linux/amd64` and `linux/arm64`. **Database over TLS** runs the tests tagged
+`MIX_ENV=prod mix assets.deploy` to prove the assets still build. **Elixir tests** runs
+the suite with every feature, then the tests tagged `:feature_sets` under the default
+features and under the record alone. A weekly run, which you can also start by hand,
+runs only Elixir tests: the whole suite under those two sets. **The image** is built on
+each platform, `linux/amd64` and `linux/arm64`. **Database over TLS** runs the tests tagged
 `database_tls` against a Postgres 18 that serves TLS. **Compose install and upgrade**
 runs `compose.yaml` as a person does: the install, a restart, the path from a checkout,
 the upgrade from the base commit's image and from the latest release, and an external
