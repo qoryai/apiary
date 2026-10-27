@@ -59,9 +59,12 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     assert hd(suggestions).id == Connections.default_model(provider)
 
+    # Read as text, so a title with `&` or `'` compares unescaped.
     options =
-      Regex.scan(~r{<option[^>]*>([^<]+)</option>}, html, capture: :all_but_first)
-      |> List.flatten()
+      html
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#model_choice_model option")
+      |> Enum.map(&LazyHTML.text/1)
 
     assert Enum.take(options, length(titles) + 1) == titles ++ ["Another model"]
     refute has_element?(lv, "#model_choice_other")
@@ -71,17 +74,24 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     %{conn: conn, scope: scope, provider: provider} = ctx
     {:ok, lv, _html} = live(conn, path(scope))
 
+    # A suggested model with effort values, from the list, so a new file changes no test.
+    %{id: id, effort: effort} =
+      provider
+      |> ModelChoices.suggestions(ModelChoices.default_runtime())
+      |> Enum.filter(&(&1.effort != []))
+      |> List.last()
+
+    effort = List.last(effort)
+
     lv
-    |> form("#model-form", model_choice: %{model: option(provider, "claude-haiku-5-5")})
+    |> form("#model-form", model_choice: %{model: option(provider, id)})
     |> render_change()
 
     lv
-    |> form("#model-form",
-      model_choice: %{model: option(provider, "claude-haiku-5-5"), effort: "high"}
-    )
+    |> form("#model-form", model_choice: %{model: option(provider, id), effort: effort})
     |> render_submit()
 
-    assert %ModelChoice{model_id: "claude-haiku-5-5", effort: "high"} = choice(scope)
+    assert %ModelChoice{model_id: ^id, effort: ^effort} = choice(scope)
     assert render(lv) =~ "Model saved."
   end
 
