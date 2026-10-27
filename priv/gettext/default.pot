@@ -11870,7 +11870,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
 #, elixir-autogen, elixir-format
-msgid "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the adapter's set-up page in a new tab, and this step shows the new state without a reload."
+msgid "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the %{adapter} adapter's set-up page in a new tab, and this step shows the new state without a reload."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
