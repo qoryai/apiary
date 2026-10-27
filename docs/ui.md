@@ -1207,6 +1207,33 @@ needs becomes a component, or an attribute of one, not a copy.
   input shows, in mono before the value and as one field, what the value completes: the path of the
   organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
   field's descriptions (its hint, its errors), never replaced by it.
+- **`<.input type="choice">`** is a select whose options each have a title and a line
+  under it (`%{value:, title:, subtitle:}`), where a native select would join the two in
+  one line of text. It is a button, styled as a select, that shows the chosen option's
+  title and subtitle, or the `prompt` in the faint colour. The button opens a panel in
+  place, under it and in the flow, never a dialog (No modals, above): a native radio
+  group named like the field, so the form sends the value as it sent the select's, and
+  `form/3` in a test sets it as it sets a select. The chosen option has a check mark;
+  the radios' circles are hidden, and the row shows the focus ring. The `Choice` hook
+  (`assets/js/hooks/choice.js`) has the menus' keys (below): a click opens the panel
+  and leaves the focus on the button; Enter, Space and ArrowDown open it and focus the
+  search box, else the chosen radio, else the first. The arrow keys move among the
+  radios and check them, as radios do; Enter or Space, or a click on an option, chooses
+  it, closes the panel and returns the focus to the button. Escape closes it and puts
+  back the option chosen when it opened; with none chosen then, it keeps the one checked
+  since, as a form with no value for the field would send no key for it. Tab and a
+  click elsewhere close it and keep the choice. Without a search box a letter goes to the next option whose title starts
+  with it. The button's `aria-expanded` and `aria-controls` point to the panel, its name
+  is the label and the chosen title and subtitle, and each option is described by its subtitle; an
+  error marks the button `aria-invalid` and describes it, so a failed submit focuses the
+  button. Above eight options, or with `search`, the panel has a search box that
+  narrows the options in the browser by title and subtitle, keeps the chosen option and
+  any marked `keep` in view, and says the count in a polite status, or that nothing
+  matches. The box has no name and the hook stops its input events, so it never sends a
+  change. The hook sets the panel's `hidden`, the button's `aria-expanded` and the
+  hidden options, which a patch leaves alone (`JS.ignore_attributes`), and the box sits
+  in a `phx-update="ignore"` block, so the patch that answers an arrow key's change
+  leaves the panel open and narrowed.
 - **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
   asks for them without mail, and a password link's page. The server never writes a password back: each input is the
   browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under
