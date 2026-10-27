@@ -619,7 +619,7 @@ organisation like any other. Until the link is used nobody signs up: the sign-up
 log-in pages show "This Qory Apiary is not set up yet: use the set-up link from its
 install."
 
-After it, nobody signs up without an invitation: the sign-up page says sign-up is by
+After it, nobody signs up without an invitation: the sign-up page shows that sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
 from an owner or an admin of the organisation, sent from its **People** page. Someone with
 an invitation signs up without being asked for an organisation's name, and joins the
