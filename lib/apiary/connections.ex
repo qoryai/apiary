@@ -1137,8 +1137,8 @@ defmodule Apiary.Connections do
   get_provider/2 is the scope's organisation's model provider with the public id
   `public_id`, loaded as `list_providers/1` loads it: `{:ok, provider}`, or
   `{:error, reason}`, `:not_found` for one the organisation does not have in `chain`,
-  `"organisation"` by default, or for the chain `"operator"` where the scope does not write
-  it (`list_providers/2`).
+  `"organisation"` by default, for the chain an edition adds unless `Apiary.Edition`
+  returns true for the scope and that chain, and for any other chain (`list_providers/2`).
   """
   @spec get_provider(Scope.t(), term, String.t()) ::
           {:ok, Connection.t()} | {:error, Access.reason()}
