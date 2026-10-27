@@ -131,6 +131,12 @@ defmodule Apiary.Adapters.ContractFixturesTest do
 
     assert names == [
              "invalid/setup-pass-adapter-id-connection-id.json",
+             "invalid/setup-pass-organisation-slug-41-characters.json",
+             "invalid/setup-pass-organisation-slug-empty.json",
+             "invalid/setup-pass-organisation-slug-leading-hyphen.json",
+             "invalid/setup-pass-organisation-slug-trailing-hyphen.json",
+             "invalid/setup-pass-organisation-slug-underscore.json",
+             "invalid/setup-pass-organisation-slug-upper-case.json",
              "invalid/setup-pass-undefined-member.json",
              "invalid/setup-pass-version-2.json",
              "invalid/setup-pass-without-nonce.json"
