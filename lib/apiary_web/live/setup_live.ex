@@ -118,7 +118,8 @@ defmodule ApiaryWeb.SetupLive do
 
         <:context>
           <p id="setup-admin">
-            {gettext(
+            {pgettext(
+              "plain",
               "You create the first account of %{name} and its organisation. As the instance admin, you connect %{name} to mail and to the systems that bring in work, then set up the organisation's first workspace.",
               name: Apiary.ProductName.name()
             )}

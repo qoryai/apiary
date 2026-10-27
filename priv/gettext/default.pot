@@ -2772,6 +2772,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
+msgctxt "workspace type"
 msgid "%{workspace} is where Qory Apiary takes in tickets and runs agents on them. Its type sets which work sources it can connect, and whether each ticket needs a repository."
 msgstr ""
 
@@ -18335,6 +18336,7 @@ msgstr ""
 
 #: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "You create the first account of %{name} and its organisation. As the instance admin, you connect %{name} to mail and to the systems that bring in work, then set up the organisation's first workspace."
 msgstr ""
 

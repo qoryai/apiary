@@ -261,7 +261,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp workspace_context(assigns) do
     ~H"""
     <p id="set-up-what">
-      {gettext(
+      <%!-- The workspace type's context: read where the type is picked, in no domain's
+      words yet (docs/lingo.md). --%>
+      {pgettext(
+        "workspace type",
         "%{workspace} is where Qory Apiary takes in tickets and runs agents on them. Its type sets which work sources it can connect, and whether each ticket needs a repository.",
         workspace: Organisations.default_workspace_name()
       )}
