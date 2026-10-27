@@ -1,9 +1,11 @@
 defmodule Apiary.Edition.Core do
   @moduledoc """
   The core edition, and the default (`Apiary.Edition`): one organisation, which the
-  instance's first sign-up creates and whose owners run the instance, with one workspace,
-  which its owner creates after the sign-up; later people join by invitation. The instance's features are those switched on at launch,
-  shown to every person in every organisation and workspace alike. Nothing is added to the
+  instance's first sign-up creates and whose owners run the instance, with one workspace:
+  Main, which the sign-up by release command creates, or which an owner creates on the
+  workspace set-up page after a set-up by link. Later people join by invitation. The
+  instance's features are those switched on at launch, shown to every person in every
+  organisation and workspace alike. Nothing is added to the
   core's actions, roles, tables, features, jobs or migrations, and nothing is left out of a
   query.
 
