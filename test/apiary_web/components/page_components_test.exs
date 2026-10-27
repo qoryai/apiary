@@ -160,7 +160,7 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "Organisation settings"
   end
 
-  test "a settings page with its context: an aside after the form, headed About this page" do
+  test "a settings page with its context: an aside after the form, headed About this step" do
     assigns = %{}
 
     html =
@@ -180,7 +180,7 @@ defmodule ApiaryWeb.PageComponentsTest do
     assert attribute(html, "#{section} .q-context-main + aside#page-context", "aria-labelledby") ==
              "page-context-h"
 
-    assert text(html, "aside#page-context > h2#page-context-h") =~ "About this page"
+    assert text(html, "aside#page-context > h2#page-context-h") =~ "About this step"
     assert text(html, "aside#page-context > h2 + p#why") == "Main's default model."
 
     # Without it, the section is as before: no column, no h2.

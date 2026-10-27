@@ -86,8 +86,9 @@ marked; **Back**, at the foot of a step's form, opens the step before it. Two pa
 follow:
 
 1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
-   step, select **Skip**, or **Continue** where it shows the server's mail settings. You
-   can set mail up later in **Instance settings › Mail**.
+   step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
+   mail set in `.env`, the page has no **Mail** step, and you see the page only when the
+   instance has an adapter.
 2. **Set up your workspace**, at `http://localhost:4100/acme/set-up?step=type`. In
    **Type**, choose **Software**, whose words this guide uses; no type is chosen before
    you choose one. Then select **Create workspace**.
@@ -98,10 +99,10 @@ Connect it, See runs here. Steps 5 to 7 below are those steps.
 
 <!-- feature: factory -->
 With the `factory` feature, **Connect Qory Apiary** has one step for each adapter that
-**Instance settings › Adapters** lists, before **Mail**: select **Skip**, or **Continue**
-where the step is set up already, or set the adapter up as [Set up a new
-instance](install.md#set-up-a-new-instance) shows. **Create workspace** then opens
-**Connect a work source to Main**, the step **Work source**, at
+**Instance settings › Adapters** lists, before **Mail** where the page has that step:
+select **Skip**, or **Continue** where the step is set up already, or set the adapter up
+as [Set up a new instance](install.md#set-up-a-new-instance) shows. **Create workspace**
+then opens **Connect a work source to Main**, the step **Work source**, at
 `http://localhost:4100/acme/set-up?step=source`: select **Skip**, or **Continue** where
 no work source is set up. The overview of Main shows **Set up Main** in
 place of the box, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there

@@ -115,11 +115,11 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   end
 
   describe "the page" do
-    test "About this page says what the page sets, and in a software workspace the harness file comes first",
+    test "About this step says what the page sets, and in a software workspace the harness file comes first",
          %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
-      assert has_element?(view, "aside#page-context h2", "About this page")
+      assert has_element?(view, "aside#page-context h2", "About this step")
 
       assert has_element?(
                view,

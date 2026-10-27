@@ -768,9 +768,10 @@ pages follow the set-up link's page:
    `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save
    and send a test** saves the mail server and emails you a test link; mail turns on
    when you follow that link while signed in. **Skip** leaves mail for later. Where the
-   server's environment sets mail, the step shows those settings and **Continue**. Until
-   an instance admin finishes or skips this step, each sign-in of an instance admin
-   opens this page first.
+   server's environment sets mail (`SMTP_RELAY`), the page has no **Mail** step, because
+   there is nothing to configure. Until an instance admin finishes or skips the page's
+   last step, each sign-in of an instance admin opens this page first. Where the page has
+   no step, the set-up link's page leads to **Set up your workspace**.
 2. **Set up your workspace**, at `/<organisation>/set-up?step=type`, creates the
    organisation's workspace Main. In **Type**, choose **Software**, for work on code, or
    **General**, for any other work; no type is chosen before you choose one. The type
@@ -783,14 +784,14 @@ pages follow the set-up link's page:
 With the `factory` feature, both pages have more steps:
 
 - **Connect Qory Apiary** has one step for each adapter that **Instance settings ›
-  Adapters** lists, at `/instance/set-up?step=<adapter id>`, then **Mail**. An
-  adapter's step shows **State:** with **Set up** or **Not set up**. While **Set up**
-  shows, the column **About this step** lists, under **In the new tab**, the adapter's
-  steps for its set-up, where the adapter has some. Select **Set up**: the adapter's
-  set-up page opens in a new tab. Follow those steps there. Back on the set-up page,
-  once the state shows **Set up**, select **Continue**. The step of an adapter without a
-  key in use, or of one that has not sent the address where it is set up, shows what to
-  do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
+  Adapters** lists, at `/instance/set-up?step=<adapter id>`, then **Mail** where the page
+  has that step. An adapter's step shows **State:** with **Set up** or **Not set up**.
+  While **Set up** shows, the column **About this step** lists, under **In the new tab**,
+  the adapter's steps for its set-up, where the adapter has some. Select **Set up**: the
+  adapter's set-up page opens in a new tab. Follow those steps there. Back on the set-up
+  page, once the state shows **Set up**, select **Continue**. The step of an adapter
+  without a key in use, or of one that has not sent the address where it is set up, shows
+  what to do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
   connection for later, in **Instance settings**.
 - **Create workspace**, or another member's creating Main while the page is open, opens,
   for an owner or an admin, the step **Work source** of **Set up your workspace** in

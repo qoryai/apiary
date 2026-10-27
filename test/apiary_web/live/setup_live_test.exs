@@ -42,6 +42,8 @@ defmodule ApiaryWeb.SetupLiveTest do
 
     test "asks for the address, a password and its confirmation, and the organisation's name",
          %{conn: conn, code: code} do
+      # Mail not set by the environment: the connections have their mail step.
+      Apiary.Mail.put_test_source(:none)
       {:ok, lv, html} = live(conn, ~p"/setup/#{code}")
 
       assert html =~ "Set up Qory Apiary"
@@ -89,6 +91,24 @@ defmodule ApiaryWeb.SetupLiveTest do
       refute render(lv) =~ code
     end
 
+    test "where the server's environment sets mail, lists no mail step",
+         %{conn: conn, code: code} do
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
+
+      if Apiary.Features.on?(:factory) do
+        assert steps(lv) ==
+                 [{"Your account", :current}, {"Workspace", :to_come}, {"Work source", :to_come}]
+
+        assert count(lv) == "Step 1 of 3"
+      else
+        assert steps(lv) == [{"Your account", :current}, {"Workspace", :to_come}]
+        assert count(lv) == "Step 1 of 2"
+      end
+
+      refute has_element?(lv, "#set-up-group-connect")
+    end
+
     test "makes the organisation with no workspace", %{conn: conn, code: code} do
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
       email = unique_user_email()
@@ -123,6 +143,31 @@ defmodule ApiaryWeb.SetupLiveTest do
 
       refute Setup.valid_code?(code)
       assert Setup.set_up?()
+    end
+
+    test "with mail from the environment and no adapter, signs in at the workspace set-up",
+         %{conn: conn, code: code} do
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
+      email = unique_user_email()
+
+      form = form(lv, "#setup_form", user: params(%{"email" => email}))
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      [membership] =
+        email |> Apiary.Accounts.get_user_by_email() |> Apiary.Organisations.list_memberships()
+
+      assert redirected_to(conn) == ~p"/#{membership.organisation}/set-up"
+
+      # The instance's connections, opened anyway, send on the same way, and mark nothing.
+      conn = conn |> recycle() |> get(~p"/instance/set-up")
+      assert redirected_to(conn) == ~p"/"
+
+      assert conn |> recycle() |> get(~p"/") |> redirected_to() ==
+               ~p"/#{membership.organisation}/set-up"
+
+      refute Setup.connections_reviewed?()
     end
 
     test "with mail too, keeps the password and signs the person in with it",
