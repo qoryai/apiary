@@ -212,9 +212,10 @@ the console keeps. Every other act happens on a page, in place:
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
-  from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and the
-  breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A step of the
-  set-up has Back at its foot instead (The set-up, below). A save goes back with a flash; a refused one stays, the error under its field. What a save shows once,
+  from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and
+  the breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A step of
+  the set-up has Back at its foot instead (The set-up, below). A save goes back with a
+  flash; a refused one stays, the error under its field. What a save shows once,
   such as a generated key's secret, it shows on the page the save leads to, never again
   once the reader leaves it.
   A settings page whose form needs context has a column beside the form, **About this
@@ -1185,13 +1186,14 @@ The set-up is the pages a person goes through before the console: the set-up lin
 (`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
 (`/instance/set-up?step=<adapter id>|mail`) and Set up your workspace
 (`/<org>/set-up?step=type|source`). Each step has its URL, so a reload or a link opens
-that step. The pages have no sidebar and no top bar menus (`Layouts.set_up/1` for the
-pages read signed out).
+that step. The signed-in pages show the top bar and no sidebar; the pages read signed
+out use `Layouts.set_up/1`, a header with the product's mark and the theme menu.
 
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
-  settings page's column **About this page** (`.q-context`): the muted colour, no box. From 1280 px they stand side by side, 220 · 480 · 320 px with
-  48 px gaps, from the page's left edge. From 1024 px the indicator is a bar on top, and
+  settings page's column **About this page** (`.q-context`): the muted colour, no box.
+  From 1280 px they stand side by side, 220 · 480 · 320 px with 48 px gaps, from the
+  page's left edge. From 1024 px the indicator is a bar on top, and
   the form and the aside stand side by side, 480 · 320 px. Below 1024 px the aside goes
   under the form. In reading order the aside comes after the form. Steps done in another
   system, such as an adapter's set-up in a new tab, are a numbered list in the aside,
@@ -1201,10 +1203,11 @@ pages read signed out).
   `SetUpComponents.steps_for/3` builds for the person and the instance, after the
   edition's answer (`c:Apiary.Edition.set_up_steps/2`). Above it: "Step 4 of 5" and a
   progress bar, never a count of the steps left. The steps stand under their groups,
-  Connect Qory Apiary and Set up your workspace, each with its mark: a filled check when done,
-  a ring in the primary colour and `aria-current="step"` when current, a dash and
-  **Skipped** under a step passed over. Each step done or skipped is a link to it, before the current step or after it.
-  An edition's note about a step goes under its name. Under the last step, "Next: on the
+  Connect Qory Apiary and Set up your workspace, each with its mark: a filled check when
+  done, a ring in the primary colour and `aria-current="step"` when current, a dash and
+  **Skipped** under a step passed over. Each step done or skipped is a link to that step
+  where it has a page, before the current step or after it; Your account is not, and on
+  the pages read signed out no step is. An edition's note about a step goes under its name. Under the last step, "Next: on the
   Overview, Machines, Model key, Workflow and Test run" where the factory is on. Below
   1280 px the indicator is a bar, "Step 4 of 5: Workspace", with **All steps**, a
   disclosure that opens the list; Escape closes it. A page with one step shows no

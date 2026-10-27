@@ -755,9 +755,10 @@ in. It creates no workspace.
 Each page of the set-up shows the list of its steps: **Your account**, the steps under
 **Connect Qory Apiary**, then those under **Set up your workspace**, with a mark on each
 step done and **Skipped** under each step skipped. On a window narrower than 1280 px,
-the list is a bar with **Step 2 of 4** and **All steps**, which opens the list. Each
-step done or skipped is a link to that step, and **Back**, at the foot of a step's
-form, opens the step before it. A step you open again shows what you saved there, and
+the list is a bar with **Step 2 of 4** and **All steps**, which opens the list. Once
+you are signed in, each step done or skipped is a link to that step where it has a
+page; **Your account** is not. **Back**, at the foot of a step's form, opens the step
+before it. A step you open again shows what you saved there, and
 you can change it. The step **Workspace**, opened again, shows the workspace's type and
 **Continue**: the type can't be changed. A column headed **About this step**, beside
 the form or under it on a window narrower than 1024 px, says what the step does. Two
@@ -776,7 +777,7 @@ pages follow the set-up link's page:
    can't be changed after. **Create workspace** creates Main and opens its overview:
    `/acme/main` for an organisation named `Acme`. Until Main exists, a sign-in of a
    member of the organisation opens this page. If another member creates Main while the
-   page is open, the page moves on to the next step without a reload.
+   page is open, the page opens Main's overview without a reload.
 
 <!-- feature: factory -->
 With the `factory` feature, both pages have more steps:
@@ -791,8 +792,8 @@ With the `factory` feature, both pages have more steps:
   key in use, or of one that has not sent the address where it is set up, shows what to
   do in place of **Set up**. **Skip**, on a step that is not set up, leaves that
   connection for later, in **Instance settings**.
-- **Create workspace** opens the step **Work source** of **Set up your workspace** in
-  place of the overview: **Connect a work source to Main**, at
+- **Create workspace**, or another member's creating Main while the page is open, opens
+  the step **Work source** of **Set up your workspace** in place of the overview: **Connect a work source to Main**, at
   `/<organisation>/set-up?step=source`. It lists the work sources that the instance has
   set up for the workspace's type, each with **Connect**. Select **Connect** beside one,
   and follow the steps that the column **About this step** lists under its name.

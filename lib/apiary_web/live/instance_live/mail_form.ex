@@ -17,8 +17,8 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
 
   `step` is the mail step's form: its button is "Save and send a test", with the step's
   `back` before it and its `actions` at the end of the row, and it says neither that mail
-  is off nor what a save sends, which the step's context says. Once a save has sent the test link, it tells the page that holds it,
-  `{ApiaryWeb.InstanceLive.MailForm, :sent}`.
+  is off nor what a save sends, which the step's context says. Once a save has sent the
+  test link, it tells the page that holds it, `{ApiaryWeb.InstanceLive.MailForm, :sent}`.
 
   A save after the sign-in has grown old leads to the log-in page, as the settings page's
   mount does (`ApiaryWeb.UserAuth`'s sudo mode); a person who is no longer an instance

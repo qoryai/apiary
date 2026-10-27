@@ -11,10 +11,10 @@ defmodule ApiaryWeb.AdapterRedirectController do
   # kept when they pressed Install (`ApiaryWeb.ConnectSession`), and says how the install
   # ended there. Where the session keeps "set-up" beside that nonce, an install started at
   # the workspace set-up, the return leads to its Work source step,
-  # `/<org>/set-up?step=source`, in place of the integration's page. A return the person did not start in this browser is answered with a
-  # page that says so; a link that names no connection they reach, and a return that is
-  # bad, expired or used, as a path that does not exist, whoever asks, so the link does
-  # not tell whether one exists. Behind sign-in: an anonymous visitor is sent to log in
+  # `/<org>/set-up?step=source`, in place of the integration's page. A return the person
+  # did not start in this browser is answered with a page that says so; a link that names
+  # no connection they reach, and a return that is bad, expired or used, as a path that
+  # does not exist, whoever asks, so the link does not tell whether one exists. Behind sign-in: an anonymous visitor is sent to log in
   # first. `return` is kept out of the logs (`:filter_parameters`). Every answer of this
   # controller, the redirect, after a return or not, the 403 page and the 404 alike, says
   # `Referrer-Policy: no-referrer`, so no page it leads to sends the link, with its
