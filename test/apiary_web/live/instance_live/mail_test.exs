@@ -134,6 +134,17 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   defp save(view, attrs \\ @attrs),
     do: view |> form("#mail_form", mail: attrs) |> render_submit()
 
+  # The mail form in `html` is sent with POST, and its password's field has no value.
+  defp assert_posts_without_password(html) do
+    form = LazyHTML.query(html, "#mail_form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.attribute(form, "action") == []
+
+    password = LazyHTML.query(form, ~s{input[type="password"]})
+    assert LazyHTML.attribute(password, "name") == ["mail[smtp_password]"]
+    assert LazyHTML.attribute(password, "value") == []
+  end
+
   # Nothing of mail is saved: no row of the instance's settings, or one that holds none of
   # the mail's columns, as the instance's set-up leaves it (`Apiary.Setup`).
   defp no_mail_saved? do
@@ -190,7 +201,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
       assert has_element?(
                view,
-               "#mail_form input[name='mail[smtp_password]'][type='password'][value=''][autocomplete='new-password']"
+               "#mail_form input[name='mail[smtp_password]'][type='password'][autocomplete='new-password']:not([value])"
              )
 
       assert text(view, "#mail-save") =~
@@ -210,7 +221,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute inspect(:sys.get_state(view.pid), limit: :infinity, printable_limit: :infinity) =~
                @password
 
-      assert has_element?(view, "#mail_form input[name='mail[smtp_password]'][value='']")
+      assert has_element?(view, "#mail_form input[name='mail[smtp_password]']:not([value])")
 
       assert has_element?(
                view,
@@ -381,6 +392,28 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute html =~ @password
       assert Process.alive?(view.pid)
       assert no_mail_saved?()
+    end
+
+    test "posts its form, and the password's field has no value", %{conn: conn} do
+      # The page before it connects: a submit there is the browser's, with the form's method.
+      html = conn |> get(~p"/instance/mail") |> html_response(200)
+      assert_posts_without_password(LazyHTML.from_document(html))
+
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      html = save(view)
+      refute html =~ @password
+      assert_posts_without_password(LazyHTML.from_fragment(html))
+
+      # With settings saved, a form of their changeset is `method="put"` unless it says
+      # otherwise, and a browser sends that as a GET.
+      html = conn |> get(~p"/instance/mail") |> html_response(200)
+      assert_posts_without_password(LazyHTML.from_document(html))
+
+      html = save(view, %{@attrs | "smtp_port" => "0", "smtp_password" => "s3cret-example"})
+
+      assert html =~ "aria-invalid"
+      refute html =~ "s3cret-example"
+      assert_posts_without_password(LazyHTML.from_fragment(html))
     end
 
     test "a refused save shows what to change, and keeps no password", %{conn: conn} do
