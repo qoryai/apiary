@@ -296,6 +296,81 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
     end
   end
 
+  describe "a sign-up that creates an organisation" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SignUpOpen)
+    end
+
+    test "says the first workspace is set up next, with mail or without", %{conn: conn} do
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+
+      assert render(lv) =~
+               "Start an organisation. You set up its first workspace next. We will email you a link to confirm; no password needed."
+
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+
+      assert render(lv) =~
+               "Start an organisation. You set up its first workspace next. Choose a password to sign in with."
+    end
+
+    test "creates the organisation with no workspace, and lands its owner on its set-up", %{
+      conn: conn
+    } do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+      email = unique_user_email()
+      password = "a long pass phrase"
+
+      form =
+        form(lv, "#registration_form",
+          user: %{
+            "email" => email,
+            "organisation_name" => "Signup Studio",
+            "password" => password,
+            "password_confirmation" => password
+          }
+        )
+
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert [membership] = Apiary.Organisations.list_memberships(user)
+      assert membership.level == :owner
+
+      organisation =
+        Apiary.Repo.get!(Apiary.Organisations.Organisation, membership.organisation_id)
+
+      refute Apiary.Organisations.has_workspace?(organisation)
+      assert redirected_to(conn) == ~p"/#{organisation}/set-up"
+    end
+
+    test "with mail, creates the organisation with no workspace too", %{conn: conn} do
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+      email = unique_user_email()
+
+      html =
+        lv
+        |> form("#registration_form",
+          user: %{"email" => email, "organisation_name" => "Signup Mail Studio"}
+        )
+        |> render_submit()
+
+      assert html =~ "Check your email"
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert [membership] = Apiary.Organisations.list_memberships(user)
+
+      organisation =
+        Apiary.Repo.get!(Apiary.Organisations.Organisation, membership.organisation_id)
+
+      refute Apiary.Organisations.has_workspace?(organisation)
+    end
+  end
+
   describe "registration navigation" do
     test "redirects to login page when the Log in button is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/register")

@@ -874,9 +874,10 @@ defmodule Apiary.Organisations do
   Registers a user and places them in an organisation, in one transaction.
 
   Without an invitation token the user gets a new organisation named `organisation_name`,
-  with a slug made from that name, a workspace named "#{@default_workspace_name}" and an
-  owner membership (`build_organisation/2`): nothing is made from the address. Whether it
-  may, is `sign_up_offer/1`'s answer, asked again inside the transaction:
+  with a slug made from that name, an owner membership, and a workspace named
+  "#{@default_workspace_name}" unless `workspace: false` (`build_organisation/2`): nothing
+  is made from the address. Whether it may, is `sign_up_offer/1`'s answer, asked again
+  inside the transaction:
 
   - **The instance's first sign-up** creates the instance's organisation, whose
     owners run the instance (`Apiary.Access.instance_admin?/1`): its owner is the
@@ -928,8 +929,8 @@ defmodule Apiary.Organisations do
   `domain: :required` asks a sign-up that creates an organisation for the domain of its
   first workspace, as the set-up page does (`change_sign_up/2`).
   `workspace: false` creates the organisation with no workspace and asks for no domain:
-  its first workspace comes later (`create_first_workspace/2`). The answer's `workspace`
-  is then nil.
+  its first workspace comes later (`create_first_workspace/2`), as the sign-up page and
+  the set-up page ask. The answer's `workspace` is then nil.
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the

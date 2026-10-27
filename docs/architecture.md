@@ -229,8 +229,9 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   form sent beyond the core's fields (`{:sign_up, extra}`), which the edition may refuse
   on one of its fields. `Apiary.Organisations.sign_up_offer/1` (`:not_set_up`, `:open` or
   `:closed`) is what the page offers, and the sign-up asks again before it creates
-  anything. A sign-up with an invitation creates no organisation. Every new organisation
-  starts with one workspace, **Main**, except the instance's, made by the set-up link.
+  anything. A sign-up with an invitation creates no organisation. An organisation the
+  sign-up page creates has no workspace either (`workspace: false`): its owner lands on
+  the workspace set-up page and creates **Main** there, as after the set-up link.
 - **One way to create an organisation.** `Apiary.Organisations.build_organisation/2` is
   the one way, for a sign-up and for each of an edition's ways: the slug, the workspace
   Main unless `workspace: false`, the owner membership, the edition's steps and the entry

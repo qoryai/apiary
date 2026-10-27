@@ -5,8 +5,9 @@ defmodule ApiaryWeb.UserLive.Registration do
   workspace, and asks for the address alone. Without one it offers what
   `Apiary.Organisations.sign_up_offer/1` answers on mount: before the instance is set
   up, nothing, and the page says to use its set-up link
-  (`Apiary.Setup`); a sign-up, where the edition opens one, of an organisation; and
-  nothing where none is open, where the page says sign-up is by invitation.
+  (`Apiary.Setup`); a sign-up, where the edition opens one, of an organisation with no
+  workspace, whose owner lands on the workspace set-up (`/:org/set-up`) once signed in;
+  and nothing where none is open, where the page says sign-up is by invitation.
   `Apiary.Organisations.sign_up_user/3` asks again when the form is sent.
 
   **With mail** (`Apiary.Mail.configured?/0`) the account is made and a link to confirm
@@ -181,12 +182,14 @@ defmodule ApiaryWeb.UserLive.Registration do
   defp subtitle(%{mail?: true}),
     do:
       gettext(
-        "Start an organisation and its first workspace. We will email you a link to confirm; no password needed."
+        "Start an organisation. You set up its first workspace next. We will email you a link to confirm; no password needed."
       )
 
   defp subtitle(_assigns),
     do:
-      gettext("Start an organisation and its first workspace. Choose a password to sign in with.")
+      gettext(
+        "Start an organisation. You set up its first workspace next. Choose a password to sign in with."
+      )
 
   # Without mail, an invitation's link is the inviter's word for its address: the page
   # shows it, and the sign-up takes it whatever is sent.
@@ -247,8 +250,11 @@ defmodule ApiaryWeb.UserLive.Registration do
         do: Map.drop(user_params, ~w(password password_confirmation)),
         else: user_params
 
+    # An organisation it creates has no workspace: its owner lands on the workspace set-up
+    # (`ApiaryWeb.WorkspaceSetupLive`) and makes the first one there.
     case Organisations.sign_up_user(user_params, socket.assigns.invitation_token,
-           origin: socket.assigns.origin
+           origin: socket.assigns.origin,
+           workspace: false
          ) do
       # Without mail, a password was set: the same form goes to the log-in controller,
       # with the address the account has, and signs the person in.
