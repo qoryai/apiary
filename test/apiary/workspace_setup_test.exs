@@ -189,6 +189,50 @@ defmodule Apiary.WorkspaceSetupTest do
       # Another workspace has no choice.
       refute WorkspaceSetup.model_key?(workspace_fixture(ctx.scope.organisation))
     end
+
+    test "on an operator's chain, the operator's provider with a key and its default", ctx do
+      %{scope: operator} = sign_up_fixture()
+      :ok = Edition.put_test_stub(EditionStubs.ServesAcrossWithChain)
+      EditionStubs.ServesAcross.put([{operator.organisation.id, ctx.scope.organisation.id}])
+      EditionStubs.ServesAcrossWithChain.writer(true)
+
+      provider = fn scope, chain ->
+        {:ok, provider} =
+          Connections.create_provider(scope, %{
+            provider: "anthropic",
+            chain: chain,
+            keys: [%{value_id: "main", value: "sk-setup-operator-1"}]
+          })
+
+        provider
+      end
+
+      # The client's own provider and choice of the workspace, on its own chain.
+      own = provider.(ctx.scope, "organisation")
+      {:ok, _} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: own.public_id})
+      assert Edition.model_key_ready?(ctx.workspace)
+
+      # On the operator's chain, the client's rows are not read.
+      EditionStubs.ServesAcrossWithChain.chain("operator")
+      refute Edition.model_key_ready?(ctx.workspace)
+
+      theirs = provider.(operator, "operator")
+      refute WorkspaceSetup.model_key?(ctx.workspace)
+
+      {:ok, _} =
+        ModelChoices.put_choice(
+          operator,
+          :organisation,
+          %{provider: theirs.public_id, key: "main"},
+          "operator"
+        )
+
+      assert Edition.model_key_ready?(ctx.workspace)
+
+      # An operator's chain whose operator the edition does not name has no key.
+      EditionStubs.ServesAcrossWithChain.operator(nil)
+      refute WorkspaceSetup.model_key?(ctx.workspace)
+    end
   end
 
   describe "the test run" do
