@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Docs.AllTest do
 
     # Security's tree is a separate one: every feature the documentation differs by is
     # more, the core's opt-in `secrets` among them.
-    test "security's documentation and the module reference are a tree each" do
+    test "security's documentation and every feature's are a tree each" do
       every = Apiary.Features.documented()
 
       assert All.trees([[:security], every]) ==
