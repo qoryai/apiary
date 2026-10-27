@@ -187,13 +187,14 @@ defmodule Apiary.Harnesses.Walk do
 
   @typedoc """
   A walk that failed: the code, the source as shown (nil for none or hidden), the rule an
-  `invalid` source breaks, the adapter's name for a call, and the call's failure.
+  `invalid` source breaks, the adapter's name and id for a call, and the call's failure.
   """
   @type failure :: %{
           failure: atom,
           source: String.t() | nil,
           rule: map | nil,
           adapter: String.t() | nil,
+          adapter_id: Ecto.UUID.t() | nil,
           call_failure: CallFailure.t() | nil
         }
 
@@ -931,7 +932,7 @@ defmodule Apiary.Harnesses.Walk do
 
   defp call_failed(%CallFailure{cause: cause} = failure, _location)
        when cause in [:timeout, :unreachable],
-       do: retry(%{name: failure.adapter_name})
+       do: retry(%{id: failure.adapter_id, name: failure.adapter_name})
 
   defp call_failed(%CallFailure{cause: :refused, code: code}, %{} = location)
        when code in ["grant_unknown", "resource_not_covered", "resource_not_public"],
@@ -951,15 +952,23 @@ defmodule Apiary.Harnesses.Walk do
          source: shown(location && location.source),
          rule: nil,
          adapter: failure.adapter_name,
+         adapter_id: failure.adapter_id,
          call_failure: failure
        }}
     )
   end
 
-  defp retry(%{name: name}) do
+  defp retry(%{id: id, name: name}) do
     throw(
       {__MODULE__, :retry,
-       %{failure: :adapter_unavailable, source: nil, rule: nil, adapter: name, call_failure: nil}}
+       %{
+         failure: :adapter_unavailable,
+         source: nil,
+         rule: nil,
+         adapter: name,
+         adapter_id: id,
+         call_failure: nil
+       }}
     )
   end
 
@@ -971,7 +980,14 @@ defmodule Apiary.Harnesses.Walk do
   defp fail(code, source, rule) do
     throw(
       {__MODULE__, :failed,
-       %{failure: code, source: shown(source), rule: rule, adapter: nil, call_failure: nil}}
+       %{
+         failure: code,
+         source: shown(source),
+         rule: rule,
+         adapter: nil,
+         adapter_id: nil,
+         call_failure: nil
+       }}
     )
   end
 

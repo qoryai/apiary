@@ -87,7 +87,15 @@ defmodule Apiary.Harnesses.WalkJob do
   rescue
     exception ->
       if job.attempt >= job.max_attempts do
-        failure = %{failure: :walk_error, source: nil, rule: nil, adapter: nil, call_failure: nil}
+        failure = %{
+          failure: :walk_error,
+          source: nil,
+          rule: nil,
+          adapter: nil,
+          adapter_id: nil,
+          call_failure: nil
+        }
+
         fail(id, failure, job.attempt)
       end
 
@@ -171,6 +179,7 @@ defmodule Apiary.Harnesses.WalkJob do
       failed_source: failure.source,
       failure_rule: failure.rule,
       failure_adapter: failure.adapter,
+      failure_adapter_id: failure.adapter_id,
       attempts: attempt
     ]
   end

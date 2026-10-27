@@ -1982,6 +1982,7 @@ defmodule Apiary.Harnesses.WalkTest do
                row = Repo.get_by!(RunHarness, dispatch_run_id: run.id)
 
       assert row.failure_adapter == ctx.run.adapter.name
+      assert row.failure_adapter_id == ctx.run.adapter.id
     end
 
     test "a refusal fails the walk on the first attempt and ends the run harness_unresolved",
