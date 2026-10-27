@@ -2611,12 +2611,6 @@ msgstr ""
 msgid "%{tool} failed: %{summary}"
 msgstr ""
 
-#: lib/apiary_web/components/workspace_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "%{type} — %{line}"
-msgstr ""
-
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{url} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."

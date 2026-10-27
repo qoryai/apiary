@@ -22,9 +22,10 @@ defmodule ApiaryWeb.WorkspaceComponents do
   attr :size, :string, default: "md", values: ~w(sm md)
 
   @doc """
-  type_field/1 is the Type field: a select with one option per domain, its name and its
-  line (`c:Apiary.Lingo.Domain.type_name/0`, `c:Apiary.Lingo.Domain.type_line/0`), and
-  none chosen until the person picks one ("Choose a type"). Under it, that the type
+  type_field/1 is the Type field: a choice (`<.input type="choice">`) with one option per
+  domain, its name as the title and its line under it
+  (`c:Apiary.Lingo.Domain.type_name/0`, `c:Apiary.Lingo.Domain.type_line/0`), and none
+  chosen until the person picks one ("Choose a type"). Under it, that the type
   can't be changed after the workspace is created, unless `hint` says otherwise.
 
       <WorkspaceComponents.type_field field={@form[:domain]} />
@@ -40,7 +41,7 @@ defmodule ApiaryWeb.WorkspaceComponents do
     ~H"""
     <.input
       field={@field}
-      type="select"
+      type="choice"
       label={gettext("Type")}
       prompt={gettext("Choose a type")}
       options={@options}
@@ -51,11 +52,7 @@ defmodule ApiaryWeb.WorkspaceComponents do
   end
 
   defp options(domains) do
-    for domain <- domains do
-      {pgettext("workspace type", "%{type} — %{line}",
-         type: domain.type_name(),
-         line: domain.type_line()
-       ), domain.name()}
-    end
+    for domain <- domains,
+        do: %{value: domain.name(), title: domain.type_name(), subtitle: domain.type_line()}
   end
 end

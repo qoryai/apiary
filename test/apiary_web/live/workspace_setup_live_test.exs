@@ -84,23 +84,30 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
     refute has_element?(lv, "#set-up-back")
 
-    assert has_element?(
-             lv,
-             "#set-up-form select[name='workspace[domain]'] option[value='']",
-             "Choose a type"
-           )
+    # The Type is a choice: a button with the prompt, and a panel of radios, each with
+    # its type's title and line.
+    assert has_element?(lv, "#set-up-form button#workspace_domain.is-prompt", "Choose a type")
+    assert has_element?(lv, "#workspace_domain-panel[hidden]")
+    refute has_element?(lv, "#set-up-form select")
 
-    assert has_element?(
-             lv,
-             "#set-up-form option[value='software']",
-             "Software — For work on code. Each ticket needs a repository."
-           )
+    for {value, title, line} <- [
+          {"software", "Software", "For work on code. Each ticket needs a repository."},
+          {"general", "General",
+           "For any other work, such as marketing, incidents or customer care."}
+        ] do
+      radio = "#set-up-form input[type=radio][name='workspace[domain]'][value='#{value}']"
+      assert has_element?(lv, radio)
 
-    assert has_element?(
-             lv,
-             "#set-up-form option[value='general']",
-             "General — For any other work, such as marketing, incidents or customer care."
-           )
+      [id] =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query(radio)
+        |> LazyHTML.attribute("id")
+
+      assert has_element?(lv, "label[for='#{id}'] .q-pick-t", title)
+      assert has_element?(lv, "##{id}-s", line)
+    end
 
     assert has_element?(
              lv,
@@ -180,7 +187,8 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     %{user: user, organisation: organisation} = sign_up_without_workspace()
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
 
-    lv |> form("#set-up-form", workspace: %{domain: ""}) |> render_submit()
+    # No radio is checked, so the form sends no type.
+    lv |> form("#set-up-form") |> render_submit()
 
     assert has_element?(lv, "#set-up-form", "Choose a type.")
     refute Organisations.has_workspace?(organisation)

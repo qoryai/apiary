@@ -146,12 +146,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   @impl true
-  def handle_event(
-        "create",
-        %{"workspace" => %{"domain" => domain}},
-        %{assigns: %{step: :type}} = socket
-      )
-      when is_binary(domain) do
+  # With no type chosen, the Type field (a choice) checks no radio, and the form sends no
+  # `workspace` params: the changeset then says to choose one.
+  def handle_event("create", params, %{assigns: %{step: :type}} = socket) do
+    domain =
+      case params do
+        %{"workspace" => %{"domain" => domain}} when is_binary(domain) -> domain
+        _no_type -> ""
+      end
+
     scope = socket.assigns.current_scope
     organisation = scope.organisation
 
