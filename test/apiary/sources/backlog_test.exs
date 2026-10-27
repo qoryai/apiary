@@ -428,6 +428,23 @@ defmodule Apiary.Sources.BacklogTest do
                integration(elsewhere)
     end
 
+    test "is named by its adapter's title where its description gives one", ctx do
+      item = ticket(ctx.collection)
+      adapter = Repo.get!(Node, ctx.connection.adapter_id)
+      adapter = Apiary.NodesFixtures.describe_title(adapter, "Acme Tracker")
+      titled = %{name: "Acme Tracker", id: adapter.public_id}
+
+      assert row(ctx.scope, item).integration == titled
+      assert Backlog.get_ticket(ctx.scope, item.public_id).integration == titled
+
+      # A title that fails the check: the adapter's name.
+      Apiary.NodesFixtures.describe_title(adapter, "Acme\u0007Tracker")
+      named = %{name: adapter.name, id: adapter.public_id}
+      assert row(ctx.scope, item).integration == named
+    end
+
+    defp row(scope, item), do: Enum.find(list(scope).rows, &(&1.id == item.public_id))
+
     test "is read with the rows: a page of many rows asks as many queries as one of one",
          ctx do
       ticket(ctx.collection)

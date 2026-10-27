@@ -24,16 +24,16 @@ defmodule Apiary.WorkItems.WorkList do
   # **A row** is a plain map: the work item's public id (`id`), its number in the
   # workspace, its title as taken in, its ticket's key at the source or nil, shown as text
   # and never parsed, the title of the collection that holds its ticket (`repository`, as
-  # `Apiary.WorkItems.ticket_names/2` names it), the name of the integration its ticket
-  # came through (`integration`; nil for a test work item, which came through none, and
-  # `test` true), its state and take in, where Explore stands for it
-  # (`status`; for an ended one, that of its last take in), the attempt and the run limit
-  # of its take in's latest run (`attempt`, `of`, nil before its first run), its owner's
-  # account id, when it was taken in (`taken_in_at`, at its latest take in), created
-  # (`inserted_at`) and last changed, and for an ended one when and by whom it ended
-  # (`ended_at`, `ended_by_id`, nil where no person did), with the reason the instance
-  # gave where it closed the work item (`ended_reason`, nil otherwise). The ticket's ref
-  # at the source is never in a row.
+  # `Apiary.WorkItems.ticket_names/2` names it), the title of the integration its ticket
+  # came through (`integration`, `Apiary.Adapters.title/1`; nil for a test work item,
+  # which came through none, and `test` true), its state and take in, where Explore stands
+  # for it (`status`; for an ended one, that of its last take in), the attempt and the run
+  # limit of its take in's latest run (`attempt`, `of`, nil before its first run), its
+  # owner's account id, when it was taken in (`taken_in_at`, at its latest take in),
+  # created (`inserted_at`) and last changed, and for an ended one when and by whom it
+  # ended (`ended_at`, `ended_by_id`, nil where no person did), with the reason the
+  # instance gave where it closed the work item (`ended_reason`, nil otherwise). The
+  # ticket's ref at the source is never in a row.
   #
   # **Order and pages.** The rows go by the sort, from the latest changed to the earliest
   # (`:updated`, the default) or from the latest created to the earliest (`:created`),
@@ -664,7 +664,7 @@ defmodule Apiary.WorkItems.WorkList do
         title: w.title,
         key: t.key,
         repository: coalesce(t.title, w.collection_title),
-        integration: n.name,
+        integration: coalesce(n.title, n.name),
         test: w.test,
         state: w.state,
         take_in: w.take_in,

@@ -93,16 +93,18 @@ defmodule ApiaryWeb.IntegrationComponents do
       class={["max-w-[720px] rounded-box border border-line bg-base-100 px-5 pt-[18px] pb-5", @class]}
     >
       <p :if={@named} id={"#{@id}-name"} class="mb-2.5 flex items-center gap-2.5 font-semibold">
-        <.mark /><span class="truncate">{@adapter.name}</span>
+        <.mark /><span class="truncate">{Apiary.Adapters.title(@adapter)}</span>
       </p>
       <p class="max-w-[68ch] text-[13.5px]/[21px] text-muted">
-        {gettext("%{integration} then brings you back here.", integration: @adapter.name)}
+        {gettext("%{integration} then brings you back here.",
+          integration: Apiary.Adapters.title(@adapter)
+        )}
         {gettext("The %{collections} it reaches are listed on this page.",
           collections: @collections
         )}
         {gettext("%{organisation} can have one installation of %{integration}.",
           organisation: @organisation.name,
-          integration: @adapter.name
+          integration: Apiary.Adapters.title(@adapter)
         )}
       </p>
       <div class="mt-[18px] flex flex-wrap items-center gap-3">
@@ -117,7 +119,7 @@ defmodule ApiaryWeb.IntegrationComponents do
           {gettext("Cancel")}
         </.button>
         <span :if={@sending} id={"#{@id}-sending"} role="status" class="text-[13px] text-muted">
-          {gettext("Taking you to %{integration}…", integration: @adapter.name)}
+          {gettext("Taking you to %{integration}…", integration: Apiary.Adapters.title(@adapter))}
         </span>
         <span
           :if={!@ready && !@sending}
@@ -126,7 +128,7 @@ defmodule ApiaryWeb.IntegrationComponents do
         >
           {gettext(
             "%{integration} can't be installed yet: this instance's admins are still setting it up.",
-            integration: @adapter.name
+            integration: Apiary.Adapters.title(@adapter)
           )}
         </span>
       </div>

@@ -215,7 +215,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
     assign(
       socket,
       :page_title,
-      AdapterComponents.page_title(scope, [gettext("Access key"), adapter.name])
+      AdapterComponents.page_title(scope, [gettext("Access key"), Adapters.title(adapter)])
     )
   end
 
@@ -397,7 +397,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   defp full?(keys), do: length(active(keys)) >= AccessKeys.key_limit()
 
   defp command_title(adapter),
-    do: gettext("Connect %{name} with a command", name: adapter.name)
+    do: gettext("Connect %{name} with a command", name: Adapters.title(adapter))
 
   # What the command's page says: waiting for the key, connected once it arrived, or that
   # the code no longer works.
@@ -428,7 +428,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
       place={:instance}
       section={:adapters}
     >
-      <:crumb navigate={@paths.overview}>{@adapter.name}</:crumb>
+      <:crumb navigate={@paths.overview}>{Adapters.title(@adapter)}</:crumb>
       <:crumb patch={@paths.keys}>{gettext("Access key")}</:crumb>
       <:crumb>{gettext("Command")}</:crumb>
 
@@ -436,7 +436,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
         <:subtitle>
           {gettext(
             "The command connects %{name} by itself: it makes the adapter's key on its machine and sends Qory Apiary only the public half. The secret never leaves the machine.",
-            name: @adapter.name
+            name: Adapters.title(@adapter)
           )}
         </:subtitle>
 
@@ -454,7 +454,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
               <% :connected -> %>
                 <div id="code-issued-connected">
                   <.notice kind={:success}>
-                    <strong>{gettext("%{name} is connected.", name: @adapter.name)}</strong>
+                    <strong>{gettext("%{name} is connected.", name: Adapters.title(@adapter))}</strong>
                     {gettext("Its key arrived at %{time} and is active.",
                       time: Format.time(@issued.arrived.received_at)
                     )}
@@ -518,9 +518,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
       place={:instance}
       section={:adapters}
     >
-      <:crumb navigate={@paths.overview}>{@adapter.name}</:crumb>
+      <:crumb navigate={@paths.overview}>{Adapters.title(@adapter)}</:crumb>
 
-      <.settings_page section={:adapters} title={@adapter.name}>
+      <.settings_page section={:adapters} title={Adapters.title(@adapter)}>
         <:subtitle>
           <AdapterComponents.adapter_meta
             adapter={@adapter}
@@ -535,7 +535,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
           <SettingsComponents.part
             :if={@active == 0}
             id="adapter-connect"
-            title={gettext("Connect %{name}", name: @adapter.name)}
+            title={gettext("Connect %{name}", name: Adapters.title(@adapter))}
           >
             <p :if={@listed} id="adapter-connect-intro" class="text-[13px]/5 text-muted">
               {gettext(

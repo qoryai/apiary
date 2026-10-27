@@ -26,7 +26,11 @@ defmodule Apiary.Harnesses.RunHarness do
   #   * `failure`, once failed: the code (`Apiary.Harnesses.Walk.failures/0`), with
   #     `failed_source`, the source as shown, nil for none or for a hidden harness;
   #     `failure_rule`, `%{"message", "values"}`, the format rule an `invalid` source
-  #     breaks; and `failure_adapter`, the adapter's name, for `adapter_unavailable`.
+  #     breaks; and, for `adapter_unavailable` and `adapter_failed`, `failure_adapter`,
+  #     the adapter's name then, and `failure_adapter_id`, the adapter (`failed_adapter`),
+  #     nil for a walk that failed before walks kept it and once the adapter's row is
+  #     gone; a page shows the adapter's title (`Apiary.Adapters.title/1`), else that
+  #     name.
   #   * `attempts`: the job's attempts so far.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -55,6 +59,7 @@ defmodule Apiary.Harnesses.RunHarness do
     field :attempts, :integer, default: 0
 
     belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
+    belongs_to :failed_adapter, Apiary.Nodes.Node, foreign_key: :failure_adapter_id
     belongs_to :stack, Apiary.Stacks.Stack
     belongs_to :owner_organisation, Apiary.Organisations.Organisation
 

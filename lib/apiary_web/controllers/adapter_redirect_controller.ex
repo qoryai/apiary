@@ -65,7 +65,7 @@ defmodule ApiaryWeb.AdapterRedirectController do
 
         conn
         |> ConnectSession.drop(connection.public_id)
-        |> told(outcome, connection.adapter.name)
+        |> told(outcome, Apiary.Adapters.title(connection.adapter))
         |> redirect(to: to)
 
       {:error, :wrong_person} ->

@@ -67,6 +67,9 @@ defmodule Apiary.Nodes.Node do
   # (`Apiary.Contract.GatewayUrl`).
   @max_gateway_url GatewayUrl.max_length()
   @max_adapter_name 64
+  # An adapter's title, in code points: short enough that a flash naming it fits the
+  # session cookie (4096 bytes) with the rest of the session.
+  @max_adapter_title 100
   # An adapter's intervals, in seconds: a minute to a day (`nodes_sync_check`).
   @min_interval 60
   @max_interval 86_400
@@ -134,6 +137,11 @@ defmodule Apiary.Nodes.Node do
     # (`domains_changeset/2`) and never cast. A person picks among the adapters that serve
     # a workspace's domain (`Apiary.Lingo.Domain.serves?/2`).
     field :domains, {:array, :string}
+    # An adapter's alone (`nodes_title_check`): its latest start's description's `title`,
+    # its human name, which a page shows in place of `name` (`Apiary.Adapters.title/1`);
+    # nil before its first start and where the title fails `title_changeset/2`'s check.
+    # Set at each start and never cast.
+    field :title, :string
     # An adapter's alone (`nodes_installed_as_check`): the name an adapter installed with
     # Qory Apiary is listed as (`Apiary.Adapters.Installed`), unique among the adapters in
     # use (`nodes_installed_as_index`); nil for one an instance admin added. Written once,
@@ -469,6 +477,43 @@ defmodule Apiary.Nodes.Node do
     |> change(domains: domains)
     |> check_constraint(:domains, name: :nodes_domains_check)
   end
+
+  @doc false
+  # The changeset of the title an adapter's description gives
+  # (`Apiary.Integrations.Description`, `title`), its human name for a page. The title is
+  # the adapter's text, so it is kept only when it is 1 to `max_title/0` code points, not
+  # blank, and holds none of the characters an adapter's name refuses
+  # (`Apiary.Names.validate_characters/3`); any other title is kept as nil, and a page
+  # shows the adapter's name instead. `Apiary.Adapters.declare/2` calls it at each start,
+  # on the changeset of the declaration, so the latest start's title replaces what an
+  # earlier one gave. The database holds it to adapters and to the same length
+  # (`nodes_title_check`).
+  @spec title_changeset(Ecto.Changeset.t(), Description.t()) :: Ecto.Changeset.t()
+  def title_changeset(
+        %Ecto.Changeset{data: %__MODULE__{kind: :adapter}} = changeset,
+        %Description{title: title}
+      ) do
+    changeset
+    |> change(title: if(shown_title?(title), do: title))
+    |> check_constraint(:title, name: :nodes_title_check)
+  end
+
+  @doc false
+  # max_title/0 is the most code points an adapter's title may have (`title_changeset/2`).
+  @spec max_title() :: pos_integer
+  def max_title, do: @max_adapter_title
+
+  defp shown_title?(title) when is_binary(title) do
+    checked =
+      {%{}, %{title: :string}}
+      |> change(title: title)
+      |> validate_length(:title, min: 1, max: @max_adapter_title, count: :codepoints)
+      |> Apiary.Names.validate_characters(:title)
+
+    checked.valid? and String.trim(title) != ""
+  end
+
+  defp shown_title?(_title), do: false
 
   @doc false
   # The changeset of the interval an instance admin sets for an adapter's pull,

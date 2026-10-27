@@ -77,6 +77,26 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
     refute has_element?(lv, "#integrations-who")
   end
 
+  test "names an adapter by the title its description gives, else by its name",
+       %{conn: conn, scope: scope} do
+    %{adapter: titled} =
+      connectable_adapter_fixture(%{name: unique_adapter_name("acme-tracker")})
+
+    untitled = adapter_fixture(%{name: unique_adapter_name("shop-tracker")})
+    titled = describe_title(titled, "Acme Tracker")
+    connection_fixture(scope, titled, :connected)
+
+    {:ok, lv, _html} = live(conn, list_path(scope))
+
+    id = "#integration-#{titled.public_id}"
+    assert words(lv, "#{id}-name") == "Acme Tracker"
+    assert has_element?(lv, ~s{a#{id}-open[aria-label="Open Acme Tracker"]})
+    assert words(lv, "#integration-#{untitled.public_id}-name") == untitled.name
+
+    {:ok, show, _html} = live(conn, "#{list_path(scope)}/#{titled.public_id}")
+    assert page_title(show) =~ ~r{\AAcme Tracker ·}
+  end
+
   test "an installed one leads to its page, by its name and its chevron; a pending one is not installed",
        %{conn: conn, scope: scope} do
     %{adapter: installed} =

@@ -1035,6 +1035,81 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
+  describe "its title, at each start" do
+    setup %{admin: admin} do
+      adapter = adapter_fixture(%{name: "tracker-#{System.unique_integer([:positive])}"})
+      %{key: key} = keyed(admin, adapter)
+      %{adapter: adapter, key: key}
+    end
+
+    defp titled(title),
+      do: Map.put(Apiary.DescriptionFixtures.contract_description(), "title", title)
+
+    test "is the description's, replaced at the next start; the name stands in before the first",
+         %{adapter: adapter, key: key} do
+      assert adapter.title == nil
+      assert Adapters.title(adapter) == adapter.name
+
+      assert {:ok, _declared} = declare_with(key, titled("Acme Tracker"))
+      assert %Node{title: "Acme Tracker"} = started = reload(adapter)
+      assert Adapters.title(started) == "Acme Tracker"
+
+      assert {:ok, _declared} = declare_with(key, titled("Acme Issues"))
+      assert Adapters.title(reload(adapter)) == "Acme Issues"
+
+      assert {:ok, _declared} = declare_with(key, titled(String.duplicate("é", 100)))
+      assert Adapters.title(reload(adapter)) == String.duplicate("é", 100)
+    end
+
+    test "a title of 101 characters is kept as nil, and the name stands in",
+         %{adapter: adapter, key: key} do
+      assert {:ok, _declared} = declare_with(key, titled(String.duplicate("é", 101)))
+      assert %Node{title: nil} = started = reload(adapter)
+      assert Adapters.title(started) == adapter.name
+    end
+
+    test "a title that fails the check is kept as nil, and the name stands in",
+         %{adapter: adapter, key: key} do
+      for title <- [
+            "   ",
+            "Acme\u0007Tracker",
+            "Acme\nTracker",
+            "Acme\u202ETracker",
+            "Acme\u200BTracker",
+            "Acme\u2028Tracker",
+            String.duplicate("a", 101)
+          ] do
+        assert {:ok, _declared} = declare_with(key, titled("Acme Tracker"))
+        assert reload(adapter).title == "Acme Tracker"
+
+        assert {:ok, _declared} = declare_with(key, titled(title))
+        assert %Node{title: nil} = started = reload(adapter)
+        assert Adapters.title(started) == adapter.name, inspect(title)
+      end
+    end
+
+    test "the database keeps one only on an adapter, 1 to 100 characters",
+         %{adapter: adapter, scope: scope} do
+      node = node_fixture(scope)
+
+      for {id, title} <- [
+            {node.id, "Acme Tracker"},
+            {adapter.id, ""},
+            {adapter.id, String.duplicate("a", 101)}
+          ] do
+        assert refused(fn ->
+                 Repo.update_all(from(n in Node, where: n.id == ^id), set: [title: title])
+               end) == "nodes_title_check",
+               inspect(title)
+      end
+
+      assert {1, _rows} =
+               Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+                 set: [title: String.duplicate("a", 100)]
+               )
+    end
+  end
+
   describe "the schema" do
     test "a node has no organisation only when it is an adapter, or the instance's pool or gateway, which have no workspace either",
          %{scope: scope} do

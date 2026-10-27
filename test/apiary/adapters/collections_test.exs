@@ -429,6 +429,27 @@ defmodule Apiary.Adapters.CollectionsTest do
       assert unlinked_entries(ctx.adapter) == [%{"collection_ref" => "TRK", "status" => "linked"}]
     end
 
+    test "a move's entry names the adapter by its title then, else by its name", ctx do
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, :accepted} = Collections.post_listing(ctx.key_scope, part(theirs, ["DOC", "TRK"]))
+
+      # Without a title, the name; with one, the title as it was at the move.
+      assert post(ctx, ["DOC"], id: "first") == {:ok, :accepted}
+      Apiary.NodesFixtures.describe_title(ctx.adapter, "Acme Tracker")
+      assert post(ctx, ["DOC", "TRK"], id: "second") == {:ok, :accepted}
+
+      moves =
+        Repo.all(
+          from e in Apiary.Audit.Entry,
+            where: e.action == "collection.move",
+            order_by: e.inserted_at,
+            select: e.details["integration"]
+        )
+
+      assert moves == [ctx.adapter.name, "Acme Tracker"]
+    end
+
     test "a ref live under another connection that a newer listing named stays with it",
          ctx do
       %{scope: other} = sign_up_fixture()

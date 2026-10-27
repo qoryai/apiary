@@ -115,7 +115,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
     {:ok,
      socket
      |> assign(
-       page_title: IntegrationComponents.page_title(scope, [adapter.name]),
+       page_title: IntegrationComponents.page_title(scope, [Adapters.title(adapter)]),
        sections: SettingsComponents.sections(scope, :organisation),
        paths: IntegrationComponents.paths(scope, adapter),
        adapter: adapter,
@@ -538,11 +538,11 @@ defmodule ApiaryWeb.AdapterLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb title={@adapter.name}>{@adapter.name}</:crumb>
+      <:crumb title={Adapters.title(@adapter)}>{Adapters.title(@adapter)}</:crumb>
 
       <.settings_page
         section={:integrations}
-        title={@adapter.name}
+        title={Adapters.title(@adapter)}
         measure={if @state in [:waiting, :listed], do: "list", else: "read"}
       >
         <:title_block>
@@ -550,7 +550,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             <span aria-hidden="true" class="flex flex-none">
               <IntegrationComponents.mark class="size-[18px]" />
             </span>
-            <span class="min-w-0">{@adapter.name}</span>
+            <span class="min-w-0">{Adapters.title(@adapter)}</span>
           </span>
         </:title_block>
         <:subtitle>
@@ -596,7 +596,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             <span class="q-sdot q-sdot-running">
               <i aria-hidden="true"></i><span>{gettext(
                 "Waiting for %{integration} to send its %{collections}…",
-                integration: @adapter.name,
+                integration: Adapters.title(@adapter),
                 collections: collection_word(@adapter, :other)
               )}</span>
             </span>
@@ -626,7 +626,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             <span class="q-sdot q-sdot-running">
               <i aria-hidden="true"></i><span>{gettext(
                 "%{integration} is still sending its %{collections}…",
-                integration: @adapter.name,
+                integration: Adapters.title(@adapter),
                 collections: collection_word(@adapter, :other)
               )}</span>
             </span>
@@ -868,7 +868,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
                 number: Format.number(@counts.ended),
                 collection: collection_word(@adapter, 1),
                 collections: collection_word(@adapter, :other),
-                integration: @adapter.name
+                integration: Adapters.title(@adapter)
               )}
             </p>
             <p :if={@targets} id="collections-targets" class="q-foot-note">
@@ -929,7 +929,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       "Not installed. %{person} started an install today at %{time} that isn't finished: finish it on %{integration}, or press Install to start again.",
       person: letter(assigns),
       time: Format.time(assigns.connection.updated_at),
-      integration: assigns.adapter.name
+      integration: Adapters.title(assigns.adapter)
     )
   end
 
@@ -946,7 +946,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       gettext(
         "Not installed. The installation ended on %{date}, when %{integration} reported it gone.",
         date: Format.day(ended.ended_at),
-        integration: adapter.name
+        integration: Adapters.title(adapter)
       )
 
     if ended.listed_at && Adapters.items?(adapter) do
@@ -955,7 +955,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         gettext(
           "The %{items} %{integration} brought in left every backlog; work items already taken in stay.",
           items: SourceComponents.items(Adapters.item_noun(adapter)),
-          integration: adapter.name
+          integration: Adapters.title(adapter)
         )
     else
       gone
@@ -1081,7 +1081,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp refused(%{adapter: adapter}, :ended),
     do:
       gettext("Nothing was assigned: the installation of %{integration} ended.",
-        integration: adapter.name
+        integration: Adapters.title(adapter)
       )
 
   # The menu lists only the workspaces the adapter serves, so `:other_domain` comes from
