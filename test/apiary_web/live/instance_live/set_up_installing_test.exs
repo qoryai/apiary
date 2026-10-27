@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.InstanceLive.SetUpInstallingTest do
   # The step of an adapter `QORY_INSTALLED_ADAPTERS` lists before the installer makes it,
-  # on a fast set-up: a step from the first page, current there, that says Qory Apiary is
+  # on a fast set-up: a step from the first page, current there, that shows Qory Apiary is
   # adding it; the adapter's step once the installer makes it, while the page is open; to
   # come, not skipped, on the workspace set-up; skipped once the person passed it. Not
   # async: the names are the whole node's.
@@ -58,7 +58,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpInstallingTest do
     refute has_element?(lv, "#set-up-continue")
     refute has_element?(lv, "#set-up-what")
 
-    # The installer's pass makes it, and the page is told once it commits.
+    # The installer's pass makes it, and the page gets a message once it commits.
     assert {:ok, adapter} = Adapters.install(instance_scope(), name)
 
     assert_patch(lv, ~p"/instance/set-up?step=#{adapter.public_id}")

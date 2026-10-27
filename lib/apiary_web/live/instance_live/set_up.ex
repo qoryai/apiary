@@ -14,9 +14,10 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # is not done, else mail. The context column says why the step exists.
   #
   # An adapter listed that the installer has not made yet is a step by its name,
-  # `?step=<name>`, which says Qory Apiary is adding it, with Back and Skip. The page
-  # listens for the adapters the installer makes (`Apiary.Adapters.subscribe_installs/1`),
-  # and the step turns into the adapter's step, `?step=<public id>`, without a reload.
+  # `?step=<name>`, which shows that Qory Apiary is adding it, with Back and Skip. The
+  # page listens for the adapters the installer makes
+  # (`Apiary.Adapters.subscribe_installs/1`), and the step turns into the adapter's step,
+  # `?step=<public id>`, without a reload.
   #
   # Where an adapter's guide gives steps for setting it up (`Apiary.Adapters.guide/2`), an
   # adapter's step shows them in the context column, under "In the new tab", while Set up
@@ -64,12 +65,13 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     scope = socket.assigns.current_scope
     unless Access.instance_admin?(scope), do: raise(ApiaryWeb.NotFound)
 
+    # Subscribed before the adapters are read, so a row the installer commits in between
+    # still reaches the page.
+    if connected?(socket), do: Adapters.subscribe_installs(scope)
     adapters = adapters(scope)
 
-    if connected?(socket) do
-      Adapters.subscribe_installs(scope)
-      for %{adapter: %{} = adapter} <- adapters, do: Adapters.subscribe_keys(scope, adapter)
-    end
+    if connected?(socket),
+      do: for(%{adapter: %{} = adapter} <- adapters, do: Adapters.subscribe_keys(scope, adapter))
 
     {:ok,
      assign(socket,

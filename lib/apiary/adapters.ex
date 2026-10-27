@@ -588,7 +588,7 @@ defmodule Apiary.Adapters do
   # one found leaves none. Made beside another pass, or beside a person who takes the same
   # name, the insert finds the conflict, reads again, and takes the adapter made or the
   # next name. Once a new one commits, the pages subscribed to the adapters installed
-  # (`subscribe_installs/1`) are told: `{:adapter_installed, %{node_id: id}}`.
+  # (`subscribe_installs/1`) receive `{:adapter_installed, %{node_id: id}}`.
   # `{:ok, adapter}`; `{:error, :invalid}` for a name `Apiary.Adapters.Installed.valid_name?/1`
   # refuses; `{:error, changeset}`; `{:error, :forbidden}`; `{:error, :not_found}` where the
   # feature is off.

@@ -74,13 +74,17 @@ defmodule Apiary.Edition do
   A step of the set-up, as its progress indicator lists it
   (`ApiaryWeb.SetUpComponents.steps/1`):
 
-  - `id`, the step's key: `:invitation`, `:account`, `{:adapter, public_id}`, `:mail`,
-    `:workspace` or `:source` in the core, or a term of the edition's;
+  - `id`, the step's key: `:invitation`, `:account`, `{:adapter, public_id}`,
+    `{:installing, name}`, `:mail`, `:workspace` or `:source` in the core, or a term of
+    the edition's. `{:installing, name}` is an adapter `QORY_INSTALLED_ADAPTERS` lists
+    before the installer makes its row; it becomes `{:adapter, public_id}` once the row
+    exists;
   - `label`, its name in the list, translated;
   - `group`, the heading it is listed under: nil for none, `:connect` for
     "Connect Qory Apiary", `:workspace` for "Set up your workspace";
-  - `state`: `:done`, `:skipped` (before the current step and not done), `:current` or
-    `:to_come`;
+  - `state`: `:done`, `:skipped` (before the current step and not done; an
+    `{:installing, name}` step only where the current step is in `:connect`), `:current`
+    or `:to_come`;
   - `path`, the page that shows the step, or nil where none does; a step that is done or
     skipped and has a path is a link;
   - `note`, a line under its name, or nil;
