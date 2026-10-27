@@ -385,6 +385,26 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
 
   defp total(step), do: step |> String.split() |> List.last()
 
+  # The path of the mail step: the first step without adapters, else the last.
+  defp mail_step_path(conn) do
+    {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
+
+    if has_element?(lv, "#set-up-mail"),
+      do: ~p"/instance/set-up",
+      else: "/instance/set-up?step=#{words(lv, "#set-up-step") |> total()}"
+  end
+
+  # The mail form in `html` is sent with POST, and its password's field has no value.
+  defp assert_posts_without_password(html) do
+    form = LazyHTML.query(html, "#mail_form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+    assert LazyHTML.attribute(form, "action") == []
+
+    password = LazyHTML.query(form, ~s{input[type="password"]})
+    assert LazyHTML.attribute(password, "name") == ["mail[smtp_password]"]
+    assert LazyHTML.attribute(password, "value") == []
+  end
+
   test "asks for a recent sign-in, as Instance settings › Mail does", %{user: user} do
     eleven_minutes_ago = DateTime.add(DateTime.utc_now(:second), -11, :minute)
     conn = log_in_user(build_conn(), user, token_authenticated_at: eleven_minutes_ago)
@@ -441,6 +461,34 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
              "Mail turns on when you follow the link we sent to #{user.email}, signed in as you."
 
     assert Setup.connections_reviewed?()
+  end
+
+  test "posts its form, and the password's field has no value", %{conn: conn} do
+    path = mail_step_path(conn)
+
+    # The step before it connects: a submit there is the browser's, with the form's method.
+    html = conn |> get(path) |> html_response(200)
+    assert_posts_without_password(LazyHTML.from_document(html))
+
+    {:ok, lv, _html} = live(conn, path)
+
+    html =
+      lv
+      |> form("#mail_form",
+        mail: %{
+          "smtp_relay" => "smtp example com",
+          "smtp_port" => "587",
+          "smtp_tls" => "always",
+          "smtp_username" => "qory",
+          "smtp_password" => "s3cret-example",
+          "mail_from" => "qory@example.com"
+        }
+      )
+      |> render_submit()
+
+    assert html =~ "must be a host name, such as smtp.example.com"
+    refute html =~ "s3cret-example"
+    assert_posts_without_password(LazyHTML.from_fragment(html))
   end
 
   test "a save the form refuses stays on the step", %{conn: conn} do

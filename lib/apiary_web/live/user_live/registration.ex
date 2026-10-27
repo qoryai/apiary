@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.UserLive.Registration do
   @moduledoc """
   The sign-up page, `/users/register`. With an invitation's token it creates the account
-  that joins the invitation's workspace, and asks for the address alone. Without one it
-  offers what `Apiary.Organisations.sign_up_offer/1` answers on mount: before the
-  instance is set up, nothing, and the page says to use its set-up link
+  that joins the invitation's workspace, or its organisation for an invitation without a
+  workspace, and asks for the address alone. Without one it offers what
+  `Apiary.Organisations.sign_up_offer/1` answers on mount: before the instance is set
+  up, nothing, and the page says to use its set-up link
   (`Apiary.Setup`); a sign-up, where the edition opens one, of an organisation; and
   nothing where none is open, where the page says sign-up is by invitation.
   `Apiary.Organisations.sign_up_user/3` asks again when the form is sent.
@@ -74,29 +75,15 @@ defmodule ApiaryWeb.UserLive.Registration do
           <:subtitle>{subtitle(assigns)}</:subtitle>
         </Layouts.auth_heading>
 
-        <.notice :if={@invitation && @mail?} kind={:info}>
-          <.rich text={
-            rich_gettext(
-              "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you confirm.",
-              workspace: {:b, @invitation.workspace.name},
-              organisation: {:b, @invitation.organisation.name}
-            )
-          } />
-        </.notice>
-        <.notice :if={@invitation && !@mail?} kind={:info}>
-          <.rich text={
-            rich_gettext(
-              "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you create it.",
-              workspace: {:b, @invitation.workspace.name},
-              organisation: {:b, @invitation.organisation.name}
-            )
-          } />
+        <.notice :if={@invitation} kind={:info}>
+          <.rich text={invited_line(@invitation, @mail?)} />
         </.notice>
 
         <.form
           for={@form}
           id="registration_form"
           action={!@mail? && ~p"/users/log-in"}
+          method="post"
           phx-submit="save"
           phx-change="validate"
           phx-trigger-action={@trigger_submit}
@@ -149,6 +136,40 @@ defmodule ApiaryWeb.UserLive.Registration do
     </Layouts.auth>
     """
   end
+
+  # What the invitation is to, and when the person can open it. With mail the account has
+  # no password, and the emailed link that signs it in first confirms its address; without
+  # mail the form signs it in once it is made. An invitation without a workspace is to the
+  # organisation.
+  defp invited_line(%{workspace: nil, organisation: organisation}, true = _mail?),
+    do:
+      rich_gettext(
+        "You are invited to %{organisation}. You can open it as soon as you confirm your email address.",
+        organisation: {:b, organisation.name}
+      )
+
+  defp invited_line(%{workspace: nil, organisation: organisation}, false = _mail?),
+    do:
+      rich_gettext(
+        "You are invited to %{organisation}. You can open it as soon as you create your account.",
+        organisation: {:b, organisation.name}
+      )
+
+  defp invited_line(%{workspace: workspace, organisation: organisation}, true = _mail?),
+    do:
+      rich_gettext(
+        "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you confirm.",
+        workspace: {:b, workspace.name},
+        organisation: {:b, organisation.name}
+      )
+
+  defp invited_line(%{workspace: workspace, organisation: organisation}, false = _mail?),
+    do:
+      rich_gettext(
+        "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you create it.",
+        workspace: {:b, workspace.name},
+        organisation: {:b, organisation.name}
+      )
 
   # What the page says it creates: an organisation. The first sign-up of an instance
   # creates an organisation like any other, to the person who makes it.

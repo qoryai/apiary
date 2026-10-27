@@ -220,6 +220,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       duration: nil,
       outcome: nil,
       end_cause: nil,
+      end_detail: nil,
       proposal: nil,
       understanding: nil,
       questions: [],
@@ -307,7 +308,12 @@ defmodule ApiaryWeb.WorkItemLive.View do
     }
 
   defp event_fields(%{kind: :no_result} = entry, _row, _names, ctx),
-    do: %{run: run_ref(entry.run, ctx), outcome: entry.outcome}
+    do: %{
+      run: run_ref(entry.run, ctx),
+      outcome: entry.outcome,
+      end_cause: entry.end_cause,
+      end_detail: entry.end_detail
+    }
 
   defp event_fields(%{kind: kind} = entry, _row, _names, ctx)
        when kind in [:lost, :cancelled, :explore_again],

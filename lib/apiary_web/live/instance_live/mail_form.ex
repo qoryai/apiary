@@ -73,6 +73,7 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
         <.form
           for={@form}
           id="mail_form"
+          method="post"
           phx-submit="save"
           phx-target={@myself}
           class="q-form"
@@ -118,7 +119,7 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
             <.input
               field={@form[:smtp_password]}
               type="password"
-              value=""
+              value={nil}
               label={gettext("Password")}
               hint={
                 @password_saved &&
