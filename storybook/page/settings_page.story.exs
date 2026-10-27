@@ -35,7 +35,7 @@ defmodule ApiaryWeb.Storybook.Page.SettingsPage do
       %Variation{
         id: :with_its_context,
         description:
-          "A section whose form needs context: About this page beside the form, " <>
+          "A section whose form needs context: About this step beside the form, " <>
             "or under it where the section has less than 840 px.",
         attributes: %{section: :model, title: "Model"},
         slots: [
