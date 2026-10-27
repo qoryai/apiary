@@ -135,9 +135,8 @@ defmodule ApiaryWeb.Edition do
 
   @doc """
   The heading the organisation menu lists a place under (`c:Apiary.Edition.places/1`),
-  translated, such as one for the organisations a person reaches through the edition
-  without a membership in them; nil for the organisations the person is a member of,
-  which the menu lists first.
+  translated, such as the clients a person reaches through their operator; nil for the
+  organisations the person is a member of, which the menu lists first.
   """
   @callback place_group(place :: term) :: String.t() | nil
 
