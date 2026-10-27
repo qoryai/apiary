@@ -780,12 +780,24 @@ defmodule Apiary.Sources.WireTest do
   end
 
   describe "bounded first" do
-    # Generous for a shared machine: a refused body takes well under a second here.
-    @quick_ms 1000
+    # A refused body takes at most @times the time to decode and refuse a flat body of
+    # 1 MiB, measured just before, plus @floor_ms. A busy machine slows both reads alike.
+    # A decoder whose cost grows with the square of the members takes hundreds of times
+    # the flat body's time.
+    @times 10
+    @floor_ms 200
 
     defp quick(fun) do
+      flat = ~s({"a":[) <> String.duplicate("1,", div(Wire.max_bytes() - 9, 2)) <> "1]}"
+      {flat_microseconds, :error} = :timer.tc(fn -> Wire.items(flat) end)
       {microseconds, result} = :timer.tc(fun)
-      assert div(microseconds, 1000) < @quick_ms, "took #{div(microseconds, 1000)} ms"
+      flat_ms = div(flat_microseconds, 1000)
+      bound_ms = @times * flat_ms + @floor_ms
+
+      assert div(microseconds, 1000) <= bound_ms,
+             "took #{div(microseconds, 1000)} ms, over #{bound_ms} ms " <>
+               "(#{@times} × #{flat_ms} ms for a flat body + #{@floor_ms} ms)"
+
       result
     end
 
