@@ -105,6 +105,7 @@ defmodule ApiaryWeb.LayoutsTest do
       refute has_element?(view, "#theme-menu-button")
     end
 
+    @tag :feature_sets
     test "New offers what the reader may start here", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
@@ -236,6 +237,7 @@ defmodule ApiaryWeb.LayoutsTest do
       refute render(view) =~ "Member of #{scope.organisation.name}"
     end
 
+    @tag :feature_sets
     test "a workspace's sidebar: its pages in groups, Settings at the foot, Qory Apiary, the fold",
          %{conn: conn, scope: scope} do
       {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
@@ -1262,6 +1264,7 @@ defmodule ApiaryWeb.LayoutsTest do
       %{scope: sign_up_fixture().scope}
     end
 
+    @tag :feature_sets
     test "on Runs narrowed to a target, Runs and Network access carry it; every other entry links plainly",
          %{scope: scope} do
       narrowed = %{target: [@tg_a], system: nil, path: "acme/shop"}
@@ -1855,6 +1858,7 @@ defmodule ApiaryWeb.LayoutsTest do
   end
 
   describe "the auth panel" do
+    @tag :feature_sets
     test "the slogan is one sentence with its accented words", %{conn: conn} do
       response = conn |> get(~p"/") |> html_response(200)
 

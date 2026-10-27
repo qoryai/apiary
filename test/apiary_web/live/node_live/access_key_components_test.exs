@@ -89,6 +89,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
   defp has?(doc, selector), do: LazyHTML.query(doc, selector) |> Enum.count() > 0
 
   describe "key_card/1" do
+    @tag :feature_sets
     test "a node's key card has its Secret, Last used with Forager's version, and the Forager file" do
       doc = card(key(), false)
 

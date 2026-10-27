@@ -91,6 +91,7 @@ defmodule ApiaryWeb.SetupLiveTest do
       refute render(lv) =~ code
     end
 
+    @tag :feature_sets
     test "where the server's environment sets mail, lists no mail step",
          %{conn: conn, code: code} do
       Apiary.Mail.put_test_source(:env)

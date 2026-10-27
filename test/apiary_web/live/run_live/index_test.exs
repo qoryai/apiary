@@ -1433,6 +1433,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#runs-narrowed-policy")
     end
 
+    @tag :feature_sets
     test "the line says so, leads to the target, its Network access and its policy, and back to every run",
          %{conn: conn, scope: scope} do
       shop_run = started_run(scope, shop())
@@ -1493,6 +1494,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-rail-all") =~ "All repositories"
     end
 
+    @tag :feature_sets
     test "a list not narrowed has no line, and its sidebar leads plainly", %{
       conn: conn,
       scope: scope
@@ -1525,6 +1527,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert href(view, "#runs-narrowed-all", runs(scope, "?state=failed"))
     end
 
+    @tag :feature_sets
     test "the system is carried only where two systems share the path", %{
       conn: conn,
       scope: scope
@@ -1638,6 +1641,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "Showing the runs of gitlab.example/acme/shop only."
     end
 
+    @tag :feature_sets
     test "targets on different paths, named together, have no line: the token names them", %{
       conn: conn,
       scope: scope
@@ -1656,6 +1660,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert plain_sidebar?(view, scope)
     end
 
+    @tag :feature_sets
     test "the line is whole from the first render, before the list lands", %{
       conn: conn,
       scope: scope
@@ -1685,6 +1690,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
           )
     end
 
+    @tag :feature_sets
     test "a patch to another target names it at once, and an unknown id is dropped and said", %{
       conn: conn,
       scope: scope
@@ -1877,6 +1883,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-rail-more") == "1 more"
     end
 
+    @tag :feature_sets
     test "Show all runs, the token's ×, the rail's All targets and Clear each drop the target, in a new history entry",
          %{conn: conn, scope: scope} do
       started_run(scope, shop())

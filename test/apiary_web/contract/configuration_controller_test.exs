@@ -35,6 +35,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
   defp key!(key), do: Repo.get!(AccessKey, key.id)
 
+  @tag :feature_sets
   test "a valid request gets the version 1 document, signed, with its node, its workspace, the run endpoint and the digest",
        %{conn: conn, key: key, secret: secret} do
     conn = signed_get(conn, key.key_id, secret, contract_version: 1)
@@ -124,6 +125,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert Configuration.digest(key) != Configuration.digest(other_key)
   end
 
+  @tag :feature_sets
   test "a gateway's key is given a document without workspaces",
        %{scope: scope, key: key} do
     gateway = gateway_fixture(scope)

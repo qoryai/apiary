@@ -79,6 +79,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     |> Enum.join(" ")
   end
 
+  @tag :feature_sets
   test "shows the owner the Type field and Create workspace, with no sidebar", %{conn: conn} do
     %{user: user, organisation: organisation} = sign_up_without_workspace()
 
@@ -158,6 +159,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     refute has_element?(lv, "#set-up-sources")
   end
 
+  @tag :feature_sets
   test "Create workspace makes Main of the type chosen", %{conn: conn} do
     %{user: user, organisation: organisation} = sign_up_without_workspace()
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
@@ -204,6 +206,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     assert has_element?(lv, "button#workspace_domain.is-prompt", "Choose a type")
   end
 
+  @tag :feature_sets
   test "Workspace, once the workspace exists, shows what was made, read only", %{conn: conn} do
     %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
 

@@ -74,6 +74,7 @@ defmodule Apiary.ReleaseDemoTest do
 
   defp count(query), do: Repo.aggregate(query, :count)
 
+  @tag :feature_sets
   test "fills Acme set up by its operator: Main's runs, Dana an owner, the fill finished" do
     %{organisation: acme, workspace: main} = set_up_acme()
 

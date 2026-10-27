@@ -443,6 +443,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       Ingest.ingest(gateway_key, batch, %{contract_version: 1, instance_id: instance_id()})
     end
 
+    @tag :feature_sets
     test "its key verifies and carries a run of a workspace it serves, end to end",
          %{other: other, gateway: gateway, gateway_key: gateway_key, key: key} do
       out_of_use(other)

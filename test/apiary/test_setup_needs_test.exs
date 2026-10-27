@@ -36,6 +36,13 @@ defmodule Apiary.TestSetupNeedsTest.Cases do
   @tag needs: []
   test "empty list", do: :ok
 
+  @tag :feature_sets
+  @tag needs: :security
+  test "feature_sets and a feature", do: :ok
+
+  @tag feature_sets: true, needs: [:security, :factory]
+  test "feature_sets and a list", do: :ok
+
   describe "a described group" do
     @describetag needs: [:secrets, :path_rules]
 
@@ -47,6 +54,30 @@ defmodule Apiary.TestSetupNeedsTest.Cases do
     @tag refusal: row, needs: row.needs
     test "row #{n}", do: :ok
   end
+end
+
+defmodule Apiary.TestSetupNeedsTest.FeatureSets do
+  @moduledoc false
+  # A module tagged `:feature_sets`, its tests each with one more tag the suite may leave
+  # out.
+  use ExUnit.Case, register: false
+
+  @before_compile Apiary.TestSetup
+  @moduletag :feature_sets
+
+  test "of no other tag", do: :ok
+
+  @tag needs: :security
+  test "of a feature", do: :ok
+
+  @tag with_features: [:observability]
+  test "of with_features", do: :ok
+
+  @tag :load
+  test "of load", do: :ok
+
+  @tag :database_tls
+  test "of database_tls", do: :ok
 end
 
 defmodule Apiary.TestSetupNeedsTest.ModuleList do
@@ -79,7 +110,7 @@ defmodule Apiary.TestSetupNeedsTest do
   # when the runner asks them for their tests.
   use Apiary.DataCase, async: false
 
-  alias Apiary.TestSetupNeedsTest.{Cases, ModuleList, NoHook}
+  alias Apiary.TestSetupNeedsTest.{Cases, FeatureSets, ModuleList, NoHook}
 
   # Without the hook of `Apiary.DataCase`, `unhooked/0` lists this module in a run with
   # every feature on.
@@ -88,17 +119,18 @@ defmodule Apiary.TestSetupNeedsTest do
     assert Enum.all?([:security, :factory], &Apiary.Features.on?/1)
   end
 
-  # What the runner does with a module's tests: the filter for each feature that is off
-  # (`Apiary.TestSetup.start!/1` builds the same), applied to each test's tags. A map of
-  # the tests' names to `:run` or `:left_out`.
-  defp outcomes(module, off) do
+  # What the runner does with a module's tests: the filter `Apiary.TestSetup.start!/1`
+  # builds for the features that are off, applied to each test's tags. A map of
+  # the tests' names to `:run` or `:left_out`. With `include`, as `mix test --only`
+  # gives it, the runner excludes every other test (`:test`, a tag the runner adds).
+  defp outcomes(module, off, include \\ []) do
     :persistent_term.put({Apiary.TestSetup, :off}, off)
 
-    exclude = for feature <- off, do: {:needs, feature}
+    exclude = if(include == [], do: [], else: [:test]) ++ Apiary.TestSetup.exclude(off)
 
     Map.new(module.__ex_unit__().tests, fn test ->
       outcome =
-        case ExUnit.Filters.eval([], exclude, test.tags, []) do
+        case ExUnit.Filters.eval(include, exclude, Map.put(test.tags, :test, test.name), []) do
           :ok -> :run
           {:excluded, _} -> :left_out
         end
@@ -233,6 +265,43 @@ defmodule Apiary.TestSetupNeedsTest do
     end
   end
 
+  describe "a test tagged :feature_sets, under mix test --only feature_sets," do
+    test "runs when every feature of its needs: is on" do
+      only = [:feature_sets]
+
+      assert outcome(outcomes(Cases, [], only), "feature_sets and a feature") == :run
+      assert outcome(outcomes(Cases, [:factory], only), "feature_sets and a feature") == :run
+      assert outcome(outcomes(Cases, [:secrets], only), "feature_sets and a list") == :run
+    end
+
+    test "is left out when a feature of its needs: is off" do
+      only = [:feature_sets]
+
+      assert outcome(outcomes(Cases, [:security], only), "feature_sets and a feature") ==
+               :left_out
+
+      assert outcome(outcomes(Cases, [:factory], only), "feature_sets and a list") ==
+               :left_out
+    end
+
+    test "is the only kind of test the run takes" do
+      assert outcome(outcomes(Cases, [], [:feature_sets]), "no tag") == :left_out
+    end
+
+    test "of a module is left out where the suite leaves out the test" do
+      every = outcomes(FeatureSets, [], [:feature_sets])
+      record = outcomes(FeatureSets, [:security, :secrets], [:feature_sets])
+
+      assert outcome(every, "of no other tag") == :run
+      assert outcome(record, "of no other tag") == :run
+      assert outcome(every, "of a feature") == :run
+      assert outcome(record, "of a feature") == :left_out
+      assert outcome(record, "of with_features") == :left_out
+      assert outcome(every, "of load") == :left_out
+      assert outcome(every, "of database_tls") == :left_out
+    end
+  end
+
   test "every module of the suite that tags needs: with a list has the hook" do
     assert Enum.reject(Apiary.TestSetup.unhooked(), fn {module, _} -> module == NoHook end) ==
              []
@@ -241,6 +310,7 @@ defmodule Apiary.TestSetupNeedsTest do
              Enum.filter(Apiary.TestSetup.unhooked(), fn {module, _} -> module == NoHook end)
   end
 
+  @tag :feature_sets
   test "off/0 is the features the suite runs without" do
     :persistent_term.erase({Apiary.TestSetup, :off})
 
