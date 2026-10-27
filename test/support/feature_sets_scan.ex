@@ -3,8 +3,8 @@ defmodule Apiary.FeatureSetsScan do
   FeatureSetsScan checks the `:feature_sets` tags of a suite. CI runs every test once,
   with every feature on, and runs again under each other feature set only the tests
   tagged `:feature_sets` (`Apiary.TestSetup`). A test needs the tag when it reads the
-  instance's features while it runs, before it sets them: in its body, a `setup` or a
-  helper. Untagged, it would run with every feature on alone, and a branch of a feature
+  instance's features while it runs, in its body, a `setup` or a helper, and has no
+  `with_features:`. Untagged, it would run with every feature on alone, and a branch of a feature
   that is off would go untested.
 
   These calls are reads (`reads/0`):
@@ -12,23 +12,26 @@ defmodule Apiary.FeatureSetsScan do
   - `Apiary.Features.on?/1`, `enabled/0`, `visible?/2` and `hidden_of/1`, and
     `ApiaryWeb.Features.on?/1`;
   - `Apiary.TestSetup.off/0`;
-  - `Application.get_env(:apiary, :features)` and `:features_setting`.
+  - `Application.get_env(:apiary, :features)`, `fetch_env/2` and `fetch_env!/2` of it,
+    and `:features_setting`.
 
   An edition adds the reads of its modules with `reads:`. The scan matches the code, not
   its comments, strings, `@moduledoc` or `@doc`.
 
-  A test sets its features first with `with_features:` (`Apiary.DataCase.setup_features/1`),
-  `setup {Apiary.DataCase, :without_registry}`, or a `put_env` of `:features` that
-  `on_exit` or an `after` puts back.
+  A test sets its features first with `with_features:` (`Apiary.DataCase.setup_features/1`)
+  alone: it then runs under the features it lists, whatever the set. A `put_env` of
+  `:features` and `setup {Apiary.DataCase, :without_registry}` change the suite's
+  features, which still vary with the set, so a test that reads them after either takes
+  the tag.
 
   `violations/2` scans `<dir>/**/*_test.exs` and `<dir>/support/**/*.ex` of each
   directory it is given, and returns a violation for:
 
-  - `:untagged`: a test that reads the features, sets none first, is not tagged
-    `:feature_sets`, and runs under more than one feature set: its `needs:` has none of
-    the features `once:` lists. A test reads them in its body, in a `setup` of its module
-    or describe, or in a function of its file that either calls; it sets them with its
-    `with_features:`, its describe's or its module's, or in its body or such a `setup`;
+  - `:untagged`: a test that reads the features, is not tagged `:feature_sets`, and runs
+    under more than one feature set: it has no `with_features:` (its own, its describe's
+    or its module's), and its `needs:` has none of the features `once:` lists. A test
+    reads them in its body, in a `setup` of its module or describe, or in a function of
+    its file that either calls;
   - `:reads_nothing`: a test file with a test tagged `:feature_sets`, none of whose tests
     reads the features;
   - `:both_tags`: a test tagged both `with_features:` and `:feature_sets`, which runs
@@ -42,13 +45,12 @@ defmodule Apiary.FeatureSetsScan do
 
   Its limits: it follows the calls within a file, not into another module, so a test that
   reaches a listed helper of `support/` or a module of `lib/` is not checked, nor a
-  `setup {Module, :name}`. Functions of one name in two modules of a file count as one. A test that
-  sets the features after it reads them counts as setting them first. A `setup` that
-  reads counts for every test of its module or describe, though a test may set the
-  features first in its body. A reviewer checks those cases.
+  `setup {Module, :name}`. Functions of one name in two modules of a file count as one. A
+  `setup` that reads counts for every test of its module or describe. A reviewer checks
+  a test that reaches another module.
   """
 
-  @reads ~r/Features\.(on\?|enabled\b|visible\?|hidden_of\b)|TestSetup\.off\b|(get|fetch)_env\(:apiary, :features\b|:features_setting\b/
+  @reads ~r/Features\.(on\?|enabled\b|visible\?|hidden_of\b)|TestSetup\.off\b|(get|fetch)_env!?\(:apiary, :features\b|:features_setting\b/
 
   @type violation ::
           {:reads_nothing | :unknown_helper, Path.t()}
@@ -130,7 +132,6 @@ defmodule Apiary.FeatureSetsScan do
     untagged =
       for test <- tests,
           test.reads?,
-          not test.sets?,
           !test.tags[:feature_sets],
           not once?(test, once),
           do: {:untagged, path, test.name}
@@ -150,15 +151,6 @@ defmodule Apiary.FeatureSetsScan do
   defp once?(test, once) do
     test.tags[:with_features] != nil or
       Enum.any?(List.wrap(test.tags[:needs]), &(&1 in once))
-  end
-
-  # Whether `ast` sets the features and puts them back: `without_registry`, or a `put_env`
-  # of `:features` with an `on_exit` or an `after`.
-  defp sets?(ast) do
-    code = code(ast)
-
-    code =~ ":without_registry" or
-      (code =~ "put_env(:apiary, :features," and code =~ ~r/\bon_exit\(|^\s*after$/m)
   end
 
   defp reads?(ast, reads) do
@@ -237,14 +229,13 @@ defmodule Apiary.FeatureSetsScan do
   # `@describetag`, then `@tag`, a later key replacing an earlier one. A tag's value is
   # kept where it is a literal, and is `:unknown` elsewhere. `reads?` is whether the test,
   # a `setup` of its module or describe, or a function of the file either calls reads the
-  # features; `sets?` is whether the test or such a `setup` sets them.
-  # With them, the count of the file's modules whose tests run.
+  # features. With them, the count of the file's modules whose tests run.
   defp tests(ast, ctx) do
     {_ast, found} =
       Macro.prewalk(ast, {[], 0}, fn
         {:defmodule, _, [_name, [do: body]]}, {tests, registered} = acc ->
           if registered?(body) do
-            scope = scope(body, %{tags: %{}, reads?: false, sets?: false}, ctx)
+            scope = scope(body, %{tags: %{}, reads?: false}, ctx)
             {nil, {tests ++ block(body, scope, %{}, [], ctx), registered + 1}}
           else
             {nil, acc}
@@ -258,8 +249,8 @@ defmodule Apiary.FeatureSetsScan do
   end
 
   # A module or describe's scope: its tags, and whether a statement of it that is no
-  # test, describe or function reads or sets the features, as a `setup` does for each of
-  # its tests.
+  # test, describe or function reads the features, as a `setup` does for each of its
+  # tests.
   defp scope(body, outer, ctx) do
     statements =
       Enum.reject(statements(body), fn
@@ -280,8 +271,7 @@ defmodule Apiary.FeatureSetsScan do
           Enum.any?(statements, fn statement ->
             reads?(statement, ctx.reads) or calls?(statement, ctx.local) or
               names?(statement, ctx.local)
-          end),
-      sets?: outer.sets? or Enum.any?(statements, &sets?/1)
+          end)
     }
   end
 
@@ -318,8 +308,7 @@ defmodule Apiary.FeatureSetsScan do
     test = %{
       name: name(name),
       tags: tags,
-      reads?: scope.reads? or reads?(test, ctx.reads) or calls?(test, ctx.local),
-      sets?: scope.sets? or sets?(test) or Map.has_key?(tags, :with_features)
+      reads?: scope.reads? or reads?(test, ctx.reads) or calls?(test, ctx.local)
     }
 
     {%{}, acc ++ [test]}

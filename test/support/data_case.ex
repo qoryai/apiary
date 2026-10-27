@@ -151,7 +151,7 @@ defmodule Apiary.DataCase do
   feature. `@tag needs: [:security, :secrets]` marks a test that exercises both, and the
   suite leaves it out when either is off.
 
-  A test that reads the suite's features before it sets them is tagged
+  A test that reads the suite's features is tagged
   `@tag :feature_sets`, and CI runs it again under each feature set
   (`Apiary.FeatureSetsScan`). A test tagged `with_features:` runs under the same features
   in every set, and takes no `:feature_sets`.

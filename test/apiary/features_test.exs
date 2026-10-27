@@ -674,6 +674,8 @@ defmodule Apiary.FeaturesBootTest do
   # Not async: boot!/0 sets the features of the whole node.
   use ExUnit.Case, async: false
 
+  @moduletag :feature_sets
+
   alias Apiary.Features
 
   setup do

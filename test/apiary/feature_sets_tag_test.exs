@@ -117,20 +117,55 @@ defmodule Apiary.FeatureSetsTagTest do
              }) == []
     end
 
-    test "passes a file that sets the features first", %{tmp_dir: dir} do
-      put_env = """
-      setup do
-          previous = Application.get_env(:apiary, :features)
-          Application.put_env(:apiary, :features, [:observability])
-          on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    test "passes a test under with_features:, its own, its describe's or its module's",
+         %{tmp_dir: dir} do
+      describe = """
+      describe "d" do
+          @describetag with_features: [:observability]
+          #{@reads}
         end
       """
 
       assert scan(dir, %{
                "a_test.exs" => module("@tag with_features: [:observability]\n  " <> @reads),
-               "b_test.exs" => module("setup {Apiary.DataCase, :without_registry}\n  " <> @reads),
-               "c_test.exs" => module(put_env <> @reads)
+               "b_test.exs" => module(describe),
+               "c_test.exs" => module("@moduletag with_features: [:security]\n  " <> @reads)
              }) == []
+    end
+
+    test "fails for a test that reads after without_registry or a put_env", %{tmp_dir: dir} do
+      # Both change the suite's features, which still vary with the set.
+      restore = """
+      setup do
+          setting = Application.get_env(:apiary, :features_setting)
+          on_exit(fn -> Application.put_env(:apiary, :features, setting) end)
+        end
+      """
+
+      put_env = """
+      setup do
+          Application.put_env(:apiary, :features, Apiary.Features.all() -- [:registry])
+          on_exit(fn -> Application.put_env(:apiary, :features, []) end)
+        end
+      """
+
+      assert scan(dir, %{
+               "a_test.exs" => module("setup {Apiary.DataCase, :without_registry}\n  " <> @reads),
+               "b_test.exs" => module(restore <> ~s|  test "b", do: :ok|),
+               "c_test.exs" => module(put_env <> @reads)
+             }) == [
+               {:untagged, "a_test.exs", "reads"},
+               {:untagged, "b_test.exs", "b"},
+               {:untagged, "c_test.exs", "reads"}
+             ]
+    end
+
+    test "reads fetch_env and fetch_env! of the features", %{tmp_dir: dir} do
+      assert scan(dir, %{
+               "a_test.exs" =>
+                 module(~s|test "a", do: Application.fetch_env!(:apiary, :features)|),
+               "b_test.exs" => module(~s|test "b", do: Application.fetch_env(:apiary, :features)|)
+             }) == [{:untagged, "a_test.exs", "a"}, {:untagged, "b_test.exs", "b"}]
     end
 
     test "passes a file whose reading tests need a feature that runs under one set",

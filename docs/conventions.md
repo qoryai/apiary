@@ -79,18 +79,20 @@ result, and `mix test` exits 0. A row of `ApiaryWeb.RefusalsCase` takes
 CI runs every test once, with every feature on, and runs only the tests tagged
 `@tag :feature_sets` again, under `QORY_FEATURES=all` and `QORY_FEATURES=observability`
 (`mix test --only feature_sets`). Tag a test `:feature_sets` (or `@describetag`,
-`@moduletag`) when it reads the instance's features before it sets them, in its body, a
-`setup` or a helper: `Apiary.Features.on?/1`, `enabled/0`, `visible?/2` or `hidden_of/1`,
-`ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env(:apiary,
-:features)`. A test that sets its features first, with `with_features:`, `without_registry`
-or a `put_env` that `on_exit` puts back, takes no tag. The guard
-`test/apiary/feature_sets_tag_test.exs` fails for a test that reads the features with
-neither, in its body, a `setup` of its module or describe, or a function of its file; for a
-tagged file that reads nothing; for a test with both `with_features:` and the tag; and for a
-helper of `test/support` that reads the features and is not on its list
+`@moduletag`) when it reads the instance's features, in its body, a `setup` or a helper:
+`Apiary.Features.on?/1`, `enabled/0`, `visible?/2` or `hidden_of/1`,
+`ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env/2`,
+`fetch_env/2` or `fetch_env!/2` of `:features`. A test tagged `with_features:` runs under
+the features it lists, whatever the set, and takes no tag. A `put_env` of the features or
+`without_registry` changes the suite's features, which still vary with the set: a test that
+reads them after either takes the tag. The guard `test/apiary/feature_sets_tag_test.exs`
+fails for a test that reads the features with neither the tag nor `with_features:`; for a
+tagged file that reads nothing; for a test with both `with_features:` and the tag; and for
+a helper of `test/support` that reads the features and is not on its list
 (`Apiary.FeatureSetsScan`). The guard follows calls within a file only: a reviewer checks a
-test that reaches a listed helper or a module of `lib/`. Before you report a chunk done, run the full suite locally
-under all 3 sets: `QORY_FEATURES` blank, `all` and `observability`.
+test that reaches a listed helper or a module of `lib/`. Before you report a chunk done,
+run the full suite locally under all 3 sets: `QORY_FEATURES` blank, `all` and
+`observability`.
 
 A template that makes many people and places for each of many tests may make them once
 for its module (`cast: :module` of `Apiary.AccessCase` and `ApiaryWeb.RefusalsCase`, on

@@ -6,6 +6,7 @@ defmodule ApiaryWeb.RegistryTokenOffTest do
 
   setup {Apiary.DataCase, :without_registry}
 
+  @tag :feature_sets
   test "answers 404 for every method" do
     refute Apiary.Features.on?(:registry)
 
