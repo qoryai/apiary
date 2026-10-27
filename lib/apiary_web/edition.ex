@@ -196,7 +196,8 @@ defmodule ApiaryWeb.Edition do
     `:"security_policy.edit"` and its feature is on.
 
   It is asked for the refusals, and the notices to whoever may not act, of the nodes'
-  pages and a node's Access key tab, the workspace overview's Get the command, the
+  pages and a node's Access key tab, the workspace set-up's step 2, where a person it has
+  no sentence for is sent on to the workspace, the workspace overview's Get the command, the
   organisation's and the workspace's settings, People, stored secrets and variables, and
   integrations; for People's line of what each level does; for the refusal to cancel an
   organisation's deletion on Your organisations; for the security policy's refusals

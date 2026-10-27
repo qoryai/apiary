@@ -657,6 +657,19 @@ defmodule Apiary.EditionStubs do
     def sentence, do: "Only the stub's owners lock, unlock or change a locked rule."
   end
 
+  defmodule ConnectWorded do
+    @moduledoc """
+    The pages say who may connect a work source in the edition's words
+    (`c:ApiaryWeb.Edition.who_may_sentence/2`, `adapter.connect`), and the core's words for
+    anything else.
+    """
+    def who_may_sentence(:"adapter.connect", _scope), do: sentence()
+    def who_may_sentence(_about, _scope), do: nil
+
+    @doc "The sentence it says."
+    def sentence, do: "Only the stub's operator connects a work source here."
+  end
+
   defmodule GatewaysEmptyWorded do
     @moduledoc """
     Organisations of many workspaces (`ManyWorkspaces`), whose empty Gateways page says its
