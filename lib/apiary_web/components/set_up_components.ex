@@ -36,8 +36,10 @@ defmodule ApiaryWeb.SetUpComponents do
      becomes one. First the adapters `QORY_INSTALLED_ADAPTERS` lists, in its order:
      before the installer makes one, its step is `{:installing, name}`, labelled with the
      name, never done, with its page at `/instance/set-up?step=<name>`; then the other
-     adapters, by name. An adapter is done once it is configured; Mail where the
-     environment sets it, or once settings are saved and their test link sent.
+     adapters, by name. An adapter is done once it is configured; Mail once settings are
+     saved and their test link sent. Where the server's environment sets mail
+     (`Apiary.Mail.source/0` is `:env`), there is no Mail step: nothing is left to
+     configure. With no adapter either, the list has no step under Connect.
   4. Workspace: for a person of an organisation who may create its first workspace
      (`workspace.create`), or once it has one, done then
      (`Apiary.Organisations.has_workspace?/1`); signed out, where the organisation is
@@ -99,12 +101,20 @@ defmodule ApiaryWeb.SetUpComponents do
         end
 
       adapter_steps = for entry <- Adapters.set_up_list(adapters), do: adapter_step(entry, admin?)
-
-      # On the set-up link's page, signed out, the steps have no page to open yet.
-      mail_path = if(admin?, do: ~p"/instance/set-up?step=mail")
-      adapter_steps ++ [step(:mail, gettext("Mail"), :connect, mail_done?(), mail_path)]
+      adapter_steps ++ mail_step(admin?)
     else
       []
+    end
+  end
+
+  # No Mail step where the server's environment sets mail.
+  defp mail_step(admin?) do
+    if Mail.source() == :env do
+      []
+    else
+      # On the set-up link's page, signed out, the steps have no page to open yet.
+      mail_path = if(admin?, do: ~p"/instance/set-up?step=mail")
+      [step(:mail, gettext("Mail"), :connect, mail_done?(), mail_path)]
     end
   end
 
@@ -130,9 +140,8 @@ defmodule ApiaryWeb.SetUpComponents do
         if(admin?, do: ~p"/instance/set-up?#{[step: adapter.public_id]}")
       )
 
-  # Mail is done where the environment sets it, or once settings are saved and their
-  # test link sent, followed or not.
-  defp mail_done?, do: Mail.source() == :env or Mail.shown().state in [:pending, :on]
+  # Mail is done once settings are saved and their test link sent, followed or not.
+  defp mail_done?, do: Mail.shown().state in [:pending, :on]
 
   # Signed in: the person's organisation, which has its workspace or is to have one.
   # Before the workspace exists, only for a person who may create it: another person
@@ -230,6 +239,14 @@ defmodule ApiaryWeb.SetUpComponents do
       %{step | state: state}
     end)
   end
+
+  @doc """
+  connect_steps?/1 is whether the instance's connections, `/instance/set-up`, have a
+  step for `scope`'s person: they are an instance admin, and the instance has an adapter,
+  with the `factory` feature, or a Mail step (`steps_for/3`).
+  """
+  @spec connect_steps?(Scope.t()) :: boolean
+  def connect_steps?(scope), do: instance_steps(scope, false) != []
 
   @doc """
   next_step/2 is the step after the one whose id is `id` in `steps`, or nil.
