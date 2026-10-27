@@ -87,8 +87,8 @@ follow:
 
 1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
    step, select **Skip**. You can set mail up later in **Instance settings › Mail**. With
-   mail set in `.env`, the page has no **Mail** step, and you see the page only when there
-   is an adapter to set up.
+   mail set in `.env`, the page has no **Mail** step, and you see the page only when the
+   instance has an adapter.
 2. **Set up your workspace**, at `http://localhost:4100/acme/set-up?step=type`. In
    **Type**, choose **Software**, whose words this guide uses; no type is chosen before
    you choose one. Then select **Create workspace**.

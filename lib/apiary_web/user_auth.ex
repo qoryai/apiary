@@ -751,8 +751,8 @@ defmodule ApiaryWeb.UserAuth do
   @doc """
   signed_in_path/1 is where a signed-in user is sent, from `/` and after log-in: an
   instance admin, the instance's connections, `/instance/set-up`, while the connections
-  have a step (`ApiaryWeb.SetUpComponents.connect_steps?/1`), until an instance admin finishes or
-  skips their last step (`Apiary.Setup.connections_reviewed?/0`); else the
+  have a step (`ApiaryWeb.SetUpComponents.connect_steps?/1`), until an instance admin
+  finishes or skips their last step (`Apiary.Setup.connections_reviewed?/0`); else the
   workspace the session remembers as last opened while the user still reaches it, else
   the first workspace they reach in their earliest organisation
   (`Apiary.Organisations.load_home_scope/2`), at the first page it shows them
