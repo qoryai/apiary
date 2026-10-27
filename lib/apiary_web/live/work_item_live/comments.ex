@@ -23,7 +23,7 @@ defmodule ApiaryWeb.WorkItemLive.Comments do
   # (`ApiaryWeb.UserAuth.reload_scope/1`), which sends away a reader who may no longer be
   # here.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :html

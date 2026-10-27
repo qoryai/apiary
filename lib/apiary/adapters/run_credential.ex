@@ -5,7 +5,7 @@ defmodule Apiary.Adapters.RunCredential do
   # Nothing here writes it to the database or a log. `inspect` shows `expires_at` alone,
   # so no log line, error or crash report contains the token.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   @derive {Inspect, only: [:expires_at]}

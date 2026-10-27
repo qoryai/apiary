@@ -56,7 +56,7 @@ defmodule Apiary.Adapters do
   # the adapter learns from its change feed (`Apiary.Adapters.Feed`). When it was last
   # seen is its keys' latest use (`last_seen/2`).
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

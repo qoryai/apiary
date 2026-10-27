@@ -12,7 +12,7 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
   # (`Apiary.Sources.Backlog.subscribe/1`) and reads the ticket again on each message; a
   # ticket that leaves the Backlog meanwhile stays as it was last read.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

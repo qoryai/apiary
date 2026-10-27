@@ -40,7 +40,7 @@ defmodule Apiary.ExternalText do
   `present/1` or `present_lines/1`.
   """
 
-  # With the `factory` feature, which the documentation leaves out, the texts include a
+  # With the `factory` feature, the texts include a
   # collection's title and a ticket's and a comment's body.
 
   # Wider than the set an explore result's text refuses (Apiary.WorkItems.WorkItem,

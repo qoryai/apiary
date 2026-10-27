@@ -29,7 +29,7 @@ defmodule Apiary.Adapters.CallAddress do
   # resolver:`, else the system's (`Apiary.Integrations.Fetch.DNS`): a module with
   # `resolve/1` or a function of a host.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   alias Apiary.Adapters.Wire

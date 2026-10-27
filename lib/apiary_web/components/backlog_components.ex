@@ -19,7 +19,7 @@ defmodule ApiaryWeb.BacklogComponents do
   # and `rendered_comment` slots of `ticket/1`, through `SourceComponents.body/1`, the one
   # renderer that sanitises formatted text.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 

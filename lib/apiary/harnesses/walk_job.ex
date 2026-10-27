@@ -18,7 +18,7 @@ defmodule Apiary.Harnesses.WalkJob do
   # so its run ends and does not wait for ever. Run twice, the second finds the row no
   # longer pending and does nothing.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Apiary.Job,
     queue: :harness,

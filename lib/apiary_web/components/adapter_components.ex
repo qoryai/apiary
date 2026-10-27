@@ -27,7 +27,7 @@ defmodule ApiaryWeb.AdapterComponents do
   # minute", "Every 15 minutes"), else in seconds; and the same in lower case, to stand
   # inside a sentence.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 

@@ -167,7 +167,9 @@ defmodule Apiary.MixProject do
       skip_code_autolink_to: [
         "c:Apiary.Edition.features_of/3",
         "Apiary.Features.of/2",
-        "Apiary.Features.on?/2"
+        "Apiary.Features.on?/2",
+        # A function with hidden docs, which `ApiaryWeb.TargetLive.FurtherRepositories` mentions.
+        "Apiary.Targets.set_further_repositories/3"
       ],
       extras: [
         "guides/quickstart.md",
@@ -225,8 +227,7 @@ defmodule Apiary.MixProject do
       # leaves out. A module that says `use ApiaryWeb.Features` needs its feature without
       # being listed (with `any:`, one of its features); a passage of a guide is marked in the guide,
       # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature the
-      # documentation differs by (`Apiary.Features.documented/0`): the module reference
-      # names them all.
+      # documentation differs by (`Apiary.Features.documented/0`).
       features: [
         security: [
           extras: ["guides/security-policy.md"],
@@ -237,21 +238,31 @@ defmodule Apiary.MixProject do
             Mix.Tasks.Apiary.Policy.Rerender
           ]
         ],
+        # The module reference needs `secrets`, which needs `security`: the prose of a shared
+        # module mentions both, so only an instance with them serves it. That prose mentions
+        # `factory` too, and an instance without it is served that prose; the modules of
+        # `factory` alone are listed under it. The tasks the guides send a self-hoster to
+        # stay in every tree; their docs mention no feature, and ExDoc warns of a `mix` span
+        # whose task a tree leaves out. The release notes are in every tree.
         secrets: [
           modules: [
             ~r/^Apiary\.Secrets/,
             ~r/^Apiary\.Variables/,
             ~r/^Apiary\.Connections/,
-            ~r/^Apiary\.Integrations/
+            ~r/^Apiary\.Integrations/,
+            ~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune)$)/
           ]
         ],
-        # The module reference names every feature the documentation differs by, the prose
-        # of a shared module included, so only an instance with all of them serves it. The
-        # tasks the guides send a self-hoster to stay in every tree; their docs name no
-        # feature, and ExDoc warns of a `mix` span whose task a tree leaves out. The release
-        # notes are in every tree.
-        all: [
-          modules: [~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune)$)/]
+        factory: [
+          modules: [
+            Apiary.Kinds.Providers,
+            Apiary.Harnesses.Reader,
+            Apiary.Secrets.AdapterSealing,
+            Apiary.Secrets.Instance,
+            Apiary.Secrets.InstanceSecret,
+            Apiary.Secrets.InstanceSecretValue,
+            Apiary.Runs.RunCredentialIssue
+          ]
         ]
       ]
     ]

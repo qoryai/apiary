@@ -23,7 +23,7 @@ defmodule ApiaryWeb.AdapterSetupController do
   # The pass is in the answer's body alone: never in a path, a parameter, a header or a
   # log line.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :controller

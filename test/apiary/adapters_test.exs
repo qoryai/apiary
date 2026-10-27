@@ -1457,19 +1457,19 @@ defmodule Apiary.AdaptersTest do
     end
   end
 
-  test "Apiary.Access's tables name no action of a feature the documentation does not differ by" do
+  test "Apiary.Access's tables name the adapters' actions and none of a feature the documentation does not differ by" do
     {:docs_v1, _, :elixir, _, %{"en" => moduledoc}, _, _} = Code.fetch_docs(Access)
     undocumented = Apiary.Features.all() -- Apiary.Features.documented()
 
     hidden = for action <- Access.actions(), Access.feature(action) in undocumented, do: action
-    assert :"adapter.create" in hidden
-    assert :"adapter.disconnect" in hidden
 
     for action <- hidden do
       refute moduledoc =~ "`#{action}`", "the moduledoc names #{action}"
     end
 
-    refute moduledoc =~ "adapter_key"
+    assert moduledoc =~ "`adapter.create`"
+    assert moduledoc =~ "`adapter.disconnect`"
+    assert moduledoc =~ "adapter_key"
     assert moduledoc =~ "`node.create`"
   end
 end

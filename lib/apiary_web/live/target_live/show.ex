@@ -32,7 +32,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   inserted under the reader, and comes in when asked.
   """
 
-  # With the `factory` feature, which the documentation leaves out, Overview ends with
+  # With the `factory` feature, Overview ends with
   # three more parts. Where the target's collection is assigned to the workspace, and it
   # and its adapter have items, the Backlog card: one switch, whether its tickets come
   # into the workspace's Backlog, named with its source's word for them, which owners and

@@ -78,7 +78,7 @@ defmodule Apiary.WorkItems.ExploreView do
   # current take in that was a take in again and was undone gave its owner back to the
   # one before, and no record keeps the owner it had: nil.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   alias Apiary.Harnesses.RunHarness

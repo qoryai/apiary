@@ -13,8 +13,7 @@ defmodule Apiary.Lingo.Domain.Software do
   claim checks them again with the further repositories. A collection's environment
   is prebuilt, and a target may have a harness file at its root.
   """
-  # Qory adds the `repositories` label to a run a claim registers, with the `factory` feature,
-  # which the documentation leaves out.
+  # Qory adds the `repositories` label to a run a claim registers, with the `factory` feature.
   @behaviour Apiary.Lingo.Domain
 
   use Gettext, backend: ApiaryWeb.Gettext

@@ -26,7 +26,7 @@ defmodule ApiaryWeb.AdapterInstallController do
   # refreshes to it (`ApiaryWeb.SendOn`), told no referrer and kept by no cache. The pass
   # is never logged.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :controller

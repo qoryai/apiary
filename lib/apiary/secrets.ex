@@ -948,7 +948,7 @@ defmodule Apiary.Secrets do
     end
   end
 
-  # With the `factory` feature, which the documentation leaves out: reveal_for_sealing/2
+  # With the `factory` feature: reveal_for_sealing/2
   # is the plaintext of the key `value_id` of the model provider `provider`, a row of
   # `Apiary.Connections` the caller has read and checked (`Apiary.Connections.intact?/1`),
   # for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The key is a value of

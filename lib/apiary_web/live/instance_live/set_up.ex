@@ -36,8 +36,8 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # server, and whoever controls the mail receives every log-in link. An instance admin
   # arrives here right after a sign-in.
   #
-  # The adapters' steps belong to a feature hidden from the documentation, so the module
-  # is too.
+  # The adapters' steps are of the `factory` feature, and the module reference leaves the
+  # module out.
   @moduledoc false
 
   use ApiaryWeb, :live_view

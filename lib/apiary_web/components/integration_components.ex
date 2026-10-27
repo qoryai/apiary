@@ -23,7 +23,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   # which posts to `ApiaryWeb.AdapterInstallController`. An adapter that cannot be
   # installed yet (`ready?/1`) has Install disabled, and a line that says so.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 

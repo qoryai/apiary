@@ -137,7 +137,7 @@ defmodule ApiaryWeb.Routes do
 
       # A request of an adapter, signed with the adapter's access key, as the integration
       # contract has it (`ApiaryWeb.Contract.AdapterRequest`), which spends the key's bucket
-      # for adapters. Hidden from the documentation, as its feature is.
+      # for adapters. Of the `factory` feature, and left out of the module reference.
       @doc false
       pipeline :contract_adapter do
         plug :accepts, ["json"]
@@ -147,7 +147,7 @@ defmodule ApiaryWeb.Routes do
       # A request of a node pool's starter, signed with the pool's access key, as the
       # provisioner contract has it: verified as an adapter's is
       # (`ApiaryWeb.Contract.AdapterRequest`, `kind: :pool`), and spending the key's bucket
-      # for node pools. Hidden from the documentation, as its feature is.
+      # for node pools. Of the `factory` feature, and left out of the module reference.
       @doc false
       pipeline :contract_pool do
         plug :accepts, ["json"]
@@ -223,8 +223,7 @@ defmodule ApiaryWeb.Routes do
         get "/runs/:run_id", RegistrationController, :show
         post "/runs/:run_id/attach", AttachController, :create
         post "/runs/:run_id/outcome", OutcomeController, :create
-        # A gateway's secrets request, with the `factory` and `secrets` features, which
-        # the documentation leaves out.
+        # A gateway's secrets request, with the `factory` and `secrets` features.
         post "/secrets", SecretsController, :create
       end
 

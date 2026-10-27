@@ -126,7 +126,7 @@ defmodule Apiary.Harnesses.Walk do
   # The target's address shows for a failure of the target's file. The rule of a hidden
   # harness has no path, ref or stack name.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query

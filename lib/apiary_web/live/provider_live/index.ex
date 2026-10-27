@@ -14,7 +14,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   # is left out of the page's patches (`phx-update="ignore"`), so a change of the provider
   # keeps what was typed, and each save renders a new, empty field.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

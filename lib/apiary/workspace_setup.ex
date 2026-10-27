@@ -27,7 +27,7 @@ defmodule Apiary.WorkspaceSetup do
   # `test_run/2` is the state of the latest test work item's latest run, for the step's
   # line. None of them asks access: the Overview's reader reads them.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query, warn: false

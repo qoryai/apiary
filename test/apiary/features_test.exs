@@ -458,8 +458,8 @@ defmodule Apiary.FeaturesTest do
       end
     end
 
-    test "documented/0 is every feature but path_rules, factory and registry, which the documentation does not differ by" do
-      assert Features.documented() == Features.all() -- [:path_rules, :factory, :registry]
+    test "documented/0 is every feature but path_rules and registry, which the documentation does not differ by" do
+      assert Features.documented() == Features.all() -- [:path_rules, :registry]
     end
 
     test "registry/1 takes docs: false for a feature the documentation does not differ by" do

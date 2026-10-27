@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.Contract.SecretsController do
   @moduledoc false
 
-  # With the `factory` and `secrets` features, or the `registry` feature, which the
-  # documentation leaves out: the secrets request, a signed `POST /v1/secrets` of a
+  # With the `factory` and `secrets` features, or the `registry` feature (which the
+  # documentation leaves out): the secrets request, a signed `POST /v1/secrets` of a
   # gateway for the values of credentials of a run's run configuration
   # (`Apiary.Runs.SecretsRequest`), under the gateway's access key. Reached only through
   # `ApiaryWeb.Contract.SignedRequest`, as the run endpoint is, under the run endpoint's

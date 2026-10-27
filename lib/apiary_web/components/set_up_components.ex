@@ -63,8 +63,8 @@ defmodule ApiaryWeb.SetUpComponents do
   # guide/1 is `help/1` with an adapter's guide: its line before the steps, Qory Apiary's
   # first step, the adapter's steps numbered after it, its line after them, then Qory
   # Apiary's notes. The adapter's lines are its words, shown as plain text
-  # (`ApiaryWeb.ExternalText.external_text/1`), never as Markdown or HTML. The feature the
-  # adapters belong to is hidden from the documentation, so the function is too.
+  # (`ApiaryWeb.ExternalText.external_text/1`), never as Markdown or HTML. The function is
+  # of the `factory` feature, and left out of the module reference.
   def guide(assigns) do
     ~H"""
     <.help id={@id}>

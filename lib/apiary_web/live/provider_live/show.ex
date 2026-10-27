@@ -4,7 +4,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
   # the page shows a mask in its place, never the key nor a part of it. Every member reads
   # it (`connection.read`); a provider the organisation does not have is not found.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

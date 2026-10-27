@@ -67,9 +67,8 @@ defmodule Apiary.Lingo.Domain do
   also reads, joined with commas. It names no target. A domain without it gives a run no
   such label.
   """
-  # Qory adds it to a run a claim registers, with the `factory` feature, which the
-  # documentation leaves out: the other paths are those its target's runs also read
-  # (`Apiary.Targets.further_repositories/1`).
+  # Qory adds it to a run a claim registers, with the `factory` feature: the other paths
+  # are those its target's runs also read (`Apiary.Targets.further_repositories/1`).
   @callback paths_label() :: String.t()
 
   @optional_callbacks paths_label: 0

@@ -50,7 +50,7 @@ defmodule Apiary.Integrations.Description do
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
   """
 
-  # The `source` role is the `factory` feature's, which the documentation leaves out. Of
+  # The `source` role is the `factory` feature's. Of
   # it, four members are read out (`item_noun/1`, `items?/1`, `collection_noun/1`,
   # `access/1`): its words for one item and for many, `item_noun`, `one` and `other`, each
   # 1 to 32 characters: lower-case letters in words joined by single spaces or hyphens,

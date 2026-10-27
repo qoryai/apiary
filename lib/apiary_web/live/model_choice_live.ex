@@ -19,7 +19,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # (`model_choice.write`), and anyone else sees the fields disabled, no Save, and one line
   # of who changes it. The context asks again.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   use ApiaryWeb, :live_view

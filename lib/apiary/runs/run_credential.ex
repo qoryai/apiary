@@ -23,7 +23,7 @@ defmodule Apiary.Runs.RunCredential do
   #     nil until then. A later credential whose items differ is refused, as the gateway
   #     refuses a renewal whose items differ from those at the run's start.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Ecto.Schema
 

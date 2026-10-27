@@ -307,7 +307,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     end
 
     # The documentation's configuration, as `mix docs.all` reads it: the release notes
-    # need no feature, the module reference every feature, and a default instance is
+    # need no feature, the module reference `secrets`, and a default instance is
     # served a tree without `secrets`.
     test "a default instance's /docs has the release notes and no module reference" do
       docs = Mix.Project.config()[:docs]
@@ -320,7 +320,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
         refute "CHANGELOG.md" in extra_paths(Keyword.get(owns, :extras, []))
       end
 
-      assert [_ | _] = owned |> Keyword.fetch!(:all) |> Keyword.fetch!(:modules)
+      assert [_ | _] = owned |> Keyword.fetch!(:secrets) |> Keyword.fetch!(:modules)
 
       {:ok, default} = Apiary.Features.parse(nil)
       refute Apiary.Features.all() -- default == []

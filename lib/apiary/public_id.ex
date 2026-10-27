@@ -8,8 +8,8 @@ defmodule Apiary.PublicId do
   `tg` a target and `ws` a workspace.
   """
 
-  # `cm` names a comment on a work item (`Apiary.WorkItems.Comment`), a part of Qory the
-  # documentation leaves out.
+  # `cm` names a comment on a work item (`Apiary.WorkItems.Comment`), of the `factory`
+  # feature.
 
   # Crockford base32 without the ambiguous letters i, l, o, u.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"

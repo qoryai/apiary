@@ -109,7 +109,8 @@ services:
 
   # The GitHub adapter, installed with Qory Apiary, in the profile `github`. To turn it
   # on, add github to COMPOSE_PROFILES in .env, and set there an https PUBLIC_URL,
-  # QORY_INSTALLED_ADAPTERS=github, factory in QORY_FEATURES, and QORY_GITHUB_PUBLIC_URL.
+  # QORY_INSTALLED_ADAPTERS=github, QORY_FEATURES as a list with factory and the
+  # features it needs, observability, security and secrets, and QORY_GITHUB_PUBLIC_URL.
   # The adapter needs a separate public name, which the reverse proxy routes by host name
   # to 127.0.0.1 on QORY_GITHUB_HOST_PORT (8080 unless set). Keep the query strings of
   # /setup out of the proxy's access logs.

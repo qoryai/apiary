@@ -62,7 +62,7 @@ defmodule Apiary.Stacks.Sources do
   # workspace, so two at the same time leave one row.
   # It writes no audit entry, as `put_stack/3` writes none.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query

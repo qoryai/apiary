@@ -80,7 +80,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # `Apiary.ExternalText.line/1` gives it, isolated in `<bdi>` where markup can go
   # (`ApiaryWeb.ExternalText.external_text/1`); a title with nothing left to show is none.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use ApiaryWeb, :html
 

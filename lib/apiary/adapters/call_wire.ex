@@ -37,7 +37,7 @@ defmodule Apiary.Adapters.CallWire do
   # A ref is 1 to 200 characters with no NUL; a version ref 1 to 255 of `A-Z`, `a-z`,
   # `0-9`, `.`, `_`, `/` and `-`.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   @revision 1

@@ -17,7 +17,7 @@ defmodule Apiary.Sources.Comment do
   # A comment is of its item's organisation, held to it by the composite key, and goes
   # with its item. Every text is untrusted: shown as data, never followed.
   #
-  # The feature is hidden from the documentation, so the module is too.
+  # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
