@@ -321,7 +321,8 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   attr :current_scope, :map, required: true
 
   # The mail step: what setting mail up does, its help, and the form of Instance settings ›
-  # Mail; where the environment sets mail, its settings and Continue.
+  # Mail; where the environment sets mail, its settings, a line to press Continue, and
+  # Continue, without the help.
   defp mail_step(assigns) do
     ~H"""
     <section id="set-up-mail" class="grid gap-4" aria-labelledby="set-up-name">
@@ -332,7 +333,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         </p>
       </div>
 
-      <SetUpComponents.help id="set-up-help">
+      <SetUpComponents.help :if={@source != :env} id="set-up-help">
         <p>
           {gettext(
             "Get the SMTP server's host name, port, username and password from your mail provider."
@@ -396,6 +397,14 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
       >
         <:actions><.skip /></:actions>
       </.live_component>
+
+      <p :if={@source == :env} id="set-up-env" class="text-[13.5px]/5">
+        <.rich text={
+          rich_gettext("Mail is set by the server's environment. Press %{button}.",
+            button: {:b, gettext("Continue")}
+          )
+        } />
+      </p>
 
       <div :if={@source == :env} class="flex gap-2 pt-1">
         <.button id="set-up-continue" type="button" variant="primary" phx-click="next">
