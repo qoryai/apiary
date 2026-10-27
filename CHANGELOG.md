@@ -200,6 +200,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `QORY_FEATURES=observability,security,secrets,factory`; `all` leaves `factory` off, as
   it leaves off every opt-in feature.
 <!-- /feature -->
+- Account settings and the instance's Set up, Mail and Configuration pages accept a
+  sign-in from the last 15 minutes, up from 10: the time a set-up pass of the GitHub
+  adapter lasts.
 
 ### Security
 
