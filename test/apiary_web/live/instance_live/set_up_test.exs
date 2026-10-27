@@ -159,8 +159,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
 
     assert words(lv, "#set-up-what") ==
              "Organisations on this instance bring in tickets from #{adapter.name} once its " <>
-               "adapter is set up. Set up opens the adapter's set-up page in a new tab, and " <>
-               "this step shows the new state without a reload."
+               "adapter is set up. Set up opens the #{adapter.name} adapter's set-up page " <>
+               "in a new tab, and this step shows the new state without a reload."
 
     assert words(lv, "#set-up-state") == "State:Not set up"
 

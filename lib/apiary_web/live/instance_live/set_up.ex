@@ -330,7 +330,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         <:context :if={@row}>
           <p id="set-up-what">
             {gettext(
-              "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the adapter's set-up page in a new tab, and this step shows the new state without a reload.",
+              "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the %{adapter} adapter's set-up page in a new tab, and this step shows the new state without a reload.",
               adapter: @row.adapter.name
             )}
           </p>
