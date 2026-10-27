@@ -311,7 +311,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     assert base == %{
              "git" => "https://github.com/qoryai/qory",
-             "ref" => "a0c1d6e739749ebfa77b15332aa94d4305451261",
+             "ref" => "2148b3ae11eff8ccbeb93d1a7c10aeb05595c95b",
              "path" => "examples/hello"
            }
 
