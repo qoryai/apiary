@@ -50,7 +50,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       {:ok, conn} =
         conn
         |> log_in_user(user_fixture(),
-          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -16, :minute)
         )
         |> live(~p"/users/settings")
         |> follow_redirect(conn, ~p"/users/log-in")
@@ -58,11 +58,25 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert conn.resp_body =~ "You must re-authenticate to access this page."
     end
 
+    test "opens after a sign-in 14 minutes ago, and so does a patch from Preferences",
+         %{conn: conn} do
+      conn =
+        log_in_user(conn, user_fixture(),
+          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -14, :minute)
+        )
+
+      {:ok, _lv, html} = live(conn, ~p"/users/settings")
+      assert html =~ "Change email"
+
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
+      assert render_patch(lv, ~p"/users/settings") =~ "Change email"
+    end
+
     test "asks for a recent sign-in for the account's deletion, not for Preferences",
          %{conn: conn} do
       conn =
         log_in_user(conn, user_fixture(),
-          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -16, :minute)
         )
 
       # Preferences changes how the console shows things, not the account.
