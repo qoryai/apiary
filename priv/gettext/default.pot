@@ -9660,6 +9660,11 @@ msgstr ""
 msgid "Mail is on, and your email address is confirmed."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "Mail is set by the server's environment. Press %{button}."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Mail settings saved"

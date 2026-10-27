@@ -416,6 +416,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   end
 
   test "shows the help and the form of Instance settings › Mail, with Skip", %{conn: conn} do
+    Mail.put_test_source(:none)
     lv = mail_step(conn)
 
     assert words(lv, "#set-up-what") ==
@@ -434,6 +435,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
     assert has_element?(lv, "#mail-save button[type=submit]", "Save and send a test")
     assert has_element?(lv, "#mail-save #set-up-skip-button", "Skip")
     refute has_element?(lv, "#mail-status", "Off:")
+    refute has_element?(lv, "#set-up-env")
+    refute has_element?(lv, "#set-up-continue")
   end
 
   test "Save and send a test sends the test link, marks the connections reviewed and leads on",
@@ -519,12 +522,29 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
              Apiary.Repo.query!("SELECT connections_reviewed_at FROM instance_settings WHERE id")
   end
 
-  test "where the environment sets mail, says so, with Continue", %{conn: conn} do
+  test "where the environment sets mail, shows its settings and no form", %{conn: conn} do
     Mail.put_test_source(:env)
     lv = mail_step(conn)
 
     assert has_element?(lv, "#mail-env #mail-status", "Set by the server's environment")
     refute has_element?(lv, "#mail_form")
+  end
+
+  test "where the environment sets mail, shows no help, a line to press Continue, and Continue",
+       %{conn: conn} do
+    Mail.put_test_source(:env)
+    lv = mail_step(conn)
+
+    assert words(lv, "#set-up-what") ==
+             "Set up mail, so Qory Apiary sends invitations and password links."
+
+    refute has_element?(lv, "#set-up-help")
+    refute render(lv) =~ "Save and send a test"
+    refute has_element?(lv, "#set-up-skip-button")
+
+    assert words(lv, "#set-up-env") == "Mail is set by the server's environment. Press Continue."
+    assert has_element?(lv, "#set-up-env b", "Continue")
+    assert has_element?(lv, "#set-up-continue", "Continue")
 
     lv |> element("#set-up-continue") |> render_click()
     assert {"/", _flash} = assert_redirect(lv)
