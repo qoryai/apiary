@@ -4,8 +4,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
   # mail, each at its key, in the set-up's progress indicator; an adapter's state, Set up
   # in a new tab while it is not set up, and Continue once it is configured, read again as
   # it declares; Skip to the next step, Back to the one before; and a path that does not
-  # exist for anyone but an instance admin. The tests save mail in Instance settings, so
-  # the page has its mail step. `ApiaryWeb.InstanceLive.SetUpMailTest` has the mail step,
+  # exist for anyone but an instance admin. The tests run with no mail set, so the page
+  # has its mail step. `ApiaryWeb.InstanceLive.SetUpMailTest` has the mail step,
   # and the page without the feature adapters belong to;
   # `ApiaryWeb.InstanceLive.SetUpEnvMailTest` the page where the environment sets mail.
   use ApiaryWeb.ConnCase, async: true

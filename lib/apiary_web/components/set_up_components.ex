@@ -241,7 +241,7 @@ defmodule ApiaryWeb.SetUpComponents do
   end
 
   @doc """
-  connect_steps?/1 says whether the instance's connections, `/instance/set-up`, have a
+  connect_steps?/1 is whether the instance's connections, `/instance/set-up`, have a
   step for `scope`'s person: they are an instance admin, and the instance has an adapter,
   with the `factory` feature, or a Mail step (`steps_for/3`).
   """
