@@ -168,6 +168,18 @@ defmodule Apiary.Adapters do
   end
 
   @doc false
+  # The instance's adapters in use, by name, with the `factory` feature, for the set-up
+  # link's page (`ApiaryWeb.SetupLive`), which nobody is signed in to: its reader becomes
+  # the instance admin, and its progress indicator lists the adapters they set up next.
+  # None without the feature.
+  @spec list_for_set_up() :: [Node.t()]
+  def list_for_set_up do
+    if Features.on?(:factory),
+      do: live_query() |> order_by([n], asc: n.name, asc: n.id) |> Repo.all(),
+      else: []
+  end
+
+  @doc false
   # The instance's adapter in use whose public id is `public_id`, with the account that
   # made it, to whoever may read it (`readable?/1`); nil for one deleted, a node of another
   # kind, none, or anyone else.

@@ -13,6 +13,7 @@ defmodule ApiaryWeb.PageComponents do
   - `page_form/1` and `page_form_foot/1`: a create or edit form as a separate page, never
     a dialog, with Cancel back to where it was opened from.
   - `not_on_runs/1`: the one plain line a page over data no run receives says.
+  - `context_column/1`: a form with its context, About this page, in a column beside it.
 
   Two more patterns are `ApiaryWeb.CoreComponents`': the confirmation in place, never a
   dialog (`inline_confirm/1`, and a deletion's, `ApiaryWeb.SettingsComponents.deletion_confirm/1`),
@@ -139,6 +140,8 @@ defmodule ApiaryWeb.PageComponents do
   sentence of what it is for and its actions, above its content; its parts are `<h2>`s
   (`ApiaryWeb.SettingsComponents.part/1`). A section of forms keeps a 720 px column
   (`measure="read"`); a list, a 960 px one (`measure="list"`).
+  The `context` slot, why the section exists, is a column beside the 720 px one, under it
+  on a narrow page (`context_column/1`).
 
       <Layouts.app flash={@flash} current_scope={@current_scope} nav={:settings}
         sections={@sections} section={:runs} counts={@nav_counts}>
@@ -182,6 +185,10 @@ defmodule ApiaryWeb.PageComponents do
 
   slot :subtitle, doc: "one sentence: what the section is for"
   slot :actions, doc: "at most one primary and one default action"
+
+  slot :context,
+    doc: "why the section exists and what it changes, in a column beside it (`context_column/1`)"
+
   slot :inner_block, required: true
 
   def settings_page(assigns) do
@@ -189,7 +196,11 @@ defmodule ApiaryWeb.PageComponents do
     <div class="q-settings q-settings-solo">
       <section
         id={"settings-section-#{@section}"}
-        class={["q-settings-main", "q-settings-main-#{@measure}"]}
+        class={[
+          "q-settings-main",
+          "q-settings-main-#{@measure}",
+          @context != [] && "q-settings-main-context"
+        ]}
       >
         <header class="q-settings-head">
           <div class="min-w-0">
@@ -200,8 +211,46 @@ defmodule ApiaryWeb.PageComponents do
           </div>
           <div :if={@actions != []} class="q-settings-actions">{render_slot(@actions)}</div>
         </header>
-        {render_slot(@inner_block)}
+        <%= if @context == [] do %>
+          {render_slot(@inner_block)}
+        <% else %>
+          <.context_column>
+            {render_slot(@inner_block)}
+            <:context>{render_slot(@context)}</:context>
+          </.context_column>
+        <% end %>
       </section>
+    </div>
+    """
+  end
+
+  @doc """
+  context_column/1 is a form with its context: why the page exists and what it changes,
+  and the steps the reader takes outside it, never a field, an option or a button the form
+  shows. The context is an `<aside>` headed About this page, after the form in reading
+  order. It stands beside the form where the page has 840 px for both, and under the
+  form below that, so a settings page beside the sidebar and the second column shows it
+  beside from a 1366 px screen (`docs/ui.md`, Settings). A settings page passes its
+  `context` slot (`settings_page/1`, `ApiaryWeb.SettingsComponents.layout/1`), which
+  renders this.
+
+      <.settings_page section={:model} title={gettext("Model")}>
+        <.form ... novalidate>...</.form>
+        <:context><p>{gettext("Main's default model. ...")}</p></:context>
+      </.settings_page>
+  """
+  attr :id, :string, default: "page-context"
+  slot :inner_block, required: true, doc: "the form, and what the page shows with it"
+  slot :context, required: true, doc: "the column's paragraphs and lists"
+
+  def context_column(assigns) do
+    ~H"""
+    <div class="q-context-grid">
+      <div class="q-context-main">{render_slot(@inner_block)}</div>
+      <aside id={@id} class="q-context" aria-labelledby={"#{@id}-h"}>
+        <h2 id={"#{@id}-h"} class="q-context-h">{gettext("About this page")}</h2>
+        {render_slot(@context)}
+      </aside>
     </div>
     """
   end

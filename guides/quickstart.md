@@ -81,14 +81,16 @@ Open that link. The page reads **Set up Qory Apiary**.
 Enter an email address, `ada@example.com` say, a password of 12 to 72 characters, the
 same password again, and the **Organisation name**, usually your company's, `Acme` say.
 Then select **Set up**. It creates your account and the organisation, with no workspace
-yet, and signs you in. Two pages follow:
+yet, and signs you in. Each page of the set-up lists its steps, with the current one
+marked; **Back**, at the foot of a step's form, opens the step before it. Two pages
+follow:
 
 1. **Connect Qory Apiary**, at `http://localhost:4100/instance/set-up`. At its **Mail**
    step, select **Skip**, or **Continue** where it shows the server's mail settings. You
    can set mail up later in **Instance settings › Mail**.
-2. **Set up your workspace**, at `http://localhost:4100/acme/set-up`. In **Type**, choose
-   **Software**, whose words this guide uses; no type is chosen before you choose one.
-   Then select **Create workspace**.
+2. **Set up your workspace**, at `http://localhost:4100/acme/set-up?step=type`. In
+   **Type**, choose **Software**, whose words this guide uses; no type is chosen before
+   you choose one. Then select **Create workspace**.
 
 You land on the overview of your workspace Main, `http://localhost:4100/acme/main`.
 Until a run reaches it, the overview is one box, **Send your first run**: Add a node,
@@ -99,8 +101,9 @@ With the `factory` feature, **Connect Qory Apiary** has one step for each adapte
 **Instance settings › Adapters** lists, before **Mail**: select **Skip**, or **Continue**
 where the step is set up already, or set the adapter up as [Set up a new
 instance](install.md#set-up-a-new-instance) shows. **Create workspace** then opens
-**Connect a work source to Main**, step 2 of 2, at the same address: select **Skip**, or
-**Continue** where no work source is set up. The overview of Main shows **Set up Main** in
+**Connect a work source to Main**, the step **Work source**, at
+`http://localhost:4100/acme/set-up?step=source`: select **Skip**, or **Continue** where
+no work source is set up. The overview of Main shows **Set up Main** in
 place of the box, and [step 8](#8-set-up-main-and-run-the-test) has the steps from there
 to a test run. Steps 5 to 7 still connect a node and post a run, from **Nodes** in the
 sidebar, but the overview has no box for them, and their node does not count for **Set up
@@ -280,7 +283,7 @@ version.
 
 With the `factory` feature, the overview of Main, `http://localhost:4100/acme/main`,
 shows **Set up Main** until a test run passes. Each of its four steps shows a check mark
-once it is done, and has its help under **How to**:
+once it is done, and a second line, under its first, that says why the step exists:
 
 | Step | Done when |
 |---|---|
@@ -292,9 +295,9 @@ once it is done, and has its help under **How to**:
 **Run the test** is on once **Machines for runs** and **Model key** are done, so you can
 leave the work source for later.
 
-1. **Work source.** Select **Connect**: step 2 of the workspace set-up opens, at
-   `/acme/set-up`. Select **Connect** beside a work source, and follow the steps the page
-   shows for it. Only owners and admins connect a work source.
+1. **Work source.** Select **Connect**: the Work source step of the workspace set-up
+   opens, at `/acme/set-up?step=source`. Select **Connect** beside a work source, and
+   follow the steps the page shows for it. Only owners and admins connect a work source.
 2. **Machines for runs.** The test run passes only through the instance's gateway, set
    with `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
    `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
@@ -305,10 +308,11 @@ leave the work source for later.
    **State** shows **Running** or **Last seen**.
 3. **Model key.** Select **Add model key**, which opens **Organisation settings › Model
    providers**, `/acme/settings/model-providers`, then select **New model provider**. In
-   **Provider**, choose the provider of your key, such as **Anthropic API key**; the page
-   lists where to get a key for each one. Paste the key in **Key**. For LiteLLM, also
-   enter the proxy's https address in **Address**, such as `https://litellm.example.com`.
-   Select **Save**. Only owners and admins add a model provider.
+   **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
+   this page**, beside the form, says where to get a key for the provider you choose.
+   Paste the key in **Key**. For LiteLLM, also enter the proxy's https address in
+   **Address**, such as `https://litellm.example.com`. Select **Save**. Only owners and
+   admins add a model provider.
 4. **Model.** Open **Workspace settings › Model**, `/acme/main/settings/model`. **Model**
    shows the first model of the first provider: keep it or choose another, and select
    **Save**. The step **Model key** is then done.

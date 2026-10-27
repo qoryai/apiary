@@ -2143,11 +2143,12 @@ defmodule ApiaryWeb.OverviewComponents do
 
   # The setup list of a workspace, with the `factory` feature, in place of the empty
   # workspace's box: four steps, each marked done by its rule (`Apiary.WorkspaceSetup`),
-  # with a line, its action, and its help under it, open for the first step not done and
-  # for a failed test run, folded under How to for the others.
+  # with a line, why the step exists under it, and its action. Machines for runs has its
+  # steps on another page folded under Check the nodes, open while it is the first step
+  # not done.
   #
-  # - **Work source** links to step 2 of the workspace set-up, Connect while it is not done
-  #   and Change once it is.
+  # - **Work source** links to the set-up's Work source step while it is not done
+  #   (Connect), and to the set-up once it is (Change).
   # - **Machines for runs** links to the nodes that serve the workspace: the instance's on
   #   Instance settings › Nodes, or the workspace's on its Nodes page.
   # - **Model key** links to the organisation's model providers.
@@ -2227,7 +2228,6 @@ defmodule ApiaryWeb.OverviewComponents do
         id={"#{@id}-source"}
         name={gettext("Work source")}
         state={if @done.source, do: :done}
-        open={@current == :source}
       >
         <:line>
           <span :for={source <- @setup.work_source} class="block">
@@ -2249,30 +2249,18 @@ defmodule ApiaryWeb.OverviewComponents do
               <.button
                 id={"#{@id}-source-act"}
                 variant={if @current == :source, do: "primary", else: "default"}
-                navigate={~p"/#{@org}/set-up"}
+                navigate={~p"/#{@org}/set-up?step=source"}
               >
                 {gettext("Connect")}
               </.button>
           <% end %>
         </:act>
-        <:help>
-          <ol>
-            <li>
-              <.rich text={
-                rich_gettext(
-                  "Press %{connect}. Step 2 of the workspace set-up opens; follow its steps.",
-                  connect: {:b, gettext("Connect")}
-                )
-              } />
-            </li>
-          </ol>
-          <p>
-            {gettext(
-              "The step is done when %{workspace} has a collection from a work source and Qory Apiary has read the list of collections through its adapter.",
-              workspace: @workspace.name
-            )}
-          </p>
-        </:help>
+        <:context>
+          {gettext(
+            "The step is done when %{workspace} has a collection from a work source and Qory Apiary has read its list of collections.",
+            workspace: @workspace.name
+          )}
+        </:context>
       </.setup_step>
 
       <.setup_step
@@ -2280,6 +2268,7 @@ defmodule ApiaryWeb.OverviewComponents do
         name={gettext("Machines for runs")}
         state={if @done.machines, do: :done}
         open={@current == :machines}
+        fold={gettext("Check the nodes")}
       >
         <:line>{machines_line(@setup.machines, @workspace)}</:line>
         <:act>
@@ -2300,18 +2289,16 @@ defmodule ApiaryWeb.OverviewComponents do
               <.who_may id={"#{@id}-machines-who"} text={@who.machines} />
           <% end %>
         </:act>
+        <:context>
+          {gettext(
+            "Runs need a node pool, whose machines run the agents, and a gateway, which passes their model calls on. Qory Apiary keeps the model key and seals it to the gateway for each run."
+          )}
+        </:context>
         <:help>
-          <p>
-            {gettext(
-              "On this instance, the instance's pool and gateway connect to Qory Apiary without a step from you. An instance admin checks them."
-            )}
-          </p>
+          <h3 class="font-semibold">
+            {gettext("On Instance settings › Nodes")}
+          </h3>
           <ol>
-            <li>
-              <.rich text={
-                rich_gettext("Open %{page}.", page: {:b, gettext("Instance settings › Nodes")})
-              } />
-            </li>
             <li>
               <.rich text={
                 rich_gettext(
@@ -2339,7 +2326,6 @@ defmodule ApiaryWeb.OverviewComponents do
         id={"#{@id}-model-key"}
         name={gettext("Model key")}
         state={if @done.model_key, do: :done}
-        open={@current == :model_key}
       >
         <:line>
           <span :if={!@done.model_key}>{gettext("Add a model key, so agents can run.")}</span>
@@ -2359,24 +2345,13 @@ defmodule ApiaryWeb.OverviewComponents do
               </.button>
           <% end %>
         </:act>
-        <:help>
-          <ol>
-            <li>
-              <.rich text={
-                rich_gettext("Press %{add}, and follow the steps on that page.",
-                  add: {:b, gettext("Add model key")}
-                )
-              } />
-            </li>
-          </ol>
-          <p>
-            {gettext(
-              "The step is done when %{organisation} has a model provider with a key and %{workspace} has a model choice.",
-              organisation: @org.name,
-              workspace: @workspace.name
-            )}
-          </p>
-        </:help>
+        <:context>
+          {gettext(
+            "Agents need a model key to run. The step is done when %{organisation} has a model provider with a key and %{workspace} has a model choice.",
+            organisation: @org.name,
+            workspace: @workspace.name
+          )}
+        </:context>
       </.setup_step>
 
       <.setup_step
@@ -2389,7 +2364,6 @@ defmodule ApiaryWeb.OverviewComponents do
             true -> nil
           end
         }
-        open={@current == :test or @failed?}
       >
         <:line>
           <%= case @test_state do %>
@@ -2430,38 +2404,11 @@ defmodule ApiaryWeb.OverviewComponents do
             <% true -> %>
           <% end %>
         </:act>
-        <:help>
-          <ol>
-            <li>
-              <.rich text={
-                rich_gettext("In %{field}, keep %{line}, or write another greeting.",
-                  field: {:b, gettext("Say hi to your agent")},
-                  line: {:code, gettext("Hi! Where are you running?")}
-                )
-              } />
-            </li>
-            <li>
-              <.rich text={rich_gettext("Press %{run}.", run: {:b, gettext("Run the test")})} />
-            </li>
-            <li>
-              <.rich text={
-                rich_gettext(
-                  "When the step shows %{passed}, press %{see}, and read the agent's answer in the run's log.",
-                  passed: {:b, gettext("Test run passed")},
-                  see: {:b, gettext("See the run")}
-                )
-              } />
-            </li>
-          </ol>
-          <p>
-            <.rich text={
-              rich_gettext(
-                "If the step shows another line, do what its first sentence says, then press %{run} again.",
-                run: {:b, gettext("Run the test")}
-              )
-            } />
-          </p>
-        </:help>
+        <:context>
+          {gettext(
+            "The test run checks the other steps together: an agent answers your line on a machine of the pool, through the gateway, with the model key. The run's log has its answer."
+          )}
+        </:context>
         <:more>
           <.form
             :if={@may.test and @ready? and is_nil(@test_state)}
@@ -2525,25 +2472,27 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :id, :string, required: true
   attr :name, :string, required: true
   attr :state, :atom, default: nil, doc: "`:done`, `:failed`, or nil for a step not done"
-  attr :open, :boolean, default: false, doc: "whether its help is open"
+  attr :fold, :string, default: nil, doc: "the summary of the fold that holds `help`"
+  attr :open, :boolean, default: false, doc: "whether the fold is open"
   slot :line
+  slot :context, doc: "why the step exists, in the faint text under the line"
   slot :act
-  slot :help, required: true
+  slot :help, doc: "steps on another page, folded under `fold`"
   slot :more
 
-  # One step of the setup list: its mark, its name, its line and its action on one row,
-  # its help and anything more under them. The help is folded under How to unless it is
-  # `open`, as the reader leaves it once shown; its id changes with `open`, so a step that
-  # becomes current, or done, shows it as the list now says.
+  # One step of the setup list: its mark, its name, its line with its context under it,
+  # and its action on one row; its fold and anything more under them. The fold's id
+  # changes with `open`, so a step that becomes current, or done, shows it as the list
+  # now says, and otherwise stays as the reader leaves it.
   defp setup_step(assigns) do
     ~H"""
     <div
       id={@id}
       data-state={@state || "todo"}
-      class="grid grid-cols-[22px_minmax(8rem,10rem)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-line py-3 first-of-type:border-t-0 max-[479px]:grid-cols-[22px_minmax(0,1fr)]"
+      class="grid grid-cols-[22px_minmax(8rem,10rem)_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 border-t border-line py-3.5 first-of-type:border-t-0 max-[479px]:grid-cols-[22px_minmax(0,1fr)]"
     >
       <span class={[
-        "grid size-5 place-items-center rounded-full border",
+        "mt-px grid size-5 place-items-center rounded-full border",
         @state == :done && "border-transparent bg-primary text-primary-content",
         @state == :failed && "border-error bg-error-soft text-error-soft-content",
         @state == nil && "border-line-strong"
@@ -2555,22 +2504,35 @@ defmodule ApiaryWeb.OverviewComponents do
         </span>
       </span>
       <span class="font-medium">{@name}</span>
-      <span class="text-muted max-[479px]:col-start-2">{render_slot(@line)}</span>
+      <div class="grid min-w-0 gap-0.5 max-[479px]:col-start-2">
+        <span id={"#{@id}-line"} class="text-muted">{render_slot(@line)}</span>
+        <span
+          :if={@context != []}
+          id={"#{@id}-context"}
+          class="max-w-[78ch] text-[13px]/[19px] text-faint"
+        >
+          {render_slot(@context)}
+        </span>
+      </div>
       <span class="justify-self-end max-[479px]:col-start-2 max-[479px]:justify-self-start">
         {render_slot(@act)}
       </span>
-      <div class="col-[2/-1] grid gap-2.5 pt-1.5 max-[479px]:col-start-2">
+      <div
+        :if={@help != [] or @more != []}
+        class="col-[2/-1] grid gap-2.5 pt-1.5 max-[479px]:col-start-2"
+      >
         <details
-          id={"#{@id}-help-#{@open}"}
+          :if={@help != []}
+          id={"#{@id}-fold-#{@open}"}
           open={@open}
           phx-mounted={JS.ignore_attributes(["open"])}
           class="group"
         >
-          <summary class="inline-flex cursor-pointer items-center gap-1 text-[12.5px] font-medium text-faint group-open:mb-2">
+          <summary class="inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-muted group-open:mb-2">
             <.icon name="hero-chevron-right-micro" class="size-3 group-open:rotate-90" />
-            {gettext("How to")}
+            {@fold}
           </summary>
-          <div class="grid gap-2 rounded-box border border-line bg-base-200 px-4 py-3 text-[13px]/5 [&_ol]:grid [&_ol]:list-decimal [&_ol]:gap-1 [&_ol]:pl-5">
+          <div class="grid gap-1.5 rounded-box border border-line bg-base-200 px-4 py-3 text-[13px]/5 [&_ol]:grid [&_ol]:list-decimal [&_ol]:gap-1 [&_ol]:pl-5">
             {render_slot(@help)}
           </div>
         </details>

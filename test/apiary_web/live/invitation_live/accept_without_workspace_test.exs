@@ -6,6 +6,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.SetUpSteps
 
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
@@ -55,6 +56,50 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     assert text(lv) =~ "You are invited to the Acme Studio organisation, as a member."
     refute html =~ "workspace of the"
     assert html =~ ~p"/users/register?invitation=#{token}"
+  end
+
+  test "signed out: the set-up starts with the invitation, then the account and the workspace",
+       %{conn: conn, token: token} do
+    {:ok, lv, _html} = live(conn, ~p"/invitations/#{token}")
+
+    # No Work source, with the feature or without: the invitation makes a member, to whom
+    # the workspace set-up does not show it.
+    assert steps(lv) ==
+             [{"Invitation", :current}, {"Your account", :to_come}, {"Workspace", :to_come}]
+
+    # The Invitation step has the organisation's id, for the edition; the page never
+    # shows it.
+    invitation = Organisations.get_invitation_by_token(token)
+
+    assert [%{id: :invitation, organisation_id: organisation_id} | _] =
+             ApiaryWeb.SetUpComponents.steps_for(nil, :invitation,
+               invitation: invitation,
+               token: token
+             )
+
+    assert organisation_id == invitation.organisation_id
+    refute render(lv) =~ organisation_id
+
+    {:ok, _register, register_html} = live(build_conn(), ~p"/users/register?invitation=#{token}")
+    refute register_html =~ organisation_id
+
+    assert has_element?(lv, "#invitation-email", "The invitation is for bee@example.com.")
+    refute text(lv) =~ "Create an account with"
+
+    assert has_element?(
+             lv,
+             "#set-up-context #invitation-context",
+             "The invitation makes you a member of Acme Studio. Acme Studio has no workspace " <>
+               "yet: its first one is set up after your account."
+           )
+
+    # The sign-up after it: the invitation done, a link back to its page.
+    {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
+
+    assert [{"Invitation", :done, :link}, {"Your account", :current}, {"Workspace", :to_come}] =
+             steps(lv)
+
+    assert has_element?(lv, ~s{#set-up-steps-invitation[href="/invitations/#{token}"]})
   end
 
   test "signed in: accepts and lands on the workspace set-up", %{

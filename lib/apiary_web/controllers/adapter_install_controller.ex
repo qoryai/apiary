@@ -14,7 +14,11 @@ defmodule ApiaryWeb.AdapterInstallController do
   #   3. `Apiary.Adapters.connect/2` starts the connection and makes its connect pass. The
   #      nonce it gives is kept in the person's session (`ApiaryWeb.ConnectSession`), so
   #      the return comes back in this browser, and the person is sent to the address it
-  #      answers, the adapter's connect address with the pass;
+  #      answers, the adapter's connect address with the pass. With `back` one of
+  #      `ApiaryWeb.ConnectSession.backs/0`, such as "set-up" from the workspace
+  #      set-up's Work source step, the session keeps it beside the nonce, and the return
+  #      leads there (`ApiaryWeb.AdapterRedirectController`); any other `back` is
+  #      ignored. Neither the pass nor the connect address carries it;
   #   4. when the organisation's connected connection cannot take a new pass yet, as for
   #      a second press in the same second, the person is sent to the integration's page;
   #      when the adapter cannot be connected yet (it declared no address, holds no key in
@@ -36,14 +40,14 @@ defmodule ApiaryWeb.AdapterInstallController do
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{ConnectSession, SendOn}
 
-  def create(conn, %{"adapter_id" => adapter_id}) do
+  def create(conn, %{"adapter_id" => adapter_id} = params) do
     scope = conn.assigns.current_scope
 
     with :ok <- Access.authorize(scope, :"adapter.connect", scope.organisation),
          %Node{} = adapter <- Adapters.get_adapter(scope, adapter_id) || {:error, :not_found},
          {:ok, url, session} <- Adapters.connect(scope, adapter) do
       conn
-      |> ConnectSession.put(session)
+      |> ConnectSession.put(session, params["back"])
       |> SendOn.send_on(url)
     else
       {:error, :forbidden} ->

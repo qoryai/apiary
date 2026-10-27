@@ -48,9 +48,12 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert has_element?(lv, "h1", "Model")
     assert has_element?(lv, ~s{#settings-tab-model[aria-current="page"]})
 
+    assert has_element?(lv, "aside#page-context h2", "About this page")
+    refute has_element?(lv, ".q-settings-head-sub")
+
     assert has_element?(
              lv,
-             "#model-line",
+             "#page-context #model-line",
              "#{scope.workspace.name}'s default model. A workflow or a repository can set another model for its runs. If #{scope.workspace.name} sets none, its runs use #{scope.organisation.name}'s model."
            )
 
@@ -63,11 +66,75 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     options =
       html
       |> LazyHTML.from_document()
-      |> LazyHTML.query("#model_choice_model option")
+      |> LazyHTML.query("#model_choice_model-options .q-pick-t")
       |> Enum.map(&LazyHTML.text/1)
 
     assert Enum.take(options, length(titles) + 1) == titles ++ ["Another model"]
     refute has_element?(lv, "#model_choice_other")
+  end
+
+  test "Model is a choice with search: each model's title over its id, then Another model",
+       ctx do
+    %{conn: conn, scope: scope, provider: provider} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    [first | _rest] =
+      suggestions = ModelChoices.suggestions(provider, ModelChoices.default_runtime())
+
+    assert has_element?(lv, "button#model_choice_model", first.title)
+    refute has_element?(lv, "select#model_choice_model")
+
+    assert has_element?(
+             lv,
+             "#model_choice_model-0[value='#{option(provider, first.id)}'][checked]"
+           )
+
+    assert has_element?(lv, "#model_choice_model-0-s.mono", first.id)
+
+    other = length(suggestions)
+
+    assert has_element?(
+             lv,
+             "label[for=model_choice_model-#{other}][data-keep=true]",
+             "Another model"
+           )
+
+    assert has_element?(lv, "#model_choice_model-#{other}-s", "A model id this list leaves out.")
+
+    # One provider: no heading. The search is there whatever the count.
+    refute has_element?(lv, "#model_choice_model-options .q-pick-group")
+    assert has_element?(lv, "#model_choice_model-search[aria-label='Find a model']")
+
+    assert has_element?(
+             lv,
+             ~s(#model_choice_model-choice[data-found="%{shown} of %{total} models"])
+           )
+  end
+
+  test "with two providers, Model groups the models under each provider's name", ctx do
+    %{conn: conn, scope: scope, provider: provider} = ctx
+
+    {:ok, second} =
+      Connections.create_provider(scope, %{
+        provider: "deepseek",
+        keys: [%{value_id: "key-1", value: "sk-deepseek-model-page-0123456789"}]
+      })
+
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    headings =
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#model_choice_model-options .q-pick-group")
+      |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+
+    assert Enum.sort(headings) == Enum.sort([provider.name, second.name])
+
+    assert has_element?(
+             lv,
+             ~s{#model_choice_model-options input[value="#{option(second)}"]}
+           )
   end
 
   test "saves a model of the list with an effort", ctx do
@@ -229,7 +296,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       assert has_element?(
                lv,
-               ~s{#model_choice_model option[value="#{option(provider, "claude-opus-5-5")}"]}
+               ~s{#model_choice_model-options input[value="#{option(provider, "claude-opus-5-5")}"]}
              )
 
       lv

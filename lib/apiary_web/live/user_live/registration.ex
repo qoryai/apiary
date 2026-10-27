@@ -10,6 +10,10 @@ defmodule ApiaryWeb.UserLive.Registration do
   and nothing where none is open, where the page says sign-up is by invitation.
   `Apiary.Organisations.sign_up_user/3` asks again when the form is sent.
 
+  The form is the account's step of the set-up, with its progress indicator
+  (`ApiaryWeb.SetUpComponents.steps_for/3`): after the invitation where it has no
+  workspace, and before the organisation's first workspace where it has none.
+
   **With mail** (`Apiary.Mail.configured?/0`) the account is made and a link to confirm
   it is emailed; the page says so in place. When the email cannot be sent, the account
   stays made, and the person is sent to the log-in page, which asks for a new link.
@@ -27,116 +31,134 @@ defmodule ApiaryWeb.UserLive.Registration do
 
   alias Apiary.Accounts
   alias Apiary.Organisations
+  alias ApiaryWeb.SetUpComponents
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :form_shown, form_shown?(assigns))
+
     ~H"""
-    <Layouts.auth flash={@flash} current_scope={@current_scope}>
-      <.check_your_email :if={@sent_to}>
-        <.rich text={
-          rich_gettext("We sent a confirmation link to %{email}. It works for 15 minutes.",
-            email: {:b, @sent_to, "font-medium text-base-content"}
-          )
-        } />
-      </.check_your_email>
-
-      <div :if={!@sent_to && by_invitation_only?(assigns)} id="sign-up-closed" class="grid gap-4">
-        <Layouts.auth_heading>
-          {gettext("Sign-up is by invitation")}
-          <:subtitle :if={@mail?}>
-            {gettext(
-              "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
-            )}
-          </:subtitle>
-          <:subtitle :if={!@mail?}>
-            {gettext(
-              "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
-            )}
-          </:subtitle>
-        </Layouts.auth_heading>
-
-        <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
-          {gettext("Log in")}
-        </.button>
-      </div>
-
-      <div :if={!@sent_to && not_set_up?(assigns)} id="sign-up-not-set-up" class="grid gap-4">
-        <Layouts.auth_heading>
-          {gettext("Create your account")}
-          <:subtitle>{ApiaryWeb.SetupLive.not_set_up_line()}</:subtitle>
-        </Layouts.auth_heading>
-      </div>
-
-      <div
-        :if={!@sent_to && !by_invitation_only?(assigns) && !not_set_up?(assigns)}
-        class="grid gap-4"
+    <Layouts.set_up flash={@flash} current_scope={@current_scope}>
+      <SetUpComponents.frame
+        steps={if @form_shown, do: @steps, else: []}
+        next={SetUpComponents.next?(nil)}
       >
-        <Layouts.auth_heading>
-          {gettext("Create your account")}
-          <:subtitle>{subtitle(assigns)}</:subtitle>
-        </Layouts.auth_heading>
+        <.check_your_email :if={@sent_to}>
+          <.rich text={
+            rich_gettext("We sent a confirmation link to %{email}. It works for 15 minutes.",
+              email: {:b, @sent_to, "font-medium text-base-content"}
+            )
+          } />
+        </.check_your_email>
 
-        <.notice :if={@invitation} kind={:info}>
-          <.rich text={invited_line(@invitation, @mail?)} />
-        </.notice>
+        <div :if={!@sent_to && by_invitation_only?(assigns)} id="sign-up-closed" class="grid gap-4">
+          <SetUpComponents.heading>
+            {gettext("Sign-up is by invitation")}
+            <:subtitle :if={@mail?}>
+              {gettext(
+                "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
+              )}
+            </:subtitle>
+            <:subtitle :if={!@mail?}>
+              {gettext(
+                "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
+              )}
+            </:subtitle>
+          </SetUpComponents.heading>
 
-        <.form
-          for={@form}
-          id="registration_form"
-          action={!@mail? && ~p"/users/log-in"}
-          method="post"
-          phx-submit="save"
-          phx-change="validate"
-          phx-trigger-action={@trigger_submit}
-          class="grid gap-4"
-          novalidate
-        >
-          <.input
-            field={@form[:email]}
-            type="email"
-            label={gettext("Email")}
-            size="md"
-            autocomplete="username"
-            spellcheck="false"
-            required
-            readonly={fixed_email?(assigns)}
-            phx-mounted={!fixed_email?(assigns) && JS.focus()}
-          />
-          <.input
-            :if={!@invitation}
-            field={@form[:organisation_name]}
-            type="text"
-            label={gettext("Organisation name")}
-            size="md"
-            autocomplete="organization"
-            hint={
-              gettext(
-                "Usually your company's name. Owners can change it later in the organisation's settings."
-              )
-            }
-            required
-          />
-          <.new_password_fields
-            :if={!@mail?}
-            password={@form[:password]}
-            confirmation={@form[:password_confirmation]}
-            size="md"
-          />
-          <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Creating")}>
-            {gettext("Create account")}
+          <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
+            {gettext("Log in")}
           </.button>
-        </.form>
+        </div>
 
-        <p class="mt-1 text-center text-[13px]/[18px] text-muted">
-          {gettext("Already have an account?")}
-          <.button variant="link" navigate={~p"/users/log-in"}>{gettext("Log in")}</.button>
-        </p>
-      </div>
+        <div :if={!@sent_to && not_set_up?(assigns)} id="sign-up-not-set-up" class="grid gap-4">
+          <SetUpComponents.heading>
+            {gettext("Create your account")}
+            <:subtitle>{ApiaryWeb.SetupLive.not_set_up_line()}</:subtitle>
+          </SetUpComponents.heading>
+        </div>
 
-      <.dev_mailbox_note />
-    </Layouts.auth>
+        <div :if={@form_shown} class="grid gap-4">
+          <SetUpComponents.heading>
+            {gettext("Create your account")}
+            <:subtitle :if={!@invitation}>
+              {gettext("Start an organisation. You set up its first workspace next.")}
+            </:subtitle>
+          </SetUpComponents.heading>
+
+          <.notice :if={@invitation} kind={:info}>
+            <.rich text={invited_line(@invitation, @mail?)} />
+          </.notice>
+
+          <.form
+            for={@form}
+            id="registration_form"
+            action={!@mail? && ~p"/users/log-in"}
+            method="post"
+            phx-submit="save"
+            phx-change="validate"
+            phx-trigger-action={@trigger_submit}
+            class="grid gap-4"
+            novalidate
+          >
+            <.input
+              field={@form[:email]}
+              type="email"
+              label={gettext("Email")}
+              size="md"
+              autocomplete="username"
+              spellcheck="false"
+              required
+              readonly={fixed_email?(assigns)}
+              phx-mounted={!fixed_email?(assigns) && JS.focus()}
+            />
+            <.input
+              :if={!@invitation}
+              field={@form[:organisation_name]}
+              type="text"
+              label={gettext("Organisation name")}
+              size="md"
+              autocomplete="organization"
+              hint={
+                gettext(
+                  "Usually your company's name. Owners can change it later in the organisation's settings."
+                )
+              }
+              required
+            />
+            <.new_password_fields
+              :if={!@mail?}
+              password={@form[:password]}
+              confirmation={@form[:password_confirmation]}
+              size="md"
+            />
+            <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Creating")}>
+              {gettext("Create account")}
+            </.button>
+          </.form>
+
+          <p class="mt-1 text-center text-[13px]/[18px] text-muted">
+            {gettext("Already have an account?")}
+            <.button variant="link" navigate={~p"/users/log-in"}>{gettext("Log in")}</.button>
+          </p>
+        </div>
+
+        <.dev_mailbox_note />
+
+        <:context :if={@form_shown and @mail?}>
+          <p id="sign-up-context">
+            {gettext("We will email you a link to confirm; no password needed.")}
+          </p>
+        </:context>
+      </SetUpComponents.frame>
+    </Layouts.set_up>
     """
   end
+
+  defp form_shown?(%{sent_to: nil} = assigns),
+    do: !by_invitation_only?(assigns) && !not_set_up?(assigns)
+
+  defp form_shown?(_assigns), do: false
 
   # What the invitation is to, and when the person can open it. With mail the account has
   # no password, and the emailed link that signs it in first confirms its address; without
@@ -170,25 +192,6 @@ defmodule ApiaryWeb.UserLive.Registration do
         "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you create it.",
         workspace: {:b, workspace.name},
         organisation: {:b, organisation.name}
-      )
-
-  # What the page says it creates: an organisation. The first sign-up of an instance
-  # creates an organisation like any other, to the person who makes it.
-  defp subtitle(%{invitation: %{}, mail?: true}),
-    do: gettext("We will email you a link to confirm; no password needed.")
-
-  defp subtitle(%{invitation: %{}}), do: gettext("Choose a password to sign in with.")
-
-  defp subtitle(%{mail?: true}),
-    do:
-      gettext(
-        "Start an organisation. You set up its first workspace next. We will email you a link to confirm; no password needed."
-      )
-
-  defp subtitle(_assigns),
-    do:
-      gettext(
-        "Start an organisation. You set up its first workspace next. Choose a password to sign in with."
       )
 
   # Without mail, an invitation's link is the inviter's word for its address: the page
@@ -232,6 +235,7 @@ defmodule ApiaryWeb.UserLive.Registration do
       |> assign(:invitation_token, if(invitation, do: token, else: nil))
       |> assign(:invitation, invitation)
       |> assign(:offer, offer)
+      |> assign(:steps, steps(invitation, token))
       |> assign(:mail?, Apiary.Mail.configured?())
       |> assign(:trigger_submit, false)
       # Where the sign-up comes from, for its audit entry: known while the page mounts.
@@ -240,6 +244,13 @@ defmodule ApiaryWeb.UserLive.Registration do
     {:ok, assign_form(socket, change_sign_up(socket, %{"email" => email})),
      temporary_assigns: [form: nil]}
   end
+
+  # The set-up's steps the form is the account's step of: after the invitation, where it
+  # has no workspace; then the organisation's first workspace, where it has none.
+  defp steps(nil, _token), do: SetUpComponents.steps_for(nil, :account)
+
+  defp steps(invitation, token),
+    do: SetUpComponents.steps_for(nil, :account, invitation: invitation, token: token)
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do

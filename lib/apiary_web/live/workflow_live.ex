@@ -5,11 +5,13 @@ defmodule ApiaryWeb.WorkflowLive do
   # It opens for whoever may save it (`harness.save`, owners and admins), and is not found
   # for anyone else, as the section is absent from their list.
   #
-  # Under the title, what the page sets and its steps, and in a workspace whose domain has harness
-  # files (`Apiary.Lingo.Domain.harness_file?/1`), that a repository's harness file comes
-  # first. A line says which workflow the runs follow now, where the workspace has one.
+  # Beside the form, About this page says what the page sets and which sources Source
+  # lists. Under the title, in a workspace whose domain has harness files
+  # (`Apiary.Lingo.Domain.harness_file?/1`), a notice says that a repository's harness
+  # file comes first, and a line says which workflow the runs follow now, where the
+  # workspace has one.
   #
-  # Source is one select in three groups: the organisation's linked repositories that
+  # Source is one choice in three groups: the organisation's linked repositories that
   # have a stack, read through the adapters when the page connects, so the group says it
   # is reading until then; the harness sources an instance admin assigned to the
   # organisation; and a public address, which shows a field for it. Choosing a source, or
@@ -357,68 +359,7 @@ defmodule ApiaryWeb.WorkflowLive do
         current={:workflow}
         title={gettext("Workflow")}
       >
-        <div id="workflow-help" class="grid max-w-[72ch] gap-2 text-[13px]/[20px] text-muted">
-          <p id="workflow-what">
-            {pgettext(
-              "plain",
-              "%{workspace}'s runs follow the workflow you choose here, from a harness repository.",
-              workspace: @workspace
-            )}
-          </p>
-          <ol class="list-decimal space-y-1 pl-5">
-            <li>
-              <.rich text={
-                rich_gettext("Open %{place}.",
-                  place: {:b, gettext("Workspace settings") <> " › " <> gettext("Workflow")}
-                )
-              } />
-            </li>
-            <li>
-              <.rich text={
-                rich_pgettext(
-                  "plain",
-                  "In %{field}, choose the harness repository, such as %{example}.",
-                  field: {:b, gettext("Source")},
-                  example: {:code, "example-org/harness"}
-                )
-              } />
-            </li>
-            <li>
-              <.rich text={
-                rich_pgettext(
-                  "plain",
-                  "If the repository is public and not in the list, enter its address instead, such as %{example}, without a password or token in it.",
-                  example: {:code, "https://github.com/example-org/harness"}
-                )
-              } />
-            </li>
-            <li>
-              <.rich text={
-                rich_pgettext(
-                  "plain",
-                  "In %{field}, choose one of the workflows the repository's stack lists, such as %{example}.",
-                  field: {:b, gettext("Workflow")},
-                  example: {:code, "triage"}
-                )
-              } />
-            </li>
-            <li>
-              <.rich text={rich_gettext("Press %{button}.", button: {:b, gettext("Save")})} />
-            </li>
-          </ol>
-          <p>
-            <.rich text={
-              rich_pgettext(
-                "plain",
-                "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, link it to %{organisation}, or ask an instance admin to assign it.",
-                organisation: @organisation,
-                file: {:code, "qory-stack.yaml"}
-              )
-            } />
-          </p>
-        </div>
-
-        <.notice :if={@harness_file} kind={:info} class="mt-4">
+        <.notice :if={@harness_file} kind={:info}>
           <span id="workflow-file-first">
             <.rich text={
               rich_pgettext("plain", "A repository's %{harness} or %{qory} comes first.",
@@ -429,7 +370,7 @@ defmodule ApiaryWeb.WorkflowLive do
           </span>
         </.notice>
 
-        <p :if={@current} id="workflow-current" class="mt-4 text-[13px]/[20px]">
+        <p :if={@current} id="workflow-current" class="text-[13px]/[20px]">
           {current_words(@current, @workspace)}
         </p>
 
@@ -438,12 +379,12 @@ defmodule ApiaryWeb.WorkflowLive do
           id="workflow-form"
           phx-change="change"
           phx-submit="save"
-          class="q-form mt-4"
+          class="q-form"
           novalidate
         >
           <.input
             field={@form[:source]}
-            type="select"
+            type="choice"
             label={gettext("Source")}
             prompt={gettext("Choose a source")}
             options={source_options(assigns)}
@@ -456,6 +397,7 @@ defmodule ApiaryWeb.WorkflowLive do
             value={@address}
             type="text"
             label={gettext("Public address")}
+            hint={pgettext("plain", "The repository's address, without a password or token in it.")}
             errors={List.wrap(@address_error)}
             debounce="blur"
             autocomplete="off"
@@ -502,30 +444,48 @@ defmodule ApiaryWeb.WorkflowLive do
             </.button>
           </SettingsComponents.save>
         </.form>
+        <:context>
+          <p id="workflow-what">
+            {pgettext(
+              "plain",
+              "%{workspace}'s runs follow the workflow you choose here, from a harness repository.",
+              workspace: @workspace
+            )}
+          </p>
+          <p id="workflow-list">
+            <.rich text={
+              rich_pgettext(
+                "plain",
+                "The list shows the repositories linked to %{organisation} that have a stack (a %{file} file), and the harness sources an instance admin assigned to %{organisation}. If your harness repository is missing, link it to %{organisation}, or ask an instance admin to assign it.",
+                organisation: @organisation,
+                file: {:code, "qory-stack.yaml"}
+              )
+            } />
+          </p>
+        </:context>
       </SettingsComponents.layout>
     </Layouts.app>
     """
   end
 
-  # The groups of Source: the linked repositories, read when the page connects; the
-  # assigned sources; and the public address. Each group shows, an empty one too.
+  # The groups of Source: the linked repositories, read when the page connects, with
+  # Reading… until then, which cannot be chosen; the assigned sources; and the public
+  # address. Each group shows, an empty one too. A source is its label, in mono.
   defp source_options(assigns) do
     linked =
       case assigns.linked do
-        nil ->
-          [[key: gettext("Reading…"), value: "", disabled: true]]
-
-        linked ->
-          for source <- linked, do: {source.label, source.id}
+        nil -> [%{value: "", title: gettext("Reading…"), disabled: true}]
+        linked -> Enum.map(linked, &source_option/1)
       end
 
     [
       {pgettext("plain", "Linked repositories"), linked},
-      {gettext("Assigned by an instance admin"),
-       for(source <- assigns.assigned, do: {source.label, source.id})},
-      {gettext("Public address"), [{gettext("Enter an address"), "address"}]}
+      {gettext("Assigned by an instance admin"), Enum.map(assigns.assigned, &source_option/1)},
+      {gettext("Public address"), [%{value: "address", title: gettext("Enter an address")}]}
     ]
   end
+
+  defp source_option(source), do: %{value: source.id, title: source.label, mono: :title}
 
   # The workflows of the chosen source's stacks, each `<stack index>/<workflow>`: one
   # list for one stack, a group per stack named for it where there are several.

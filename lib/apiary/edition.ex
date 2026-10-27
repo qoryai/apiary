@@ -27,6 +27,7 @@ defmodule Apiary.Edition do
     `workspace_created/3`, `instance_organisation_id/0`, `first_sign_up_line/0`,
     `first_workspace_line/1`, `first_workspace_waiting_line/1`,
     `audit_retention_max_days/0`, `attribution?/0`.
+  - **The set-up's steps**: `set_up_steps/2`, `set_up_title/2`, `set_up_context/2`.
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
   - **Stored secrets** (`Apiary.Secrets`): `organisation_secrets/2`, whether an
@@ -68,6 +69,34 @@ defmodule Apiary.Edition do
 
   @typedoc "A place a person reaches: an organisation, with what the edition says of it."
   @type place :: map
+
+  @typedoc """
+  A step of the set-up, as its progress indicator lists it
+  (`ApiaryWeb.SetUpComponents.steps/1`):
+
+  - `id`, the step's key: `:invitation`, `:account`, `{:adapter, public_id}`, `:mail`,
+    `:workspace` or `:source` in the core, or a term of the edition's;
+  - `label`, its name in the list, translated;
+  - `group`, the heading it is listed under: nil for none, `:connect` for
+    "Connect Qory Apiary", `:workspace` for "Set up your workspace";
+  - `state`: `:done`, `:skipped` (before the current step and not done), `:current` or
+    `:to_come`;
+  - `path`, the page that shows the step, or nil where none does; a step that is done or
+    skipped and has a path is a link;
+  - `note`, a line under its name, or nil;
+  - `organisation_id`, on the Invitation step alone, signed out: the id of the
+    invitation's organisation, so an edition can tell whose invitation it is. No page
+    shows it.
+  """
+  @type set_up_step :: %{
+          optional(:organisation_id) => Ecto.UUID.t(),
+          id: term,
+          label: String.t(),
+          group: nil | :connect | :workspace,
+          state: :done | :skipped | :current | :to_come,
+          path: String.t() | nil,
+          note: String.t() | nil
+        }
 
   @typedoc "What a deletion or purge is about."
   @type deletion_subject :: %Organisation{} | %Workspace{}
@@ -136,6 +165,35 @@ defmodule Apiary.Edition do
   workspace: who does. Translated when it is asked.
   """
   @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
+
+  # The set-up's steps
+
+  @doc """
+  The steps the set-up's progress indicator lists for `scope`, given `steps`, the core's
+  list for that scope and this instance, in order and with their states
+  (`ApiaryWeb.SetUpComponents.steps_for/3`). `scope` is nil on the pages a person
+  reads signed out: the set-up link, the sign-up and an invitation. There, the
+  Invitation step has `organisation_id`, the invitation's organisation's id, which no
+  page shows. The answer is the list to show: the edition may add, rename or replace
+  steps, and set their notes; its length is the count the indicator shows ("Step 2 of
+  4"), and a list of fewer than 2 steps shows no indicator. The core answers `steps`.
+  """
+  @callback set_up_steps(Scope.t() | nil, [set_up_step]) :: [set_up_step]
+
+  @doc """
+  The line the set-up's column About this step shows for `scope` on the step `step_id`,
+  such as `:workspace`, where the page has no line of the core's: on the workspace
+  set-up page (`/:org/set-up`) for a person who may not create the organisation's first
+  workspace. Nil shows no column. Translated when it is asked. The core answers nil.
+  """
+  @callback set_up_context(Scope.t() | nil, step_id :: term) :: String.t() | nil
+
+  @doc """
+  The title of the workspace set-up page (`/:org/set-up`) on `step`, its Workspace step
+  as `c:set_up_steps/2` answered it, or nil where the list has none, for `scope`.
+  Translated when it is asked. The core answers "Set up your workspace".
+  """
+  @callback set_up_title(Scope.t(), set_up_step | nil) :: String.t()
 
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
@@ -685,6 +743,9 @@ defmodule Apiary.Edition do
     first_sign_up_line: 0,
     first_workspace_line: 1,
     first_workspace_waiting_line: 1,
+    set_up_steps: 2,
+    set_up_title: 2,
+    set_up_context: 2,
     above_workspace: 1,
     model_choice_chain: 1,
     operator_chain_organisation: 1,

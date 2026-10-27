@@ -2750,6 +2750,57 @@ defmodule ApiaryWeb.Layouts do
   end
 
   @doc """
+  The frame of the set-up's pages a person reads signed out: the set-up link, the
+  sign-up and an invitation's page. A header strip with the product's mark and name
+  (`Apiary.ProductName.name/0`) and the theme menu, then the page, which is the set-up
+  frame (`ApiaryWeb.SetUpComponents.frame/1`), and, beside a name an instance admin set,
+  "Powered by Qory Apiary" (`Apiary.ProductName.powered_by?/0`) under it.
+
+      <Layouts.set_up flash={@flash}>
+        <SetUpComponents.frame steps={@steps}>...</SetUpComponents.frame>
+      </Layouts.set_up>
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  attr :current_scope, :map, default: nil
+  slot :inner_block, required: true
+
+  def set_up(assigns) do
+    assigns = assign(assigns, :product, Apiary.ProductName.name())
+
+    ~H"""
+    <a
+      href="#main"
+      class="btn btn-sm sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70]"
+    >
+      {gettext("Skip to content")}
+    </a>
+
+    <div class="flex min-h-dvh min-w-0 flex-col bg-base-100">
+      <header class="flex h-12 flex-none items-center justify-between border-b border-line px-4">
+        <.brand name={@product} />
+        <.theme_menu tooltip="tooltip-bottom" />
+      </header>
+      <main id="main" tabindex="-1" class="min-w-0 flex-1 outline-none">
+        <div class="q-page q-page-list">
+          <div class="grid grid-cols-[minmax(0,1fr)] gap-6">
+            {render_slot(@inner_block)}
+            <p
+              :if={Apiary.ProductName.powered_by?()}
+              id="powered-by"
+              class="text-[12px]/4 text-faint"
+            >
+              {gettext("Powered by Qory Apiary")}
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
   The display heading of an auth page with its one-line description.
   """
   slot :inner_block, required: true

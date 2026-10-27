@@ -49,24 +49,42 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Accepting it opens **Set up your workspace** while the organisation has no workspace,
   else the organisation's overview. Once the organisation has a workspace, an invitation
   needs a workspace again.
+- Each page of the set-up with more than one step shows one list of its steps, from the
+  set-up link, a sign-up or an invitation to the organisation's first workspace: **Your
+  account**, the steps under **Connect Qory Apiary**, then those under **Set up your
+  workspace**. Above the list, “Step 2 of 4” and a bar; below 1280 px the list is a bar
+  with **All steps**. A step done or skipped is a link to it where it has a page, once
+  you are signed in; **Your account** is not. **Back** at the foot of a form opens the
+  step before, and each step has an address, such as `/instance/set-up?step=mail` and
+  `/<organisation>/set-up?step=type`. A person who waits for another to create the first
+  workspace sees no list.
+- **Set up your workspace** moves on without a reload when another member creates the
+  organisation's first workspace while the page is open.
+- An edition can change the set-up's steps, their notes and the title of **Set up your
+  workspace**, and give a person who waits for the first workspace a line under **About
+  this step**, through the callbacks `set_up_steps/2`, `set_up_title/2` and
+  `set_up_context/2` of `Apiary.Edition`. The core keeps its steps and the title, and
+  gives no line.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
   Adapters** lists, before **Mail**. **Create workspace** then opens **Connect a work
   source to Main**, which lists the work sources the instance has set up for the
   workspace's type, each with **Connect**. Where an adapter's description has steps for
-  setting it up or connecting it, both pages show them after Qory Apiary's first step.
+  setting it up or connecting it, both pages list them in the column **About this step**,
+  under **In the new tab** or **On** and the adapter's name.
   Qory Apiary stores those steps at each start of the adapter.
 - The overview of a workspace shows **Set up Main**, with the workspace's name, in place
   of **Send your first run** until a test run passes. Its steps are **Work source**,
   **Machines for runs**, **Model key** and **Test run**, each with a check mark once done
-  and its help under **How to**. **Run the test** makes a test work item of the line in
-  **Say hi to your agent**, with no work source; owners, admins and members run it once
-  **Machines for runs** and **Model key** are done. The test run uses a harness built into
-  Qory Apiary: qory's `examples/hello` at a fixed commit, workflow `hello`, which the
-  machine fetches from github.com without a credential. The step shows what to fix first
-  when no machine takes the run within 5 minutes, the gateway has no model key, or the run
-  sends nothing for 10 minutes. **Work items** lists each test work item with the mark
-  **Test**.
+  and, under its row, a line that says why the step exists; the steps of **Machines for
+  runs** on another page fold under **Check the nodes**. **Run the test** makes a test
+  work item of the line in **Say hi to your agent**, with no work source; owners, admins
+  and members run it once **Machines for runs** and **Model key** are done. The test run
+  uses a harness built into Qory Apiary: qory's `examples/hello` at a fixed commit,
+  workflow `hello`, which the machine fetches from github.com without a credential. The
+  step shows what to fix first when no machine takes the run within 5 minutes, the
+  gateway has no model key, or the run sends nothing for 10 minutes. **Work items** lists
+  each test work item with the mark **Test**.
 - **Organisation settings › Model providers** adds a model provider with its key, and an
   address for a provider that needs one, such as LiteLLM; no page shows a key once it is
   saved. **Workspace settings › Model** sets the model of the workspace's runs. Its field
@@ -164,7 +182,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   sign-up without an invitation, that sign-up creates no workspace either. Create Main
   before you load the demo: `Apiary.Release.demo()` writes nothing while Acme has no
   workspace Main.
+- Where a step of the set-up needs context, its page has a column **About this step**
+  beside the form, or under it below 1024 px, that says what the step does; the help
+  lines in the forms are gone.
+  **Type** is a choice field, each type's name with its line under it, in place of a
+  select.
 <!-- feature: factory -->
+- **Organisation settings › Model providers**, **Workspace settings › Model** and
+  **Workspace settings › Workflow** have a column **About this page** beside the form.
+  **Provider**, **Model** and **Source** are choice fields. **Connect** on the set-up's
+  **Work source** step returns there after the adapter's steps, and a work source already
+  connected shows **Connected**. Under the set-up's list, a line names the steps that
+  follow on the Overview.
 - The `factory` feature needs `secrets` as well as `observability` and `security`: a
   `QORY_FEATURES` list with `factory` and without `secrets` stops the boot. Set
   `QORY_FEATURES=observability,security,secrets,factory`; `all` leaves `factory` off, as

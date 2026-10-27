@@ -1,18 +1,49 @@
 defmodule ApiaryWeb.WorkspaceSetupLiveTest do
-  # The workspace set-up, `/:org/set-up` (`ApiaryWeb.WorkspaceSetupLive`): its first step,
-  # the Type field and Create workspace, for a person `workspace.create` allows, and the
-  # line for anyone else; the refusals; and the landing that sends an organisation with no
-  # workspace to it. `ApiaryWeb.WorkspaceSetupLive.SourceTest` has the second step.
+  # The workspace set-up, `/:org/set-up` (`ApiaryWeb.WorkspaceSetupLive`): its Workspace
+  # step, the Type field and Create workspace, for a person `workspace.create` allows, and
+  # the line for anyone else; the refusals; the summary once the workspace exists; the page
+  # that moves on when anyone creates the workspace; and the landing that sends an
+  # organisation with no workspace to it. `ApiaryWeb.WorkspaceSetupLive.SourceTest` has
+  # Work source.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.SetUpSteps
 
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Membership, Workspace}
   alias ApiaryWeb.UserAuth
+
+  defmodule Waiting do
+    # An edition that lists, for a person who waits, their account and an extra step,
+    # and has a line for the column About this step.
+    def set_up_steps(%Scope{}, []),
+      do: [
+        %{
+          id: :account,
+          label: "Your account",
+          group: nil,
+          state: :done,
+          path: nil,
+          note: nil
+        },
+        %{
+          id: :client,
+          label: "Client's workspace",
+          group: :workspace,
+          state: :current,
+          path: nil,
+          note: "Harbour Ops sets it up"
+        }
+      ]
+
+    def set_up_steps(_scope, steps), do: steps
+
+    def set_up_context(%Scope{}, :workspace), do: "Harbour Ops sets up the workspace."
+  end
 
   # An organisation made with no workspace, and its owner.
   defp sign_up_without_workspace do
@@ -55,31 +86,56 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
     assert html =~ ~r{<title[^>]*>\s*Set up your workspace}
     assert has_element?(lv, "h1", "Set up your workspace")
-    assert words(lv, "#set-up-line") == "Main is this instance's only workspace."
-    refute has_element?(lv, "#set-up-step")
     refute has_element?(lv, "#shell .drawer")
+    refute has_element?(lv, "#set-up-help")
 
-    assert words(lv, "#set-up-help") ==
-             "In Type, choose Software if Main works on code in repositories, or General for any other work. " <>
-               "Press Create workspace."
+    assert words(lv, "#set-up-what") ==
+             "Main is where Qory Apiary takes in tickets and runs agents on them. Its type sets " <>
+               "which work sources it can connect, and whether each ticket needs a repository."
 
-    assert has_element?(
-             lv,
-             "#set-up-form select[name='workspace[domain]'] option[value='']",
-             "Choose a type"
-           )
+    assert words(lv, "#set-up-line") == "Main is this instance's only workspace."
+    assert has_element?(lv, "#set-up-context #set-up-line")
 
-    assert has_element?(
-             lv,
-             "#set-up-form option[value='software']",
-             "Software — For work on code. Each ticket needs a repository."
-           )
+    # Your account, then Workspace, and Work source with the feature; no Back before it.
+    if Apiary.Features.on?(:factory) do
+      assert steps(lv) == [
+               {"Your account", :done},
+               {"Workspace", :current},
+               {"Work source", :to_come}
+             ]
 
-    assert has_element?(
-             lv,
-             "#set-up-form option[value='general']",
-             "General — For any other work, such as marketing, incidents or customer care."
-           )
+      assert count(lv) == "Step 2 of 3"
+    else
+      assert steps(lv) == [{"Your account", :done}, {"Workspace", :current}]
+      assert count(lv) == "Step 2 of 2"
+    end
+
+    refute has_element?(lv, "#set-up-back")
+
+    # The Type is a choice: a button with the prompt, and a panel of radios, each with
+    # its type's title and line.
+    assert has_element?(lv, "#set-up-form button#workspace_domain.is-prompt", "Choose a type")
+    assert has_element?(lv, "#workspace_domain-panel[hidden]")
+    refute has_element?(lv, "#set-up-form select")
+
+    for {value, title, line} <- [
+          {"software", "Software", "For work on code. Each ticket needs a repository."},
+          {"general", "General",
+           "For any other work, such as marketing, incidents or customer care."}
+        ] do
+      radio = "#set-up-form input[type=radio][name='workspace[domain]'][value='#{value}']"
+      assert has_element?(lv, radio)
+
+      [id] =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query(radio)
+        |> LazyHTML.attribute("id")
+
+      assert has_element?(lv, "label[for='#{id}'] .q-pick-t", title)
+      assert has_element?(lv, "##{id}-s", line)
+    end
 
     assert has_element?(
              lv,
@@ -88,6 +144,18 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
            )
 
     assert has_element?(lv, "#set-up-form button", "Create workspace")
+  end
+
+  test "?step=source before the workspace exists opens the Type step", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+    {:ok, lv, _html} =
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=source")
+
+    assert has_element?(lv, "h1", "Set up your workspace")
+    assert has_element?(lv, "#set-up-form #workspace_domain", "Choose a type")
+    assert {"Workspace", :current} in steps(lv)
+    refute has_element?(lv, "#set-up-sources")
   end
 
   test "Create workspace makes Main of the type chosen", %{conn: conn} do
@@ -104,15 +172,68 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     {to, _flash} = assert_redirect(lv)
 
     if Apiary.Features.on?(:factory),
-      do: assert(to == ~p"/#{organisation}/set-up"),
+      do: assert(to == ~p"/#{organisation}/set-up?step=source"),
       else: assert(to == ~p"/#{organisation}/#{main}")
+  end
+
+  test "Workspace, once the workspace exists, shows what was made, read only", %{conn: conn} do
+    %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=type")
+
+    assert has_element?(lv, "h1", "Set up your workspace")
+
+    assert words(lv, "#set-up-made") ==
+             "Main is a Software workspace. You can't change the type after you create the workspace."
+
+    refute has_element?(lv, "#set-up-form")
+    assert {"Workspace", :current} in steps(lv)
+
+    if Apiary.Features.on?(:factory) do
+      lv |> element("#set-up-continue") |> render_click()
+      assert_patch(lv, ~p"/#{organisation}/set-up?step=source")
+      assert {"Workspace", :done, :link} in steps(lv)
+    else
+      # Continue opens the workspace, at its first page the person may open.
+      [href] =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#set-up-continue")
+        |> LazyHTML.attribute("href")
+
+      assert String.starts_with?(href, ~p"/#{organisation}/#{main}")
+    end
+  end
+
+  test "once anyone creates the workspace, the page moves on", %{conn: conn} do
+    %{user: owner, organisation: organisation} = sign_up_without_workspace()
+    member = joined(organisation, :member)
+
+    {:ok, waiting, _html} = conn |> log_in_user(member) |> live(~p"/#{organisation}/set-up")
+    assert has_element?(waiting, "#set-up-waiting")
+    assert steps(waiting) == []
+
+    {:ok, other, _html} = build_conn() |> log_in_user(owner) |> live(~p"/#{organisation}/set-up")
+
+    {:ok, _main} =
+      Organisations.create_first_workspace(
+        Organisations.load_scope(Scope.for_user(owner), organisation.id),
+        %{"domain" => "general"}
+      )
+
+    for lv <- [waiting, other] do
+      {to, _flash} = assert_redirect(lv)
+      assert to == ~p"/#{organisation}/set-up?step=source"
+    end
   end
 
   test "with no type chosen, says to choose one", %{conn: conn} do
     %{user: user, organisation: organisation} = sign_up_without_workspace()
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
 
-    lv |> form("#set-up-form", workspace: %{domain: ""}) |> render_submit()
+    # No radio is checked, so the form sends no type.
+    lv |> form("#set-up-form") |> render_submit()
 
     assert has_element?(lv, "#set-up-form", "Choose a type.")
     refute Organisations.has_workspace?(organisation)
@@ -152,7 +273,44 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                "An owner sets up this organisation's first workspace."
 
       refute has_element?(lv, "#set-up-form")
+      refute has_element?(lv, "#set-up-steps")
+      refute has_element?(lv, "#set-up-context")
     end
+  end
+
+  test "an instance admin who waits in another organisation sees no steps", %{conn: conn} do
+    %{organisation: organisation} = sign_up_without_workspace()
+    admin = instance_admin_scope()
+
+    %Membership{organisation_id: organisation.id, user_id: admin.user.id}
+    |> Membership.changeset(%{level: :member})
+    |> Repo.insert!()
+
+    {:ok, lv, _html} = conn |> log_in_user(admin.user) |> live(~p"/#{organisation}/set-up")
+
+    # The Connect steps are the instance's, not this page's: a person who waits gets the
+    # core's list, which has no step.
+    assert has_element?(lv, "#set-up-waiting")
+    assert steps(lv) == []
+    refute has_element?(lv, "#set-up-steps")
+    refute has_element?(lv, "#set-up-context")
+  end
+
+  test "a person who waits sees the edition's steps from 2 on, and its line for the step",
+       %{conn: conn} do
+    %{organisation: organisation} = sign_up_without_workspace()
+    member = joined(organisation, :member)
+
+    # The core lists the member's account alone and has no line, so the page shows
+    # neither (the test before this one); the edition's answer shows both.
+    :ok = Apiary.Edition.put_test_stub(Waiting)
+    {:ok, lv, _html} = conn |> log_in_user(member) |> live(~p"/#{organisation}/set-up")
+
+    assert has_element?(lv, "#set-up-waiting")
+    assert steps(lv) == [{"Your account", :done}, {"Client's workspace", :current}]
+    assert count(lv) == "Step 2 of 2"
+
+    assert words(lv, "#set-up-context #set-up-what") == "Harbour Ops sets up the workspace."
   end
 
   test "is no page for someone outside the organisation", %{conn: conn} do
@@ -216,6 +374,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
   # Skip; with none, the line and Continue; and who it is for.
   use ApiaryWeb.ConnCase, async: true
 
+  import ApiaryWeb.SetUpSteps
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
@@ -255,8 +414,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
 
     assert html =~ ~r{<title[^>]*>\s*Connect a work source to Main}
     assert has_element?(lv, "h1", "Connect a work source to Main")
-    assert words(lv, "#set-up-step") == "Step 2 of 2"
-    assert words(lv, "#set-up-line") == "Bring tickets in from a system this instance has set up."
+    assert words(lv, "#set-up-what") == "Bring tickets in from a system this instance has set up."
+
+    assert words(lv, "#set-up-backlog") ==
+             "Main's Backlog lists the tickets of the work sources it connects. Connect opens " <>
+               "#{adapter.name} in this tab, and #{adapter.name} sends you back to Qory Apiary " <>
+               "after its steps."
+
+    assert Enum.take(steps(lv), -2) == [{"Workspace", :done, :link}, {"Work source", :current}]
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-back[href="/#{organisation.slug}/set-up?step=type"][aria-label="Back to Workspace"]}
+           )
 
     assert has_element?(lv, "#set-up-source-#{adapter.public_id}", adapter.name)
 
@@ -271,9 +441,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
 
     assert has_element?(
              lv,
-             ~s{#set-up-source-#{adapter.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{adapter.public_id}/install"]},
+             ~s{#set-up-source-#{adapter.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{adapter.public_id}/install?back=set-up"]},
              "Connect"
            )
+
+    refute has_element?(lv, "#set-up-source-#{adapter.public_id}-connected")
 
     assert has_element?(
              lv,
@@ -283,6 +455,41 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
 
     assert words(lv, "#set-up-skip p") == "You can connect one later from Main's Overview."
     refute has_element?(lv, "#set-up-no-source")
+  end
+
+  test "an adapter already connected shows Connected, by the Overview's rule, and Continue",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, workspace: main, scope: scope} = sign_up_fixture()
+    collection = collection_fixture(scope)
+    connected = Repo.get!(Apiary.Nodes.Node, collection.adapter_id)
+    %{adapter: other} = connectable_adapter_fixture()
+
+    assert [%{adapter: %{id: id}}] = Apiary.Edition.work_source_ready(main)
+    assert id == connected.id
+
+    {:ok, lv, _html} =
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=source")
+
+    assert has_element?(lv, "#set-up-source-#{connected.public_id}-connected", "Connected")
+    refute has_element?(lv, "#set-up-source-#{other.public_id}-connected")
+
+    # Connect stays, to connect another account; the step is done, so Continue, not Skip.
+    assert has_element?(
+             lv,
+             "#set-up-source-#{connected.public_id}-connect-install:not(.btn-primary)"
+           )
+
+    assert has_element?(lv, "#set-up-source-#{other.public_id}-connect-install.btn-primary")
+    assert {"Work source", :current} in steps(lv)
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-continue[href="/#{organisation.slug}/#{main.slug}"]},
+             "Continue"
+           )
+
+    refute has_element?(lv, "#set-up-skip-button")
+    refute has_element?(lv, "#set-up-skip p")
   end
 
   describe "an adapter's guide" do
@@ -311,11 +518,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
       help = "#set-up-help-#{adapter.public_id}"
 
-      assert texts(lv, help, "li") ==
-               [
-                 "Press Connect beside #{adapter.name}. #{adapter.name} opens."
-                 | guide["connect"]["steps"]
-               ]
+      assert has_element?(lv, "#set-up-context #{help} h3", "On #{adapter.name}")
+      assert texts(lv, help, "li") == guide["connect"]["steps"]
 
       assert texts(lv, help, "p") == [
                guide["connect"]["before"],
@@ -335,8 +539,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
       connect = "#set-up-source-#{adapter.public_id}-connect-install"
 
       assert has_element?(lv, "#set-up-source-#{adapter.public_id} p", "GitHub")
-      assert [first | _] = texts(lv, help, "li")
-      assert first == "Press Connect beside GitHub. GitHub opens."
+      assert has_element?(lv, "#{help} h3", "On GitHub")
+      refute render(lv) =~ "Press Connect beside"
       assert has_element?(lv, connect, "Connect")
       refute has_element?(lv, "#{connect}[disabled]")
 
@@ -385,10 +589,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.SourceTest do
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
       help = "#set-up-help-#{adapter.public_id}"
 
-      assert texts(lv, help, "li") == [
-               "Press Connect beside #{adapter.name}. #{adapter.name} opens.",
-               "Press **Allow** <b>now</b>."
-             ]
+      assert texts(lv, help, "li") == ["Press **Allow** <b>now</b>."]
 
       assert texts(lv, help, "p") == [~s(<a href="x">y</a>)]
       refute has_element?(lv, "#{help} a")

@@ -5,7 +5,10 @@ defmodule ApiaryWeb.SetupLive do
   and its confirmation, and the organisation's name; it makes the instance's first
   account, an instance admin, and its organisation, with no workspace
   (`Apiary.Setup.set_up/3`), and the edition says what is created
-  (`c:Apiary.Edition.first_sign_up_line/0`). Once it is accepted, the same form is
+  (`c:Apiary.Edition.first_sign_up_line/0`). The page is the first step of the set-up's
+  progress indicator (`ApiaryWeb.SetUpComponents.steps_for/3`): its reader becomes the
+  instance admin, who connects the instance and sets up the workspace next. Once it is
+  accepted, the same form is
   submitted to the log-in controller (`phx-trigger-action`, as the sign-up page does),
   which signs the person in with the password the browser holds, and sends them on to
   the instance's connections and then the workspace set-up
@@ -22,6 +25,7 @@ defmodule ApiaryWeb.SetupLive do
   use ApiaryWeb, :live_view
 
   alias Apiary.{Organisations, Setup}
+  alias ApiaryWeb.SetUpComponents
 
   defmodule HeldCode do
     @moduledoc false
@@ -34,41 +38,40 @@ defmodule ApiaryWeb.SetupLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.auth flash={@flash} current_scope={@current_scope}>
-      <div :if={@state == :set_up} id="setup-done" class="grid gap-4">
-        <Layouts.auth_heading>
-          {if name = Apiary.ProductName.get(),
-            do: gettext("%{name} is already set up.", name: name),
-            else: gettext("This Qory Apiary is already set up.")}
-        </Layouts.auth_heading>
-        <.button
-          :if={@current_scope && @current_scope.user}
-          variant="primary"
-          size="md"
-          class="btn-block"
-          href={~p"/"}
-        >
-          {gettext("Go to your workspace")}
-        </.button>
-        <.button
-          :if={!(@current_scope && @current_scope.user)}
-          variant="primary"
-          size="md"
-          class="btn-block"
-          navigate={~p"/users/log-in"}
-        >
-          {gettext("Log in")}
-        </.button>
-      </div>
+    <Layouts.set_up flash={@flash} current_scope={@current_scope}>
+      <SetUpComponents.frame :if={@state == :set_up}>
+        <div id="setup-done" class="grid gap-4">
+          <SetUpComponents.heading>
+            {if name = Apiary.ProductName.get(),
+              do: gettext("%{name} is already set up.", name: name),
+              else: gettext("This Qory Apiary is already set up.")}
+          </SetUpComponents.heading>
+          <.button
+            :if={@current_scope && @current_scope.user}
+            variant="primary"
+            size="md"
+            class="btn-block"
+            href={~p"/"}
+          >
+            {gettext("Go to your workspace")}
+          </.button>
+          <.button
+            :if={!(@current_scope && @current_scope.user)}
+            variant="primary"
+            size="md"
+            class="btn-block"
+            navigate={~p"/users/log-in"}
+          >
+            {gettext("Log in")}
+          </.button>
+        </div>
+      </SetUpComponents.frame>
 
-      <div :if={@state == :form} class="grid gap-4">
-        <Layouts.auth_heading>
+      <SetUpComponents.frame :if={@state == :form} steps={@steps} next={SetUpComponents.next?(nil)}>
+        <SetUpComponents.heading>
           {gettext("Set up %{name}", name: Apiary.ProductName.name())}
           <:subtitle>{@line}</:subtitle>
-        </Layouts.auth_heading>
-        <p id="setup-admin" class="text-sm/5 text-muted">
-          {gettext("You become this instance's admin.")}
-        </p>
+        </SetUpComponents.heading>
 
         <.form
           for={@form}
@@ -112,8 +115,18 @@ defmodule ApiaryWeb.SetupLive do
             {gettext("Set up")}
           </.button>
         </.form>
-      </div>
-    </Layouts.auth>
+
+        <:context>
+          <p id="setup-admin">
+            {pgettext(
+              "plain",
+              "You create the first account of %{name} and its organisation. As the instance admin, you connect %{name} to mail and to the systems that bring in work, then set up the organisation's first workspace.",
+              name: Apiary.ProductName.name()
+            )}
+          </p>
+        </:context>
+      </SetUpComponents.frame>
+    </Layouts.set_up>
     """
   end
 
@@ -143,6 +156,7 @@ defmodule ApiaryWeb.SetupLive do
         |> assign(:state, :form)
         |> assign(:code, %HeldCode{value: code})
         |> assign(:line, Apiary.Edition.first_sign_up_line())
+        |> assign(:steps, SetUpComponents.steps_for(nil, :account, first: true))
         |> assign(:trigger_submit, false)
         # Where the set-up comes from, for its audit entry: known while the page mounts.
         |> assign(:origin, ApiaryWeb.Origin.from_socket(socket))

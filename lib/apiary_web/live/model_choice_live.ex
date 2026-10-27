@@ -4,7 +4,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   #
   # Runtime, a select of the runtime catalogue (`Apiary.Kinds.Runtimes`), shown only while
   # the catalogue has more than one; with one, the choice names none and its runs use that
-  # one (`Apiary.ModelChoices.default_runtime/0`). Model: a select of the models the page
+  # one (`Apiary.ModelChoices.default_runtime/0`). Model: a choice of the models the page
   # suggests (`Apiary.ModelChoices.suggestions/2`) for each model provider of the
   # organisation that applies to the workspace and serves the chosen runtime
   # (`Apiary.Kinds.Providers.serve/2`), grouped by provider where there are several, each
@@ -292,8 +292,9 @@ defmodule ApiaryWeb.ModelChoiceLive do
         )
   end
 
-  # The select's options: each provider's models, then its Another model, in a group
-  # named after the provider where there are several.
+  # The choice's options: each provider's models, its title over its id, then its Another
+  # model, which a search keeps in view, in a group named after the provider where there
+  # are several.
   defp options([%{provider: provider, models: models}]), do: provider_options(provider, models)
 
   defp options(providers),
@@ -302,8 +303,23 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   defp provider_options(provider, models),
     do:
-      for(model <- models, do: {model.title, option(provider, model.id)}) ++
-        [{gettext("Another model"), option(provider, nil)}]
+      for(
+        model <- models,
+        do: %{
+          value: option(provider, model.id),
+          title: model.title,
+          subtitle: model.id,
+          mono: :subtitle
+        }
+      ) ++
+        [
+          %{
+            value: option(provider, nil),
+            title: gettext("Another model"),
+            subtitle: gettext("A model id this list leaves out."),
+            keep: true
+          }
+        ]
 
   defp line_id({cause, %Connection{public_id: id}}), do: "model-#{cause}-#{id}"
   defp line_id(cause), do: "model-#{cause}"
@@ -367,16 +383,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
         current={:model}
         title={gettext("Model")}
       >
-        <:subtitle>
-          <span id="model-line">
-            {gettext(
-              "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model.",
-              workspace: @current_scope.workspace.name,
-              organisation: @current_scope.organisation.name
-            )}
-          </span>
-        </:subtitle>
-
         <p :if={@applicable == []} id="model-no-provider" class="text-[13.5px]/5 text-muted">
           <.rich text={
             rich_gettext("Add a model provider in %{place}, then choose its model here.",
@@ -416,9 +422,12 @@ defmodule ApiaryWeb.ModelChoiceLive do
           <.input
             :if={@providers != []}
             field={@form[:model]}
-            type="select"
+            type="choice"
             label={gettext("Model")}
             options={options(@providers)}
+            search
+            search_label={gettext("Find a model")}
+            found={gettext("%{shown} of %{total} models", shown: "%{shown}", total: "%{total}")}
             disabled={!@writes}
           />
           <.input
@@ -455,6 +464,15 @@ defmodule ApiaryWeb.ModelChoiceLive do
             </:note>
           </SettingsComponents.save>
         </.form>
+        <:context>
+          <p id="model-line">
+            {gettext(
+              "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model.",
+              workspace: @current_scope.workspace.name,
+              organisation: @current_scope.organisation.name
+            )}
+          </p>
+        </:context>
       </SettingsComponents.layout>
     </Layouts.app>
     """

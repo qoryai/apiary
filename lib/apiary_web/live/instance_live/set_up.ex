@@ -5,31 +5,36 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # until they finish or skip the last step (`Apiary.Setup.connections_reviewed?/0`,
   # `ApiaryWeb.UserAuth.signed_in_path/1`).
   #
-  # One step a page, `?step=<n>`, from 1: one step for each of the instance's adapters,
-  # with the `factory` feature, by name, as Instance settings › Adapters lists them
-  # (`ApiaryWeb.InstanceLive.Adapters`); then mail. A number out of range is the first step.
+  # One step a page, in the set-up frame (`ApiaryWeb.SetUpComponents.frame/1`), with the
+  # set-up's progress indicator: one step for each of the instance's adapters, with the
+  # `factory` feature, by name, as Instance settings › Adapters lists them
+  # (`ApiaryWeb.InstanceLive.Adapters`), `?step=<public id>`; then mail, `?step=mail`.
+  # Without a step, or with one the page does not have, the first step that is not done,
+  # else mail. The context column says why the step exists.
   #
   # Where an adapter's guide gives steps for setting it up (`Apiary.Adapters.guide/2`), an
-  # adapter's step shows them under its title while Set up shows, after a first step of
-  # Qory Apiary's, Set up, and before a note of Qory Apiary's on Continue; where it gives
-  # none, or Set up does not show, no steps show.
+  # adapter's step shows them in the context column, under "In the new tab", while Set up
+  # shows; where it gives none, or Set up does not show, no steps show.
   #
   # An adapter's step says whether it is set up: "Set up" once it is configured
   # (`Apiary.Adapters.configured?/1`), with Continue; else "Not set up", with Set up while
   # it can be set up (`ApiaryWeb.AdapterComponents.settable?/3`), which opens the adapter's
-  # set-up in a new tab; else a line on why it can't be set up now, and what to do. The step reads the adapters again as a key arrives or an adapter
-  # declares where to set it up or connect to it (`Apiary.Adapters.subscribe_keys/2`), so
-  # it turns to "Set up" while the page is open.
+  # set-up in a new tab; else a line on why it can't be set up now, and what to do. The
+  # step reads the adapters again as a key arrives or an adapter declares where to set it
+  # up or connect to it (`Apiary.Adapters.subscribe_keys/2`), so it turns to "Set up"
+  # while the page is open.
   #
   # The mail step holds the form of Instance settings › Mail
-  # (`ApiaryWeb.InstanceLive.MailForm`), with "Save and send a test"; where the server's
-  # environment sets mail, its settings, with Continue. Once the test link is sent, the
-  # step is done.
+  # (`ApiaryWeb.InstanceLive.MailForm`), with "Save and send a test", and the saved
+  # settings once there are any, with Continue; where the server's environment sets mail,
+  # its settings, with Continue. Once the test link is sent, the step is done.
   #
-  # Every step has Skip, which leaves the connection as it is: it can be finished later in
+  # Every step has Back to the step before it, where that step has a page, and Skip while
+  # it is not done, which leaves the connection as it is: it can be finished later in
   # Instance settings. Finishing or skipping the last step marks the connections reviewed
-  # (`Apiary.Setup.review_connections/1`) and sends the admin on, to their organisation's
-  # workspace set-up while it has no workspace (`ApiaryWeb.UserAuth.signed_in_path/1`).
+  # (`Apiary.Setup.review_connections/1`) and sends the admin to the first step after mail
+  # that is not done: the workspace set-up's Workspace or Work source; else on, as a
+  # sign-in sends them (`ApiaryWeb.UserAuth.signed_in_path/1`).
   #
   # The page asks for a recent sign-in, as Instance settings › Mail does
   # (`ApiaryWeb.UserAuth`'s sudo mode), for every step: the mail step saves the mail
@@ -62,8 +67,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
      assign(socket,
        page_title: gettext("Connect %{name}", name: Apiary.ProductName.name()),
        adapters: adapters,
-       mail_source: Mail.source(),
-       step: 1
+       mail_source: Mail.source()
      )}
   end
 
@@ -100,58 +104,76 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    total = length(socket.assigns.adapters) + 1
-
-    step =
-      case Integer.parse(params["step"] || "") do
-        {n, ""} when n in 1..total//1 -> n
-        _other -> 1
-      end
-
-    {:noreply, assign(socket, step: step, total: total)}
+    {:noreply, assign_step(socket, step_of(socket.assigns.adapters, params["step"]))}
   end
 
-  # The adapters read again while the page is open, and the number of steps counted
-  # again. The step stays on what it showed: the same adapter, found by its id, or mail;
-  # where that adapter is gone, the step at its number, at most the last. An adapter added
-  # since is listened to as the others are.
+  # The step `?step=` names: an adapter by its public id, or `mail`. Without one, or with
+  # one the page does not have, the first step that is not done, else the last, mail.
+  defp step_of(adapters, key) do
+    cond do
+      key == "mail" ->
+        :mail
+
+      Enum.any?(adapters, &(&1.adapter.public_id == key)) ->
+        {:adapter, key}
+
+      row = Enum.find(adapters, &(not &1.configured)) ->
+        {:adapter, row.adapter.public_id}
+
+      true ->
+        :mail
+    end
+  end
+
+  defp assign_step(socket, step) do
+    assign(socket,
+      step: step,
+      steps: SetUpComponents.steps_for(socket.assigns.current_scope, step),
+      mail_state: Mail.shown().state
+    )
+  end
+
+  # The page's steps, in order: the adapters', then mail.
+  defp keys(adapters), do: Enum.map(adapters, &{:adapter, &1.adapter.public_id}) ++ [:mail]
+
+  defp path_of({:adapter, public_id}), do: ~p"/instance/set-up?#{[step: public_id]}"
+  defp path_of(:mail), do: ~p"/instance/set-up?step=mail"
+
+  # The adapters read again while the page is open, and the steps counted again. The step
+  # stays on what it showed: the same adapter, by its public id, or mail; where that
+  # adapter is gone, the step at its place, at most the last. An adapter added since is
+  # listened to as the others are.
   defp reload_adapters(socket) do
     %{adapters: before, step: step, current_scope: scope} = socket.assigns
     adapters = adapters(scope)
-    total = length(adapters) + 1
     known = MapSet.new(before, & &1.adapter.id)
 
     for %{adapter: adapter} <- adapters,
         adapter.id not in known,
         do: Adapters.subscribe_keys(scope, adapter)
 
-    step =
-      case Enum.at(before, step - 1) do
-        nil ->
-          total
+    keys = keys(adapters)
 
-        %{adapter: %{id: id}} ->
-          case Enum.find_index(adapters, &(&1.adapter.id == id)) do
-            nil -> min(step, total)
-            index -> index + 1
-          end
-      end
+    moved =
+      if step in keys,
+        do: step,
+        else: Enum.at(keys, Enum.find_index(keys(before), &(&1 == step)) || 0, :mail)
 
-    moved? = step != socket.assigns.step
-    socket = assign(socket, adapters: adapters, total: total, step: step)
+    socket = socket |> assign(:adapters, adapters) |> assign_step(moved)
 
-    if moved?,
-      do: push_patch(socket, to: ~p"/instance/set-up?#{[step: step]}", replace: true),
+    if moved != step,
+      do: push_patch(socket, to: path_of(moved), replace: true),
       else: socket
   end
 
   @impl true
   # Skip, or Continue once a step is done: the next step, or, after the last, on.
-  def handle_event("next", _params, %{assigns: %{step: step, total: total}} = socket)
-      when step < total,
-      do: {:noreply, push_patch(socket, to: ~p"/instance/set-up?#{[step: step + 1]}")}
-
-  def handle_event("next", _params, socket), do: {:noreply, finish(socket)}
+  def handle_event("next", _params, %{assigns: %{step: step, adapters: adapters}} = socket) do
+    case Enum.drop_while(keys(adapters), &(&1 != step)) do
+      [_step, next | _rest] -> {:noreply, push_patch(socket, to: path_of(next))}
+      _last -> {:noreply, finish(socket)}
+    end
+  end
 
   # The mail form's events go to the form (`ApiaryWeb.InstanceLive.MailForm`); any other
   # sent to the page is refused in silence, before anything reads it.
@@ -181,17 +203,40 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # The connections are reviewed, and the admin goes on as a sign-in sends them.
+  # The connections are reviewed, and the admin goes on to the first step after mail that
+  # is not done, such as the workspace's Work source; else as a sign-in sends them.
   defp finish(socket) do
-    case Setup.review_connections(socket.assigns.current_scope) do
-      :ok -> redirect(socket, to: ~p"/")
-      {:error, :forbidden} -> push_navigate(socket, to: ~p"/instance/set-up")
+    scope = socket.assigns.current_scope
+
+    case Setup.review_connections(scope) do
+      :ok ->
+        to =
+          scope
+          |> SetUpComponents.steps_for(:mail)
+          |> Enum.drop_while(&(&1.id != :mail))
+          |> Enum.drop(1)
+          |> Enum.find(&(&1.state != :done and is_binary(&1.path)))
+
+        redirect(socket, to: (to && to.path) || ~p"/")
+
+      {:error, :forbidden} ->
+        push_navigate(socket, to: ~p"/instance/set-up")
     end
   end
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :row, Enum.at(assigns.adapters, assigns.step - 1))
+    row =
+      case assigns.step do
+        {:adapter, id} -> Enum.find(assigns.adapters, &(&1.adapter.public_id == id))
+        :mail -> nil
+      end
+
+    assigns =
+      assign(assigns,
+        row: row,
+        guide: row && !row.configured && row.settable && Adapters.guide(row.adapter, :setup)
+      )
 
     ~H"""
     <Layouts.app
@@ -202,57 +247,61 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
       place={:instance}
       sidebar={false}
     >
-      <div id="set-up" class="mx-auto grid w-full max-w-[480px] gap-4 md:pt-6">
-        <SetUpComponents.heading step={@total > 1 && @step} total={@total}>
+      <SetUpComponents.frame
+        steps={@steps}
+        next={SetUpComponents.next?(@current_scope)}
+        page={~p"/instance/set-up"}
+      >
+        <SetUpComponents.heading>
           {gettext("Connect %{name}", name: Apiary.ProductName.name())}
         </SetUpComponents.heading>
 
-        <.adapter_step :if={@row} row={@row} />
-        <.mail_step :if={!@row} source={@mail_source} current_scope={@current_scope} />
-      </div>
+        <.adapter_step :if={@row} row={@row} steps={@steps} />
+        <.mail_step
+          :if={!@row}
+          source={@mail_source}
+          state={@mail_state}
+          steps={@steps}
+          current_scope={@current_scope}
+        />
+
+        <:context :if={@row}>
+          <p id="set-up-what">
+            {gettext(
+              "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the adapter's set-up page in a new tab, and this step shows the new state without a reload.",
+              adapter: @row.adapter.name
+            )}
+          </p>
+          <SetUpComponents.outside
+            :if={@guide}
+            id="set-up-help"
+            title={gettext("In the new tab")}
+            guide={@guide}
+          />
+        </:context>
+        <:context :if={!@row and @mail_source != :env}>
+          <p id="set-up-what">
+            {gettext(
+              "Qory Apiary sends invitations, log-in links and password links by mail; without mail, an admin copies each link by hand. Get the SMTP server's host name, port, username and password from your mail provider. Mail turns on when you follow the test link that Qory Apiary emails you, while you are signed in."
+            )}
+          </p>
+        </:context>
+      </SetUpComponents.frame>
     </Layouts.app>
     """
   end
 
   attr :row, :map, required: true
+  attr :steps, :list, required: true
 
-  # An adapter's step: its name, what setting it up does, the steps its guide gives for
-  # setting it up after Qory Apiary's first, where it gives them and while Set up shows,
-  # its state, and Set up or Continue.
+  # An adapter's step: its name, its state, why it can't be set up where it can't, and
+  # Back, Set up or Continue, and Skip while it is not set up.
   defp adapter_step(%{row: %{adapter: adapter} = row} = assigns) do
-    assigns =
-      assign(assigns,
-        adapter: adapter,
-        set_up: !row.configured and row.settable,
-        guide: Adapters.guide(adapter, :setup)
-      )
+    assigns = assign(assigns, adapter: adapter, set_up: !row.configured and row.settable)
 
     ~H"""
     <section id={"set-up-#{@adapter.public_id}"} class="grid gap-4" aria-labelledby="set-up-name">
-      <div class="grid gap-1.5">
-        <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{@adapter.name}</h2>
-        <p id="set-up-what" class="text-sm/5 text-muted">
-          {gettext("Set up %{adapter}, so organisations can bring in tickets from %{adapter}.",
-            adapter: @adapter.name
-          )}
-        </p>
-      </div>
-
-      <SetUpComponents.guide :if={@set_up && @guide} id="set-up-help" guide={@guide}>
-        <:first>
-          <.rich text={
-            rich_gettext("Press %{button}. A new tab opens.", button: {:b, gettext("Set up")})
-          } />
-        </:first>
-        <:note>
-          <.rich text={
-            rich_gettext("Come back to this tab. When the state shows %{state}, press %{button}.",
-              state: {:b, gettext("Set up")},
-              button: {:b, gettext("Continue")}
-            )
-          } />
-        </:note>
-      </SetUpComponents.guide>
+      <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{@adapter.name}</h2>
 
       <p id="set-up-state" class="flex items-center gap-2 text-[13.5px]/5">
         <b class="font-semibold">{gettext("State:")}</b>
@@ -268,27 +317,28 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         {blocked_line(@row.blocked, @adapter.name)}
       </p>
 
-      <div class="flex flex-wrap items-start justify-between gap-3 pt-1">
-        <div class="flex gap-2">
-          <.button
-            :if={@row.configured}
-            id="set-up-continue"
-            type="button"
-            variant="primary"
-            phx-click="next"
-          >
-            {gettext("Continue")}
-          </.button>
-          <AdapterComponents.setup_form
-            :if={@set_up}
-            id="set-up-open"
-            adapter={@adapter}
-            back="list"
-            variant="primary"
-            size="sm"
-            target="_blank"
-          />
-        </div>
+      <div class="q-su-acts">
+        <SetUpComponents.back steps={@steps} page={~p"/instance/set-up"} />
+        <.button
+          :if={@row.configured}
+          id="set-up-continue"
+          type="button"
+          variant="primary"
+          size="md"
+          phx-click="next"
+        >
+          {gettext("Continue")}
+        </.button>
+        <AdapterComponents.setup_form
+          :if={@set_up}
+          id="set-up-open"
+          adapter={@adapter}
+          back="list"
+          variant="primary"
+          size="md"
+          target="_blank"
+        />
+        <span class="grow"></span>
         <.skip :if={!@row.configured} />
       </div>
     </section>
@@ -318,75 +368,17 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
       )
 
   attr :source, :atom, required: true
+  attr :state, :atom, required: true
+  attr :steps, :list, required: true
   attr :current_scope, :map, required: true
 
-  # The mail step: what setting mail up does, its help, and the form of Instance settings ›
-  # Mail; where the environment sets mail, its settings, a line to press Continue, and
-  # Continue, without the help.
+  # The mail step: the form of Instance settings › Mail, with Back, Save and send a test,
+  # and Skip, or Continue once settings are saved; where the environment sets mail, its
+  # settings, with Back and Continue.
   defp mail_step(assigns) do
     ~H"""
     <section id="set-up-mail" class="grid gap-4" aria-labelledby="set-up-name">
-      <div class="grid gap-1.5">
-        <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{gettext("Mail")}</h2>
-        <p id="set-up-what" class="text-sm/5 text-muted">
-          {gettext("Set up mail, so Qory Apiary sends invitations and password links.")}
-        </p>
-      </div>
-
-      <SetUpComponents.help :if={@source != :env} id="set-up-help">
-        <p>
-          {gettext(
-            "Get the SMTP server's host name, port, username and password from your mail provider."
-          )}
-        </p>
-        <ol>
-          <li>
-            <.rich text={
-              rich_gettext("In %{field}, enter the mail server's host name, such as %{host}.",
-                field: {:b, gettext("SMTP relay")},
-                host: {:code, "smtp.example.com"}
-              )
-            } />
-          </li>
-          <li>
-            <.rich text={
-              rich_gettext(
-                "In %{field}, keep %{starttls} for STARTTLS, or enter %{tls} if your provider uses TLS from the start.",
-                field: {:b, gettext("Port")},
-                starttls: {:code, "587"},
-                tls: {:code, "465"}
-              )
-            } />
-          </li>
-          <li>
-            <.rich text={
-              rich_gettext(
-                "In %{username} and %{password}, enter the login your provider gave you. Leave both empty if the relay takes mail without a login.",
-                username: {:b, gettext("Username")},
-                password: {:b, gettext("Password")}
-              )
-            } />
-          </li>
-          <li>
-            <.rich text={
-              rich_gettext("Press %{button}.", button: {:b, gettext("Save and send a test")})
-            } />
-          </li>
-          <li>
-            {gettext(
-              "Open the email that Qory Apiary sent to your address, and follow its link while you are signed in."
-            )}
-          </li>
-        </ol>
-        <p>
-          <.rich text={
-            rich_gettext(
-              "If the step shows %{line}, mail is set up already, and this step needs nothing from you.",
-              line: {:b, gettext("Set by the server's environment")}
-            )
-          } />
-        </p>
-      </SetUpComponents.help>
+      <h2 id="set-up-name" class="text-[17px]/6 font-semibold">{gettext("Mail")}</h2>
 
       <.live_component
         module={MailForm}
@@ -395,19 +387,18 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         path={~p"/instance/set-up"}
         step
       >
-        <:actions><.skip /></:actions>
+        <:back><SetUpComponents.back steps={@steps} page={~p"/instance/set-up"} /></:back>
+        <:actions :if={@state in [:pending, :on]}>
+          <.button id="set-up-continue" type="button" size="md" phx-click="next">
+            {gettext("Continue")}
+          </.button>
+        </:actions>
+        <:actions :if={@state not in [:pending, :on]}><.skip /></:actions>
       </.live_component>
 
-      <p :if={@source == :env} id="set-up-env" class="text-[13.5px]/5">
-        <.rich text={
-          rich_gettext("Mail is set by the server's environment. Press %{button}.",
-            button: {:b, gettext("Continue")}
-          )
-        } />
-      </p>
-
-      <div :if={@source == :env} class="flex gap-2 pt-1">
-        <.button id="set-up-continue" type="button" variant="primary" phx-click="next">
+      <div :if={@source == :env} class="q-su-acts">
+        <SetUpComponents.back steps={@steps} page={~p"/instance/set-up"} />
+        <.button id="set-up-continue" type="button" variant="primary" size="md" phx-click="next">
           {gettext("Continue")}
         </.button>
       </div>

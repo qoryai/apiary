@@ -2122,6 +2122,263 @@
     gap: 16px;
   }
 
+  /* ---- The set-up frame (SetUpComponents.frame): steps, form, context ----
+     From 1280 px three columns: the steps 220 px, the form 480 px, the context 320 px.
+     From 1024 px the steps are a bar on top, the form and its context beside each other
+     under it. Below 1024 px one column: the bar, the form, the context. */
+  .q-su-frame {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    max-width: 30rem;
+  }
+  @media (min-width: 1024px) {
+    .q-su-frame.q-su-has-ctx {
+      max-width: none;
+      grid-template-columns: minmax(0, 480px) minmax(0, 320px);
+      column-gap: 40px;
+    }
+    .q-su-frame > .q-su-steps {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (min-width: 1280px) {
+    .q-su-frame.q-su-has-steps {
+      max-width: none;
+      grid-template-columns: 220px minmax(0, 480px);
+      gap: 48px;
+    }
+    .q-su-frame.q-su-has-steps.q-su-has-ctx {
+      grid-template-columns: 220px minmax(0, 480px) minmax(0, 320px);
+    }
+    .q-su-frame > .q-su-steps {
+      grid-column: auto;
+    }
+  }
+  .q-su-form {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: 20px;
+  }
+  .q-su-acts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    padding-top: 4px;
+  }
+  .q-su-acts > .grow {
+    flex: 1;
+  }
+  .q-su-back {
+    color: var(--color-base-content);
+  }
+
+  /* The context is the settings pages' column (.q-context, PageComponents.context_column),
+     in the frame's third column; its numbered steps have faint numbers. */
+  .q-su-frame .q-context ol li::marker {
+    color: var(--q-faint);
+  }
+
+  /* ---- The set-up's progress indicator (SetUpComponents.steps) ----
+     From 1280 px a column: the count, its bar, the list. Below it a bar on top, "Step 4
+     of 5: Workspace", whose All steps opens the list in place. */
+  .q-su-steps {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+  }
+  .q-su-count {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px 12px;
+  }
+  .q-su-count-wide {
+    display: none;
+  }
+  .q-su-count-bar {
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+  .q-su-disc {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .q-su-disc:hover {
+    color: var(--color-base-content);
+  }
+  .q-su-disc[aria-expanded="true"] > svg,
+  .q-su-disc[aria-expanded="true"] > .hero-chevron-down-micro {
+    transform: rotate(180deg);
+  }
+  .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-list,
+  .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-next {
+    display: none;
+  }
+  .q-su-progress {
+    grid-column: 1 / -1;
+    display: block;
+    width: 100%;
+    height: 4px;
+    appearance: none;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--color-base-300);
+    overflow: hidden;
+  }
+  .q-su-progress::-webkit-progress-bar {
+    background: var(--color-base-300);
+    border-radius: 9999px;
+  }
+  .q-su-progress::-webkit-progress-value {
+    background: var(--color-primary);
+    border-radius: 9999px;
+  }
+  .q-su-progress::-moz-progress-bar {
+    background: var(--color-primary);
+    border-radius: 9999px;
+  }
+  @media (min-width: 1280px) {
+    .q-su-steps {
+      position: sticky;
+      top: 24px;
+      gap: 14px;
+      padding: 0;
+      border: 0;
+      background: none;
+    }
+    .q-su-count {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+    .q-su-count-wide {
+      display: block;
+      color: var(--q-muted);
+      font-size: 13px;
+    }
+    .q-su-count-bar,
+    .q-su-disc {
+      display: none;
+    }
+    .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-list {
+      display: grid;
+    }
+    .q-su-steps:has(.q-su-disc[aria-expanded="false"]) > .q-su-next {
+      display: block;
+    }
+  }
+  .q-su-list,
+  .q-su-list ol {
+    display: grid;
+    gap: 2px;
+  }
+  .q-su-grp-h {
+    padding: 12px 8px 4px;
+    color: var(--q-faint);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .q-su-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+    padding: 4px 8px;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 13.5px;
+  }
+  a.q-su-step:hover {
+    background: var(--color-base-300);
+  }
+  @media (min-width: 1280px) {
+    a.q-su-step:hover {
+      background: var(--color-base-200);
+    }
+  }
+  .q-su-text {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+  }
+  a.q-su-step .q-su-nm {
+    color: var(--color-base-content);
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-strong);
+    text-underline-offset: 3px;
+  }
+  .q-su-note,
+  .q-su-skipped {
+    color: var(--q-faint);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 400;
+  }
+  .q-su-mark {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    border-radius: 9999px;
+    border: 1.5px solid var(--q-border-strong);
+    background: var(--color-base-100);
+    color: var(--q-faint);
+  }
+  .q-su-step.is-done .q-su-mark {
+    border-color: transparent;
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+  .q-su-step.is-skipped .q-su-mark::before {
+    content: "";
+    width: 7px;
+    height: 1.5px;
+    background: var(--q-faint);
+  }
+  .q-su-step.is-current {
+    background: var(--color-base-100);
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  @media (min-width: 1280px) {
+    .q-su-step.is-current {
+      background: var(--color-base-200);
+    }
+  }
+  .q-su-step.is-current .q-su-mark {
+    border: 2px solid var(--color-primary);
+    box-shadow: 0 0 0 3px var(--q-primary-soft);
+  }
+  .q-su-step.is-current .q-su-mark::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+  }
+  .q-su-next {
+    margin: 6px 8px 0;
+    padding-top: 10px;
+    border-top: 1px dashed var(--q-border-strong);
+    color: var(--q-faint);
+    font-size: 12.5px;
+    line-height: 18px;
+  }
+
   /* ---- What a run receives (PageComponents.not_on_runs) ---- */
   .q-not-on-runs {
     display: flex;
@@ -2237,6 +2494,59 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+  }
+  /* A section with its context column (PageComponents.context_column/1): the form keeps
+     its 720 px, the column takes 300 px beside it once the section has 840 px, and goes
+     under the form below that. At 1440 px with the sidebar and the second column, the
+     section has 920 px: the form takes 580. */
+  .q-settings-main-context {
+    max-width: 66.25rem;
+    container-type: inline-size;
+  }
+  .q-context-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 45rem);
+    gap: 24px;
+    align-items: start;
+  }
+  @container (min-width: 52.5rem) {
+    .q-context-grid {
+      grid-template-columns: minmax(0, 45rem) 18.75rem;
+      column-gap: 40px;
+    }
+  }
+  .q-context-main {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 20px;
+  }
+  .q-context {
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: 10px;
+    padding-top: 4px;
+    color: var(--q-muted);
+    font-size: 0.84375rem;
+    line-height: 1.3125rem;
+  }
+  .q-context-h,
+  .q-context h3 {
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+  }
+  .q-context h3 {
+    margin-top: 8px;
+  }
+  .q-context ol {
+    display: grid;
+    gap: 4px;
+    padding-left: 1.25rem;
+    list-style: decimal;
   }
   /* From 1024 px: a column of sections at the page's left edge, the section beside it; the
      current one in the text colour on a light fill, no icon and no stripe. */
@@ -8915,6 +9225,205 @@
     color: var(--q-muted);
     font-size: 0.78125rem;
     line-height: 18px;
+  }
+  /* A choice (`input/1`, `type="choice"`): a select's button that shows the chosen
+     option's title and subtitle, and opens its options in place under it, in the flow,
+     as radios. The radio's circle is hidden; a check marks the chosen option, and the row
+     shows the focus. */
+  .q-pick {
+    min-width: 0;
+  }
+  .q-pick-btn {
+    display: grid;
+    width: 100%;
+    min-height: 2.5rem;
+    grid-template-columns: minmax(0, 1fr) 1rem;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px 6px 12px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    box-shadow: var(--q-shadow-xs);
+    text-align: left;
+    cursor: pointer;
+    transition-property: border-color, box-shadow;
+    transition-duration: 120ms;
+    transition-timing-function: var(--q-ease-out);
+  }
+  .q-pick-btn::after {
+    width: 1rem;
+    height: 1rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23857f7a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 8 10 4.5 13.5 8M6.5 12l3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+    background-size: 1rem;
+    content: "";
+  }
+  .q-pick-btn:hover {
+    border-color: var(--q-muted);
+  }
+  .q-pick-btn:focus-visible,
+  .q-pick-btn[aria-expanded="true"] {
+    outline: none;
+    border-color: var(--q-ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--q-ring) 28%, transparent);
+  }
+  .q-pick-btn.q-pick-error {
+    border-color: var(--color-error);
+  }
+  .q-pick-btn.q-pick-error:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-error) 24%, transparent);
+  }
+  .q-pick-btn:disabled {
+    border-color: var(--q-border-strong);
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+  .q-pick-btn.is-prompt .q-pick-t {
+    color: var(--q-faint);
+  }
+  .q-pick-text {
+    display: grid;
+    min-width: 0;
+  }
+  .q-pick-t {
+    font-size: 0.875rem;
+    line-height: 20px;
+  }
+  .q-pick-md .q-pick-t {
+    font-size: 0.9375rem;
+  }
+  .q-pick-s {
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 17px;
+  }
+  .q-pick-t.mono,
+  .q-pick-s.mono {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .q-pick-s.mono {
+    font-size: 0.75rem;
+  }
+  .q-pick-panel {
+    display: grid;
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--q-border-strong);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-pop);
+  }
+  .q-pick-panel[hidden] {
+    display: none;
+  }
+  .q-pick-find {
+    display: grid;
+    gap: 2px;
+    padding: 2px 2px 0;
+  }
+  .q-pick-find label {
+    position: relative;
+    display: block;
+  }
+  .q-pick-find-i {
+    position: absolute;
+    z-index: 1;
+    left: 10px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--q-faint);
+    pointer-events: none;
+  }
+  .q-pick-find input {
+    width: 100%;
+    padding-left: 32px;
+  }
+  .q-pick-status {
+    padding: 4px 6px 0;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 16px;
+  }
+  /* Empty, the status keeps its place in the accessibility tree, so its first words are
+     announced. */
+  .q-pick-status:empty {
+    padding: 0;
+  }
+  /* Eight options of two lines show whole; more scroll inside the panel. */
+  .q-pick-options {
+    display: grid;
+    max-height: 26.5rem;
+    gap: 1px;
+    overflow-y: auto;
+  }
+  .q-pick-grp {
+    display: grid;
+    gap: 1px;
+  }
+  .q-pick-group {
+    padding: 10px 8px 4px;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 16px;
+  }
+  .q-pick-grp:first-child .q-pick-group {
+    padding-top: 6px;
+  }
+  .q-pick-group[hidden] {
+    display: none;
+  }
+  .q-pick-opt {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    align-items: start;
+    gap: 0 10px;
+    padding: 7px 8px;
+    border-radius: var(--radius-selector);
+    cursor: pointer;
+  }
+  .q-pick-opt[hidden] {
+    display: none;
+  }
+  .q-pick-opt:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-pick-opt:has(:disabled) {
+    color: var(--q-faint);
+    background-color: transparent;
+    cursor: default;
+  }
+  .q-pick-opt:has(:disabled) .q-pick-s {
+    color: var(--q-faint);
+  }
+  .q-pick-opt:has(:focus-visible) {
+    background-color: var(--color-base-300);
+    box-shadow: inset 0 0 0 2px var(--q-ring);
+  }
+  .q-pick-radio {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    opacity: 0;
+  }
+  .q-pick-ck {
+    margin-top: 2px;
+    color: var(--color-accent);
+    visibility: hidden;
+  }
+  .q-pick-opt:has(:checked) .q-pick-ck {
+    visibility: visible;
+  }
+  .q-pick-opt:has(:checked) .q-pick-t {
+    font-weight: 500;
   }
   .q-modeopts {
     display: grid;

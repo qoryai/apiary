@@ -11,6 +11,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.SetUpSteps
 
   # The page of an invitation of `email` into a fresh organisation's workspace, opened
   # with the instance's mail from `mail`: the sign-up and the invitation before it are made
@@ -132,8 +133,12 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
          %{conn: conn} do
       %{lv: lv, html: html, email: email} = invited(conn, unique_user_email(), :none)
 
-      assert html =~ "Choose a password to sign in with."
+      refute html =~ "Choose a password to sign in with."
       refute html =~ "no password needed"
+      refute has_element?(lv, "#sign-up-context")
+
+      # An invitation into a workspace: the account is the one step, and no indicator shows.
+      assert steps(lv) == []
       assert html =~ "Your account joins it as soon as you create it."
 
       assert has_element?(
@@ -305,14 +310,34 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       Apiary.Mail.put_test_source(:env)
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
-      assert render(lv) =~
-               "Start an organisation. You set up its first workspace next. We will email you a link to confirm; no password needed."
+      assert has_element?(
+               lv,
+               "#set-up-line",
+               "Start an organisation. You set up its first workspace next."
+             )
+
+      assert has_element?(
+               lv,
+               "#set-up-context #sign-up-context",
+               "We will email you a link to confirm; no password needed."
+             )
+
+      source = if Apiary.Features.on?(:factory), do: [{"Work source", :to_come}], else: []
+
+      assert steps(lv) ==
+               [{"Your account", :current}, {"Workspace", :to_come} | source]
 
       Apiary.Mail.put_test_source(:none)
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
-      assert render(lv) =~
-               "Start an organisation. You set up its first workspace next. Choose a password to sign in with."
+      assert has_element?(
+               lv,
+               "#set-up-line",
+               "Start an organisation. You set up its first workspace next."
+             )
+
+      refute has_element?(lv, "#set-up-context")
+      refute render(lv) =~ "Choose a password to sign in with."
     end
 
     test "creates the organisation with no workspace, and lands its owner on its set-up", %{

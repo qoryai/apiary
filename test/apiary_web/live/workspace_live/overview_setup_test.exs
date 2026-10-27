@@ -119,26 +119,25 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
   end
 
   describe "each step" do
-    test "not done: what to do, the first step's help open, and Run the test disabled",
+    test "not done: what to do, Check the nodes folded, and Run the test disabled",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
 
-      assert text(view, "#setup-source > span:nth-child(3)") ==
+      assert text(view, "#setup-source-line") ==
                "Bring tickets in from a system this instance has set up."
 
       assert has_element?(
                view,
-               "#setup-source-act.btn-primary[href='/#{scope.organisation.slug}/set-up']",
+               "#setup-source-act.btn-primary[href='/#{scope.organisation.slug}/set-up?step=source']",
                "Connect"
              )
 
-      assert has_element?(view, "#setup-source-help-true[open]")
-      assert has_element?(view, "#setup-machines-help-false:not([open])")
+      assert has_element?(view, "#setup-machines-fold-false:not([open])")
 
-      assert text(view, "#setup-machines > span:nth-child(3)") ==
+      assert text(view, "#setup-machines-line") ==
                "#{scope.workspace.name}'s runs need a node pool and a gateway, each with a key."
 
-      assert text(view, "#setup-model-key > span:nth-child(3)") ==
+      assert text(view, "#setup-model-key-line") ==
                "Add a model key, so agents can run."
 
       assert has_element?(
@@ -147,7 +146,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
                "Add model key"
              )
 
-      assert text(view, "#setup-test > span:nth-child(3)") ==
+      assert text(view, "#setup-test-line") ==
                "Runs once machines and model key are done."
 
       assert has_element?(view, "#setup-test-act[disabled]", "Run the test")
@@ -158,36 +157,51 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       refute Repo.exists?(WorkItem)
     end
 
-    test "the help of each step, with the workspace's and the organisation's names",
+    test "the context of each step under its line, and the steps on Nodes in a fold",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
 
-      assert text(view, "#setup-source-help-true div") ==
-               "Press Connect. Step 2 of the workspace set-up opens; follow its steps. " <>
-                 "The step is done when #{scope.workspace.name} has a repository from a work " <>
-                 "source and Qory Apiary has read the list of repositories through its adapter."
+      assert text(view, "#setup-source-context") ==
+               "The step is done when #{scope.workspace.name} has a repository from a work " <>
+                 "source and Qory Apiary has read its list of repositories."
 
-      assert text(view, "#setup-machines-help-false div") ==
-               "On this instance, the instance's pool and gateway connect to Qory Apiary " <>
-                 "without a step from you. An instance admin checks them. " <>
-                 "Open Instance settings › Nodes. " <>
+      assert text(view, "#setup-machines-context") ==
+               "Runs need a node pool, whose machines run the agents, and a gateway, which " <>
+                 "passes their model calls on. Qory Apiary keeps the model key and seals it " <>
+                 "to the gateway for each run."
+
+      assert text(view, "#setup-model-key-context") ==
+               "Agents need a model key to run. The step is done when " <>
+                 "#{scope.organisation.name} has a model provider with a key and " <>
+                 "#{scope.workspace.name} has a model choice."
+
+      assert text(view, "#setup-test-context") ==
+               "The test run checks the other steps together: an agent answers your line on " <>
+                 "a machine of the pool, through the gateway, with the model key. The run's " <>
+                 "log has its answer."
+
+      assert text(view, "#setup-machines-fold-false summary") == "Check the nodes"
+
+      assert text(view, "#setup-machines-fold-false div") ==
+               "On Instance settings › Nodes " <>
                  "Find the pool and the gateway in the table. Each one is ready when State " <>
                  "shows Running or Last seen. " <>
                  "If one shows Never seen, open the logs of the pool and the gateway on the " <>
                  "instance's host, as your host's install guide says. " <>
                  "If you are not an instance admin, ask one to check the Nodes page."
 
-      assert text(view, "#setup-model-key-help-false div") ==
-               "Press Add model key, and follow the steps on that page. " <>
-                 "The step is done when #{scope.organisation.name} has a model provider with " <>
-                 "a key and #{scope.workspace.name} has a model choice."
+      # Only Machines for runs has a fold; How to is gone.
+      for id <- ["source", "model-key", "test"],
+          do: refute(has_element?(view, "#setup-#{id} details"))
 
-      assert text(view, "#setup-test-help-false div") ==
-               "In Say hi to your agent, keep Hi! Where are you running?, or write another " <>
-                 "greeting. Press Run the test. When the step shows Test run passed, press " <>
-                 "See the run, and read the agent's answer in the run's log. " <>
-                 "If the step shows another line, do what its first sentence says, then " <>
-                 "press Run the test again."
+      refute render(view) =~ "How to"
+    end
+
+    test "the machines step, current, shows Check the nodes open", %{conn: conn, scope: scope} do
+      _collection = collection_fixture(scope)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#setup-machines-fold-true[open]")
     end
 
     test "done: a work source and the machines, each with its line and its link",
@@ -199,7 +213,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
       assert has_element?(view, "#setup-source[data-state=done]")
 
-      assert text(view, "#setup-source > span:nth-child(3)") ==
+      assert text(view, "#setup-source-line") ==
                "#{adapter.name} is connected, with 1 collection."
 
       assert has_element?(
@@ -210,7 +224,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
 
       assert has_element?(view, "#setup-machines[data-state=done]")
 
-      assert text(view, "#setup-machines > span:nth-child(3)") ==
+      assert text(view, "#setup-machines-line") ==
                "#{pool.name} and #{gateway.name} are ready."
 
       assert has_element?(
@@ -219,9 +233,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
                "View"
              )
 
-      # The first step not done is current: its help is open, and its button primary.
-      assert has_element?(view, "#setup-model-key-help-true[open]")
+      # The first step not done is current: its button is primary, and the fold of the
+      # machines, done, is closed.
       assert has_element?(view, "#setup-model-key-act.btn-primary")
+      assert has_element?(view, "#setup-machines-fold-false:not([open])")
     end
 
     test "an edition's answer counts: the machines and the model key from elsewhere",
@@ -229,7 +244,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       ready!()
       view = open(conn, scope)
 
-      assert text(view, "#setup-machines > span:nth-child(3)") ==
+      assert text(view, "#setup-machines-line") ==
                "shared-pool and shared-gateway are ready."
 
       assert has_element?(view, "#setup-model-key[data-state=done]")
@@ -289,7 +304,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       _collection = collection_fixture(scope)
       view = open(conn, scope)
 
-      assert has_element?(view, "#setup-test-help-true[open]")
       assert has_element?(view, "#setup-test-form label", "Say hi to your agent")
       assert has_element?(view, "#setup-test-form input[name='test[line]'][value='#{@line}']")
       assert has_element?(view, "#setup-test-act.btn-primary", "Run the test")
@@ -299,7 +313,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert [%WorkItem{test: true, title: "Hello there", state: :exploring}] =
                Repo.all(WorkItem)
 
-      assert text(view, "#setup-test > span:nth-child(3)") ==
+      assert text(view, "#setup-test-line") ==
                "The test run is queued for a machine."
 
       refute has_element?(view, "#setup-test-form")
@@ -334,7 +348,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       run = test_run!(item, [state: :handed_over], %{state: "running"})
       view = open(conn, scope)
 
-      assert text(view, "#setup-test > span:nth-child(3)") == "The test run is running."
+      assert text(view, "#setup-test-line") == "The test run is running."
 
       assert has_element?(
                view,
@@ -439,7 +453,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
         assert has_element?(view, "#setup-test[data-state=failed]")
         assert has_element?(view, "#setup-test-failed[data-cause=#{cause}]")
         assert text(view, "#setup-test-failed") == line
-        assert has_element?(view, "#setup-test-help-true[open]")
         assert has_element?(view, "#setup-test-again", "Run the test")
       end
     end
@@ -455,7 +468,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert [%WorkItem{state: :closed}, %WorkItem{state: :exploring, title: @line}] =
                Repo.all(from w in WorkItem, order_by: w.number)
 
-      assert text(view, "#setup-test > span:nth-child(3)") ==
+      assert text(view, "#setup-test-line") ==
                "The test run is queued for a machine."
     end
 
@@ -464,7 +477,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       item = test_item!(scope)
       view = open(conn, scope)
 
-      assert text(view, "#setup-test > span:nth-child(3)") ==
+      assert text(view, "#setup-test-line") ==
                "The test run is queued for a machine."
 
       test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
@@ -483,7 +496,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       assert [%DispatchRun{state: :ended, end_cause: :closed}] =
                Repo.all(from d in DispatchRun, where: d.work_item_id == ^item.id)
 
-      assert text(view, "#setup-test > span:nth-child(3)") ==
+      assert text(view, "#setup-test-line") ==
                "The test run is queued for a machine."
     end
   end

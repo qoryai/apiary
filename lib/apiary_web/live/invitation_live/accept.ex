@@ -1,110 +1,130 @@
 defmodule ApiaryWeb.InvitationLive.Accept do
   @moduledoc """
   The landing of an invitation link: accept when signed in, otherwise register
-  or log in first. An invalid or expired token gets a friendly page.
+  or log in first. An invalid or expired token gets a friendly page. Signed out, the
+  page is the set-up's first step, Invitation, where the invitation has no workspace
+  (`ApiaryWeb.SetUpComponents.steps_for/3`): its progress indicator lists the account and
+  the organisation's first workspace after it.
   """
   use ApiaryWeb, :live_view
 
   alias Apiary.Organisations
+  alias ApiaryWeb.SetUpComponents
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.auth flash={@flash} current_scope={@current_scope}>
+    <Layouts.set_up flash={@flash} current_scope={@current_scope}>
       <%= cond do %>
         <% is_nil(@invitation) -> %>
-          <.hex_tile icon="hero-envelope-open" tone="neutral" />
-          <Layouts.auth_heading>
-            {gettext("This invitation is no longer valid")}
-            <:subtitle>
-              {gettext(
-                "It may have been accepted already, revoked, or it expired after seven days. Ask the person who invited you to send a new one."
-              )}
-            </:subtitle>
-          </Layouts.auth_heading>
-          <.button
-            :if={@current_scope}
-            variant="primary"
-            size="md"
-            class="btn-block"
-            href={~p"/"}
-          >
-            {gettext("Go to your workspace")}
-          </.button>
-          <.button
-            :if={!@current_scope}
-            variant="primary"
-            size="md"
-            class="btn-block"
-            navigate={~p"/users/log-in"}
-          >
-            {gettext("Log in")}
-          </.button>
-        <% @current_scope -> %>
-          <.invitation_summary invitation={@invitation} />
-          <div class="flex items-center gap-2.5 rounded-field border border-line px-3 py-2.5">
-            <.avatar name={@current_scope.user.email} kind="self" />
-            <p
-              class="min-w-0 truncate text-[13px]/[18px] text-muted"
-              title={@current_scope.user.email}
+          <SetUpComponents.frame>
+            <.hex_tile icon="hero-envelope-open" tone="neutral" />
+            <SetUpComponents.heading>
+              {gettext("This invitation is no longer valid")}
+              <:subtitle>
+                {gettext(
+                  "It may have been accepted already, revoked, or it expired after seven days. Ask the person who invited you to send a new one."
+                )}
+              </:subtitle>
+            </SetUpComponents.heading>
+            <.button
+              :if={@current_scope}
+              variant="primary"
+              size="md"
+              class="btn-block"
+              href={~p"/"}
             >
-              <.rich text={
-                rich_gettext("Signed in as %{email}",
-                  email: {:b, @current_scope.user.email, "font-medium text-base-content"}
-                )
-              } />
-            </p>
-          </div>
-          <.button
-            variant="primary"
-            size="md"
-            class="btn-block"
-            phx-click="accept"
-            loading_text={gettext("Joining")}
-          >
-            {gettext("Accept invitation")}
-          </.button>
-          <p class="text-center text-[13px]/[18px] text-muted">
-            <.button variant="link" href={~p"/users/log-out"} method="delete">
-              {gettext("Not you? Log out")}
+              {gettext("Go to your workspace")}
             </.button>
-          </p>
-        <% true -> %>
-          <.invitation_summary invitation={@invitation} />
-          <p class="text-sm/5 text-muted">
-            <.rich text={
-              rich_gettext(
-                "Create an account with %{email} to join, or log in if you already have one.",
-                email: {:b, @invitation.email, "font-medium text-base-content"}
-              )
-            } />
-          </p>
-          <div class="grid gap-2">
+            <.button
+              :if={!@current_scope}
+              variant="primary"
+              size="md"
+              class="btn-block"
+              navigate={~p"/users/log-in"}
+            >
+              {gettext("Log in")}
+            </.button>
+          </SetUpComponents.frame>
+        <% @current_scope -> %>
+          <SetUpComponents.frame>
+            <.invitation_summary invitation={@invitation} />
+            <div class="flex items-center gap-2.5 rounded-field border border-line px-3 py-2.5">
+              <.avatar name={@current_scope.user.email} kind="self" />
+              <p
+                class="min-w-0 truncate text-[13px]/[18px] text-muted"
+                title={@current_scope.user.email}
+              >
+                <.rich text={
+                  rich_gettext("Signed in as %{email}",
+                    email: {:b, @current_scope.user.email, "font-medium text-base-content"}
+                  )
+                } />
+              </p>
+            </div>
             <.button
               variant="primary"
               size="md"
               class="btn-block"
-              navigate={~p"/users/register?invitation=#{@token}"}
+              phx-click="accept"
+              loading_text={gettext("Joining")}
             >
-              {gettext("Create an account")}
+              {gettext("Accept invitation")}
             </.button>
-            <.button size="md" class="btn-block" href={~p"/invitations/#{@token}/continue"}>
-              {gettext("Log in")}
-            </.button>
-          </div>
+            <p class="text-center text-[13px]/[18px] text-muted">
+              <.button variant="link" href={~p"/users/log-out"} method="delete">
+                {gettext("Not you? Log out")}
+              </.button>
+            </p>
+          </SetUpComponents.frame>
+        <% true -> %>
+          <SetUpComponents.frame steps={@steps} next={SetUpComponents.next?(nil)}>
+            <.invitation_summary invitation={@invitation} />
+            <p id="invitation-email" class="text-sm/5 text-muted">
+              <.rich text={
+                rich_gettext("The invitation is for %{email}.",
+                  email: {:b, @invitation.email, "font-medium text-base-content"}
+                )
+              } />
+            </p>
+            <div class="grid gap-2">
+              <.button
+                variant="primary"
+                size="md"
+                class="btn-block"
+                navigate={~p"/users/register?invitation=#{@token}"}
+              >
+                {gettext("Create an account")}
+              </.button>
+              <.button size="md" class="btn-block" href={~p"/invitations/#{@token}/continue"}>
+                {gettext("Log in")}
+              </.button>
+            </div>
+            <:context :if={workspace_to_come?(@steps)}>
+              <p id="invitation-context">
+                {gettext(
+                  "The invitation makes you a member of %{organisation}. %{organisation} has no workspace yet: its first one is set up after your account.",
+                  organisation: @invitation.organisation.name
+                )}
+              </p>
+            </:context>
+          </SetUpComponents.frame>
       <% end %>
-    </Layouts.auth>
+    </Layouts.set_up>
     """
   end
+
+  # Whether the steps after the invitation include the organisation's first workspace.
+  defp workspace_to_come?(steps), do: Enum.any?(steps, &(&1.id == :workspace))
 
   attr :invitation, :map, required: true
 
   defp invitation_summary(assigns) do
     ~H"""
-    <Layouts.auth_heading>
+    <SetUpComponents.heading>
       {gettext("Join %{name}", name: (@invitation.workspace || @invitation.organisation).name)}
       <:subtitle><.rich text={invitation_sentence(@invitation)} /></:subtitle>
-    </Layouts.auth_heading>
+    </SetUpComponents.heading>
     """
   end
 
@@ -113,11 +133,16 @@ defmodule ApiaryWeb.InvitationLive.Accept do
     # Counted before the token is looked up (`ApiaryWeb.AttemptLimits`).
     case ApiaryWeb.AttemptLimits.link_page_mount(socket) do
       {:ok, socket} ->
+        invitation = Organisations.get_invitation_by_token(token)
+
         {:ok,
          assign(socket,
            page_title: gettext("Invitation"),
            token: token,
-           invitation: Organisations.get_invitation_by_token(token)
+           invitation: invitation,
+           steps:
+             invitation &&
+               SetUpComponents.steps_for(nil, :invitation, invitation: invitation, token: token)
          )}
 
       {:limited, socket} ->
