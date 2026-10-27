@@ -1,9 +1,11 @@
 defmodule Apiary.Edition.Core do
   @moduledoc """
-  The core edition, and the default (`Apiary.Edition`): one organisation with one
-  workspace, which the instance's first sign-up creates and whose owners run the instance;
-  later people join by invitation. The instance's features are those switched on at launch,
-  shown to every person in every organisation and workspace alike. Nothing is added to the
+  The core edition, and the default (`Apiary.Edition`): one organisation, which the
+  instance's first sign-up creates and whose owners run the instance, with one workspace:
+  Main, which the sign-up by release command creates, or which an owner creates on the
+  workspace set-up page after a set-up by link. Later people join by invitation. The
+  instance's features are those switched on at launch, shown to every person in every
+  organisation and workspace alike. Nothing is added to the
   core's actions, roles, tables, features, jobs or migrations, and nothing is left out of a
   query.
 
@@ -94,6 +96,20 @@ defmodule Apiary.Edition.Core do
   @impl true
   def harness_source_allowed?(_run_organisation_id, _owner_organisation_id, _source),
     do: false
+
+  # The setup list counts what the workspace and its organisation have, and the instance's
+  # pool and gateway.
+  @impl true
+  def work_source_ready(workspace), do: Apiary.WorkspaceSetup.work_source(workspace)
+
+  @impl true
+  def machines_ready(workspace), do: Apiary.WorkspaceSetup.machines(workspace)
+
+  @impl true
+  def model_key_ready?(workspace), do: Apiary.WorkspaceSetup.model_key?(workspace)
+
+  @impl true
+  def test_run_passed?(workspace), do: Apiary.WorkspaceSetup.test_passed?(workspace)
 
   @impl true
   def client_reads(_scope, _kind, _run, subject), do: subject
