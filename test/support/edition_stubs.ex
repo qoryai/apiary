@@ -763,6 +763,34 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule NoTakeIn do
+    @moduledoc "Nobody takes an item in as a work item (`work_item.take_in`), whoever asks."
+    def check(_scope, :"work_item.take_in", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule SetupReady do
+    @moduledoc """
+    The machines and the model key of the Overview's setup list are done for every
+    workspace (`c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1`),
+    as an edition that counts what serves a workspace from another organisation may
+    answer: a pool `shared-pool` and a gateway `shared-gateway` of an organisation no test
+    reads. The work source and the test run are the core's.
+    """
+    alias Apiary.Nodes.Node
+
+    @organisation_id "00000000-0000-4000-8000-00000000c0de"
+
+    def machines_ready(_workspace) do
+      %{
+        pool: %Node{kind: :pool, name: "shared-pool", organisation_id: @organisation_id},
+        gateway: %Node{kind: :gateway, name: "shared-gateway", organisation_id: @organisation_id}
+      }
+    end
+
+    def model_key_ready?(_workspace), do: true
+  end
+
   defmodule NoLimitWorded do
     @moduledoc """
     Nobody sets a pool's instance limit, as `NoLimit` has it, and the pages say who may in
