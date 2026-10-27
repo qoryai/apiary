@@ -1,0 +1,157 @@
+{
+  "openrouter": {
+    "id": "openrouter",
+    "name": "OpenRouter",
+    "npm": "@openrouter/ai-sdk-provider",
+    "api": "https://openrouter.ai/api/v1",
+    "doc": "https://openrouter.ai/models",
+    "models": {
+      "openai/o3-mini": {
+        "id": "openai/o3-mini",
+        "name": "o3-mini",
+        "family": "o-mini",
+        "reasoning": true,
+        "release_date": "2024-12-20"
+      },
+      "anthropic/claude-sonnet-5.5": {
+        "id": "anthropic/claude-sonnet-5.5",
+        "name": "Claude Sonnet 5.5",
+        "family": "claude-sonnet",
+        "reasoning": true,
+        "release_date": "2026-09-28"
+      },
+      "anthropic/claude-opus-5.5": {
+        "id": "anthropic/claude-opus-5.5",
+        "name": "Claude Opus 5.5",
+        "family": "claude-opus",
+        "reasoning": true,
+        "release_date": "2026-09-22"
+      },
+      "~anthropic/claude-opus-latest": {
+        "id": "~anthropic/claude-opus-latest",
+        "name": "Claude Opus Latest",
+        "family": "claude-opus",
+        "reasoning": true,
+        "release_date": "2026-04-21"
+      },
+      "google/gemini-2.5-pro": {
+        "id": "google/gemini-2.5-pro",
+        "name": "Gemini 2.5 Pro",
+        "family": "gemini-pro",
+        "reasoning": true,
+        "status": "deprecated",
+        "release_date": "2025-06-17"
+      },
+      "example/markup": {
+        "id": "example/markup",
+        "name": "<b>Example</b>"
+      },
+      "example bad id": {
+        "id": "example bad id",
+        "name": "Example Bad Id"
+      },
+      "example/no-title": {
+        "id": "example/no-title",
+        "name": 7
+      },
+      "example/not-an-object": "example",
+      "example/duplicate": {
+        "id": "openai/o3-mini",
+        "name": "o3-mini"
+      }
+    }
+  },
+  "deepseek": {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "npm": "@ai-sdk/openai-compatible",
+    "api": "https://api.deepseek.com",
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "models": {
+      "deepseek-v4-pro": {
+        "id": "deepseek-v4-pro",
+        "name": "DeepSeek V4 Pro",
+        "family": "deepseek-thinking",
+        "reasoning": true,
+        "release_date": "2026-08-13"
+      },
+      "deepseek-v4-flash": {
+        "id": "deepseek-v4-flash",
+        "name": "DeepSeek V4 Flash",
+        "family": "deepseek-flash",
+        "reasoning": true,
+        "status": "deprecated",
+        "release_date": "2026-10-17"
+      },
+      "deepseek-flash": {
+        "id": "deepseek-flash",
+        "name": "DeepSeek V4.1 Flash 1017",
+        "family": "deepseek-flash",
+        "reasoning": true,
+        "release_date": "2026-10-17"
+      },
+      "example/duplicate": {
+        "id": "deepseek-v4-pro",
+        "name": "DeepSeek V4 Pro copy"
+      }
+    }
+  },
+  "xai": {
+    "id": "xai",
+    "name": "xAI",
+    "npm": "@ai-sdk/xai",
+    "doc": "https://docs.x.ai/docs/models",
+    "models": {
+      "grok-imagine-image": {
+        "id": "grok-imagine-image",
+        "name": "Grok Imagine Image",
+        "family": "grok",
+        "reasoning": false,
+        "release_date": "2026-01-28"
+      }
+    }
+  },
+  "anthropic": {
+    "id": "anthropic",
+    "name": "Anthropic",
+    "npm": "@ai-sdk/anthropic",
+    "doc": "https://docs.anthropic.com/en/docs/about-claude/models",
+    "models": {
+      "claude-sonnet-5-5": {
+        "id": "claude-sonnet-5-5",
+        "name": "Claude Sonnet 5.5",
+        "family": "claude-sonnet",
+        "reasoning": true,
+        "release_date": "2026-09-28"
+      },
+      "claude-opus-5-5": {
+        "id": "claude-opus-5-5",
+        "name": "Claude Opus 5.5",
+        "family": "claude-opus",
+        "reasoning": true,
+        "release_date": "2026-09-22"
+      },
+      "claude-opus-4-7": {
+        "id": "claude-opus-4-7",
+        "name": "Claude Opus 4.7",
+        "family": "claude-opus",
+        "reasoning": true,
+        "release_date": "2026-04-14"
+      },
+      "claude-haiku-5-5": {
+        "id": "claude-haiku-5-5",
+        "name": "Claude Haiku 5.5",
+        "family": "claude-haiku",
+        "reasoning": true,
+        "release_date": "2026-10-07"
+      },
+      "claude-fable-5-1": {
+        "id": "claude-fable-5-1",
+        "name": "Claude Fable 5.1",
+        "family": "claude-fable",
+        "reasoning": true,
+        "release_date": "2026-09-01"
+      }
+    }
+  }
+}
