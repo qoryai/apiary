@@ -435,7 +435,7 @@ run's places: its workspace, and its target when it has one
 workflow, so its documents have none of the four members. A run with a workflow waits
 until a job has walked its harness (`Apiary.Harnesses.Walk`); a claim takes no run whose
 walk has not resolved, and a walk that fails ends the run before it starts, with the end
-cause `harness_unresolved` and the failure's code. The walk follows the workspace's
+cause `harness_unresolved` and the failure's code. The walk reads the workspace's
 harness choice (`Apiary.Stacks.chosen_for/3`). Under the Qory harness or a harness
 repository, the choice's document applies, with its pinned `ref`, and is the documents'
 `harness`; the target's harness file is not read, and the run has no `target_version`.

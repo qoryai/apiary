@@ -767,7 +767,7 @@ progress, so the first step with a page in each progress has no **Back**. A step
 again shows what you saved there, and you can change it. The step **Name**, opened again,
 shows the workspace's name and type and **Continue**: the type can't be changed. A column
 headed **About this step**, beside the form or under it on a window narrower than 1024
-px, says what the step does. Two pages follow the set-up link's page:
+px, shows what the step does. Two pages come after the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
    `/instance/set-up?step=mail`, with the form of **Instance settings › Mail**. **Save

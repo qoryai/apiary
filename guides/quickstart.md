@@ -115,7 +115,7 @@ does once:
    Integrations**.
 2. **Which model do Acme's runs use?**, the step **Model**. In **Provider**, choose the
    provider of your key, such as **Anthropic API key**; **About this step**, beside the
-   form, says where to get a key for the provider you choose. Paste the key in **Key**.
+   form, shows where to get a key for the provider you choose. Paste the key in **Key**.
    For LiteLLM, also enter the proxy's https address in **Address**, such as
    `https://litellm.example.com`. **Runtime** shows **Claude Code**. In **Default
    model**, keep the first model or choose another, and select **Continue**. Only owners
@@ -176,8 +176,8 @@ Your preferences are under **Your settings › Preferences**, in the menu of you
 time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
 and, once the instance has more than one, the language. They are yours, not the
 organisation's. Mail to you, once the instance sends mail, is written in your language. The words
-of the workspace's pages are its type's, chosen when it was created and fixed after: a
-Software factory says repository, forge and pull request.
+of the workspace's pages are its type's, chosen when it was created and fixed after: in
+a Software factory they are repository, forge and pull request.
 
 ## 5. Add a node, then connect it
 
@@ -320,32 +320,33 @@ is done:
 later.
 
 1. **Work sources used.** **Which work sources does Main use?** lists the collections of
-   Acme's connections. Tick those whose tickets Main takes in: a tick gives the collection
-   to Main and turns its Backlog on. A collection of another workspace shows "In Billing
-   (cannot be ticked)", with that workspace's name. Select **Continue**. You can change
-   the list later in **Workspace settings › Work sources**. Only owners and admins tick.
-2. **Destinations used.** **Which repositories may Main's runs change?** lists the
+   Acme's connections. Tick those whose tickets Main takes in: a ticked collection is
+   assigned to Main, with its Backlog on. A collection of another workspace shows "In
+   Billing (cannot be ticked)", with that workspace's name. Select **Continue**. You can
+   change the list later in **Workspace settings › Work sources**. Only owners and admins
+   tick.
+2. **Destinations used.** **Which repositories may runs in Main change?** lists the
    repositories of Acme's connections, with "tickets come in" beside each repository
    whose tickets Main takes in. Tick the repositories Main's runs may change, and select
    **Continue**. Unticking a repository whose tickets come in also stops its tickets. You
    can change the list later in **Workspace settings › Destinations**.
-3. **Harness.** **Which harness do Main's runs use?** has three choices:
+3. **Harness.** **Which harness do runs in Main use?** has three choices:
    - **Qory harness**, `github.com/qoryai/harness` at the commit it is pinned to, the
      choice when you have made none;
    - **The harness in each repository**: each run reads its repository's `qory.yaml` or
      `harness.yaml`;
    - **A harness repository**: choose a repository linked to Acme and, in **Branch or
      tag**, a branch or tag. **Continue** reads the repository and pins the commit that
-     the branch or tag points to; a read that failed says why.
+     the branch or tag points to; a read that failed shows why.
 
    Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
    whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
    and **Change** there opens the same choices. Only owners and admins save a harness
    choice.
-4. **Machines.** **Which machines run Main's runs?** shows the node pools that serve
-   Main's runs: Main's pools, or the instance's pool while Main has none. Each shows
-   **Ready** with its gateway, or what it lacks: a pool, an active key or a gateway. The
-   step changes nothing. The test run passes only through the instance's gateway, set
+4. **Machines.** **Which machines run the runs in Main?** shows the node pools that
+   serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
+   shows **Ready** with its gateway, or **Not ready** with what is missing. The step
+   changes nothing. The test run passes only through the instance's gateway, set
    with `QORY_INSTALLED_GATEWAY`, whose key allows stored secrets, and this trial's
    `compose.yaml` runs neither the instance's pool nor its gateway ([The instance's node
    pool and gateway](install.md#the-instance-s-node-pool-and-gateway)). A gateway added on

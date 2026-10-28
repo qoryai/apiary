@@ -3,8 +3,8 @@
 The engine behind Qory Apiary is generic: a work item enters, a run does it, and the result
 is a **change request** that is **applied** to a **target** in a **system**, in a
 **workspace** of an **organisation**. A **domain** (`Apiary.Lingo.Domain`) names the
-engine for one kind of work. There is one, the software domain, which says repository,
-forge, pull request and merge. Every page is written in a domain's words.
+engine for one kind of work. There is one, the software domain, whose words are
+repository, forge, pull request and merge. Every page is written in a domain's words.
 
 This is done with Gettext, not with a list of word swaps:
 
