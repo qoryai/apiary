@@ -1,18 +1,27 @@
 defmodule ApiaryWeb.HarnessComponents do
-  # The harness choice of a workspace (`Apiary.Stacks.Sources.choose/2`), as the set-up's
+  # The harness choice of a workspace (`Apiary.Stacks.Sources.choose/3`), as the set-up's
   # Harness step (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Workflow
-  # (`ApiaryWeb.WorkflowLive`) show it.
+  # (`ApiaryWeb.WorkflowLive`) show it, and the stacks chosen for the workspace's
+  # destinations (`Apiary.Stacks.Sources.choose_target/3`), as the Harness step shows them.
   #
-  # `choices/1` is the three choices, the fields of a form named `harness`: `choice`,
-  # `qory`, `target_file` or `repository`; and, for a harness repository, `source`, a
-  # linked repository of `Apiary.Stacks.Sources.linked/1`, and `ref`, its branch or tag.
-  # The Qory harness shows its address and the first 7 characters of its pin. A harness
-  # repository lists the linked repositories, with Reading… until they are read, and
-  # under Branch or tag, the organisation's connection it is read through. `line/1` is the
-  # choice with its pin, as Workflow shows it. `form_params/2` is the form's values for a
-  # saved choice, `choice/2` the choice the form's values come to, and
-  # `refusal_words/4` why a save was refused. `qory/2` is the Qory harness the choices
-  # show.
+  # `choices/1` is the two choices, the fields of a form named `harness`: `choice`, `qory`
+  # or `repository`; and, for a harness repository, `source`, a linked repository of
+  # `Apiary.Stacks.Sources.linked/1`, and `ref`, its branch or tag. The Qory harness shows
+  # its address and the first 7 characters of its pin, and, with `file_first`, the line
+  # that a target's harness file comes first. A harness repository lists the linked
+  # repositories, with Reading… until they are read, and under Branch or tag, the
+  # organisation's connection it is read through. `line/1` is the choice with its pin, as
+  # Workflow shows it. `form_params/2` is the form's values for a saved choice, `choice/2`
+  # the choice the form's values come to, and `refusal_words/4` why a save was refused.
+  # `qory/2` is the Qory harness the choices show.
+  #
+  # `targets/1` is the destinations, each with Workspace default or the stack chosen for
+  # it, and Change for a person who may save. Change opens the form `target_stack` of one
+  # destination, with the fields `choice`, which is `default`, `qory` or `repository`;
+  # and, for a harness source, `source`, among the three groups of Workflow's Source,
+  # `address`, `stack`, an index among the stacks read, and `ref`, its branch or tag,
+  # which an assigned source has fixed. `target_choice/1` is the choice the form comes
+  # to.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -31,7 +40,11 @@ defmodule ApiaryWeb.HarnessComponents do
   attr :organisation, :string, required: true
   attr :disabled, :boolean, default: false
 
-  # The three choices, and the fields of a harness repository once it is chosen.
+  attr :file_first, :boolean,
+    default: false,
+    doc: "whether the Qory harness shows that a target's harness file comes first"
+
+  # The two choices, and the fields of a harness repository once it is chosen.
   def choices(assigns) do
     choice = assigns.form[:choice].value
     source = source(assigns.linked, assigns.form[:source].value)
@@ -43,8 +56,6 @@ defmodule ApiaryWeb.HarnessComponents do
         options: [
           {"qory", gettext("Qory harness"),
            "#{address(assigns.qory["git"])} · #{short(assigns.qory["ref"])}"},
-          {"target_file", gettext("The harness in each target"),
-           gettext("Each run reads its target's harness file.")},
           {"repository", gettext("A harness source"), nil}
         ]
       )
@@ -68,6 +79,13 @@ defmodule ApiaryWeb.HarnessComponents do
         />
         <span class="q-choice-h">{title}</span>
         <span :if={line} class={["q-choice-p", value == "qory" && "font-mono"]}>{line}</span>
+        <span
+          :if={value == "qory" and @file_first}
+          id="harness-choice-qory-file"
+          class="q-choice-p"
+        >
+          {gettext("A target's harness file comes first.")}
+        </span>
       </label>
     </fieldset>
 
@@ -128,8 +146,6 @@ defmodule ApiaryWeb.HarnessComponents do
     """
   end
 
-  defp line_words(%{choice: :target_file}), do: gettext("The harness in each target")
-
   defp line_words(%{choice: :qory, pin: pin}),
     do:
       gettext("%{harness} · pinned at %{commit}",
@@ -143,6 +159,303 @@ defmodule ApiaryWeb.HarnessComponents do
         harness: gettext("A harness source"),
         commit: short(pin)
       )
+
+  attr :targets, :list,
+    required: true,
+    doc:
+      "the destinations: `id`, `title` and `chosen`, `t:Apiary.Stacks.Sources.target_chosen/0` or nil"
+
+  attr :may, :boolean, required: true, doc: "whether the person may save, so sees Change"
+  attr :edit, :map, default: nil, doc: "the open form of a destination, nil for none"
+  attr :qory, :map, required: true, doc: "the Qory harness's base: `git` and `ref`"
+  attr :linked, :list, default: nil, doc: "the linked repositories, nil while they are read"
+  attr :assigned, :list, default: [], doc: "the sources an instance admin assigned"
+  attr :organisation, :string, required: true
+
+  # The destinations, each with its stack, and the form of the one whose Change was
+  # pressed. No list shows for a workspace with no destination.
+  def targets(assigns) do
+    ~H"""
+    <section :if={@targets != []} id="harness-targets" class="grid gap-2">
+      <h2 class="text-[13.5px]/5 font-medium">{gettext("Targets")}</h2>
+      <ul class="grid gap-2">
+        <li :for={target <- @targets} id={"harness-target-#{target.id}"} class="grid gap-3">
+          <div class="flex flex-wrap items-start gap-x-6 gap-y-1 text-[13.5px]/5">
+            <span class="min-w-0 flex-1 truncate font-mono">{target.title}</span>
+            <span id={"harness-target-#{target.id}-line"} class="min-w-0 flex-1">
+              {target_line(target.chosen)}
+            </span>
+            <.button
+              :if={@may and !(@edit && @edit.id == target.id)}
+              id={"harness-target-#{target.id}-change"}
+              type="button"
+              size="sm"
+              phx-click="change_target"
+              phx-value-id={target.id}
+            >
+              {gettext("Change")}
+            </.button>
+          </div>
+          <.target_form
+            :if={(@may and @edit) && @edit.id == target.id}
+            edit={@edit}
+            qory={@qory}
+            linked={@linked}
+            assigned={@assigned}
+            organisation={@organisation}
+          />
+        </li>
+      </ul>
+    </section>
+    """
+  end
+
+  attr :edit, :map, required: true
+  attr :qory, :map, required: true
+  attr :linked, :list, default: nil
+  attr :assigned, :list, default: []
+  attr :organisation, :string, required: true
+
+  # The form of one destination: the three choices, and for a harness source, Source,
+  # the stacks read, and the branch or tag.
+  defp target_form(assigns) do
+    edit = assigns.edit
+
+    assigns =
+      assign(assigns,
+        form:
+          to_form(
+            %{
+              "choice" => edit.choice,
+              "source" => edit.source_id,
+              "address" => edit.address,
+              "stack" => edit.stack,
+              "ref" => edit.ref
+            },
+            as: :target_stack
+          ),
+        ready: target_choice(edit) != nil,
+        options: [
+          {"default", gettext("Workspace default"), nil},
+          {"qory", gettext("Qory harness"),
+           "#{address(assigns.qory["git"])} · #{short(assigns.qory["ref"])}"},
+          {"repository", gettext("A harness source"), nil}
+        ]
+      )
+
+    ~H"""
+    <.form
+      for={@form}
+      id="harness-target-form"
+      phx-change="pick_target"
+      phx-submit="save_target"
+      class="grid gap-4"
+      novalidate
+    >
+      <fieldset id="harness-target-choice" class="q-choices grid gap-2">
+        <label
+          :for={{value, title, line} <- @options}
+          id={"harness-target-choice-#{value}"}
+          for={"harness-target-choice-#{value}-radio"}
+          class="q-choice"
+        >
+          <input
+            type="radio"
+            id={"harness-target-choice-#{value}-radio"}
+            name={@form[:choice].name}
+            value={value}
+            checked={@edit.choice == value}
+            disabled={@edit.saving}
+            class="radio radio-sm radio-primary"
+          />
+          <span class="q-choice-h">{title}</span>
+          <span :if={line} class="q-choice-p font-mono">{line}</span>
+        </label>
+      </fieldset>
+
+      <div :if={@edit.choice == "repository"} id="harness-target-repository" class="grid gap-4">
+        <.input
+          field={@form[:source]}
+          type="choice"
+          label={gettext("Source")}
+          prompt={gettext("Choose a source")}
+          options={source_options(@linked, @assigned)}
+          disabled={@edit.saving}
+        />
+        <.input
+          :if={@edit.source_id == "address"}
+          id="target_stack_address"
+          name="target_stack[address]"
+          value={@edit.address}
+          type="text"
+          label={gettext("Public address")}
+          hint={pgettext("plain", "The repository's address, without a password or token in it.")}
+          errors={List.wrap(@edit.address_error)}
+          debounce="blur"
+          disabled={@edit.saving}
+          autocomplete="off"
+          spellcheck="false"
+          class="font-mono"
+        />
+        <p :if={@edit.reading} id="harness-target-reading" class="text-[13px]/[20px] text-muted">
+          {gettext("Reading the stack of %{source}…", source: @edit.source.label)}
+        </p>
+        <.notice :if={@edit.read_error} kind={:error}>
+          <span id="harness-target-read-error">{read_words(
+            @edit.read_error,
+            @edit.source,
+            @organisation
+          )}</span>
+        </.notice>
+        <.input
+          :if={@edit.stacks}
+          field={@form[:stack]}
+          type="select"
+          label={gettext("Stack")}
+          options={stack_options(@edit.stacks)}
+          disabled={@edit.saving}
+        />
+        <.input
+          :if={@edit.source && @edit.source.kind != :assigned}
+          field={@form[:ref]}
+          type="text"
+          label={gettext("Harness version")}
+          disabled={@edit.saving}
+          autocomplete="off"
+          spellcheck="false"
+          class="font-mono"
+        />
+      </div>
+
+      <.notice :if={@edit.refusal} kind={:error}>
+        <span id="harness-target-refusal">{@edit.refusal}</span>
+      </.notice>
+
+      <div class="flex gap-2">
+        <.button
+          id="harness-target-save"
+          type="submit"
+          variant="primary"
+          disabled={!@ready or @edit.saving}
+          loading_text={gettext("Saving")}
+        >
+          {if @edit.saving, do: gettext("Saving"), else: gettext("Save")}
+        </.button>
+        <.button
+          id="harness-target-cancel"
+          type="button"
+          disabled={@edit.saving}
+          phx-click="cancel_target"
+        >
+          {gettext("Cancel")}
+        </.button>
+      </div>
+    </.form>
+    """
+  end
+
+  # The stack chosen for a destination: Workspace default for none, the Qory harness with
+  # its pin, or a harness source's repository, the stack it narrows to, and its pin.
+  defp target_line(nil), do: gettext("Workspace default")
+
+  defp target_line(%{choice: :qory, pin: pin}),
+    do:
+      gettext("%{harness} · pinned at %{commit}",
+        harness: gettext("Qory harness"),
+        commit: short(pin)
+      )
+
+  defp target_line(%{choice: :repository, git: git, narrowing: narrowing, pin: pin}) do
+    case narrowing["stack"] || narrowing["path"] do
+      nil ->
+        gettext("%{harness} · pinned at %{commit}", harness: repository(git), commit: commit(pin))
+
+      stack ->
+        gettext("%{harness} · %{stack} · pinned at %{commit}",
+          harness: repository(git),
+          stack: stack,
+          commit: commit(pin)
+        )
+    end
+  end
+
+  # The groups of Workflow's Source: the linked repositories, with Reading… until they
+  # are read, which cannot be chosen; the assigned sources; and the public address.
+  defp source_options(linked, assigned) do
+    linked =
+      case linked do
+        nil -> [%{value: "", title: gettext("Reading…"), disabled: true}]
+        linked -> Enum.map(linked, &source_option/1)
+      end
+
+    [
+      {pgettext("plain", "Linked repositories"), linked},
+      {gettext("Assigned by an instance admin"), Enum.map(assigned, &source_option/1)},
+      {gettext("Public address"), [%{value: "address", title: gettext("Enter an address")}]}
+    ]
+  end
+
+  defp source_option(source), do: %{value: source.id, title: source.label, mono: :title}
+
+  # Each stack read, by its index: its export name, else the folder it is in, else its
+  # file at the root.
+  defp stack_options(stacks) do
+    for {stack, index} <- Enum.with_index(stacks),
+        do: {stack.name || stack.base["path"] || "qory-stack.yaml", Integer.to_string(index)}
+  end
+
+  # Why the stacks of `source` were not read, in the words of Workflow's Source.
+  defp read_words(:not_covered, source, organisation),
+    do:
+      pgettext(
+        "plain",
+        "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment.",
+        source: label(source),
+        organisation: organisation
+      )
+
+  defp read_words(:no_stack, source, _organisation),
+    do:
+      gettext(
+        "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack.",
+        source: label(source)
+      )
+
+  defp read_words({:limited, seconds}, source, _organisation),
+    do:
+      ngettext(
+        "Wait %{count} second, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
+        "Wait %{count} seconds, then reload the page to read %{source} again. Qory Apiary limits how often a person can read sources.",
+        seconds,
+        source: label(source)
+      )
+
+  defp read_words(_unreadable, source, _organisation), do: unread_words(source)
+
+  @doc false
+  # target_choice/1 is the choice the form of a destination comes to, for
+  # `Apiary.Stacks.Sources.choose_target/3`: a harness source's stack of the index
+  # chosen, at the branch or tag given, or at an assigned source's `ref`; nil for a
+  # harness source with no stack read or no branch or tag.
+  @spec target_choice(map) :: Apiary.Stacks.Sources.target_choice() | nil
+  def target_choice(%{choice: "default"}), do: :default
+  def target_choice(%{choice: "qory"}), do: :qory
+
+  def target_choice(
+        %{choice: "repository", source: %{} = source, stacks: [_ | _] = stacks} = edit
+      ) do
+    ref = if source.kind == :assigned, do: source.ref, else: String.trim(edit.ref || "")
+
+    with {index, ""} when index >= 0 <- Integer.parse(edit.stack || ""),
+         %{} = stack <- Enum.at(stacks, index),
+         true <- is_binary(ref) and ref != "" do
+      {:stack, source, stack, ref}
+    else
+      _none -> nil
+    end
+  end
+
+  def target_choice(_edit), do: nil
 
   @doc false
   # qory/2 is the base of the Qory harness the choices show for `workspace`: the saved
@@ -183,11 +496,10 @@ defmodule ApiaryWeb.HarnessComponents do
 
   @doc false
   # choice/2 is the choice the form's `params` come to, among `linked`, for
-  # `Apiary.Stacks.Sources.choose/2`; nil for a harness repository without a source or a
+  # `Apiary.Stacks.Sources.choose/3`; nil for a harness repository without a source or a
   # ref, and for any other value.
   @spec choice(map, [map] | nil) :: Apiary.Stacks.Sources.choice() | nil
   def choice(%{"choice" => "qory"}, _linked), do: :qory
-  def choice(%{"choice" => "target_file"}, _linked), do: :target_file
 
   def choice(%{"choice" => "repository"} = params, linked) do
     ref = String.trim(params["ref"] || "")
@@ -299,6 +611,29 @@ defmodule ApiaryWeb.HarnessComponents do
     do: git |> Document.shown() |> String.replace_prefix("https://", "")
 
   defp address(_git), do: ""
+
+  # The repository path of a harness's address, such as `acme/web-harness` for
+  # `https://code.example.com/acme/web-harness.git`; else the address as shown.
+  defp repository(git) when is_binary(git) do
+    with %URI{host: host, path: "/" <> _ = path} when is_binary(host) and host != "" <-
+           URI.parse(git),
+         trimmed when trimmed != "" <-
+           path |> String.trim("/") |> String.replace_suffix(".git", "") do
+      trimmed
+    else
+      _other -> address(git)
+    end
+  end
+
+  defp repository(_git), do: ""
+
+  # A full commit id's first 7 characters; any other ref, such as an assignment's tag,
+  # whole.
+  defp commit(pin) when is_binary(pin) do
+    if String.match?(pin, ~r/\A[0-9a-f]{40}\z/), do: short(pin), else: pin
+  end
+
+  defp commit(_pin), do: ""
 
   defp short(pin) when is_binary(pin), do: String.slice(pin, 0, @short)
   defp short(_pin), do: ""

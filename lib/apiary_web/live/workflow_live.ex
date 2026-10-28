@@ -1,28 +1,26 @@
 defmodule ApiaryWeb.WorkflowLive do
   # Workspace settings › Workflow (`/:org/:workspace/settings/workflow`), with the
-  # `factory` feature: the workspace's harness choice (`Apiary.Stacks.Sources.choose/2`),
-  # and the workflow the workspace's runs follow with a harness source, stored as the
-  # workspace-level document for that workflow (`Apiary.Stacks.Sources.save/3`). A run's
-  # workflow comes from the rows with a workflow, this one among them, whatever the
-  # choice. The walk reads this row's document only under the harness in each
-  # repository, where no harness file of the run's target applies
-  # (`Apiary.Harnesses.Walk`). Under the Qory harness or a harness repository it walks
-  # the choice's document, and with no choice the Qory harness. The page opens for
-  # whoever may save it (`harness.save`, owners and admins), and is not found for anyone
-  # else, as the section is absent from their list.
+  # `factory` feature: the workspace's harness choice (`Apiary.Stacks.Sources.choose/3`),
+  # and the workflow the workspace's runs follow, stored as the workspace-level document
+  # for that workflow (`Apiary.Stacks.Sources.save/3`). A run's workflow comes from the
+  # rows with a workflow, this one among them, whatever the choice. The walk reads no
+  # document of a row with a workflow (`Apiary.Harnesses.Walk`), so Save sets which
+  # workflow the runs follow, and the harness choices set which harness they use. The
+  # page opens for whoever may save it (`harness.save`,
+  # owners and admins), and is not found for anyone else, as the section is absent from
+  # their list.
   #
   # Beside the form, About this step says what the page sets and which sources Source
   # lists. Under the title, Harness shows the workspace's harness choice and its pin
-  # (`ApiaryWeb.HarnessComponents.line/1`), the Qory harness for a workspace without one,
-  # and Change, which opens the three choices of the set-up's Harness step
-  # (`ApiaryWeb.HarnessComponents.choices/1`) with Save and Cancel. Save stores the choice
-  # (`Apiary.Stacks.Sources.choose/2`); a harness repository is read outside the page's
-  # process, through the linked repositories Source lists, and a read that failed says
-  # why. Under it, where the choice is the harness in each repository in a workspace whose
-  # domain has harness files (`Apiary.Lingo.Domain.harness_file?/1`), a notice says that a
-  # repository's harness file comes first. A line says which workflow the runs follow
-  # now, where the workspace has one, and of which source where the choice is the harness
-  # in each repository.
+  # (`ApiaryWeb.HarnessComponents.line/1`), else the harness the organisation shares,
+  # else the Qory harness, and Change, which opens the two choices of the set-up's
+  # Harness step (`ApiaryWeb.HarnessComponents.choices/1`) with Save and Cancel. Save
+  # stores the choice (`Apiary.Stacks.Sources.choose/3`); a harness repository is read
+  # outside the page's process, through the linked repositories Source lists, and a read
+  # that failed says why. Under it, where the choice is the Qory harness, saved or not,
+  # in a workspace whose domain has harness files (`Apiary.Lingo.Domain.harness_file?/1`),
+  # a notice says that a repository's harness file comes first. A line says which
+  # workflow the runs follow, where the workspace has one.
   #
   # Source is one choice in three groups: the organisation's linked repositories that
   # have a stack, read through the adapters when the page connects, so the group says it
@@ -458,7 +456,7 @@ defmodule ApiaryWeb.WorkflowLive do
       assign(assigns,
         organisation: assigns.current_scope.organisation.name,
         workspace: assigns.current_scope.workspace.name,
-        target_file: assigns.chosen.choice == :target_file,
+        qory_chosen: assigns.chosen.choice == :qory,
         harness_choice: HarnessComponents.choice(assigns.harness_form.params, assigns.linked)
       )
 
@@ -536,7 +534,7 @@ defmodule ApiaryWeb.WorkflowLive do
           </.form>
         </div>
 
-        <.notice :if={@harness_file and @target_file} kind={:info}>
+        <.notice :if={@harness_file and @qory_chosen} kind={:info}>
           <span id="workflow-file-first">
             <.rich text={
               rich_pgettext("plain", "A repository's %{harness} or %{qory} comes first.",
@@ -548,7 +546,7 @@ defmodule ApiaryWeb.WorkflowLive do
         </.notice>
 
         <p :if={@current} id="workflow-current" class="text-[13px]/[20px]">
-          {current_words(@current, @workspace, @target_file)}
+          {current_words(@current, @workspace)}
         </p>
 
         <.form
@@ -760,16 +758,7 @@ defmodule ApiaryWeb.WorkflowLive do
         source: source.label
       )
 
-  defp current_words(%{workflow: workflow, base: %{"git" => git}}, workspace, true)
-       when is_binary(git),
-       do:
-         gettext("Runs of %{workspace} follow the workflow %{workflow} of %{source}.",
-           workspace: workspace,
-           workflow: workflow,
-           source: Apiary.Stacks.Document.shown(git)
-         )
-
-  defp current_words(%{workflow: workflow}, workspace, _target_file),
+  defp current_words(%{workflow: workflow}, workspace),
     do:
       gettext("Runs of %{workspace} follow the workflow %{workflow}.",
         workspace: workspace,
