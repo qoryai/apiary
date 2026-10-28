@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
   The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in.
-  While the workspace's set-up is not finished, the page sends the reader to the set-up's
-  next step instead (`ApiaryWeb.SetUpComponents.set_up_path/1`). It
+  With the `factory` feature, while the workspace's set-up is not finished, the page sends
+  the reader to the set-up's next step instead (`ApiaryWeb.SetUpComponents.set_up_path/1`).
+  It
   answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
   the active targets). Policy and retention are Guard's few lines, each with a link. Each
