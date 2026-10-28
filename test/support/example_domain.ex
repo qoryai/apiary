@@ -4,10 +4,12 @@ defmodule Apiary.Lingo.Domain.Example do
   its target is named by the `account` label in the system the `platform` label names. It
   has no catalogue, so its locales fall back to the language's. A work item needs no
   target, any target with a system and a path keeps its rules, a run gets no run
-  variables, no environment is prebuilt, and no target has a harness file.
+  variables, no environment is prebuilt, and no target has a harness file. Its workspace
+  type is `qory.example` (`definition/0`).
   """
   @behaviour Apiary.Lingo.Domain
 
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Runs.Target
 
   @impl true
@@ -53,4 +55,7 @@ defmodule Apiary.Lingo.Domain.Example do
 
   @impl true
   def harness_file?, do: false
+
+  @impl true
+  def definition, do: Definition.qory("qory.example")
 end

@@ -4,7 +4,7 @@ defmodule Apiary.Lingo.DomainTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.{Example, General, Software}
+  alias Apiary.Lingo.Domain.{Definition, Example, General, Software}
   alias Apiary.Organisations.Workspace
 
   @labels %{"forge" => "git.example.com", "repository" => "acme/shop"}
@@ -168,6 +168,42 @@ defmodule Apiary.Lingo.DomainTest do
     test "offers the domains as choices, the default first, then the others by name" do
       assert Domain.choices() == [Software, Example, General]
       assert Enum.sort(Enum.map(Domain.choices(), & &1.name())) == Domain.names()
+    end
+  end
+
+  describe "a domain's definition" do
+    @harness %{
+      "git" => "https://github.com/qoryai/harness",
+      "ref" => "fe3b3ab4a02cd7c57d9efa16bbaf498d5f5de305",
+      "stack" => "core"
+    }
+
+    test "each domain is a type Qory provides, with the Qory harness and no plan or pool" do
+      for {domain, key} <- [
+            {Software, "qory.software"},
+            {General, "qory.general"},
+            {Example, "qory.example"}
+          ] do
+        assert Domain.definition(domain) == %Definition{
+                 key: key,
+                 provided_by: "qory",
+                 harness: @harness,
+                 model_plan: nil,
+                 node_pool: nil
+               }
+
+        assert Domain.definition(domain) == domain.definition()
+      end
+    end
+
+    test "every domain there is has a definition, and no two share a key" do
+      keys = for {_name, domain} <- Domain.domains(), do: Domain.definition(domain).key
+      assert length(keys) == map_size(Domain.domains())
+      assert keys == Enum.uniq(keys)
+    end
+
+    test "the harness is pinned by a full commit id" do
+      assert Software.definition().harness["ref"] =~ ~r/\A[0-9a-f]{40}\z/
     end
   end
 

@@ -19,8 +19,13 @@ defmodule Apiary.Lingo.Domain do
   environments are prebuilt (`c:prebuilds?/0`), and whether a target may have a harness
   file (`c:harness_file?/0`). Code that applies one of these rules asks here, through the
   workspace (`check_target/2`, `run_variables/3`, `prebuilds?/1`, `harness_file?/1`).
+
+  A domain is a workspace type, with a definition (`c:definition/0`,
+  `Apiary.Lingo.Domain.Definition`). A workspace stores the key of its type's definition
+  in `workspaces.type`, set when it is created, beside its domain.
   """
 
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.Workspace
 
   # Every domain there is, by the name a workspace stores. A new domain is a module here
@@ -140,6 +145,13 @@ defmodule Apiary.Lingo.Domain do
   """
   @callback harness_file?() :: boolean
 
+  @doc """
+  The definition of the workspace type the domain is (`Apiary.Lingo.Domain.Definition`):
+  its key, which a workspace of the domain stores in `workspaces.type`, who provides it,
+  and the harness a workspace of the type starts with.
+  """
+  @callback definition() :: Definition.t()
+
   @doc "The domains there are, by name."
   @spec domains() :: %{String.t() => module}
   def domains, do: @domains
@@ -178,6 +190,13 @@ defmodule Apiary.Lingo.Domain do
   """
   @spec name(%Workspace{} | nil) :: String.t()
   def name(workspace), do: for_workspace(workspace).name()
+
+  @doc """
+  The definition of the workspace type `domain` is, one of the modules of `domains/0`:
+  its `c:definition/0`.
+  """
+  @spec definition(module) :: Definition.t()
+  def definition(domain) when is_atom(domain), do: domain.definition()
 
   @doc "The target a run's labels name in the workspace: `target/1` of the workspace's domain."
   @spec target(%Workspace{} | nil, term) :: {:ok, target} | :none
