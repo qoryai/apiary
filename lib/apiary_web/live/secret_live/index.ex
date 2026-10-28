@@ -2327,7 +2327,8 @@ defmodule ApiaryWeb.SecretLive.Index do
         {:noreply,
          held(
            socket,
-           gettext("Model provider %{provider} uses this secret. Remove the provider first.",
+           gettext(
+             "Change or add a value instead. Model provider %{provider} uses this secret, so it cannot be deleted.",
              provider: provider.name
            )
          )}

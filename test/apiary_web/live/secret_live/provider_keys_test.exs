@@ -145,7 +145,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     assert has_element?(
              lv,
              "#secret-refused",
-             "Model provider Claude keys uses this secret. Remove the provider first."
+             "Change or add a value instead. Model provider Claude keys uses this secret, so it cannot be deleted."
            )
 
     assert Repo.get(Secret, secret.id)
