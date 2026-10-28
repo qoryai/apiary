@@ -2224,11 +2224,6 @@ msgstr ""
 msgid "%{organisation} can have one installation of %{integration}."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} has a key for %{provider}."
-msgstr ""
-
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} has no work destination connected yet."
@@ -3081,9 +3076,13 @@ msgid "A model id this list leaves out."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "A model provider's key lets runs in %{organisation} call a model."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A model provider's key lets runs in %{workspace} call a model."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3557,6 +3556,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add a key"
 msgstr ""
@@ -17815,7 +17815,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Which model do %{organisation}'s runs use?"
+msgid "Which model do runs in %{workspace} use?"
 msgstr ""
 
 #: lib/apiary_web/live/collections_live.ex
