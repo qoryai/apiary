@@ -1147,6 +1147,85 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
+    test "without the edition's setting, the step shows no setting to share the harness",
+         ctx do
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      refute has_element?(lv, "#set-up-harness-everywhere")
+
+      # A tick sent anyway saves the workspace's choice, and shares nothing.
+      render_click(lv, "save_harness", %{
+        "harness" => %{"choice" => "qory", "everywhere" => "true"}
+      })
+
+      assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
+      assert Apiary.Stacks.shared(ctx.organisation) == nil
+    end
+
+    test "with the setting on, Continue saves the harness the organisation shares", ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      assert has_element?(lv, "#set-up-harness-everywhere")
+
+      assert has_element?(
+               lv,
+               "#set-up-harness-form label",
+               "Available to every workspace in #{ctx.organisation.name}"
+             )
+
+      refute has_element?(lv, "#set-up-harness-everywhere[checked]")
+
+      lv
+      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
+      |> render_submit()
+
+      assert_patch(
+        lv,
+        ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
+      )
+
+      assert %{choice: :qory} = Apiary.Stacks.shared(ctx.organisation)
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+      assert Apiary.WorkspaceSetup.harness?(ctx.scope.workspace)
+    end
+
+    test "while the organisation shares a harness, sharing another is refused with the fix first",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+      {:ok, shared} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:organisation, ctx.organisation},
+          "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n",
+          choice: :repository
+        )
+
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+      assert has_element?(lv, "#harness-choice-repository-radio[checked]")
+
+      lv
+      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "true"})
+      |> render_submit()
+
+      assert has_element?(lv, ~s(#set-up-harness-refusal[data-reason="shared"]))
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Choose the shared harness, or turn off “Available to every workspace in " <>
+                 "#{ctx.organisation.name}”. #{ctx.organisation.name} shares a harness already."
+
+      assert Apiary.Stacks.shared(ctx.organisation).id == shared.id
+      assert Apiary.Stacks.shared(ctx.organisation).choice == :repository
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+
+      # With the setting off, the same choice is the workspace's.
+      lv
+      |> form("#set-up-harness-form", harness: %{choice: "qory", everywhere: "false"})
+      |> render_submit()
+
+      assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
+    end
+
     # A destination of the workspace: a collection with a target, assigned to it, of an
     # adapter with targets.
     defp destination!(ctx) do

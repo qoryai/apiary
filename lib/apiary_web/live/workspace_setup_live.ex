@@ -89,7 +89,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     repository are read once the step opens, outside the page's process, once per
   #     page. Continue saves the choice (`Apiary.Stacks.Sources.choose/3`) and goes on, or
   #     goes on where it is the saved one; a harness repository is read outside the page's
-  #     process while Continue shows Saving, and a read that failed says why. Under the
+  #     process while Continue shows Saving, and a read that failed says why. Where the
+  #     edition shows it (`c:Apiary.Edition.scope_setting?/1`), the setting "Available to
+  #     every workspace in %{organisation}", off, makes Continue save the choice as the
+  #     harness the organisation shares (`shared: true`), which a workspace with no choice
+  #     reuses, shown chosen. While the organisation shares one, a second is refused, and
+  #     the step says to choose the shared harness or turn the setting off. Under the
   #     choices, Targets lists the workspace's destinations, the rows the Destinations
   #     step ticked, each with Workspace default or the stack chosen for it
   #     (`Apiary.Stacks.Sources.targets_chosen/1`,
@@ -1245,18 +1250,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {:noreply, socket}
 
       choice ->
+        shared = share?(scope, params)
+
         cond do
-          HarnessComponents.unchanged?(choice, chosen) ->
+          HarnessComponents.unchanged?(choice, chosen) and (chosen.shared or not shared) ->
             {:noreply, go_on(socket)}
 
           match?({:repository, _source, _ref}, choice) ->
             {:noreply,
              socket
              |> assign(saving: true, harness_refusal: nil)
-             |> start_async(:harness_save, fn -> {choice, Sources.choose(scope, choice)} end)}
+             |> start_async(:harness_save, fn ->
+               {choice, Sources.choose(scope, choice, shared: shared)}
+             end)}
 
           true ->
-            {:noreply, harness_saved(socket, choice, Sources.choose(scope, choice))}
+            {:noreply,
+             harness_saved(socket, choice, Sources.choose(scope, choice, shared: shared))}
         end
     end
   end
@@ -1483,11 +1493,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp go_on(socket),
     do: push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)
 
+  # Whether Continue saves the choice as the harness the organisation shares: the setting
+  # shown and on.
+  defp share?(scope, params),
+    do: params["everywhere"] == "true" and Apiary.Edition.scope_setting?(scope)
+
   # The answer to a save of the harness choice `choice`.
   defp harness_saved(socket, _choice, {:ok, _stack}), do: go_on(socket)
 
   defp harness_saved(socket, _choice, {:error, :forbidden}),
     do: socket |> load_step() |> put_flash(:error, socket.assigns.who_may)
+
+  defp harness_saved(socket, _choice, {:error, :shared}) do
+    words =
+      gettext(
+        "Choose the shared harness, or turn off “Available to every workspace in %{organisation}”. %{organisation} shares a harness already.",
+        organisation: socket.assigns.flow.organisation.name
+      )
+
+    assign(socket, :harness_refusal, {:shared, words})
+  end
 
   defp harness_saved(socket, choice, {:error, reason}) do
     {source, ref} =
@@ -2242,6 +2267,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             file_first={@harness_file}
           />
 
+          <.input
+            :if={Apiary.Edition.scope_setting?(@current_scope)}
+            field={@form[:everywhere]}
+            id="set-up-harness-everywhere"
+            type="checkbox"
+            label={
+              gettext("Available to every workspace in %{organisation}",
+                organisation: @flow.organisation.name
+              )
+            }
+            disabled={!@may or @saving}
+          />
+
           <.notice :if={@harness_refusal} kind={:error}>
             <span id="set-up-harness-refusal" data-reason={harness_refusal_code(@harness_refusal)}>
               {elem(@harness_refusal, 1)}
@@ -2614,6 +2652,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # The failure code of a refused save, for the page's tests: the walk's, or `limited`.
   defp harness_refusal_code({{:walk, %{failure: failure}}, _words}), do: failure
   defp harness_refusal_code({{:limited, _seconds}, _words}), do: "limited"
+  defp harness_refusal_code({:shared, _words}), do: "shared"
   defp harness_refusal_code(_refusal), do: nil
 
   attr :steps, :list, required: true
