@@ -13,8 +13,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # is, with the edition's line on which workspace this is
   # (`c:Apiary.Edition.first_workspace_line/1`). Anyone else is told who sets it up
   # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with the indicator where the
-  # edition lists 2 steps or more of the current step's progress (the core lists them
-  # none) and the context
+  # edition lists 2 steps or more (the core lists them none) and the context
   # where the edition has a line (`c:Apiary.Edition.set_up_context/2`). Where a workspace
   # marked for deletion still has the name Main, the page says to restore it.
   # The page listens to the organisation's workspaces

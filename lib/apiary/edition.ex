@@ -187,7 +187,8 @@ defmodule Apiary.Edition do
   page shows. The answer is the list to show: the edition may add, rename or replace
   steps, and set their notes. The indicator shows the current step's progress alone
   (`progress` in `t:set_up_step/0`): the number of its steps is the count the indicator
-  shows ("Step 2 of 4"), and a progress of fewer than 2 steps shows no indicator. The
+  shows ("Step 2 of 4"). A list of fewer than 2 steps shows no indicator; a progress
+  of one step in a longer list shows "Step 1 of 1". The
   core answers `steps`.
   """
   @callback set_up_steps(Scope.t() | nil, [set_up_step]) :: [set_up_step]

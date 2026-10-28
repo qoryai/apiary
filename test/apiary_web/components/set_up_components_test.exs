@@ -402,30 +402,33 @@ defmodule ApiaryWeb.SetUpComponentsTest do
     end
 
     test "the frame shows no indicator with one step, and no aside without context" do
-      one = [step(:workspace, "Workspace", :workspace, :current)]
-
-      # The instance's steps do not count toward the organisation's one step.
-      one_after_instance = [
-        hd(@steps),
-        Enum.at(@steps, 2),
-        step(:workspace, "Workspace", :workspace, :current)
-      ]
-
-      for steps <- [one, one_after_instance] do
-        html =
-          render_component(
-            fn assigns ->
-              ~H"""
-              <SetUpComponents.frame steps={@steps}>Form</SetUpComponents.frame>
-              """
-            end,
-            %{steps: steps}
-          )
-
-        refute html =~ "set-up-steps"
-        refute html =~ "set-up-context"
-        assert html =~ "Form"
+      frame = fn steps ->
+        render_component(
+          fn assigns ->
+            ~H"""
+            <SetUpComponents.frame steps={@steps}>Form</SetUpComponents.frame>
+            """
+          end,
+          %{steps: steps}
+        )
       end
+
+      html = frame.([step(:workspace, "Workspace", :workspace, :current)])
+
+      refute html =~ "set-up-steps"
+      refute html =~ "set-up-context"
+      assert html =~ "Form"
+
+      # A progress of one step after the instance's steps keeps the indicator.
+      html =
+        frame.([
+          hd(@steps),
+          Enum.at(@steps, 2),
+          step(:workspace, "Workspace", :workspace, :current)
+        ])
+
+      assert text(LazyHTML.from_fragment(html), "#set-up-step") == "Step 1 of 1"
+      assert ApiaryWeb.SetUpSteps.steps(html_doc(html)) == [{"Workspace", :current}]
 
       html =
         render_component(

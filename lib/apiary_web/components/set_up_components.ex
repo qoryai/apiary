@@ -314,8 +314,7 @@ defmodule ApiaryWeb.SetUpComponents do
 
   attr :steps, :list,
     default: [],
-    doc:
-      "the set-up's steps (`steps_for/3`); the indicator shows where its progress has 2 or more"
+    doc: "the set-up's steps (`steps_for/3`); the indicator shows where there are two or more"
 
   attr :next, :boolean, default: false, doc: "whether the indicator names the next stage"
   attr :page, :string, default: nil, doc: "the page's path, where a step's link patches"
@@ -329,11 +328,12 @@ defmodule ApiaryWeb.SetUpComponents do
 
   From 1280 px the three are columns: 220 px, 480 px and 320 px. From 1024 px the
   indicator is a bar on top, with the form and its context side by side under it.
-  Below 1024 px they stack. A page whose current step's progress has fewer than two steps
-  shows no indicator; one with no context, no aside.
+  Below 1024 px they stack. A page with fewer than two steps in `steps` shows no
+  indicator; one whose current step's progress has one step shows it, "Step 1 of 1". A
+  page with no context shows no aside.
   """
   def frame(assigns) do
-    assigns = assign(assigns, :indicator, length(progress_steps(assigns.steps)) > 1)
+    assigns = assign(assigns, :indicator, length(assigns.steps) > 1)
 
     ~H"""
     <div
