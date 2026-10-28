@@ -943,13 +943,13 @@ defmodule Apiary.OrganisationsTest do
       assert Organisations.has_workspace?(organisation)
     end
 
-    test "create_first_workspace/2 creates Main of the domain given, once" do
+    test "create_first_workspace/2 creates the workspace of the name and domain given, once" do
       %{scope: scope, organisation: organisation} = sign_up_without_workspace()
 
-      assert {:ok, %Workspace{name: "Main", slug: "main", domain: "general"} = main} =
+      assert {:ok, %Workspace{name: "Payments", slug: "payments", domain: "general"} = main} =
                Organisations.create_first_workspace(scope, %{
                  "domain" => "general",
-                 "name" => "Other"
+                 "name" => "Payments"
                })
 
       assert main.organisation_id == organisation.id

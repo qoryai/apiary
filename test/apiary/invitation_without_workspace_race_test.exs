@@ -1,8 +1,8 @@
 defmodule Apiary.InvitationWithoutWorkspaceRaceTest do
   # An invitation without a workspace and the organisation's first workspace at once, each
   # on a connection of its own, outside the SQL sandbox (`Apiary.Races`): the invitation
-  # is asked again under the organisation's lock, so the workspace that came first is
-  # seen. Not async: what these tests commit is visible to every other test while they
+  # is checked again under the organisation's lock, so the workspace that came first is
+  # seen. Two first workspaces at once: of the two, one is created. Not async: what these tests commit is visible to every other test while they
   # run, and they delete it again before they end.
   use ExUnit.Case, async: false
 
@@ -78,5 +78,25 @@ defmodule Apiary.InvitationWithoutWorkspaceRaceTest do
 
     assert {:ok, %Workspace{}} = Task.await(creation.task, 10_000)
     assert [%Invitation{workspace_id: nil}] = invitations(scope)
+  end
+
+  test "of two first workspaces created at once, under two names, one is created" do
+    scope = without_workspace()
+
+    attrs = &%{"name" => &1, "domain" => "software"}
+
+    {first, holder} =
+      hold(fn -> Organisations.create_first_workspace(scope, attrs.("Payments")) end)
+
+    assert {:ok, %Workspace{name: "Payments"}} = first.result
+
+    second = start(fn -> Organisations.create_first_workspace(scope, attrs.("Billing")) end)
+    await_blocked(second.backend, holder)
+    commit(first)
+
+    assert {:error, :exists} = Task.await(second.task, 10_000)
+
+    assert [%Workspace{name: "Payments"}] =
+             Repo.all(from w in Workspace, where: w.organisation_id == ^scope.organisation.id)
   end
 end
