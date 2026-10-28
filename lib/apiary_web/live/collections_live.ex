@@ -94,7 +94,7 @@ defmodule ApiaryWeb.CollectionsLive do
     do: gettext("Which work sources does %{workspace} use?", workspace: workspace.name)
 
   defp question(:destinations, workspace),
-    do: gettext("Which repositories may %{workspace}'s runs change?", workspace: workspace.name)
+    do: gettext("Which targets may %{workspace}'s runs change?", workspace: workspace.name)
 
   @impl true
   def render(assigns) do
