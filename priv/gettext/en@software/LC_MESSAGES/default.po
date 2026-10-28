@@ -1115,12 +1115,6 @@ msgstr ""
 msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "%{name} now applies to %{workspace}."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} owns it"
@@ -2199,13 +2193,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} workspace"
 msgid_plural "%{number} workspaces"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} workspace found."
-msgid_plural "%{number} workspaces found."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3524,7 +3511,6 @@ msgid "Adapters"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/index.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Add"
 msgstr ""
@@ -3537,11 +3523,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Add %{title}"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -3642,11 +3623,6 @@ msgstr ""
 msgid "Add a value to %{name}"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add a workspace to %{name}"
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -3733,11 +3709,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add value…"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add workspace"
 msgstr ""
 
 #: lib/apiary_web/controllers/page_html/home.html.heex
@@ -4553,6 +4524,13 @@ msgstr ""
 msgid "Auto"
 msgstr ""
 
+#: lib/apiary_web/components/integration_components.ex
+#: lib/apiary_web/live/integration_live/common.ex
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Available to every workspace in %{organisation}"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "A−"
@@ -5193,12 +5171,6 @@ msgstr ""
 msgid "Choose a workflow"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Choose a workspace of this organisation for it to apply to."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose an outside API: a built-in one, or a custom API of this organisation."
@@ -5232,18 +5204,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Chosen when the workspace was created, and can't be changed. The type sets the words on the workspace's pages and the integrations offered to the workspace."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Chosen workspaces"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Chosen workspaces are listed under Workspaces."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -6540,7 +6500,6 @@ msgid "Domains"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -7003,9 +6962,6 @@ msgid "Every target of %{workspace}."
 msgstr "Every repository of %{workspace}."
 
 #: lib/apiary_web/live/integration_live/common.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Every workspace"
 msgstr ""
@@ -7343,7 +7299,6 @@ msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/layouts.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Find a workspace"
 msgstr ""
@@ -8668,12 +8623,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "It never started: its gateway did not pick it up in the time it was given, and now it can't."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "It no longer applies to that workspace."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -10695,12 +10644,6 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "No work source is connected to %{workspace}. Connect one to bring its tickets here."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "No workspace found that it doesn't apply to already."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -12906,7 +12849,6 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove"
@@ -12954,16 +12896,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{token}"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove %{workspace}"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove %{workspace} from %{name}?"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -15622,11 +15554,6 @@ msgstr ""
 msgid "The enclosure the agent runs in. Its only route out leads to the gateway."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "The first %{number} by name: type to find another."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "The first rule added here, or a mode override, gives it a separate policy, numbered from version 1."
@@ -16410,11 +16337,6 @@ msgstr ""
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "The workspace is removed from %{name}."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace's default is enforce."
@@ -16965,12 +16887,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "To change a value without a field, whoever runs Qory Apiary changes the setting named beside it and starts it again."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "To choose its workspaces, change where it applies under %{settings}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -18416,16 +18332,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "You choose one for each node, once you have added it."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "You choose the workspaces on its page, once it is added."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "You choose the workspaces on its page, once it is set up."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

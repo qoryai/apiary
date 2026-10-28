@@ -7,8 +7,9 @@ defmodule ApiaryWeb.ProviderLiveTest do
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Connections
+  alias Apiary.{Connections, Repo}
   alias Apiary.Kinds.{Provider, Providers}
+  alias Apiary.Secrets.Secret
   alias ApiaryWeb.ProviderLive.Index
 
   @moduletag needs: [:factory, :secrets]
@@ -121,6 +122,73 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(show, "#provider-key-key-1", "key-1")
       refute html =~ @key
       refute html =~ String.slice(@key, -4, 4)
+    end
+
+    test "in the core, adds it for the workspace alone, its key a secret of the workspace",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      refute has_element?(lv, "#new-provider-form input[name='provider[everywhere]']")
+
+      lv
+      |> form("#new-provider-form", provider: %{provider: "anthropic", key: @key})
+      |> render_submit()
+
+      assert {:ok, [provider]} = Connections.list_providers(scope)
+      assert provider.applies_to == "selected"
+      assert Connections.workspace_ids_of(provider) == [scope.workspace.id]
+
+      secret = Repo.get!(Secret, provider.secret_id)
+      assert secret.workspace_id == scope.workspace.id
+
+      # The key is on the workspace's Secrets and variables, with its provider.
+      {:ok, secrets, html} =
+        live(conn, "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets")
+
+      assert has_element?(secrets, "#secret-#{secret.public_id}-provider", provider.name)
+      refute html =~ @key
+    end
+
+    test "where the edition shows the setting: on, for every workspace; off, for this one",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert has_element?(
+               lv,
+               "#new-provider-form label",
+               "Available to every workspace in #{scope.organisation.name}"
+             )
+
+      refute has_element?(
+               lv,
+               "#new-provider-form input[type=checkbox][name='provider[everywhere]'][checked]"
+             )
+
+      lv
+      |> form("#new-provider-form",
+        provider: %{provider: "anthropic", key: @key, everywhere: "true"}
+      )
+      |> render_submit()
+
+      assert {:ok, [every]} = Connections.list_providers(scope)
+      assert every.applies_to == "all"
+      assert Repo.get!(Secret, every.secret_id).workspace_id == nil
+
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      lv
+      |> form("#new-provider-form",
+        provider: %{provider: "openrouter", key: @key, everywhere: "false"}
+      )
+      |> render_submit()
+
+      assert {:ok, providers} = Connections.list_providers(scope)
+      one = Enum.find(providers, &(&1.provider_kind == "openrouter"))
+      assert one.applies_to == "selected"
+      assert Connections.workspace_ids_of(one) == [scope.workspace.id]
+      assert Repo.get!(Secret, one.secret_id).workspace_id == scope.workspace.id
     end
 
     test "About this step says what a key is for, and where to get the chosen one", ctx do

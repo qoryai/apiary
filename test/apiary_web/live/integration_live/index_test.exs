@@ -566,7 +566,9 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#breadcrumb", "Set up an agent")
       assert page_title(lv) =~ "Set up an agent · Workspace settings"
       assert has_element?(lv, "label[for=connection_runtime]", "Agent")
-      assert has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
+      # Where it applies is set by the add: the workspace it is added in, with no field.
+      refute has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
+      refute has_element?(lv, "#new-runtime-form input[name='connection[everywhere]']")
       assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
       refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
       # The form offers none of the runtime's variables of a model key, and the runtime
@@ -580,11 +582,13 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       {:error, {:live_redirect, %{to: to}}} =
         result =
         lv
-        |> form("#new-runtime-form", connection: %{runtime: "claude", applies_to: "all"})
+        |> form("#new-runtime-form", connection: %{runtime: "claude"})
         |> render_submit()
 
       {:ok, [connection]} = Connections.list_connections(scope)
       assert connection.kind == "runtime"
+      assert connection.applies_to == "selected"
+      assert Connections.workspace_ids_of(connection) == [scope.workspace.id]
       assert to == ipath(scope, "/#{connection.public_id}")
       {:ok, _lv, html} = follow_redirect(result, conn)
       assert html =~ "Claude Code (claude) is set up."
@@ -596,13 +600,13 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
 
       html =
         lv
-        |> form("#new-runtime-form", connection: %{runtime: "claude", applies_to: "all"})
+        |> form("#new-runtime-form", connection: %{runtime: "claude"})
         |> render_submit()
 
       assert html =~ "It would overlap with Claude Code (claude)"
     end
 
-    test "Set up an API sets one up from a built-in API, chosen workspaces at once",
+    test "Set up an API sets one up from a built-in API, for the workspace it is set up in",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-service"))
 
@@ -612,7 +616,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
                "Choose an outside API: a built-in one, or a custom API of this organisation."
              )
 
-      assert has_element?(lv, "#new-service-form fieldset legend", "Applies to")
+      refute has_element?(lv, "#new-service-form fieldset legend", "Applies to")
+      refute has_element?(lv, "#new-service-form input[name='connection[everywhere]']")
 
       assert has_element?(lv, "label[for=connection_definition]", "API")
 
@@ -632,14 +637,91 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       {:error, {:live_redirect, %{to: to}}} =
         lv
         |> form("#new-service-form",
-          connection: %{definition: "builtin:npm", name: "Packages", applies_to: "selected"}
+          connection: %{definition: "builtin:npm", name: "Packages"}
         )
         |> render_submit()
 
       {:ok, [connection]} = Connections.list_connections(scope)
       assert connection.name == "Packages"
       assert connection.applies_to == "selected"
-      assert to == ipath(scope, "/#{connection.public_id}/targets")
+      assert Connections.workspace_ids_of(connection) == [scope.workspace.id]
+      assert to == ipath(scope, "/#{connection.public_id}")
+    end
+
+    test "a form sent with where it applies changes nothing of it", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
+
+      render_hook(lv, "create", %{
+        "connection" => %{"runtime" => "claude", "applies_to" => "all", "everywhere" => "true"}
+      })
+
+      {:ok, [connection]} = Connections.list_connections(scope)
+      assert connection.applies_to == "selected"
+      assert Connections.workspace_ids_of(connection) == [scope.workspace.id]
+    end
+  end
+
+  # Where the edition shows it (`Apiary.EditionStubs.ScopeSetting`), each form that adds
+  # a connection has the setting "Available to every workspace in <organisation>", off.
+  describe "the setting Available to every workspace" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+    end
+
+    test "a runtime set up with it on applies to every workspace", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
+      label = "Available to every workspace in #{scope.organisation.name}"
+      assert has_element?(lv, "#new-runtime-form label", label)
+
+      refute has_element?(
+               lv,
+               "#new-runtime-form input[type=checkbox][name='connection[everywhere]'][checked]"
+             )
+
+      lv
+      |> form("#new-runtime-form", connection: %{runtime: "claude", everywhere: "true"})
+      |> render_submit()
+
+      {:ok, [connection]} = Connections.list_connections(scope)
+      assert connection.applies_to == "all"
+      assert Connections.workspace_ids_of(connection) == []
+    end
+
+    test "a runtime set up with it off applies to its workspace", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
+
+      lv
+      |> form("#new-runtime-form", connection: %{runtime: "claude", everywhere: "false"})
+      |> render_submit()
+
+      {:ok, [connection]} = Connections.list_connections(scope)
+      assert connection.applies_to == "selected"
+      assert Connections.workspace_ids_of(connection) == [scope.workspace.id]
+    end
+
+    test "an API set up with it on and off", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope, "/new-service"))
+      assert has_element?(lv, "#new-service-form input[name='connection[everywhere]']")
+
+      lv
+      |> form("#new-service-form",
+        connection: %{definition: "builtin:npm", name: "Packages", everywhere: "true"}
+      )
+      |> render_submit()
+
+      {:ok, lv, _html} = live(conn, ipath(scope, "/new-service"))
+
+      lv
+      |> form("#new-service-form",
+        connection: %{definition: "builtin:sentry", name: "Errors", everywhere: "false"}
+      )
+      |> render_submit()
+
+      {:ok, connections} = Connections.list_connections(scope)
+      by_name = Map.new(connections, &{&1.name, &1})
+      assert by_name["Packages"].applies_to == "all"
+      assert by_name["Errors"].applies_to == "selected"
+      assert Connections.workspace_ids_of(by_name["Errors"]) == [scope.workspace.id]
     end
 
     test "Add from a release asks for a release and leads to it", %{conn: conn, scope: scope} do

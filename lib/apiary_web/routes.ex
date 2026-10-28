@@ -847,12 +847,6 @@ defmodule ApiaryWeb.Routes do
 
               live "/settings/integrations/:id", IntegrationLive.Show, :overview
               live "/settings/integrations/:id/targets", IntegrationLive.Show, :targets
-              live "/settings/integrations/:id/targets/add", IntegrationLive.Show, :add_target
-
-              live "/settings/integrations/:id/targets/:target_id/remove",
-                   IntegrationLive.Show,
-                   :remove_target
-
               live "/settings/integrations/:id/settings", IntegrationLive.Show, :settings
               live "/settings/integrations/:id/version", IntegrationLive.Show, :version
               live "/settings/integrations/:id/delete", IntegrationLive.Show, :delete

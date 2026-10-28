@@ -467,7 +467,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             {gettext("Its hosts: %{hosts}.", hosts: Enum.join(Runtimes.hosts(@runtime), ", "))}
           </p>
         </div>
-        <.applies_input form={@form} />
+        <Common.everywhere_input form={@form} scope={@current_scope} />
         <.page_form_foot id="new-runtime-save" cancel={Common.index_path(@current_scope)}>
           <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
             {gettext("Set up agent")}
@@ -503,7 +503,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           hint={gettext("The API's title, unless you give it another.")}
           autocomplete="off"
         />
-        <.applies_input form={@form} />
+        <Common.everywhere_input form={@form} scope={@current_scope} />
         <.page_form_foot id="new-service-save" cancel={Common.index_path(@current_scope)}>
           <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
             {gettext("Set up API")}
@@ -511,20 +511,6 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         </.page_form_foot>
       </div>
     </.form>
-    """
-  end
-
-  attr :form, :any, required: true
-
-  defp applies_input(assigns) do
-    ~H"""
-    <.input
-      field={@form[:applies_to]}
-      type="radio"
-      label={Common.applies_label()}
-      options={[{gettext("Every workspace"), "all"}, {gettext("Chosen workspaces"), "selected"}]}
-      hint={gettext("You choose the workspaces on its page, once it is set up.")}
-    />
     """
   end
 
@@ -697,7 +683,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         do: params["runtime"],
         else: hd(Runtimes.list()).name
 
-    to_form(%{"runtime" => runtime, "applies_to" => "all"}, as: :connection)
+    to_form(%{"runtime" => runtime}, as: :connection)
   end
 
   # Set up an API, its API the one a card chose (`?definition=builtin:<key>` or
@@ -709,7 +695,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         do: params["definition"],
         else: "builtin:" <> hd(Services.list())["key"]
 
-    to_form(%{"definition" => definition, "name" => "", "applies_to" => "all"}, as: :connection)
+    to_form(%{"definition" => definition, "name" => ""}, as: :connection)
   end
 
   @impl true
@@ -776,27 +762,25 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     result =
       case action do
         :new_runtime ->
-          Connections.create_runtime(scope, %{
-            runtime: params["runtime"],
-            applies_to: params["applies_to"]
-          })
+          Connections.create_runtime(
+            scope,
+            Map.put(Common.added_reach(scope, params), "runtime", params["runtime"])
+          )
 
         :new_service ->
           Connections.create_service(
             scope,
-            Map.merge(definition_attrs(params["definition"]), %{
-              name: params["name"],
-              applies_to: params["applies_to"]
-            })
+            params["definition"]
+            |> definition_attrs()
+            |> Map.merge(Common.added_reach(scope, params))
+            |> Map.put("name", params["name"])
           )
       end
 
     case result do
       {:ok, connection} ->
-        to =
-          if connection.applies_to == "selected",
-            do: Common.connection_path(scope, connection, :targets),
-            else: Common.connection_path(scope, connection)
+        # Where it applies was set here, so its Overview follows.
+        to = Common.connection_path(scope, connection)
 
         {:noreply,
          socket
@@ -817,7 +801,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     end
   end
 
-  defp definition_attrs("builtin:" <> key), do: %{service: key}
-  defp definition_attrs("own:" <> id), do: %{definition_id: id}
+  defp definition_attrs("builtin:" <> key), do: %{"service" => key}
+  defp definition_attrs("own:" <> id), do: %{"definition_id" => id}
   defp definition_attrs(_value), do: %{}
 end
