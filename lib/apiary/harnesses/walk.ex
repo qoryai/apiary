@@ -8,6 +8,24 @@ defmodule Apiary.Harnesses.Walk do
   # The walk has no case for that harness's source: in any document it walks, the source
   # is looked up as any other.
   #
+  # ## The workspace's harness choice
+  #
+  # The walk follows the workspace's harness choice (`Apiary.Stacks.chosen_for/3`):
+  #
+  #   * the Qory harness or a harness repository: the choice's document, as for the
+  #     stacks' document below, with its pinned `ref`. The target's harness file is not
+  #     read, and the run has no `target_version`;
+  #   * the harness in each repository: the target's harness file, else the stacks'
+  #     document, each as below;
+  #   * no choice: the Qory harness, the base of the workspace's type's definition
+  #     (`Apiary.Lingo.Domain.definition/1`) at its pinned commit, as a document that only
+  #     extends it, origin `:setting`, with no stack and no owner. It is hidden only where
+  #     the run's organisation is operated (`c:Apiary.Edition.operated?/1`).
+  #
+  # `pin_base/3` reads a harness repository's base as a run's walk reads it, for its save: the
+  # pin is the version the read of its `qory-stack.yaml` returned, a full commit id, else
+  # `invalid`.
+  #
   # ## The target's harness file
   #
   # In a workspace whose domain has harness files (`Apiary.Lingo.Domain.harness_file?/1`),
@@ -27,7 +45,7 @@ defmodule Apiary.Harnesses.Walk do
   # The harness document of the most specific level for the run's workflow
   # (`Apiary.Stacks.resolve_for/4`), origin `:setting`: none fails `no_harness`. It is
   # read once and checked again by the save rules (`Apiary.Stacks.Document.check/1`),
-  # else `invalid`.
+  # else `invalid`. A choice's document is read and checked the same way.
   #
   # ## The sources, two levels
   #
@@ -218,21 +236,42 @@ defmodule Apiary.Harnesses.Walk do
   # and `call_opts`, merged into each call's options. `{:ok, walked}`, `{:failed,
   # failure}`, or `{:retry, failure}` for a call that timed out or reached no one.
   @spec run(input, keyword) :: {:ok, walked} | {:failed, failure} | {:retry, failure}
-  def run(%{} = input, opts \\ []) do
+  def run(%{} = input, opts \\ []), do: within(opts, input.workflow, fn -> walk(input) end)
+
+  @doc false
+  # pin_base/3 is the commit `base`, a harness source `%{"git", "ref"}` with no `path` or
+  # `stack`, is at for `organisation`: its sources walked as a run's walk walks the
+  # stacks' document that extends it (the moduledoc), with the same `opts`. `{:ok,
+  # commit}`, `{:failed, failure}`, or `{:retry, failure}` for a call that timed out or
+  # reached no one. A version that is no full commit id fails `invalid`.
+  @spec pin_base(Organisation.t(), map, keyword) ::
+          {:ok, String.t()} | {:failed, failure} | {:retry, failure}
+  def pin_base(%Organisation{} = organisation, %{"git" => git, "ref" => ref} = base, opts \\ []) do
+    within(opts, "", fn ->
+      sources(%{"extends" => base}, organisation, nil)
+
+      at = Map.get(get(:pins), {git, ref})
+      if commit?(at), do: at, else: fail(:invalid, Document.shown(git), rule("version"))
+    end)
+  end
+
+  # `fun` with the walk's state, for a run of `workflow`: `{:ok, result}`, or the failure
+  # it threw.
+  defp within(opts, workflow, fun) do
     Process.put(__MODULE__, %{
       deadline: now() + Keyword.get(opts, :time_limit, @time_limit),
       calls: Keyword.get(opts, :max_calls, @max_calls),
       call_opts: Keyword.get(opts, :call_opts, []),
       hidden: false,
       label: nil,
-      workflow: input.workflow,
+      workflow: workflow,
       declared: :read,
       pins: %{},
       links: %{}
     })
 
     try do
-      {:ok, walk(input)}
+      {:ok, fun.()}
     catch
       {__MODULE__, :retry, failure} -> {:retry, failure}
       {__MODULE__, :failed, failure} -> {:failed, failure}
@@ -242,6 +281,15 @@ defmodule Apiary.Harnesses.Walk do
   end
 
   defp walk(input) do
+    case Stacks.chosen_for(input.organisation, input.workspace, input.workflow) do
+      :target_file -> by_target(input)
+      {:ok, %Resolution{} = resolution} -> document(input, resolution, nil)
+      :none -> qory(input)
+    end
+  end
+
+  # The target's harness file, else the stacks' document.
+  defp by_target(input) do
     case target(input) do
       {version, {:file, section, target}} ->
         put(:hidden, Edition.operated?(input.organisation))
@@ -277,34 +325,53 @@ defmodule Apiary.Harnesses.Walk do
 
   defp setting(input, version) do
     case Stacks.resolve_for(input.organisation, input.workspace, input.target, input.workflow) do
-      :none ->
-        fail(:no_harness)
-
-      {:ok, %Resolution{} = resolution} ->
-        put(:hidden, resolution.harness_hidden)
-
-        # One read: a second read of a document near the reader's budget could refuse
-        # what the first took.
-        section =
-          case Document.check(resolution.harness) do
-            {:ok, section} -> section
-            {:error, {message, values}} -> fail(:invalid, nil, message(message, values))
-          end
-
-        if stored_bytes(section) > @max_document,
-          do: fail(:invalid, nil, rule("size", n: @max_document))
-
-        sources(section, input.organisation, nil)
-
-        walked(%{
-          origin: :setting,
-          access_level: access_level(input),
-          target_version: version,
-          document: section,
-          stack_id: resolution.stack_id,
-          owner_organisation_id: resolution.owner
-        })
+      :none -> fail(:no_harness)
+      {:ok, %Resolution{} = resolution} -> document(input, resolution, version)
     end
+  end
+
+  # The stored document `resolution` has, of the stacks or of the workspace's choice.
+  defp document(input, %Resolution{} = resolution, version) do
+    put(:hidden, resolution.harness_hidden)
+
+    # One read: a second read of a document near the reader's budget could refuse what
+    # the first took.
+    section =
+      case Document.check(resolution.harness) do
+        {:ok, section} -> section
+        {:error, {message, values}} -> fail(:invalid, nil, message(message, values))
+      end
+
+    if stored_bytes(section) > @max_document,
+      do: fail(:invalid, nil, rule("size", n: @max_document))
+
+    sources(section, input.organisation, nil)
+
+    walked(%{
+      origin: :setting,
+      access_level: access_level(input),
+      target_version: version,
+      document: section,
+      stack_id: resolution.stack_id,
+      owner_organisation_id: resolution.owner
+    })
+  end
+
+  # The Qory harness of the workspace's type, for a workspace without a choice.
+  defp qory(input) do
+    put(:hidden, Edition.operated?(input.organisation))
+    definition = input.workspace |> Domain.for_workspace() |> Domain.definition()
+    section = %{"extends" => definition.harness}
+    sources(section, input.organisation, nil)
+
+    walked(%{
+      origin: :setting,
+      access_level: access_level(input),
+      target_version: nil,
+      document: section,
+      stack_id: nil,
+      owner_organisation_id: nil
+    })
   end
 
   # The run's access level, once the sources are walked (the moduledoc).

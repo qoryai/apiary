@@ -65,7 +65,8 @@ defmodule Apiary.HarnessReadsFixtures do
   public ref, `{grant_ref, resource_ref, {:public, public_ref}}`, or to its public ref
   alone, `{:public, public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps
   `{resource_ref, path}` to a document, a public ref's read as public (`read-public`). A
-  resource's version is `c-<resource_ref>`, whatever version a read asks. `down: true` makes every call reach no one, and `down:`
+  resource's version is `c-<resource_ref>`, whatever version a read asks, or its value in
+  `versions`, a map by resource_ref. `down: true` makes every call reach no one, and `down:`
   a list of adapter ids the calls of those adapters. Each call is sent to the test as
   `{:harness_call, path, members}`.
   """
@@ -131,7 +132,9 @@ defmodule Apiary.HarnessReadsFixtures do
               content -> %{"content" => content}
             end
 
-          version = "c-" <> call["resource_ref"]
+          version =
+            Map.get(opts[:versions] || %{}, call["resource_ref"], "c-" <> call["resource_ref"])
+
           body = Map.merge(%{"version" => 1, "revision" => 1, "resolved_at" => version}, found)
           answer(conn, body, adapter)
       end
