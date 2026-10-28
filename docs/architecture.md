@@ -214,8 +214,9 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   the oldest organisation in use), named by the sign-up form's organisation name, with
   the person as its owner, the instance's first admin, and nothing else; the edition is
   told so (`:first_sign_up`). By the set-up link it has no workspace (`workspace:
-  false`): its owner creates **Main** on the workspace set-up page, `/:org/set-up`, and
-  chooses its type there (`Apiary.Organisations.create_first_workspace/2`). By the
+  false`): on the workspace set-up page, `/:org/set-up`, its owner picks the type on a
+  card, then creates the workspace at the step Name, whose field reads **Main**
+  (`Apiary.Organisations.create_first_workspace/2`). By the
   release command it has **Main**. It is the set-up's or the
   release command's alone (`first_only: true`, `actor: :instance`; The set-up link,
   below); any other sign-up before it is `{:error, :not_set_up}`. Whether a sign-up is
@@ -231,7 +232,8 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   `:closed`) is what the page offers, and the sign-up asks again before it creates
   anything. A sign-up with an invitation creates no organisation. An organisation the
   sign-up page creates has no workspace either (`workspace: false`): its owner lands on
-  the workspace set-up page and creates **Main** there, as after the set-up link.
+  the workspace set-up page and creates its first workspace there, as after the set-up
+  link.
 - **One way to create an organisation.** `Apiary.Organisations.build_organisation/2` is
   the one way, for a sign-up and for each of an edition's ways: the slug, the workspace
   Main unless `workspace: false`, the owner membership, the edition's steps and the entry
