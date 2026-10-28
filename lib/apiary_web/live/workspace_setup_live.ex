@@ -81,8 +81,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     workspace's runs, each with its state (`Apiary.WorkspaceSetup.pools/1`): the
   #     workspace's pools, or the instance's pool while it has none. A pool that is the
   #     only one shows chosen. A ready pool shows its gateway's name; a pool that is not
-  #     ready shows what it lacks: a pool, an active key or a gateway. Under a pool that is
-  #     not ready: for the instance's pool, Check the nodes, to `/instance/nodes`, for an
+  #     ready shows the reason (`t:Apiary.WorkspaceSetup.not_ready_reason/0`): no pool, no
+  #     active key, a choice of Direct, no gateway, a chosen gateway that the pool's runs
+  #     may not go through, or a gateway with no active key. Under a pool that is not
+  #     ready: for the instance's pool, Check the nodes, to `/instance/nodes`, for an
   #     instance admin; for a pool of the workspace, its name links to its page for a
   #     person whom `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/3`). Nothing on the step writes;
@@ -1752,7 +1754,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp pool_state_line({:not_ready, :no_pool}), do: gettext("Not ready: no pool")
   defp pool_state_line({:not_ready, :no_active_key}), do: gettext("Not ready: no active key")
+
+  defp pool_state_line({:not_ready, :direct}),
+    do: gettext("Not ready: the pool is set to Direct, and runs need a gateway")
+
   defp pool_state_line({:not_ready, :no_gateway}), do: gettext("Not ready: no gateway")
+
+  defp pool_state_line({:not_ready, :gateway_not_serving}),
+    do: gettext("Not ready: the pool's runs may not go through the chosen gateway")
+
+  defp pool_state_line({:not_ready, :gateway_without_key}),
+    do: gettext("Not ready: the gateway has no active key")
 
   # The failure code of a refused save, for the page's tests: the walk's, or `limited`.
   defp harness_refusal_code({{:walk, %{failure: failure}}, _words}), do: failure

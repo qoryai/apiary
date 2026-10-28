@@ -21,7 +21,8 @@ defmodule Apiary.WorkspaceSetup do
   #     target assigned to the workspace;
   #   * `harness?/1`: the workspace has a saved harness choice (`Apiary.Stacks.choice/1`);
   #   * Machines: `machines/1` finds a ready pool. The step reads the pools that serve the
-  #     workspace's runs, each with its state (`pools/1`), and writes nothing;
+  #     workspace's runs, each with its state, and for a pool that is not ready the reason
+  #     (`pools/1`, `t:pool_line/0`), and writes nothing;
   #   * `test?/1`: the edition's `test_run_passed?/1`.
   #
   # The edition has four rules of the set-up: `c:Apiary.Edition.work_source_ready/1`,
@@ -119,15 +120,33 @@ defmodule Apiary.WorkspaceSetup do
   @typedoc """
   A line of the Machines step (`pools/1`): a node pool that serves the workspace's runs,
   nil where the instance has no pool; `instance`, whether it is the instance's pool; and
-  its state: `{:ready, gateway}`, or `{:not_ready, reason}`, where `reason` is
-  `:no_pool`, `:no_active_key` or `:no_gateway` (its choice resolves to no gateway with
-  an active key).
+  its state: `{:ready, gateway}`, or `{:not_ready, reason}`, where `reason` is the first
+  of these that holds:
+
+  - `:no_pool`: no pool serves the workspace's runs;
+  - `:no_active_key`: the pool has no active access key;
+  - `:direct`: the pool's gateway choice is Direct: its runs go through no gateway;
+  - `:no_gateway`: no gateway exists for the pool's choice: no default gateway resolves,
+    or the named gateway is deleted or gone;
+  - `:gateway_not_serving`: the named gateway exists, and the pool's runs may not go
+    through it: it may not serve the pool's workspace, or, for the instance's pool, it is
+    not the instance's gateway;
+  - `:gateway_without_key`: the gateway its choice resolves to has no active access key.
   """
   @type pool_line :: %{
           pool: Node.t() | nil,
           instance: boolean,
-          state: {:ready, Node.t()} | {:not_ready, :no_pool | :no_active_key | :no_gateway}
+          state: {:ready, Node.t()} | {:not_ready, not_ready_reason}
         }
+
+  @typedoc "Why a line of the Machines step is not ready (`t:pool_line/0`)."
+  @type not_ready_reason ::
+          :no_pool
+          | :no_active_key
+          | :direct
+          | :no_gateway
+          | :gateway_not_serving
+          | :gateway_without_key
 
   @typedoc """
   The latest test run: `:waiting` for a machine, `:running` once claimed, `:passed`, or
@@ -493,14 +512,29 @@ defmodule Apiary.WorkspaceSetup do
   end
 
   # A pool is ready with an active key and a choice that resolves to a gateway with an
-  # active key; else the first of the two it lacks.
+  # active key; else not ready, for the first reason of `t:not_ready_reason/0` that holds.
+  # `Gateways.resolve/1` returns `:gateway_key` for a gateway alone, never for a pool.
   defp pool_state(pool) do
     with {:key, true} <- {:key, AccessKeys.active_key?(pool)},
          {:gateway, gateway} <- Gateways.resolve(pool) do
       {:ready, gateway}
     else
       {:key, false} -> {:not_ready, :no_active_key}
-      _no_gateway -> {:not_ready, :no_gateway}
+      :direct -> {:not_ready, :direct}
+      {:error, :no_default_gateway} -> {:not_ready, :no_gateway}
+      {:error, :gateway_not_serving} -> {:not_ready, named_gateway_reason(pool)}
+      {:error, :gateway_without_key} -> {:not_ready, :gateway_without_key}
+    end
+  end
+
+  # `Gateways.resolve/1` returns `:gateway_not_serving` for a named gateway that is
+  # deleted or gone too: then no gateway exists for the pool's choice.
+  defp named_gateway_reason(%Node{gateway_id: nil}), do: :no_gateway
+
+  defp named_gateway_reason(%Node{gateway_id: id}) do
+    case Repo.get(Node, id) do
+      %Node{deleted_at: nil} -> :gateway_not_serving
+      _deleted_or_gone -> :no_gateway
     end
   end
 

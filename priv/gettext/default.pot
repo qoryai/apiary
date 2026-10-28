@@ -11061,6 +11061,21 @@ msgstr ""
 msgid "Not ready: no pool"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Not ready: the gateway has no active key"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Not ready: the pool is set to Direct, and runs need a gateway"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Not ready: the pool's runs may not go through the chosen gateway"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not running"

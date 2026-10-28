@@ -188,7 +188,7 @@ defmodule Apiary.WorkspaceSetupTest do
       assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
 
       gateway = instance_gateway_fixture()
-      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :gateway_without_key}}]
       refute WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
 
       _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
@@ -223,11 +223,46 @@ defmodule Apiary.WorkspaceSetupTest do
       assert WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
     end
 
-    test "pools/1: a pool of the workspace whose choice leads to no gateway", ctx do
+    test "pools/1: a pool of the workspace set to Direct, or to a default gateway that does not exist",
+         ctx do
       pool = pool_fixture(ctx.scope)
       _pool_key = enrolled_key_fixture(ctx.scope, pool)
 
+      assert pool.gateway_choice == :direct
+      assert states(ctx.workspace) == [{pool.id, false, {:not_ready, :direct}}]
+      assert WorkspaceSetup.machines(ctx.workspace) == nil
+
+      set!(Node, pool.id, gateway_choice: :default)
       assert states(ctx.workspace) == [{pool.id, false, {:not_ready, :no_gateway}}]
+      assert WorkspaceSetup.machines(ctx.workspace) == nil
+    end
+
+    test "pools/1: the instance's pool set to Direct, naming a gateway its runs may not go through, or one deleted",
+         ctx do
+      gateway = gateway_fixture(ctx.scope)
+      _gateway_key = node_key_fixture(ctx.scope, gateway)
+      instance_gateway = instance_gateway_fixture()
+      _instance_key = installed_key_fixture(instance_gateway, allow_secrets: true)
+
+      pool = instance_pool_fixture(gateway_choice: :direct)
+      _pool_key = installed_key_fixture(pool)
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :direct}}]
+      assert WorkspaceSetup.machines(ctx.workspace) == nil
+
+      # The instance's pool's runs go through the instance's gateway alone.
+      set!(Node, pool.id, gateway_choice: :named, gateway_id: gateway.id)
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :gateway_not_serving}}]
+      assert WorkspaceSetup.machines(ctx.workspace) == nil
+
+      # The instance's gateway, named, then deleted, or gone from the choice.
+      set!(Node, pool.id, gateway_id: instance_gateway.id)
+      assert [{_id, true, {:ready, %Node{}}}] = states(ctx.workspace)
+
+      set!(Node, instance_gateway.id, deleted_at: DateTime.utc_now())
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
+
+      set!(Node, pool.id, gateway_id: nil)
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
       assert WorkspaceSetup.machines(ctx.workspace) == nil
     end
   end

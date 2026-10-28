@@ -1798,7 +1798,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-back")
   end
 
-  test "the instance's pool not ready: no pool, no active key, no gateway, then ready", ctx do
+  test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
+       ctx do
     line = "Only an instance admin checks the instance's pool and gateway."
 
     lv = open(ctx)
@@ -1818,17 +1819,47 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-pool-instance-who-may") == line
 
     _pool_key = installed_key_fixture(pool)
-    gateway = instance_gateway_fixture(name: "instance gateway")
     lv = open(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no gateway"
     assert words(lv, "#set-up-pool-instance-who-may") == line
     assert has_element?(lv, "#set-up-skip")
+
+    gateway = instance_gateway_fixture(name: "instance gateway")
+    lv = open(ctx)
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: the gateway has no active key"
+    assert words(lv, "#set-up-pool-instance-who-may") == line
 
     _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
     lv = open(ctx)
     assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
     assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "the instance's pool not ready for its gateway choice: Direct, or a gateway its runs may not go through",
+       ctx do
+    gateway = gateway_fixture(ctx.scope)
+    _gateway_key = node_key_fixture(ctx.scope, gateway)
+
+    pool = instance_pool_fixture(gateway_choice: :direct)
+    _pool_key = installed_key_fixture(pool)
+    lv = open(ctx)
+
+    assert words(lv, "#set-up-pool-instance-state") ==
+             "Not ready: the pool is set to Direct, and runs need a gateway"
+
+    # The instance's pool names a gateway of the workspace: its runs go through the
+    # instance's gateway alone.
+    pool
+    |> Ecto.Changeset.change(gateway_choice: :named, gateway_id: gateway.id)
+    |> Repo.update!()
+
+    lv = open(ctx)
+
+    assert words(lv, "#set-up-pool-instance-state") ==
+             "Not ready: the pool's runs may not go through the chosen gateway"
+
+    assert has_element?(lv, "#set-up-skip")
   end
 
   test "an instance admin sees Check the nodes; a member reads who acts", ctx do
