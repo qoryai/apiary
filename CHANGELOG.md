@@ -50,42 +50,128 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Accepting it opens **Set up your workspace** while the organisation has no workspace,
   else the organisation's overview. Once the organisation has a workspace, an invitation
   needs a workspace again.
-- Each page of the set-up with more than one step shows one list of its steps, from the
-  set-up link, a sign-up or an invitation to the organisation's first workspace: **Your
-  account**, the steps under **Connect Qory Apiary**, then those under **Set up your
-  workspace**. Above the list, “Step 2 of 4” and a bar; below 1280 px the list is a bar
-  with **All steps**. A step done or skipped is a link to it where it has a page, once
-  you are signed in; **Your account** is not. **Back** at the foot of a form opens the
-  step before, and each step has an address, such as `/instance/set-up?step=mail` and
-  `/<organisation>/set-up?step=type`. A person who waits for another to create the first
-  workspace sees no list.
-- **Set up your workspace** moves on without a reload when another member creates the
-  organisation's first workspace while the page is open.
-- An edition can change the set-up's steps, their notes and the title of **Set up your
-  workspace**, and give a person who waits for the first workspace a line under **About
-  this step**, through the callbacks `set_up_steps/2`, `set_up_title/2` and
-  `set_up_context/2` of `Apiary.Edition`. The core keeps its steps and the title, and
-  gives no line.
+- Each page of the set-up with more than one step shows a list of the steps of its part,
+  with the part's count. The instance set-up, which an instance admin goes through once,
+  has **Your account** and the steps under **Connect Qory Apiary**. The workspace set-up
+  has its steps under a heading for each group, such as **For <workspace>**, or **For
+  the new workspace** before it exists, after **Your account** for a person who is not
+  an instance admin. Above the list, “Step 2 of 4” and a bar, and in the workspace set-up
+  a title such as “Set up Main · Software factory”; below 1280 px the list is a bar with
+  **All steps**. A step done or skipped is a link to it where it has a page, once you
+  are signed in; **Your account** is not. **Back** at the foot of a form opens the step
+  before in the same part, and each step has an address, such as
+  `/instance/set-up?step=mail` and `/<organisation>/set-up?step=name&type=software`. A
+  person who waits for another to create the first workspace sees no list.
+- The workspace set-up at `/<organisation>/set-up` moves on without a reload when
+  another person creates the organisation's first workspace while the page shows the
+  type cards, the line for a person who waits, or a step before **Create workspace**.
+- An edition can change the set-up's steps and their notes, and, for a person who waits
+  for the first workspace, the page's title, **Set up your workspace** in the core, and
+  a line under **About this step**, through the callbacks `set_up_steps/2`,
+  `set_up_title/2` and `set_up_context/2` of `Apiary.Edition`. The core keeps its steps
+  and the title, and adds no line.
+- **What will this workspace do?** shows a card for each workspace type, with what you do
+  in that kind of workspace, what you connect, and **Choose**. This release has one type,
+  **Software factory**: “Agents change code in your repositories. You connect: where work
+  comes from, where changes go, a model.” The cards show on `/<organisation>/set-up` while
+  the organisation has no workspace, and on `/<organisation>/workspaces/new`, where an
+  owner adds a workspace where the edition allows another. Where the organisation has as
+  many workspaces as the edition allows, that page shows “Acme may have no more
+  workspaces.” in place of the cards. Only owners see the cards: anyone else reads who
+  sets up the first workspace, and `/<organisation>/workspaces/new` is not found for
+  them. **Choose** opens the set-up of a workspace of that type, “Set up a new Software
+  factory”. Its step **Name** has the field **Name**, filled in with Main for the
+  organisation's first workspace and empty for any other, and **Create workspace**,
+  which creates the workspace and opens the next step, or the workspace where there is
+  none. Each workspace stores the type it was made from.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
-  Adapters** lists, before **Mail** where the page has that step. **Create workspace**
-  then opens **Connect a work source to Main**, which lists the work sources the instance
-  has set up for the workspace's type, each with **Connect**. Where an adapter's
-  description has steps for setting it up or connecting it, both pages list them in the
-  column **About this step**, under **In the new tab** or **On** and the adapter's name.
-  Qory Apiary stores those steps at each start of the adapter.
-- The overview of a workspace shows **Set up Main**, with the workspace's name, in place
-  of **Send your first run** until a test run passes. Its steps are **Work source**,
-  **Machines for runs**, **Model key** and **Test run**, each with a check mark once done
-  and, under its row, a line that says why the step exists; the steps of **Machines for
-  runs** on another page fold under **Check the nodes**. **Run the test** makes a test
-  work item of the line in **Say hi to your agent**, with no work source; owners, admins
-  and members run it once **Machines for runs** and **Model key** are done. The test run
-  uses a harness built into Qory Apiary: qory's `examples/hello` at a fixed commit,
-  workflow `hello`, which the machine fetches from github.com without a credential. The
-  step shows what to fix first when no machine takes the run within 5 minutes, the
-  gateway has no model key, or the run sends nothing for 10 minutes. **Work items** lists
-  each test work item with the mark **Test**.
+  Adapters** lists, before **Mail** where the page has that step. Where an adapter's
+  description has steps for setting it up or connecting it, that step and the workspace
+  set-up's **Work sources** and **Work destinations** list them in the column **About
+  this step**, under **In the new tab** or **On** and the adapter's name. Qory Apiary
+  stores those steps at each start of the adapter.
+- After a type's card, the workspace set-up has two groups of steps. **For
+  <organisation>**: **Work sources**, **Work destinations** and **Model**, each done once
+  for the organisation. **For <workspace>**: **Name**, **Work sources used**,
+  **Destinations used**, **Harness**, **Machines** and **Test run**. Without a step in its
+  address, the page opens the first step that is not done; where the edition allows more
+  than one workspace, a workspace added after the organisation's steps are done opens at
+  **Name**. **Work sources**, **Work destinations**, **Model**, **Work sources used**,
+  **Destinations used** and **Harness** each show where you change them later, such as
+  “You can change this later in Workspace settings › Workflow.”
+- **Work sources**, “Where does Acme's work come from?”, lists the adapters the instance
+  has set up that bring tickets for the workspace's type, and **Work destinations**,
+  “Where do Acme's changes go?”, the adapters with repositories that runs can change.
+  Each adapter shows **Connected**, **Connecting…** while the organisation's connection
+  to it is pending, or **Not connected**, and updates without a reload. Owners and admins
+  have **Connect**, which returns to the step after the adapter's steps; anyone else
+  reads who may connect. A step is done once the organisation has a connected connection
+  to one of its adapters: one connection to GitHub does both. With no adapter to list,
+  the step shows “No work source for this type is set up on this instance. An instance
+  admin sets one up in Instance settings › Adapters.”, or the same for a work
+  destination.
+- **Model**, “Which model do Acme's runs use?”, adds a model provider with **Provider**,
+  **Key**, and an address for a provider that needs one, as Organisation settings › Model
+  providers does, while the organisation has no provider with a key; else it shows “Acme
+  has a key for Anthropic.” **Runtime** lists the runtimes the provider serves, as text
+  where there is one, and **Default model** suggests the provider's models for it.
+  **Continue** saves the organisation's default model, which a workspace's runs use where
+  Workspace settings › Model sets none. The step is done once the organisation has a
+  provider with a key and a default model. Owners and admins fill it in.
+- **Work sources used**, “Which work sources does Main use?”, and **Destinations used**,
+  the repositories that runs in the workspace may change, list the collections of the
+  organisation's connections, by adapter, each with a checkbox. **Workspace settings ›
+  Work sources** and **› Destinations** show the same lists. Ticking a work source
+  assigns it to the workspace and turns its Backlog on; unticking it turns its Backlog
+  off, and removes it from the workspace unless it is a repository, which stays a
+  destination. Ticking a destination assigns it to the workspace, with its Backlog off
+  unless Work sources used ticked it; unticking it removes it from the workspace and
+  stops its tickets, and in Destinations used a repository whose tickets come in shows
+  “tickets come in”. Where the edition allows more than one workspace, a collection in
+  another workspace shows “In Billing (cannot be ticked)”. With nothing connected, a list
+  shows “Acme has no work source connected yet.”, or the same for a work destination,
+  with a link to **Work sources** or **Work destinations** for a person who may connect.
+  Owners and admins tick; owners, admins and members read the settings pages.
+- **Harness** sets the harness of the workspace's runs, one of three: **Qory harness**,
+  `github.com/qoryai/harness` at the commit this release pins, `fe3b3ab`; **The harness
+  in each repository**, where each run reads its repository's `qory.yaml` or
+  `harness.yaml`, else the stack Workspace settings › Workflow sets; or **A harness
+  repository**, a repository linked to the organisation, with **Branch or tag**, `main`
+  unless you change it, read through the organisation's connection. **Continue** saves
+  the choice. For a harness repository, the save reads it and pins the commit its branch
+  or tag points to; where the read fails, the step shows why. Under the Qory harness or a
+  harness repository, a run reads no harness file of its repository. A workspace with no
+  saved choice uses the Qory harness. Owners and admins choose. The test run keeps its
+  built-in harness.
+- **Machines** shows the node pools that run the workspace's runs: the workspace's pools,
+  or **The instance's pool** while it has none, selected where it is the only one. Each
+  shows “Ready · gateway: <gateway>”, or **Not ready** and why: no pool, no active key, a
+  gateway choice of Direct, no gateway, a gateway the pool's runs may not go through, or
+  a gateway with no active key. Under a pool that is not ready, an instance admin has
+  **Check the nodes** for the instance's pool; owners and admins have a link to the page
+  of a pool of the workspace; anyone else reads who acts, such as
+  “Only an instance admin checks the instance's pool and gateway.” The step changes
+  nothing, and is done once a pool is ready.
+- **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
+  agent** with **Run the test**, with no work source; owners, admins and members run it
+  once a pool that serves the workspace is ready. Before that, the step shows “Runs need
+  a ready pool. See Machines.”, and **See Machines** opens that step. The test run uses a
+  harness built into Qory Apiary: qory's `examples/hello` at a fixed commit, workflow
+  `hello`, which the machine fetches from github.com without a credential. The step
+  shows “The test run is queued for a machine.”, then “The test run is running.”,
+  without a reload, with **See the run** once a machine has registered the run. It shows
+  what to fix first when no machine takes the run within 5 minutes, the gateway has no
+  model key, or the run sends nothing for 10 minutes. Once the test run passes, **Go to
+  Main** opens the workspace. **Work items** lists each test work item with the mark
+  **Test**.
+- While a workspace's test run has not passed, opening the workspace opens its set-up at
+  the first step under **For <workspace>** that is not done, such as
+  `/<organisation>/set-up?step=harness&workspace=main`: from its address, the sidebar,
+  the breadcrumb, the organisation's list of workspaces and a sign-in. A person who may
+  not act on that step reads who may. Once the test run has passed, the workspace opens
+  at its Overview, which has no set-up list. Its other pages, such as **Backlog** and
+  **Runs**, open whatever the state of its set-up.
 - **Organisation settings › Model providers** adds a model provider with its key, and an
   address for a provider that needs one, such as LiteLLM; no page shows a key once it is
   saved. **Workspace settings › Model** sets the model of the workspace's runs. Its field
@@ -97,12 +183,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `claude`. When the gateway had no model key for a run, the work item page puts “Add a
   model key in Organisation settings › Model providers.” first on the step card,
   Explore's tab and the Thread, in place of “The run ended with an error.”
-- **Workspace settings › Workflow**, for owners and admins, sets the workflow of the
-  workspace's runs and the harness repository it comes from. **Source** lists the
-  repositories linked to the organisation that have a `qory-stack.yaml` file, and the
-  harness sources an instance admin assigned to it; **Enter an address** takes a **Public
-  address**. When an adapter's result marks a repository as public, a run reads it through
-  that adapter with no link to the organisation and no credential.
+- **Workspace settings › Workflow**, for owners and admins, shows the workspace's
+  **Harness** with its pin, such as “Qory harness · pinned at fe3b3ab”. **Change** opens
+  the three choices of the set-up's **Harness** step, with **Save** and **Cancel**. Under
+  it, the page sets the workflow of the workspace's runs and the harness repository it
+  comes from; a run reads that repository's stack only under **The harness in each
+  repository**, for a repository with no harness file. **Source** lists the repositories
+  linked to the organisation that have a `qory-stack.yaml` file, and the harness sources
+  an instance admin assigned to it; **Enter an address** takes a **Public address**. When
+  an adapter's result marks a repository as public, a run reads it through that adapter
+  with no link to the organisation and no credential.
 - The documentation at `/docs` describes the `factory` feature: its steps in the guides,
   the variables of the instance's node pool and gateway, and its modules in the module
   reference. An instance without `factory` serves none of that text.
@@ -174,31 +264,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   without following a symbolic link. Without Compose, give the volume `keys` and its
   contents to 65532 before the upgrade, or the release cannot read the keys.
 - The set-up link creates the instance's organisation and its owner's account with no
-  workspace, and its page no longer asks for the **Workspace type**. After **Connect Qory
-  Apiary**, the owner creates Main on **Set up your workspace**, at
-  `/<organisation>/set-up`, with **Type** and **Create workspace**. Until Main exists,
-  each sign-in of a member of the organisation opens that page.
+  workspace. After **Connect Qory Apiary**, the owner creates the first workspace on the
+  workspace set-up, at `/<organisation>/set-up`, which starts with **What will this
+  workspace do?**. Until the organisation has a workspace, each sign-in of a member of
+  the organisation opens that page.
   On a new instance, `Apiary.Release.grant_instance_admin/2`, the release command an
-  instance admin runs, still creates Main, of the type Software. Where an edition offers a
-  sign-up without an invitation, that sign-up creates no workspace either. Create Main
-  before you load the demo: `Apiary.Release.demo()` writes nothing while Acme has no
-  workspace Main.
+  instance admin runs, still creates Main, of the type Software factory. Where an edition
+  offers a sign-up without an invitation, that sign-up creates no workspace either.
+  Create Main before you load the demo: `Apiary.Release.demo()` writes nothing while Acme
+  has no workspace Main.
 - Where a step of the set-up needs context, its page has a column **About this step**
-  beside the form, or under it below 1024 px, that says what the step does; the help
-  lines in the forms are gone.
-  **Type** is a choice field, each type's name with its line under it, in place of a
-  select.
-- The set-up is split in two, each part with its step count and Back: the instance set-up,
-  which an instance admin goes through once (Your account, one step per adapter, Mail),
-  and the organisation set-up (Workspace, Work source). Back goes only to steps of the
-  same part.
+  beside the form, or under it below 1024 px, that shows what the step does.
 <!-- feature: factory -->
 - **Organisation settings › Model providers**, **Workspace settings › Model** and
   **Workspace settings › Workflow** have a column **About this step** beside the form.
-  **Provider**, **Model** and **Source** are choice fields. **Connect** on the set-up's
-  **Work source** step returns there after the adapter's steps, and a work source already
-  connected shows **Connected**. Under the set-up's list, a line shows the steps that
-  follow on the Overview.
+  **Provider**, **Model** and **Source** are choice fields.
 - The `factory` feature needs `secrets` as well as `observability` and `security`: a
   `QORY_FEATURES` list with `factory` and without `secrets` stops the boot. Set
   `QORY_FEATURES=observability,security,secrets,factory`; `all` leaves `factory` off, as
@@ -207,9 +287,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   An adapter may use it to suggest a name, such as the GitHub App's name.
 - Pages show an adapter's title from its description, such as GitHub, in place of its
   short name, such as github. The short name stays in settings and identifiers.
-- The Work source step of the workspace set-up updates without a reload: it shows
-  Connecting… while the integration lists its collections, then Connected once one of them
-  is assigned to the workspace.
 <!-- /feature -->
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up
@@ -269,6 +346,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   blocks writes. It changes no row.
 - `run_harnesses`: a nullable column, `failure_adapter_id`, with a foreign key to `nodes`
   and a partial index. It changes no row.
+- `workspaces`: a column `type`, the key of the type a workspace was made from, such as
+  `qory.software`. The migration writes it into every row, `qory.software` for each
+  workspace of 0.1.0, then sets the column NOT NULL, with a scan of `workspaces` under a
+  lock that blocks writes.
+- `stacks`: a nullable column, `choice`, a workspace's harness choice, with a check on
+  it; the check `stacks_harness_or_workflow` is replaced to take a row with a choice
+  alone. `stacks` comes with this release, so on an upgrade from 0.1.0 it is empty when
+  this migration runs. It changes no row.
 
 ## [0.1.0] - 2026-10-13
 
