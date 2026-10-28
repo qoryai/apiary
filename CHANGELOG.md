@@ -258,6 +258,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   work items, a model choice's runtime and the built-in harness; `provider_models` is
   dropped. Each of the four tables comes with this release, so on an upgrade from 0.1.0
   all four are empty when these migrations run.
+- `nodes`: a nullable column, `title`, with a check that scans `nodes` under a lock that
+  blocks writes. It changes no row.
+- `run_harnesses`: a nullable column, `failure_adapter_id`, with a foreign key to `nodes`
+  and a partial index. It changes no row.
 
 ## [0.1.0] - 2026-10-13
 
