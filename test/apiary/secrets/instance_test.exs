@@ -268,7 +268,7 @@ defmodule Apiary.Secrets.InstanceTest do
                Repo.all(
                  from e in Apiary.Audit.Entry,
                    where: e.action == "adapter.delete",
-                   order_by: e.inserted_at
+                   order_by: [asc: e.inserted_at, asc: e.id]
                )
     end
   end
