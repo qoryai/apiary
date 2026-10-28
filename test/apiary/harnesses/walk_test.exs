@@ -139,8 +139,9 @@ defmodule Apiary.Harnesses.WalkTest do
   # public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps a resource or a
   # public ref and a path to a document, read with a grant or as public. A resource's
   # version is `c-<resource>`, whatever the version asked, or its value in `versions`.
-  # `refuse` answers every read with a signed refusal, and `refuse_public` every public
-  # read; `down` makes every call reach no one.
+  # `refuse` answers every read with a signed refusal, `refuse_public` every public read,
+  # and `refuse_at`, a map of a version a read asks for (`at`) to a code, each read at that
+  # version, with a 404; `down` makes every call reach no one.
   defp serve(adapters, opts) do
     test = self()
     hosts = Map.new(adapters, &{&1.host, &1})
@@ -203,6 +204,9 @@ defmodule Apiary.Harnesses.WalkTest do
         refusal = opts[:refuse] ->
           {status, code} = refusal
           answer(conn, status, %{"error" => code}, adapter)
+
+        path in ["read", "read-public"] and is_map_key(opts[:refuse_at] || %{}, call["at"]) ->
+          answer(conn, 404, %{"error" => opts[:refuse_at][call["at"]]}, adapter)
 
         path == "read-public" and opts[:refuse_public] ->
           {status, code} = opts[:refuse_public]
@@ -1065,6 +1069,12 @@ defmodule Apiary.Harnesses.WalkTest do
                 rule: %{"rule" => "no_stack_file", "values" => %{}}
               }} =
                Walk.run(ctx.input)
+
+      serve([ctx.run], covered: covering(ctx), refuse_at: %{"v1" => "version_not_found"})
+
+      assert {:failed,
+              %{failure: :invalid, source: nil, rule: %{"rule" => "version", "values" => %{}}}} =
+               Walk.run(ctx.input)
     end
   end
 
@@ -1736,8 +1746,8 @@ defmodule Apiary.Harnesses.WalkTest do
 
       serve([ctx.run], covered: covering(ctx), refuse: {404, "version_not_found"})
 
-      assert {:failed, %{failure: :invalid, source: @target, rule: %{"rule" => "version"}}} =
-               Walk.run(ctx.input)
+      assert {:failed, %{failure: :invalid, source: @target, rule: rule}} = Walk.run(ctx.input)
+      assert rule == %{"rule" => "version", "values" => %{"ref" => "HEAD"}}
 
       serve([ctx.run], covered: covering(ctx), refuse: {403, "resource_not_covered"})
       assert {:failed, %{failure: :not_covered, source: @target}} = Walk.run(ctx.input)
@@ -2350,14 +2360,33 @@ defmodule Apiary.Harnesses.WalkTest do
 
       refuse.(files: @root_files, refuse: {404, "version_not_found"})
 
-      assert {:error, {:walk, %{failure: :invalid, rule: %{"rule" => "version"}}}} =
+      assert {:error, {:walk, %{failure: :invalid, rule: rule}}} =
                Sources.choose(ctx.scope, {:repository, source, "no-such-branch"})
+
+      assert rule == %{"rule" => "version", "values" => %{"ref" => "no-such-branch"}}
 
       # The version the read returned is no full commit id.
       refuse.(files: @root_files)
 
-      assert {:error, {:walk, %{failure: :invalid, rule: %{"rule" => "version"}}}} =
+      assert {:error, {:walk, %{failure: :invalid, rule: rule}}} =
                Sources.choose(ctx.scope, {:repository, source, "main"})
+
+      assert rule == %{"rule" => "version", "values" => %{"ref" => "main"}}
+
+      # A module the stack lists from the same repository, at a ref the read does not
+      # find: the failure has the module's ref.
+      stack = "modules:\n  - source: {git: \"#{@harness}\", ref: no-such-tag}\n"
+
+      refuse.(
+        files: %{{"R_harness", "qory-stack.yaml"} => stack},
+        versions: %{"R_harness" => @pin},
+        refuse_at: %{"no-such-tag" => "version_not_found"}
+      )
+
+      assert {:error, {:walk, %{failure: :invalid, source: @harness, rule: rule}}} =
+               Sources.choose(ctx.scope, {:repository, source, "main"})
+
+      assert rule == %{"rule" => "version", "values" => %{"ref" => "no-such-tag"}}
 
       # The root has no stack.
       refuse.(files: %{}, versions: %{"R_harness" => @pin})

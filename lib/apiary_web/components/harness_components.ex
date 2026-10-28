@@ -264,14 +264,12 @@ defmodule ApiaryWeb.HarnessComponents do
 
   # Whether the walk's `failure` is about `ref` of `source`, the version the person gave:
   # the read found no version for it, it is no version a read takes, or it breaks the
-  # save rule of refs (`Apiary.Stacks.Document.ref_error/1`). The failure of a version
-  # the read did not find contains no ref, so a module source in the same repository, at
-  # another ref the read did not find, counts too.
+  # save rule of refs (`Apiary.Stacks.Document.ref_error/1`).
   defp unreadable_ref?(%{failure: :invalid, source: shown, rule: rule}, %{git: git}, ref)
        when is_binary(git) and is_binary(ref) do
     shown == Document.shown(git) and
       case rule do
-        %{"rule" => "version"} ->
+        %{"rule" => "version", "values" => %{"ref" => ^ref}} ->
           true
 
         %{"rule" => "ref", "values" => %{"ref" => ^ref}} ->
