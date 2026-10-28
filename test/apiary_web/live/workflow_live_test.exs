@@ -153,12 +153,12 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute has_element?(open(conn, path), "#workflow-file-first")
     end
 
-    test "a general workspace has no line on the harness file", %{
+    test "an example workspace has no line on the harness file", %{
       conn: conn,
       scope: scope,
       path: path
     } do
-      with_domain(scope, "general")
+      with_domain(scope, "example")
       view = open(conn, path)
 
       assert has_element?(view, "#page-context")

@@ -13,7 +13,7 @@ defmodule Apiary.Adapters.ConfiguredTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Adapters, Repo}
-  alias Apiary.Lingo.Domain.{Example, General, Software}
+  alias Apiary.Lingo.Domain.{Example, Software}
   alias Apiary.Nodes.Node
 
   @moduletag needs: :factory
@@ -101,20 +101,18 @@ defmodule Apiary.Adapters.ConfiguredTest do
   describe "list_configured/1" do
     test "lists the configured adapters that serve the domain, by name" do
       all = configured("tracker-c")
-      general = configured("tracker-a", ["general"])
-      both = configured("tracker-b", ["software", "general"])
+      both = configured("tracker-b", ["software", "example"])
       example = configured("tracker-d", ["example"])
-      made = [all, general, both, example]
+      made = [all, both, example]
 
       assert listed(Software, made) == ids([both, all])
-      assert listed(General, made) == ids([general, both, all])
-      assert listed(Example, made) == ids([all, example])
+      assert listed(Example, made) == ids([both, all, example])
     end
 
     test "an adapter that lists no domains serves every domain" do
       all = configured("tracker-all")
 
-      for domain <- [Software, General, Example],
+      for domain <- [Software, Example],
           do: assert(listed(domain, [all]) == [all.id])
     end
 

@@ -67,6 +67,7 @@ defmodule Apiary.Organisations.WorkspaceTypeMigrationTest do
     assert column() == []
 
     software = insert!(scope.organisation, "alpha", "software")
+    # The migration dates from when `general` was a domain, and gives it `qory.general`.
     general = insert!(scope.organisation, "beta", "general")
     retired = insert!(scope.organisation, "gamma", "retired")
 

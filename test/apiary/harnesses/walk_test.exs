@@ -476,7 +476,7 @@ defmodule Apiary.Harnesses.WalkTest do
     test "a target of a domain without harness files is never read, and the run has no target version",
          ctx do
       setting(ctx.scope, @setting)
-      scope = with_domain(ctx.scope, "general")
+      scope = with_domain(ctx.scope, "example")
 
       serve([ctx.run],
         covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
@@ -2100,12 +2100,12 @@ defmodule Apiary.Harnesses.WalkTest do
       assert Document.check(@builtin) == {:ok, Builtin.document()}
     end
 
-    test "resolves with the built-in harness when queued, in a software and a general workspace: no job, no call, no link",
+    test "resolves with the built-in harness when queued, in a software and an example workspace: no job, no call, no link",
          ctx do
       covering_builtin!(ctx)
-      general = with_domain(scope_fixture(), "general")
+      example = with_domain(scope_fixture(), "example")
 
-      for scope <- [ctx.scope, general] do
+      for scope <- [ctx.scope, example] do
         # The workspace's levels, which a run that is no test would walk.
         setting(scope, @setting)
         recording(%{scope: scope}, "hello", :write)

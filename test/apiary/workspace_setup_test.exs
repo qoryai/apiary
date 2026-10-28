@@ -451,10 +451,10 @@ defmodule Apiary.WorkspaceSetupTest do
       assert WorkspaceSetup.destinations?(organisation, @software)
 
       # An adapter that serves another type counts for that type alone.
-      set!(Node, adapter.id, domains: ["general"])
+      set!(Node, adapter.id, domains: ["example"])
       refute WorkspaceSetup.sources?(organisation, @software)
       refute WorkspaceSetup.destinations?(organisation, @software)
-      assert WorkspaceSetup.sources?(organisation, Apiary.Lingo.Domain.General)
+      assert WorkspaceSetup.sources?(organisation, Apiary.Lingo.Domain.Example)
 
       # An ended connection counts for none.
       set!(Node, adapter.id, domains: nil)

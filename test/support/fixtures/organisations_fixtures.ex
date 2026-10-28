@@ -14,6 +14,7 @@ defmodule Apiary.OrganisationsFixtures do
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
   alias Apiary.AccountsFixtures
+  alias Apiary.Lingo.Domain
   alias Apiary.Organisations
   alias Apiary.Organisations.{Membership, Organisation, Slug, Workspace}
   alias Apiary.Repo
@@ -185,14 +186,20 @@ defmodule Apiary.OrganisationsFixtures do
   end
 
   @doc """
-  `scope` with its workspace of the domain `name`, written to its row directly: the product
-  sets a workspace's domain only when it creates the workspace, and a test that needs a
-  workspace of another domain makes it so after.
+  `scope` with its workspace of the domain `name`, and of the type that domain is, written
+  to its row directly: the product sets a workspace's domain and type only when it creates
+  the workspace, and a test that needs a workspace of another domain makes it so after. A
+  name no domain has gets the default domain's type, as `Apiary.Lingo.Domain.for_workspace/1`
+  reads it.
   """
   def with_domain(%Scope{workspace: %Workspace{id: id} = workspace} = scope, name)
       when is_binary(name) do
-    {1, _rows} = Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [domain: name])
-    %{scope | workspace: %{workspace | domain: name}}
+    type = Domain.for_workspace(%Workspace{domain: name}).definition().key
+
+    {1, _rows} =
+      Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [domain: name, type: type])
+
+    %{scope | workspace: %{workspace | domain: name, type: type}}
   end
 
   @doc """

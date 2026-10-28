@@ -20,11 +20,7 @@ defmodule ApiaryWeb.ChoiceTest do
       title: "Software",
       subtitle: "For work on code. Each ticket needs a repository."
     },
-    %{
-      value: "general",
-      title: "General",
-      subtitle: "For any other work, such as marketing, incidents or customer care."
-    }
+    %{value: "example", title: "Example", subtitle: "For the tests only."}
   ]
 
   defmodule FormLive do
@@ -34,7 +30,7 @@ defmodule ApiaryWeb.ChoiceTest do
 
     @types [
       %{value: "software", title: "Software", subtitle: "For work on code."},
-      %{value: "general", title: "General", subtitle: "For any other work."}
+      %{value: "example", title: "Example", subtitle: "For the tests only."}
     ]
 
     def mount(_params, _session, socket) do
@@ -109,7 +105,7 @@ defmodule ApiaryWeb.ChoiceTest do
 
       radios = LazyHTML.query(group, "label.q-pick-opt input[type=radio]")
       assert LazyHTML.attribute(radios, "name") == ["workspace[domain]", "workspace[domain]"]
-      assert LazyHTML.attribute(radios, "value") == ["software", "general"]
+      assert LazyHTML.attribute(radios, "value") == ["software", "example"]
       assert LazyHTML.attribute(radios, "checked") == []
 
       assert LazyHTML.attribute(radios, "aria-describedby") == [
@@ -117,11 +113,9 @@ defmodule ApiaryWeb.ChoiceTest do
                "workspace_domain-1-s"
              ]
 
-      assert text(doc, ".q-pick-opt .q-pick-t") == ["Software", "General"]
+      assert text(doc, ".q-pick-opt .q-pick-t") == ["Software", "Example"]
 
-      assert text(doc, "#workspace_domain-1-s") == [
-               "For any other work, such as marketing, incidents or customer care."
-             ]
+      assert text(doc, "#workspace_domain-1-s") == ["For the tests only."]
     end
 
     test "draws an option without a subtitle as its title alone" do
@@ -256,18 +250,16 @@ defmodule ApiaryWeb.ChoiceTest do
 
   describe "a choice with a chosen value" do
     test "shows the chosen title and subtitle on its button, and checks its radio" do
-      doc = choice(%{params: %{"domain" => "general"}, prompt: "Choose a type"})
+      doc = choice(%{params: %{"domain" => "example"}, prompt: "Choose a type"})
 
-      assert text(doc, "#workspace_domain-shown .q-pick-t") == ["General"]
+      assert text(doc, "#workspace_domain-shown .q-pick-t") == ["Example"]
 
-      assert text(doc, "#workspace_domain-shown .q-pick-s") == [
-               "For any other work, such as marketing, incidents or customer care."
-             ]
+      assert text(doc, "#workspace_domain-shown .q-pick-s") == ["For the tests only."]
 
       refute LazyHTML.attribute(LazyHTML.query(doc, "button"), "class") |> hd() =~ "is-prompt"
 
       assert LazyHTML.query(doc, "input[type=radio][checked]") |> LazyHTML.attribute("value") ==
-               ["general"]
+               ["example"]
     end
   end
 
@@ -372,19 +364,19 @@ defmodule ApiaryWeb.ChoiceTest do
 
       assert view |> element("#workspace_domain-shown") |> render() =~ "Choose a type"
 
-      view |> form("#workspace-form", %{workspace: %{domain: "general"}}) |> render_change()
+      view |> form("#workspace-form", %{workspace: %{domain: "example"}}) |> render_change()
 
-      assert view |> element("#workspace_domain-shown .q-pick-t") |> render() =~ "General"
+      assert view |> element("#workspace_domain-shown .q-pick-t") |> render() =~ "Example"
       assert has_element?(view, "input#workspace_domain-1[checked]")
       refute has_element?(view, "input#workspace_domain-0[checked]")
 
       view |> form("#workspace-form") |> render_submit()
-      assert view |> element("#saved") |> render() =~ "general"
+      assert view |> element("#saved") |> render() =~ "example"
     end
 
     test "leaves the panel's state to the hook across the patch a change brings" do
       {:ok, view, _html} = live_isolated(Phoenix.ConnTest.build_conn(), FormLive)
-      view |> form("#workspace-form", %{workspace: %{domain: "general"}}) |> render_change()
+      view |> form("#workspace-form", %{workspace: %{domain: "example"}}) |> render_change()
 
       doc = view |> element("#workspace_domain-choice") |> render() |> LazyHTML.from_fragment()
 

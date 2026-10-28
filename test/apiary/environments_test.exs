@@ -419,7 +419,7 @@ defmodule Apiary.EnvironmentsTest do
       assert %{run: taken, registered: %{configured_image: nil}} = claim(ctx, ctx.pool)
       assert taken.id == named.id
 
-      with_domain(ctx.scope, "general")
+      with_domain(ctx.scope, "example")
       shop = list(ctx, 1, %{environment_ref: "env-1"})
       run = explore!(ctx)
       assert %{run: taken, registered: %{configured_image: nil}} = claim(ctx, ctx.pool)

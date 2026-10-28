@@ -8,9 +8,8 @@ defmodule Apiary.Lingo.Domain do
   A workspace has its domain, stored by name in `workspaces.domain` and chosen when it is
   created; every member of the workspace reads the same words. `domains/0` is the registry
   of the domains there are, by name; `for_workspace/1` reads a workspace's through it.
-  There are two: the software domain, the default, which a render outside any workspace
-  reads, and the general domain (`Apiary.Lingo.Domain.General`), whose words are the
-  engine's. Nothing changes a workspace's domain. Code that reads a run's labels for its
+  There is one: the software domain, the default, which a render outside any workspace
+  reads. Nothing changes a workspace's domain. Code that reads a run's labels for its
   target asks here and never names a label itself.
 
   A domain also sets the rules of a work item's target: whether a work item needs one
@@ -33,10 +32,7 @@ defmodule Apiary.Lingo.Domain do
   # one more of their own (`config/test.exs`), so they see a workspace's domain read
   # through the registry and not assumed.
   @domains Map.merge(
-             %{
-               "software" => Apiary.Lingo.Domain.Software,
-               "general" => Apiary.Lingo.Domain.General
-             },
+             %{"software" => Apiary.Lingo.Domain.Software},
              Application.compile_env(:apiary, [__MODULE__, :test_domains], %{})
            )
   @default Apiary.Lingo.Domain.Software

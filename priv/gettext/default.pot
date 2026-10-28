@@ -7563,18 +7563,6 @@ msgstr ""
 msgid "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
 msgstr ""
 
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "For any other work, such as marketing, incidents or customer care."
-msgstr ""
-
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
-msgstr ""
-
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "For the new workspace"
@@ -7790,17 +7778,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "General"
-msgstr ""
-
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "General"
-msgstr ""
-
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgid "General workspace"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

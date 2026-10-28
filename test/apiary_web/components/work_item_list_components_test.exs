@@ -494,10 +494,10 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
     assert attr(html, "#work-items-open-backlog", "href") == ["/8wonders/main/backlog"]
   end
 
-  test "in a general workspace, the stages and the empty list name no code" do
-    # A general workspace reads the source texts; the tests above read the software
+  test "in an example workspace, the stages and the empty list name no code" do
+    # An example workspace reads the source texts; the tests above read the software
     # catalogue's, the default locale's.
-    Gettext.with_locale(ApiaryWeb.Gettext, "en@general", fn ->
+    Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
       assert texts(strip(exploring: 1), ".q-wl-st-what") |> hd() == "Qory reads the ticket"
 
       html = render_component(&L.work_items_empty/1, backlog_path: "/8wonders/main/backlog")

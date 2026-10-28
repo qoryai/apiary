@@ -410,7 +410,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
       {1, _} =
         Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^desk.id),
-          set: [domains: ["general"]]
+          set: [domains: ["example"]]
         )
 
       {:ok, lv, _html} = live(conn, new_path(scope))
@@ -432,7 +432,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
 
       {1, _} =
         Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^desk.id),
-          set: [domains: ["general"]]
+          set: [domains: ["example"]]
         )
 
       {1, _} =
@@ -464,7 +464,7 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       not_set_up = adapter_fixture(%{name: unique_adapter_name("Shop tracker")})
       %{adapter: settable} = settable_adapter_fixture(%{name: unique_adapter_name("Set up")})
 
-      for {adapter, domains} <- [{code, ["software"]}, {desk, ["general"]}] do
+      for {adapter, domains} <- [{code, ["software"]}, {desk, ["example"]}] do
         {1, _} =
           Apiary.Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^adapter.id),
             set: [domains: domains]
@@ -479,11 +479,11 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
             do: id
       end
 
-      # Main is a software workspace: the general adapter waits for a general workspace.
+      # Main is a software workspace: the example adapter waits for an example workspace.
       assert Enum.sort(offered.()) == Enum.sort([any.public_id, code.public_id])
 
       workspace_fixture(scope.organisation, "Support")
-      |> Ecto.Changeset.change(domain: "general")
+      |> Ecto.Changeset.change(domain: "example")
       |> Apiary.Repo.update!()
 
       assert Enum.sort(offered.()) ==
