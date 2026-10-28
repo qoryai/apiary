@@ -228,12 +228,17 @@ defmodule Apiary.Lingo.Domain do
   """
   @spec check_target(%Workspace{} | nil, target | nil) ::
           :ok | {:error, :no_target | :target_invalid}
-  def check_target(workspace, nil),
-    do: if(target_required?(workspace), do: {:error, :no_target}, else: :ok)
+  def check_target(workspace, nil), do: check_no_target(for_workspace(workspace))
 
   def check_target(workspace, %{system: system, path: path} = target)
       when is_binary(system) and is_binary(path),
       do: for_workspace(workspace).check_target(target)
+
+  # The `else` branch runs for a domain that needs no target, such as the tests' example
+  # domain. The helper takes any domain module: through `for_workspace/1`, with Software
+  # the only domain outside the tests, the compile warns that the `else` branch never runs.
+  defp check_no_target(domain),
+    do: if(domain.target_required?(), do: {:error, :no_target}, else: :ok)
 
   @doc """
   The run variables of a run of the workspace whose target is `target`, nil for none, with
