@@ -2465,12 +2465,93 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#{id}-code") == "Get a new command"
     refute render(lv) =~ shown
 
-    # Once the code is no longer outstanding, the command goes.
+    # Leaving the step and coming back: no command.
     lv |> element("#{id}-code") |> render_click()
     assert has_element?(lv, "#{id}-command")
+    render_patch(lv, ctx.test_path)
+    render_patch(lv, ctx.path)
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get a new command"
+  end
 
-    Repo.update_all(Apiary.AccessKeys.EnrolmentCode, set: [cancelled_at: DateTime.utc_now()])
-    send(lv.pid, :setup_tick)
+  # The code a command shown on the line `id` carries: its last word.
+  defp shown_code(lv, id), do: lv |> command(id) |> String.split(" ") |> List.last()
+
+  # What a machine posts as `qory access-key enrol` with `code`: its new key, and the proof.
+  defp enrol_request(code) do
+    pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
+    now = System.os_time(:second)
+    message = Apiary.Contract.SignedMessage.enrolment(code, pair.encoded, "build-01", now)
+    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
+
+    {:ok, request} =
+      Apiary.Contract.Enrolment.decode(
+        Jason.encode!(%{
+          "version" => 1,
+          "code" => code,
+          "name" => "build-01",
+          "public_key" => pair.encoded,
+          "timestamp" => now,
+          "proof" => Apiary.Contract.Ed25519.encode(proof)
+        })
+      )
+
+    request
+  end
+
+  # The code's row expires `ms` from now: a code made by the context expires in minutes.
+  defp expire_in(%{id: id}, ms) do
+    at = DateTime.add(DateTime.utc_now(), ms, :millisecond)
+
+    Repo.query!("UPDATE access_key_enrolment_codes SET expires_at = $2 WHERE id = $1", [
+      Ecto.UUID.dump!(id),
+      at
+    ])
+  end
+
+  test "a machine that enrols with the command shown: the command goes, and the pool has its key",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    lv = open(ctx)
+    lv |> element("#{id}-code") |> render_click()
+    assert words(lv, "#{id}-state") == "Not ready: no active key"
+
+    assert {:ok, key} = Apiary.AccessKeys.enrol(enrol_request(shown_code(lv, id)))
+    assert key.node_id == pool.id
+
+    # The page heard the key arrive, with no other read.
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get the command"
+
+    assert words(lv, "#{id}-state") ==
+             "Not ready: the pool is set to Direct, and runs need a gateway"
+  end
+
+  test "a code that expires while the step is open: the step reads it again, and the command goes",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    # A code got elsewhere, which expires first.
+    {:ok, other, _code} = Apiary.AccessKeys.create_enrolment_code(ctx.scope, pool, %{})
+    expire_in(other, 1_500)
+
+    lv = open(ctx)
+    assert words(lv, "#{id}-code") == "Get a new command"
+    Process.sleep(1_800)
+    assert words(lv, "#{id}-code") == "Get the command"
+
+    # The command shown, its code set to expire soon, and a code cancelled elsewhere, which
+    # the page hears: the read sets the timer at the shown code's expiry.
+    lv |> element("#{id}-code") |> render_click()
+    assert [shown] = Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool)
+    expire_in(shown, 1_500)
+    {:ok, cancelled, _code} = Apiary.AccessKeys.create_enrolment_code(ctx.scope, pool, %{})
+    {:ok, _cancelled} = Apiary.AccessKeys.cancel_code(ctx.scope, cancelled)
+    assert has_element?(lv, "#{id}-command")
+
+    Process.sleep(1_800)
     refute has_element?(lv, "#{id}-command")
     assert words(lv, "#{id}-code") == "Get the command"
   end

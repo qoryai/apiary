@@ -109,7 +109,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     outstanding, makes a code (`Apiary.AccessKeys.create_enrolment_code/3`), and the
   #     line shows the enrol command (`ApiaryWeb.NodeComponents.enrol_command/3`) with
   #     Copy while that code is outstanding, kept in the page's process alone, as the
-  #     pool's Access key tab keeps it;
+  #     pool's Access key tab keeps it, until the person leaves the step. The step reads
+  #     the pools again once the first outstanding code expires, and as a machine enrols
+  #     a key on a pool of the workspace or a code of it is cancelled
+  #     (`Apiary.AccessKeys.subscribe/2`, once per pool);
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
@@ -508,12 +511,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
   # else. `makes_pool` is of Add node pool (`node.create`); `pool_codes` has, for each pool
   # of the workspace whose command the person may get (`access_key.create_code`), its
-  # outstanding codes and its keys. The command got stays while its code is outstanding;
-  # the choice and the line on a taken name stay while the workspace has no pool.
+  # outstanding codes and its keys. The command got stays while its code is outstanding,
+  # on a read again of the step; an entry to the step, which assigns `step` anew, starts
+  # without it. The choice and the line on a taken name stay while the workspace has no
+  # pool. The page listens to each pool of the workspace once (`pool_listened`), and reads
+  # the step again as the first outstanding code expires (`pool_timer`).
   defp load_step(%{assigns: %{step: :machines}} = socket) do
     %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
     pools = WorkspaceSetup.pools(workspace)
     workspace_pools = for %{instance: false, pool: pool} <- pools, do: pool
+    socket = listen_to_pools(socket, workspace_pools)
 
     pool_codes =
       for pool <- workspace_pools,
@@ -529,7 +536,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     issued =
       case socket.assigns[:pool_issued] do
         %{pool_id: pool_id, row: %{id: code_id}} = issued when is_map_key(pool_codes, pool_id) ->
-          if Enum.any?(pool_codes[pool_id].codes, &(&1.id == code_id)), do: issued
+          if not Phoenix.Component.changed?(socket, :step) and
+               Enum.any?(pool_codes[pool_id].codes, &(&1.id == code_id)),
+             do: issued
 
         _none ->
           nil
@@ -551,6 +560,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       },
       done: step_done?(socket.assigns.flow, :machines)
     )
+    |> schedule_pool_expiry(pool_codes)
   end
 
   defp load_step(%{assigns: %{step: :test}} = socket) do
@@ -1025,7 +1035,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_event(
         "add_pool",
         _params,
-        %{assigns: %{step: :machines, makes_pool: true, workspace_pools: []}} = socket
+        %{
+          assigns: %{
+            step: :machines,
+            makes_pool: true,
+            workspace_pools: [],
+            pool_choice: "workspace"
+          }
+        } = socket
       ) do
     %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
     name = WorkspaceSetup.pool_name(workspace)
@@ -1268,6 +1285,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         %{assigns: %{step: :test, test: %{dispatch_run: %{id: id}}}} = socket
       ),
       do: {:noreply, reload(socket)}
+
+  # On the Machines step: a machine enrolled a key on a pool of the workspace, or a code
+  # of one was cancelled (`Apiary.AccessKeys.subscribe/2`), or the first outstanding code
+  # expired (`schedule_pool_expiry/2`): the step reads again.
+  def handle_info({event, %{node_id: node_id}}, %{assigns: %{step: :machines}} = socket)
+      when event in [:key_enrolled, :code_cancelled] do
+    if Enum.any?(socket.assigns.workspace_pools, &(&1.id == node_id)),
+      do: {:noreply, reload(socket)},
+      else: {:noreply, socket}
+  end
+
+  def handle_info(:pool_codes_expire, %{assigns: %{step: :machines}} = socket),
+    do: {:noreply, reload(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -2047,6 +2077,41 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp pool_way(_instance_line, _pool_codes), do: nil
+
+  # The page listens to each pool of the workspace once, while it is connected: a read
+  # again of the step subscribes to no pool twice.
+  defp listen_to_pools(socket, workspace_pools) do
+    listened = socket.assigns[:pool_listened] || MapSet.new()
+    scope = socket.assigns.current_scope
+
+    listened =
+      for pool <- workspace_pools,
+          connected?(socket),
+          pool.id not in listened,
+          reduce: listened do
+        acc ->
+          _subscribed = Apiary.AccessKeys.subscribe(scope, pool)
+          MapSet.put(acc, pool.id)
+      end
+
+    assign(socket, :pool_listened, listened)
+  end
+
+  # One read again of the step as the first outstanding code of the pools expires, so the
+  # command and Get a new command go with it. Each read cancels the timer it replaces.
+  defp schedule_pool_expiry(socket, pool_codes) do
+    if timer = socket.assigns[:pool_timer], do: Process.cancel_timer(timer)
+    now = DateTime.utc_now()
+    times = for {_id, %{codes: codes}} <- pool_codes, code <- codes, do: code.expires_at
+
+    timer =
+      if connected?(socket) and times != [] do
+        wait = DateTime.diff(Enum.min(times, DateTime), now, :millisecond)
+        Process.send_after(self(), :pool_codes_expire, max(wait, 0) + 1)
+      end
+
+    assign(socket, :pool_timer, timer)
+  end
 
   # Whether the command got is of the pool on `line`.
   defp issued_for?(%{pool_id: id}, %{instance: false, pool: %{id: id}}), do: true
