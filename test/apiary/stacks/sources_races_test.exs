@@ -5,12 +5,16 @@ defmodule Apiary.Stacks.SourcesRacesTest do
   # (`Apiary.Races`). Not async: what these tests commit is visible to every other test
   # while they run, and they delete it again before they end.
   #
-  # The rule under test: saves of one workspace take turns, so the second sees the
-  # first's row and replaces it, and the workspace keeps one workflow.
+  # The rules under test: saves of one workspace take turns, so the second sees the
+  # first's row and replaces it, and the workspace keeps one workflow; shares of one
+  # organisation take turns, so the second sees the first's row and is refused, and the
+  # organisation keeps one shared harness.
   use ExUnit.Case, async: false
 
   import Apiary.Races
   import Ecto.Query
+
+  alias Apiary.OrganisationsFixtures
 
   alias Apiary.Repo
   alias Apiary.Stacks
@@ -43,5 +47,30 @@ defmodule Apiary.Stacks.SourcesRacesTest do
            ) == ["fix"]
 
     assert Stacks.workflow(workspace, nil) == "fix"
+  end
+
+  test "the second share of the organisation waits for the first, is refused, and one row is left" do
+    %{scope: scope, organisation: organisation} = sign_up()
+
+    other =
+      OrganisationsFixtures.workspace_scope(
+        scope.user,
+        OrganisationsFixtures.workspace_fixture(organisation)
+      )
+
+    {first, first_pid} = hold(fn -> Sources.choose(scope, :qory, shared: true) end)
+    assert {:ok, %Stack{workspace_id: nil}} = first.result
+
+    second = start(fn -> Sources.choose(other, :qory, shared: true) end)
+    await_blocked(second.backend, first_pid)
+    commit(first)
+
+    assert Task.await(second.task) == {:error, :shared}
+
+    assert [_one] =
+             Repo.all(
+               from s in Stack,
+                 where: s.organisation_id == ^organisation.id and is_nil(s.workspace_id)
+             )
   end
 end

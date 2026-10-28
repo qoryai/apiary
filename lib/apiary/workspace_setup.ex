@@ -17,7 +17,8 @@ defmodule Apiary.WorkspaceSetup do
   #   * `model_key?/1`: the workspace's model choice (level 5), whose model provider
   #     reaches the workspace and has at least one key. The runtime is checked when the
   #     choice is saved, so the rule resolves none;
-  #   * `harness?/1`: the workspace has a saved harness choice (`Apiary.Stacks.choice/1`);
+  #   * `harness?/1`: the workspace has a saved harness choice (`Apiary.Stacks.choice/1`),
+  #     or has none and its organisation shares a harness (`Apiary.Stacks.shared/1`);
   #   * Machines: `machines/1` finds a ready pool. The step reads the pools that serve the
   #     workspace's runs, each with its state, and for a pool that is not ready the reason
   #     (`pools/1`, `t:pool_line/0`), and writes nothing;
@@ -237,9 +238,13 @@ defmodule Apiary.WorkspaceSetup do
   end
 
   @doc false
-  # harness?/1 is whether `workspace` has a saved harness choice.
+  # harness?/1 is whether `workspace` has a saved harness choice, or its organisation
+  # shares a harness that the workspace takes.
   @spec harness?(Workspace.t()) :: boolean
-  def harness?(%Workspace{} = workspace), do: Stacks.choice(workspace) != nil
+  def harness?(%Workspace{} = workspace),
+    do:
+      Stacks.choice(workspace) != nil or
+        Stacks.shared(%Organisation{id: workspace.organisation_id}) != nil
 
   @doc false
   # test?/1 is whether the edition counts a test run of `workspace` that passed
