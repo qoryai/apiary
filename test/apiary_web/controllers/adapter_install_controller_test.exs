@@ -274,7 +274,7 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
 
     {1, _} =
       Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^desk.id),
-        set: [domains: ["general"]]
+        set: [domains: ["example"]]
       )
 
     for adapter <- [settable, desk] do

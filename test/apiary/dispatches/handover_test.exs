@@ -672,9 +672,9 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
   end
 
-  describe "the run a claim registers in a workspace of the general domain" do
+  describe "the run a claim registers in a workspace of the example domain" do
     test "has the domain's target labels, and no run variables", ctx do
-      with_domain(ctx.scope, "general")
+      with_domain(ctx.scope, "example")
 
       {_work_item, _queued} =
         queued!(ctx, %{target_system: "ads.example.com", target_path: "accounts/1234/-a"})
@@ -685,23 +685,23 @@ defmodule Apiary.Dispatches.HandoverTest do
       run = Repo.get!(Run, claimed.registered.id)
 
       assert run.registration_labels == %{
-               "system" => "ads.example.com",
-               "path" => "accounts/1234/-a"
+               "platform" => "ads.example.com",
+               "account" => "accounts/1234/-a"
              }
 
       assert run.registration_variables == nil
     end
 
     test "of a work item with no target: its domain, no target, an input without one", ctx do
-      with_domain(ctx.scope, "general")
+      with_domain(ctx.scope, "example")
       {work_item, queued} = queued!(ctx, %{target_system: nil, target_path: nil})
 
       claimed = claimed!(ctx)
       assert {claimed.run.id, claimed.work_item.id} == {queued.id, work_item.id}
-      assert {claimed.documents.domain, claimed.documents.target} == {"general", nil}
+      assert {claimed.documents.domain, claimed.documents.target} == {"example", nil}
 
       inputs = inputs(claimed)
-      assert inputs["domain"] == "general"
+      assert inputs["domain"] == "example"
       refute Map.has_key?(inputs, "target")
 
       run = Repo.get!(Run, claimed.registered.id)
@@ -811,7 +811,7 @@ defmodule Apiary.Dispatches.HandoverTest do
 
     test "has the line as its instruction, no ticket and no comments, and the run is claimed",
          ctx do
-      with_domain(ctx.scope, "general")
+      with_domain(ctx.scope, "example")
       {work_item, queued} = test_item!(ctx)
 
       claimed = claimed!(ctx)
@@ -862,7 +862,7 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "is formed with no ticket, while any other work item without one is ticket_gone",
          ctx do
       {test_item, test_run} = test_item!(ctx)
-      run = %{domain: "general", target: nil}
+      run = %{domain: "example", target: nil}
 
       assert {:ok, inputs} = Inputs.explore(Repo.reload!(test_item), test_run, run)
       inputs = inputs |> Jason.encode!() |> Jason.decode!()

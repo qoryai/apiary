@@ -113,9 +113,9 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       refute has_element?(lv, "#shell .drawer")
       refute has_element?(lv, "#set-up-steps")
 
-      # General has no card's words, so it has no card.
+      # Example has no card's words, so it has no card.
       assert has_element?(lv, "#set-up-card-software h2", "Software factory")
-      refute has_element?(lv, "#set-up-card-general")
+      refute has_element?(lv, "#set-up-card-example")
 
       assert has_element?(
                lv,
@@ -139,7 +139,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       for path <- [
             ~p"/#{organisation}/set-up?step=name",
-            ~p"/#{organisation}/set-up?type=general"
+            ~p"/#{organisation}/set-up?type=example"
           ] do
         {:ok, lv, _html} = live(conn, path)
         assert has_element?(lv, "#set-up-card-software")
@@ -595,7 +595,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {1, _} =
         Repo.update_all(from(n in Node, where: n.id == ^other_type.id),
-          set: [domains: ["general"]]
+          set: [domains: ["example"]]
         )
 
       # Not configured: no key and no address to connect to.

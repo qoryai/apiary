@@ -247,7 +247,7 @@ defmodule Apiary.TimeLimitsTest do
 
   describe "in a workspace whose domain has no repository" do
     test "the limits hold, and no text of the module names a repository", ctx do
-      scope = with_domain(ctx.scope, "general")
+      scope = with_domain(ctx.scope, "example")
       target = target!(scope, "queue/billing")
 
       {:ok, _} = TimeLimits.put_limit(scope, target, "hello", 120)

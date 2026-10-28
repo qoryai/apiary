@@ -215,7 +215,7 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
 
   test "in a domain that needs no target, takes in again a ticket that lost its target", ctx do
     declined!(ctx)
-    scope = with_domain(ctx.scope, "general")
+    scope = with_domain(ctx.scope, "example")
 
     Repo.get!(Collection, ctx.ticket.collection_id)
     |> Ecto.Changeset.change(target_system: nil, target_path: nil)
