@@ -85,17 +85,34 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     one; a harness repository is read outside the page's process while Continue shows
   #     Saving, and a read that failed says why. A person whom `harness.save` does not
   #     allow sees the choices disabled, and who may;
-  #   * Machines, with the `factory` feature, read only: the node pools that serve the
-  #     workspace's runs, each with its state (`Apiary.WorkspaceSetup.pools/1`): the
-  #     workspace's pools, or the instance's pool while it has none. A pool that is the
-  #     only one shows chosen. A ready pool shows its gateway's name; a pool that is not
-  #     ready shows the reason (`t:Apiary.WorkspaceSetup.not_ready_reason/0`): no pool, no
-  #     active key, a choice of Direct, no gateway, a chosen gateway that the pool's runs
-  #     may not go through, or a gateway with no active key. Under a pool that is not
-  #     ready: for the instance's pool, Check the nodes, to `/instance/nodes`, for an
-  #     instance admin; for a pool of the workspace, its name links to its page for a
-  #     person whom `access_key.create_code` allows on it. Anyone else reads who acts
-  #     (`c:Apiary.Edition.machines_who_may/3`). Nothing on the step writes;
+  #   * Machines, with the `factory` feature: the node pools that serve the workspace's
+  #     runs, each with its state (`Apiary.WorkspaceSetup.pools/1`): the workspace's
+  #     pools, or the instance's pool while it has none. A ready pool shows its gateway's
+  #     name; a pool that is not ready shows the reason
+  #     (`t:Apiary.WorkspaceSetup.not_ready_reason/0`): no pool, no active key, a choice
+  #     of Direct, no gateway, a chosen gateway that the pool's runs may not go through,
+  #     or a gateway with no active key. Under a pool that is not ready: for the
+  #     instance's pool, Check the nodes, to `/instance/nodes`, for an instance admin; for
+  #     a pool of the workspace, its name links to its page for a person whom
+  #     `access_key.create_code` allows on it. Anyone else reads who acts
+  #     (`c:Apiary.Edition.machines_who_may/3`). While the workspace has no pool, a person
+  #     whom `node.create` allows on it chooses: Shared, the instance's pool, chosen
+  #     first, or A pool for the workspace, with the line that the shared pool then stops
+  #     serving its runs, and Add node pool, which makes a pool of the workspace
+  #     (`Apiary.Nodes.create_node/2`) named `Apiary.WorkspaceSetup.pool_name/1`. Where
+  #     another node of the workspace has that name, no pool is made, and the line under
+  #     Add node pool says to rename that node. Anyone else sees the instance's pool, read
+  #     only, shown chosen. Once the workspace has a pool, its pools show with no choice,
+  #     and a pool that is the only one shows chosen. On each line of a pool whose
+  #     `access_key.create_code` allows the person, while the pool has fewer than 2
+  #     active keys, Get the command, or Get a new command while a code of it is
+  #     outstanding, makes a code (`Apiary.AccessKeys.create_enrolment_code/3`), and the
+  #     line shows the enrol command (`ApiaryWeb.NodeComponents.enrol_command/3`) with
+  #     Copy while that code is outstanding, kept in the page's process alone, as the
+  #     pool's Access key tab keeps it, until the person leaves the step. The step reads
+  #     the pools again once the first outstanding code expires, and as a machine enrols
+  #     a key on a pool of the workspace or a code of it is cancelled
+  #     (`Apiary.AccessKeys.subscribe/2`, once per pool);
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
@@ -491,29 +508,59 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     |> list_linked()
   end
 
-  # The step reads the pools and writes nothing: each pool's line, who may act on a pool
-  # that is not ready, and who acts for anyone else.
+  # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
+  # else. `makes_pool` is of Add node pool (`node.create`); `pool_codes` has, for each pool
+  # of the workspace whose command the person may get (`access_key.create_code`), its
+  # outstanding codes and its keys. The command got stays while its code is outstanding,
+  # on a read again of the step; an entry to the step, which assigns `step` anew, starts
+  # without it. The choice and the line on a taken name stay while the workspace has no
+  # pool. The page listens to each pool of the workspace once (`pool_listened`), and reads
+  # the step again as the first outstanding code expires (`pool_timer`).
   defp load_step(%{assigns: %{step: :machines}} = socket) do
     %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
     pools = WorkspaceSetup.pools(workspace)
+    workspace_pools = for %{instance: false, pool: pool} <- pools, do: pool
+    socket = listen_to_pools(socket, workspace_pools)
+
+    pool_codes =
+      for pool <- workspace_pools,
+          Access.can?(scope, :"access_key.create_code", pool),
+          into: %{} do
+        {pool.id,
+         %{
+           codes: Apiary.AccessKeys.list_enrolment_codes(scope, pool),
+           keys: Apiary.AccessKeys.list_for_node(scope, pool)
+         }}
+      end
+
+    issued =
+      case socket.assigns[:pool_issued] do
+        %{pool_id: pool_id, row: %{id: code_id}} = issued when is_map_key(pool_codes, pool_id) ->
+          if not Phoenix.Component.changed?(socket, :step) and
+               Enum.any?(pool_codes[pool_id].codes, &(&1.id == code_id)),
+             do: issued
+
+        _none ->
+          nil
+      end
 
     assign(socket,
       pools: pools,
+      workspace_pools: workspace_pools,
       instance_admin: Access.instance_admin?(scope),
-      enrols:
-        for(
-          %{pool: %{workspace_id: id} = pool} <- pools,
-          id != nil,
-          Access.can?(scope, :"access_key.create_code", pool),
-          into: MapSet.new(),
-          do: pool.id
-        ),
+      enrols: MapSet.new(Map.keys(pool_codes)),
+      makes_pool: Access.can?(scope, :"node.create", workspace),
+      pool_codes: pool_codes,
+      pool_issued: issued,
+      pool_choice: if(workspace_pools == [], do: socket.assigns[:pool_choice] || "shared"),
+      pool_taken: if(workspace_pools == [], do: socket.assigns[:pool_taken]),
       who_may: %{
         instance: Edition.machines_who_may(scope, workspace, :instance),
         workspace: Edition.machines_who_may(scope, workspace, :workspace)
       },
       done: step_done?(socket.assigns.flow, :machines)
     )
+    |> schedule_pool_expiry(pool_codes)
   end
 
   defp load_step(%{assigns: %{step: :test}} = socket) do
@@ -972,6 +1019,91 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
+  # The Machines step's choice between the instance's pool and a pool for the workspace,
+  # while the workspace has none.
+  def handle_event(
+        "choose_pool",
+        %{"pool" => %{"choice" => choice}},
+        %{assigns: %{step: :machines, makes_pool: true, workspace_pools: []}} = socket
+      )
+      when choice in ["shared", "workspace"],
+      do: {:noreply, assign(socket, pool_choice: choice, pool_taken: nil)}
+
+  # Add node pool: a pool of the workspace, named by `Apiary.WorkspaceSetup.pool_name/1`.
+  # Where the workspace has a pool by then, from a second click or someone else, the step
+  # reads again and shows it.
+  def handle_event(
+        "add_pool",
+        _params,
+        %{
+          assigns: %{
+            step: :machines,
+            makes_pool: true,
+            workspace_pools: [],
+            pool_choice: "workspace"
+          }
+        } = socket
+      ) do
+    %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
+    name = WorkspaceSetup.pool_name(workspace)
+
+    if WorkspaceSetup.instance_pool?(workspace) do
+      case Apiary.Nodes.create_node(scope, %{kind: "pool", name: name}) do
+        {:ok, _pool} ->
+          {:noreply, socket |> assign(pool_taken: nil) |> reload()}
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          socket = reload(socket)
+
+          cond do
+            socket.assigns.workspace_pools != [] ->
+              {:noreply, socket}
+
+            pool_name_taken?(changeset) ->
+              {:noreply, assign(socket, pool_taken: name)}
+
+            true ->
+              {:noreply, put_flash(socket, :error, gettext("Nothing was changed. Try again."))}
+          end
+
+        # Refused, or the workspace out of reach: the step as the person may see it now.
+        {:error, _reason} ->
+          {:noreply, reload(socket)}
+      end
+    else
+      {:noreply, reload(socket)}
+    end
+  end
+
+  # Get the command of a pool of the workspace: a code made at once, with the defaults, as
+  # the pool's Access key tab makes it (`ApiaryWeb.NodeLive.AccessKey`), shown under the
+  # pool's line while the code is outstanding. Only for a pool whose command the person
+  # may get, while it has room for a key.
+  def handle_event("pool_code", %{"pool" => public_id}, %{assigns: %{step: :machines}} = socket)
+      when is_binary(public_id) do
+    %{current_scope: scope, pool_codes: pool_codes} = socket.assigns
+    pool = Enum.find(socket.assigns.workspace_pools, &(&1.public_id == public_id))
+
+    cond do
+      is_nil(pool) or not is_map_key(pool_codes, pool.id) ->
+        {:noreply, reload(socket)}
+
+      pool_at_limit?(pool_codes[pool.id].keys) ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           gettext("%{name} holds two keys already. Revoke one before you add another.",
+             name: pool.name
+           )
+         )
+         |> reload()}
+
+      true ->
+        pool_code(socket, scope, pool)
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   defp save_model(socket, scope, source, params) do
@@ -1153,6 +1285,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         %{assigns: %{step: :test, test: %{dispatch_run: %{id: id}}}} = socket
       ),
       do: {:noreply, reload(socket)}
+
+  # On the Machines step: a machine enrolled a key on a pool of the workspace, or a code
+  # of one was cancelled (`Apiary.AccessKeys.subscribe/2`), or the first outstanding code
+  # expired (`schedule_pool_expiry/2`): the step reads again.
+  def handle_info({event, %{node_id: node_id}}, %{assigns: %{step: :machines}} = socket)
+      when event in [:key_enrolled, :code_cancelled] do
+    if Enum.any?(socket.assigns.workspace_pools, &(&1.id == node_id)),
+      do: {:noreply, reload(socket)},
+      else: {:noreply, socket}
+  end
+
+  def handle_info(:pool_codes_expire, %{assigns: %{step: :machines}} = socket),
+    do: {:noreply, reload(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -1742,15 +1887,88 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     assigns =
       assign(assigns,
         only: match?([_line], pools),
-        lines: for(line <- pools, do: {pool_line_id(line), line, pool_act(line, admin?, enrols)})
+        lines:
+          for(
+            line <- pools,
+            do:
+              {pool_line_id(line), line, pool_act(line, admin?, enrols),
+               pool_way(line, assigns.pool_codes)}
+          ),
+        choosing: assigns.makes_pool and assigns.workspace_pools == []
       )
 
     ~H"""
     <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
-      <ul id="set-up-pools" class="q-choices grid gap-2">
-        <li :for={{id, line, act} <- @lines} id={id} class="q-choice cursor-default">
+      <%!-- While the workspace has no pool, a person who may make one chooses: the
+           instance's pool, its line as below, or a pool for the workspace. --%>
+      <form :if={@choosing} id="set-up-pool-choice" phx-change="choose_pool" class="grid gap-4">
+        <fieldset id="set-up-pools" class="q-choices grid gap-2">
+          <label
+            :for={{id, line, act, _way} <- @lines}
+            id={id}
+            for={"#{id}-radio"}
+            class="q-choice"
+          >
+            <input
+              type="radio"
+              id={"#{id}-radio"}
+              name="pool[choice]"
+              value="shared"
+              checked={@pool_choice == "shared"}
+              class="radio radio-sm radio-primary"
+            />
+            <span id={"#{id}-name"} class="q-choice-h">{gettext("Shared: the instance's pool")}</span>
+            <span id={"#{id}-state"} class="q-choice-p">
+              <span class={["q-sdot", ready?(line) && "q-sdot-completed"]}>
+                <i aria-hidden="true"></i><span>{pool_state_line(line.state)}</span>
+              </span>
+            </span>
+            <span :if={act == :check} class="q-choice-p">
+              <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
+                {gettext("Check the nodes")}
+              </.link>
+            </span>
+            <span :if={act == :instance} id={"#{id}-who-may"} class="q-choice-p">
+              {@who_may[act]}
+            </span>
+          </label>
+          <label id="set-up-pool-workspace" for="set-up-pool-workspace-radio" class="q-choice">
+            <input
+              type="radio"
+              id="set-up-pool-workspace-radio"
+              name="pool[choice]"
+              value="workspace"
+              checked={@pool_choice == "workspace"}
+              class="radio radio-sm radio-primary"
+            />
+            <span id="set-up-pool-workspace-name" class="q-choice-h">
+              {gettext("A pool for %{workspace}", workspace: @flow.workspace.name)}
+            </span>
+            <span id="set-up-pool-workspace-line" class="q-choice-p">
+              {gettext(
+                "Runs in %{workspace} then wait for this pool, and the shared pool stops serving them.",
+                workspace: @flow.workspace.name
+              )}
+            </span>
+          </label>
+        </fieldset>
+      </form>
+
+      <div :if={@choosing and @pool_choice == "workspace"} id="set-up-pool-add" class="grid gap-2">
+        <div>
+          <.button id="set-up-pool-add-button" phx-click="add_pool" size="md">
+            {gettext("Add node pool")}
+          </.button>
+        </div>
+        <p :if={@pool_taken} id="set-up-pool-taken" class="text-[13px]/5 text-error">
+          {pool_taken_line(@pool_taken, @flow.workspace)}
+        </p>
+      </div>
+
+      <ul :if={!@choosing} id="set-up-pools" class="q-choices grid gap-2">
+        <li :for={{id, line, act, way} <- @lines} id={id} class="q-choice cursor-default">
           <input
             :if={@only}
             type="radio"
@@ -1785,6 +2003,38 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <span :if={act in [:instance, :workspace]} id={"#{id}-who-may"} class="q-choice-p">
             {@who_may[act]}
           </span>
+          <span :if={way} class="q-choice-p">
+            <.button
+              id={"#{id}-code"}
+              phx-click="pool_code"
+              phx-value-pool={line.pool.public_id}
+              size="sm"
+            >
+              {way}
+            </.button>
+          </span>
+          <div
+            :if={issued_for?(@pool_issued, line)}
+            id={"#{id}-command"}
+            class="q-choice-p grid gap-1.5"
+          >
+            <p id={"#{id}-command-run"} class="text-[13px]/5">
+              {gettext("On %{name}, run:", name: line.pool.name)}
+            </p>
+            <.command_line
+              id={"#{id}-command-line"}
+              command={
+                ApiaryWeb.NodeComponents.enrol_command(ApiaryWeb.Endpoint.url(), @pool_issued.code.(),
+                  replace: @pool_issued.replace,
+                  via: @pool_issued.through && @pool_issued.through.url
+                )
+              }
+            />
+            <ApiaryWeb.NodeComponents.via_ca_line
+              id={"#{id}-command-via-ca"}
+              gateway={@pool_issued.through}
+            />
+          </div>
         </li>
       </ul>
 
@@ -1808,6 +2058,127 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_line_id(%{pool: pool}), do: "set-up-pool-#{pool.public_id}"
 
   defp ready?(%{state: state}), do: match?({:ready, _gateway}, state)
+
+  # The words of Get the command on a pool's line, as the pool's Access key tab words it,
+  # for a pool of the workspace whose command the person may get while it has room for a
+  # key; else nil, and no button.
+  defp pool_way(%{instance: false, pool: %{id: id}}, pool_codes) do
+    case pool_codes do
+      %{^id => %{codes: codes, keys: keys}} ->
+        cond do
+          pool_at_limit?(keys) -> nil
+          codes == [] -> gettext("Get the command")
+          true -> gettext("Get a new command")
+        end
+
+      _none ->
+        nil
+    end
+  end
+
+  defp pool_way(_instance_line, _pool_codes), do: nil
+
+  # The page listens to each pool of the workspace once, while it is connected: a read
+  # again of the step subscribes to no pool twice.
+  defp listen_to_pools(socket, workspace_pools) do
+    listened = socket.assigns[:pool_listened] || MapSet.new()
+    scope = socket.assigns.current_scope
+
+    listened =
+      for pool <- workspace_pools,
+          connected?(socket),
+          pool.id not in listened,
+          reduce: listened do
+        acc ->
+          _subscribed = Apiary.AccessKeys.subscribe(scope, pool)
+          MapSet.put(acc, pool.id)
+      end
+
+    assign(socket, :pool_listened, listened)
+  end
+
+  # One read again of the step as the first outstanding code of the pools expires, so the
+  # command and Get a new command go with it. Each read cancels the timer it replaces.
+  defp schedule_pool_expiry(socket, pool_codes) do
+    if timer = socket.assigns[:pool_timer], do: Process.cancel_timer(timer)
+    now = DateTime.utc_now()
+    times = for {_id, %{codes: codes}} <- pool_codes, code <- codes, do: code.expires_at
+
+    timer =
+      if connected?(socket) and times != [] do
+        wait = DateTime.diff(Enum.min(times, DateTime), now, :millisecond)
+        Process.send_after(self(), :pool_codes_expire, max(wait, 0) + 1)
+      end
+
+    assign(socket, :pool_timer, timer)
+  end
+
+  # Whether the command got is of the pool on `line`.
+  defp issued_for?(%{pool_id: id}, %{instance: false, pool: %{id: id}}), do: true
+  defp issued_for?(_issued, _line), do: false
+
+  # Get the command's code for `pool`. The code as the machine sends it is kept in a
+  # function, as the pool's Access key tab keeps it: shown under the pool's line, and
+  # printed by nothing else. `replace` is for a pool that has or had a key; `through` is
+  # the gateway the pool's choice leads to, or nil.
+  defp pool_code(socket, scope, pool) do
+    case Apiary.AccessKeys.create_enrolment_code(scope, pool, %{}) do
+      {:ok, row, code} ->
+        code = Apiary.Contract.Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
+
+        issued = %{
+          pool_id: pool.id,
+          row: row,
+          code: fn -> code end,
+          replace: socket.assigns.pool_codes[pool.id].keys != [],
+          through: Apiary.Gateways.chosen(pool)
+        }
+
+        {:noreply, socket |> assign(pool_issued: issued) |> reload()}
+
+      {:error, :forbidden} ->
+        why = gettext("Only owners and admins connect a node.")
+
+        {:noreply,
+         socket
+         |> put_flash(:error, ApiaryWeb.Access.who_may(scope, :"access_key.create_code", why))
+         |> reload()}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply,
+         socket |> put_flash(:error, gettext("Nothing was changed. Try again.")) |> reload()}
+
+      # The pool deleted, or out of reach: the step as it is now.
+      {:error, _reason} ->
+        {:noreply, reload(socket)}
+    end
+  end
+
+  # Whether a pool has as many active keys as a node may have (`Apiary.AccessKeys.key_limit/0`):
+  # then no code is made, as on the pool's Access key tab.
+  defp pool_at_limit?(keys),
+    do: Enum.count(keys, &is_nil(&1.revoked_at)) >= Apiary.AccessKeys.key_limit()
+
+  # Whether Add node pool was refused for the name: another node of the workspace in use
+  # has it (`nodes_live_name_index`).
+  defp pool_name_taken?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:name, {_message, opts}} ->
+        opts[:constraint] == :unique and opts[:constraint_name] == "nodes_live_name_index"
+
+      _other ->
+        false
+    end)
+  end
+
+  # The line under Add node pool where another node of the workspace has the pool's name.
+  defp pool_taken_line(name, workspace),
+    do:
+      gettext(
+        "Rename the node %{name} on the Nodes page, then add the pool. A node of %{workspace} already has that name.",
+        name: name,
+        workspace: workspace.name
+      )
 
   # The state of a pool's line on the Machines step.
   defp pool_state_line({:ready, gateway}),

@@ -2035,9 +2035,10 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   # The Machines step of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`), with the
-  # `factory` feature: the pools that serve the workspace's runs, read only, each with its
-  # state; who acts on a pool that is not ready, for an instance admin, an owner and a
-  # member, in the edition's words; and Skip, then Continue. Not async: some tests make
+  # `factory` feature: the pools that serve the workspace's runs, each with its state; who
+  # acts on a pool that is not ready, for an instance admin, an owner and a member, in the
+  # edition's words; an owner's choice of the shared pool or a pool for the workspace, Add
+  # node pool, and Get the command; a member's step, read only; and Skip, then Continue. Not async: some tests make
   # the instance's pool and gateway, which the instance has one of each at most.
   use ApiaryWeb.ConnCase, async: false
 
@@ -2048,7 +2049,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Repo
+  alias Apiary.{Repo, WorkspaceSetup}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Membership
 
   @moduletag needs: :factory
@@ -2134,17 +2136,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert [{"Harness", _state}, {"Machines", :current}, {"Test run", :to_come}] =
              lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
 
-    assert has_element?(lv, "#set-up-pool-instance-radio[checked][disabled]")
-    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]:not([disabled])")
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
     assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
     refute has_element?(lv, "#set-up-pool-instance-check")
-    assert read_only?(lv)
 
     refute has_element?(lv, "#set-up-skip")
     assert words(lv, "#set-up-continue") == "Continue"
     assert href(lv, "#set-up-continue") == ctx.test_path
     assert has_element?(lv, "#set-up-back")
+
+    lv = open(ctx, member(ctx.organisation))
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked][disabled]")
+    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-workspace")
+    assert read_only?(lv)
+    assert words(lv, "#set-up-continue") == "Continue"
   end
 
   test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
@@ -2152,12 +2161,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     line = "Only an instance admin checks the instance's pool and gateway."
 
     lv = open(ctx)
-    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
     assert words(lv, "#set-up-pool-instance-who-may") == line
     refute has_element?(lv, "#set-up-pool-instance-check")
-    assert read_only?(lv)
     assert words(lv, "#set-up-skip") == "Skip"
     assert href(lv, "#set-up-skip") == ctx.test_path
     refute has_element?(lv, "#set-up-continue")
@@ -2252,13 +2260,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/nodes/#{pool.public_id}"
 
     refute has_element?(lv, "#{id}-who-may")
-    assert read_only?(lv)
+    refute has_element?(lv, "#set-up-pool-choice")
+    assert words(lv, "#{id}-code") == "Get the command"
     assert has_element?(lv, "#set-up-skip")
 
     lv = open(ctx, member(ctx.organisation))
     assert words(lv, "#{id}-name") == pool.name
     refute has_element?(lv, "#{id}-name a")
     assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
+    assert read_only?(lv)
 
     _pool_key = enrolled_key_fixture(ctx.scope, pool)
     lv = open(ctx)
@@ -2296,6 +2306,343 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       assert words(lv, "#{id}-state") == "Not ready: no active key"
       refute has_element?(lv, "#{id}-radio")
     end
+  end
+
+  # The workspace's pools in use, as the step reads them.
+  defp workspace_pools(workspace),
+    do:
+      for(
+        %Node{workspace_id: id} = pool <- WorkspaceSetup.serving_pools(workspace),
+        id != nil,
+        do: pool
+      )
+
+  defp choose_workspace_pool(lv),
+    do: lv |> form("#set-up-pool-choice", pool: %{choice: "workspace"}) |> render_change()
+
+  # The command shown under the line `id`, as Copy writes it.
+  defp command(lv, id), do: words(lv, "#{id}-command-line-text")
+
+  test "an owner chooses the shared pool or a pool for the workspace, with the line under it",
+       ctx do
+    _instance_pool = ready_instance!()
+    workspace = ctx.scope.workspace
+    lv = open(ctx)
+
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
+
+    assert words(lv, "#set-up-pool-workspace-line") ==
+             "Runs in #{workspace.name} then wait for this pool, and the shared pool stops serving them."
+
+    refute has_element?(lv, "#set-up-pool-add-button")
+
+    choose_workspace_pool(lv)
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert words(lv, "#set-up-pool-add-button") == "Add node pool"
+    refute has_element?(lv, "#set-up-pool-taken")
+
+    lv |> form("#set-up-pool-choice", pool: %{choice: "shared"}) |> render_change()
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    assert workspace_pools(workspace) == []
+  end
+
+  test "Add node pool makes a pool named as the workspace, and the instance's pool stops serving it",
+       ctx do
+    instance_pool = ready_instance!()
+    workspace = ctx.scope.workspace
+    assert [%Node{id: id}] = WorkspaceSetup.serving_pools(workspace)
+    assert id == instance_pool.id
+
+    lv = open(ctx)
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+
+    assert [%Node{kind: :pool} = pool] = WorkspaceSetup.serving_pools(workspace)
+    assert pool.name == workspace.name
+    assert pool.workspace_id == workspace.id
+
+    id = "#set-up-pool-#{pool.public_id}"
+    refute has_element?(lv, "#set-up-pool-choice")
+    refute has_element?(lv, "#set-up-pool-instance")
+    assert has_element?(lv, "#{id}-radio[checked][disabled]")
+    assert words(lv, "#{id}-name") == pool.name
+    assert words(lv, "#{id}-state") == "Not ready: no active key"
+    assert words(lv, "#{id}-code") == "Get the command"
+    assert has_element?(lv, "#set-up-skip")
+  end
+
+  test "a second click, or a pool made meanwhile, makes no other pool and shows the one there",
+       ctx do
+    workspace = ctx.scope.workspace
+    lv = open(ctx)
+    other = open(ctx)
+    choose_workspace_pool(lv)
+    choose_workspace_pool(other)
+
+    lv |> element("#set-up-pool-add-button") |> render_click()
+    assert [pool] = workspace_pools(workspace)
+
+    # The page sent Add node pool again, as a second click would.
+    render_click(lv, "add_pool", %{})
+    assert [^pool] = workspace_pools(workspace)
+
+    # The other page still shows the choice: its click makes no pool, and it reads again.
+    other |> element("#set-up-pool-add-button") |> render_click()
+    assert [^pool] = workspace_pools(workspace)
+    refute has_element?(other, "#set-up-pool-choice")
+    assert has_element?(other, "#set-up-pool-#{pool.public_id}")
+    refute has_element?(other, "#set-up-pool-taken")
+  end
+
+  test "where another node of the workspace has the workspace's name, no pool is made, and the line says to rename it",
+       ctx do
+    workspace = ctx.scope.workspace
+    node = node_fixture(ctx.scope, name: workspace.name)
+
+    lv = open(ctx)
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+
+    assert workspace_pools(workspace) == []
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert has_element?(lv, "#set-up-pool-add-button")
+
+    assert words(lv, "#set-up-pool-taken") ==
+             "Rename the node #{node.name} on the Nodes page, then add the pool. A node of #{workspace.name} already has that name."
+
+    # Once the node has another name, Add node pool makes the pool.
+    node |> Ecto.Changeset.change(name: "build-renamed") |> Repo.update!()
+    lv |> element("#set-up-pool-add-button") |> render_click()
+    assert [%Node{name: name}] = workspace_pools(workspace)
+    assert name == workspace.name
+    refute has_element?(lv, "#set-up-pool-taken")
+  end
+
+  test "a workspace name of 120 characters gives the pool its first 80", ctx do
+    long = String.duplicate("Payments ", 13) <> "abc"
+    assert String.length(long) == 120
+
+    workspace =
+      ctx.scope.workspace |> Ecto.Changeset.change(name: long) |> Repo.update!()
+
+    lv = open(ctx)
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+
+    assert [%Node{name: name}] = workspace_pools(workspace)
+    assert name == long |> String.slice(0, 80) |> String.trim_trailing()
+  end
+
+  test "Get the command shows the pool's enrol command once, with Copy; then Get a new command",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    lv = open(ctx)
+    refute has_element?(lv, "#{id}-command")
+
+    lv |> element("#{id}-code") |> render_click()
+
+    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+    assert command(lv, id) =~ ~r{\Aqory access-key enrol \S+ \S+\z}
+    refute command(lv, id) =~ "--via"
+    refute command(lv, id) =~ "--replace"
+    assert has_element?(lv, "#{id}-command-line-copy")
+    refute has_element?(lv, "#{id}-command-via-ca")
+    assert words(lv, "#{id}-code") == "Get a new command"
+
+    assert [%{node_id: node_id}] = Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool)
+    assert node_id == pool.id
+    shown = command(lv, id)
+
+    # A page opened again shows no command, and Get a new command while the code waits.
+    lv = open(ctx)
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get a new command"
+    refute render(lv) =~ shown
+
+    # Leaving the step and coming back: no command.
+    lv |> element("#{id}-code") |> render_click()
+    assert has_element?(lv, "#{id}-command")
+    render_patch(lv, ctx.test_path)
+    render_patch(lv, ctx.path)
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get a new command"
+  end
+
+  # The code a command shown on the line `id` carries: its last word.
+  defp shown_code(lv, id), do: lv |> command(id) |> String.split(" ") |> List.last()
+
+  # What a machine posts as `qory access-key enrol` with `code`: its new key, and the proof.
+  defp enrol_request(code) do
+    pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
+    now = System.os_time(:second)
+    message = Apiary.Contract.SignedMessage.enrolment(code, pair.encoded, "build-01", now)
+    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
+
+    {:ok, request} =
+      Apiary.Contract.Enrolment.decode(
+        Jason.encode!(%{
+          "version" => 1,
+          "code" => code,
+          "name" => "build-01",
+          "public_key" => pair.encoded,
+          "timestamp" => now,
+          "proof" => Apiary.Contract.Ed25519.encode(proof)
+        })
+      )
+
+    request
+  end
+
+  # The code's row expires `ms` from now: a code made by the context expires in minutes.
+  defp expire_in(%{id: id}, ms) do
+    at = DateTime.add(DateTime.utc_now(), ms, :millisecond)
+
+    Repo.query!("UPDATE access_key_enrolment_codes SET expires_at = $2 WHERE id = $1", [
+      Ecto.UUID.dump!(id),
+      at
+    ])
+  end
+
+  test "a machine that enrols with the command shown: the command goes, and the pool has its key",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    lv = open(ctx)
+    lv |> element("#{id}-code") |> render_click()
+    assert words(lv, "#{id}-state") == "Not ready: no active key"
+
+    assert {:ok, key} = Apiary.AccessKeys.enrol(enrol_request(shown_code(lv, id)))
+    assert key.node_id == pool.id
+
+    # The page heard the key arrive, with no other read.
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get the command"
+
+    assert words(lv, "#{id}-state") ==
+             "Not ready: the pool is set to Direct, and runs need a gateway"
+  end
+
+  test "a code that expires while the step is open: the step reads it again, and the command goes",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    # A code got elsewhere, which expires first.
+    {:ok, other, _code} = Apiary.AccessKeys.create_enrolment_code(ctx.scope, pool, %{})
+    expire_in(other, 1_500)
+
+    lv = open(ctx)
+    assert words(lv, "#{id}-code") == "Get a new command"
+    Process.sleep(1_800)
+    assert words(lv, "#{id}-code") == "Get the command"
+
+    # The command shown, its code set to expire soon, and a code cancelled elsewhere, which
+    # the page hears: the read sets the timer at the shown code's expiry.
+    lv |> element("#{id}-code") |> render_click()
+    assert [shown] = Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool)
+    expire_in(shown, 1_500)
+    {:ok, cancelled, _code} = Apiary.AccessKeys.create_enrolment_code(ctx.scope, pool, %{})
+    {:ok, _cancelled} = Apiary.AccessKeys.cancel_code(ctx.scope, cancelled)
+    assert has_element?(lv, "#{id}-command")
+
+    Process.sleep(1_800)
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get the command"
+  end
+
+  test "a pool whose runs go through a gateway: the command has --via and the line on a private authority",
+       ctx do
+    gateway = gateway_fixture(ctx.scope, url: "https://gateway.example")
+    _gateway_key = node_key_fixture(ctx.scope, gateway)
+    pool = pool_fixture(ctx.scope)
+    _pool_key = node_key_fixture(ctx.scope, pool)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    lv = open(ctx)
+    lv |> element("#{id}-code") |> render_click()
+
+    assert command(lv, id) =~ "--via https://gateway.example"
+    assert command(lv, id) =~ "--replace"
+
+    assert words(lv, "#{id}-command-via-ca") ==
+             "If #{gateway.name}'s certificate is signed by a private certificate authority, add --via-ca-file and that authority's PEM file."
+  end
+
+  test "a sign-in older than 15 minutes gets the command all the same, as on the pool's Access key tab",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    an_hour_ago = DateTime.add(DateTime.utc_now(), -60, :minute)
+
+    {:ok, lv, _html} =
+      ctx.conn
+      |> log_in_user(ctx.user, token_authenticated_at: an_hour_ago)
+      |> live(ctx.path)
+
+    lv |> element("#{id}-code") |> render_click()
+    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+  end
+
+  test "a pool with two active keys offers no command", ctx do
+    pool = pool_fixture(ctx.scope)
+    _first = node_key_fixture(ctx.scope, pool)
+    _second = node_key_fixture(ctx.scope, pool)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    lv = open(ctx)
+    refute has_element?(lv, "#{id}-code")
+
+    render_click(lv, "pool_code", %{"pool" => pool.public_id})
+    refute has_element?(lv, "#{id}-command")
+    assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
+  end
+
+  test "a member sends the step's events: nothing is made", ctx do
+    member = member(ctx.organisation)
+    lv = open(ctx, member)
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "workspace"}})
+    render_click(lv, "add_pool", %{})
+    assert workspace_pools(ctx.scope.workspace) == []
+    refute has_element?(lv, "#set-up-pool-add-button")
+    assert read_only?(lv)
+
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx, member)
+    render_click(lv, "pool_code", %{"pool" => pool.public_id})
+    refute has_element?(lv, "#set-up-pool-#{pool.public_id}-command")
+    assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
+    assert read_only?(lv)
+  end
+
+  defmodule NoCodes do
+    # An edition in which the person may make nodes, and may not make their codes.
+    def check(_scope, :"access_key.create_code", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  test "a person who may make a pool, and may not get its command: Add node pool, then who acts",
+       ctx do
+    :ok = Apiary.Edition.put_test_stub(NoCodes)
+    lv = open(ctx)
+
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+    assert [pool] = workspace_pools(ctx.scope.workspace)
+
+    id = "#set-up-pool-#{pool.public_id}"
+    refute has_element?(lv, "#{id}-code")
+    refute has_element?(lv, "#{id}-name a")
+    assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
+
+    render_click(lv, "pool_code", %{"pool" => pool.public_id})
+    refute has_element?(lv, "#{id}-command")
+    assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
   end
 
   test "who acts is the edition's line where it has one", ctx do
