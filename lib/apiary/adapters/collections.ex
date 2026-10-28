@@ -54,7 +54,8 @@ defmodule Apiary.Adapters.Collections do
   # assign, move, unassign or end writes no entry either.
   #
   # **Auto-assign**: while the organisation has exactly one workspace that is not marked
-  # for deletion, a collection a part makes is assigned to it as it is made, with the
+  # for deletion, and the part's connection reaches it, a collection a part makes is
+  # assigned to it as it is made, with the
   # feed's `linked` entry when that links it, in the part's transaction; one the part only
   # updates keeps its workspace.
   # A collection so assigned that has a target makes that target in the workspace, in the
@@ -557,7 +558,8 @@ defmodule Apiary.Adapters.Collections do
   # has every `grant_ref` of `collections`. A ref live under another connection of the
   # adapter is left as it is here, and moved once the part commits (`move_here/5`). A
   # collection made here is assigned to the organisation's only workspace, when it has one
-  # (`only_workspace/1`). It makes no target and writes no feed entry: `finish_part/3`
+  # (`only_workspace/1`) and the connection reaches it
+  # (`Apiary.Adapters.Connections.reaches?/2`). It makes no target and writes no feed entry: `finish_part/3`
   # does, after `complete/3`. `%{put: collections, made: ids, assigned: before,
   # workspaces: held, elsewhere: named}`: the collections made or updated, each with its
   # adapter, the ids of those made, the assigned ones as they stood before the part
@@ -597,6 +599,7 @@ defmodule Apiary.Adapters.Collections do
        ) do
     organisation_id = connection.organisation_id
     only = only_workspace(organisation_id)
+    only = if only && Connections.reaches?(connection, only), do: only
     assigned = assigned_before(connection, collections)
 
     workspaces =
@@ -1573,6 +1576,8 @@ defmodule Apiary.Adapters.Collections do
   #     domain. Only this check reads the adapter's domains: a listing, Take in and the
   #     feed never do, so a collection assigned before the adapter narrowed them stays
   #     assigned, and its tickets come in as before;
+  #   * `{:error, :not_reached}` for a workspace the connection does not reach
+  #     (`Apiary.Adapters.Connections.reaches?/2`);
   #   * `{:error, :not_found}` for an id that names no live collection of the connection:
   #     of another connection or organisation, ended, or none;
   #   * `{:ok, count}`, how many changed their link: the others are as asked already.
@@ -1592,7 +1597,8 @@ defmodule Apiary.Adapters.Collections do
   # the count, the connection's public id and the workspace's id (nil when it unlinks);
   # none when nothing changed. After the commit, the collections changed are broadcast.
   @spec assign_collections(Scope.t(), Connection.t(), [Ecto.UUID.t()], Workspace.t() | nil) ::
-          {:ok, non_neg_integer} | {:error, :invalid | :ended | :other_domain | Access.reason()}
+          {:ok, non_neg_integer}
+          | {:error, :invalid | :ended | :other_domain | :not_reached | Access.reason()}
   def assign_collections(%Scope{} = scope, %Connection{} = connection, ids, workspace)
       when is_list(ids) and (is_nil(workspace) or is_struct(workspace, Workspace)) do
     Repo.transact(fn ->
@@ -1602,6 +1608,7 @@ defmodule Apiary.Adapters.Collections do
            {:ok, held} <- lock_connection(organisation_id, connection),
            {:ok, workspace_id} <- lock_target(organisation_id, workspace),
            :ok <- served(held, workspace),
+           :ok <- reached(held, workspace),
            true <- every_id? || {:error, :not_found},
            {:ok, collections} <- lock_collections(organisation_id, connection, ids) do
         changed = Enum.reject(collections, &(&1.workspace_id == workspace_id))
@@ -1669,6 +1676,14 @@ defmodule Apiary.Adapters.Collections do
     domains = Repo.one(from n in Node, where: n.id == ^adapter_id, select: n.domains)
     if Domain.serves?(domains, workspace), do: :ok, else: {:error, :other_domain}
   end
+
+  # Whether the connection reaches the workspace; any connection reaches an unassign. The
+  # rows it reaches are set as the connection is made, and only the workspace's purge,
+  # which the workspace held `FOR SHARE` keeps out, takes one away.
+  defp reached(_connection, nil), do: :ok
+
+  defp reached(%Connection{} = connection, %Workspace{id: id}),
+    do: if(Connections.reaches?(connection, id), do: :ok, else: {:error, :not_reached})
 
   defp lock_target(_organisation_id, nil), do: {:ok, nil}
 
@@ -1963,6 +1978,8 @@ defmodule Apiary.Adapters.Collections do
   #     to none, or in a workspace marked for deletion or claimed by its purge; and for a
   #     collection with no items, or of an adapter with none, which has no switch
   #     (`row/0`'s `backlog`);
+  #   * `{:error, :not_reached}` for a collection in a workspace the connection does not
+  #     reach (`Apiary.Adapters.Connections.reaches?/2`);
   #   * `{:ok, 1}` once it changed; `{:ok, 0}` for one as asked already, which writes
   #     nothing.
   #
@@ -1977,7 +1994,7 @@ defmodule Apiary.Adapters.Collections do
   # public id (`connection_id`), so the entry names it whatever becomes of it later. After
   # the commit, the collection is broadcast.
   @spec set_collection_backlog(Scope.t(), Connection.t(), Ecto.UUID.t(), boolean) ::
-          {:ok, 0 | 1} | {:error, :ended | Access.reason()}
+          {:ok, 0 | 1} | {:error, :ended | :not_reached | Access.reason()}
   def set_collection_backlog(%Scope{} = scope, %Connection{} = connection, collection_id, on)
       when is_boolean(on) do
     Repo.transact(fn ->
@@ -1987,6 +2004,7 @@ defmodule Apiary.Adapters.Collections do
            {:ok, held} <- lock_connection(organisation_id, connection),
            workspace_id when is_binary(workspace_id) <- assigned_to(held, id),
            ^workspace_id <- lock_workspace(organisation_id, workspace_id),
+           true <- Connections.reaches?(held, workspace_id) || {:error, :not_reached},
            %Collection{} = collection <- lock_switchable(held, id, workspace_id) do
         if collection.backlog == on do
           {:ok, {held, []}}

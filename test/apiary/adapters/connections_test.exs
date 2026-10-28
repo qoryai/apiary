@@ -210,7 +210,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
   describe "the expiry of each new pass" do
     @at ~U[2026-10-16 12:00:00.250000Z]
 
-    # A press at `now`, as `Apiary.Adapters.connect/2` makes it: the connection, the
+    # A press at `now`, as `Apiary.Adapters.connect/3` makes it: the connection, the
     # `expires_at` the pass says, read from its payload, and the pass. Every pass verifies
     # at `now`, and expires exactly `validity/0` seconds after `now`, truncated to the
     # second, never later, which the connection keeps.
@@ -1416,6 +1416,7 @@ defmodule Apiary.Adapters.ConnectionsTest do
             id: Ecto.UUID.generate(),
             public_id: Apiary.PublicId.generate("ac"),
             state: :pending,
+            applies_to: "all",
             pass_nonce: :crypto.strong_rand_bytes(16),
             inserted_at: now,
             updated_at: now

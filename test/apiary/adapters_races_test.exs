@@ -97,7 +97,7 @@ defmodule Apiary.AdaptersRacesTest do
     Scope.for_access_key(verified)
   end
 
-  # A press of Install made at `now`, as `Apiary.Adapters.connect/2` makes it, with the
+  # A press of Install made at `now`, as `Apiary.Adapters.connect/3` makes it, with the
   # adapter's row held `FOR SHARE`: `{:ok, {connection, pass}}`.
   defp press_at(scope, adapter, now) do
     fn ->

@@ -173,6 +173,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
             ready={row.ready}
             sending={@sending == row.adapter.public_id}
             cancel={@paths.list}
+            setting={IntegrationComponents.setting(@current_scope)}
           />
         </div>
       </.settings_page>

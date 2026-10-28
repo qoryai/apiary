@@ -4,7 +4,7 @@ defmodule Apiary.Adapters.Connections do
   # from the adapter, found for the adapter's key at the server contract, marked listed,
   # and ended.
   #
-  # Starting one is `Apiary.Adapters.connect/2`'s: an owner or an admin of the organisation
+  # Starting one is `Apiary.Adapters.connect/3`'s: an owner or an admin of the organisation
   # (`adapter.connect`) makes the pending connection, or takes the one pending, with a
   # new connect pass whose nonce and expiry it keeps (`start/3`), each pass expiring
   # strictly later than the one before it. Should that take the pass more than
@@ -45,7 +45,8 @@ defmodule Apiary.Adapters.Connections do
   #     `FOR NO KEY UPDATE`; one that changes its `items` then holds its connections that
   #     have not ended `FOR SHARE`, by id, then their live collections
   #     (`Apiary.Adapters.Collections.relink_adapter/2`).
-  #   * A connect (`Apiary.Adapters.connect/2`) holds the adapter's row `FOR SHARE`, then
+  #   * A connect (`Apiary.Adapters.connect/3`) holds the adapter's row `FOR SHARE`, then
+  #     the workspaces a connection it makes would reach `FOR KEY SHARE`, by id, then
   #     takes its connection `FOR UPDATE`; one it replaces it ends as the other ends do;
   #     a connection it makes takes the adapter's row `FOR SHARE` again (the trigger
   #     `adapter_connections_adapter_check`) and `FOR KEY SHARE` (its reference), which
@@ -86,10 +87,20 @@ defmodule Apiary.Adapters.Connections do
   alias Apiary.{Access, AccessKeys, Features, Organisations, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Adapters.{Collections, ConnectPass, Connection, Grants, LinkedPass, ReturnToken}
+
+  alias Apiary.Adapters.{
+    Collections,
+    ConnectPass,
+    Connection,
+    ConnectionWorkspace,
+    Grants,
+    LinkedPass,
+    ReturnToken
+  }
+
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.Organisation
+  alias Apiary.Organisations.{Organisation, Workspace}
 
   @live_index "(organisation_id, adapter_id) WHERE ended_at IS NULL"
 
@@ -165,7 +176,7 @@ defmodule Apiary.Adapters.Connections do
   ## Starting one
 
   @doc false
-  # Inside `Apiary.Adapters.connect/2`'s transaction, which asked `adapter.connect` and
+  # Inside `Apiary.Adapters.connect/3`'s transaction, which asked `adapter.connect` and
   # holds `adapter`'s row `FOR SHARE`: the pending connection of the scope's organisation
   # to `adapter`, made, or the one pending taken, `FOR UPDATE`, with a new connect pass
   # for it (`Apiary.Adapters.ConnectPass.issue/3`), made under that lock, now with
@@ -202,6 +213,14 @@ defmodule Apiary.Adapters.Connections do
   # later than the one before it, and no pass expires more than `validity/0` seconds after
   # now. `opts[:now]`, the current time unless given, is for tests only.
   #
+  # `opts[:reach]` is what a connection this press makes reaches, as
+  # `Apiary.Connections.reach_at_add/3` gives it (the workspace in the scope alone, with
+  # the setting off, unless given): its `applies_to`, and for `selected` a row of
+  # `adapter_connection_workspaces` per workspace, each of the organisation and not marked
+  # for deletion, held `FOR KEY SHARE`, else `{:error, :not_found}`. A connection the press
+  # takes keeps what it reaches: the reach is set as a connection is made, and never
+  # changed after. A connection made in place of a replaced one takes the press's reach.
+  #
   # Two at once make one live connection: the second's insert waits for the first's and
   # does nothing, and it then takes the first's row, with the new nonce in it, or, in the
   # same second, replaces it with a new one, as above. Should the live
@@ -211,24 +230,56 @@ defmodule Apiary.Adapters.Connections do
   # commit of another transaction that ended the live row.
   @spec start(Scope.t(), Node.t(), <<_::128>>, keyword) ::
           {:ok, Connection.t(), String.t(), Connection.t() | nil}
-          | {:error, :too_soon | :invalid | :too_long}
+          | {:error, :too_soon | :invalid | :too_long | :not_found}
   def start(
-        %Scope{user: %User{id: user_id}, organisation: %Organisation{id: organisation_id}},
+        %Scope{user: %User{id: user_id}, organisation: %Organisation{id: organisation_id}} =
+          scope,
         %Node{kind: :adapter} = adapter,
         <<_::128>> = nonce,
         opts \\ []
       ) do
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
-    take_live(organisation_id, adapter, user_id, nonce, now)
+
+    reach =
+      Keyword.get_lazy(opts, :reach, fn ->
+        Apiary.Connections.reach_at_add(scope, scope.workspace, false)
+      end)
+
+    with {:ok, reach} <- hold_reach(organisation_id, reach),
+         do: take_live(organisation_id, adapter, user_id, nonce, now, reach)
   end
 
-  defp take_live(organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
+  # `{applies_to, workspace_ids}` of `reach`, each workspace of the organisation and not
+  # marked for deletion, held `FOR KEY SHARE`, so neither goes before the transaction
+  # ends; `{:error, :not_found}` otherwise.
+  defp hold_reach(_organisation_id, %{"applies_to" => "all"}), do: {:ok, {"all", []}}
+
+  defp hold_reach(organisation_id, %{"applies_to" => "selected", "workspace_ids" => ids}) do
+    ids = ids |> Enum.uniq() |> Enum.sort()
+
+    held =
+      Repo.all(
+        from w in Workspace,
+          where: w.id in ^ids and w.organisation_id == ^organisation_id,
+          where: is_nil(w.deletion_marked_at),
+          order_by: w.id,
+          select: w.id,
+          lock: "FOR KEY SHARE"
+      )
+
+    if held == ids, do: {:ok, {"selected", ids}}, else: {:error, :not_found}
+  end
+
+  defp take_live(organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now, reach) do
+    # The id of a row this press makes, the same for each try.
+    made = Ecto.UUID.generate()
+
     # A public id that collides makes the insert run again with a new one.
     {_count, _rows} =
       PublicId.Insert.run(Connection, fn _try ->
         Repo.insert_all(
           Connection,
-          [new_pending(organisation_id, adapter_id, user_id, nonce, now)],
+          [%{new_pending(organisation_id, adapter_id, user_id, nonce, now, reach) | id: made}],
           on_conflict: :nothing,
           conflict_target: {:unsafe_fragment, @live_index}
         )
@@ -237,7 +288,12 @@ defmodule Apiary.Adapters.Connections do
     case lock_live(organisation_id, adapter_id) do
       # The live row it waited on ended meanwhile.
       nil ->
-        take_live(organisation_id, adapter, user_id, nonce, now)
+        take_live(organisation_id, adapter, user_id, nonce, now, reach)
+
+      # The row this press made: the workspaces it reaches go with it.
+      %Connection{id: ^made} = live ->
+        :ok = insert_reach(live, reach)
+        new_pass(live, adapter, user_id, nonce, now, nil)
 
       # Its pass is made here, under the row's lock: the previous pass's expiry is read and
       # the new one written in the same update. Should the new pass have to expire more
@@ -252,7 +308,7 @@ defmodule Apiary.Adapters.Connections do
             new_pass(live, adapter, user_id, nonce, now, not_before)
 
           live.state == :pending ->
-            replace(live, organisation_id, adapter, user_id, nonce, now)
+            replace(live, organisation_id, adapter, user_id, nonce, now, reach)
 
           true ->
             {:error, :too_soon}
@@ -286,10 +342,11 @@ defmodule Apiary.Adapters.Connections do
   # connection in its place, with a new public id, started by the person who pressed,
   # whose pass, with `nonce`, is its first and expires `validity/0` seconds after now.
   # `{:ok, connection, pass, ended}`.
-  defp replace(live, organisation_id, %Node{} = adapter, user_id, nonce, now) do
+  defp replace(live, organisation_id, %Node{} = adapter, user_id, nonce, now, reach) do
     with {:ok, ended} <- end_live(live, :replaced, now),
          {:ok, connection, pass} <-
-           insert_replacement(organisation_id, adapter, user_id, nonce, now) do
+           insert_replacement(organisation_id, adapter, user_id, nonce, now, reach),
+         :ok <- insert_reach(connection, reach) do
       {:ok, connection, pass, ended}
     end
   end
@@ -298,9 +355,16 @@ defmodule Apiary.Adapters.Connections do
   # collides makes the pass and the row again with a new one. Made after `end_live/3`, as
   # the live index needs the ended row; a pass that cannot be made rolls the transaction
   # back, as it does made before.
-  defp insert_replacement(organisation_id, %Node{id: adapter_id} = adapter, user_id, nonce, now) do
+  defp insert_replacement(
+         organisation_id,
+         %Node{id: adapter_id} = adapter,
+         user_id,
+         nonce,
+         now,
+         reach
+       ) do
     PublicId.Insert.run(Connection, fn _try ->
-      fields = new_pending(organisation_id, adapter_id, user_id, nonce, now)
+      fields = new_pending(organisation_id, adapter_id, user_id, nonce, now, reach)
 
       with {:ok, pass, expires_at} <- issue(adapter, fields.public_id, nonce, now, nil),
            {:ok, connection} <-
@@ -331,10 +395,10 @@ defmodule Apiary.Adapters.Connections do
     end
   end
 
-  # A pending connection, as it is made. A connection made by the insert that does
-  # nothing on a conflict has no pass expiry yet: its pass is made, and its expiry
-  # written, once its row is locked.
-  defp new_pending(organisation_id, adapter_id, user_id, nonce, now) do
+  # A pending connection, as it is made, reaching `{applies_to, _workspace_ids}`. A
+  # connection made by the insert that does nothing on a conflict has no pass expiry yet:
+  # its pass is made, and its expiry written, once its row is locked.
+  defp new_pending(organisation_id, adapter_id, user_id, nonce, now, {applies_to, _ids}) do
     %{
       id: Ecto.UUID.generate(),
       public_id: PublicId.generate(Connection.prefix()),
@@ -345,9 +409,75 @@ defmodule Apiary.Adapters.Connections do
       state: :pending,
       pass_nonce: nonce,
       pass_expires_at: nil,
+      applies_to: applies_to,
       inserted_at: now,
       updated_at: now
     }
+  end
+
+  # The rows of the workspaces a `selected` connection, just made, reaches.
+  defp insert_reach(%Connection{}, {"all", []}), do: :ok
+
+  defp insert_reach(%Connection{} = connection, {"selected", workspace_ids}) do
+    now = DateTime.utc_now()
+
+    rows =
+      for workspace_id <- workspace_ids do
+        %{
+          organisation_id: connection.organisation_id,
+          connection_id: connection.id,
+          workspace_id: workspace_id,
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    {_count, _} = Repo.insert_all(ConnectionWorkspace, rows)
+    :ok
+  end
+
+  @doc false
+  # reaches?/2 is whether `connection` reaches the workspace `workspace_id`: it is `all`,
+  # or `selected` with a row for that workspace.
+  @spec reaches?(Connection.t(), Ecto.UUID.t()) :: boolean
+  def reaches?(%Connection{applies_to: "all"}, _workspace_id), do: true
+
+  def reaches?(%Connection{id: id}, workspace_id) when is_binary(workspace_id),
+    do:
+      Repo.exists?(
+        from w in ConnectionWorkspace,
+          where: w.connection_id == ^id and w.workspace_id == ^workspace_id
+      )
+
+  def reaches?(%Connection{}, _workspace_id), do: false
+
+  @doc false
+  # reached/1 is the workspaces `connection` reaches: `:all`, or the ids of those listed
+  # for it.
+  @spec reached(Connection.t()) :: :all | MapSet.t(Ecto.UUID.t())
+  def reached(%Connection{applies_to: "all"}), do: :all
+
+  def reached(%Connection{id: id}),
+    do:
+      Repo.all(
+        from w in ConnectionWorkspace, where: w.connection_id == ^id, select: w.workspace_id
+      )
+      |> MapSet.new()
+
+  @doc false
+  # reaching/2 is `query`, whose binding `:connection` is a connection, narrowed to the
+  # connections that reach the workspace `workspace_id` (`reaches?/2`); to the `all` ones
+  # for nil.
+  @spec reaching(Ecto.Queryable.t(), Ecto.UUID.t() | nil) :: Ecto.Query.t()
+  def reaching(query, nil), do: where(query, [connection: k], k.applies_to == "all")
+
+  def reaching(query, workspace_id) do
+    listed =
+      from w in ConnectionWorkspace,
+        where: w.workspace_id == ^workspace_id,
+        select: w.connection_id
+
+    where(query, [connection: k], k.applies_to == "all" or k.id in subquery(listed))
   end
 
   defp lock_live(organisation_id, adapter_id) do

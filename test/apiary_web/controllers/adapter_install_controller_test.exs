@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.AdapterInstallControllerTest do
   # Install (`POST /:org/settings/integrations/:adapter_id/install`): the member's right
-  # first, then the adapter, then `Apiary.Adapters.connect/2`; the nonce kept in the
+  # first, then the adapter, then `Apiary.Adapters.connect/3`; the nonce kept in the
   # session; the page that sends the person on to the adapter's connect address with the
   # pass, kept by no cache and telling no referrer; the CSRF check; a connected
   # organisation's new pass; and where a person is sent when the connected connection
@@ -147,6 +147,58 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
         assert ConnectSession.fetch(conn, public_id) == nonce
         assert ConnectSession.back(conn, public_id) == nil
       end
+    end
+  end
+
+  describe "what the connection reaches" do
+    defp reached(scope),
+      do: scope |> connections() |> hd() |> Apiary.Adapters.Connections.reached()
+
+    test "in the core, the workspace of the page it is pressed on, whatever the form sends",
+         %{conn: conn, scope: scope, adapter: adapter} do
+      conn
+      |> post("/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}/install",
+        install: %{everywhere: "true"}
+      )
+
+      assert [%Connection{applies_to: "selected"}] = connections(scope)
+      assert reached(scope) == MapSet.new([scope.workspace.id])
+    end
+
+    test "with the setting shown: on, every workspace", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+      conn
+      |> post("/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}/install",
+        install: %{everywhere: "true"}
+      )
+
+      assert [%Connection{applies_to: "all"}] = connections(scope)
+      assert reached(scope) == :all
+    end
+
+    test "with the setting shown: off, the workspace the set-up's back leads to", %{
+      conn: conn,
+      scope: scope,
+      adapter: adapter
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      billing = workspace_fixture(scope.organisation, "Billing")
+      back = "set-up:sources:workspace=" <> billing.slug
+
+      conn
+      |> post(
+        "/#{scope.organisation.slug}/settings/integrations/#{adapter.public_id}/install?" <>
+          URI.encode_query(back: back),
+        install: %{everywhere: "false"}
+      )
+
+      assert [%Connection{applies_to: "selected"}] = connections(scope)
+      assert reached(scope) == MapSet.new([billing.id])
     end
   end
 

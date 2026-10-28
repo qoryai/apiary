@@ -347,6 +347,26 @@ defmodule ApiaryWeb.AdapterLive.IndexTest do
       refute has_element?(lv, "#add-none")
     end
 
+    test "Install has the setting where the edition shows it, off; none in the core",
+         %{conn: conn, scope: scope} do
+      %{adapter: acme} = connectable_adapter_fixture(%{name: unique_adapter_name("Acme")})
+      field = "#add-#{acme.public_id}-form input[type=checkbox][name='install[everywhere]']"
+
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      refute has_element?(lv, field)
+
+      :ok = Edition.put_test_stub(EditionStubs.ScopeSetting)
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      assert has_element?(lv, field)
+      refute has_element?(lv, field <> "[checked]")
+
+      assert has_element?(
+               lv,
+               "#add-#{acme.public_id}-form label",
+               "Available to every workspace in #{scope.organisation.name}"
+             )
+    end
+
     test "with every integration installed, says so, with no lead", %{conn: conn, scope: scope} do
       for base <- ["Acme tracker", "Platform tracker"] do
         %{adapter: adapter} = connectable_adapter_fixture(%{name: unique_adapter_name(base)})

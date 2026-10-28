@@ -222,7 +222,7 @@ defmodule Apiary.WorkItemsFixtures do
   A connected connection of the scope's organisation to a new adapter of the instance,
   the kind of row a work item's ticket comes through, written straight to the database
   so that it needs no feature on (`Apiary.NodesFixtures.connection_fixture/3` goes
-  through `Apiary.Adapters.connect/2`, which does).
+  through `Apiary.Adapters.connect/3`, which does).
   """
   def ticket_connection_fixture(%Scope{organisation: organisation, user: user}) do
     adapter =
@@ -241,6 +241,7 @@ defmodule Apiary.WorkItemsFixtures do
 
     Repo.insert!(%Connection{
       public_id: Apiary.PublicId.generate(Connection.prefix()),
+      applies_to: "all",
       organisation_id: organisation.id,
       adapter_id: adapter.id,
       created_by_id: user.id,

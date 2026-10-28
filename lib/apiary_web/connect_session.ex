@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ConnectSession do
   # The nonces of the connect passes a person's browser started, kept in their session,
   # by the connection's public id (`ac_…`): `put/3` when they press Install
-  # (`Apiary.Adapters.connect/2` gives what to keep), `fetch/2` and `drop/2` when they
+  # (`Apiary.Adapters.connect/3` gives what to keep), `fetch/2` and `drop/2` when they
   # come back with the adapter's return (`ApiaryWeb.AdapterRedirectController`). A return
   # is taken only in the browser whose session kept its nonce
   # (`Apiary.Adapters.Connections.complete_return/4`).

@@ -62,6 +62,7 @@ defmodule Apiary.WorkspaceSetup do
   alias Apiary.{Access, AccessKeys, Adapters, Edition, Gateways, ModelChoices, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connection}
+  alias Apiary.Adapters.Connections, as: AdapterConnections
   alias Apiary.Connections.Connection, as: ModelProvider
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.ModelChoices.ModelChoice
@@ -177,13 +178,15 @@ defmodule Apiary.WorkspaceSetup do
 
   @doc false
   # connected_ids/3 is the ids of the adapters in use with items (`:items`) or with
-  # `targets` true (`:targets`) that serve `domain` and that `organisation` has a
-  # connected connection of.
-  @spec connected_ids(Organisation.t(), module, :items | :targets) :: MapSet.t(Ecto.UUID.t())
-  def connected_ids(%Organisation{id: organisation_id}, domain, role),
+  # `targets` true (`:targets`) that serve `domain` and that the organisation of
+  # `workspace` has a connected connection of that reaches `workspace`
+  # (`Apiary.Adapters.Connections.reaches?/2`).
+  @spec connected_ids(Workspace.t(), module, :items | :targets) :: MapSet.t(Ecto.UUID.t())
+  def connected_ids(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain, role),
     do:
       organisation_id
       |> connected_adapters(domain, role)
+      |> AdapterConnections.reaching(workspace_id)
       |> select([_k, n], n.id)
       |> Repo.all()
       |> MapSet.new()
@@ -192,6 +195,7 @@ defmodule Apiary.WorkspaceSetup do
     name = domain.name()
 
     from(k in Connection,
+      as: :connection,
       join: n in Node,
       on: n.id == k.adapter_id,
       where: k.organisation_id == ^organisation_id,
@@ -234,7 +238,7 @@ defmodule Apiary.WorkspaceSetup do
   @spec sources?(Workspace.t(), module) :: boolean
   def sources?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
     organisation_id
-    |> list_query(domain, :sources)
+    |> list_query(workspace_id, domain, :sources)
     |> where([c], c.workspace_id == ^workspace_id and c.backlog)
     |> Repo.exists?()
   end
@@ -246,7 +250,7 @@ defmodule Apiary.WorkspaceSetup do
   @spec destinations?(Workspace.t(), module) :: boolean
   def destinations?(%Workspace{id: workspace_id, organisation_id: organisation_id}, domain) do
     organisation_id
-    |> list_query(domain, :destinations)
+    |> list_query(workspace_id, domain, :destinations)
     |> where([c], c.workspace_id == ^workspace_id)
     |> Repo.exists?()
   end
@@ -267,7 +271,9 @@ defmodule Apiary.WorkspaceSetup do
   @doc false
   # collections/3 is the rows of a tick list for `domain`, a workspace's type, grouped by
   # adapter, by the adapter's name, then by title: the live collections of the scope's organisation,
-  # of a connection that is connected, of an adapter in use that serves `domain`, each with
+  # of a connection that is connected and reaches the scope's workspace
+  # (`Apiary.Adapters.Connections.reaches?/2`; one that reaches every workspace where the
+  # scope has none), of an adapter in use that serves `domain`, each with
   # its connection and the workspace it is assigned to. For `:sources`, the collections
   # with items of an adapter with items; for `:destinations`, the collections with a
   # target of an adapter with `targets` true. `[]` to a person who may not read the
@@ -279,7 +285,9 @@ defmodule Apiary.WorkspaceSetup do
         list
       ) do
     if Access.can?(scope, :"adapter.read", organisation) do
-      from([c, k, n] in list_query(organisation_id, domain, list),
+      workspace_id = scope.workspace && scope.workspace.id
+
+      from([c, k, n] in list_query(organisation_id, workspace_id, domain, list),
         left_join: w in Workspace,
         on: w.id == c.workspace_id,
         order_by: [
@@ -300,13 +308,15 @@ defmodule Apiary.WorkspaceSetup do
     end
   end
 
-  # The collections of a tick list (`collections/3`), as `[c, k, n]`: collection,
-  # connection, adapter.
-  defp list_query(organisation_id, domain, list) do
+  # The collections of a tick list (`collections/3`) of the workspace `workspace_id`, as
+  # `[c, k, n]`: collection, connection, adapter; only those of a connection that reaches
+  # the workspace.
+  defp list_query(organisation_id, workspace_id, domain, list) do
     name = domain.name()
 
     from(c in Collection,
       join: k in Connection,
+      as: :connection,
       on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
       join: n in Node,
       on: n.id == c.adapter_id,
@@ -316,6 +326,7 @@ defmodule Apiary.WorkspaceSetup do
       where: is_nil(n.domains) or ^name in n.domains
     )
     |> where_list(list)
+    |> AdapterConnections.reaching(workspace_id)
   end
 
   defp where_list(query, :sources), do: where(query, [c, _k, n], c.items and n.items)
@@ -358,7 +369,7 @@ defmodule Apiary.WorkspaceSetup do
           :ok | {:error, term}
   def tick(%Scope{} = scope, %Workspace{} = workspace, domain, list, collection_id) do
     found =
-      scope
+      %{scope | workspace: workspace}
       |> collections(domain, list)
       |> Enum.find_value(fn {adapter, rows} ->
         Enum.find_value(rows, &(&1.collection.id == collection_id && {adapter, &1}))
