@@ -43,7 +43,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   setup :setup_races
 
   setup do
-    started = DateTime.utc_now()
+    started = database_now()
     %{scope: scope} = sign_up()
     {:ok, made} = Agent.start(fn -> [] end)
     place = handover_place_fixture(scope)

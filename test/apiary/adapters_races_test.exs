@@ -43,7 +43,7 @@ defmodule Apiary.AdaptersRacesTest do
   setup :setup_races
 
   setup do
-    started = DateTime.utc_now()
+    started = database_now()
     {:ok, made} = Agent.start(fn -> [] end)
     Process.put(:race_adapters, made)
 

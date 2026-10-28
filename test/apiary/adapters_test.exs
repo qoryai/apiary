@@ -783,14 +783,20 @@ defmodule Apiary.AdaptersTest do
       assert Adapters.delete_adapter(admin, adapter) == {:error, :not_found}
 
       assert %Entry{organisation_id: trail, details: details} =
-               Repo.one!(from e in Entry, where: e.action == "adapter.delete")
+               Repo.one!(
+                 from e in Entry,
+                   where: e.action == "adapter.delete" and e.subject_id == ^adapter.id
+               )
 
       assert trail == instance_id()
       assert details["ended_connection_ids"] == []
       assert details["revoked_key_ids"] == [key.key_id]
 
       assert [%Entry{organisation_id: ^trail}] =
-               Repo.all(from e in Entry, where: e.action == "access_key.revoke")
+               Repo.all(
+                 from e in Entry,
+                   where: e.action == "access_key.revoke" and e.subject_id == ^key.id
+               )
     end
 
     test "only an instance admin deletes one", %{scope: scope} do
