@@ -400,9 +400,9 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   set_up_path/1 is where a link to the scope's workspace leads while its set-up is not
   finished: the first step of the group `:workspace` that is not done, on `/:org/set-up`
-  (`flow_path/2`). The set-up is finished once the test run passed (the Test run step,
-  `Apiary.WorkspaceSetup.test?/1`). Nil once it is, where the reader sees no Test run
-  step (without the `factory` feature), and for a scope without a workspace.
+  (`flow_path/2`). The set-up is finished once the test run passed, the Test run step's
+  rule in Apiary.WorkspaceSetup. Nil once it is, where the reader sees no Test run step
+  (without the `factory` feature), and for a scope without a workspace.
 
   While the set-up is finished it reads one rule, the Test run step's; before, the rules
   of the steps up to the one it returns.
