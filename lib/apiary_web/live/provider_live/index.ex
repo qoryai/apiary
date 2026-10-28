@@ -345,7 +345,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
     </p>
     <.get_key id="new-provider-get-key" chosen={@chosen} />
     <p :if={@workspace} id="new-provider-next">
-      {gettext("After you save, choose %{workspace}'s model in Workspace settings › Model.",
+      {gettext("After you save, choose the model for %{workspace} in Workspace settings › Model.",
         workspace: @workspace.name
       )}
     </p>

@@ -125,7 +125,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                "#page-context p#workflow-what",
-               "#{scope.workspace.name}'s runs follow the workflow you choose here, from a harness repository."
+               "Runs in #{scope.workspace.name} follow the workflow you choose here, from a harness repository."
              )
 
       assert has_element?(

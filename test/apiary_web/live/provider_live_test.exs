@@ -144,7 +144,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#new-provider-next",
-               "After you save, choose #{scope.workspace.name}'s model in Workspace settings › Model."
+               "After you save, choose the model for #{scope.workspace.name} in Workspace settings › Model."
              )
 
       # The help that repeated the form is gone.

@@ -2778,11 +2778,6 @@ msgstr[1] ""
 msgid "%{workspace} is this instance's only workspace."
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{workspace}'s default model. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model."
-msgstr "%{workspace}'s default model. A workflow or a repository can set another model for its runs. If %{workspace} sets none, its runs use %{organisation}'s model."
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace}'s mode, now %{mode}. It changes when %{workspace}'s does."
@@ -2791,12 +2786,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace}'s policy"
-msgstr ""
-
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "%{workspace}'s runs follow the workflow you choose here, from a harness repository."
 msgstr ""
 
 #: lib/apiary/sources/body.ex
@@ -3843,7 +3832,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "After you save, choose %{workspace}'s model in Workspace settings › Model."
+msgid "After you save, choose the model for %{workspace} in Workspace settings › Model."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -13747,6 +13736,12 @@ msgstr ""
 msgid "Runs handed over"
 msgstr ""
 
+#: lib/apiary_web/live/workflow_live.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Runs in %{workspace} follow the workflow you choose here, from a harness repository."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs may connect to the host. Needed under enforce, where a host no rule allows is denied."
@@ -15568,6 +15563,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The default gateway for workspaces in %{organisation} that don't set one."
 msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "The default model for runs in %{workspace}. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}."
+msgstr "The default model for runs in %{workspace}. A workflow or a repository can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}."
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
