@@ -36,9 +36,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   # not through Workspace settings › Workflow, as that page reads the workflows of a
   # stack through an adapter before its save (`Apiary.Stacks.Sources.save/3`) stores the
   # one chosen: the workflow `hello` at the workspace, with a harness document that
-  # extends the stack `examples/hello` of qory's repository at one commit, and Main's
-  # harness choice, the harness in each repository, so an explore run of Main has that
-  # workflow and, where its repository has no harness file, that stack. A prebuild's
+  # extends the stack `examples/hello` of qory's repository at one commit, as that page's
+  # save writes one. Main has no harness choice, so an explore run of Main has that
+  # workflow and its repository's harness file, else the Qory harness. A prebuild's
   # documents have no workflow and no stack.
   #
   # The key pair each adapter enrols is made here and kept in memory only: its secret
@@ -788,7 +788,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
   defp stack!(%Scope{workspace: workspace} = main) do
     {:ok, _stack} = Stacks.put_stack(main, {:workspace, workspace, @workflow}, @harness)
-    {:ok, _choice} = Stacks.put_stack(main, {:workspace, workspace}, nil, choice: :target_file)
     :ok
   end
 
