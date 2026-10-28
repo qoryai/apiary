@@ -211,6 +211,28 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       refute has_element?(lv, "#remove-target-#{shop.id}")
     end
 
+    test "a connection whose chosen workspaces are all gone applies to none",
+         %{conn: conn, scope: scope} do
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{
+          runtime: "claude",
+          applies_to: "selected",
+          workspace_ids: []
+        })
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
+      assert has_element?(lv, "#connection-targets-empty", "It applies to no workspace.")
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime))
+      assert has_element?(lv, "#connection-facts", "No workspace")
+    end
+
+    test "a refusal of a change of where it applies says how to share it", %{scope: scope} do
+      assert ApiaryWeb.IntegrationLive.Common.refusal(scope, :reach_fixed) ==
+               "To share it, add it again with “Available to every workspace in " <>
+                 "#{scope.organisation.name}” on. Where it applies is set only when it is added."
+    end
+
     test "a connection for every workspace offers none to add", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))

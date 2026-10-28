@@ -32,6 +32,19 @@ defmodule ApiaryWeb.ProviderLiveTest do
     provider
   end
 
+  # A person and the organisation they signed up, which has no workspace yet.
+  defp without_workspace do
+    {:ok, %{user: user, organisation: organisation}} =
+      Apiary.Organisations.sign_up_user(
+        %{email: Apiary.AccountsFixtures.unique_user_email(), organisation_name: "Acme"},
+        nil,
+        open: true,
+        workspace: false
+      )
+
+    %{user: user, organisation: organisation}
+  end
+
   defp member_conn(scope, level) do
     %{user: user} = member_fixture(scope, level)
     log_in_user(build_conn(), user)
@@ -189,6 +202,42 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert one.applies_to == "selected"
       assert Connections.workspace_ids_of(one) == [scope.workspace.id]
       assert Repo.get!(Secret, one.secret_id).workspace_id == scope.workspace.id
+    end
+
+    test "with no workspace yet, says to set one up first, with no form", %{conn: conn} do
+      %{user: user, organisation: organisation} = without_workspace()
+      conn = log_in_user(conn, user)
+
+      {:ok, lv, html} = live(conn, ~p"/#{organisation}/settings/model-providers/new")
+
+      assert has_element?(
+               lv,
+               "#new-provider-needs-workspace",
+               "Set up a workspace first, then add a model provider in its Model step."
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}/set-up"]},
+               "Set up a workspace"
+             )
+
+      refute has_element?(lv, "#new-provider-form")
+      refute html =~ "new-provider-form"
+    end
+
+    test "with no workspace yet, a submit adds nothing", %{conn: conn} do
+      %{user: user, organisation: organisation} = without_workspace()
+      conn = log_in_user(conn, user)
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings/model-providers/new")
+
+      render_hook(lv, "create", %{"provider" => %{"provider" => "anthropic", "key" => @key}})
+
+      assert has_element?(lv, "#new-provider-needs-workspace")
+
+      for schema <- [Apiary.Connections.Connection, Secret] do
+        refute Repo.get_by(schema, organisation_id: organisation.id)
+      end
     end
 
     test "About this step says what a key is for, and where to get the chosen one", ctx do

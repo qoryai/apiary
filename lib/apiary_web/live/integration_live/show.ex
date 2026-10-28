@@ -379,7 +379,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       id="connection-targets-empty"
       class="text-[13px]/5 text-muted"
     >
-      {pgettext("plain", "No workspace is chosen yet, so it applies to none.")}
+      {pgettext("plain", "It applies to no workspace.")}
     </p>
     """
   end

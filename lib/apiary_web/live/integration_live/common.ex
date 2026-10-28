@@ -255,7 +255,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def applies_word(%Connection{applies_to: "selected", workspaces: workspaces})
       when is_list(workspaces) do
     case length(workspaces) do
-      0 -> gettext("No workspace yet")
+      0 -> gettext("No workspace")
       n -> ngettext("%{count} chosen workspace", "%{count} chosen workspaces", n)
     end
   end
@@ -419,6 +419,15 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def refusal(scope, reason, connections \\ [], action \\ :"connection.write")
 
   def refusal(scope, :forbidden, _connections, action), do: only_admins(scope, action)
+
+  def refusal(scope, :reach_fixed, _connections, _action),
+    do:
+      pgettext(
+        "plain",
+        "To share it, add it again with “Available to every workspace in %{organisation}” on. Where it applies is set only when it is added.",
+        organisation: scope.organisation.name
+      )
+
   def refusal(_scope, reason, connections, _action), do: sentence(reason, connections)
 
   defp sentence({:overlap, ids}, connections) do

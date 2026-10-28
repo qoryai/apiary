@@ -53,6 +53,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
        writes: writes,
+       needs_workspace: needs_workspace?(scope),
        attempt: 0,
        refusal: nil
      )
@@ -65,6 +66,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   defp page_title(scope, _index),
     do: SettingsComponents.page_title(scope, :organisation, [list_title()])
+
+  # Whether an add must wait for a workspace: with no workspace in the scope, where the
+  # edition shows no setting of where a provider applies, a provider has no workspace
+  # whose secret its key would be.
+  defp needs_workspace?(scope),
+    do: is_nil(scope.workspace) and not Apiary.Edition.scope_setting?(scope)
 
   defp list_title, do: gettext("Model providers")
   defp new_title, do: gettext("New model provider")
@@ -109,6 +116,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
   @impl true
   def handle_event("choose", %{"provider" => params}, %{assigns: %{writes: true}} = socket),
     do: {:noreply, assign_form(socket, params, [])}
+
+  def handle_event("create", _params, %{assigns: %{needs_workspace: true}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("create", %{"provider" => params}, %{assigns: %{writes: true}} = socket) do
     scope = socket.assigns.current_scope
@@ -228,7 +238,17 @@ defmodule ApiaryWeb.ProviderLive.Index do
           <span id="new-provider-refusal">{@refusal}</span>
         </.notice>
 
+        <p :if={@needs_workspace} id="new-provider-needs-workspace" class="text-[13.5px]/5">
+          <.rich text={
+            rich_gettext("%{set_up} first, then add a model provider in its Model step.",
+              set_up:
+                {:link, ~p"/#{@current_scope.organisation}/set-up", gettext("Set up a workspace")}
+            )
+          } />
+        </p>
+
         <.form
+          :if={!@needs_workspace}
           for={@form}
           id="new-provider-form"
           method="post"

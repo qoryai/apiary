@@ -2424,6 +2424,11 @@ msgstr[1] ""
 msgid "%{seconds} s"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{set_up} first, then add a model provider in its Model step."
+msgstr ""
+
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{shown} of %{total} models"
@@ -4534,6 +4539,7 @@ msgstr ""
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Available to every workspace in %{organisation}"
 msgstr ""
@@ -8438,6 +8444,12 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
+msgid "It applies to no workspace."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "It applies to the chosen workspaces below, and to no other."
 msgstr ""
 
@@ -10655,10 +10667,9 @@ msgstr ""
 msgid "No work source is connected to %{workspace}. Connect one to bring its tickets here."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
+#: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "No workspace is chosen yet, so it applies to none."
+msgid "No workspace"
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
@@ -10678,7 +10689,6 @@ msgid "No workspace or target rule can allow it."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
-#: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
@@ -14293,6 +14303,11 @@ msgstr ""
 msgid "Set up a new %{type}"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set up a workspace"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set up agent"
@@ -16942,6 +16957,12 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "To review"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/common.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "To share it, add it again with “Available to every workspace in %{organisation}” on. Where it applies is set only when it is added."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
