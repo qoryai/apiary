@@ -56,7 +56,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
   end
 
   test "the overview's command is in no log line either", %{conn: conn, scope: scope} do
-    # The box with the command shows without the `factory` feature, whose setup list
+    # The box with the command shows without the `factory` feature, whose set-up
     # takes its place.
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
     :ok = Apiary.EditionStubs.HidesNamed.put([:factory])

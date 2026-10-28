@@ -26,6 +26,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   setup :register_and_log_in_user
 
+  defmodule SetUpFinished do
+    @moduledoc false
+    # The workspace's test run passed: its set-up is finished, and with the `factory`
+    # feature the Overview opens (`ApiaryWeb.SetUpComponents.set_up_path/1`).
+    def test_run_passed?(_workspace), do: true
+  end
+
+  setup do
+    :ok = Apiary.Edition.put_test_stub(SetUpFinished)
+  end
+
   # No coalescing and no throttling here, so a broadcast is followed by its read as the
   # next message and no test waits on a clock.
   setup do
@@ -115,7 +126,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "the empty workspace" do
-    # Without the `factory` feature, whose setup list takes the box's place
+    # Without the `factory` feature, whose set-up takes the box's place
     # (`ApiaryWeb.WorkspaceLive.OverviewSetupTest`).
     setup do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
@@ -704,7 +715,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "the nodes hidden from the reader" do
-    # Without the `factory` feature, whose setup list takes the box's place
+    # Without the `factory` feature, whose set-up takes the box's place
     # (`ApiaryWeb.WorkspaceLive.OverviewSetupTest`).
     setup do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
