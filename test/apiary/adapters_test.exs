@@ -783,7 +783,10 @@ defmodule Apiary.AdaptersTest do
       assert Adapters.delete_adapter(admin, adapter) == {:error, :not_found}
 
       assert %Entry{organisation_id: trail, details: details} =
-               Repo.one!(from e in Entry, where: e.action == "adapter.delete")
+               Repo.one!(
+                 from e in Entry,
+                   where: e.action == "adapter.delete" and e.subject_id == ^adapter.id
+               )
 
       assert trail == instance_id()
       assert details["ended_connection_ids"] == []
