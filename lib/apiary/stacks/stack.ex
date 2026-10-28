@@ -1,11 +1,11 @@
 defmodule Apiary.Stacks.Stack do
   # A stack set at a level of an organisation: `harness`, a harness document, the
   # contents of the `harness` section of qory's format written in YAML
-  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow or the choice;
-  # and `owner_organisation_id`, the organisation that owns the row, which the edition
-  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`), nil once
-  # that organisation is deleted. A row has a document, a workflow or a choice, or more
-  # than one of them.
+  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow; and
+  # `owner_organisation_id`, the organisation that owns the row, which the edition gives
+  # for the person who saved it last (`Apiary.Edition.harness_owner/1`), nil once that
+  # organisation is deleted. A row has a document, a workflow or both; a row with a
+  # choice has its document.
   #
   # Its level is read from the columns it has set (`level/1`):
   #
@@ -25,10 +25,16 @@ defmodule Apiary.Stacks.Stack do
   # `:write`, nil for none, and only on a row with a workflow. It only lowers the level
   # the workflow declares in its stack (`Apiary.Harnesses.Walk`).
   #
-  # `choice` is the harness a workspace's runs use, nil for none, and only on a row at
-  # `:workspace` (`Apiary.Stacks.choice/1`): `:qory`, the Qory harness, and `:repository`,
-  # a harness repository, each with the document that extends it at a pinned commit;
-  # `:target_file`, the harness file of each run's target, with or without a document.
+  # `choice` is a harness choice, nil for none, only on a row with no workflow, and with
+  # the row's document (`Apiary.Stacks`):
+  #
+  #   * at `:target`: the stack chosen for that target (`Apiary.Stacks.target_choice/2`);
+  #   * at `:workspace`: the workspace's choice (`Apiary.Stacks.choice/1`);
+  #   * at `:organisation`: the harness the organisation shares with every workspace
+  #     (`Apiary.Stacks.shared/1`).
+  #
+  # `:qory` is the Qory harness, and `:repository` a harness repository or a stack of
+  # one; each row's document extends it at the `ref` the save wrote.
   #
   # Changed only through `Apiary.Stacks`.
   @moduledoc false
@@ -48,7 +54,7 @@ defmodule Apiary.Stacks.Stack do
     field :workflow, :string
     field :harness, :string
     field :access, Ecto.Enum, values: [:read, :write]
-    field :choice, Ecto.Enum, values: [:qory, :repository, :target_file]
+    field :choice, Ecto.Enum, values: [:qory, :repository]
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

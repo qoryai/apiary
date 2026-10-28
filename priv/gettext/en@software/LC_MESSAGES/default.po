@@ -354,6 +354,21 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{harness} · %{stack} · at %{ref}, not pinned"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{harness} · %{stack} · pinned at %{commit}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{harness} · at %{ref}, not pinned"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{harness} · pinned at %{commit}"
 msgstr ""
 
@@ -3282,6 +3297,11 @@ msgstr "A repository that overrides the mode does not change. The rules stay as 
 msgid "A target's allow rule still holds there."
 msgstr "A repository's allow rule still holds there."
 
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "A target's harness file comes first."
+msgstr "A repository's harness file comes first."
+
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "A target's mode is observe, enforce, or the workspace's."
@@ -3628,6 +3648,7 @@ msgstr ""
 msgid "Add a program from a release on github.com, gitlab.com or codeberg.org."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add a qory-stack.yaml file to %{source}, or choose another source: %{source} has no stack."
@@ -4504,6 +4525,7 @@ msgid_plural "Assigned %{number} %{collections} to %{workspace}."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Assigned by an instance admin"
@@ -4663,6 +4685,7 @@ msgid "Can you trust your agents? With Qory *you don't have to*."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -4771,6 +4794,7 @@ msgstr ""
 msgid "Cancelling"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -5175,6 +5199,7 @@ msgstr ""
 msgid "Choose a day to jump to."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a source"
@@ -6604,11 +6629,6 @@ msgstr ""
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Each run reads its target's harness file."
-msgstr "Each run reads its repository's qory.yaml or harness.yaml."
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Earlier runs of this take in"
@@ -6852,6 +6872,7 @@ msgstr ""
 msgid "Enter a host, such as %{example}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an address"
@@ -9274,6 +9295,7 @@ msgctxt "plain"
 msgid "Link %{source} to %{organisation}, or ask an instance admin to assign it: Qory Apiary reads a harness repository that is not public only through a linked repository or an assignment."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -12374,6 +12396,7 @@ msgstr ""
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Public address"
@@ -12786,6 +12809,7 @@ msgstr ""
 msgid "Reading the record"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Reading the stack of %{source}…"
@@ -13790,11 +13814,6 @@ msgstr "Runs of %{target} now read no other repository."
 
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
-msgid "Runs of %{workspace} follow the workflow %{workflow} of %{source}."
-msgstr ""
-
-#: lib/apiary_web/live/workflow_live.ex
-#, elixir-autogen, elixir-format
 msgid "Runs of %{workspace} follow the workflow %{workflow}."
 msgstr ""
 
@@ -13882,6 +13901,7 @@ msgstr ""
 msgid "SMTP relay"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
@@ -13949,6 +13969,7 @@ msgstr ""
 msgid "Saved. Runs of %{workspace} now follow the workflow %{workflow}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
@@ -14736,6 +14757,7 @@ msgstr ""
 msgid "Sort: %{order}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/rule_list.ex
@@ -14753,6 +14775,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Sources"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Stack"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15131,6 +15158,7 @@ msgstr "Repository rules come first; %{name}'s and %{workspace}'s follow and are
 msgid "Target rules first"
 msgstr "Repository rules first"
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -15698,11 +15726,6 @@ msgstr ""
 msgid "The gateway's name, its kind and its URL."
 msgstr ""
 
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "The harness in each target"
-msgstr "The harness in each repository"
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The host answered %{status}."
@@ -16123,6 +16146,7 @@ msgstr ""
 msgid "The rendered bytes stayed the same, so no version was made."
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -18044,6 +18068,7 @@ msgstr ""
 msgid "Workspace created"
 msgstr ""
 
+#: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace default"

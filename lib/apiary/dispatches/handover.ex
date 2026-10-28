@@ -707,8 +707,8 @@ defmodule Apiary.Dispatches.Handover do
   # claim takes only once resolved (`Apiary.Harnesses.WalkJob`): `target_version`, the
   # version at which the walk read the target's harness file, while the run has its
   # target; `workflow` and `harness_hidden`; `access`, the level the walk resolved; and
-  # `harness`, the stacks' document, for a walk whose document came from them
-  # (`:setting`), or the built-in one of a test work item's run (`:builtin`). nil for a run
+  # `harness`, the document of a harness choice or of the Qory harness, for a walk of the
+  # origin `:setting`, or the built-in one of a test work item's run (`:builtin`). nil for a run
   # with no workflow, and for a run with no walk, queued before walks were kept: such a
   # run reads (`ApiaryWeb.Contract.DispatchAnswer.access/1`).
   defp harness(%DispatchRun{id: id}, target) do
