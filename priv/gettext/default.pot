@@ -5664,6 +5664,11 @@ msgstr ""
 msgid "Connected with a command by %{person}, %{date}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Connecting…"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Connection lost."
