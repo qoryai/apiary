@@ -88,9 +88,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
   end
 
   @doc false
-  # address_names/1 is the address settings of the provider named `name`, none for one not
-  # in the catalogue. The set-up's Model step asks it too (`ApiaryWeb.WorkspaceSetupLive`),
-  # as it asks `field_errors/1`, `setting_title/2`, `get_key/1` and `provider_options/0`.
+  # address_names/1 is the address settings of the catalogue's provider whose name is
+  # `name`, none for one not in the catalogue. The set-up's Model step calls it too
+  # (`ApiaryWeb.WorkspaceSetupLive`), as it calls `field_errors/1`, `setting_title/2`,
+  # `get_key/1` and `provider_options/0`.
   def address_names(name) do
     case chosen(name) do
       %Provider{} = provider -> Provider.address_settings(provider)

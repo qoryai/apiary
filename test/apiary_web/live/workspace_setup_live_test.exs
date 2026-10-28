@@ -8,6 +8,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   # feature, and `ApiaryWeb.WorkspaceSetupLive.ModelTest` the Model step.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
@@ -326,6 +327,38 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     end
   end
 
+  test "Create workspace after someone else created the first workspace opens the page again",
+       %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_without_workspace()
+
+    {:ok, lv, _html} =
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=name&type=software")
+
+    # Written straight into the table: the page hears nothing of it.
+    workspace_fixture(organisation, "Billing")
+
+    lv |> form("#set-up-form", workspace: %{name: "Payments"}) |> render_submit()
+
+    {to, _flash} = assert_redirect(lv)
+    assert to == ~p"/#{organisation}/set-up"
+
+    assert [%Workspace{name: "Billing"}] =
+             Repo.all(from w in Workspace, where: w.organisation_id == ^organisation.id)
+  end
+
+  test "a create sent by a person workspace.create does not allow creates nothing", %{
+    conn: conn
+  } do
+    %{organisation: organisation} = sign_up_without_workspace()
+    member = joined(organisation, :member)
+
+    {:ok, lv, _html} = conn |> log_in_user(member) |> live(~p"/#{organisation}/set-up")
+    render_click(lv, "create", %{"workspace" => %{"name" => "Payments"}})
+
+    refute Organisations.has_workspace?(organisation)
+    assert has_element?(lv, "#set-up-waiting")
+  end
+
   test "once anyone creates the first workspace, the page moves on", %{conn: conn} do
     %{user: owner, organisation: organisation} = sign_up_without_workspace()
     member = joined(organisation, :member)
@@ -609,7 +642,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-no-adapter")
     end
 
-    test "with no adapter for the type, says so", %{conn: conn} do
+    test "with no adapter for the type, shows the line for it", %{conn: conn} do
       %{user: user, organisation: organisation} = first_person()
 
       {:ok, lv, _html} =
@@ -635,6 +668,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "#set-up-adapter-#{connected.public_id}-connected", "Connected")
       assert has_element?(lv, "#set-up-adapter-#{other.public_id}-not-connected")
+
+      # The return of an install leads back to this step of Main.
+      back = URI.encode_query(back: "set-up:sources:workspace=#{main.slug}")
+
+      assert has_element?(
+               lv,
+               ~s{#set-up-adapter-#{other.public_id}-connect[action="/#{organisation.slug}/settings/integrations/#{other.public_id}/install?#{back}"]}
+             )
 
       # Connect stays, to connect another account, as a plain button.
       assert has_element?(
@@ -707,6 +748,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   end
 
   describe "Work destinations" do
+    test "with no adapter with targets for the type, shows the line for it", %{conn: conn} do
+      %{user: user, organisation: organisation} = first_person()
+      %{adapter: tracker} = connectable_adapter_fixture()
+
+      {:ok, lv, _html} =
+        conn
+        |> log_in_user(user)
+        |> live(~p"/#{organisation}/set-up?step=destinations&type=software")
+
+      assert words(lv, "#set-up-no-adapter") ==
+               "No work destination for this type is set up on this instance. An instance " <>
+                 "admin sets one up in Instance settings › Adapters."
+
+      refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
+      assert has_element?(lv, "#set-up-skip")
+    end
+
     test "lists the adapters with targets alone, and the line for later", %{conn: conn} do
       %{user: user, organisation: organisation} = first_person()
       %{adapter: forge} = connectable_adapter_fixture()
@@ -833,6 +891,37 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       tick(lv, free)
       assert row(free) == {nil, false}
+    end
+
+    test "a tick on a collection moved to another workspace since the page read it moves nothing",
+         ctx do
+      free = collection_fixture(ctx.scope, workspace_id: nil)
+
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      assert has_element?(lv, "#set-up-tick-#{free.public_id} input")
+
+      # Another admin assigns it to Second: the page still shows its checkbox.
+      {:ok, _moved} = set_collection_workspace(free, ctx.second)
+      assert has_element?(lv, "#set-up-tick-#{free.public_id} input")
+
+      tick(lv, free)
+      assert row(free) == {ctx.second.id, true}
+
+      assert words(lv, "#set-up-tick-#{free.public_id}-elsewhere") ==
+               "In Second (cannot be ticked)"
+    end
+
+    test "a tick on a collection of another organisation changes nothing", ctx do
+      %{scope: theirs} = sign_up_fixture()
+      collection = collection_fixture(theirs, workspace_id: nil)
+
+      {:ok, lv, _html} =
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+
+      render_click(lv, "tick", %{"id" => collection.id})
+      assert row(collection) == {nil, true}
     end
 
     test "an untick in Work sources keeps a destination assigned", ctx do
@@ -1002,6 +1091,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
            ]
   end
 
+  test "a workspace slug of another organisation is no page", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    %{organisation: theirs} = sign_up_fixture()
+    billing = workspace_fixture(theirs, "Billing")
+
+    conn = log_in_user(conn, user)
+
+    assert_raise ApiaryWeb.NotFound, fn ->
+      get(conn, ~p"/#{organisation}/set-up?step=sources_used&workspace=#{billing.slug}")
+    end
+  end
+
   test "a workspace step with no workspace named opens for the workspace in use", %{
     conn: conn
   } do
@@ -1052,6 +1153,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
   defp model_path(organisation), do: ~p"/#{organisation}/set-up?step=model&workspace=main"
 
+  # The form in `html` is sent with POST, so a browser that sends it before the page
+  # connects puts no key in an address, and its key's field has no value.
+  defp assert_posts_without_key(html) do
+    form = LazyHTML.query(html, "#set-up-model-form")
+    assert LazyHTML.attribute(form, "method") == ["post"]
+
+    key = LazyHTML.query(form, ~s{input[type="password"]})
+    assert LazyHTML.attribute(key, "name") == ["model[key]"]
+    assert LazyHTML.attribute(key, "value") == []
+  end
+
+  defp member(organisation) do
+    user = user_fixture()
+
+    %Membership{organisation_id: organisation.id, user_id: user.id}
+    |> Membership.changeset(%{level: :member})
+    |> Repo.insert!()
+
+    user
+  end
+
   test "adds the provider with its key and the organisation's default; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -1096,6 +1218,55 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert {"Model", :current} in steps(lv)
   end
 
+  test "the form is sent with POST, before the page connects and after", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    conn = log_in_user(conn, user)
+
+    html = conn |> get(model_path(organisation)) |> html_response(200)
+    assert_posts_without_key(LazyHTML.from_document(html))
+
+    {:ok, lv, _html} = live(conn, model_path(organisation))
+    assert_posts_without_key(LazyHTML.from_fragment(render(lv)))
+  end
+
+  test "a save refused with a key typed shows the key nowhere and keeps it nowhere", %{
+    conn: conn
+  } do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{provider: "litellm"}) |> render_change()
+
+    html =
+      lv
+      |> form("#set-up-model-form",
+        model: %{provider: "litellm", key: @key, address: "http://litellm.example.com"}
+      )
+      |> render_submit()
+
+    assert html =~ "https://"
+    refute html =~ @key
+    refute kept(lv) =~ @key
+    assert_posts_without_key(LazyHTML.from_fragment(html))
+    assert {:ok, []} = Connections.list_providers(scope)
+  end
+
+  test "save_model and choose_model sent by a person provider.write does not allow change nothing",
+       %{conn: conn} do
+    %{organisation: organisation, scope: scope} = sign_up_fixture()
+    user = member(organisation)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    params = %{"model" => %{"provider" => "anthropic", "key" => @key}}
+    render_click(lv, "choose_model", params)
+    render_click(lv, "save_model", params)
+
+    refute kept(lv) =~ @key
+    refute render(lv) =~ @key
+    assert {:ok, []} = Connections.list_providers(scope)
+    refute WorkspaceSetup.model?(organisation)
+  end
+
   test "a refused key keeps no key, and says why on the field", %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
@@ -1111,11 +1282,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
   test "a member who may not add a key reads who may, and has no form", %{conn: conn} do
     %{organisation: organisation} = sign_up_fixture()
-    user = user_fixture()
-
-    %Membership{organisation_id: organisation.id, user_id: user.id}
-    |> Membership.changeset(%{level: :member})
-    |> Repo.insert!()
+    user = member(organisation)
 
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 

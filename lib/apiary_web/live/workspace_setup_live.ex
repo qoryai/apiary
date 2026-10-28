@@ -6,18 +6,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # frame with the progress indicator (`ApiaryWeb.SetUpComponents.frame/1`).
   #
   # **The type cards.** One card per domain of `Apiary.Lingo.Domain.choices/0` that has a
-  # card's words (`card/1`): Software alone, so General shows none. Each card has the
+  # card's words (`card_words/1`): Software alone, so General shows none. Each card has the
   # type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
   # connect, and Choose, which opens the flow with `?type=<name>`. No indicator shows:
   # the count starts after a card is picked. `/:org/set-up` shows them while the
   # organisation has no workspace in use, to a person `workspace.create` allows there
-  # (`Apiary.Access`), and a person it refuses is told who sets it up
+  # (`Apiary.Access`), and a person whom it does not allow reads who sets it up
   # (`c:Apiary.Edition.first_workspace_waiting_line/1`), with the indicator where the
   # edition lists 2 steps or more (the core lists them none) and the context where the
   # edition has a line (`c:Apiary.Edition.set_up_context/2`), under the edition's title
   # (`c:Apiary.Edition.set_up_title/2`). `/:org/workspaces/new` is a page only for a
   # person `workspace.create` allows; where the organisation has as many workspaces as the
-  # edition allows (`c:Apiary.Edition.limits/0`), it says so in place of the cards.
+  # edition allows (`c:Apiary.Edition.limits/0`), the page shows that line in place of
+  # the cards.
   #
   # **The flow.** `?step=<id>` opens a step of the flow (`Apiary.WorkspaceSetup.flow/0`);
   # without one, or with one the person does not see, the first step that is not done.
@@ -38,9 +39,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     connected, with Connect, the Install of Organisation settings › Integrations
   #     (`ApiaryWeb.IntegrationComponents.install_form/1`), whose return leads back to the
   #     step (`ApiaryWeb.ConnectSession.back?/1`). In the context column, for each adapter
-  #     whose Connect can be pressed and whose guide gives steps for connecting it
+  #     whose Connect can be pressed and whose guide has steps for connecting it
   #     (`Apiary.Adapters.guide/2`), those steps. Skip while the step is not done, else
-  #     Continue. A person `adapter.connect` refuses sees the adapters with no Connect, and
+  #     Continue. A person whom `adapter.connect` does not allow sees the adapters with no
+  #     Connect, and
   #     who may connect (`ApiaryWeb.Access.who_may/3`). The page listens to the
   #     organisation's collections and connections (`Apiary.Adapters.Collections.subscribe/1`)
   #     and reads the step again on each change;
@@ -53,10 +55,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     provider and runtime (`Apiary.ModelChoices.suggestions/2`). Continue saves the
   #     organisation's default (level 6, `Apiary.ModelChoices.put_choice/4`). The key is
   #     never kept in an assign: its field is left out of the page's patches
-  #     (`phx-update="ignore"`). A person `provider.write` refuses sees who may;
+  #     (`phx-update="ignore"`). A person whom `provider.write` does not allow sees who may;
   #   * Name, for the workspace: the Name field, "Main" for the organisation's first
-  #     workspace, and Create workspace (`Apiary.Organisations.create_workspace/2`), with
-  #     the type picked; once the workspace exists, its name, read only, with Continue;
+  #     workspace, and Create workspace, with the type picked: on `/:org/set-up`, the
+  #     organisation's first workspace (`Apiary.Organisations.create_first_workspace/2`,
+  #     which returns `{:error, :exists}` for a second, under the organisation's lock), on
+  #     `/:org/workspaces/new`
+  #     any other (`Apiary.Organisations.create_workspace/2`); once the workspace exists,
+  #     its name, read only, with Continue;
   #   * Work sources used and Destinations used, with the `factory` feature: tick lists of
   #     the organisation's collections (`Apiary.WorkspaceSetup.collections/3`). Ticking a
   #     work source assigns the collection and turns its Backlog on; ticking a destination
@@ -65,8 +71,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     destination; unticking a destination turns its Backlog off and unassigns it
   #     (`Apiary.Adapters.Collections.assign_collections/4`,
   #     `Apiary.Adapters.Collections.set_collection_backlog/4`). A collection in another
-  #     workspace shows that workspace's name and has no checkbox. A person
-  #     `collection.assign` refuses sees the boxes disabled, and who may;
+  #     workspace shows that workspace's name and has no checkbox. A tick reads the list
+  #     again first, and changes nothing for a collection that is now in another
+  #     workspace. A person whom `collection.assign` does not allow sees the boxes
+  #     disabled, and who may;
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
@@ -74,7 +82,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     running, passed, or one of four failures, read again as the workspace's queue and
   #     its runs change (`Apiary.Dispatches.subscribe/1`, `Apiary.Runs.subscribe/1`) and
   #     once a wait for a machine passes. Once it passed, Go to the workspace. A person
-  #     `work_item.take_in` refuses sees who may.
+  #     whom `work_item.take_in` does not allow sees who may.
   #
   # Every step has Back to the step before it in the indicator, where that step has a
   # page: Work sources has none, so Back never leads to the cards or the instance's steps.
@@ -176,7 +184,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # A new workspace: the cards, or the flow of the type `?type=` names.
+  # A new workspace: the cards, or the flow of the type `?type=` is set to.
   defp open_new(socket, params, page) do
     organisation = socket.assigns.current_scope.organisation
 
@@ -242,7 +250,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp card_words(_domain), do: nil
 
-  # The domain whose card `name` names, nil for none.
+  # The domain whose name is `name` and that has a card, nil for none.
   defp card_domain(name) when is_binary(name) do
     Enum.find(Domain.choices(), &(&1.name() == name and card_words(&1) != nil))
   end
@@ -257,7 +265,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   ## The flow
 
-  # The step `?step=` names, among the steps the person sees, else the first that is not
+  # The step `?step=` is set to, among the steps the person sees, else the first that is not
   # done. A step of the workspace before it exists opens Name.
   defp open_flow(socket, flow, step_param) do
     scope = socket.assigns.current_scope
@@ -476,7 +484,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     socket = listen(socket)
     test = WorkspaceSetup.test_run(workspace, DateTime.utc_now())
 
-    # The line that says to wait goes once no test run is in progress.
+    # The line to wait goes away once no test run is in progress.
     notice =
       if match?(%{dispatch_run: %{state: state}} when state != :ended, test),
         do: socket.assigns.test_notice
@@ -518,7 +526,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp listen(socket), do: socket
 
   # While the test run waits for a machine, the step reads it again once the wait passes
-  # `Apiary.WorkspaceSetup.machine_wait_seconds/0`, and says that no machine took it.
+  # `Apiary.WorkspaceSetup.machine_wait_seconds/0`, and shows that no machine took it.
   defp wait_for_machine(%{assigns: %{timer: timer}} = socket) do
     if timer, do: Process.cancel_timer(timer)
 
@@ -698,7 +706,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     %{current_scope: scope, flow: flow} = socket.assigns
     name = if is_binary(params["name"]), do: params["name"], else: ""
 
-    case Organisations.create_workspace(scope, %{"name" => name, "domain" => flow.domain.name()}) do
+    attrs = %{"name" => name, "domain" => flow.domain.name()}
+
+    # On `/:org/set-up` the workspace is the organisation's first: of two owners at once,
+    # one creates it, under the organisation's lock.
+    created =
+      case flow.page do
+        :set_up -> Organisations.create_first_workspace(scope, attrs)
+        :new -> Organisations.create_workspace(scope, attrs)
+      end
+
+    case created do
       {:ok, workspace} ->
         flow = SetUpComponents.flow(flow.organisation, flow.domain, workspace, :set_up)
         next = next_id(scope, flow, :name)
@@ -724,6 +742,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       {:error, :limit} ->
         {:noreply, assign(socket, :refusal, :limit)}
 
+      # Someone else created the first workspace a moment before: the page as it opens now.
+      {:error, :exists} ->
+        {:noreply, push_navigate(socket, to: ~p"/#{flow.organisation}/set-up")}
+
       {:error, _reason} ->
         {:noreply, push_navigate(socket, to: page_path(flow))}
     end
@@ -731,10 +753,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   def handle_event("tick", %{"id" => id}, %{assigns: %{step: step, may: true}} = socket)
       when step in [:sources_used, :destinations_used] do
-    workspace_id = socket.assigns.flow.workspace.id
+    %{current_scope: scope, flow: flow} = socket.assigns
+    workspace_id = flow.workspace.id
+    list = if step == :sources_used, do: :sources, else: :destinations
 
-    # A collection in another workspace has no checkbox, and is not moved from here.
-    case Enum.find_value(socket.assigns.groups, fn {adapter, rows} ->
+    # The list as it stands now, not as the page last showed it: a collection in another
+    # workspace has no checkbox, and is not moved from here.
+    case scope
+         |> WorkspaceSetup.collections(flow.domain, list)
+         |> Enum.find_value(fn {adapter, rows} ->
            Enum.find_value(rows, &(&1.collection.id == id && {adapter, &1}))
          end) do
       {adapter, %{workspace: workspace} = row} ->
@@ -1024,7 +1051,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           Enum.join(
             [
               if(assigns.flow.page == :new, do: "new-workspace", else: "set-up"),
-              step | if(assigns.flow.workspace, do: [], else: [assigns.flow.domain.name()])
+              step
+              | if(assigns.flow.workspace,
+                  do: ["workspace=" <> assigns.flow.workspace.slug],
+                  else: [assigns.flow.domain.name()]
+                )
             ],
             ":"
           )
@@ -1093,6 +1124,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </p>
 
       <p
+        :if={@adapters == [] and @step == :destinations}
+        id="set-up-no-adapter"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {gettext(
+          "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+        )}
+      </p>
+
+      <p
         :if={!@may}
         id="set-up-who-may"
         class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
@@ -1151,6 +1192,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         :if={@may}
         for={@form}
         id="set-up-model-form"
+        method="post"
         phx-change="choose_model"
         phx-submit="save_model"
         class="grid gap-4"
@@ -1581,7 +1623,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp tickets_in?(%{collection: c}, adapter, workspace),
     do: c.workspace_id == workspace.id and c.backlog and c.items and Adapters.items?(adapter)
 
-  # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide gives
+  # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide has
   # steps for connecting it, with them.
   defp guides(adapters, ready) do
     for adapter <- adapters,

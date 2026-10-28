@@ -2147,8 +2147,10 @@ defmodule ApiaryWeb.OverviewComponents do
   # steps on another page folded under Check the nodes, open while it is the first step
   # not done.
   #
-  # - **Work source** links to the set-up's Work source step while it is not done
-  #   (Connect), and to the set-up once it is (Change).
+  # - **Work source** links to `/:org/set-up?step=source` while it is not done (Connect),
+  #   and to `/:org/set-up` once it is (Change). No step of the set-up flow has the id
+  #   `source`, so both open the first step of the flow not done for the workspace in use,
+  #   or the workspace's first page once every step is done.
   # - **Machines for runs** links to the nodes that serve the workspace: the instance's on
   #   Instance settings › Nodes, or the workspace's on its Nodes page.
   # - **Model key** links to the organisation's model providers.
@@ -2246,6 +2248,8 @@ defmodule ApiaryWeb.OverviewComponents do
                 {gettext("Change")}
               </.link>
             <% true -> %>
+              <%!-- No step of the set-up flow has the id `source`: the link opens the
+                first step not done of the workspace in use. --%>
               <.button
                 id={"#{@id}-source-act"}
                 variant={if @current == :source, do: "primary", else: "default"}

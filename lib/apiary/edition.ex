@@ -203,9 +203,9 @@ defmodule Apiary.Edition do
   @callback set_up_context(Scope.t() | nil, step_id :: term) :: String.t() | nil
 
   @doc """
-  The title of the workspace set-up page (`/:org/set-up`) on `step`, its Workspace step
-  as `c:set_up_steps/2` answered it, or nil where the list has none, for `scope`.
-  Translated when it is asked. The core answers "Set up your workspace".
+  The title of the workspace set-up page (`/:org/set-up`) for `scope`, while the
+  organisation has no workspace in use and the scope's person may not create it; `step`
+  is nil there. Translated when it is called. The core returns "Set up your workspace".
   """
   @callback set_up_title(Scope.t(), set_up_step | nil) :: String.t()
 
