@@ -128,14 +128,16 @@ defmodule Apiary.Connections.WorkspaceKeysTest do
       assert {:ok, _same} = Connections.put_workspace(scope, provider, scope.workspace.id)
     end
 
-    test "a provider of the organisation still widens", %{scope: scope} do
+    test "a provider of the organisation keeps the reach of its add too", %{scope: scope} do
       provider = provider!(scope, :organisation, %{applies_to: "selected"})
       {billing, _billing_scope} = other_workspace(scope)
 
-      assert {:ok, _provider} = Connections.put_workspace(scope, provider, billing.id)
+      assert Connections.put_workspace(scope, provider, billing.id) == {:error, :reach_fixed}
 
-      assert {:ok, %Connection{applies_to: "all"}} =
-               Connections.update_provider(scope, provider, %{applies_to: "all"})
+      assert Connections.update_provider(scope, provider, %{applies_to: "all"}) ==
+               {:error, :reach_fixed}
+
+      assert Repo.get!(Connection, provider.id).applies_to == "selected"
     end
   end
 

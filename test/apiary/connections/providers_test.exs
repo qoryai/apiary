@@ -226,16 +226,20 @@ defmodule Apiary.Connections.ProvidersTest do
   end
 
   describe "changing a provider" do
-    test "renames it, and changes where it applies", %{scope: scope} do
+    test "renames it, and keeps where it applies as its add set it", %{scope: scope} do
       provider = openrouter!(scope)
 
       assert {:ok, %Connection{name: "Team models", intact: true}} =
                Connections.update_provider(scope, provider, %{name: "Team models"})
 
-      assert {:ok, %Connection{applies_to: "selected", workspaces: []}} =
-               Connections.update_connection(scope, provider, %{applies_to: "selected"})
+      assert Connections.update_connection(scope, provider, %{applies_to: "selected"}) ==
+               {:error, :reach_fixed}
 
-      assert changes(provider) == ["provider_created", "updated", "updated"]
+      assert Connections.update_provider(scope, provider, %{applies_to: "selected"}) ==
+               {:error, :reach_fixed}
+
+      assert Repo.get!(Connection, provider.id).applies_to == "all"
+      assert changes(provider) == ["provider_created", "updated"]
     end
 
     test "enters a change of address with its host before and after", %{scope: scope} do

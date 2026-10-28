@@ -126,7 +126,7 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   end
 
   describe "a connection that applies to chosen workspaces" do
-    test "adds its hosts to those workspaces only, as they are added and removed", %{
+    test "adds its hosts to those workspaces only, as its add chose them", %{
       scope: scope,
       user: user
     } do
@@ -144,17 +144,16 @@ defmodule Apiary.Policy.IntegrationHostsTest do
       assert served(at_site, nil)["allow_first"] == ["api.example.com"]
       refute Map.has_key?(served(scope, nil), "allow_first")
 
-      {:ok, connection} = Connections.put_workspace(scope, connection, scope.workspace.id)
-      assert served(scope, nil)["allow_first"] == ["api.example.com"]
+      # The reach is the one its add set: neither a workspace added nor every workspace.
+      assert Connections.put_workspace(scope, connection, scope.workspace.id) ==
+               {:error, :reach_fixed}
 
-      {:ok, connection} = Connections.remove_workspace(scope, connection, site.id)
-      refute Map.has_key?(served(at_site, nil), "allow_first")
-      assert served(scope, nil)["allow_first"] == ["api.example.com"]
+      assert Connections.update_connection(scope, connection, %{applies_to: "all"}) ==
+               {:error, :reach_fixed}
 
-      # Switching to every workspace reaches the site again; deleting it reaches none.
-      {:ok, connection} = Connections.update_connection(scope, connection, %{applies_to: "all"})
-      assert served(at_site, nil)["allow_first"] == ["api.example.com"]
+      refute Map.has_key?(served(scope, nil), "allow_first")
 
+      # Deleting it reaches none.
       {:ok, _deleted} = Connections.delete_connection(scope, connection)
 
       # With no integration's host, a document is the bytes it was before the integration.

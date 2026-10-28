@@ -62,15 +62,20 @@ defmodule Apiary.Connections do
 
   A provider whose keys are a workspace's secret reaches that workspace alone: a change of
   its `applies_to` (`update_provider/3`) and another workspace added to its list
-  (`put_workspace/3`) are refused. The workspace's purge deletes it, with the model
-  choices that name it (`purge_workspace_providers/2`).
+  (`put_workspace/3`) are refused on `applies_to`, with the sentence that says to add it
+  again. The workspace's purge deletes it, with the model choices that name it
+  (`purge_workspace_providers/2`).
 
   ## Where a connection applies
 
   `applies_to` is `all`, every workspace of the organisation, those made later included,
   or `selected`, the workspaces it lists (`Apiary.Connections.ConnectionWorkspace`), each
   of the organisation; a workspace's purge takes it from every list, so a `selected`
-  connection may list none. A save that would make two connections collide in a
+  connection may list none. The reach is set when the connection is added, and a form
+  that adds one sets it by `reach_at_add/3`. It is never changed after:
+  `update_connection/3` and `update_provider/3` refuse a change of `applies_to`, and
+  `put_workspace/3` and `remove_workspace/3` a change of the list, `{:error, :reach_fixed}`.
+  Only the workspace's purge changes a list. A save that would make two connections collide in a
   workspace where both apply, the same runtime, the same integration, or a host in
   common, is refused, `{:error, {:overlap, public_ids}}` (`Apiary.Connections.Overlap`).
 
@@ -149,7 +154,8 @@ defmodule Apiary.Connections do
   Why a change is refused: the reasons of `Apiary.Access`, a changeset, or a code with
   what it is about: `{:overlap, public_ids}`, `{:in_use, public_ids}`, `:runtime_unknown`,
   `:service_unknown`, `:release_not_ready`, `:integration_source_refused`,
-  `:workspace_not_found`, `{:integration_source_mismatch, why}`, and the description's
+  `:workspace_not_found`, `:reach_fixed` for a change of the workspaces a connection
+  reaches after its add, `{:integration_source_mismatch, why}`, and the description's
   `{:integration_settings_not_allowed, names}`, `{:integration_settings_invalid, details}`,
   `{:integration_settings_too_large, max}` and `{:integration_argument_not_allowed, roles}`;
   for a definition, `{:definition_invalid, problems}`; for a provider,
@@ -712,12 +718,36 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  update_connection/3 changes a connection (`write_action/1`): `applies_to`; a
-  service's `name`; an integration's `settings` and `argument`, checked against its
-  description; a provider as `update_provider/3` does. Switching to `selected` keeps the
-  workspaces it lists.
-  `{:ok, connection}`, or `{:error, refusal}`. A change that changes nothing leaves no
-  entry.
+  reach_at_add/3 is the reach that a form gives what it adds, as the attributes
+  `applies_to` and `workspace_ids` that `create_runtime/2`, `create_integration/3`,
+  `create_service/2` and `create_provider/3` take: every workspace of the organisation
+  (`all`) where the edition shows the setting `Available to every workspace in
+  %{organisation}` (`c:Apiary.Edition.scope_setting?/1`) and `everywhere` is true, the
+  setting on; else `workspace` alone (`selected`), the workspace the form is in. With no
+  workspace and the setting off or not shown, `all`.
+  """
+  @spec reach_at_add(Scope.t(), %Workspace{} | nil, boolean) :: %{
+          String.t() => String.t() | [Ecto.UUID.t()]
+        }
+  def reach_at_add(%Scope{} = scope, workspace, everywhere) when is_boolean(everywhere) do
+    cond do
+      everywhere and Edition.scope_setting?(scope) ->
+        %{"applies_to" => "all", "workspace_ids" => []}
+
+      match?(%Workspace{}, workspace) ->
+        %{"applies_to" => "selected", "workspace_ids" => [workspace.id]}
+
+      true ->
+        %{"applies_to" => "all", "workspace_ids" => []}
+    end
+  end
+
+  @doc """
+  update_connection/3 changes a connection (`write_action/1`): a service's `name`; an
+  integration's `settings` and `argument`, checked against its description; a provider
+  as `update_provider/3` does. `{:ok, connection}`, or `{:error, refusal}`:
+  `:reach_fixed` for a change of `applies_to`, which is set at the add. A change that
+  changes nothing leaves no entry.
   """
   @spec update_connection(Scope.t(), Connection.t(), map) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -734,7 +764,8 @@ defmodule Apiary.Connections do
         |> change(updated_by_id: scope.user && scope.user.id)
         |> attrs_changeset(current, attrs)
 
-      with :ok <- valid(changeset),
+      with :ok <- reach_kept(changeset, organisation, current),
+           :ok <- valid(changeset),
            {:ok, changeset} <- settings_change(changeset, current, attrs),
            :ok <- argument_change(changeset, current),
            :ok <-
@@ -823,76 +854,45 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  put_workspace/3 makes a connection apply to the workspace `workspace_id` of the scope's
-  organisation (`write_action/1`), not marked for deletion: `{:ok, connection}`, or
-  `{:error, refusal}`, `:workspace_not_found`; a changeset whose error is on `applies_to`
-  for a model provider whose keys are a workspace's secret, as `update_provider/3`
-  refuses it. A workspace it lists already is kept, with no entry.
+  put_workspace/3 is the answer to adding the workspace `workspace_id` of the scope's
+  organisation, not marked for deletion, to a connection's list (`write_action/1`): the
+  list is set at the add, so `{:ok, connection}` for a workspace it lists already, with
+  no entry, and else `{:error, refusal}`: `:workspace_not_found`; a changeset whose error
+  is on `applies_to` for a model provider whose keys are a workspace's secret, as
+  `update_provider/3` refuses it; `:reach_fixed` for any other.
   """
   @spec put_workspace(Scope.t(), Connection.t(), term) ::
           {:ok, Connection.t()} | {:error, refusal}
   def put_workspace(%Scope{} = scope, %Connection{} = connection, workspace_id) do
-    write_connection(scope, connection, fn scope, organisation, current ->
+    write_connection(scope, connection, fn _scope, organisation, current ->
       listed = workspace_ids_of(current)
 
       with {:ok, [workspace_id]} <- workspace_ids(organisation.id, [workspace_id]) do
-        if workspace_id in listed do
-          {:ok, current}
-        else
-          with :ok <- not_widened(change(current), organisation, current),
-               do: add_workspace(scope, organisation, current, listed, workspace_id)
-        end
+        if workspace_id in listed,
+          do: {:ok, current},
+          else: reach_refused(change(current), organisation, current)
       end
     end)
     |> reload()
   end
 
-  defp add_workspace(scope, organisation, current, listed, workspace_id) do
-    with :ok <- no_overlap(organisation.id, current, [workspace_id | listed]),
-         :ok <- insert_workspaces(current, [workspace_id]),
-         {:ok, _entry} <-
-           Audit.record(Repo, scope, write_action(current), current, %{
-             details: %{
-               change: "workspace_added",
-               connection_id: current.public_id,
-               name: current.name,
-               workspace_id: workspace_id
-             }
-           }),
-         do: {:ok, current}
-  end
-
   @doc """
-  remove_workspace/3 takes the workspace `workspace_id` from a connection's list
-  (`write_action/1`): `{:ok, connection}`, or `{:error, refusal}`,
-  `:workspace_not_found` for one it does not list.
+  remove_workspace/3 is the answer to taking the workspace `workspace_id` from a
+  connection's list (`write_action/1`): the list is set at the add, and only the
+  workspace's purge takes a workspace from it, so `{:error, refusal}`: `:reach_fixed` for
+  a workspace it lists, `:workspace_not_found` for one it does not list. It changes
+  nothing.
   """
   @spec remove_workspace(Scope.t(), Connection.t(), term) ::
           {:ok, Connection.t()} | {:error, refusal}
   def remove_workspace(%Scope{} = scope, %Connection{} = connection, workspace_id) do
-    write_connection(scope, connection, fn scope, _organisation, current ->
-      with {:ok, uuid} <- cast_uuid(workspace_id),
-           {1, _} <-
-             Repo.delete_all(
-               from w in ConnectionWorkspace,
-                 where: w.connection_id == ^current.id and w.workspace_id == ^uuid
-             ),
-           {:ok, _entry} <-
-             Audit.record(Repo, scope, write_action(current), current, %{
-               details: %{
-                 change: "workspace_removed",
-                 connection_id: current.public_id,
-                 name: current.name,
-                 workspace_id: uuid
-               }
-             }) do
-        {:ok, current}
-      else
-        {0, _} -> {:error, :workspace_not_found}
-        {:error, reason} -> {:error, reason}
+    write_connection(scope, connection, fn _scope, _organisation, current ->
+      with {:ok, uuid} <- cast_uuid(workspace_id) do
+        if uuid in workspace_ids_of(current),
+          do: {:error, :reach_fixed},
+          else: {:error, :workspace_not_found}
       end
     end)
-    |> reload()
   end
 
   @doc """
@@ -1501,15 +1501,15 @@ defmodule Apiary.Connections do
   defp default_address(:error), do: nil
 
   @doc """
-  update_provider/3 changes a model provider (`provider.write`): its `name`,
-  `applies_to` and `settings`, checked as `create_provider/3` checks them. A change of its
-  settings alone that changes an address setting is entered as `provider_address_changed`,
-  with the host before and after. `{:ok, provider}`, or `{:error, refusal}`:
-  `:provider_changed` or `:provider_unknown` for a provider whose description the
-  catalogue no longer has as it was added (`provider/1`); a changeset whose error is on
-  `applies_to` for any change of `applies_to` of a provider whose keys are a workspace's
-  secret (`create_provider/3` with `:workspace`), which reaches that workspace alone. A
-  change that changes nothing leaves no entry.
+  update_provider/3 changes a model provider (`provider.write`): its `name` and
+  `settings`, checked as `create_provider/3` checks them. A change of its settings alone
+  that changes an address setting is entered as `provider_address_changed`, with the host
+  before and after. `{:ok, provider}`, or `{:error, refusal}`: `:provider_changed` or
+  `:provider_unknown` for a provider whose description the catalogue no longer has as it
+  was added (`provider/1`); for any change of `applies_to`, which is set at the add, a
+  changeset whose error is on `applies_to` for a provider whose keys are a workspace's
+  secret (`create_provider/3` with `:workspace`), which reaches that workspace alone, and
+  `:reach_fixed` for any other. A change that changes nothing leaves no entry.
   """
   @spec update_provider(Scope.t(), Connection.t(), map) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -1530,14 +1530,19 @@ defmodule Apiary.Connections do
     end)
   end
 
-  # A provider whose keys are a workspace's secret reaches that workspace alone, so no
-  # other workspace's run reaches the key: a change of its `applies_to` is refused on
-  # `applies_to`. Any other change goes on.
+  # The reach is set at the add: a change of `applies_to` is refused. A provider whose keys
+  # are a workspace's secret reaches that workspace alone, so no other workspace's run
+  # reaches the key: its refusal is on `applies_to`, with the sentence that says to add it
+  # again. Any other change goes on.
   defp reach_kept(changeset, organisation, current) do
     case fetch_change(changeset, :applies_to) do
-      {:ok, _applies_to} -> not_widened(changeset, organisation, current)
+      {:ok, _applies_to} -> reach_refused(changeset, organisation, current)
       :error -> :ok
     end
+  end
+
+  defp reach_refused(changeset, organisation, current) do
+    with :ok <- not_widened(changeset, organisation, current), do: {:error, :reach_fixed}
   end
 
   defp not_widened(changeset, %Organisation{} = organisation, %Connection{} = current) do

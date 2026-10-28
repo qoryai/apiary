@@ -62,15 +62,13 @@ defmodule Apiary.Connections.WriteActionsTest do
              :"provider.write"
   end
 
-  test "each write leaves an entry of its own action", %{scope: scope, site: site} do
+  test "each write leaves an entry of its own action", %{scope: scope} do
     runtime = runtime!(scope)
-    {:ok, runtime} = Connections.put_workspace(scope, runtime, site.id)
-    {:ok, runtime} = Connections.remove_workspace(scope, runtime, site.id)
     {:ok, _deleted} = Connections.delete_connection(scope, runtime)
-    assert actions(runtime) == List.duplicate("runtime.write", 4)
+    assert actions(runtime) == List.duplicate("runtime.write", 2)
 
     service = service!(scope)
-    {:ok, service} = Connections.put_workspace(scope, service, site.id)
+    {:ok, service} = Connections.update_connection(scope, service, %{name: "Status"})
     {:ok, _service} = Connections.update_connection(scope, service, %{name: "Errors"})
     assert actions(service) == List.duplicate("connection.write", 3)
 
@@ -97,7 +95,7 @@ defmodule Apiary.Connections.WriteActionsTest do
       stub(EditionStubs.NoConnectionWrite)
 
       assert {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
-      assert {:ok, _runtime} = Connections.put_workspace(scope, runtime, scope.workspace.id)
+      assert {:ok, _runtime} = Connections.update_connection(scope, runtime, %{name: "Agents"})
       assert {:ok, _provider} = Connections.update_provider(scope, provider, %{name: "Models"})
 
       assert {:ok, _choice} =
@@ -138,7 +136,7 @@ defmodule Apiary.Connections.WriteActionsTest do
 
       assert Connections.delete_connection(scope, runtime) == {:error, :forbidden}
 
-      assert {:ok, _service} = Connections.put_workspace(scope, service, site.id)
+      assert {:ok, _service} = Connections.update_connection(scope, service, %{name: "Status"})
       assert {:ok, _provider} = Connections.update_provider(scope, provider, %{name: "Models"})
     end
   end
@@ -167,7 +165,7 @@ defmodule Apiary.Connections.WriteActionsTest do
       assert ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id}) ==
                {:error, :forbidden}
 
-      assert {:ok, _runtime} = Connections.put_workspace(scope, runtime, scope.workspace.id)
+      assert {:ok, _runtime} = Connections.update_connection(scope, runtime, %{name: "Agents"})
     end
   end
 
