@@ -1184,11 +1184,17 @@ hides its parts on phones in that block.
 
 The set-up is the pages a person goes through before the console: the set-up link
 (`/setup/<code>`), the sign-up, an invitation, Connect Qory Apiary
-(`/instance/set-up?step=<adapter id>|mail`) and Set up your workspace
-(`/<org>/set-up?step=type|source`). Each step has its URL, so a reload or a link opens
-that step. The signed-in pages show the top bar and no sidebar; the pages read signed
-out use `Layouts.set_up/1`, a header with the product's mark and the theme menu.
+(`/instance/set-up?step=<adapter id>|mail`) and the workspace set-up (`/<org>/set-up`,
+and `/<org>/workspaces/new` for a further workspace, each `?step=<step>`, with
+`&type=<type>` before the workspace exists and `&workspace=<slug>` after). Each step has
+its URL, so a reload or a link opens that step. The signed-in pages show the top bar and
+no sidebar; the pages read signed out use `Layouts.set_up/1`, a header with the
+product's mark and the theme menu.
 
+- **The type cards** come first in the workspace set-up, under "What will this workspace
+  do?": one card per type of workspace, "Software factory" the one, each with what you do
+  there, what you connect, and **Choose**, which opens the flow. They show no indicator:
+  the count starts after a card is picked.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
   form, and an `<aside>` headed **About this step** with what the step does, styled as a
   settings page's column **About this step** (`.q-context`): the muted colour, no box.
@@ -1201,16 +1207,19 @@ out use `Layouts.set_up/1`, a header with the product's mark and the theme menu.
   them.
 - **The steps indicator** (`SetUpComponents.steps/1`) lists the steps that
   `SetUpComponents.steps_for/3` builds for the person and the instance, after the
-  edition's answer (`c:Apiary.Edition.set_up_steps/2`). Above it: "Step 4 of 5" and a
-  progress bar, never a count of the steps left. The steps stand under their groups,
-  Connect Qory Apiary and Set up your workspace, each with its mark: a filled check when
-  done, a ring in the primary colour and `aria-current="step"` when current, a dash and
-  **Skipped** under a step passed over. Each step done or skipped is a link to that step
-  where it has a page, before the current step or after it; Your account is not, and on
-  the pages read signed out, only Invitation is. An edition's note about a step goes
-  under its name. Under the last step, "Next: on the Overview, Machines for runs, Model
-  key and Test run" where the factory is on. Below
-  1280 px the indicator is a bar, "Step 4 of 5: Workspace", with **All steps**, a
+  edition's answer (`c:Apiary.Edition.set_up_steps/2`). Above it: the flow's title, "Set
+  up Main · Software factory" ("Set up a new Software factory" before the workspace
+  exists), "Step 3 of 9" and a progress bar, never a count of the steps left. The steps
+  stand under their groups: Connect Qory Apiary for the instance's steps; "For Acme" for
+  the steps the organisation does once (Work sources, Work destinations, Model); and "For
+  Main" ("For the new workspace" before it exists) for the steps each workspace does
+  (Name, Work sources used, Destinations used, Harness, Machines, Test run). Each step has
+  its mark: a filled check when done, a ring in the primary colour and
+  `aria-current="step"` when current, a dash and **Skipped** under a step passed over.
+  Each step done or skipped is a link to that step where it has a page, before the
+  current step or after it; Your account is not, and on the pages read signed out, only
+  Invitation is. An edition's note about a step goes under its name. Below 1280 px the
+  indicator is a bar, "Step 3 of 9: Model", with **All steps**, a
   disclosure that opens the list; Escape closes it. A page with one step shows no
   indicator.
 - **Back** (`SetUpComponents.back/1`) is the first button at the form's foot, left of the
@@ -1218,8 +1227,12 @@ out use `Layouts.set_up/1`, a header with the product's mark and the theme menu.
   step ("Back to Mail"). A step with no page before it, such as the one after Your
   account, has no Back. It is the one Back at a form's foot in the console: a step has
   no Cancel, since there is nowhere to go back to but the step before. A step opened
-  again shows what was saved there and can be changed. The step Workspace, opened again,
-  shows the workspace and its type, read only, with **Continue**: the type can't change.
+  again shows what was saved there and can be changed. The step Name, opened again,
+  shows the workspace's name and its type, read only, with **Continue**: the type can't
+  change.
+- **A workspace in set-up** opens at its next step: with the `factory` feature, until its
+  test run passes, the overview and every link to the workspace lead to its first step
+  under "For Main" that is not done (`SetUpComponents.set_up_path/1`).
 
 ## Components
 

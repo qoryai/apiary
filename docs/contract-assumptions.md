@@ -435,11 +435,17 @@ run's places: its workspace, and its target when it has one
 workflow, so its documents have none of the four members. A run with a workflow waits
 until a job has walked its harness (`Apiary.Harnesses.Walk`); a claim takes no run whose
 walk has not resolved, and a walk that fails ends the run before it starts, with the end
-cause `harness_unresolved` and the failure's code. The walk reads the target's harness
-file at the target's head, in a workspace whose domain has harness files and for a target
-that a live collection of the workspace has; the version that read returned is the run's
-`target_version`. A file whose harness section has `extends` applies, and the documents
-have no `harness`: the machine composes the file at `target_version`. Otherwise the stored
+cause `harness_unresolved` and the failure's code. The walk reads the workspace's
+harness choice (`Apiary.Stacks.chosen_for/3`). Under the Qory harness or a harness
+repository, the choice's document applies, with its pinned `ref`, and is the documents'
+`harness`; the target's harness file is not read, and the run has no `target_version`.
+With no choice, the Qory harness applies: the harness of the workspace type's definition
+(`Apiary.Lingo.Domain.Definition`) at its pinned commit. Under the harness in each
+repository, the walk reads the target's harness file at the target's head, in a
+workspace whose domain has harness files and for a target that a live collection of the
+workspace has; the version that read returned is the run's `target_version`. A file
+whose harness section has `extends` applies, and the documents have no `harness`: the
+machine composes the file at `target_version`. Otherwise the stored
 stacks' document applies and is the documents' `harness`, as `{"harness": <section>}`. An
 organisation's harness document can be stored at five levels, the most specific first:
 the target and the workflow, the target, the workspace and the workflow, the workspace,
@@ -453,9 +459,10 @@ operator (`Apiary.Edition.operated?/1`, which the core edition, `Apiary.Edition.
 answers `false`), or when the stacks' document applies and its owner is not the run's
 organisation. A document the instance's organisation owns is hidden from the runs of
 every other organisation, whether the instance has one organisation or several, and an
-unknown owner is never the run's organisation. Only tests and the demo
-(`mix apiary.demo.console`, which stores one for the workspace Main) write a stored
-stack: no page or endpoint sets one.
+unknown owner is never the run's organisation. Workspace settings › Workflow and the
+set-up's Harness step write a stored stack at the workspace's level, and so do tests and
+the demo (`mix apiary.demo.console`, which stores one for the workspace Main); no
+endpoint sets one.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
