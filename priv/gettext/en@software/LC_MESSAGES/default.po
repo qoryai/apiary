@@ -17812,12 +17812,12 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Which harness do %{workspace}'s runs use?"
+msgid "Which harness do runs in %{workspace} use?"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Which machines run %{workspace}'s runs?"
+msgid "Which machines run the runs in %{workspace}?"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -17828,8 +17828,8 @@ msgstr ""
 #: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Which targets may %{workspace}'s runs change?"
-msgstr "Which repositories may %{workspace}'s runs change?"
+msgid "Which targets may runs in %{workspace} change?"
+msgstr "Which repositories may runs in %{workspace} change?"
 
 #: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex

@@ -377,15 +377,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp heading(:destinations_used, flow),
     do:
-      gettext("Which targets may %{workspace}'s runs change?",
+      gettext("Which targets may runs in %{workspace} change?",
         workspace: flow.workspace.name
       )
 
   defp heading(:harness, flow),
-    do: gettext("Which harness do %{workspace}'s runs use?", workspace: flow.workspace.name)
+    do: gettext("Which harness do runs in %{workspace} use?", workspace: flow.workspace.name)
 
   defp heading(:machines, flow),
-    do: gettext("Which machines run %{workspace}'s runs?", workspace: flow.workspace.name)
+    do: gettext("Which machines run the runs in %{workspace}?", workspace: flow.workspace.name)
 
   defp heading(:test, _flow), do: gettext("Run a test")
 

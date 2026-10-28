@@ -867,7 +867,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} =
         live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
 
-      assert has_element?(lv, "h1", "Which repositories may Main's runs change?")
+      assert has_element?(lv, "h1", "Which repositories may runs in Main change?")
 
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Destinations."
@@ -1048,7 +1048,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       workspace = ctx.scope.workspace
 
-      assert has_element?(lv, "h1", "Which harness do #{workspace.name}'s runs use?")
+      assert has_element?(lv, "h1", "Which harness do runs in #{workspace.name} use?")
 
       assert [
                {"Destinations used", _state},
@@ -1828,7 +1828,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     _pool = ready_instance!()
     lv = open(ctx)
 
-    assert has_element?(lv, "h1", "Which machines run #{ctx.scope.workspace.name}'s runs?")
+    assert has_element?(lv, "h1", "Which machines run the runs in #{ctx.scope.workspace.name}?")
 
     assert [{"Harness", _state}, {"Machines", :current}, {"Test run", :to_come}] =
              lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
