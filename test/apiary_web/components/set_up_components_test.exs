@@ -50,6 +50,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
     {:sources_used, :to_come},
     {:destinations_used, :to_come},
     {:harness, :to_come},
+    {:machines, :to_come},
     {:test, :to_come}
   ]
 
@@ -74,11 +75,11 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
       assert Enum.map(steps, & &1.group) ==
                [nil, :connect, :connect] ++
-                 List.duplicate(:organisation, 3) ++ List.duplicate(:workspace, 5)
+                 List.duplicate(:organisation, 3) ++ List.duplicate(:workspace, 6)
 
       # Your account starts the instance's progress, which the person starts in.
       assert Enum.map(steps, & &1.progress) ==
-               [:instance, :instance, :instance] ++ List.duplicate(:organisation, 8)
+               [:instance, :instance, :instance] ++ List.duplicate(:organisation, 9)
 
       assert Enum.find(steps, &(&1.id == key)).path ==
                "/instance/set-up?step=#{adapter.public_id}"
@@ -117,7 +118,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert shape(steps) == [{:account, :current} | made()]
 
       # No adapter or Mail step: Your account stays the instance's, as for any admin.
-      assert Enum.map(steps, & &1.progress) == [:instance | List.duplicate(:organisation, 8)]
+      assert Enum.map(steps, & &1.progress) == [:instance | List.duplicate(:organisation, 9)]
 
       refute SetUpComponents.connect_steps?(admin)
 
@@ -145,7 +146,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       doc = LazyHTML.from_fragment(html)
 
       assert doc |> LazyHTML.query("#set-up-step") |> LazyHTML.text() |> String.trim() ==
-               "Step 1 of 8"
+               "Step 1 of 9"
 
       assert [{"Work sources", :current}, {"Work destinations", :to_come} | _] =
                ApiaryWeb.SetUpSteps.steps(html_doc(html))
@@ -176,7 +177,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert Enum.all?(steps, &(&1.progress == :organisation))
 
       assert Enum.map(steps, & &1.group) ==
-               [nil] ++ List.duplicate(:organisation, 3) ++ List.duplicate(:workspace, 5)
+               [nil] ++ List.duplicate(:organisation, 3) ++ List.duplicate(:workspace, 6)
 
       # The default flow is at the set-up, which shows the type cards first.
       assert Enum.find(steps, &(&1.id == :sources)).path ==
@@ -223,7 +224,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
       assert hd(ids) == :account
       assert {:adapter, adapter.public_id} in ids
-      assert Enum.take(ids, -9) == [:mail | @flow_ids]
+      assert Enum.take(ids, -10) == [:mail | @flow_ids]
 
       assert Enum.map(steps, &{&1.id, &1.progress}) ==
                [
@@ -301,7 +302,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
              |> LazyHTML.from_fragment()
              |> LazyHTML.query("#set-up-step")
              |> LazyHTML.text()
-             |> String.trim() == "Step 5 of 9"
+             |> String.trim() == "Step 5 of 10"
     end
 
     test "the edition's answer is the list shown, its notes included" do
@@ -309,7 +310,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       steps = SetUpComponents.steps_for(nil, :account)
 
       assert Enum.map(steps, & &1.note) ==
-               [nil, nil, nil, nil] ++ List.duplicate("Harbour Ops does this", 5)
+               [nil, nil, nil, nil] ++ List.duplicate("Harbour Ops does this", 6)
 
       assert Apiary.Edition.set_up_title(nil, Enum.find(steps, &(&1.id == :name))) ==
                "Set up the client's workspace"

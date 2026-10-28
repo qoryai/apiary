@@ -5168,6 +5168,7 @@ msgid "Check the integration that brings in this target on the organisation's In
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Check the nodes"
 msgstr ""
@@ -9650,6 +9651,7 @@ msgstr ""
 msgid "Lowercase letters, digits, ., _ and -."
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Machines"
@@ -11127,6 +11129,21 @@ msgstr ""
 msgid "Not locked: %{reason}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Not ready: no active key"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Not ready: no gateway"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Not ready: no pool"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not running"
@@ -11557,6 +11574,7 @@ msgstr ""
 msgid "Only an admin of this Qory Apiary makes password links, while it sends no email."
 msgstr ""
 
+#: lib/apiary/edition/core.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Only an instance admin checks the instance's pool and gateway."
@@ -11691,6 +11709,7 @@ msgstr ""
 msgid "Only owners and admins clear instances."
 msgstr ""
 
+#: lib/apiary/edition/core.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
@@ -12878,6 +12897,11 @@ msgstr ""
 msgid "Ready for Shape"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Ready · gateway: %{gateway}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
@@ -13822,7 +13846,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Runs need a ready pool. See Machines."
+msgid "Runs need a ready pool. %{see}."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -14120,6 +14144,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Secrets, %{number}"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "See Machines"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15777,6 +15806,11 @@ msgstr ""
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "The installation couldn't be completed just now. Press Install to try again."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The instance's pool"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -17900,6 +17934,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Which harness do %{workspace}'s runs use?"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Which machines run %{workspace}'s runs?"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

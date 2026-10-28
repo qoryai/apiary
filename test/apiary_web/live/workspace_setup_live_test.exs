@@ -168,10 +168,11 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
                  {"Work sources used", :to_come},
                  {"Destinations used", :to_come},
                  {"Harness", :to_come},
+                 {"Machines", :to_come},
                  {"Test run", :to_come}
                ]
 
-        assert count(lv) == "Step 2 of 9"
+        assert count(lv) == "Step 2 of 10"
         assert group_headings(lv) == ["For Acme Studio", "For the new workspace"]
 
         # Your account has no page, so the first step has no Back.
@@ -1049,8 +1050,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "h1", "Which harness do #{workspace.name}'s runs use?")
 
-      assert [{"Destinations used", _state}, {"Harness", :current}, {"Test run", :to_come}] =
-               lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
+      assert [
+               {"Destinations used", _state},
+               {"Harness", :current},
+               {"Machines", :to_come},
+               {"Test run", :to_come}
+             ] = lv |> steps() |> Enum.take(-4) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
 
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
 
@@ -1075,7 +1080,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                "You can change this later in Workspace settings › Workflow."
 
       lv |> form("#set-up-harness-form") |> render_submit()
-      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=test&workspace=#{workspace}")
+      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{workspace}")
 
       assert %Apiary.Stacks.Stack{choice: :qory} = Apiary.Stacks.choice(workspace)
 
@@ -1085,7 +1090,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       # The saved choice, sent again, goes on with no save.
       lv |> form("#set-up-harness-form") |> render_submit()
-      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=test&workspace=#{workspace}")
+      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{workspace}")
     end
 
     test "the harness in each repository is saved with no pin", ctx do
@@ -1136,7 +1141,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       lv |> form("#set-up-harness-form") |> render_submit()
       render_async(lv, 2_000)
 
-      assert_patch(lv, ~p"/#{ctx.organisation}/set-up?step=test&workspace=#{ctx.scope.workspace}")
+      assert_patch(
+        lv,
+        ~p"/#{ctx.organisation}/set-up?step=machines&workspace=#{ctx.scope.workspace}"
+      )
 
       assert %{choice: :repository, harness: harness} = Apiary.Stacks.choice(ctx.scope.workspace)
       assert harness == "extends:\n  git: \"#{@harness_git}\"\n  ref: \"#{@pin}\"\n"
@@ -1179,13 +1187,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       end
     end
 
-    test "with no ready pool, says runs need one, as text", %{conn: conn, scope: scope} do
+    test "with no ready pool, says runs need one, with See Machines, and no Run the test", %{
+      conn: conn,
+      scope: scope
+    } do
       {:ok, lv, _html} = live(conn, test_path(scope))
 
       assert has_element?(lv, "h1", "Run a test")
       assert words(lv, "#set-up-test-machines") == "Runs need a ready pool. See Machines."
+      assert words(lv, "#set-up-test-machines a") == "See Machines"
+
+      assert href(lv, "#set-up-test-machines a") ==
+               ~p"/#{scope.organisation}/set-up?step=machines&workspace=#{scope.workspace}"
+
       refute has_element?(lv, "#set-up-test-form")
-      refute has_element?(lv, "#set-up-test-machines a")
+      refute has_element?(lv, "#set-up-test-run")
     end
 
     test "Run the test takes a test work item in; it passes live", %{conn: conn, scope: scope} do
@@ -1260,7 +1276,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     {:ok, lv, _html} =
       conn |> log_in_user(admin.user) |> live(~p"/#{admin.organisation}/set-up?step=sources")
 
-    assert count(lv) == "Step 1 of 8"
+    assert count(lv) == "Step 1 of 9"
 
     assert flow_steps(lv) == [
              {"Work sources", :current},
@@ -1270,6 +1286,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              {"Work sources used", :to_come},
              {"Destinations used", :to_come},
              {"Harness", :to_come},
+             {"Machines", :to_come},
              {"Test run", :to_come}
            ]
   end
@@ -1503,6 +1520,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              {"Work sources used", :to_come},
              {"Destinations used", :to_come},
              {"Harness", :to_come},
+             {"Machines", :to_come},
              {"Test run", :to_come}
            ]
 
@@ -1514,5 +1532,235 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
              2
+  end
+end
+
+defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
+  # The Machines step of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`), with the
+  # `factory` feature: the pools that serve the workspace's runs, read only, each with its
+  # state; who acts on a pool that is not ready, for an instance admin, an owner and a
+  # member, in the edition's words; and Skip, then Continue. Not async: some tests make
+  # the instance's pool and gateway, which the instance has one of each at most.
+  use ApiaryWeb.ConnCase, async: false
+
+  import ApiaryWeb.SetUpSteps
+  import Phoenix.LiveViewTest
+  import Apiary.AccessKeysFixtures
+  import Apiary.AccountsFixtures
+  import Apiary.NodesFixtures
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.Repo
+  alias Apiary.Organisations.Membership
+
+  @moduletag needs: :factory
+
+  defmodule Worded do
+    # An edition with its own line on who acts on a pool that is not ready.
+    def machines_who_may(_scope, _workspace, :instance), do: "Harbour Ops checks the pool."
+    def machines_who_may(_scope, _workspace, :workspace), do: "Harbour Ops enrols the pool."
+  end
+
+  setup %{conn: conn} do
+    admin = instance_admin_scope()
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    refute Apiary.Access.instance_admin?(scope)
+
+    %{
+      conn: conn,
+      admin: admin,
+      user: user,
+      organisation: organisation,
+      scope: scope,
+      path: ~p"/#{organisation}/set-up?step=machines&workspace=#{scope.workspace}",
+      test_path: ~p"/#{organisation}/set-up?step=test&workspace=#{scope.workspace}"
+    }
+  end
+
+  defp words(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
+  defp href(lv, selector) do
+    [href] =
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> LazyHTML.attribute("href")
+
+    href
+  end
+
+  defp open(ctx, user \\ nil),
+    do: ctx.conn |> log_in_user(user || ctx.user) |> live(ctx.path) |> elem(1)
+
+  defp member(organisation) do
+    user = user_fixture()
+
+    %Membership{organisation_id: organisation.id, user_id: user.id}
+    |> Membership.changeset(%{level: :member})
+    |> Repo.insert!()
+
+    user
+  end
+
+  # The instance's pool, with its key, and the instance's gateway named "instance
+  # gateway", with its key.
+  defp ready_instance! do
+    pool = instance_pool_fixture()
+    _pool_key = installed_key_fixture(pool)
+    gateway = instance_gateway_fixture(name: "instance gateway")
+    _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
+    pool
+  end
+
+  # Nothing on the step writes: no form, no button, no event.
+  defp read_only?(lv) do
+    html = lv |> element("#set-up-pools") |> render()
+    not (html =~ "<form" or html =~ "<button" or html =~ "phx-click" or html =~ "phx-submit")
+  end
+
+  test "after Harness: the instance's pool, chosen and ready, with its gateway; Continue", ctx do
+    _pool = ready_instance!()
+    lv = open(ctx)
+
+    assert has_element?(lv, "h1", "Which machines run #{ctx.scope.workspace.name}'s runs?")
+
+    assert [{"Harness", _state}, {"Machines", :current}, {"Test run", :to_come}] =
+             lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
+
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked][disabled]")
+    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-instance-who-may")
+    refute has_element?(lv, "#set-up-pool-instance-check")
+    assert read_only?(lv)
+
+    refute has_element?(lv, "#set-up-skip")
+    assert words(lv, "#set-up-continue") == "Continue"
+    assert href(lv, "#set-up-continue") == ctx.test_path
+    assert has_element?(lv, "#set-up-back")
+  end
+
+  test "the instance's pool not ready: no pool, no active key, no gateway, then ready", ctx do
+    line = "Only an instance admin checks the instance's pool and gateway."
+
+    lv = open(ctx)
+    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
+    assert words(lv, "#set-up-pool-instance-who-may") == line
+    refute has_element?(lv, "#set-up-pool-instance-check")
+    assert read_only?(lv)
+    assert words(lv, "#set-up-skip") == "Skip"
+    assert href(lv, "#set-up-skip") == ctx.test_path
+    refute has_element?(lv, "#set-up-continue")
+
+    pool = instance_pool_fixture()
+    lv = open(ctx)
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no active key"
+    assert words(lv, "#set-up-pool-instance-who-may") == line
+
+    _pool_key = installed_key_fixture(pool)
+    gateway = instance_gateway_fixture(name: "instance gateway")
+    lv = open(ctx)
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no gateway"
+    assert words(lv, "#set-up-pool-instance-who-may") == line
+    assert has_element?(lv, "#set-up-skip")
+
+    _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
+    lv = open(ctx)
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-instance-who-may")
+    assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "an instance admin sees Check the nodes; a member reads who acts", ctx do
+    admin = ctx.admin
+
+    {:ok, lv, _html} =
+      ctx.conn
+      |> log_in_user(admin.user)
+      |> live(~p"/#{admin.organisation}/set-up?step=machines&workspace=#{admin.workspace}")
+
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
+    assert words(lv, "#set-up-pool-instance-check") == "Check the nodes"
+    assert href(lv, "#set-up-pool-instance-check") == ~p"/instance/nodes"
+    refute has_element?(lv, "#set-up-pool-instance-who-may")
+
+    lv = open(ctx, member(ctx.organisation))
+    assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
+
+    assert words(lv, "#set-up-pool-instance-who-may") ==
+             "Only an instance admin checks the instance's pool and gateway."
+
+    refute has_element?(lv, "#set-up-pool-instance-check")
+    assert has_element?(lv, "#set-up-skip")
+  end
+
+  test "a pool of the workspace: not enrolled, an owner gets its page, a member who acts",
+       ctx do
+    _instance_pool = ready_instance!()
+    gateway = gateway_fixture(ctx.scope)
+    _gateway_key = node_key_fixture(ctx.scope, gateway)
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    lv = open(ctx)
+    refute has_element?(lv, "#set-up-pool-instance")
+    assert has_element?(lv, "#{id}-radio[checked][disabled]")
+    assert words(lv, "#{id}-name") == pool.name
+    assert words(lv, "#{id}-state") == "Not ready: no active key"
+
+    assert href(lv, "#{id}-name a") ==
+             ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/nodes/#{pool.public_id}"
+
+    refute has_element?(lv, "#{id}-who-may")
+    assert read_only?(lv)
+    assert has_element?(lv, "#set-up-skip")
+
+    lv = open(ctx, member(ctx.organisation))
+    assert words(lv, "#{id}-name") == pool.name
+    refute has_element?(lv, "#{id}-name a")
+    assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
+
+    _pool_key = enrolled_key_fixture(ctx.scope, pool)
+    lv = open(ctx)
+    assert words(lv, "#{id}-state") == "Ready · gateway: #{gateway.name}"
+    refute has_element?(lv, "#{id}-name a")
+    refute has_element?(lv, "#{id}-who-may")
+    assert has_element?(lv, "#set-up-continue")
+  end
+
+  test "two pools of the workspace: each with its state, neither shown chosen", ctx do
+    first = pool_fixture(ctx.scope)
+    second = pool_fixture(ctx.scope)
+
+    lv = open(ctx)
+
+    for pool <- [first, second] do
+      id = "#set-up-pool-#{pool.public_id}"
+      assert words(lv, "#{id}-state") == "Not ready: no active key"
+      refute has_element?(lv, "#{id}-radio")
+    end
+  end
+
+  test "who acts is the edition's line where it has one", ctx do
+    :ok = Apiary.Edition.put_test_stub(Worded)
+    member = member(ctx.organisation)
+
+    lv = open(ctx, member)
+    assert words(lv, "#set-up-pool-instance-who-may") == "Harbour Ops checks the pool."
+
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx, member)
+    assert words(lv, "#set-up-pool-#{pool.public_id}-who-may") == "Harbour Ops enrols the pool."
   end
 end
