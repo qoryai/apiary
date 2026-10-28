@@ -1,18 +1,20 @@
 defmodule ApiaryWeb.TickListComponents do
-  # The tick lists of a workspace, Work sources used and Destinations used, as the set-up's
-  # steps (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Work sources and
+  # The tick lists of a workspace, Work sources and Destinations, as the set-up's steps
+  # (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Work sources and
   # › Destinations (`ApiaryWeb.CollectionsLive`) show them: `load/4` reads a list and who
   # may act on it, `tick_list/1` renders it, and `put_tick_flash/3` puts the flash of a
-  # tick (`Apiary.WorkspaceSetup.tick/5`) that changed nothing.
+  # tick (`Apiary.WorkspaceSetup.tick/5`) that changed nothing. The set-up's steps render
+  # each adapter's rows (`rows/1`) under that adapter's Connect, and the lines under the
+  # list (`notes/1`).
   #
   # The list's collections are grouped by adapter (`Apiary.WorkspaceSetup.collections/3`),
   # each with a checkbox, ticked as `Apiary.WorkspaceSetup.ticked?/3` counts it. For a
   # person whom `collection.assign` does not allow, the checkboxes are disabled, with the
   # line of who may. A collection in another workspace shows that workspace's name and has
-  # no checkbox. In Destinations used, a collection whose tickets come in to the workspace
-  # shows "tickets come in", with a line under the list that unticking it stops them. With
-  # no collection, the list shows that the organisation has nothing connected for it, with
-  # a link to the set-up's step that connects one for a person whom `adapter.connect`
+  # no checkbox. In Destinations, a collection whose tickets come in to the workspace shows
+  # "tickets come in", with a line under the list that unticking it stops them. With no
+  # collection, `tick_list/1` shows that the organisation has nothing connected for it,
+  # with a link to the set-up's step that connects one for a person whom `adapter.connect`
   # allows, and the line of who may connect for anyone else.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -96,15 +98,6 @@ defmodule ApiaryWeb.TickListComponents do
   @doc false
   # tick_list/1 is a tick list, each checkbox sending `tick` with the collection's id.
   def tick_list(assigns) do
-    assigns =
-      assign(assigns,
-        tickets?:
-          assigns.list == :destinations and
-            Enum.any?(assigns.groups, fn {adapter, rows} ->
-              Enum.any?(rows, &tickets_in?(&1, adapter, assigns.workspace))
-            end)
-      )
-
     ~H"""
     <div :if={@groups != []} id={"#{@id}-ticks"} class="grid gap-3">
       <section
@@ -115,55 +108,18 @@ defmodule ApiaryWeb.TickListComponents do
         <h2 class="flex items-center gap-2 font-medium">
           <IntegrationComponents.mark class="size-5" />{Adapters.title(adapter)}
         </h2>
-        <ul class="grid gap-1 pl-7">
-          <li
-            :for={row <- rows}
-            id={"#{@id}-tick-#{row.collection.public_id}"}
-            class="flex items-center gap-2 text-[13.5px]/5"
-          >
-            <label
-              :if={is_nil(row.workspace) or row.workspace.id == @workspace.id}
-              class="flex min-w-0 flex-1 items-center gap-2"
-            >
-              <input
-                type="checkbox"
-                class="checkbox checkbox-sm"
-                checked={WorkspaceSetup.ticked?(@list, row, @workspace)}
-                disabled={!@may}
-                phx-click="tick"
-                phx-value-id={row.collection.id}
-              />
-              <span class="truncate">{row.collection.title}</span>
-            </label>
-            <span
-              :if={row.workspace && row.workspace.id != @workspace.id}
-              class="flex min-w-0 flex-1 items-center gap-2 text-muted"
-            >
-              <span class="inline-block size-4" aria-hidden="true"></span>
-              <span class="truncate">{row.collection.title}</span>
-            </span>
-            <span
-              :if={row.workspace && row.workspace.id != @workspace.id}
-              id={"#{@id}-tick-#{row.collection.public_id}-elsewhere"}
-              class="text-[12.5px]/4 text-muted"
-            >
-              {gettext("In %{workspace} (cannot be ticked)", workspace: row.workspace.name)}
-            </span>
-            <span
-              :if={@list == :destinations and tickets_in?(row, adapter, @workspace)}
-              id={"#{@id}-tick-#{row.collection.public_id}-tickets"}
-              class="text-[12.5px]/4 text-muted"
-            >
-              {gettext("tickets come in")}
-            </span>
-          </li>
-        </ul>
+        <.rows id={@id} list={@list} adapter={adapter} rows={rows} workspace={@workspace} may={@may} />
       </section>
     </div>
 
-    <p :if={@tickets?} id={"#{@id}-untick"} class="text-[13px]/5 text-muted">
-      {gettext("Unticking also stops its tickets coming in.")}
-    </p>
+    <.notes
+      id={@id}
+      list={@list}
+      groups={@groups}
+      workspace={@workspace}
+      may={@may}
+      who_may={@who_may}
+    />
 
     <div
       :if={@groups == []}
@@ -192,6 +148,93 @@ defmodule ApiaryWeb.TickListComponents do
       </p>
       <p :if={!@may_connect} id={"#{@id}-none-who"}>{@who_connects}</p>
     </div>
+    """
+  end
+
+  attr :id, :string, required: true, doc: "the prefix of the rows' ids"
+  attr :list, :atom, required: true, values: [:sources, :destinations]
+  attr :adapter, :any, required: true
+  attr :rows, :list, required: true, doc: "the adapter's rows, as `load/4` reads them"
+  attr :workspace, :any, required: true
+  attr :may, :boolean, required: true
+
+  @doc false
+  # rows/1 is the rows of one adapter of a tick list, each checkbox sending `tick` with the
+  # collection's id. A collection in another workspace shows that workspace's name and has
+  # no checkbox.
+  def rows(assigns) do
+    ~H"""
+    <ul :if={@rows != []} class="grid gap-1 pl-7">
+      <li
+        :for={row <- @rows}
+        id={"#{@id}-tick-#{row.collection.public_id}"}
+        class="flex items-center gap-2 text-[13.5px]/5"
+      >
+        <label
+          :if={is_nil(row.workspace) or row.workspace.id == @workspace.id}
+          class="flex min-w-0 flex-1 items-center gap-2"
+        >
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            checked={WorkspaceSetup.ticked?(@list, row, @workspace)}
+            disabled={!@may}
+            phx-click="tick"
+            phx-value-id={row.collection.id}
+          />
+          <span class="truncate">{row.collection.title}</span>
+        </label>
+        <span
+          :if={row.workspace && row.workspace.id != @workspace.id}
+          class="flex min-w-0 flex-1 items-center gap-2 text-muted"
+        >
+          <span class="inline-block size-4" aria-hidden="true"></span>
+          <span class="truncate">{row.collection.title}</span>
+        </span>
+        <span
+          :if={row.workspace && row.workspace.id != @workspace.id}
+          id={"#{@id}-tick-#{row.collection.public_id}-elsewhere"}
+          class="text-[12.5px]/4 text-muted"
+        >
+          {gettext("In %{workspace} (cannot be ticked)", workspace: row.workspace.name)}
+        </span>
+        <span
+          :if={@list == :destinations and tickets_in?(row, @adapter, @workspace)}
+          id={"#{@id}-tick-#{row.collection.public_id}-tickets"}
+          class="text-[12.5px]/4 text-muted"
+        >
+          {gettext("tickets come in")}
+        </span>
+      </li>
+    </ul>
+    """
+  end
+
+  attr :id, :string, required: true, doc: "the prefix of the lines' ids"
+  attr :list, :atom, required: true, values: [:sources, :destinations]
+  attr :groups, :list, required: true, doc: "the rows, as `load/4` reads them"
+  attr :workspace, :any, required: true
+  attr :may, :boolean, required: true
+  attr :who_may, :string, required: true
+
+  @doc false
+  # notes/1 is the lines under a tick list: in Destinations, that unticking a collection
+  # whose tickets come in stops them; for a person whom `collection.assign` does not allow,
+  # who may.
+  def notes(assigns) do
+    assigns =
+      assign(assigns,
+        tickets?:
+          assigns.list == :destinations and
+            Enum.any?(assigns.groups, fn {adapter, rows} ->
+              Enum.any?(rows, &tickets_in?(&1, adapter, assigns.workspace))
+            end)
+      )
+
+    ~H"""
+    <p :if={@tickets?} id={"#{@id}-untick"} class="text-[13px]/5 text-muted">
+      {gettext("Unticking also stops its tickets coming in.")}
+    </p>
 
     <p
       :if={!@may and @groups != []}
