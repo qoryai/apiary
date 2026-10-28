@@ -1745,6 +1745,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert has_element?(lv, "#set-up-model-form", "Default model")
     assert has_element?(lv, "#set-up-model-form", "Runtime")
+    # The core shows no setting of where the provider applies.
+    refute has_element?(lv, "#set-up-model-everywhere")
 
     assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
              "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
@@ -1806,6 +1808,63 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-model-later") == @workspace_later
     assert {"Model", :current} in steps(lv)
     refute render(lv) =~ @key
+  end
+
+  test "Add a key with the setting shown and on: the organisation's provider, for every workspace",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert has_element?(lv, "#set-up-model-everywhere[type=checkbox]")
+    refute has_element?(lv, "#set-up-model-everywhere[checked]")
+
+    assert has_element?(
+             lv,
+             "#set-up-model-add label",
+             "Available to every workspace in #{organisation.name}"
+           )
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "anthropic", everywhere: "true"})
+    |> render_change()
+
+    # The key is a secret of the organisation, whose secrets the core shows nowhere.
+    assert words(lv, "#set-up-model-later") == @model_later
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{provider: "anthropic", key: @key, everywhere: "true"}
+    )
+    |> render_submit()
+
+    assert {:ok, [provider]} = Connections.list_providers(scope)
+    assert provider.applies_to == "all"
+    assert Connections.workspace_ids_of(provider) == []
+    assert provider.secret.workspace_id == nil
+
+    assert {[choice], []} = choices(scope)
+    assert choice.connection_id == provider.id
+  end
+
+  test "Add a key with the setting shown and off: the provider of the workspace",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert words(lv, "#set-up-model-later") == @workspace_later
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{provider: "anthropic", key: @key, everywhere: "false"}
+    )
+    |> render_submit()
+
+    assert {:ok, [provider]} = Connections.list_providers(scope)
+    assert provider.applies_to == "selected"
+    assert Connections.workspace_ids_of(provider) == [scope.workspace.id]
+    assert provider.secret.workspace_id == scope.workspace.id
   end
 
   test "reuse with one provider: its default key, another default model; Add a key opens the fields",
