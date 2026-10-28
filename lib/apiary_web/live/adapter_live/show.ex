@@ -39,7 +39,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # no items, only that each is assigned to one workspace. The lead shows while the page
   # waits too. Where any live collection has a target
   # (`Apiary.Adapters.Collections.targets?/1`), a foot note says that assigning one
-  # changes no workspace's targets; a source without code has none. The first foot note,
+  # adds its target to the workspace, and unassigning or moving it leaves the target; a
+  # source without code has none. The first foot note,
   # over the rest, is the source's line on how to change, at the source, which collections
   # the integration reaches (`Apiary.Integrations.Description.access/1`, as the adapter's
   # latest start stored it), shown as sent and isolated (`ApiaryWeb.ExternalText`), while
@@ -873,7 +874,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
             </p>
             <p :if={@targets} id="collections-targets" class="q-foot-note">
               {gettext(
-                "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change.",
+                "Assigning a %{collection} here adds its target to the workspace's Targets, which list what its runs change. Unassigning or moving it leaves the target there.",
                 collection: collection_word(@adapter, 1)
               )}
             </p>
