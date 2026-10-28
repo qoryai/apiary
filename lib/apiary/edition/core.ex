@@ -73,6 +73,13 @@ defmodule Apiary.Edition.Core do
   def set_up_context(_scope, _step_id), do: nil
 
   @impl true
+  def machines_who_may(_scope, _workspace, :instance),
+    do: gettext("Only an instance admin checks the instance's pool and gateway.")
+
+  def machines_who_may(_scope, _workspace, :workspace),
+    do: gettext("Only owners and admins connect a node.")
+
+  @impl true
   def above_workspace(_workspace), do: nil
 
   # The core has no operator: an organisation's runs take its own chain of model choices.

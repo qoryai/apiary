@@ -209,6 +209,17 @@ defmodule Apiary.Edition do
   """
   @callback set_up_title(Scope.t(), set_up_step | nil) :: String.t()
 
+  # With the `factory` feature: the line of the workspace set-up's Machines step
+  # (`ApiaryWeb.WorkspaceSetupLive`) on who acts on a pool that serves `workspace`'s runs
+  # and is not ready, for the person of `scope`, who may not act on it. `pool` is
+  # `:instance` for the instance's pool and gateway, `:workspace` for a pool of the
+  # workspace. Translated when it is asked. The core answers "Only an instance admin
+  # checks the instance's pool and gateway." for `:instance`, and "Only owners and admins
+  # connect a node." for `:workspace`.
+  @doc false
+  @callback machines_who_may(Scope.t(), %Workspace{}, pool :: :instance | :workspace) ::
+              String.t()
+
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
   its workspaces (`Apiary.Policy.Above`: host rules, a required mode, whether the
@@ -760,6 +771,7 @@ defmodule Apiary.Edition do
     set_up_steps: 2,
     set_up_title: 2,
     set_up_context: 2,
+    machines_who_may: 3,
     above_workspace: 1,
     model_choice_chain: 1,
     operator_chain_organisation: 1,

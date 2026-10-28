@@ -31,6 +31,19 @@ defmodule Apiary.EditionTest do
     end
   end
 
+  describe "machines_who_may/3" do
+    test "the core answers who acts on the instance's pool, and on a pool of the workspace",
+         %{scope: scope} do
+      for edition <- [Apiary.Edition.Core, Apiary.Edition] do
+        assert edition.machines_who_may(scope, scope.workspace, :instance) ==
+                 "Only an instance admin checks the instance's pool and gateway."
+
+        assert edition.machines_who_may(scope, scope.workspace, :workspace) ==
+                 "Only owners and admins connect a node."
+      end
+    end
+  end
+
   describe "model_choice_chain/1" do
     test "the core answers the organisation's chain", %{scope: scope} do
       assert Apiary.Edition.Core.model_choice_chain(scope.organisation.id) == "organisation"
