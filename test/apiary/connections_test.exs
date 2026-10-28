@@ -590,8 +590,12 @@ defmodule Apiary.ConnectionsTest do
       assert Connections.reach_at_add(scope, workspace, false) == one
       assert Connections.reach_at_add(scope, workspace, true) == every
 
-      # With no workspace in the scope, every workspace, as before the setting.
-      assert Connections.reach_at_add(scope, nil, false) == every
+      # With no workspace, there is no reach to give, the setting shown or not.
+      for everywhere <- [false, true] do
+        assert_raise FunctionClauseError, fn ->
+          Connections.reach_at_add(scope, nil, everywhere)
+        end
+      end
     end
 
     test "applies_to is all or selected", %{scope: scope} do
@@ -707,18 +711,21 @@ defmodule Apiary.ConnectionsTest do
       %{scope: admin, user: user} = member_fixture(scope, :admin)
       at_organisation = %{admin | workspace: nil}
 
-      assert {:ok, runtime} =
-               Connections.create_runtime(at_organisation, %{
-                 runtime: "claude",
-                 applies_to: "selected"
-               })
+      assert {:ok, service} = Connections.create_service(at_organisation, %{service: "sentry"})
 
       at_site = workspace_scope(user, site)
-      assert {:ok, _} = Connections.update_connection(at_site, runtime, %{})
+
+      assert {:ok, %Connection{name: "Errors"}} =
+               Connections.update_connection(at_site, service, %{name: "Errors"})
+
       assert {:ok, _} = Connections.create_service_definition(at_site, status_definition())
 
-      assert [%Entry{workspace_id: nil} | _] = trail(runtime.id)
-      assert Enum.all?(trail(runtime.id), &is_nil(&1.workspace_id))
+      # Both writes are the organisation's: the trail's entries are about no workspace.
+      assert [%Entry{workspace_id: nil} = created, %Entry{workspace_id: nil} = renamed] =
+               trail(service.id)
+
+      assert created.details["change"] == "created"
+      assert renamed.details["change"] == "updated"
     end
 
     test "another organisation's connection is out of reach", %{scope: scope} do

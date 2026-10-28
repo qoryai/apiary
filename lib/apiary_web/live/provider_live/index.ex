@@ -11,8 +11,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
   # off, or not shown, the provider is added for that workspace alone (`:workspace`), its
   # key a secret of the workspace; with it on, for the organisation (`:organisation`),
   # reaching every workspace, its key a secret of the organisation. With no workspace in
-  # the scope, it is added for the organisation, reaching every workspace. Beside the form,
-  # About this step says what a key is for and where to get the chosen provider's key.
+  # the scope, in every edition, the page shows no form: a line says to set up a
+  # workspace first, with a link to the set-up, and a submit adds nothing. Beside the
+  # form, About this step says what a key is for and where to get the chosen provider's
+  # key.
   #
   # Every member reads the list (`connection.read`); owners and admins add one
   # (`provider.write`), and anyone else sees the list without New model provider and one
@@ -67,11 +69,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp page_title(scope, _index),
     do: SettingsComponents.page_title(scope, :organisation, [list_title()])
 
-  # Whether an add must wait for a workspace: with no workspace in the scope, where the
-  # edition shows no setting of where a provider applies, a provider has no workspace
-  # whose secret its key would be.
-  defp needs_workspace?(scope),
-    do: is_nil(scope.workspace) and not Apiary.Edition.scope_setting?(scope)
+  # Whether an add must wait for a workspace: with no workspace in the scope, a provider
+  # has no workspace to apply to (`Apiary.Connections.reach_at_add/3`), whatever the
+  # setting.
+  defp needs_workspace?(scope), do: is_nil(scope.workspace)
 
   defp list_title, do: gettext("Model providers")
   defp new_title, do: gettext("New model provider")

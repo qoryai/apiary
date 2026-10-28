@@ -723,23 +723,18 @@ defmodule Apiary.Connections do
   `create_service/2` and `create_provider/3` take: every workspace of the organisation
   (`all`) where the edition shows the setting `Available to every workspace in
   %{organisation}` (`c:Apiary.Edition.scope_setting?/1`) and `everywhere` is true, the
-  setting on; else `workspace` alone (`selected`), the workspace the form is in. With no
-  workspace and the setting off or not shown, `all`.
+  setting on; else `workspace` alone (`selected`), the workspace the form is in. A form
+  adds a thing in a workspace only: with no workspace, there is no reach to give, and no
+  clause matches.
   """
-  @spec reach_at_add(Scope.t(), %Workspace{} | nil, boolean) :: %{
+  @spec reach_at_add(Scope.t(), %Workspace{}, boolean) :: %{
           String.t() => String.t() | [Ecto.UUID.t()]
         }
-  def reach_at_add(%Scope{} = scope, workspace, everywhere) when is_boolean(everywhere) do
-    cond do
-      everywhere and Edition.scope_setting?(scope) ->
-        %{"applies_to" => "all", "workspace_ids" => []}
-
-      match?(%Workspace{}, workspace) ->
-        %{"applies_to" => "selected", "workspace_ids" => [workspace.id]}
-
-      true ->
-        %{"applies_to" => "all", "workspace_ids" => []}
-    end
+  def reach_at_add(%Scope{} = scope, %Workspace{} = workspace, everywhere)
+      when is_boolean(everywhere) do
+    if everywhere and Edition.scope_setting?(scope),
+      do: %{"applies_to" => "all", "workspace_ids" => []},
+      else: %{"applies_to" => "selected", "workspace_ids" => [workspace.id]}
   end
 
   @doc """

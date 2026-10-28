@@ -226,6 +226,38 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute html =~ "new-provider-form"
     end
 
+    test "with no workspace yet and the setting shown, the same: no form, and nothing added",
+         %{conn: conn} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      %{user: user, organisation: organisation} = without_workspace()
+      conn = log_in_user(conn, user)
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings/model-providers/new")
+
+      assert has_element?(
+               lv,
+               "#new-provider-needs-workspace",
+               "Set up a workspace first, then add a model provider in its Model step."
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-needs-workspace a[href="/#{organisation.slug}/set-up"]},
+               "Set up a workspace"
+             )
+
+      refute has_element?(lv, "#new-provider-form")
+
+      render_hook(lv, "create", %{
+        "provider" => %{"provider" => "anthropic", "key" => @key, "everywhere" => "true"}
+      })
+
+      assert has_element?(lv, "#new-provider-needs-workspace")
+
+      for schema <- [Apiary.Connections.Connection, Secret] do
+        refute Repo.get_by(schema, organisation_id: organisation.id)
+      end
+    end
+
     test "with no workspace yet, a submit adds nothing", %{conn: conn} do
       %{user: user, organisation: organisation} = without_workspace()
       conn = log_in_user(conn, user)
