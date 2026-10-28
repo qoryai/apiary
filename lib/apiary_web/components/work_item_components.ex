@@ -2891,7 +2891,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # walk's failure code (`Apiary.Harnesses.Walk`). nil for a call to an adapter that
   # failed, which the adapter's line words (`adapter_failure_words/1`). A source is
   # shown as the walk wrote it, or as the workspace's harness setting where the walk
-  # wrote none: the stacks' document, or a hidden harness.
+  # wrote none: a harness choice's document, or a hidden harness.
   defp harness_failure_words(%{code: code} = failure) do
     source = failure.source || gettext("the workspace's harness setting")
 
