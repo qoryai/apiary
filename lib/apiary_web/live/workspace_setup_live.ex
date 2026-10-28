@@ -263,10 +263,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   ## The cards
 
-  # The words of a domain's card, nil for a domain without one, which shows no card.
+  # The words of a domain's card, nil for a domain without one, which shows no card. A
+  # person reads a card's line where they pick a type, in any locale, so the line is in the
+  # `workspace type` context and keeps the type's words.
   defp card_words(Domain.Software) do
     %{
-      what: gettext("Agents change code in your repositories."),
+      what: pgettext("workspace type", "Agents change code in your repositories."),
       connect: gettext("You connect: where work comes from, where changes go, a model.")
     }
   end
@@ -373,7 +375,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp heading(:destinations_used, flow),
     do:
-      gettext("Which repositories may %{workspace}'s runs change?",
+      gettext("Which targets may %{workspace}'s runs change?",
         workspace: flow.workspace.name
       )
 

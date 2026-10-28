@@ -3038,7 +3038,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "A harness repository"
+msgid "A harness source"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -3878,6 +3878,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
+msgctxt "workspace type"
 msgid "Agents change code in your repositories."
 msgstr ""
 
@@ -4669,11 +4670,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Behind v%{n}"
-msgstr ""
-
-#: lib/apiary_web/components/harness_components.ex
-#, elixir-autogen, elixir-format
-msgid "Branch or tag"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -6649,7 +6645,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Each run reads its repository's qory.yaml or harness.yaml."
+msgid "Each run reads its target's harness file."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -7995,6 +7991,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Harness fetch"
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Harness version"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -15752,7 +15753,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "The harness in each repository"
+msgid "The harness in each target"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -17926,7 +17927,7 @@ msgstr ""
 #: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Which repositories may %{workspace}'s runs change?"
+msgid "Which targets may %{workspace}'s runs change?"
 msgstr ""
 
 #: lib/apiary_web/live/collections_live.ex

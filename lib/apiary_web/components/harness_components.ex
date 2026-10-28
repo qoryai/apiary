@@ -43,9 +43,9 @@ defmodule ApiaryWeb.HarnessComponents do
         options: [
           {"qory", gettext("Qory harness"),
            "#{address(assigns.qory["git"])} · #{short(assigns.qory["ref"])}"},
-          {"target_file", gettext("The harness in each repository"),
-           gettext("Each run reads its repository's qory.yaml or harness.yaml.")},
-          {"repository", gettext("A harness repository"), nil}
+          {"target_file", gettext("The harness in each target"),
+           gettext("Each run reads its target's harness file.")},
+          {"repository", gettext("A harness source"), nil}
         ]
       )
 
@@ -75,7 +75,7 @@ defmodule ApiaryWeb.HarnessComponents do
       <select
         id="harness-source"
         name={@form[:source].name}
-        aria-label={gettext("A harness repository")}
+        aria-label={gettext("A harness source")}
         disabled={@disabled or @linked in [nil, []]}
         class="select select-sm w-full font-mono"
       >
@@ -92,7 +92,7 @@ defmodule ApiaryWeb.HarnessComponents do
         field={@form[:ref]}
         id="harness-ref"
         type="text"
-        label={gettext("Branch or tag")}
+        label={gettext("Harness version")}
         hint={
           @source &&
             gettext("Read through %{organisation}'s %{adapter} connection.",
@@ -128,7 +128,7 @@ defmodule ApiaryWeb.HarnessComponents do
     """
   end
 
-  defp line_words(%{choice: :target_file}), do: gettext("The harness in each repository")
+  defp line_words(%{choice: :target_file}), do: gettext("The harness in each target")
 
   defp line_words(%{choice: :qory, pin: pin}),
     do:
@@ -140,7 +140,7 @@ defmodule ApiaryWeb.HarnessComponents do
   defp line_words(%{choice: :repository, pin: pin}),
     do:
       gettext("%{harness} · pinned at %{commit}",
-        harness: gettext("A harness repository"),
+        harness: gettext("A harness source"),
         commit: short(pin)
       )
 
