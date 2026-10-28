@@ -78,7 +78,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
             </p>
           </SetUpComponents.frame>
         <% true -> %>
-          <SetUpComponents.frame steps={@steps} next={SetUpComponents.next?(nil)}>
+          <SetUpComponents.frame steps={@steps}>
             <.invitation_summary invitation={@invitation} />
             <p id="invitation-email" class="text-sm/5 text-muted">
               <.rich text={
@@ -114,8 +114,9 @@ defmodule ApiaryWeb.InvitationLive.Accept do
     """
   end
 
-  # Whether the steps after the invitation include the organisation's first workspace.
-  defp workspace_to_come?(steps), do: Enum.any?(steps, &(&1.id == :workspace))
+  # Whether the steps after the invitation include the organisation's first workspace,
+  # its Name.
+  defp workspace_to_come?(steps), do: Enum.any?(steps, &(&1.id == :name))
 
   attr :invitation, :map, required: true
 

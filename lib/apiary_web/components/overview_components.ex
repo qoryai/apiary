@@ -2581,41 +2581,46 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp instance_node?(node), do: is_nil(node.organisation_id) and is_nil(node.workspace_id)
 
-  defp passed_line(%{node: %{name: name} = pool}) do
+  @doc false
+  # passed_line/1 is the line of a test run that passed, `run` its registered run; the
+  # set-up's Test run step shows it too (`ApiaryWeb.WorkspaceSetupLive`).
+  def passed_line(%{node: %{name: name} = pool}) do
     if instance_node?(pool),
       do: gettext("Test run passed: the agent answered on a machine of the instance's pool."),
       else: gettext("Test run passed: the agent answered on a machine of %{pool}.", pool: name)
   end
 
   # A run has no node when its key named none, or when its node was purged.
-  defp passed_line(_run), do: gettext("Test run passed: the agent answered on a machine.")
+  def passed_line(_run), do: gettext("Test run passed: the agent answered on a machine.")
 
-  # Each failure, the fix first.
-  defp failed_line(:no_machine, _run),
+  @doc false
+  # failed_line/2 is the line of a test run that failed for `cause`, the fix first; the
+  # set-up's Test run step shows it too.
+  def failed_line(:no_machine, _run),
     do:
       gettext(
         "Check the pool in Instance settings › Nodes. No machine has taken the test run yet."
       )
 
-  defp failed_line(:model_key_missing, _run),
+  def failed_line(:model_key_missing, _run),
     do:
       gettext(
         "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
       )
 
-  defp failed_line(:silent, _run),
+  def failed_line(:silent, _run),
     do:
       gettext(
         "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
       )
 
-  defp failed_line(:other, nil),
+  def failed_line(:other, nil),
     do:
       gettext(
         "Check the other steps of this list, then press Run the test again. The test run ended before a machine started it."
       )
 
-  defp failed_line(:other, _run),
+  def failed_line(:other, _run),
     do:
       gettext(
         "Read the run's log, then press Run the test again. The test run ended without passing."

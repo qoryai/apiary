@@ -44,8 +44,8 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # it is not done, which leaves the connection as it is: it can be finished later in
   # Instance settings. Finishing or skipping the last step marks the connections reviewed
   # (`Apiary.Setup.review_connections/1`) and sends the admin to the first step after the
-  # connections that is not done: the workspace set-up's Workspace or Work source; else
-  # on, as a sign-in sends them (`ApiaryWeb.UserAuth.signed_in_path/1`).
+  # connections that is not done: a step of the workspace set-up, such as Work sources;
+  # else on, as a sign-in sends them (`ApiaryWeb.UserAuth.signed_in_path/1`).
   #
   # The page asks for a recent sign-in, as Instance settings › Mail does
   # (`ApiaryWeb.UserAuth`'s sudo mode), for every step: the mail step saves the mail
@@ -267,7 +267,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # The connections are reviewed, and the admin goes on to the first step after them that
-  # is not done, such as the workspace's Work source; else as a sign-in sends them.
+  # is not done, such as the workspace set-up's Work sources; else as a sign-in sends them.
   defp finish(socket) do
     %{current_scope: scope, step: step} = socket.assigns
 
@@ -311,7 +311,6 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
     >
       <SetUpComponents.frame
         steps={@steps}
-        next={SetUpComponents.next?(@current_scope)}
         page={~p"/instance/set-up"}
       >
         <SetUpComponents.heading>

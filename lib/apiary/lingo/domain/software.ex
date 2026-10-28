@@ -57,7 +57,7 @@ defmodule Apiary.Lingo.Domain.Software do
       )
 
   @impl true
-  def type_name, do: pgettext("workspace type", "Software")
+  def type_name, do: pgettext("workspace type", "Software factory")
 
   @impl true
   def type_line,

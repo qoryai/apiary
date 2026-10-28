@@ -39,10 +39,7 @@ defmodule ApiaryWeb.UserLive.Registration do
 
     ~H"""
     <Layouts.set_up flash={@flash} current_scope={@current_scope}>
-      <SetUpComponents.frame
-        steps={if @form_shown, do: @steps, else: []}
-        next={SetUpComponents.next?(nil)}
-      >
+      <SetUpComponents.frame steps={if @form_shown, do: @steps, else: []}>
         <.check_your_email :if={@sent_to}>
           <.rich text={
             rich_gettext("We sent a confirmation link to %{email}. It works for 15 minutes.",
