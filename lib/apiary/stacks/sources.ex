@@ -68,9 +68,10 @@ defmodule Apiary.Stacks.Sources do
   # (`Apiary.Stacks`) at the workspace with no workflow, under the same lock as `save/3`.
   # The Qory harness and the harness in each repository read nothing. A harness
   # repository, a linked repository and a branch or tag, is read as a run's walk reads
-  # the base of a document (`Apiary.Harnesses.Walk.pin_base/3`), within the time of a read of a
-  # source and counted as one of the person's reads; the commit the walk read is the pin,
-  # and a walk that failed is the refusal. `chosen/1` is the choice as a page shows it.
+  # the base of a document (`Apiary.Harnesses.Walk.pin_base/3`), within the time of a
+  # read of a source and counted as one of the person's reads; the commit the walk read
+  # is the pin, and a walk that failed is the refusal. `chosen/1` is the choice as a page
+  # shows it.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false

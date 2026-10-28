@@ -201,8 +201,8 @@ defmodule ApiaryWeb.HarnessComponents do
   def choice(_params, _linked), do: nil
 
   @doc false
-  # unchanged?/2 is whether `choice` is the saved choice `chosen`: the same choice, and for
-  # a harness repository the same address at its pin.
+  # unchanged?/2 is whether `choice` is the saved choice `chosen`: the same choice, and
+  # for a harness repository the same address at its pin.
   @spec unchanged?(Apiary.Stacks.Sources.choice() | nil, map) :: boolean
   def unchanged?(choice, %{saved: true} = chosen) do
     case choice do

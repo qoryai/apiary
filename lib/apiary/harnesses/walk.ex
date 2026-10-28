@@ -19,12 +19,15 @@ defmodule Apiary.Harnesses.Walk do
   #     document, each as below;
   #   * no choice: the Qory harness, the base of the workspace's type's definition
   #     (`Apiary.Lingo.Domain.definition/1`) at its pinned commit, as a document that only
-  #     extends it, origin `:setting`, with no stack and no owner. It is hidden only where
-  #     the run's organisation is operated (`c:Apiary.Edition.operated?/1`).
+  #     extends it, origin `:setting`, with no stacks row (`stack_id` nil) and no owner.
+  #     It is hidden only where the run's organisation is operated
+  #     (`c:Apiary.Edition.operated?/1`).
   #
-  # `pin_base/3` reads a harness repository's base as a run's walk reads it, for its save: the
-  # pin is the version the read of its `qory-stack.yaml` returned, a full commit id, else
-  # `invalid`.
+  # `pin_base/3` checks and resolves a harness repository's base as a run's walk does, for
+  # its save, and returns its pin: the version the read of its `qory-stack.yaml`
+  # returned, a full commit id, else `invalid`. A `ref` that is itself a full commit id,
+  # on a source that rules 1 to 4 of the sources do not take, such as a linked repository
+  # whose grant has lapsed, takes rule 5: it is not read, and that `ref` is the pin.
   #
   # ## The target's harness file
   #

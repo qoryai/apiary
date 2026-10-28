@@ -20,9 +20,9 @@ defmodule Apiary.Stacks do
   # (`Apiary.Lingo.Domain.definition/1`) at its pinned commit; `:repository`, a harness
   # repository, with the document that extends it at the commit its branch or tag
   # resolved to when it was saved; `:target_file`, each run's target's harness file, with
-  # the levels' documents where the target has none. A workspace without a choice uses the
-  # Qory harness at the pin of the type's definition. `chosen_for/3` reads the choice for a
-  # run, and `Apiary.Stacks.Sources.choose/3` saves one.
+  # the levels' documents where the target has none. A workspace without a choice uses
+  # the Qory harness at the pin of the type's definition. `chosen_for/3` reads the choice
+  # for a run, and `Apiary.Stacks.Sources.choose/2` saves one.
   #
   # ## Writes
   #
@@ -262,8 +262,9 @@ defmodule Apiary.Stacks do
   # (`Apiary.Edition.harness_owner/1`). `opts`: `access`, the access level recorded for
   # the runs of the place's workflow, `:read` or `:write`, nil for none (the default); and
   # `choice`, the workspace's harness choice at `{:workspace, workspace}`, nil for none
-  # (the default), so a write there without one removes the choice. `{:ok, stack}`; `{:error, :forbidden}` when the edition gives none; or `{:error,
-  # changeset}` with the reason on its field. It checks no access (the moduledoc).
+  # (the default), so a write there without one removes the choice. `{:ok, stack}`;
+  # `{:error, :forbidden}` when the edition gives none; or `{:error, changeset}` with the
+  # reason on its field. It checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness, opts \\ []) do

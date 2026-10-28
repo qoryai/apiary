@@ -1,9 +1,15 @@
 defmodule ApiaryWeb.WorkflowLive do
   # Workspace settings › Workflow (`/:org/:workspace/settings/workflow`), with the
-  # `factory` feature: the workflow the workspace's runs follow and the harness source its
-  # stack comes from, stored as the workspace-level document (`Apiary.Stacks.Sources`).
-  # It opens for whoever may save it (`harness.save`, owners and admins), and is not found
-  # for anyone else, as the section is absent from their list.
+  # `factory` feature: the workspace's harness choice (`Apiary.Stacks.Sources.choose/2`),
+  # and the workflow the workspace's runs follow with a harness source, stored as the
+  # workspace-level document for that workflow (`Apiary.Stacks.Sources.save/3`). A run's
+  # workflow comes from the rows with a workflow, this one among them, whatever the
+  # choice. The walk reads this row's document only under the harness in each
+  # repository, for a target without a harness file. Under the Qory harness or a harness
+  # repository it walks the choice's document, and with no choice the Qory harness
+  # (`Apiary.Harnesses.Walk`). The page opens for whoever may save it (`harness.save`,
+  # owners and admins), and is not found for anyone else, as the section is absent from
+  # their list.
   #
   # Beside the form, About this step says what the page sets and which sources Source
   # lists. Under the title, Harness shows the workspace's harness choice and its pin

@@ -50,7 +50,8 @@ defmodule Apiary.Harnesses.WalkTest do
     {connection, _nonce} = connection_fixture(scope, run.adapter, :listed)
     grant = grant(scope.organisation.id, run.adapter, connection, "G_run")
     collection(scope, run.adapter, connection)
-    # Today's path, the harness in each repository; the choices have their own tests.
+    # Today's path, the harness in each repository; the other choices are tested in the
+    # describe "the workspace's harness choice".
     {:ok, _choice} =
       Stacks.put_stack(scope, {:workspace, scope.workspace}, nil, choice: :target_file)
 
@@ -137,9 +138,9 @@ defmodule Apiary.Harnesses.WalkTest do
   # resource_ref, {:public, public_ref}}`, or to its public ref alone, `{:public,
   # public_ref}`, whose resource_ref is `N_<public_ref>`; `files` maps a resource or a
   # public ref and a path to a document, read with a grant or as public. A resource's
-  # version is `c-<resource>`, whatever the version asked, or its value in `versions`. `refuse` answers every read
-  # with a signed refusal, and `refuse_public` every public read; `down` makes every call
-  # reach no one.
+  # version is `c-<resource>`, whatever the version asked, or its value in `versions`.
+  # `refuse` answers every read with a signed refusal, and `refuse_public` every public
+  # read; `down` makes every call reach no one.
   defp serve(adapters, opts) do
     test = self()
     hosts = Map.new(adapters, &{&1.host, &1})
