@@ -439,14 +439,8 @@ defmodule Apiary.Adapters.SyncTest do
       assert declared.targets == false
       assert reload(adapter).targets == false
 
-      # `targets: true`, set on the read description, as the vendored schema does not
-      # list the field yet.
-      %{document: document} = description = read_description()
-
-      targeted = %{
-        description
-        | document: put_in(document, ["roles", "source", "targets"], true)
-      }
+      # A description with `targets: true`, which the contract's check accepts.
+      targeted = read_description("example-source-targets.json")
 
       assert {:ok, declared} =
                Adapters.declare(key_scope, %{declaration() | description: targeted})
