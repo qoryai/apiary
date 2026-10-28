@@ -19,7 +19,9 @@ defmodule ApiaryWeb.SetUpComponents do
   organisation's for everyone else. A step without `:progress`, such as one an edition
   adds or renames, is the organisation's. The indicator and Back show the current step's
   progress alone, counted from 1. Finishing or skipping the instance's last step on
-  `/instance/set-up` still leads to the organisation's first step, Workspace.
+  `/instance/set-up` leads to the first step of the organisation's progress that is not
+  done and has a page, such as Workspace; with none left, to `/`, which sends the admin
+  on as a sign-in does (`ApiaryWeb.UserAuth.signed_in_path/1`).
   """
   use ApiaryWeb, :html
 
@@ -75,17 +77,16 @@ defmodule ApiaryWeb.SetUpComponents do
   def steps_for(scope, current, opts \\ []) do
     invitation = opts[:invitation]
     signed_in? = match?(%Scope{user: %{}}, scope)
+    first = opts[:first] == true
+    admin? = Access.instance_admin?(scope)
 
     steps =
       invitation_step(invitation, opts[:token], current) ++
         [step(:account, gettext("Your account"), nil, signed_in?, nil)] ++
-        instance_steps(scope, opts[:first] == true) ++
+        instance_steps(scope, first, admin?) ++
         workspace_steps(scope, invitation, signed_in?)
 
-    start =
-      if opts[:first] == true or Access.instance_admin?(scope),
-        do: :instance,
-        else: :organisation
+    start = if first or admin?, do: :instance, else: :organisation
 
     scope
     |> Apiary.Edition.set_up_steps(states(steps, current))
@@ -127,9 +128,7 @@ defmodule ApiaryWeb.SetUpComponents do
 
   defp invitation_step(_invitation, _token, _current), do: []
 
-  defp instance_steps(scope, first) do
-    admin? = Access.instance_admin?(scope)
-
+  defp instance_steps(scope, first, admin?) do
     if first or admin? do
       adapters =
         cond do
@@ -288,7 +287,7 @@ defmodule ApiaryWeb.SetUpComponents do
   with the `factory` feature, or a Mail step (`steps_for/3`).
   """
   @spec connect_steps?(Scope.t()) :: boolean
-  def connect_steps?(scope), do: instance_steps(scope, false) != []
+  def connect_steps?(scope), do: instance_steps(scope, false, Access.instance_admin?(scope)) != []
 
   @doc """
   next_step/2 is the step after the one whose id is `id` in `steps`, or nil.
