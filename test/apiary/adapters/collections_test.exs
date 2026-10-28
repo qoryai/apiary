@@ -386,29 +386,34 @@ defmodule Apiary.Adapters.CollectionsTest do
       assert Enum.sort(got) == Enum.sort(made)
 
       # The organisation it left has one entry for each, by the instance, about the
-      # collection; this one has none.
+      # collection; this one has none. Both entries have the same time, so sort by subject.
       moves =
         Repo.all(
           from e in Apiary.Audit.Entry,
             where: e.action == "collection.move",
-            order_by: e.inserted_at,
             select: {e.organisation_id, e.actor_kind, e.subject_id, e.details}
         )
 
-      assert moves == [
-               {other.organisation.id, :instance, old_doc.id,
-                %{
-                  "name" => "Title of DOC",
-                  "connection_id" => theirs.public_id,
-                  "integration" => ctx.adapter.name
-                }},
-               {other.organisation.id, :instance, old_trk.id,
-                %{
-                  "name" => "Title of TRK",
-                  "connection_id" => theirs.public_id,
-                  "integration" => ctx.adapter.name
-                }}
-             ]
+      by_subject = &elem(&1, 2)
+
+      assert Enum.sort_by(moves, by_subject) ==
+               Enum.sort_by(
+                 [
+                   {other.organisation.id, :instance, old_doc.id,
+                    %{
+                      "name" => "Title of DOC",
+                      "connection_id" => theirs.public_id,
+                      "integration" => ctx.adapter.name
+                    }},
+                   {other.organisation.id, :instance, old_trk.id,
+                    %{
+                      "name" => "Title of TRK",
+                      "connection_id" => theirs.public_id,
+                      "integration" => ctx.adapter.name
+                    }}
+                 ],
+                 by_subject
+               )
     end
 
     test "a moved ref's new collection is assigned to the organisation's only workspace, as any new one",
