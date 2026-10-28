@@ -468,7 +468,7 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
 
       assert words(lv, ".q-settings-head-sub") ==
                "Organisations see the new name on their Integrations page and when they install " <>
-                 "the adapter, unless its description has a title."
+                 "the adapter, unless Qory Apiary shows the title from its description."
 
       assert has_element?(lv, "#adapter-rename-form label", "Name")
       assert render(lv) =~ "At most 64 characters, and not the name of another adapter here."
