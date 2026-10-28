@@ -1626,6 +1626,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, "#set-up-model-form", "Default model")
     assert has_element?(lv, "#set-up-model-form", "Runtime")
 
+    assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
+             "Qory Apiary stores the key encrypted, and nobody can view it again."
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-model-form input[type=password][aria-describedby$="-hint"]}
+           )
+
     assert words(lv, "#set-up-context #set-up-what") ==
              "A model provider's key lets runs in #{organisation.name} call a model."
 

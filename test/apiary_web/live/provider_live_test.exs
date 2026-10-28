@@ -190,6 +190,19 @@ defmodule ApiaryWeb.ProviderLiveTest do
              )
     end
 
+    test "the Key field's hint says the key is stored encrypted and never shown again", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert text(lv, ~s{#new-provider-form [id^="new-provider-key-"][id$="-hint"]}) ==
+               "Qory Apiary stores the key encrypted, and nobody can view it again."
+
+      assert has_element?(
+               lv,
+               ~s{#new-provider-form input[type=password][aria-describedby$="-hint"]}
+             )
+    end
+
     test "Provider is a choice: each provider's title and its description's text", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))

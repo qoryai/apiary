@@ -232,6 +232,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
             type="password"
             value={nil}
             label={gettext("Key")}
+            hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
             autocomplete="off"
             spellcheck="false"
             phx-update="ignore"
