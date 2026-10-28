@@ -523,7 +523,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
            ]
 
     assert words(lv, "#collections-targets") ==
-             "Assigning a collection here doesn't change a workspace's Repositories, which list what its runs change."
+             "Assigning a collection here adds its repository to the workspace's Repositories, which list what its runs change. Unassigning or moving it leaves the repository there."
 
     refute has_element?(lv, "#collections-pager")
   end
@@ -615,7 +615,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     {:ok, lv, _html} = live(conn, page(scope, adapter))
 
     assert words(lv, "#collections-targets") ==
-             "Assigning a collection here doesn't change a workspace's Repositories, which list what its runs change."
+             "Assigning a collection here adds its repository to the workspace's Repositories, which list what its runs change. Unassigning or moving it leaves the repository there."
 
     # The collection with a target ends: the page follows, and the foot note goes.
     shop =
@@ -685,7 +685,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     assert words(lv, "#collections-lead") == "These projects are each assigned to one workspace."
 
     assert words(lv, "#collections-targets") ==
-             "Assigning a project here doesn't change a workspace's Repositories, which list what its runs change."
+             "Assigning a project here adds its repository to the workspace's Repositories, which list what its runs change. Unassigning or moving it leaves the repository there."
   end
 
   # The text of the access foot note's `<bdi>`, as the page shows it, nothing trimmed.

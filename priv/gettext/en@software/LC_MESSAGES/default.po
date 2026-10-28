@@ -4532,8 +4532,8 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Assigning a %{collection} here doesn't change a workspace's Targets, which list what its runs change."
-msgstr "Assigning a %{collection} here doesn't change a workspace's Repositories, which list what its runs change."
+msgid "Assigning a %{collection} here adds its target to the workspace's Targets, which list what its runs change. Unassigning or moving it leaves the target there."
+msgstr "Assigning a %{collection} here adds its repository to the workspace's Repositories, which list what its runs change. Unassigning or moving it leaves the repository there."
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/live/user_live/settings.ex
