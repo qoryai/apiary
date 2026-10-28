@@ -1,10 +1,11 @@
 defmodule Apiary.Stacks.Stack do
   # A stack set at a level of an organisation: `harness`, a harness document, the
   # contents of the `harness` section of qory's format written in YAML
-  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow; and
-  # `owner_organisation_id`, the organisation that owns the row, which the edition gives
-  # for the person who saved it last (`Apiary.Edition.harness_owner/1`), nil once that
-  # organisation is deleted. A row has a document, a workflow, or both.
+  # (`Apiary.Stacks.Document`), nil for a row that sets only the workflow or the choice;
+  # and `owner_organisation_id`, the organisation that owns the row, which the edition
+  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`), nil once
+  # that organisation is deleted. A row has a document, a workflow or a choice, or more
+  # than one of them.
   #
   # Its level is read from the columns it has set (`level/1`):
   #
@@ -24,6 +25,11 @@ defmodule Apiary.Stacks.Stack do
   # `:write`, nil for none, and only on a row with a workflow. It only lowers the level
   # the workflow declares in its stack (`Apiary.Harnesses.Walk`).
   #
+  # `choice` is the harness a workspace's runs use, nil for none, and only on a row at
+  # `:workspace` (`Apiary.Stacks.choice/1`): `:qory`, the Qory harness, and `:repository`,
+  # a harness repository, each with the document that extends it at a pinned commit;
+  # `:target_file`, the harness file of each run's target, with or without a document.
+  #
   # Changed only through `Apiary.Stacks`.
   @moduledoc false
   use Ecto.Schema
@@ -42,6 +48,7 @@ defmodule Apiary.Stacks.Stack do
     field :workflow, :string
     field :harness, :string
     field :access, Ecto.Enum, values: [:read, :write]
+    field :choice, Ecto.Enum, values: [:qory, :repository, :target_file]
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

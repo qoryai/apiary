@@ -12,6 +12,18 @@ defmodule Apiary.Stacks do
   # workflow takes the document that resolves for it (`resolve_for/4`) where its
   # target's harness file does not apply (`Apiary.Harnesses.Walk`).
   #
+  # ## The workspace's harness choice
+  #
+  # The harness a workspace's runs use is a `choice` on the workspace's row with no target
+  # and no workflow (`choice/1`), one of three: `:qory`, the Qory harness, with the
+  # document that extends the harness of the workspace's type
+  # (`Apiary.Lingo.Domain.definition/1`) at its pinned commit; `:repository`, a harness
+  # repository, with the document that extends it at the commit its branch or tag
+  # resolved to when it was saved; `:target_file`, each run's target's harness file, with
+  # the levels' documents where the target has none. A workspace without a choice uses the
+  # Qory harness at the pin of the type's definition. `chosen_for/3` reads the choice for a
+  # run, and `Apiary.Stacks.Sources.choose/3` saves one.
+  #
   # ## Writes
   #
   # `put_stack/3` and `delete_stack/1` set and remove the stack at one place. They check no
@@ -29,9 +41,11 @@ defmodule Apiary.Stacks do
   # ## Refused on save
   #
   # `harness`: a harness document under the save rules of `Apiary.Stacks.Document`, or
-  # nil at a place with a workflow. `workflow`: a lower-case letter, then up to 63
-  # lower-case letters, digits and hyphens. `access`: `:read` or `:write` at a place with
-  # a workflow, nil at any place. Each refusal is a changeset error on its field.
+  # nil at a place with a workflow or with the choice `:target_file`. `workflow`: a
+  # lower-case letter, then up to 63 lower-case letters, digits and hyphens. `access`:
+  # `:read` or `:write` at a place with a workflow, nil at any place. `choice`: one of the
+  # three, only at the workspace with no workflow, nil at any place. Each refusal is a
+  # changeset error on its field.
   #
   # ## Locks
   #
@@ -148,6 +162,47 @@ defmodule Apiary.Stacks do
   end
 
   @doc false
+  # choice/1 is the row of `workspace`'s harness choice (the moduledoc), nil for none.
+  # Read without a lock.
+  @spec choice(Workspace.t()) :: Stack.t() | nil
+  def choice(%Workspace{id: id, organisation_id: organisation_id}) do
+    Repo.one(
+      from s in Stack,
+        where: s.organisation_id == ^organisation_id and s.workspace_id == ^id,
+        where: is_nil(s.target_id) and is_nil(s.workflow) and not is_nil(s.choice)
+    )
+  end
+
+  @doc false
+  # chosen_for/3 is what the harness choice of `workspace` of `organisation` comes to for
+  # an explore run of `workflow`: `:target_file`; `{:ok, resolution}` for the Qory harness
+  # or a harness repository, the choice's document at the level `:workspace`, its owner
+  # and whether the run hides it, as `Apiary.Stacks.Resolution` reads a row; `:none` for a
+  # workspace without a choice. Read without a lock.
+  @spec chosen_for(Organisation.t(), Workspace.t(), String.t()) ::
+          :target_file | {:ok, Resolution.t()} | :none
+  def chosen_for(%Organisation{} = organisation, %Workspace{} = workspace, workflow)
+      when is_binary(workflow) do
+    case choice(workspace) do
+      nil ->
+        :none
+
+      %Stack{choice: :target_file} ->
+        :target_file
+
+      %Stack{} = row ->
+        Resolution.resolve(%{
+          stacks: [row],
+          organisation_id: organisation.id,
+          workspace_id: workspace.id,
+          target_id: nil,
+          workflow: workflow,
+          operated: Edition.operated?(organisation)
+        })
+    end
+  end
+
+  @doc false
   # input_for/4 is what a resolution reads for the runs of `workflow` of `workspace` in
   # `organisation`, at `target`, nil for none: the organisation's stacks at the run's
   # places, read without a lock, and whether the organisation is operated
@@ -205,8 +260,9 @@ defmodule Apiary.Stacks do
   # place with a workflow, replacing what the place had, saved by the scope's person and
   # owned by the organisation the edition gives for the scope
   # (`Apiary.Edition.harness_owner/1`). `opts`: `access`, the access level recorded for
-  # the runs of the place's workflow, `:read` or `:write`, nil for none (the default).
-  # `{:ok, stack}`; `{:error, :forbidden}` when the edition gives none; or `{:error,
+  # the runs of the place's workflow, `:read` or `:write`, nil for none (the default); and
+  # `choice`, the workspace's harness choice at `{:workspace, workspace}`, nil for none
+  # (the default), so a write there without one removes the choice. `{:ok, stack}`; `{:error, :forbidden}` when the edition gives none; or `{:error,
   # changeset}` with the reason on its field. It checks no access (the moduledoc).
   @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
@@ -223,6 +279,7 @@ defmodule Apiary.Stacks do
             Map.merge(columns, %{
               harness: harness,
               access: Keyword.get(opts, :access),
+              choice: Keyword.get(opts, :choice),
               owner_organisation_id: owner,
               updated_by_id: user_id
             })
@@ -318,10 +375,11 @@ defmodule Apiary.Stacks do
   # The changes, checked against the rules of the moduledoc.
   defp changeset(%Stack{} = row, changes) do
     row
-    |> change(Map.drop(changes, [:harness, :workflow, :access]))
-    |> cast(changes, [:harness, :workflow, :access])
+    |> change(Map.drop(changes, [:harness, :workflow, :access, :choice]))
+    |> cast(changes, [:harness, :workflow, :access, :choice])
     |> validate_harness_or_workflow()
     |> validate_access()
+    |> validate_choice()
     |> validate_change(:harness, fn :harness, value ->
       for error <- Document.errors(value), do: {:harness, error}
     end)
@@ -329,16 +387,40 @@ defmodule Apiary.Stacks do
     |> check_constraint(:harness, name: :stacks_harness_or_workflow, message: "can't be blank")
     |> check_constraint(:harness, name: :stacks_harness_size, message: "is too long")
     |> check_constraint(:access, name: :stacks_access_check, message: @access_without_workflow)
+    |> check_constraint(:choice, name: :stacks_choice_check, message: "is invalid")
     |> unique_constraint(:harness, name: :stacks_place_index)
   end
 
-  # A row sets a harness document, a workflow, or both. A value that did not cast has the
-  # error "is invalid" already.
+  # A row sets a harness document, a workflow or a choice, or more than one. A value that
+  # did not cast has the error "is invalid" already.
   defp validate_harness_or_workflow(changeset) do
     if is_nil(get_field(changeset, :harness)) and is_nil(get_field(changeset, :workflow)) and
+         is_nil(get_field(changeset, :choice)) and
          not Keyword.has_key?(changeset.errors, :harness),
        do: add_error(changeset, :harness, "can't be blank", validation: :required),
        else: changeset
+  end
+
+  # A choice only at the workspace with no workflow; the Qory harness and a harness
+  # repository only with their document.
+  defp validate_choice(changeset) do
+    choice = get_field(changeset, :choice)
+
+    cond do
+      is_nil(choice) ->
+        changeset
+
+      is_nil(get_field(changeset, :workspace_id)) or get_field(changeset, :target_id) != nil or
+          get_field(changeset, :workflow) != nil ->
+        add_error(changeset, :choice, "is invalid")
+
+      choice != :target_file and is_nil(get_field(changeset, :harness)) and
+          not Keyword.has_key?(changeset.errors, :harness) ->
+        add_error(changeset, :harness, "can't be blank", validation: :required)
+
+      true ->
+        changeset
+    end
   end
 
   # An access level only at a place with a workflow.
