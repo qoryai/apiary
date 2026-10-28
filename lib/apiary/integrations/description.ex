@@ -373,6 +373,14 @@ defmodule Apiary.Integrations.Description do
     do: get_in(document, ["roles", "source", "guide"])
 
   @doc false
+  # targets?/1 says whether the adapter's collections can have a target, a place where a
+  # run's changes go: true when its source role says `targets: true`; false when it says
+  # nothing, and for a description with no source role.
+  @spec targets?(t) :: boolean
+  def targets?(%__MODULE__{document: document}),
+    do: get_in(document, ["roles", "source", "targets"]) == true
+
+  @doc false
   # source_apply/1 is the source role's `apply` items, the templates of the run's work
   # credential from this adapter, as decoded, or nil for a description with none
   # (`Apiary.Integrations.ApplyTemplates`).
