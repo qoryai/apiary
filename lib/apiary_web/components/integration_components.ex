@@ -20,10 +20,7 @@ defmodule ApiaryWeb.IntegrationComponents do
   # The install block says that the integration brings the person back to the
   # organisation's page, that the collections it reaches are listed there, and that the
   # organisation has one installation of it, then offers Install (`install_form/1`),
-  # which posts to `ApiaryWeb.AdapterInstallController`. Where the edition shows the
-  # setting of the workspaces a connection reaches (`c:Apiary.Edition.scope_setting?/1`),
-  # the block and Connect show "Available to every workspace in <organisation>" before
-  # the button, off. An adapter that cannot be
+  # which posts to `ApiaryWeb.AdapterInstallController`. An adapter that cannot be
   # installed yet (`ready?/1`) has Install disabled, and a line that says so.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -83,11 +80,6 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :ready, :boolean, required: true, doc: "whether the adapter can be installed yet"
   attr :sending, :boolean, default: false, doc: "whether Install was pressed"
   attr :cancel, :string, default: nil, doc: "where Cancel leads; no Cancel without one"
-
-  attr :setting, :any,
-    default: nil,
-    doc: "the organisation the setting of the workspaces it reaches names; none without one"
-
   attr :class, :any, default: nil
 
   @doc false
@@ -122,7 +114,6 @@ defmodule ApiaryWeb.IntegrationComponents do
           action={@action}
           ready={@ready}
           sending={@sending}
-          setting={@setting}
         />
         <.button :if={@cancel && !@sending} id={"#{@id}-cancel"} variant="ghost" navigate={@cancel}>
           {gettext("Cancel")}
@@ -154,18 +145,12 @@ defmodule ApiaryWeb.IntegrationComponents do
   attr :size, :string, default: "sm", values: ~w(xs sm)
   attr :label, :string, default: nil, doc: "the button's words; Install by default"
 
-  attr :setting, :any,
-    default: nil,
-    doc: "the organisation the setting of the workspaces it reaches names; none without one"
-
   @doc false
   # Install for `adapter`: a form that the page submits to `action` once pressed, with
   # the session's CSRF token, a POST that sends the person on to the integration
   # (`ApiaryWeb.AdapterInstallController`). The press tells the page first (`"install"`,
   # with the adapter's public id as `integration`), which sets `sending` and so the
-  # form's `phx-trigger-action`. Disabled while the adapter cannot be installed yet. Given
-  # `setting`, the checkbox "Available to every workspace in <organisation>", off, before
-  # the button, sent as `install[everywhere]`.
+  # form's `phx-trigger-action`. Disabled while the adapter cannot be installed yet.
   def install_form(assigns) do
     ~H"""
     <.form
@@ -179,16 +164,6 @@ defmodule ApiaryWeb.IntegrationComponents do
       class="contents"
     >
       <input type="hidden" name="integration" value={@adapter.public_id} />
-      <.input
-        :if={@setting}
-        id={"#{@id}-everywhere"}
-        name="install[everywhere]"
-        type="checkbox"
-        value={false}
-        label={
-          gettext("Available to every workspace in %{organisation}", organisation: @setting.name)
-        }
-      />
       <.button
         id={"#{@id}-install"}
         type="submit"
@@ -207,16 +182,8 @@ defmodule ApiaryWeb.IntegrationComponents do
   end
 
   @doc false
-  # The organisation that the setting "Available to every workspace in <organisation>"
-  # names, where the edition shows it to the scope's person
-  # (`c:Apiary.Edition.scope_setting?/1`); nil, no setting, elsewhere.
-  @spec setting(Scope.t()) :: Organisation.t() | nil
-  def setting(%Scope{organisation: organisation} = scope),
-    do: if(Apiary.Edition.scope_setting?(scope), do: organisation)
-
-  @doc false
   # Whether `adapter` can be installed yet: it declared where to send the person and
-  # holds an access key in use, as `Apiary.Adapters.connect/3` asks.
+  # holds an access key in use, as `Apiary.Adapters.connect/2` asks.
   @spec ready?(Node.t()) :: boolean
   def ready?(%Node{connect_url: url} = adapter),
     do: is_binary(url) and Apiary.AccessKeys.active_key?(adapter)

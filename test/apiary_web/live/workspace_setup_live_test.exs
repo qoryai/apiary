@@ -619,8 +619,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              )
 
       assert has_element?(lv, "#{row}-connect-install.btn-primary", "Connect")
-      # The core shows no setting of where the connection applies.
-      refute has_element?(lv, "#{row}-connect input[name='install[everywhere]']")
 
       # With no connection, the list under Connect has no collection yet.
       assert words(lv, "#{row} #{row}-none") == "No collection yet"
@@ -697,52 +695,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                ~p"/#{organisation}/set-up?step=destinations&workspace=#{main.slug}"
 
       refute has_element?(lv, "#set-up-skip")
-    end
-
-    test "Connect has the setting where the edition shows it, off", %{conn: conn} do
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
-      %{user: user, organisation: organisation} = sign_up_fixture()
-      %{adapter: adapter} = connectable_adapter_fixture()
-
-      {:ok, lv, _html} =
-        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&workspace=main")
-
-      form = "#set-up-adapter-#{adapter.public_id}-connect"
-      assert has_element?(lv, "#{form} input[type=checkbox][name='install[everywhere]']")
-      refute has_element?(lv, "#{form} input[type=checkbox][name='install[everywhere]'][checked]")
-
-      assert has_element?(
-               lv,
-               "#{form} label",
-               "Available to every workspace in #{organisation.name}"
-             )
-    end
-
-    test "a connection that reaches another workspace alone is not connected here",
-         %{conn: conn} do
-      %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
-      other = workspace_fixture(organisation, "Other")
-      collection = collection_fixture(scope)
-      adapter = adapter_of(collection)
-
-      {1, _} =
-        Repo.update_all(
-          from(k in Apiary.Adapters.Connection, where: k.id == ^collection.connection_id),
-          set: [applies_to: "selected"]
-        )
-
-      Repo.insert!(%Apiary.Adapters.ConnectionWorkspace{
-        organisation_id: organisation.id,
-        connection_id: collection.connection_id,
-        workspace_id: other.id
-      })
-
-      {:ok, lv, _html} =
-        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&workspace=main")
-
-      row = "#set-up-adapter-#{adapter.public_id}"
-      assert has_element?(lv, "#{row}-not-connected", "Not connected")
-      refute has_element?(lv, "#set-up-tick-#{collection.public_id}")
     end
 
     test "a connection started and not yet back shows Connecting…, and no line for its list",

@@ -498,32 +498,32 @@ defmodule Apiary.WorkspaceSetupTest do
     defp targets!(adapter_id), do: set!(Node, adapter_id, targets: true)
 
     test "connected_ids/3: the adapters for the type with a connected connection", ctx do
-      workspace = ctx.scope.workspace
-      assert WorkspaceSetup.connected_ids(workspace, @software, :items) == MapSet.new()
+      organisation = ctx.scope.organisation
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
 
       # Pending is not connected.
       %{adapter: pending} = connectable_adapter_fixture()
       {_connection, _nonce} = connection_fixture(ctx.scope, pending, :pending)
-      assert WorkspaceSetup.connected_ids(workspace, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
 
       %{adapter: adapter} = connectable_adapter_fixture()
       {connection, _nonce} = connection_fixture(ctx.scope, adapter, :connected)
 
-      assert WorkspaceSetup.connected_ids(workspace, @software, :items) ==
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) ==
                MapSet.new([adapter.id])
 
-      assert WorkspaceSetup.connected_ids(workspace, @software, :targets) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) == MapSet.new()
 
       targets!(adapter.id)
 
-      assert WorkspaceSetup.connected_ids(workspace, @software, :targets) ==
+      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) ==
                MapSet.new([adapter.id])
 
       # An adapter that serves another type counts for that type alone.
       set!(Node, adapter.id, domains: ["example"])
-      assert WorkspaceSetup.connected_ids(workspace, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
 
-      assert WorkspaceSetup.connected_ids(workspace, Apiary.Lingo.Domain.Example, :items) ==
+      assert WorkspaceSetup.connected_ids(organisation, Apiary.Lingo.Domain.Example, :items) ==
                MapSet.new([adapter.id])
 
       # An ended connection counts for none.
@@ -535,10 +535,10 @@ defmodule Apiary.WorkspaceSetupTest do
         ended_reason: "adapter_reported"
       )
 
-      assert WorkspaceSetup.connected_ids(workspace, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
 
       # Another organisation's connection counts for none.
-      assert WorkspaceSetup.connected_ids(sign_up_fixture().scope.workspace, @software, :items) ==
+      assert WorkspaceSetup.connected_ids(sign_up_fixture().organisation, @software, :items) ==
                MapSet.new()
     end
 
@@ -630,35 +630,6 @@ defmodule Apiary.WorkspaceSetupTest do
       refute WorkspaceSetup.destinations?(main, @software)
       assert WorkspaceSetup.sources?(other, @software)
       assert WorkspaceSetup.destinations?(other, @software)
-    end
-
-    test "the lists read only the connections that reach the workspace", ctx do
-      %{scope: scope, workspace: main} = ctx
-      other = workspace_fixture(scope.organisation, "Other")
-      collection = collection_fixture(scope)
-      targets!(collection.adapter_id)
-
-      # Its connection reaches Other alone, as an add in Other makes it.
-      set!(Connection, collection.connection_id, applies_to: "selected")
-
-      Repo.insert!(%Apiary.Adapters.ConnectionWorkspace{
-        organisation_id: scope.organisation.id,
-        connection_id: collection.connection_id,
-        workspace_id: other.id
-      })
-
-      refute WorkspaceSetup.sources?(main, @software)
-      refute WorkspaceSetup.destinations?(main, @software)
-      assert WorkspaceSetup.connected_ids(main, @software, :items) == MapSet.new()
-      assert WorkspaceSetup.collections(scope, @software, :sources) == []
-      assert WorkspaceSetup.collections(scope, @software, :destinations) == []
-
-      assert WorkspaceSetup.connected_ids(other, @software, :items) ==
-               MapSet.new([collection.adapter_id])
-
-      at_other = %{scope | workspace: other}
-      assert [{_adapter, [row]}] = WorkspaceSetup.collections(at_other, @software, :sources)
-      assert row.collection.id == collection.id
     end
 
     test "done?/3: Name once the workspace exists; no other step before", ctx do

@@ -412,15 +412,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
           do: adapter
 
-    # Only the connections that reach the workspace count here.
     connecting =
-      for {adapter_id, %{state: :pending} = connection} <-
-            AdapterConnections.live_by_adapter(scope),
-          AdapterConnections.reaches?(connection, flow.workspace.id),
+      for {adapter_id, %{state: :pending}} <- AdapterConnections.live_by_adapter(scope),
           into: MapSet.new(),
           do: adapter_id
 
-    ticks = TickListComponents.load(%{scope | workspace: flow.workspace}, flow.domain, step, nil)
+    ticks = TickListComponents.load(scope, flow.domain, step, nil)
     listed = MapSet.new(adapters, & &1.id)
 
     socket
@@ -431,7 +428,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       # configured ones, without Connect.
       others: for({adapter, _rows} <- ticks[:groups], adapter.id not in listed, do: adapter),
       rows: Map.new(ticks[:groups], fn {adapter, rows} -> {adapter.id, rows} end),
-      connected: WorkspaceSetup.connected_ids(flow.workspace, flow.domain, role),
+      connected: WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role),
       connecting: connecting,
       ready:
         for(
@@ -1465,11 +1462,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               ready={adapter.id in @ready}
               sending={@sending == adapter.public_id}
               label={gettext("Connect")}
-              setting={
-                not MapSet.member?(@connected, adapter.id) and
-                  not MapSet.member?(@connecting, adapter.id) and
-                  IntegrationComponents.setting(@current_scope)
-              }
             />
           </div>
           <TickListComponents.rows

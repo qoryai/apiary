@@ -1478,7 +1478,6 @@ defmodule Apiary.Sources.BacklogTest do
       theirs =
         Repo.insert!(%Connection{
           public_id: Apiary.PublicId.generate(Connection.prefix()),
-          applies_to: "all",
           organisation_id: other.organisation.id,
           adapter_id: ctx.connection.adapter_id,
           created_by_id: other.user.id,

@@ -420,14 +420,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
   defp listing(%{assigns: %{state: state}} = socket) when state in [:waiting, :listed] do
     %{current_scope: scope, adapter: adapter} = socket.assigns
     workspaces = Organisations.list_workspaces(scope)
-
-    socket =
-      assign(socket,
-        workspaces: workspaces,
-        reached: Connections.reached(socket.assigns.connection),
-        lead: lead(scope, adapter, workspaces)
-      )
-
+    socket = assign(socket, workspaces: workspaces, lead: lead(scope, adapter, workspaces))
     if state == :listed, do: rows(socket), else: unpicked(socket)
   end
 
@@ -567,9 +560,6 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
         <IntegrationComponents.install_block
           :if={@connects && @state in [:not_installed, :pending, :expired, :ended]}
-          setting={
-            @state in [:not_installed, :ended] && IntegrationComponents.setting(@current_scope)
-          }
           id="integration-install"
           adapter={@adapter}
           organisation={@current_scope.organisation}
@@ -713,7 +703,6 @@ defmodule ApiaryWeb.AdapterLive.Show do
                   workspaces={
                     for workspace <- @workspaces,
                         Domain.serves?(@adapter.domains, workspace),
-                        @reached == :all or workspace.id in @reached,
                         named?(workspace, @menu_q) do
                       {workspace,
                        count_words(@adapter, true, Map.get(@counts.by_workspace, workspace.id, 0))}
@@ -1096,11 +1085,10 @@ defmodule ApiaryWeb.AdapterLive.Show do
         integration: Adapters.title(adapter)
       )
 
-  # The menu lists only the workspaces the adapter serves and the connection reaches, so
-  # `:other_domain` comes from a start that narrowed its domains after the page read them,
-  # and `:not_reached` from a page drawn before the workspace was purged.
+  # The menu lists only the workspaces the adapter serves, so `:other_domain` comes from
+  # a start that narrowed its domains after the page read them.
   defp refused(%{adapter: adapter}, reason)
-       when reason in [:not_found, :invalid, :other_domain, :not_reached] do
+       when reason in [:not_found, :invalid, :other_domain] do
     gettext(
       "Nothing was assigned: the page was out of date. It now shows the %{collections} as they are.",
       collections: collection_word(adapter, :other)

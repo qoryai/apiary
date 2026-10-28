@@ -4536,7 +4536,6 @@ msgstr ""
 msgid "Auto"
 msgstr ""
 
-#: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/workspace_setup_live.ex

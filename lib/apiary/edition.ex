@@ -745,8 +745,9 @@ defmodule Apiary.Edition do
 
   @doc """
   Whether the scope's person sees, on each form that adds a model provider, a runtime, an
-  integration, a service or a connection to an adapter, the setting `Available to every
-  workspace in %{organisation}`, off by default. With the setting on, the thing added
+  integration or a service, the setting `Available to every workspace in
+  %{organisation}`, off by default. A connection to an adapter reaches every workspace,
+  and its form shows no setting. With the setting on, the thing added
   reaches every workspace of the organisation (`applies_to` `all`); with it off, or
   where the form does not show it, it reaches the workspace the form is in alone
   (`selected`, `Apiary.Connections.reach_at_add/3`). The reach is set at the add and

@@ -68,7 +68,7 @@ defmodule Apiary.Adapters.ConnectPass do
   def validity, do: @validity
 
   # A fresh nonce for a pass: 16 random bytes. The connection keeps the nonce of its latest
-  # pass: `Apiary.Adapters.connect/3` makes it with this, and
+  # pass: `Apiary.Adapters.connect/2` makes it with this, and
   # `Apiary.Adapters.Connections.start/3` hands it to `issue/3`.
   @doc false
   @spec new_nonce() :: <<_::128>>

@@ -17,7 +17,7 @@ defmodule Apiary.Adapters do
   # members) where they are shown the feature, and their organisation's connections to
   # them (`Apiary.Adapters.Connections`); an instance admin reads them where the feature
   # is on; anyone else reads none. An owner or an admin of an organisation connects one
-  # (`adapter.connect`, `connect/3`), which makes the organisation's connection to it
+  # (`adapter.connect`, `connect/2`), which makes the organisation's connection to it
   # (`Apiary.Adapters.Connection`, `ac_…`), pending until a linked return connects it, and
   # which the organisation's trail records.
   #
@@ -262,7 +262,7 @@ defmodule Apiary.Adapters do
   @doc false
   # Whether the scope's organisation is offered `adapter`: it is configured
   # (`configured?/1`) and serves one of `offered_domains/1`, as `list_configured/1` has
-  # it. Install asks it (`connect/3`), so an adapter Add an integration does not list is
+  # it. Install asks it (`connect/2`), so an adapter Add an integration does not list is
   # not installed by a request made without the page.
   @spec offered?(Scope.t(), Node.t()) :: boolean
   def offered?(%Scope{} = scope, %Node{domains: domains} = adapter) do
@@ -756,16 +756,9 @@ defmodule Apiary.Adapters do
   # `{:error, :no_connect_url}` while the adapter declared no address; `{:error, :no_key}`
   # while it holds no access key in use; `{:error, :not_offered}` for an adapter the
   # organisation is not offered (`offered?/2`: not configured, or serving none of its
-  # workspaces' domains); `{:error, :forbidden}`; `{:error, :not_found}`, also for a
-  # `workspace` that is not one of the organisation's in use; none of them changes
-  # anything or leaves an entry.
-  #
-  # A connection the press makes reaches what the form gives it
-  # (`Apiary.Connections.reach_at_add/3`): `opts[:everywhere]`, the setting "Available to
-  # every workspace in <organisation>", false unless given, and `opts[:workspace]`, the
-  # workspace the form is in, the scope's unless given. A connection the press takes keeps
-  # what it reaches (`Apiary.Adapters.Connections.start/4`).
-  @spec connect(Scope.t(), Node.t(), keyword) ::
+  # workspaces' domains); `{:error, :forbidden}`; `{:error, :not_found}`; none of them
+  # changes anything or leaves an entry.
+  @spec connect(Scope.t(), Node.t()) ::
           {:ok, String.t(), {String.t(), String.t()}}
           | {:error,
              :too_soon
@@ -775,14 +768,7 @@ defmodule Apiary.Adapters do
              | :invalid
              | :too_long
              | Access.reason()}
-  def connect(%Scope{} = scope, %Node{id: id}, opts \\ []) do
-    reach =
-      Apiary.Connections.reach_at_add(
-        scope,
-        Keyword.get(opts, :workspace, scope.workspace),
-        Keyword.get(opts, :everywhere, false)
-      )
-
+  def connect(%Scope{} = scope, %Node{id: id}) do
     result =
       Repo.transact(fn ->
         with :ok <- Access.authorize(scope, :"adapter.connect", scope.organisation),
@@ -792,8 +778,7 @@ defmodule Apiary.Adapters do
              :ok <- connectable(current),
              true <- offered?(scope, current) || {:error, :not_offered},
              nonce = ConnectPass.new_nonce(),
-             {:ok, connection, pass, replaced} <-
-               Connections.start(scope, current, nonce, reach: reach),
+             {:ok, connection, pass, replaced} <- Connections.start(scope, current, nonce),
              {:ok, _entry} <-
                Audit.record(Repo, scope, :"adapter.connect", scope.organisation, %{
                  details:

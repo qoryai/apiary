@@ -11,7 +11,7 @@ defmodule ApiaryWeb.AdapterInstallController do
   #      is looked up;
   #   2. an adapter the person does not find (`Apiary.Adapters.get_adapter/2`: deleted, of
   #      another kind, or none) is a path that does not exist, `404`;
-  #   3. `Apiary.Adapters.connect/3` starts the connection and makes its connect pass. The
+  #   3. `Apiary.Adapters.connect/2` starts the connection and makes its connect pass. The
   #      nonce it gives is kept in the person's session (`ApiaryWeb.ConnectSession`), so
   #      the return comes back in this browser, and the person is sent to the address it
   #      answers, the adapter's connect address with the pass. With a `back` that
@@ -21,11 +21,7 @@ defmodule ApiaryWeb.AdapterInstallController do
   #      a workspace's slug is kept only for a workspace of the organisation in use
   #      (`Apiary.Organisations.list_workspaces/1`); any other `back` is ignored. Neither
   #      the pass nor the connect address contains it;
-  #   4. a connection the press makes reaches what `Apiary.Connections.reach_at_add/3`
-  #      gives: `install[everywhere]`, the setting "Available to every workspace in
-  #      <organisation>", where the edition shows it (`c:Apiary.Edition.scope_setting?/1`),
-  #      and the workspace the form is in: the one `back` leads to, else the scope's;
-  #   5. when the organisation's connected connection cannot take a new pass yet, as for
+  #   4. when the organisation's connected connection cannot take a new pass yet, as for
   #      a second press in the same second, the person is sent to the integration's page;
   #      when the adapter cannot be connected yet (it declared no address, holds no key in
   #      use, or no pass could be made), or the organisation is not offered it (not
@@ -51,14 +47,9 @@ defmodule ApiaryWeb.AdapterInstallController do
 
     with :ok <- Access.authorize(scope, :"adapter.connect", scope.organisation),
          %Node{} = adapter <- Adapters.get_adapter(scope, adapter_id) || {:error, :not_found},
-         {back, workspace} = back(scope, params["back"]),
-         {:ok, url, session} <-
-           Adapters.connect(scope, adapter,
-             everywhere: everywhere?(params),
-             workspace: workspace || scope.workspace
-           ) do
+         {:ok, url, session} <- Adapters.connect(scope, adapter) do
       conn
-      |> ConnectSession.put(session, back)
+      |> ConnectSession.put(session, back(scope, params["back"]))
       |> SendOn.send_on(url)
     else
       {:error, :forbidden} ->
@@ -80,21 +71,16 @@ defmodule ApiaryWeb.AdapterInstallController do
     end
   end
 
-  # `{back, workspace}`: `back`, with the workspace it leads to, nil for none; nil and nil
-  # when it leads to a workspace that is not one of the organisation's in use.
+  # `back`, unless it leads to a workspace that is not one of the organisation's in use.
   defp back(scope, back) do
     case ConnectSession.back_workspace(back) do
       nil ->
-        {back, nil}
+        back
 
       slug ->
-        case Enum.find(Organisations.list_workspaces(scope), &(&1.slug == slug)) do
-          nil -> {nil, nil}
-          workspace -> {back, workspace}
-        end
+        if Enum.any?(Organisations.list_workspaces(scope), &(&1.slug == slug)),
+          do: back,
+          else: nil
     end
   end
-
-  defp everywhere?(%{"install" => %{"everywhere" => "true"}}), do: true
-  defp everywhere?(_params), do: false
 end

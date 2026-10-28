@@ -24,7 +24,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #     tickets and comments (`Apiary.Sources.post_items/2`, `post_comments/2`), each body
   #     read by the contract's wire module first and each request recorded as a use of
   #     its key, as the adapter's signed requests would be;
-  #   * Dana connects Acme (`Apiary.Adapters.connect/3`), and comes back with the
+  #   * Dana connects Acme (`Apiary.Adapters.connect/2`), and comes back with the
   #     adapter's return (`Apiary.Adapters.Connections.complete_return/4`); she makes
   #     Support where the edition allows it (`Apiary.Organisations.create_workspace/2`),
   #     assigns the collections (`Apiary.Adapters.Collections.assign_collections/4`) and

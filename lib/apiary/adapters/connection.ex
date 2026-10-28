@@ -1,7 +1,7 @@
 defmodule Apiary.Adapters.Connection do
   # An organisation's connection to an adapter of the instance (a node of kind `adapter`,
   # `na_…`), made when an owner or an admin of the organisation starts connecting it
-  # (`Apiary.Adapters.connect/3`). The table and its rules are
+  # (`Apiary.Adapters.connect/2`). The table and its rules are
   # `20261015131100_connect_an_organisation_to_an_adapter`'s, with `pass_expires_at` from
   # `20261016090500_keep_when_a_connection_s_latest_pass_expires`.
   #
@@ -31,12 +31,6 @@ defmodule Apiary.Adapters.Connection do
   # connected connection takes a new pass for each external account a person adds to it:
   # `pass_nonce`, `pass_nonce_used_at`, `pass_expires_at` and `pass_started_by_id` change
   # with its passes; `created_by_id` and `connected_at` stay as they are.
-  #
-  # `applies_to` is the workspaces of the organisation it reaches, set as it is made and
-  # never changed after: `all`, every one, those made later included, or `selected`, those
-  # listed for it (`Apiary.Adapters.ConnectionWorkspace`), from
-  # `20261028170000_keep_the_workspaces_an_adapter_connection_reaches`. A collection of it
-  # is assigned only to a workspace it reaches (`Apiary.Adapters.Collections`).
   #
   # `public_id` is its name outside the database: `ac_`, then sixteen lowercase Crockford
   # base32 characters, made once with it (`Apiary.PublicId`).
@@ -74,7 +68,6 @@ defmodule Apiary.Adapters.Connection do
     field :listed_at, :utc_datetime_usec
     field :listing_completed_at, :utc_datetime_usec
     field :ended_at, :utc_datetime_usec
-    field :applies_to, :string
 
     field :ended_reason, Ecto.Enum,
       values: [:adapter_reported, :organisation_deleted, :integration_deleted, :replaced]
@@ -83,8 +76,6 @@ defmodule Apiary.Adapters.Connection do
     belongs_to :adapter, Node
     belongs_to :created_by, User
     belongs_to :pass_started_by, User
-
-    has_many :workspaces, Apiary.Adapters.ConnectionWorkspace, preload_order: [asc: :workspace_id]
 
     timestamps(type: :utc_datetime_usec)
   end

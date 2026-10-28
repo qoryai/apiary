@@ -288,32 +288,16 @@ defmodule Apiary.NodesFixtures do
   @doc """
   The connection of the scope's organisation to `adapter`, connectable
   (`connectable_adapter_fixture/1`), started by the scope's person, an owner or an admin
-  (`Apiary.Adapters.connect/3`), then in `state`: `:pending`, as started; `:connected`,
+  (`Apiary.Adapters.connect/2`), then in `state`: `:pending`, as started; `:connected`,
   as a return that says it is linked leaves it; `:listed`, connected, and named by the
   adapter's first listing. Returns `{connection, session_nonce}`, the nonce of its pass
   in base64url, as the person's session keeps it.
-
-  `reach` is the workspaces it reaches: `:all`, the default, every workspace of the
-  organisation, written straight to its row, as an edition with the setting on makes it;
-  `:added`, as Install makes it in the core, the scope's workspace alone
-  (`Apiary.Connections.reach_at_add/3`).
   """
-  def connection_fixture(scope, %Node{} = adapter, state \\ :listed, reach \\ :all) do
-    alias Apiary.Adapters.{Connection, ConnectionWorkspace}
+  def connection_fixture(scope, %Node{} = adapter, state \\ :listed) do
+    alias Apiary.Adapters.Connection
 
     {:ok, _url, {public_id, nonce}} = Apiary.Adapters.connect(scope, adapter)
     connection = Repo.get_by!(Connection, public_id: public_id)
-
-    connection =
-      case reach do
-        :added ->
-          connection
-
-        :all ->
-          Repo.delete_all(from w in ConnectionWorkspace, where: w.connection_id == ^connection.id)
-          connection |> Ecto.Changeset.change(applies_to: "all") |> Repo.update!()
-      end
-
     now = DateTime.utc_now()
 
     connected = [state: :connected, connected_at: now, pass_nonce_used_at: now]
