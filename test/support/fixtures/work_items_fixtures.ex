@@ -114,6 +114,34 @@ defmodule Apiary.WorkItemsFixtures do
   end
 
   @doc """
+  `work_item`'s ticket's collection made one that can change the work item's target, as
+  a code forge's collection is (`Apiary.Runs.RunCredentials.form_work/3`): its target set
+  to the work item's, and its adapter's `targets` true, as a start stores it. Returns the
+  collection.
+  """
+  def target_candidate!(%WorkItem{item_id: item_id} = work_item) when is_binary(item_id) do
+    collection =
+      Repo.one!(
+        from c in Collection,
+          join: i in Item,
+          on: i.collection_id == c.id,
+          where: i.id == ^item_id
+      )
+
+    {1, _rows} =
+      Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+        set: [targets: true]
+      )
+
+    {1, _rows} =
+      Repo.update_all(from(c in Collection, where: c.id == ^collection.id),
+        set: [target_system: work_item.target_system, target_path: work_item.target_path]
+      )
+
+    Repo.get!(Collection, collection.id)
+  end
+
+  @doc """
   A ticket, an open item of a collection, as an adapter sends one, written through
   `Apiary.Sources.Item.changeset/2`. `attrs` takes `collection` (else a new one of
   `connection`, else of a new connection of the scope's organisation) and overrides any

@@ -90,8 +90,9 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   # run_key: run_key}}`, the registered run and the run key its code was redeemed for, or
   # `{:error, :gone}` for a run the claim ended; and the run of the queue.
   #
-  # With `apply`, the work item's adapter declares those apply items, so the run has the
-  # work entry `work-1`, and the map also has `adapter_seed`, to sign the stub adapter's
+  # With `apply`, the work item's adapter declares those apply items and its ticket's
+  # collection can change its target (`Apiary.WorkItemsFixtures.target_candidate!/1`), so
+  # the run has the work entry `work-1`, and the map also has `adapter_seed`, to sign the stub adapter's
   # answers with (`Apiary.SealedRunsFixtures.callable_adapter_fixture/2`).
   defp hand_over(ctx_or_scope, apply \\ nil)
 
@@ -103,6 +104,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
     %{access_key: pool_key} = enrolled_key_fixture(scope, pool)
     work_item = work_item_fixture(scope)
     adapter = if apply, do: callable_adapter_fixture(work_item.adapter_id, apply), else: %{}
+    if apply, do: target_candidate!(work_item)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
     case Dispatches.claim(pool_key, Dispatches.now()) do

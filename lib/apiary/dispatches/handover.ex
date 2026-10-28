@@ -70,12 +70,14 @@ defmodule Apiary.Dispatches.Handover do
   #      may not be sealed for the gateway
   #      (`Apiary.Runs.ProviderCredential.sealable_to?/3`): `secrets_not_allowed`, as such
   #      a gateway never receives the run's model key, and the run never starts on a model
-  #      nobody chose. Before that check, a run whose target came from a collection of an
-  #      adapter that declares apply items, while the collection ended, its connection is
-  #      not connected, or the target path is one the apply items refuse, ends
-  #      `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/3`). A run with a work
-  #      credential entry also ends `secrets_not_allowed` when one of those keys was made
-  #      without `allow_secrets`, whatever the features and its model choice;
+  #      nobody chose. Before that check, a run whose work entry comes from a collection
+  #      of an adapter that declares apply items, while the collection ended, its
+  #      connection is not connected, or the target path is one the apply items refuse,
+  #      ends `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/3`, which picks
+  #      that collection: a prebuild's, or one that can change the run's target). A run
+  #      with a work credential entry also ends `secrets_not_allowed` when one of those
+  #      keys was made without `allow_secrets`, whatever the features and its model
+  #      choice;
   #   2. the run key cannot be made for the gateway's address
   #      (`Apiary.Runs.Registration.issue_grant/3`), the run settings take more than 64
   #      KiB, the input does not fit 1 MiB with every comment left out, the run's model
