@@ -20,7 +20,8 @@ defmodule Apiary.WorkspaceSetup do
   #   * `harness?/1`: the workspace has a saved harness choice (`Apiary.Stacks.choice/1`);
   #   * Machines: `machines/1` finds a ready pool. The step reads the pools that serve the
   #     workspace's runs, each with its state, and for a pool that is not ready the reason
-  #     (`pools/1`, `t:pool_line/0`), and writes nothing;
+  #     (`pools/1`, `t:pool_line/0`). A pool the step makes for the workspace has the
+  #     name `pool_name/1`;
   #   * `test?/1`: the edition's `test_run_passed?/1`.
   #
   # The edition has four rules of the set-up: `c:Apiary.Edition.work_source_ready/1`,
@@ -504,6 +505,31 @@ defmodule Apiary.WorkspaceSetup do
     from n in Node,
       where: n.workspace_id == ^workspace_id and n.kind == :pool and is_nil(n.deleted_at),
       order_by: [asc: n.inserted_at, asc: n.id]
+  end
+
+  # The longest node name, in code points: the database's `nodes_name_check` counts with
+  # `char_length`. `Apiary.Nodes.Node` allows 80 graphemes, and a grapheme has 1 code
+  # point or more.
+  @pool_name_max 80
+
+  @doc false
+  # pool_name/1 is the name of the pool the Machines step makes for `workspace`: its name,
+  # cut to the whole graphemes that fit in 80 code points, then trailing whitespace trimmed.
+  @spec pool_name(Workspace.t()) :: String.t()
+  def pool_name(%Workspace{name: name}) do
+    name
+    |> String.graphemes()
+    |> Enum.reduce_while({[], 0}, fn grapheme, {kept, count} ->
+      count = count + length(String.codepoints(grapheme))
+
+      if count <= @pool_name_max,
+        do: {:cont, {[grapheme | kept], count}},
+        else: {:halt, {kept, count}}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+    |> Enum.join()
+    |> String.trim_trailing()
   end
 
   @doc false
