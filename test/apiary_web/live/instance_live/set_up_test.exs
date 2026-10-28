@@ -695,8 +695,9 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
 
     # The workspace set-up lists no step under Connect Qory Apiary.
     {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up")
-    assert steps(lv) == [{"Your account", :done} | workspace_steps(:current)]
-    assert count(lv) == "Step 2 of #{length(steps(lv))}"
+    # Your account is of the instance's progress, so Workspace is step 1.
+    assert steps(lv) == workspace_steps(:current)
+    assert count(lv) == "Step 1 of #{length(steps(lv))}"
     refute has_element?(lv, "#set-up-group-connect")
     refute has_element?(lv, "#set-up-steps-mail")
   end

@@ -48,8 +48,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #
   # Every step has Back to the step before it in the indicator, where that step has a
   # page. The indicator shows the organisation's progress, whose first step is Workspace:
-  # Workspace has no Back to the instance's steps. Work source is of the `factory` feature, and the module reference leaves the
-  # module out.
+  # Workspace has no Back to the instance's steps. Work source is of the `factory`
+  # feature, and the module reference leaves the module out.
   @moduledoc false
 
   use ApiaryWeb, :live_view

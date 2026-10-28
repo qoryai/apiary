@@ -101,15 +101,9 @@ defmodule ApiaryWeb.SetupLiveTest do
       Apiary.Mail.put_test_source(:env)
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
 
-      if Apiary.Features.on?(:factory) do
-        assert steps(lv) ==
-                 [{"Your account", :current}, {"Workspace", :to_come}, {"Work source", :to_come}]
-
-        assert count(lv) == "Step 1 of 3"
-      else
-        assert steps(lv) == [{"Your account", :current}, {"Workspace", :to_come}]
-        assert count(lv) == "Step 1 of 2"
-      end
+      # Your account alone in the instance's progress; Workspace is in the organisation's.
+      assert steps(lv) == [{"Your account", :current}]
+      assert count(lv) == "Step 1 of 1"
 
       refute has_element?(lv, "#set-up-group-connect")
     end

@@ -92,7 +92,9 @@ defmodule Apiary.Edition do
     instance admin, or `:organisation`, set up for every organisation. The indicator
     counts and lists the current step's progress alone. A step without it, such as one
     the edition adds, is of `:organisation`. On Invitation and Your account the core sets
-    it once the edition has answered: they take the progress of the step after them;
+    it once the edition has answered: `:instance` for an instance admin and on the set-up
+    link's page, else `:organisation`. A step the edition renames from them, with another
+    id, has none;
   - `organisation_id`, on the Invitation step alone, signed out: the id of the
     invitation's organisation, so an edition can tell whose invitation it is. No page
     shows it.
@@ -188,8 +190,7 @@ defmodule Apiary.Edition do
   steps, and set their notes. The indicator shows the current step's progress alone
   (`progress` in `t:set_up_step/0`): the number of its steps is the count the indicator
   shows ("Step 2 of 4"). A list of fewer than 2 steps shows no indicator; a progress
-  of one step in a longer list shows "Step 1 of 1". The
-  core answers `steps`.
+  of one step in a longer list shows "Step 1 of 1". The core answers `steps`.
   """
   @callback set_up_steps(Scope.t() | nil, [set_up_step]) :: [set_up_step]
 

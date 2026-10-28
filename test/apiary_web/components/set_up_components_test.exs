@@ -94,8 +94,8 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       steps = SetUpComponents.steps_for(admin, :account)
       assert shape(steps) == [{:account, :current}, {:workspace, :done}, {:source, :to_come}]
 
-      # No step of the instance's: Your account starts the organisation's progress.
-      assert Enum.all?(steps, &(&1.progress == :organisation))
+      # No adapter or Mail step: Your account stays the instance's, as for any admin.
+      assert Enum.map(steps, & &1.progress) == [:instance, :organisation, :organisation]
 
       refute SetUpComponents.connect_steps?(admin)
 
@@ -107,6 +107,28 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
       assert SetUpComponents.connect_steps?(admin)
       refute SetUpComponents.connect_steps?(scope_fixture())
+    end
+
+    test "an instance admin with no adapter or Mail step starts Workspace at step 1" do
+      Apiary.Mail.put_test_source(:env)
+      admin = instance_admin_scope()
+      steps = SetUpComponents.steps_for(admin, :workspace)
+
+      assert Enum.map(steps, &{&1.id, &1.progress}) ==
+               [{:account, :instance}, {:workspace, :organisation}, {:source, :organisation}]
+
+      html = render_component(&SetUpComponents.steps/1, steps: steps)
+      doc = LazyHTML.from_fragment(html)
+
+      assert doc |> LazyHTML.query("#set-up-step") |> LazyHTML.text() |> String.trim() ==
+               "Step 1 of 2"
+
+      assert ApiaryWeb.SetUpSteps.steps(html_doc(html)) ==
+               [{"Workspace", :current}, {"Work source", :to_come}]
+
+      # A person who is not an instance admin keeps Your account in the organisation's.
+      assert [%{id: :account, progress: :organisation} | _] =
+               SetUpComponents.steps_for(scope_fixture(), :workspace)
     end
 
     test "with mail not set by the environment, an instance admin has the mail step" do

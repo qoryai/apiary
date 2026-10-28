@@ -15,10 +15,11 @@ defmodule ApiaryWeb.SetUpComponents do
   `:instance`, is set up once, by the instance admin: Your account, one step for each
   adapter, then Mail. The organisation's, `:organisation`, is set up for every
   organisation: Workspace, then Work source. Invitation and Your account belong to the
-  progress the person starts in. A step without `:progress`, such as one an edition adds,
-  is the organisation's. The indicator and Back show the current step's progress alone,
-  counted from 1; the steps still lead from the last of the instance's to the first of the
-  organisation's (`next_step/2`).
+  instance's progress for an instance admin and on the set-up link's page, and to the
+  organisation's for everyone else. A step without `:progress`, such as one an edition
+  adds or renames, is the organisation's. The indicator and Back show the current step's
+  progress alone, counted from 1. Finishing or skipping the instance's last step on
+  `/instance/set-up` still leads to the organisation's first step, Workspace.
   """
   use ApiaryWeb, :html
 
@@ -61,10 +62,10 @@ defmodule ApiaryWeb.SetUpComponents do
      edition's `work_source_ready/1`. Signed out, only where the organisation is still to
      be made: an invitation makes a member, who may not connect.
 
-  Invitation and Your account take the progress of the first step after them, once the
-  edition has answered: the instance's for an instance admin, and on the set-up link's
-  page, where there is a step of the instance's; else the organisation's. A step the
-  edition renames from them keeps no progress, and so is the organisation's.
+  Invitation and Your account are of the instance's progress for an instance admin, and
+  with `first: true`, even where the list has no adapter or Mail step; else of the
+  organisation's. The progress is set once the edition has answered, so a step the
+  edition renames from them, with another id, has no progress and is the organisation's.
 
   The step `current` names is current; a step before it that is not done is skipped,
   but for an `{:installing, name}` step on a page that is not of the instance's
@@ -81,32 +82,31 @@ defmodule ApiaryWeb.SetUpComponents do
         instance_steps(scope, opts[:first] == true) ++
         workspace_steps(scope, invitation, signed_in?)
 
+    start =
+      if opts[:first] == true or Access.instance_admin?(scope),
+        do: :instance,
+        else: :organisation
+
     scope
     |> Apiary.Edition.set_up_steps(states(steps, current))
-    |> starting_progress()
+    |> starting_progress(start)
   end
 
   # `done` stands in the state until `states/2` sets it. Invitation and Your account get
-  # their progress from `starting_progress/1`, after the edition answers.
+  # their progress from `starting_progress/2`, after the edition answers.
   defp step(id, label, group, done, path),
     do: %{id: id, label: label, group: group, state: done, path: path, note: nil}
 
   defp step(id, label, group, done, path, progress),
     do: Map.put(step(id, label, group, done, path), :progress, progress)
 
-  # Invitation and Your account, at the head of the list and without a progress, belong to
-  # the progress of the first step after them that has one: the instance's where the
-  # person starts with the instance's steps, else the organisation's. After the edition
-  # answers, so a step it renames, such as Your account, follows the steps it keeps.
-  defp starting_progress(steps) do
-    {head, rest} =
-      Enum.split_while(
-        steps,
-        &(&1.id in [:invitation, :account] and not Map.has_key?(&1, :progress))
-      )
-
-    start = Enum.find_value(rest, :organisation, &Map.get(&1, :progress))
-    Enum.map(head, &Map.put(&1, :progress, start)) ++ rest
+  # Sets `start` as the progress of each step whose id is still `:invitation` or
+  # `:account` and that has none. A step the edition gave another id keeps no progress.
+  defp starting_progress(steps, start) do
+    Enum.map(steps, fn
+      %{id: id} = step when id in [:invitation, :account] -> Map.put_new(step, :progress, start)
+      step -> step
+    end)
   end
 
   # With the invitation's organisation's id, for the edition (`c:Apiary.Edition.set_up_steps/2`);
