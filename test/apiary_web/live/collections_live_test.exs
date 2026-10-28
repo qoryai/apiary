@@ -234,7 +234,7 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     {:ok, lv, _html} = live(ctx.conn, ctx.destinations)
 
     assert words(lv, "#destinations-none") ==
-             "#{ctx.organisation.name} has no work destination connected yet. Work destinations"
+             "#{ctx.organisation.name} has no work destination connected yet. Destinations"
 
     assert href(lv, "#destinations-none-connect") ==
              ~p"/#{ctx.organisation}/set-up?step=destinations&workspace=#{slug}"
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     {:ok, step, _html} =
       lv |> element("#work-sources-none-connect") |> render_click() |> follow_redirect(ctx.conn)
 
-    assert has_element?(step, "h1", "Where does #{ctx.organisation.name}'s work come from?")
+    assert has_element?(step, "h1", "Where does work for #{ctx.scope.workspace.name} come from?")
   end
 
   test "a change of the organisation's collections shows at once", ctx do

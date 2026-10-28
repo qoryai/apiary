@@ -2,8 +2,8 @@ defmodule ApiaryWeb.CollectionsLive do
   # Workspace settings › Work sources (`/:org/:workspace/settings/work-sources`,
   # `:sources`) and › Destinations (`/:org/:workspace/settings/destinations`,
   # `:destinations`), with the `factory` feature: the tick lists of the set-up's steps Work
-  # sources used and Destinations used (`ApiaryWeb.TickListComponents`), under the step's
-  # question, with the same behaviour. A tick (`Apiary.WorkspaceSetup.tick/5`) reads the
+  # sources and Destinations (`ApiaryWeb.TickListComponents`), under a question, with the
+  # same behaviour. A tick (`Apiary.WorkspaceSetup.tick/5`) reads the
   # list again first, and changes nothing for a collection that is now in another
   # workspace. With no collection, the link to the set-up's step that connects one leads
   # to that step of the workspace's flow (`ApiaryWeb.SetUpComponents.flow_path/2`).

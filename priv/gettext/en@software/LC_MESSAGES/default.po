@@ -2226,11 +2226,6 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "%{organisation} connects each system once. Each workspace then picks what it uses."
-msgstr "%{organisation} connects each system once. Each workspace then picks what it uses."
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
 msgid "%{organisation} has a key for %{provider}."
 msgstr ""
 
@@ -6458,15 +6453,11 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
+#: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/collections_live.ex
 #, elixir-autogen, elixir-format
 msgid "Destinations"
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "Destinations used"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -7517,11 +7508,6 @@ msgstr ""
 msgid "For"
 msgstr ""
 
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "For %{organisation}"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "For %{tool}"
@@ -7540,11 +7526,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "For %{tool}, path %{path}"
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "For %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -7566,11 +7547,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "For the new workspace"
 msgstr ""
 
 #: lib/apiary/lingo/domain/software.ex
@@ -10175,6 +10151,11 @@ msgstr ""
 msgid "No changes yet. Version 1 was rendered on %{date}."
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "No collection yet"
+msgstr "No collection yet"
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "No connection went through the gateway. Only programs that honour the proxy variables are seen."
@@ -11610,7 +11591,6 @@ msgstr ""
 
 #: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/integration_live/common.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change the integrations of the organisation."
 msgstr ""
@@ -17767,12 +17747,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Where do %{organisation}'s changes go?"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Where does %{organisation}'s work come from?"
+msgid "Where does work for %{workspace} come from?"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -17832,7 +17807,6 @@ msgid "Which targets may runs in %{workspace} change?"
 msgstr "Which repositories may runs in %{workspace} change?"
 
 #: lib/apiary_web/live/collections_live.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Which work sources does %{workspace} use?"
 msgstr ""
@@ -17900,11 +17874,6 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Work"
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "Work destinations"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -17988,11 +17957,6 @@ msgstr[1] ""
 #: lib/apiary_web/live/collections_live.ex
 #, elixir-autogen, elixir-format
 msgid "Work sources"
-msgstr ""
-
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "Work sources used"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
@@ -18344,11 +18308,6 @@ msgstr ""
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "You can change the email address of your %{name} account by visiting the URL below:"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "You can change these or add more later in Organisation settings › Integrations."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

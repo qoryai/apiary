@@ -327,9 +327,9 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       # `secrets` too; without `factory`, Name alone.
       flow =
         if Apiary.Features.on?(:factory) do
-          ["Work sources", "Work destinations"] ++
+          ["Name", "Work sources", "Destinations"] ++
             if(Apiary.Features.on?(:secrets), do: ["Model"], else: []) ++
-            ["Name", "Work sources used", "Destinations used", "Harness", "Machines", "Test run"]
+            ["Harness", "Machines", "Test run"]
         else
           ["Name"]
         end
@@ -344,7 +344,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       # The organisation's progress alone: the instance's steps belong to its admin.
       assert steps(lv) == [{"Your account", :current} | flow]
 
-      # Signed out, the organisation has no name yet: the groups have no heading.
+      # The flow's steps have no group heading.
       assert count(lv) == "Step 1 of #{length(flow) + 1}"
       refute has_element?(lv, ".q-su-grp-h")
 
