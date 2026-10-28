@@ -17,9 +17,9 @@ defmodule ApiaryWeb.SetUpComponents do
   is the flow that sets up a workspace (the list of Apiary.WorkspaceSetup), after Your
   account: the steps of the group `:organisation`, which the organisation does once
   (Work sources, Work destinations, Model), then those of the group `:workspace`, which
-  each workspace does (Name, Work sources used, Destinations used, Test run). Invitation
-  and Your account belong to the instance's progress for an instance admin and on the
-  set-up link's page, and to the organisation's for everyone else. A step without
+  each workspace does (Name, Work sources used, Destinations used, Harness, Test run).
+  Invitation and Your account belong to the instance's progress for an instance admin and
+  on the set-up link's page, and to the organisation's for everyone else. A step without
   `:progress`, such as one an edition adds or renames, is the organisation's. The
   indicator and Back show the current step's progress alone, counted from 1. Finishing
   or skipping the instance's last step on `/instance/set-up` leads to the first step of
@@ -324,6 +324,7 @@ defmodule ApiaryWeb.SetUpComponents do
   def step_label(:name), do: gettext("Name")
   def step_label(:sources_used), do: gettext("Work sources used")
   def step_label(:destinations_used), do: gettext("Destinations used")
+  def step_label(:harness), do: gettext("Harness")
   def step_label(:test), do: gettext("Test run")
 
   # The heading of a group of the flow's steps in the indicator.

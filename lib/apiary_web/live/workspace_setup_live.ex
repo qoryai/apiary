@@ -75,6 +75,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     again first, and changes nothing for a collection that is now in another
   #     workspace. A person whom `collection.assign` does not allow sees the boxes
   #     disabled, and who may;
+  #   * Harness, with the `factory` feature: the three harness choices
+  #     (`ApiaryWeb.HarnessComponents.choices/1`), the saved one chosen, else the Qory
+  #     harness. The linked repositories of a harness repository are read once the step
+  #     opens, outside the page's process, once per page. Continue saves the choice
+  #     (`Apiary.Stacks.Sources.choose/2`) and goes on, or goes on where it is the saved
+  #     one; a harness repository is read outside the page's process while Continue shows
+  #     Saving, and a read that failed says why. A person whom `harness.save` does not
+  #     allow sees the choices disabled, and who may;
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
@@ -112,7 +120,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
   alias Apiary.Runs.Run
-  alias ApiaryWeb.{IntegrationComponents, OverviewComponents, SetUpComponents, SourceComponents}
+  alias Apiary.Stacks.Sources
+
+  alias ApiaryWeb.{
+    HarnessComponents,
+    IntegrationComponents,
+    OverviewComponents,
+    SetUpComponents,
+    SourceComponents
+  }
+
   alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
 
   @impl true
@@ -135,7 +152,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        timer: nil,
        attempt: 0,
        test_notice: nil,
-       test_form: test_form(gettext("Hi! Where are you running?"))
+       test_form: test_form(gettext("Hi! Where are you running?")),
+       linked: nil,
+       listing: false
      )}
   end
 
@@ -354,6 +373,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         workspace: flow.workspace.name
       )
 
+  defp heading(:harness, flow),
+    do: gettext("Which harness do %{workspace}'s runs use?", workspace: flow.workspace.name)
+
   defp heading(:test, _flow), do: gettext("Run a test")
 
   ## Each step's data
@@ -479,6 +501,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
+  defp load_step(%{assigns: %{step: :harness}} = socket) do
+    %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
+    chosen = Sources.chosen(workspace)
+    may = Access.can?(scope, :"harness.save", workspace)
+
+    socket
+    |> assign(
+      may: may,
+      who_may:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"harness.save",
+          gettext("Only owners and admins change this.")
+        ),
+      chosen: chosen,
+      qory: HarnessComponents.qory(chosen, workspace),
+      saving: false,
+      harness_refusal: nil,
+      done: step_done?(socket.assigns.flow, :harness)
+    )
+    |> assign_harness_form(HarnessComponents.form_params(chosen, socket.assigns.linked))
+    |> list_linked()
+  end
+
   defp load_step(%{assigns: %{step: :test}} = socket) do
     %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
     socket = listen(socket)
@@ -540,6 +586,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         assign(socket, :timer, nil)
     end
   end
+
+  ## The Harness step's form
+
+  defp assign_harness_form(socket, params),
+    do: assign(socket, form: to_form(params, as: :harness))
+
+  # The linked repositories, read once per page, outside the page's process, for a person
+  # who may save.
+  defp list_linked(%{assigns: %{listing: false, may: true}} = socket) do
+    if connected?(socket) do
+      scope = socket.assigns.current_scope
+
+      socket
+      |> assign(:listing, true)
+      |> start_async(:harness_linked, fn -> Sources.linked(scope) end)
+    else
+      socket
+    end
+  end
+
+  defp list_linked(socket), do: socket
 
   ## The Model step's form
 
@@ -778,6 +845,46 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
+  def handle_event(
+        "choose_harness",
+        %{"harness" => params},
+        %{assigns: %{step: :harness, may: true}} = socket
+      )
+      when is_map(params) do
+    params = HarnessComponents.fill(params, socket.assigns.chosen, socket.assigns.linked)
+    {:noreply, socket |> assign(harness_refusal: nil) |> assign_harness_form(params)}
+  end
+
+  def handle_event(
+        "save_harness",
+        %{"harness" => params},
+        %{assigns: %{step: :harness, may: true, saving: false}} = socket
+      )
+      when is_map(params) do
+    %{current_scope: scope, linked: linked, chosen: chosen} = socket.assigns
+    socket = assign_harness_form(socket, params)
+
+    case HarnessComponents.choice(params, linked) do
+      nil ->
+        {:noreply, socket}
+
+      choice ->
+        cond do
+          HarnessComponents.unchanged?(choice, chosen) ->
+            {:noreply, go_on(socket)}
+
+          match?({:repository, _source, _ref}, choice) ->
+            {:noreply,
+             socket
+             |> assign(saving: true, harness_refusal: nil)
+             |> start_async(:harness_save, fn -> {choice, Sources.choose(scope, choice)} end)}
+
+          true ->
+            {:noreply, harness_saved(socket, choice, Sources.choose(scope, choice))}
+        end
+    end
+  end
+
   def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket) do
     line =
       case params do
@@ -823,6 +930,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       {:error, _reason} ->
         {:noreply,
          socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+    end
+  end
+
+  defp go_on(socket),
+    do: push_patch(socket, to: socket.assigns.next_path || socket.assigns.page_path)
+
+  # The answer to a save of the harness choice `choice`.
+  defp harness_saved(socket, _choice, {:ok, _stack}), do: go_on(socket)
+
+  defp harness_saved(socket, _choice, {:error, :forbidden}),
+    do: socket |> load_step() |> put_flash(:error, socket.assigns.who_may)
+
+  defp harness_saved(socket, choice, {:error, reason}) do
+    source =
+      case choice do
+        {:repository, source, _ref} -> source
+        _other -> nil
+      end
+
+    case HarnessComponents.refusal_words(reason, source, socket.assigns.flow.organisation.name) do
+      nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+      words -> assign(socket, :harness_refusal, {reason, words})
     end
   end
 
@@ -930,6 +1059,42 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     if error,
       do: to_form(%{"line" => line}, as: "test", errors: [line: error], action: :insert),
       else: to_form(%{"line" => line}, as: "test")
+  end
+
+  @impl true
+  def handle_async(:harness_linked, {:ok, {:ok, %{sources: linked}}}, socket),
+    do: {:noreply, harness_listed(socket, linked)}
+
+  def handle_async(:harness_linked, _limited_or_exit, socket),
+    do: {:noreply, harness_listed(socket, [])}
+
+  def handle_async(
+        :harness_save,
+        {:ok, {choice, result}},
+        %{assigns: %{step: :harness}} = socket
+      ),
+      do: {:noreply, socket |> assign(:saving, false) |> harness_saved(choice, result)}
+
+  def handle_async(:harness_save, _exit_or_left, socket) do
+    socket = assign(socket, :saving, false)
+
+    if socket.assigns.step == :harness,
+      do: {:noreply, put_flash(socket, :error, gettext("Nothing was changed. Try again."))},
+      else: {:noreply, socket}
+  end
+
+  # The linked repositories are read: a form with no repository chosen yet takes the
+  # saved one, else the first.
+  defp harness_listed(socket, linked) do
+    socket = assign(socket, :linked, linked)
+
+    case socket.assigns do
+      %{step: :harness, form: %{params: params}, chosen: chosen} ->
+        assign_harness_form(socket, HarnessComponents.fill(params, chosen, linked))
+
+      _other ->
+        socket
+    end
   end
 
   @impl true
@@ -1581,6 +1746,76 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     </SetUpComponents.frame>
     """
   end
+
+  defp flow_step(%{step: :harness} = assigns) do
+    assigns =
+      assign(assigns,
+        choice: HarnessComponents.choice(assigns.form.params, assigns.linked)
+      )
+
+    ~H"""
+    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
+
+      <.form
+        for={@form}
+        id="set-up-harness-form"
+        phx-change="choose_harness"
+        phx-submit="save_harness"
+        class="grid gap-4"
+        novalidate
+      >
+        <HarnessComponents.choices
+          form={@form}
+          chosen={@chosen}
+          qory={@qory}
+          linked={@linked}
+          organisation={@flow.organisation.name}
+          disabled={!@may or @saving}
+        />
+
+        <.notice :if={@harness_refusal} kind={:error}>
+          <span id="set-up-harness-refusal" data-reason={harness_refusal_code(@harness_refusal)}>
+            {elem(@harness_refusal, 1)}
+          </span>
+        </.notice>
+
+        <p
+          :if={!@may}
+          id="set-up-who-may"
+          class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+        >
+          {@who_may}
+        </p>
+
+        <p id="set-up-later" class="text-[13px]/5 text-muted">
+          {gettext("You can change this later in Workspace settings › Workflow.")}
+        </p>
+
+        <div :if={@may} class="q-su-acts">
+          <SetUpComponents.back steps={@steps} page={@page_path} />
+          <.button
+            id="set-up-continue"
+            type="submit"
+            variant="primary"
+            size="md"
+            disabled={is_nil(@choice) or @saving}
+            loading_text={gettext("Saving")}
+          >
+            {if @saving, do: gettext("Saving"), else: gettext("Continue")}
+          </.button>
+        </div>
+      </.form>
+
+      <.acts :if={!@may} steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
+    </SetUpComponents.frame>
+    """
+  end
+
+  # The failure code of a refused save, for the page's tests: the walk's, or `limited`.
+  defp harness_refusal_code({{:walk, %{failure: failure}}, _words}), do: failure
+  defp harness_refusal_code({{:limited, _seconds}, _words}), do: "limited"
+  defp harness_refusal_code(_refusal), do: nil
 
   attr :steps, :list, required: true
   attr :page_path, :string, required: true
