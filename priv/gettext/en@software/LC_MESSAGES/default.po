@@ -967,6 +967,7 @@ msgid "%{name} has one value, which goes only with the secret: delete the secret
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} holds two keys already. Revoke one before you add another."
 msgstr ""
@@ -3120,6 +3121,11 @@ msgstr ""
 msgid "A policy rule"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A pool for %{workspace}"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A program from an address has one release: what its address serves. It is fetched again, and you move to it from there."
@@ -3707,6 +3713,7 @@ msgid "Add node"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add node pool"
 msgstr ""
@@ -7806,6 +7813,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Get a new command"
 msgstr ""
@@ -7813,6 +7821,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Get the command"
 msgstr ""
@@ -11369,6 +11378,7 @@ msgid "On %{name}, by qory"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "On %{name}, run:"
 msgstr ""
@@ -11624,6 +11634,7 @@ msgstr ""
 #: lib/apiary/edition/core.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins connect a node."
 msgstr ""
@@ -13168,6 +13179,11 @@ msgstr ""
 msgid "Rename %{value_id} of %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Rename the node %{name} on the Nodes page, then add the pool. A node of %{workspace} already has that name."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Rename value"
@@ -13743,6 +13759,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Runs handed over"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs in %{workspace} then wait for this pool, and the shared pool stops serving them."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -14437,6 +14458,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shape"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Shared: the instance's pool"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

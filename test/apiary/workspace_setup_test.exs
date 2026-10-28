@@ -265,6 +265,40 @@ defmodule Apiary.WorkspaceSetupTest do
       assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
       assert WorkspaceSetup.machines(ctx.workspace) == nil
     end
+
+    test "a pool's name is the workspace's name, cut to whole graphemes within 80 code points, trailing whitespace trimmed",
+         ctx do
+      name = &WorkspaceSetup.pool_name(%Apiary.Organisations.Workspace{name: &1})
+
+      assert name.("Payments") == "Payments"
+      assert name.(String.duplicate("a", 120)) == String.duplicate("a", 80)
+      assert name.(String.duplicate("a", 79) <> " bbbb") == String.duplicate("a", 79)
+
+      # "é" as "e" and a combining acute accent: 1 grapheme, 2 code points.
+      accented = "é"
+      cut = name.(String.duplicate(accented, 50))
+      assert cut == String.duplicate(accented, 40)
+      assert {String.length(cut), length(String.codepoints(cut))} == {40, 80}
+
+      # A grapheme that would pass 80 code points is left out whole.
+      assert name.(String.duplicate("a", 79) <> accented) == String.duplicate("a", 79)
+
+      assert name.(String.duplicate("a", 78) <> accented <> "b") ==
+               String.duplicate("a", 78) <> accented
+
+      # A family emoji: 1 grapheme, 5 code points.
+      family = "\u{1F468}‍\u{1F469}‍\u{1F467}"
+      assert name.(String.duplicate(family, 20)) == String.duplicate(family, 16)
+
+      # The node's changeset and the database's check accept each cut name.
+      for long <- [
+            String.duplicate("a", 120),
+            String.duplicate(accented, 60),
+            String.duplicate(family, 24)
+          ] do
+        assert %Node{kind: :pool} = pool_fixture(ctx.scope, name: name.(long))
+      end
+    end
   end
 
   describe "model key" do
