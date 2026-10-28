@@ -201,6 +201,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it leaves off every opt-in feature.
 - A set-up pass now includes the instance organisation's short name (organisation_slug).
   An adapter may use it to suggest a name, such as the GitHub App's name.
+- Pages show an adapter's title from its description, such as GitHub, in place of its
+  short name, such as github. The short name stays in settings and identifiers.
 <!-- /feature -->
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up
