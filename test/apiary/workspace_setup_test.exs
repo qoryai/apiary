@@ -672,14 +672,15 @@ defmodule Apiary.WorkspaceSetupTest do
       assert WorkspaceSetup.done?(:sources, organisation, {@software, other})
     end
 
-    test "done?/3: Harness once the workspace has a saved choice, whichever it is", ctx do
+    test "done?/3: Harness once the workspace has a saved choice, or takes the organisation's shared harness",
+         ctx do
       organisation = ctx.scope.organisation
+      other = workspace_fixture(organisation, "Other")
       refute WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
 
-      for choice <- [:target_file, :qory] do
-        {:ok, _stack} = Apiary.Stacks.Sources.choose(ctx.scope, choice)
-        assert WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
-      end
+      {:ok, _stack} = Apiary.Stacks.Sources.choose(ctx.scope, :qory)
+      assert WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
+      refute WorkspaceSetup.done?(:harness, organisation, {@software, other})
 
       # A document at the workspace saved without a choice is no choice.
       {:ok, _stack} =
@@ -690,6 +691,14 @@ defmodule Apiary.WorkspaceSetupTest do
         )
 
       refute WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
+
+      # The organisation's shared harness: done for each workspace with no choice.
+      {:ok, _stack} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
+      assert WorkspaceSetup.done?(:harness, organisation, {@software, ctx.workspace})
+      assert WorkspaceSetup.done?(:harness, organisation, {@software, other})
+
+      {:ok, _stack} = Apiary.Stacks.delete_stack({:organisation, organisation})
+      refute WorkspaceSetup.done?(:harness, organisation, {@software, other})
     end
 
     test "collections/3: the organisation's rows by adapter, each with its workspace", ctx do

@@ -11,7 +11,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   @typedoc """
   The harness members of an explore run's documents, from its harness walk: the target's
   version, nil for none; the workflow and `harness_hidden`; the access level the walk
-  resolved; and the stacks' harness document, nil where the target's harness file
+  resolved; and the harness document the walk took, nil where the target's harness file
   applies.
   """
   @type harness :: %{
@@ -57,10 +57,10 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   defp target_version(_harness), do: []
 
   # The `workflow` and `harness_hidden` of a run's documents, both or neither, and its
-  # `harness`, `{"harness": document}`, where the stacks' document applies: the run's
-  # target has no harness file whose harness section has `extends` or lists modules
-  # without it, or the run has no `target_version`. The machine composes the target's
-  # file at `target_version` where `harness` is absent.
+  # `harness`, `{"harness": document}`, where the walk took a document other than the
+  # target's harness file: a stack chosen for the target, the workspace's or the
+  # organisation's harness choice, or the Qory harness. The machine composes the
+  # target's file at `target_version` where `harness` is absent.
   defp harness(nil), do: []
 
   defp harness(%{workflow: workflow, harness_hidden: hidden, harness: document}) do
