@@ -232,6 +232,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
             type="password"
             value={nil}
             label={gettext("Key")}
+            hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
             autocomplete="off"
             spellcheck="false"
             phx-update="ignore"
@@ -339,17 +340,13 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp context(assigns) do
     ~H"""
     <p id="new-provider-what">
-      {gettext("A model provider's key lets the agents of %{organisation}'s runs call a model.",
+      {gettext("A model provider's key lets runs in %{organisation} call a model.",
         organisation: @organisation.name
       )}
     </p>
-    <p :if={get_key(@chosen)} id="new-provider-get-key">
-      <.rich text={get_key(@chosen)}>
-        <:part name={:terms}><.terms href={terms_url(@chosen)} /></:part>
-      </.rich>
-    </p>
+    <.get_key id="new-provider-get-key" chosen={@chosen} />
     <p :if={@workspace} id="new-provider-next">
-      {gettext("After you save, choose %{workspace}'s model in Workspace settings › Model.",
+      {gettext("After you save, choose the model for %{workspace} in Workspace settings › Model.",
         workspace: @workspace.name
       )}
     </p>
@@ -357,26 +354,52 @@ defmodule ApiaryWeb.ProviderLive.Index do
   end
 
   @doc false
-  # get_key/1 is where to get the key of the chosen provider, none for one not in this
-  # list.
-  def get_key(%Provider{name: "anthropic"}),
+  # get_key/1 is where to get the key of the chosen provider, nothing for one not in this
+  # list. For the Claude subscription it is two sentences with the command between them,
+  # on a line with Copy (`ApiaryWeb.CoreComponents.command_line/1`).
+  attr :id, :string, required: true
+  attr :chosen, :any, required: true
+
+  def get_key(%{chosen: %Provider{name: "claude-subscription"}} = assigns) do
+    ~H"""
+    <div id={@id} class="grid gap-2.5">
+      <p id={"#{@id}-run"}>
+        {gettext(
+          "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+        )}
+      </p>
+      <.command_line id={"#{@id}-command"} command="claude setup-token" />
+      <p id={"#{@id}-copy-token"}>
+        <.rich text={
+          rich_gettext("Then copy the token it prints. %{terms} allow this for personal use only.",
+            terms: {:part, :terms}
+          )
+        }>
+          <:part name={:terms}><.terms href={terms_url(@chosen)} /></:part>
+        </.rich>
+      </p>
+    </div>
+    """
+  end
+
+  def get_key(assigns) do
+    assigns = assign(assigns, :text, get_key_text(assigns.chosen))
+
+    ~H"""
+    <p :if={@text} id={@id}><.rich text={@text} /></p>
+    """
+  end
+
+  defp get_key_text(%Provider{name: "anthropic"}),
     do: gettext("Get the key from the provider first: create an API key in the Claude Console.")
 
-  def get_key(%Provider{name: "claude-subscription"}),
-    do:
-      rich_gettext(
-        "Get the key from the provider first: run %{command} in a terminal where Claude Code is installed, and copy the token it prints. %{terms} allow this for personal use only.",
-        command: {:m, "claude setup-token"},
-        terms: {:part, :terms}
-      )
-
-  def get_key(%Provider{name: "deepseek"}),
+  defp get_key_text(%Provider{name: "deepseek"}),
     do: gettext("Get the key from the provider first: create a DeepSeek API key.")
 
-  def get_key(%Provider{name: "openrouter"}),
+  defp get_key_text(%Provider{name: "openrouter"}),
     do: gettext("Get the key from the provider first: create an OpenRouter API key.")
 
-  def get_key(%Provider{name: "litellm"}),
+  defp get_key_text(%Provider{name: "litellm"}),
     do:
       rich_gettext(
         "First get a key that your LiteLLM proxy accepts, and the proxy's https address without %{v1}, such as %{example}.",
@@ -384,7 +407,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
         example: {:m, "https://litellm.example.com"}
       )
 
-  def get_key(_chosen), do: nil
+  defp get_key_text(_chosen), do: nil
 
   # Anthropic's terms, a link out to `href`, or plain words where the description has no
   # address.

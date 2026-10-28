@@ -11,7 +11,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Repo, WorkItems}
+  alias Apiary.{Connections, ModelChoices, Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
@@ -74,20 +74,38 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
     })
   end
 
+  # The organisation's model provider with a key, and its default: the Model step is done.
+  defp model_done!(scope) do
+    {:ok, provider} =
+      Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: "sk-overview-1"}]
+      })
+
+    {:ok, _choice} =
+      ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+  end
+
   describe "a workspace in set-up" do
-    test "opens at its next step, from the first step of the workspace to Test run", %{
+    test "opens at its next step, from Work sources to Test run, with no step skipped", %{
       conn: conn,
       scope: scope
     } do
-      assert sent_to(conn, scope) == step_path(scope, :sources_used)
+      assert sent_to(conn, scope) == step_path(scope, :sources)
 
       collection = collection_fixture(scope)
-      assert sent_to(conn, scope) == step_path(scope, :destinations_used)
+      assert sent_to(conn, scope) == step_path(scope, :destinations)
 
       {1, _} =
         Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
           set: [targets: true]
         )
+
+      # Model is a step of the flow with the `secrets` feature.
+      if Apiary.Features.on?(:secrets) do
+        assert sent_to(conn, scope) == step_path(scope, :model)
+        model_done!(scope)
+      end
 
       assert sent_to(conn, scope) == step_path(scope, :harness)
 
@@ -101,12 +119,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
     test "opens the step, which shows it", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = conn |> live(overview(scope)) |> follow_redirect(conn)
 
-      assert has_element?(lv, "h1", "Which work sources does #{scope.workspace.name} use?")
+      assert has_element?(lv, "h1", "Where does work for #{scope.workspace.name} come from?")
     end
 
     test "the landing leads to the next step until the test run passed, then to the Overview",
          %{scope: scope} do
-      assert Layouts.workspace_landing(scope) == step_path(scope, :sources_used)
+      assert Layouts.workspace_landing(scope) == step_path(scope, :sources)
 
       test_passed!(scope, ready_instance!())
       assert Layouts.workspace_landing(scope) == overview(scope)
@@ -119,9 +137,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       %{user: member} = member_fixture(scope, :member)
       conn = log_in_user(build_conn(), member)
 
-      assert sent_to(conn, scope) == step_path(scope, :sources_used)
+      assert sent_to(conn, scope) == step_path(scope, :sources)
 
-      {:ok, lv, _html} = live(conn, step_path(scope, :sources_used))
+      {:ok, lv, _html} = live(conn, step_path(scope, :sources))
       assert has_element?(lv, "#set-up-tick-#{free.public_id} input[disabled]")
       assert has_element?(lv, "#set-up-who-may")
 

@@ -26,11 +26,12 @@ defmodule ApiaryWeb.SetUpComponentsTest do
   end
 
   defmodule Noted do
-    # An edition that notes who does the workspace's steps, and names its title.
+    # An edition that notes who does the flow's steps, and names its title.
     def set_up_steps(_scope, steps) do
-      Enum.map(steps, fn
-        %{group: :workspace} = step -> %{step | note: "Harbour Ops does this"}
-        step -> step
+      Enum.map(steps, fn step ->
+        if step.id in Apiary.WorkspaceSetup.flow(),
+          do: %{step | note: "Harbour Ops does this"},
+          else: step
       end)
     end
 
@@ -43,12 +44,10 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
   # The flow's steps, none done, as they follow the steps before them.
   @flow [
+    {:name, :to_come},
     {:sources, :to_come},
     {:destinations, :to_come},
     {:model, :to_come},
-    {:name, :to_come},
-    {:sources_used, :to_come},
-    {:destinations_used, :to_come},
     {:harness, :to_come},
     {:machines, :to_come},
     {:test, :to_come}
@@ -73,13 +72,13 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert [{:account, :done}, {^key, :current}, {:mail, :to_come} | flow] = shape(steps)
       assert flow == made()
 
-      assert Enum.map(steps, & &1.group) ==
-               [nil, :connect, :connect] ++
-                 List.duplicate(:organisation, 3) ++ List.duplicate(:workspace, 6)
+      # The flow's steps have no group, and no heading.
+      assert Enum.map(steps, & &1.group) == [nil, :connect, :connect] ++ List.duplicate(nil, 7)
+      refute Enum.any?(steps, &Map.has_key?(&1, :heading))
 
       # Your account starts the instance's progress, which the person starts in.
       assert Enum.map(steps, & &1.progress) ==
-               [:instance, :instance, :instance] ++ List.duplicate(:organisation, 9)
+               [:instance, :instance, :instance] ++ List.duplicate(:organisation, 7)
 
       assert Enum.find(steps, &(&1.id == key)).path ==
                "/instance/set-up?step=#{adapter.public_id}"
@@ -92,8 +91,6 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert Enum.find(steps, &(&1.id == :sources)).path ==
                "/#{organisation.slug}/set-up?step=sources&workspace=#{admin.workspace.slug}"
 
-      assert Enum.find(steps, &(&1.id == :sources)).heading == "For #{organisation.name}"
-      assert Enum.find(steps, &(&1.id == :name)).heading == "For #{admin.workspace.name}"
       assert Enum.all?(steps, &is_nil(&1.note))
 
       # Two adapters, by name; one before the current not done is skipped, one done stays
@@ -118,7 +115,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert shape(steps) == [{:account, :current} | made()]
 
       # No adapter or Mail step: Your account stays the instance's, as for any admin.
-      assert Enum.map(steps, & &1.progress) == [:instance | List.duplicate(:organisation, 9)]
+      assert Enum.map(steps, & &1.progress) == [:instance | List.duplicate(:organisation, 7)]
 
       refute SetUpComponents.connect_steps?(admin)
 
@@ -137,7 +134,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
     test "an instance admin with no adapter or Mail step starts the flow at step 1" do
       Apiary.Mail.put_test_source(:env)
       admin = instance_admin_scope()
-      steps = SetUpComponents.steps_for(admin, :sources)
+      steps = SetUpComponents.steps_for(admin, :name)
 
       assert Enum.map(steps, &{&1.id, &1.progress}) ==
                [{:account, :instance} | Enum.map(@flow_ids, &{&1, :organisation})]
@@ -146,14 +143,31 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       doc = LazyHTML.from_fragment(html)
 
       assert doc |> LazyHTML.query("#set-up-step") |> LazyHTML.text() |> String.trim() ==
-               "Step 1 of 9"
+               "Step 1 of 7"
 
-      assert [{"Work sources", :current}, {"Work destinations", :to_come} | _] =
-               ApiaryWeb.SetUpSteps.steps(html_doc(html))
+      # The 7 steps in order, with no group heading.
+      assert [
+               {"Name", :current},
+               {"Work sources", :to_come},
+               {"Destinations", :to_come},
+               {"Model", :to_come},
+               {"Harness", :to_come},
+               {"Machines", :to_come},
+               {"Test run", :to_come}
+             ] = ApiaryWeb.SetUpSteps.steps(html_doc(html))
 
-      # A person who is not an instance admin keeps Your account in the organisation's.
-      assert [%{id: :account, progress: :organisation} | _] =
-               SetUpComponents.steps_for(scope_fixture(), :sources)
+      assert doc |> LazyHTML.query(".q-su-grp-h") |> Enum.to_list() == []
+
+      # A person who is not an instance admin keeps Your account in the organisation's:
+      # 8 steps.
+      steps = SetUpComponents.steps_for(scope_fixture(), :name)
+      assert [%{id: :account, progress: :organisation} | _] = steps
+
+      assert render_component(&SetUpComponents.steps/1, steps: steps)
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("#set-up-step")
+             |> LazyHTML.text()
+             |> String.trim() == "Step 2 of 8"
     end
 
     test "the first person, before the workspace: the account, then the flow of a new one" do
@@ -168,22 +182,20 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         )
 
       scope = Organisations.load_scope(Apiary.Accounts.Scope.for_user(user))
-      steps = SetUpComponents.steps_for(scope, :sources)
+      steps = SetUpComponents.steps_for(scope, :name)
 
       assert shape(steps) == [
-               {:account, :done} | List.keyreplace(@flow, :sources, 0, {:sources, :current})
+               {:account, :done} | List.keyreplace(@flow, :name, 0, {:name, :current})
              ]
 
       assert Enum.all?(steps, &(&1.progress == :organisation))
-
-      assert Enum.map(steps, & &1.group) ==
-               [nil] ++ List.duplicate(:organisation, 3) ++ List.duplicate(:workspace, 6)
+      assert Enum.map(steps, & &1.group) == List.duplicate(nil, 8)
 
       # The default flow is at the set-up, which shows the type cards first.
       assert Enum.find(steps, &(&1.id == :sources)).path ==
                "/#{scope.organisation.slug}/set-up?step=sources"
 
-      assert Enum.find(steps, &(&1.id == :name)).heading == "For the new workspace"
+      refute Enum.any?(steps, &Map.has_key?(&1, :heading))
 
       # The flow a page names, of the type picked.
       flow =
@@ -224,7 +236,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
       assert hd(ids) == :account
       assert {:adapter, adapter.public_id} in ids
-      assert Enum.take(ids, -10) == [:mail | @flow_ids]
+      assert Enum.take(ids, -8) == [:mail | @flow_ids]
 
       assert Enum.map(steps, &{&1.id, &1.progress}) ==
                [
@@ -302,7 +314,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
              |> LazyHTML.from_fragment()
              |> LazyHTML.query("#set-up-step")
              |> LazyHTML.text()
-             |> String.trim() == "Step 5 of 10"
+             |> String.trim() == "Step 2 of 8"
     end
 
     test "the edition's answer is the list shown, its notes included" do
@@ -310,10 +322,44 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       steps = SetUpComponents.steps_for(nil, :account)
 
       assert Enum.map(steps, & &1.note) ==
-               [nil, nil, nil, nil] ++ List.duplicate("Harbour Ops does this", 6)
+               [nil] ++ List.duplicate("Harbour Ops does this", 7)
 
       assert Apiary.Edition.set_up_title(nil, Enum.find(steps, &(&1.id == :name))) ==
                "Set up the client's workspace"
+    end
+  end
+
+  describe "the contracts an edition reads" do
+    @describetag needs: [:factory, :secrets]
+
+    test "the flow's ids, a done Your account at the head, :connect on the instance's steps alone, and the cards at New workspace" do
+      # Made before mail is turned off: without mail, a sign-up needs a password.
+      member = scope_fixture()
+      Apiary.Mail.put_test_source(:none)
+
+      # `Apiary.WorkspaceSetup.flow/0` is public, a plain list of the step ids in order.
+      assert Apiary.WorkspaceSetup.flow() ==
+               [:name, :sources, :destinations, :model, :harness, :machines, :test]
+
+      admin = instance_admin_scope()
+      %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
+      steps = SetUpComponents.steps_for(admin, :name)
+
+      # A done Your account heads the list, before the instance's steps and the flow.
+      assert [%{id: :account, state: :done} | _] = steps
+
+      assert [%{id: :account, state: :done} | _] = SetUpComponents.steps_for(member, :name)
+
+      # `group: :connect` is on the instance's steps alone.
+      connect = for %{group: :connect, id: id} <- steps, do: id
+      assert connect == [{:adapter, adapter.public_id}, :mail]
+      assert Enum.all?(steps, &(&1.group in [nil, :connect]))
+
+      # The cards page stays at `/:org/workspaces/new`, and its flow's steps lead there.
+      flow = SetUpComponents.flow(admin.organisation, Apiary.Lingo.Domain.Software, nil, :new)
+
+      assert SetUpComponents.flow_path(flow, :name) ==
+               "/#{admin.organisation.slug}/workspaces/new?step=name"
     end
   end
 
@@ -364,24 +410,22 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         progress: :instance
       },
       %{
-        id: :model,
-        label: "Model",
-        group: :organisation,
-        state: :current,
-        path: "/acme/set-up?step=model",
-        note: "Harbour Ops does this",
-        progress: :organisation,
-        heading: "For Acme"
-      },
-      %{
         id: :name,
         label: "Name",
-        group: :workspace,
+        group: nil,
         state: :done,
         path: "/acme/set-up?step=name",
         note: nil,
-        progress: :organisation,
-        heading: "For Payments"
+        progress: :organisation
+      },
+      %{
+        id: :model,
+        label: "Model",
+        group: nil,
+        state: :current,
+        path: "/acme/set-up?step=model",
+        note: "Harbour Ops does this",
+        progress: :organisation
       }
     ]
 
@@ -392,9 +436,9 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       html = render_component(&SetUpComponents.steps/1, steps: @steps)
       doc = LazyHTML.from_fragment(html)
 
-      assert text(doc, "#set-up-step") == "Step 1 of 2"
-      assert text(doc, "#set-up-step-bar") == "Step 1 of 2: Model"
-      assert doc |> LazyHTML.query("progress") |> LazyHTML.attribute("value") == ["1"]
+      assert text(doc, "#set-up-step") == "Step 2 of 2"
+      assert text(doc, "#set-up-step-bar") == "Step 2 of 2: Model"
+      assert doc |> LazyHTML.query("progress") |> LazyHTML.attribute("value") == ["2"]
       assert doc |> LazyHTML.query("progress") |> LazyHTML.attribute("max") == ["2"]
       refute html =~ "left"
       refute html =~ "·"
@@ -410,7 +454,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert doc |> LazyHTML.query("progress") |> LazyHTML.attribute("max") == ["3"]
     end
 
-    test "lists the steps of one progress under their groups, with marks, links and notes" do
+    test "lists the steps of one progress, with no group heading, with marks, links and notes" do
       html =
         render_component(&SetUpComponents.steps/1,
           steps: @steps,
@@ -419,14 +463,13 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         )
 
       assert ApiaryWeb.SetUpSteps.steps(html_doc(html)) == [
-               {"Model", :current},
-               {"Name", :done, :link}
+               {"Name", :done, :link},
+               {"Model", :current}
              ]
 
       doc = LazyHTML.from_fragment(html)
 
-      assert doc |> LazyHTML.query(".q-su-grp-h") |> Enum.map(&String.trim(LazyHTML.text(&1))) ==
-               ["For Acme", "For Payments"]
+      assert doc |> LazyHTML.query(".q-su-grp-h") |> Enum.to_list() == []
 
       assert text(doc, "#set-up-title") == "Set up Payments · Software factory"
       assert doc |> LazyHTML.query("[aria-current=step]") |> LazyHTML.text() =~ "Model"
@@ -473,8 +516,8 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         hd(@steps),
         Enum.at(@steps, 2),
         step(:organisation, "Your organisation", nil, :done),
-        step(:name, "Name", :workspace, :current),
-        step(:sources_used, "Work sources used", :workspace, :to_come)
+        step(:name, "Name", nil, :current),
+        step(:sources, "Work sources", nil, :to_come)
       ]
 
       html = render_component(&SetUpComponents.steps/1, steps: steps)
@@ -484,7 +527,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert ApiaryWeb.SetUpSteps.steps(html_doc(html)) == [
                {"Your organisation", :done},
                {"Name", :current},
-               {"Work sources used", :to_come}
+               {"Work sources", :to_come}
              ]
 
       # A group without a heading lists its steps with none.
@@ -504,7 +547,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         )
       end
 
-      html = frame.([step(:name, "Name", :workspace, :current)])
+      html = frame.([step(:name, "Name", nil, :current)])
 
       refute html =~ "set-up-steps"
       refute html =~ "set-up-context"
@@ -515,7 +558,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         frame.([
           hd(@steps),
           Enum.at(@steps, 2),
-          step(:name, "Name", :workspace, :current)
+          step(:name, "Name", nil, :current)
         ])
 
       assert text(LazyHTML.from_fragment(html), "#set-up-step") == "Step 1 of 1"
@@ -539,23 +582,20 @@ defmodule ApiaryWeb.SetUpComponentsTest do
     end
 
     test "Back leads to the step before the current one in its progress, where it has a page" do
-      # Model starts this organisation's progress: no Back to Mail.
-      refute render_component(&SetUpComponents.back/1, steps: @steps, page: "/acme/set-up") =~
-               "set-up-back"
+      # Name starts this organisation's progress: no Back to Mail.
+      refute render_component(&SetUpComponents.back/1,
+               steps: current(@steps, :name),
+               page: "/acme/set-up"
+             ) =~ "set-up-back"
 
-      html =
-        render_component(&SetUpComponents.back/1,
-          steps: current(@steps, :name),
-          page: "/acme/set-up"
-        )
-
+      html = render_component(&SetUpComponents.back/1, steps: @steps, page: "/acme/set-up")
       doc = LazyHTML.from_fragment(html)
 
       assert doc |> LazyHTML.query("#set-up-back") |> LazyHTML.attribute("href") ==
-               ["/acme/set-up?step=model"]
+               ["/acme/set-up?step=name"]
 
       assert doc |> LazyHTML.query("#set-up-back") |> LazyHTML.attribute("aria-label") ==
-               ["Back to Model"]
+               ["Back to Name"]
 
       html = render_component(&SetUpComponents.back/1, steps: current(@steps, :mail))
 

@@ -463,33 +463,34 @@ defmodule Apiary.WorkspaceSetupTest do
 
     defp targets!(adapter_id), do: set!(Node, adapter_id, targets: true)
 
-    test "sources? and destinations?: a connected connection of an adapter for the type",
-         ctx do
+    test "connected_ids/3: the adapters for the type with a connected connection", ctx do
       organisation = ctx.scope.organisation
-      refute WorkspaceSetup.sources?(organisation, @software)
-      refute WorkspaceSetup.destinations?(organisation, @software)
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
 
       # Pending is not connected.
       %{adapter: pending} = connectable_adapter_fixture()
       {_connection, _nonce} = connection_fixture(ctx.scope, pending, :pending)
-      refute WorkspaceSetup.sources?(organisation, @software)
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
 
       %{adapter: adapter} = connectable_adapter_fixture()
       {connection, _nonce} = connection_fixture(ctx.scope, adapter, :connected)
-      assert WorkspaceSetup.sources?(organisation, @software)
-      refute WorkspaceSetup.destinations?(organisation, @software)
 
       assert WorkspaceSetup.connected_ids(organisation, @software, :items) ==
                MapSet.new([adapter.id])
 
+      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) == MapSet.new()
+
       targets!(adapter.id)
-      assert WorkspaceSetup.destinations?(organisation, @software)
+
+      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) ==
+               MapSet.new([adapter.id])
 
       # An adapter that serves another type counts for that type alone.
       set!(Node, adapter.id, domains: ["example"])
-      refute WorkspaceSetup.sources?(organisation, @software)
-      refute WorkspaceSetup.destinations?(organisation, @software)
-      assert WorkspaceSetup.sources?(organisation, Apiary.Lingo.Domain.Example)
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+
+      assert WorkspaceSetup.connected_ids(organisation, Apiary.Lingo.Domain.Example, :items) ==
+               MapSet.new([adapter.id])
 
       # An ended connection counts for none.
       set!(Node, adapter.id, domains: nil)
@@ -500,10 +501,11 @@ defmodule Apiary.WorkspaceSetupTest do
         ended_reason: "adapter_reported"
       )
 
-      refute WorkspaceSetup.sources?(organisation, @software)
+      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
 
       # Another organisation's connection counts for none.
-      refute WorkspaceSetup.sources?(sign_up_fixture().organisation, @software)
+      assert WorkspaceSetup.connected_ids(sign_up_fixture().organisation, @software, :items) ==
+               MapSet.new()
     end
 
     @tag needs: [:factory, :secrets]
@@ -527,28 +529,30 @@ defmodule Apiary.WorkspaceSetupTest do
         ModelChoices.put_choice(ctx.scope, :organisation, %{provider: provider.public_id})
 
       assert WorkspaceSetup.model?(organisation)
-      assert WorkspaceSetup.done?(:model, organisation, {@software, nil})
+      assert WorkspaceSetup.done?(:model, organisation, {@software, ctx.workspace})
+      # Every step after Name is not done before the workspace exists.
+      refute WorkspaceSetup.done?(:model, organisation, {@software, nil})
       refute WorkspaceSetup.model?(sign_up_fixture().organisation)
     end
 
-    test "sources_used? and destinations_used?: a row of the tick list ticked", ctx do
+    test "sources? and destinations?: a row of the tick list ticked", ctx do
       %{scope: scope, workspace: main} = ctx
       collection = collection_fixture(scope)
 
       # Assigned to Main with its Backlog on: a work source used; its adapter has no
       # targets, so no destination.
-      assert WorkspaceSetup.sources_used?(main, @software)
-      refute WorkspaceSetup.destinations_used?(main, @software)
+      assert WorkspaceSetup.sources?(main, @software)
+      refute WorkspaceSetup.destinations?(main, @software)
 
       set!(Collection, collection.id, backlog: false)
-      refute WorkspaceSetup.sources_used?(main, @software)
+      refute WorkspaceSetup.sources?(main, @software)
 
       targets!(collection.adapter_id)
-      assert WorkspaceSetup.destinations_used?(main, @software)
+      assert WorkspaceSetup.destinations?(main, @software)
 
       # A collection with no target is in no destination list.
       set!(Collection, collection.id, target_system: nil, target_path: nil)
-      refute WorkspaceSetup.destinations_used?(main, @software)
+      refute WorkspaceSetup.destinations?(main, @software)
 
       # A collection of another workspace counts for that workspace alone.
       set!(Collection, collection.id,
@@ -559,41 +563,50 @@ defmodule Apiary.WorkspaceSetupTest do
 
       other = workspace_fixture(scope.organisation, "Other")
       set!(Collection, collection.id, workspace_id: other.id)
-      refute WorkspaceSetup.sources_used?(main, @software)
-      refute WorkspaceSetup.destinations_used?(main, @software)
-      assert WorkspaceSetup.sources_used?(other, @software)
-      assert WorkspaceSetup.destinations_used?(other, @software)
+      refute WorkspaceSetup.sources?(main, @software)
+      refute WorkspaceSetup.destinations?(main, @software)
+      assert WorkspaceSetup.sources?(other, @software)
+      assert WorkspaceSetup.destinations?(other, @software)
     end
 
-    test "done?/3: Name once the workspace exists; no step of a workspace before", ctx do
+    test "done?/3: Name once the workspace exists; no other step before", ctx do
       organisation = ctx.scope.organisation
       _collection = collection_fixture(ctx.scope)
 
       refute WorkspaceSetup.done?(:name, organisation, {@software, nil})
       assert WorkspaceSetup.done?(:name, organisation, {@software, ctx.workspace})
 
-      for step <- [:sources_used, :destinations_used, :harness, :machines, :test],
+      for step <- WorkspaceSetup.flow() -- [:name],
           do: refute(WorkspaceSetup.done?(step, organisation, {@software, nil}))
 
-      assert WorkspaceSetup.done?(:sources, organisation, {@software, nil})
-      assert WorkspaceSetup.done?(:sources_used, organisation, {@software, ctx.workspace})
-      refute WorkspaceSetup.done?(:destinations, organisation, {@software, nil})
+      # Work sources by the workspace's tick list: the collection is Main's, Backlog on.
+      assert WorkspaceSetup.done?(:sources, organisation, {@software, ctx.workspace})
+      refute WorkspaceSetup.done?(:destinations, organisation, {@software, ctx.workspace})
       refute WorkspaceSetup.done?(:test, organisation, {@software, ctx.workspace})
 
-      assert Keyword.keys(WorkspaceSetup.flow()) == [
-               :sources,
-               :destinations,
-               :model,
-               :name,
-               :sources_used,
-               :destinations_used,
-               :harness,
-               :machines,
-               :test
-             ]
+      assert WorkspaceSetup.flow() ==
+               [:name, :sources, :destinations, :model, :harness, :machines, :test]
+    end
 
-      assert WorkspaceSetup.flow()[:harness] == :workspace
-      assert WorkspaceSetup.flow()[:machines] == :workspace
+    test "done?/3: Destinations once a collection with a target is the workspace's", ctx do
+      organisation = ctx.scope.organisation
+      collection = collection_fixture(ctx.scope)
+      refute WorkspaceSetup.done?(:destinations, organisation, {@software, ctx.workspace})
+
+      targets!(collection.adapter_id)
+      assert WorkspaceSetup.done?(:destinations, organisation, {@software, ctx.workspace})
+
+      # Its Backlog off: still a destination, no work source.
+      set!(Collection, collection.id, backlog: false)
+      assert WorkspaceSetup.done?(:destinations, organisation, {@software, ctx.workspace})
+      refute WorkspaceSetup.done?(:sources, organisation, {@software, ctx.workspace})
+
+      # In another workspace: neither for Main.
+      other = workspace_fixture(ctx.scope.organisation, "Other")
+      set!(Collection, collection.id, workspace_id: other.id, backlog: true)
+      refute WorkspaceSetup.done?(:destinations, organisation, {@software, ctx.workspace})
+      refute WorkspaceSetup.done?(:sources, organisation, {@software, ctx.workspace})
+      assert WorkspaceSetup.done?(:sources, organisation, {@software, other})
     end
 
     test "done?/3: Harness once the workspace has a saved choice, whichever it is", ctx do

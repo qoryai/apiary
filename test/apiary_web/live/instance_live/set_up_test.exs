@@ -647,7 +647,7 @@ end
 defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
   # The instance's connections (`ApiaryWeb.InstanceLive.SetUp`) where the server's
   # environment sets mail: no mail step. With an adapter, its step is the last, and
-  # finishing or skipping it marks the connections reviewed and leads to Work sources. With
+  # finishing or skipping it marks the connections reviewed and leads to Name. With
   # none, the page has no step and sends the admin on through `/`, as a sign-in does,
   # without marking anything.
   # Not async: the instance's organisation is made again, with no workspace, on the row
@@ -679,16 +679,9 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
   # `factory` feature, Model with `secrets` too; without `factory`, Name alone.
   defp workspace_steps(current) do
     if Apiary.Features.on?(:factory) do
-      [{"Work sources", current}, {"Work destinations", :to_come}] ++
+      [{"Name", current}, {"Work sources", :to_come}, {"Destinations", :to_come}] ++
         if(Apiary.Features.on?(:secrets), do: [{"Model", :to_come}], else: []) ++
-        [
-          {"Name", :to_come},
-          {"Work sources used", :to_come},
-          {"Destinations used", :to_come},
-          {"Harness", :to_come},
-          {"Machines", :to_come},
-          {"Test run", :to_come}
-        ]
+        [{"Harness", :to_come}, {"Machines", :to_come}, {"Test run", :to_come}]
     else
       [{"Name", current}]
     end
@@ -738,7 +731,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-skip-button") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=sources"
+      assert to == ~p"/#{organisation}/set-up?step=name"
       assert Setup.connections_reviewed?()
     end
 
@@ -759,16 +752,16 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=mail")
       assert count(lv) == "Step 3 of 3"
 
-      # Skip on Mail leads to Work sources, the first step of the organisation's progress.
+      # Skip on Mail leads to Name, the first step of the organisation's progress.
       lv |> element("#set-up-skip-button") |> render_click()
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=sources"
+      assert to == ~p"/#{organisation}/set-up?step=name"
 
       # With no workspace yet, the set-up opens at the type cards; the flow follows.
       {:ok, lv, _html} = live(conn, to)
       assert has_element?(lv, "#set-up-card-software")
 
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?step=sources&type=software")
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/set-up?step=name&type=software")
 
       assert steps(lv) == workspace_steps(:current)
       steps = length(workspace_steps(:current))
@@ -781,17 +774,16 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
              |> LazyHTML.from_fragment()
              |> LazyHTML.text()
              |> String.split()
-             |> Enum.join(" ") == "Step 1 of #{steps}: Work sources"
+             |> Enum.join(" ") == "Step 1 of #{steps}: Name"
 
-      assert has_element?(lv, "#set-up-group-organisation", "For #{organisation.name}")
-      assert has_element?(lv, "#set-up-group-workspace", "For the new workspace")
-      refute has_element?(lv, "#set-up-group-connect")
+      # No group heading in the organisation's progress.
+      refute has_element?(lv, ".q-su-grp-h")
 
-      # Back stays in the organisation's progress: Work sources is its first step.
+      # Back stays in the organisation's progress: Name is its first step.
       refute has_element?(lv, "#set-up-back")
     end
 
-    test "Continue on the adapter's step, set up, leads on to Work sources",
+    test "Continue on the adapter's step, set up, leads on to Name",
          %{conn: conn, organisation: organisation} do
       %{adapter: adapter} = connectable_adapter_fixture(%{name: named("tracker")})
 
@@ -799,7 +791,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
       lv |> element("#set-up-continue") |> render_click()
 
       assert {to, _flash} = assert_redirect(lv)
-      assert to == ~p"/#{organisation}/set-up?step=sources"
+      assert to == ~p"/#{organisation}/set-up?step=name"
       assert Setup.connections_reviewed?()
     end
 

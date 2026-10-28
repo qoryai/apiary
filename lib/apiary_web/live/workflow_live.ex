@@ -625,7 +625,7 @@ defmodule ApiaryWeb.WorkflowLive do
           <p id="workflow-what">
             {pgettext(
               "plain",
-              "%{workspace}'s runs follow the workflow you choose here, from a harness repository.",
+              "Runs in %{workspace} use the workflow you choose here, from a harness repository.",
               workspace: @workspace
             )}
           </p>

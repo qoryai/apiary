@@ -35,7 +35,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
         %{
           id: :client,
           label: "Client's workspace",
-          group: :workspace,
+          group: nil,
           state: :current,
           path: nil,
           note: "Harbour Ops sets it up"
@@ -148,7 +148,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     end
 
     @tag :feature_sets
-    test "Choose opens the flow at its first step, under its two groups", %{conn: conn} do
+    test "Choose opens the flow at Name, its first step, with no group heading", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_without_workspace()
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up")
 
@@ -157,23 +157,22 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       assert words(lv, "#set-up-title") == "Set up a new Software factory"
 
       if Apiary.Features.on?(:factory) and Apiary.Features.on?(:secrets) do
-        assert has_element?(lv, "h1", "Where does Acme Studio's work come from?")
+        assert has_element?(lv, "h1", "Name this workspace")
 
         assert steps(lv) == [
                  {"Your account", :done},
-                 {"Work sources", :current},
-                 {"Work destinations", :to_come},
+                 {"Name", :current},
+                 {"Work sources", :to_come},
+                 {"Destinations", :to_come},
                  {"Model", :to_come},
-                 {"Name", :to_come},
-                 {"Work sources used", :to_come},
-                 {"Destinations used", :to_come},
                  {"Harness", :to_come},
                  {"Machines", :to_come},
                  {"Test run", :to_come}
                ]
 
-        assert count(lv) == "Step 2 of 10"
-        assert group_headings(lv) == ["For Acme Studio", "For the new workspace"]
+        # A person who is not an instance admin counts Your account too.
+        assert count(lv) == "Step 2 of 8"
+        assert group_headings(lv) == []
 
         # Your account has no page, so the first step has no Back.
         refute has_element?(lv, "#set-up-back")
@@ -210,7 +209,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       {to, _flash} = assert_redirect(lv)
 
       if Apiary.Features.on?(:factory),
-        do: assert(to == ~p"/#{organisation}/set-up?step=sources_used&workspace=payments"),
+        do: assert(to == ~p"/#{organisation}/set-up?step=sources&workspace=payments"),
         else: assert(to == ~p"/#{organisation}/#{payments}")
     end
 
@@ -267,7 +266,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
         do:
           assert(
             href(lv, "#set-up-continue") ==
-              ~p"/#{organisation}/set-up?step=sources_used&workspace=#{main.slug}"
+              ~p"/#{organisation}/set-up?step=sources&workspace=#{main.slug}"
           ),
         else: refute(has_element?(lv, "#set-up-continue"))
     end
@@ -315,7 +314,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       {to, _flash} = assert_redirect(lv)
 
       if Apiary.Features.on?(:factory),
-        do: assert(to == ~p"/#{organisation}/set-up?step=sources_used&workspace=payments"),
+        do: assert(to == ~p"/#{organisation}/set-up?step=sources&workspace=payments"),
         else: assert(to == ~p"/#{organisation}/payments")
     end
 
@@ -499,10 +498,11 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   # The steps of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`) with the `factory`
-  # feature: Work sources and Work destinations, with Connect, Connected, Connecting… and
-  # the adapter's guide; the tick lists of the workspace, with a collection in another
-  # workspace and the empty state; the test run, with its condition and its states; who
-  # may act on each; and an instance admin's first organisation.
+  # feature: Work sources and Destinations, each with Connect, Connected, Connecting… and
+  # the adapter's guide, and the tick list of the workspace's collections under each
+  # adapter, with a collection in another workspace and "No collection yet"; the test run,
+  # with its condition and its states; who may act on each; and an instance admin's first
+  # organisation.
   use ApiaryWeb.ConnCase, async: true
 
   import ApiaryWeb.SetUpSteps
@@ -552,9 +552,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     href
   end
 
-  # The steps of the flow, from Work sources on.
-  defp flow_steps(lv), do: Enum.drop_while(steps(lv), &(elem(&1, 0) != "Work sources"))
-
   defp first_person do
     {:ok, %{user: user, organisation: organisation}} =
       Organisations.sign_up_user(
@@ -589,7 +586,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
   describe "Work sources" do
     test "lists the configured adapters with items for the type, each with Connect, and Skip",
          %{conn: conn} do
-      %{user: user, organisation: organisation} = first_person()
+      %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()
       %{adapter: other_type} = connectable_adapter_fixture()
 
@@ -602,10 +599,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       unconfigured = adapter_fixture()
 
       {:ok, lv, html} =
-        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&type=software")
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&workspace=main")
 
-      assert html =~ ~r{<title[^>]*>\s*Where does Acme&#39;s work come from\?}
-      assert has_element?(lv, "h1", "Where does Acme's work come from?")
+      assert html =~ ~r{<title[^>]*>\s*Where does work for Main come from\?}
+      assert has_element?(lv, "h1", "Where does work for Main come from?")
       assert {"Work sources", :current} in steps(lv)
 
       row = "#set-up-adapter-#{adapter.public_id}"
@@ -614,7 +611,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-adapter-#{other_type.public_id}")
       refute has_element?(lv, "#set-up-adapter-#{unconfigured.public_id}")
 
-      back = URI.encode_query(back: "set-up:sources:software")
+      back = URI.encode_query(back: "set-up:sources:workspace=main")
 
       assert has_element?(
                lv,
@@ -623,9 +620,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "#{row}-connect-install.btn-primary", "Connect")
 
+      # With no connection, the list under Connect has no collection yet.
+      assert words(lv, "#{row} #{row}-none") == "No collection yet"
+
       assert words(lv, "#set-up-later") ==
-               "Acme connects each system once. Each workspace then picks what it uses. You " <>
-                 "can change these or add more later in Organisation settings › Integrations."
+               "You can change this later in Workspace settings › Work sources."
 
       assert words(lv, "#set-up-context #set-up-what") ==
                "Bring tickets in from a system this instance has set up."
@@ -638,17 +637,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              )
 
       assert href(lv, "#set-up-skip") ==
-               ~p"/#{organisation}/set-up?step=destinations&type=software"
+               ~p"/#{organisation}/set-up?step=destinations&workspace=main"
+
+      assert href(lv, "#set-up-back") == ~p"/#{organisation}/set-up?step=name&workspace=main"
 
       refute has_element?(lv, "#set-up-continue")
       refute has_element?(lv, "#set-up-no-adapter")
     end
 
     test "with no adapter for the type, shows the line for it", %{conn: conn} do
-      %{user: user, organisation: organisation} = first_person()
+      %{user: user, organisation: organisation} = sign_up_fixture()
 
       {:ok, lv, _html} =
-        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&type=software")
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&workspace=main")
 
       assert words(lv, "#set-up-no-adapter") ==
                "No work source for this type is set up on this instance. An instance admin " <>
@@ -658,18 +659,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "an adapter connected shows Connected; the step is done, with Continue", %{conn: conn} do
+    test "an adapter connected shows Connected and its collections under Connect; done once one is ticked",
+         %{conn: conn} do
       %{user: user, organisation: organisation, workspace: main, scope: scope} =
         sign_up_fixture()
 
-      connected = adapter_of(collection_fixture(scope))
+      collection = collection_fixture(scope)
+      connected = adapter_of(collection)
       %{adapter: other} = connectable_adapter_fixture()
 
       {:ok, lv, _html} =
         conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources")
 
-      assert has_element?(lv, "#set-up-adapter-#{connected.public_id}-connected", "Connected")
+      row = "#set-up-adapter-#{connected.public_id}"
+      assert has_element?(lv, "#{row}-connected", "Connected")
       assert has_element?(lv, "#set-up-adapter-#{other.public_id}-not-connected")
+
+      # Connect and the tick list on one screen: the collection's row is under its adapter.
+      assert has_element?(lv, "#{row} #set-up-tick-#{collection.public_id} input[checked]")
+      refute has_element?(lv, "#{row}-none")
+      assert has_element?(lv, "#set-up-adapter-#{other.public_id}-none", "No collection yet")
 
       # The return of an install leads back to this step of Main.
       back = URI.encode_query(back: "set-up:sources:workspace=#{main.slug}")
@@ -680,10 +689,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
              )
 
       # Connect stays, to connect another account, as a plain button.
-      assert has_element?(
-               lv,
-               "#set-up-adapter-#{connected.public_id}-connect-install:not(.btn-primary)"
-             )
+      assert has_element?(lv, "#{row}-connect-install:not(.btn-primary)")
 
       assert href(lv, "#set-up-continue") ==
                ~p"/#{organisation}/set-up?step=destinations&workspace=#{main.slug}"
@@ -691,7 +697,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-skip")
     end
 
-    test "a connection started and not yet back shows Connecting…", %{conn: conn} do
+    test "a connection started and not yet back shows Connecting…, and no line for its list",
+         %{conn: conn} do
       %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()
       {_connection, _nonce} = connection_fixture(scope, adapter, :pending)
@@ -701,17 +708,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connecting", "Connecting…")
       refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connected")
+      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-none")
+      assert has_element?(lv, "#set-up-skip")
+    end
+
+    test "a connected adapter with no collection listed yet shows no line under Connect", %{
+      conn: conn
+    } do
+      %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+      %{adapter: adapter} = connectable_adapter_fixture()
+      {_connection, _nonce} = connection_fixture(scope, adapter, :connected)
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources")
+
+      row = "#set-up-adapter-#{adapter.public_id}"
+      assert has_element?(lv, "#{row}-connected", "Connected")
+      refute has_element?(lv, "#{row}-none")
+      refute has_element?(lv, "#{row} [id^=set-up-tick-]")
+      refute has_element?(lv, "#set-up-none")
       assert has_element?(lv, "#set-up-skip")
     end
 
     test "shows the adapter's guide beside the step", %{conn: conn} do
-      %{user: user, organisation: organisation} = first_person()
+      %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: adapter} = connectable_adapter_fixture()
       guide = source_guide_example()
       guided_adapter(adapter, guide)
 
       {:ok, lv, _html} =
-        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&type=software")
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources&workspace=main")
 
       help = "#set-up-context #set-up-help-#{adapter.public_id}"
       assert has_element?(lv, help <> " h3", "On #{adapter.name}")
@@ -742,22 +768,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
       refute has_element?(lv, "#set-up-help-#{adapter.public_id}")
 
-      assert words(lv, "#set-up-who-may") ==
+      assert words(lv, "#set-up-connect-who-may") ==
                "Only owners and admins change the integrations of the organisation."
+
+      # An install sent anyway starts nothing.
+      render_click(lv, "install", %{"integration" => adapter.public_id})
+      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
 
       assert has_element?(lv, "#set-up-skip")
     end
   end
 
-  describe "Work destinations" do
+  describe "Destinations" do
     test "with no adapter with targets for the type, shows the line for it", %{conn: conn} do
-      %{user: user, organisation: organisation} = first_person()
+      %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: tracker} = connectable_adapter_fixture()
 
       {:ok, lv, _html} =
         conn
         |> log_in_user(user)
-        |> live(~p"/#{organisation}/set-up?step=destinations&type=software")
+        |> live(~p"/#{organisation}/set-up?step=destinations&workspace=main")
 
       assert words(lv, "#set-up-no-adapter") ==
                "No work destination for this type is set up on this instance. An instance " <>
@@ -767,8 +797,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-skip")
     end
 
-    test "lists the adapters with targets alone, and the line for later", %{conn: conn} do
-      %{user: user, organisation: organisation} = first_person()
+    test "lists the adapters with targets alone, with No collection yet, and the line for later",
+         %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
       %{adapter: forge} = connectable_adapter_fixture()
       forge = targets!(forge)
       %{adapter: tracker} = connectable_adapter_fixture()
@@ -776,20 +807,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} =
         conn
         |> log_in_user(user)
-        |> live(~p"/#{organisation}/set-up?step=destinations&type=software")
+        |> live(~p"/#{organisation}/set-up?step=destinations&workspace=main")
 
-      assert has_element?(lv, "h1", "Where do Acme's changes go?")
+      assert has_element?(lv, "h1", "Which repositories may runs in Main change?")
+      assert {"Destinations", :current} in steps(lv)
       assert has_element?(lv, "#set-up-adapter-#{forge.public_id}", forge.name)
       refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
 
+      assert words(lv, "#set-up-adapter-#{forge.public_id}-none") == "No collection yet"
+
       assert words(lv, "#set-up-later") ==
-               "You can change these or add more later in Organisation settings › Integrations."
+               "You can change this later in Workspace settings › Destinations."
 
       refute has_element?(lv, "#set-up-context #set-up-what")
 
       assert has_element?(
                lv,
-               ~s{#set-up-back[href="/#{organisation.slug}/set-up?step=sources&type=software"]}
+               ~s{#set-up-back[href="/#{organisation.slug}/set-up?step=sources&workspace=main"]}
              )
     end
   end
@@ -820,14 +854,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {c.workspace_id, c.backlog}
     end
 
-    test "Work sources used: a tick assigns with Backlog on; an untick unassigns", ctx do
+    test "Work sources: a tick assigns with Backlog on; an untick unassigns", ctx do
       free = collection_fixture(ctx.scope, workspace_id: nil)
       elsewhere = collection_fixture(ctx.scope, workspace_id: ctx.second.id)
 
       {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
-      assert has_element?(lv, "h1", "Which work sources does Main use?")
+      assert has_element?(lv, "h1", "Where does work for Main come from?")
+
+      # The rows are under their adapter's Connect.
+      assert has_element?(
+               lv,
+               "#set-up-adapter-#{adapter_of(free).public_id} #set-up-tick-#{free.public_id}"
+             )
 
       assert has_element?(
                lv,
@@ -846,26 +886,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Work sources."
 
-      # The list is optional: Continue, with no Skip.
-      assert has_element?(lv, "#set-up-continue")
-      refute has_element?(lv, "#set-up-skip")
+      # Nothing of Main ticked: Skip, with no Continue.
+      assert has_element?(lv, "#set-up-skip")
+      refute has_element?(lv, "#set-up-continue")
 
       tick(lv, free)
       assert row(free) == {ctx.main.id, true}
       assert has_element?(lv, "#set-up-tick-#{free.public_id} input[checked]")
-      assert {"Work sources used", :current} in steps(lv)
+      assert {"Work sources", :current} in steps(lv)
+
+      # The step is done: Continue, with no Skip.
+      assert has_element?(lv, "#set-up-continue")
+      refute has_element?(lv, "#set-up-skip")
 
       tick(lv, free)
       assert row(free) == {nil, false}
     end
 
-    test "Destinations used: a tick assigns with Backlog off, unless Work sources ticked it",
+    test "Destinations: a tick assigns with Backlog off, unless Work sources ticked it",
          ctx do
       free = collection_fixture(ctx.scope, workspace_id: nil)
       targets!(adapter_of(free))
 
       {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations&workspace=main")
 
       assert has_element?(lv, "h1", "Which repositories may runs in Main change?")
 
@@ -880,13 +924,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # Ticked in Work sources too: tickets come in, and an untick here stops them and
       # unassigns.
       {:ok, sources, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
       tick(sources, free)
       assert row(free) == {ctx.main.id, true}
 
       {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations&workspace=main")
 
       assert words(lv, "#set-up-tick-#{free.public_id}-tickets") == "tickets come in"
       assert words(lv, "#set-up-untick") == "Unticking also stops its tickets coming in."
@@ -900,7 +944,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       free = collection_fixture(ctx.scope, workspace_id: nil)
 
       {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
       assert has_element?(lv, "#set-up-tick-#{free.public_id} input")
 
@@ -920,7 +964,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       free = collection_fixture(ctx.scope, workspace_id: nil)
 
       {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.EndsCollectionAtAssign)
 
@@ -940,7 +984,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       collection = collection_fixture(theirs, workspace_id: nil)
 
       {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
       render_click(lv, "tick", %{"id" => collection.id})
       assert row(collection) == {nil, true}
@@ -951,29 +995,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       targets!(adapter_of(collection))
 
       {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
       assert has_element?(lv, "#set-up-tick-#{collection.public_id} input[checked]")
 
       tick(lv, collection)
       assert row(collection) == {ctx.main.id, false}
-    end
-
-    test "with nothing connected, says so, with the step that connects one", ctx do
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
-
-      assert words(lv, "#set-up-none") ==
-               "#{ctx.organisation.name} has no work source connected yet. Work sources"
-
-      assert href(lv, "#set-up-none-connect") ==
-               ~p"/#{ctx.organisation}/set-up?step=sources&workspace=main"
-
-      {:ok, lv, _html} =
-        live(ctx.conn, ~p"/#{ctx.organisation}/set-up?step=destinations_used&workspace=main")
-
-      assert words(lv, "#set-up-none") ==
-               "#{ctx.organisation.name} has no work destination connected yet. Work destinations"
     end
 
     test "a member who may not assign sees the lists, disabled, and who may", ctx do
@@ -983,7 +1010,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} =
         build_conn()
         |> log_in_user(member)
-        |> live(~p"/#{ctx.organisation}/set-up?step=sources_used&workspace=main")
+        |> live(~p"/#{ctx.organisation}/set-up?step=sources&workspace=main")
 
       assert has_element?(lv, "#set-up-tick-#{collection.public_id} input[disabled]")
 
@@ -1043,7 +1070,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       )
     end
 
-    test "after Destinations used: the three choices, the Qory harness chosen; Continue saves it",
+    test "after Model: the three choices, the Qory harness chosen; Continue saves it",
          ctx do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       workspace = ctx.scope.workspace
@@ -1051,7 +1078,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "h1", "Which harness do runs in #{workspace.name} use?")
 
       assert [
-               {"Destinations used", _state},
+               {"Model", _state},
                {"Harness", :current},
                {"Machines", :to_come},
                {"Test run", :to_come}
@@ -1121,8 +1148,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#harness-ref[value=main]")
 
       assert words(lv, "#harness-ref-hint") ==
-               "Read through #{ctx.organisation.name}'s #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "connection."
+               "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
+                 "#{ctx.organisation.name}."
 
       # The root has no stack: the walk's reason, and nothing saved.
       lv |> form("#set-up-harness-form") |> render_submit()
@@ -1511,26 +1538,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     end
   end
 
-  test "an instance admin's first organisation: the flow counts from 1", %{conn: conn} do
+  test "an instance admin's first organisation: 7 steps in order, counted from 1", %{
+    conn: conn
+  } do
     Apiary.Mail.put_test_source(:env)
     admin = instance_admin_scope()
 
     {:ok, lv, _html} =
       conn |> log_in_user(admin.user) |> live(~p"/#{admin.organisation}/set-up?step=sources")
 
-    assert count(lv) == "Step 1 of 9"
+    assert count(lv) == "Step 2 of 7"
 
-    assert flow_steps(lv) == [
-             {"Work sources", :current},
-             {"Work destinations", :to_come},
-             {"Model", :to_come},
+    assert steps(lv) == [
              {"Name", :done, :link},
-             {"Work sources used", :to_come},
-             {"Destinations used", :to_come},
+             {"Work sources", :current},
+             {"Destinations", :to_come},
+             {"Model", :to_come},
              {"Harness", :to_come},
              {"Machines", :to_come},
              {"Test run", :to_come}
            ]
+
+    refute has_element?(lv, ".q-su-grp-h")
   end
 
   test "a workspace slug of another organisation is no page", %{conn: conn} do
@@ -1541,7 +1570,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     conn = log_in_user(conn, user)
 
     assert_raise ApiaryWeb.NotFound, fn ->
-      get(conn, ~p"/#{organisation}/set-up?step=sources_used&workspace=#{billing.slug}")
+      get(conn, ~p"/#{organisation}/set-up?step=sources&workspace=#{billing.slug}")
     end
   end
 
@@ -1551,9 +1580,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
 
     {:ok, lv, _html} =
-      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources_used")
+      conn |> log_in_user(user) |> live(~p"/#{organisation}/set-up?step=sources")
 
-    assert has_element?(lv, "h1", "Which work sources does #{main.name} use?")
+    assert has_element?(lv, "h1", "Where does work for #{main.name} come from?")
   end
 end
 
@@ -1561,7 +1590,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   # The Model step of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`), with the `factory`
   # and `secrets` features: a provider added with its key, which the page never keeps; the
   # organisation's default; a provider the organisation has; who may; and a second
-  # workspace, whose organisation's steps are done, which opens at Name.
+  # workspace, which opens at Name with every later step to come.
   use ApiaryWeb.ConnCase, async: true
 
   import ApiaryWeb.SetUpSteps
@@ -1626,8 +1655,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, "#set-up-model-form", "Default model")
     assert has_element?(lv, "#set-up-model-form", "Runtime")
 
+    assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
+             "Qory Apiary stores the key encrypted, and nobody can view it again."
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-model-form input[type=password][aria-describedby$="-hint"]}
+           )
+
     assert words(lv, "#set-up-context #set-up-what") ==
-             "A model provider's key lets the agents of #{organisation.name}'s runs call a model."
+             "A model provider's key lets runs in #{organisation.name} call a model."
 
     lv
     |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
@@ -1659,7 +1696,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert is_nil(choice.workspace_id) and choice.connection_id == provider.id
     assert WorkspaceSetup.model?(organisation)
 
-    assert_patch(lv, ~p"/#{organisation}/set-up?step=name&workspace=main")
+    assert_patch(lv, ~p"/#{organisation}/set-up?step=harness&workspace=main")
 
     # Back on the step: the provider the organisation has, with no key field.
     {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
@@ -1669,6 +1706,34 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     refute has_element?(lv, "input[name='model[key]']")
     assert {"Model", :current} in steps(lv)
+  end
+
+  test "the Claude subscription's help shows its command on a line with Copy", %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "claude-subscription"})
+    |> render_change()
+
+    assert words(lv, "#set-up-context #set-up-get-key-run") ==
+             "Get the key from the provider first. In a terminal where Claude Code is installed, run:"
+
+    assert words(lv, "#set-up-context #set-up-get-key-command-text") == "claude setup-token"
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-get-key-command-copy[data-copy="claude setup-token"]}
+           )
+
+    assert words(lv, "#set-up-context #set-up-get-key-copy-token") ==
+             "Then copy the token it prints. Anthropic's terms (opens in a new tab) allow this for personal use only."
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-get-key-copy-token a[href="https://code.claude.com/docs/en/legal-and-compliance"]},
+             "Anthropic's terms"
+           )
   end
 
   test "the form is sent with POST, before the page connects and after", %{conn: conn} do
@@ -1744,7 +1809,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, "#set-up-skip")
   end
 
-  test "a second workspace, with the organisation's steps done, opens at Name", %{conn: conn} do
+  test "a second workspace opens at Name, whatever the step, with every later step to come",
+       %{conn: conn} do
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     collection = collection_fixture(scope)
@@ -1761,27 +1827,35 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
     |> render_submit()
 
+    # The organisation's model is done, and the new workspace's steps are not: no step
+    # after Name is done before the workspace exists.
+    assert WorkspaceSetup.model?(organisation)
+
+    for path <- [
+          ~p"/#{organisation}/workspaces/new?type=software",
+          ~p"/#{organisation}/workspaces/new?step=model&type=software"
+        ] do
+      {:ok, lv, _html} = live(conn, path)
+      assert has_element?(lv, "h1", "Name this workspace")
+
+      assert Enum.drop_while(steps(lv), &(elem(&1, 0) != "Name")) == [
+               {"Name", :current},
+               {"Work sources", :to_come},
+               {"Destinations", :to_come},
+               {"Model", :to_come},
+               {"Harness", :to_come},
+               {"Machines", :to_come},
+               {"Test run", :to_come}
+             ]
+    end
+
     {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new?type=software")
-
-    assert has_element?(lv, "h1", "Name this workspace")
-
-    assert Enum.drop_while(steps(lv), &(elem(&1, 0) != "Work sources")) == [
-             {"Work sources", :done, :link},
-             {"Work destinations", :done, :link},
-             {"Model", :done, :link},
-             {"Name", :current},
-             {"Work sources used", :to_come},
-             {"Destinations used", :to_come},
-             {"Harness", :to_come},
-             {"Machines", :to_come},
-             {"Test run", :to_come}
-           ]
 
     assert words(lv, "#set-up-title") == "Set up a new Software factory"
 
     lv |> form("#set-up-form", workspace: %{name: "Payments"}) |> render_submit()
     {to, _flash} = assert_redirect(lv)
-    assert to == ~p"/#{organisation}/set-up?step=sources_used&workspace=payments"
+    assert to == ~p"/#{organisation}/set-up?step=sources&workspace=payments"
 
     assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
              2

@@ -22,54 +22,52 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #
   # **The flow.** `?step=<id>` opens a step of the flow (`Apiary.WorkspaceSetup.flow/0`);
   # without one, or with one the person does not see, the first step that is not done.
-  # The steps of a workspace that exists take `&workspace=<slug>`, its slug, which the
-  # scope resolves as it does a workspace's pages; without it, the workspace the scope
-  # has. Before the workspace exists, `&type=<name>` is the type picked; a flow with no
-  # type shows the cards. `/:org/set-up` sets up a new workspace while the organisation
-  # has none in use, else the scope's workspace; `/:org/workspaces/new` a new workspace
-  # until Name creates it, then the steps go on at `/:org/set-up`. Once every step of a
-  # workspace is done, `/:org/set-up` without a step sends the person to the workspace's
-  # first page. The steps, each as `Apiary.WorkspaceSetup.done?/3` counts it:
+  # Before the workspace exists, the flow opens Name, whatever the step. The steps of a
+  # workspace that exists take `&workspace=<slug>`, its slug, which the scope resolves as
+  # it does a workspace's pages; without it, the workspace the scope has. Before the
+  # workspace exists, `&type=<name>` is the type picked; a flow with no type shows the
+  # cards. `/:org/set-up` sets up a new workspace while the organisation has none in use,
+  # else the scope's workspace; `/:org/workspaces/new` a new workspace until Name creates
+  # it, then the steps go on at `/:org/set-up`. Once every step of a workspace is done,
+  # `/:org/set-up` without a step sends the person to the workspace's first page. The
+  # steps, in order, each as `Apiary.WorkspaceSetup.done?/3` counts it:
   #
-  #   * Work sources and Work destinations, for the organisation, with the `factory`
-  #     feature: the instance's configured adapters that serve the type
-  #     (`Apiary.Adapters.list_configured/1`), those with items for Work sources and those
-  #     with `targets` true for Work destinations, each Connected while the organisation's
-  #     connection to it is connected, Connecting… while it is pending, else Not
-  #     connected, with Connect, the Install of Organisation settings › Integrations
-  #     (`ApiaryWeb.IntegrationComponents.install_form/1`), whose return leads back to the
-  #     step (`ApiaryWeb.ConnectSession.back?/1`). In the context column, for each adapter
-  #     whose Connect can be pressed and whose guide has steps for connecting it
-  #     (`Apiary.Adapters.guide/2`), those steps. Skip while the step is not done, else
-  #     Continue. A person whom `adapter.connect` does not allow sees the adapters with no
-  #     Connect, and
-  #     who may connect (`ApiaryWeb.Access.who_may/3`). The page listens to the
-  #     organisation's collections and connections (`Apiary.Adapters.Collections.subscribe/1`)
-  #     and reads the step again on each change;
-  #   * Model, for the organisation, with the features `factory` and `secrets`: Provider,
-  #     Key and, for a provider that needs one, Address, which add a model provider as
-  #     Organisation settings › Model providers does (`Apiary.Connections.create_provider/3`),
-  #     while the organisation has no provider with a key; else the line that it has one.
-  #     Once the flow's workspace exists, the key is a secret of that workspace, and the
-  #     provider reaches that workspace alone. Then Runtime, the runtimes the provider serves (`Apiary.Kinds.Providers.serve/2`),
-  #     as text where there is one, and Default model, the models suggested for the
-  #     provider and runtime (`Apiary.ModelChoices.suggestions/2`). Continue saves the
+  #   * Name: the Name field, "Main" for the organisation's first workspace, and Create
+  #     workspace, with the type picked: on `/:org/set-up`, the organisation's first
+  #     workspace (`Apiary.Organisations.create_first_workspace/2`, which returns
+  #     `{:error, :exists}` for a second, under the organisation's lock), on
+  #     `/:org/workspaces/new` any other (`Apiary.Organisations.create_workspace/2`); once
+  #     the workspace exists, its name, read only, with Continue;
+  #   * Work sources and Destinations, with the `factory` feature: the instance's
+  #     configured adapters that serve the type (`Apiary.Adapters.list_configured/1`),
+  #     those with items for Work sources and those with `targets` true for Destinations,
+  #     each Connected while the organisation's connection to it is connected,
+  #     Connecting… while it is pending, else Not connected, with Connect, the Install of
+  #     Organisation settings › Integrations (`ApiaryWeb.IntegrationComponents.install_form/1`),
+  #     whose return leads back to the step (`ApiaryWeb.ConnectSession.back?/1`). Under
+  #     each adapter, the rows of its collections in the workspace's tick list
+  #     (`ApiaryWeb.TickListComponents`), which Workspace settings › Work sources and
+  #     › Destinations show too; under an adapter that is not connected, "No collection
+  #     yet". A tick (`Apiary.WorkspaceSetup.tick/5`) reads the list again first, and
+  #     changes nothing for a collection that is now in another workspace. In the context
+  #     column, for each adapter whose Connect can be pressed and whose guide has steps for
+  #     connecting it (`Apiary.Adapters.guide/2`), those steps. Skip while the step is not
+  #     done, else Continue. A person whom `adapter.connect` does not allow sees the
+  #     adapters with no Connect, and who may connect (`ApiaryWeb.Access.who_may/3`); a
+  #     person whom `collection.assign` does not allow sees the boxes disabled, and who
+  #     may. The page listens to the organisation's collections and connections
+  #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
+  #   * Model, with the features `factory` and `secrets`: Provider, Key and, for a provider
+  #     that needs one, Address, which add a model provider for the workspace
+  #     (`Apiary.Connections.create_provider/3` with `:workspace`): the key is a secret of
+  #     the workspace, and the provider reaches that workspace alone. They show while the
+  #     organisation has no provider with a key; else the line that it has one. Then
+  #     Runtime, the runtimes the provider serves (`Apiary.Kinds.Providers.serve/2`), as
+  #     text where there is one, and Default model, the models suggested for the provider
+  #     and runtime (`Apiary.ModelChoices.suggestions/2`). Continue saves the
   #     organisation's default (level 6, `Apiary.ModelChoices.put_choice/4`). The key is
   #     never kept in an assign: its field is left out of the page's patches
   #     (`phx-update="ignore"`). A person whom `provider.write` does not allow sees who may;
-  #   * Name, for the workspace: the Name field, "Main" for the organisation's first
-  #     workspace, and Create workspace, with the type picked: on `/:org/set-up`, the
-  #     organisation's first workspace (`Apiary.Organisations.create_first_workspace/2`,
-  #     which returns `{:error, :exists}` for a second, under the organisation's lock), on
-  #     `/:org/workspaces/new`
-  #     any other (`Apiary.Organisations.create_workspace/2`); once the workspace exists,
-  #     its name, read only, with Continue;
-  #   * Work sources used and Destinations used, with the `factory` feature: tick lists of
-  #     the organisation's collections (`ApiaryWeb.TickListComponents`), which Workspace
-  #     settings › Work sources and › Destinations show too. A tick
-  #     (`Apiary.WorkspaceSetup.tick/5`) reads the list again first, and changes nothing
-  #     for a collection that is now in another workspace. A person whom
-  #     `collection.assign` does not allow sees the boxes disabled, and who may;
   #   * Harness, with the `factory` feature: the three harness choices
   #     (`ApiaryWeb.HarnessComponents.choices/1`), the saved one chosen, else the Qory
   #     harness. The linked repositories of a harness repository are read once the step
@@ -100,7 +98,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     whom `work_item.take_in` does not allow sees who may.
   #
   # Every step has Back to the step before it in the indicator, where that step has a
-  # page: Work sources has none, so Back never leads to the cards or the instance's steps.
+  # page: Name has none, so Back never leads to the cards or the instance's steps.
   # The page listens to the organisation's workspaces
   # (`Apiary.Organisations.subscribe_workspaces/1`): once its first workspace is made, by
   # anyone else, the page opens `/:org/set-up` again. The steps of the `factory` feature
@@ -294,31 +292,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   ## The flow
 
   # The step `?step=` is set to, among the steps the person sees, else the first that is not
-  # done. A step of the workspace before it exists opens Name.
+  # done. Before the workspace exists, Name.
+  defp open_flow(socket, %{workspace: nil} = flow, _step_param),
+    do: assign_step(socket, flow, :name)
+
   defp open_flow(socket, flow, step_param) do
     scope = socket.assigns.current_scope
     plain = SetUpComponents.steps_for(scope, nil, flow: flow)
-    ids = for %{id: id, group: group} <- plain, group in [:organisation, :workspace], do: id
+    flow_ids = WorkspaceSetup.flow()
+    ids = for %{id: id} <- plain, id in flow_ids, do: id
     named = Enum.find(ids, &(Atom.to_string(&1) == step_param))
     pending = Enum.find(plain, &(&1.id in ids and &1.state != :done))
 
-    current =
-      cond do
-        is_nil(named) -> pending && pending.id
-        flow.workspace != nil -> named
-        WorkspaceSetup.flow()[named] == :organisation -> named
-        true -> :name
-      end
-
-    cond do
-      current ->
-        assign_step(socket, flow, current)
-
-      flow.workspace ->
-        push_navigate(socket, to: Layouts.workspace_landing(scope))
-
-      true ->
-        assign_step(socket, flow, List.last(ids))
+    case named || (pending && pending.id) do
+      nil -> push_navigate(socket, to: Layouts.workspace_landing(scope))
+      current -> assign_step(socket, flow, current)
     end
   end
 
@@ -358,29 +346,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp reload(socket), do: socket
 
-  defp heading(:sources, flow),
-    do:
-      gettext("Where does %{organisation}'s work come from?",
-        organisation: flow.organisation.name
-      )
-
-  defp heading(:destinations, flow),
-    do: gettext("Where do %{organisation}'s changes go?", organisation: flow.organisation.name)
-
-  defp heading(:model, flow),
-    do:
-      gettext("Which model do %{organisation}'s runs use?", organisation: flow.organisation.name)
-
   defp heading(:name, _flow), do: gettext("Name this workspace")
 
-  defp heading(:sources_used, flow),
-    do: gettext("Which work sources does %{workspace} use?", workspace: flow.workspace.name)
+  defp heading(:sources, flow),
+    do: gettext("Where does work for %{workspace} come from?", workspace: flow.workspace.name)
 
-  defp heading(:destinations_used, flow),
+  defp heading(:destinations, flow),
     do:
       gettext("Which targets may runs in %{workspace} change?",
         workspace: flow.workspace.name
       )
+
+  defp heading(:model, flow),
+    do:
+      gettext("Which model do %{organisation}'s runs use?", organisation: flow.organisation.name)
 
   defp heading(:harness, flow),
     do: gettext("Which harness do runs in %{workspace} use?", workspace: flow.workspace.name)
@@ -392,6 +371,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   ## Each step's data
 
+  # Connect for each adapter, with the rows of its collections in the tick list under it.
+  # `may` and `who_may` are of the ticks (`collection.assign`); `may_connect` and
+  # `who_connects` of Connect (`adapter.connect`).
   defp load_step(%{assigns: %{step: step}} = socket) when step in [:sources, :destinations] do
     %{current_scope: scope, flow: flow} = socket.assigns
     role = if step == :sources, do: :items, else: :targets
@@ -406,29 +388,29 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           into: MapSet.new(),
           do: adapter_id
 
-    may = Access.can?(scope, :"adapter.connect", scope.organisation)
+    ticks = TickListComponents.load(scope, flow.domain, step, nil)
+    listed = MapSet.new(adapters, & &1.id)
 
-    assign(socket,
+    socket
+    |> assign(ticks)
+    |> assign(
       adapters: adapters,
+      # The adapters of the tick list's rows that are not configured, listed after the
+      # configured ones, without Connect.
+      others: for({adapter, _rows} <- ticks[:groups], adapter.id not in listed, do: adapter),
+      rows: Map.new(ticks[:groups], fn {adapter, rows} -> {adapter.id, rows} end),
       connected: WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role),
       connecting: connecting,
-      may: may,
-      who_may:
-        ApiaryWeb.Access.who_may(
-          scope,
-          :"adapter.connect",
-          gettext("Only owners and admins change the integrations of the organisation.")
-        ),
       ready:
         for(
           a <- adapters,
-          may,
+          ticks[:may_connect],
           IntegrationComponents.ready?(a),
           into: MapSet.new(),
           do: a.id
         ),
       sending: nil,
-      done: step_done?(socket.assigns.flow, step)
+      done: step_done?(flow, step)
     )
   end
 
@@ -476,22 +458,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         to_form(%{"name" => if(flow.workspace, do: flow.workspace.name, else: name)},
           as: "workspace"
         )
-    )
-  end
-
-  defp load_step(%{assigns: %{step: step}} = socket)
-       when step in [:sources_used, :destinations_used] do
-    %{current_scope: scope, flow: flow, steps: steps} = socket.assigns
-    list = tick_list(step)
-
-    assign(
-      socket,
-      TickListComponents.load(
-        scope,
-        flow.domain,
-        list,
-        Enum.find_value(steps, fn step -> step.id == list && step.path end)
-      )
     )
   end
 
@@ -716,35 +682,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp keys(_provider), do: 0
 
   # Adds the provider with its key, for an organisation that has none with a key; the
-  # one it has, else. The key is a secret of the flow's workspace, and the provider
-  # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`).
-  # A flow whose workspace is not made yet, as the Model step comes before Name, adds it
-  # for the organisation.
+  # one it has, else. The key is a secret of the flow's workspace, which Name made
+  # before this step, and the provider reaches that workspace alone
+  # (`Apiary.Connections.create_provider/3`, `:workspace`).
   defp model_provider(%{assigns: %{existing: nil, current_scope: scope, flow: flow}}, params) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
-      {scope, place} = key_place(scope, flow)
-
       Connections.create_provider(
-        scope,
+        %{scope | workspace: flow.workspace},
         %{
           "provider" => provider.name,
           "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
           "settings" =>
             Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
         },
-        place
+        :workspace
       )
     end
   end
 
   defp model_provider(%{assigns: %{existing: provider}}, _params), do: {:ok, provider}
-
-  defp key_place(scope, %{workspace: %Apiary.Organisations.Workspace{} = workspace}),
-    do: {%{scope | workspace: workspace}, :workspace}
-
-  defp key_place(scope, _flow), do: {scope, :organisation}
 
   defp serves(provider, runtime) do
     case ModelChoices.serves(provider, runtime) do
@@ -759,7 +717,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_event(
         "install",
         %{"integration" => public_id},
-        %{assigns: %{step: step, may: true}} = socket
+        %{assigns: %{step: step, may_connect: true}} = socket
       )
       when step in [:sources, :destinations] do
     if Enum.any?(socket.assigns.adapters, &(&1.public_id == public_id)),
@@ -853,9 +811,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   def handle_event("tick", %{"id" => id}, %{assigns: %{step: step, may: true}} = socket)
-      when step in [:sources_used, :destinations_used] do
+      when step in [:sources, :destinations] do
     %{current_scope: scope, flow: flow} = socket.assigns
-    ticked = WorkspaceSetup.tick(scope, flow.workspace, flow.domain, tick_list(step), id)
+    ticked = WorkspaceSetup.tick(scope, flow.workspace, flow.domain, step, id)
 
     {:noreply,
      socket |> TickListComponents.put_tick_flash(ticked, socket.assigns.who_may) |> reload()}
@@ -990,11 +948,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       nil -> nil
     end
   end
-
-  # The tick list of a step: Work sources used's, `:sources`; Destinations used's,
-  # `:destinations`.
-  defp tick_list(:sources_used), do: :sources
-  defp tick_list(:destinations_used), do: :destinations
 
   defp run_test(socket, line) do
     scope = socket.assigns.current_scope
@@ -1174,73 +1127,91 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp flow_step(%{step: step} = assigns) when step in [:sources, :destinations] do
+    # The step exists once the workspace does, on `/:org/set-up`.
     assigns =
-      assign(assigns,
-        back:
-          Enum.join(
-            [
-              if(assigns.flow.page == :new, do: "new-workspace", else: "set-up"),
-              step
-              | if(assigns.flow.workspace,
-                  do: ["workspace=" <> assigns.flow.workspace.slug],
-                  else: [assigns.flow.domain.name()]
-                )
-            ],
-            ":"
-          )
-      )
+      assign(assigns, back: "set-up:#{step}:workspace=#{assigns.flow.workspace.slug}")
 
     ~H"""
     <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
-      <ul :if={@adapters != []} id="set-up-adapters" class="grid gap-3">
+      <ul :if={@adapters != [] or @others != []} id="set-up-adapters" class="grid gap-3">
         <li
-          :for={adapter <- @adapters}
+          :for={adapter <- @adapters ++ @others}
           id={"set-up-adapter-#{adapter.public_id}"}
-          class="flex items-center gap-3 rounded-box border border-line bg-base-100 px-4 py-3"
+          class="grid gap-2 rounded-box border border-line bg-base-100 px-4 py-3"
         >
-          <IntegrationComponents.mark class="size-5" />
-          <p class="min-w-0 flex-1 truncate font-medium">{Adapters.title(adapter)}</p>
-          <span
-            :if={MapSet.member?(@connected, adapter.id)}
-            id={"set-up-adapter-#{adapter.public_id}-connected"}
-            class="q-sdot q-sdot-completed text-[13px]/5"
-          >
-            <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
-          </span>
-          <span
-            :if={
-              not MapSet.member?(@connected, adapter.id) and MapSet.member?(@connecting, adapter.id)
-            }
-            id={"set-up-adapter-#{adapter.public_id}-connecting"}
-            role="status"
-            class="q-sdot q-sdot-pending text-[13px]/5"
-          >
-            <i aria-hidden="true"></i><span>{gettext("Connecting…")}</span>
-          </span>
-          <span
+          <div class="flex items-center gap-3">
+            <IntegrationComponents.mark class="size-5" />
+            <p class="min-w-0 flex-1 truncate font-medium">{Adapters.title(adapter)}</p>
+            <span
+              :if={MapSet.member?(@connected, adapter.id)}
+              id={"set-up-adapter-#{adapter.public_id}-connected"}
+              class="q-sdot q-sdot-completed text-[13px]/5"
+            >
+              <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
+            </span>
+            <span
+              :if={
+                not MapSet.member?(@connected, adapter.id) and
+                  MapSet.member?(@connecting, adapter.id)
+              }
+              id={"set-up-adapter-#{adapter.public_id}-connecting"}
+              role="status"
+              class="q-sdot q-sdot-pending text-[13px]/5"
+            >
+              <i aria-hidden="true"></i><span>{gettext("Connecting…")}</span>
+            </span>
+            <span
+              :if={
+                not MapSet.member?(@connected, adapter.id) and
+                  not MapSet.member?(@connecting, adapter.id)
+              }
+              id={"set-up-adapter-#{adapter.public_id}-not-connected"}
+              class="q-sdot text-[13px]/5 text-muted"
+            >
+              <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
+            </span>
+            <IntegrationComponents.install_form
+              :if={@may_connect and adapter in @adapters}
+              id={"set-up-adapter-#{adapter.public_id}-connect"}
+              adapter={adapter}
+              variant={if MapSet.member?(@connected, adapter.id), do: "default", else: "primary"}
+              action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}
+              ready={adapter.id in @ready}
+              sending={@sending == adapter.public_id}
+              label={gettext("Connect")}
+            />
+          </div>
+          <TickListComponents.rows
+            id="set-up"
+            list={@step}
+            adapter={adapter}
+            rows={Map.get(@rows, adapter.id, [])}
+            workspace={@flow.workspace}
+            may={@may}
+          />
+          <p
             :if={
               not MapSet.member?(@connected, adapter.id) and
                 not MapSet.member?(@connecting, adapter.id)
             }
-            id={"set-up-adapter-#{adapter.public_id}-not-connected"}
-            class="q-sdot text-[13px]/5 text-muted"
+            id={"set-up-adapter-#{adapter.public_id}-none"}
+            class="pl-8 text-[13px]/5 text-muted"
           >
-            <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
-          </span>
-          <IntegrationComponents.install_form
-            :if={@may}
-            id={"set-up-adapter-#{adapter.public_id}-connect"}
-            adapter={adapter}
-            variant={if MapSet.member?(@connected, adapter.id), do: "default", else: "primary"}
-            action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}
-            ready={adapter.id in @ready}
-            sending={@sending == adapter.public_id}
-            label={gettext("Connect")}
-          />
+            {gettext("No collection yet")}
+          </p>
         </li>
       </ul>
+
+      <TickListComponents.notes
+        id="set-up"
+        list={@step}
+        groups={@groups}
+        workspace={@flow.workspace}
+        may={@may}
+        who_may={@who_may}
+      />
 
       <p
         :if={@adapters == [] and @step == :sources}
@@ -1263,24 +1234,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </p>
 
       <p
-        :if={!@may}
-        id="set-up-who-may"
+        :if={!@may_connect}
+        id="set-up-connect-who-may"
         class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
       >
-        {@who_may}
+        {@who_connects}
       </p>
 
-      <div id="set-up-later" class="grid gap-1 text-[13px]/5 text-muted">
-        <p :if={@step == :sources}>
-          {gettext(
-            "%{organisation} connects each system once. Each workspace then picks what it uses.",
-            organisation: @flow.organisation.name
-          )}
-        </p>
-        <p>
-          {gettext("You can change these or add more later in Organisation settings › Integrations.")}
-        </p>
-      </div>
+      <p id="set-up-later" class="text-[13px]/5 text-muted">
+        <span :if={@step == :sources}>
+          {gettext("You can change this later in Workspace settings › Work sources.")}
+        </span>
+        <span :if={@step == :destinations}>
+          {gettext("You can change this later in Workspace settings › Destinations.")}
+        </span>
+      </p>
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
@@ -1341,6 +1309,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           type="password"
           value={nil}
           label={gettext("Key")}
+          hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
           autocomplete="off"
           spellcheck="false"
           phx-update="ignore"
@@ -1407,17 +1376,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <:context>
         <p id="set-up-what">
-          {gettext("A model provider's key lets the agents of %{organisation}'s runs call a model.",
+          {gettext("A model provider's key lets runs in %{organisation} call a model.",
             organisation: @flow.organisation.name
           )}
         </p>
-        <p :if={@may and !@existing and ProviderPage.get_key(@chosen)} id="set-up-get-key">
-          <.rich text={ProviderPage.get_key(@chosen)}>
-            <:part name={:terms}>
-              <ProviderPage.terms href={ProviderPage.terms_url(@chosen)} />
-            </:part>
-          </.rich>
-        </p>
+        <ProviderPage.get_key :if={@may and !@existing} id="set-up-get-key" chosen={@chosen} />
       </:context>
     </SetUpComponents.frame>
     """
@@ -1480,38 +1443,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
         <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={false} />
       </div>
-    </SetUpComponents.frame>
-    """
-  end
-
-  defp flow_step(%{step: step} = assigns) when step in [:sources_used, :destinations_used] do
-    ~H"""
-    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
-      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
-
-      <TickListComponents.tick_list
-        id="set-up"
-        list={tick_list(@step)}
-        groups={@groups}
-        workspace={@flow.workspace}
-        organisation={@flow.organisation}
-        may={@may}
-        who_may={@who_may}
-        may_connect={@may_connect}
-        who_connects={@who_connects}
-        connect_path={@connect_path}
-      />
-
-      <p id="set-up-later" class="text-[13px]/5 text-muted">
-        <span :if={@step == :sources_used}>
-          {gettext("You can change this later in Workspace settings › Work sources.")}
-        </span>
-        <span :if={@step == :destinations_used}>
-          {gettext("You can change this later in Workspace settings › Destinations.")}
-        </span>
-      </p>
-
-      <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={false} />
     </SetUpComponents.frame>
     """
   end
