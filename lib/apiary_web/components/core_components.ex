@@ -482,11 +482,12 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  command_line/1 shows a terminal command that the reader runs, on a line of its own in
+  command_line/1 shows a terminal command that the reader runs, on a separate line in
   code font, with an icon Copy beside it, in the look of a link shown once
-  (`one_time_link/1`). Copy writes `command` to the clipboard without leading or
-  trailing whitespace: no prompt sign, no space and no newline. `id` must be unique on
-  the page; the command is `<id>-text` and Copy is `<id>-copy`.
+  (`one_time_link/1`). Copy writes `command` to the clipboard with leading and trailing
+  whitespace trimmed; the component adds no prompt sign, so pass the command without
+  one. `id` must be unique on the page; the command is `<id>-text` and Copy is
+  `<id>-copy`.
 
       <.command_line id="get-key-command" command="claude setup-token" />
   """
