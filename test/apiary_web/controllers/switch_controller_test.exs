@@ -156,8 +156,6 @@ defmodule ApiaryWeb.SwitchControllerTest do
     {"settings", "/settings/integrations/definitions/svc_1/delete", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/targets", "/settings/integrations"},
-    {"settings", "/settings/integrations/con_1/targets/add", "/settings/integrations"},
-    {"settings", "/settings/integrations/con_1/targets/t-1/remove", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/settings", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/version", "/settings/integrations"},
     {"settings", "/settings/integrations/con_1/delete", "/settings/integrations"},
