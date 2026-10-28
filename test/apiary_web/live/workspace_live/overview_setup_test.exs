@@ -74,7 +74,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
     })
   end
 
-  # The organisation's model provider with a key, and its default: the Model step is done.
+  # The organisation's model provider with a key, and the workspace's choice of it: the
+  # Model step is done.
   defp model_done!(scope) do
     {:ok, provider} =
       Connections.create_provider(scope, %{
@@ -82,8 +83,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
         keys: [%{value_id: "main", value: "sk-overview-1"}]
       })
 
-    {:ok, _choice} =
-      ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+    {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
   end
 
   describe "a workspace in set-up" do

@@ -1636,9 +1636,9 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   # The Model step of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`), with the `factory`
-  # and `secrets` features: a provider added with its key, which the page never keeps; the
-  # organisation's default; a provider the organisation has; who may; and a second
-  # workspace, which opens at Name with every later step to come.
+  # and `secrets` features: Key, a provider to reuse or Add a key, whose key the page
+  # never keeps; the workspace's choice it saves; the providers it offers; who may; and a
+  # second workspace, which opens at Name with every later step to come.
   use ApiaryWeb.ConnCase, async: true
 
   import ApiaryWeb.SetUpSteps
@@ -1656,6 +1656,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   @moduletag needs: [:factory, :secrets]
 
   @key "sk-ant-set-up-test-0123456789abcdef"
+
+  @workspace_later "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+  @model_later "You can change the default model later in Workspace settings › Model."
+  @organisation_later "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
 
   defp words(lv, selector) do
     lv
@@ -1693,18 +1697,59 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     user
   end
 
-  test "adds the provider with its key and the organisation's default; never keeps the key",
+  # Key's options, each its words and whether it is chosen.
+  defp key_options(lv) do
+    html = lv |> render() |> LazyHTML.from_fragment()
+
+    for label <- LazyHTML.query(html, "#set-up-model-source label") do
+      words = label |> LazyHTML.text() |> String.split() |> Enum.join(" ")
+      {words, LazyHTML.attribute(LazyHTML.query(label, "input"), "checked") != []}
+    end
+  end
+
+  defp provider!(scope, kind, value_id, attrs \\ %{}) do
+    {:ok, provider} =
+      Connections.create_provider(
+        scope,
+        Map.merge(
+          %{provider: kind, keys: [%{value_id: value_id, value: "sk-#{value_id}-1"}]},
+          attrs
+        )
+      )
+
+    provider
+  end
+
+  # The scope's choices: the workspace's (level 5), and the organisation's default (level
+  # 6).
+  defp choices(scope) do
+    {:ok, choices} = ModelChoices.list_choices(scope)
+
+    {Enum.filter(choices, &(&1.workspace_id == scope.workspace.id)),
+     Enum.filter(choices, &is_nil(&1.workspace_id))}
+  end
+
+  defp models(provider) do
+    {:ok, runtime} = ModelChoices.runtime(nil)
+    for model <- ModelChoices.suggestions(provider, runtime), do: model.id
+  end
+
+  test "with no provider, Add a key alone, open: adds the provider and the workspace's choice; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    workspace = scope.workspace
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert has_element?(lv, "h1", "Which model do #{organisation.name}'s runs use?")
-    assert has_element?(lv, "#set-up-model-form input[type=password][name='model[key]']")
+    assert has_element?(lv, "h1", "Which model do runs in #{workspace.name} use?")
+    assert key_options(lv) == [{"Add a key", true}]
+    assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert has_element?(lv, "#set-up-model-form", "Default model")
     assert has_element?(lv, "#set-up-model-form", "Runtime")
 
     assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
-             "Qory Apiary stores the key encrypted, and nobody can view it again."
+             "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+
+    assert words(lv, "#set-up-model-later") == @workspace_later
 
     assert has_element?(
              lv,
@@ -1712,7 +1757,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
            )
 
     assert words(lv, "#set-up-context #set-up-what") ==
-             "A model provider's key lets runs in #{organisation.name} call a model."
+             "A model provider's key lets runs in #{workspace.name} call a model."
 
     lv
     |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
@@ -1740,20 +1785,132 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     assert listed == provider.id
 
-    assert {:ok, [choice]} = ModelChoices.list_choices(scope)
-    assert is_nil(choice.workspace_id) and choice.connection_id == provider.id
-    assert WorkspaceSetup.model?(organisation)
+    # The workspace's choice (level 5), with the provider's default key; no default of
+    # the organisation (level 6).
+    assert {[choice], []} = choices(scope)
+    assert choice.connection_id == provider.id and choice.target_id == nil
+    assert choice.value_id == provider.default_value_id
+    assert choice.model_id == hd(models(provider))
+    assert WorkspaceSetup.model_key?(workspace)
+    assert WorkspaceSetup.done?(:model, organisation, {Apiary.Lingo.Domain.Software, workspace})
 
     assert_patch(lv, ~p"/#{organisation}/set-up?step=harness&workspace=main")
 
-    # Back on the step: the provider the organisation has, with no key field.
+    # Back on the step: the provider to reuse, chosen, with no key field.
     {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
 
-    assert words(lv, "#set-up-model-key") ==
-             "#{organisation.name} has a key for #{provider.name}."
-
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     refute has_element?(lv, "input[name='model[key]']")
+    refute has_element?(lv, "#set-up-get-key")
+    # The provider reused links the workspace's secret.
+    assert words(lv, "#set-up-model-later") == @workspace_later
     assert {"Model", :current} in steps(lv)
+    refute render(lv) =~ @key
+  end
+
+  test "reuse with one provider: its default key, another default model; Add a key opens the fields",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    [_first, second | _rest] = models(provider)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
+    refute has_element?(lv, "#set-up-model-add")
+    refute has_element?(lv, "input[name='model[key]']")
+    # The provider's key is a secret of the organisation, and the core shows no
+    # organisation secrets: the line names the model alone.
+    assert words(lv, "#set-up-model-later") == @model_later
+
+    # Add a key opens Provider and Key, and the provider to reuse closes them again.
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    assert {"Add a key", true} in key_options(lv)
+    assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
+    assert has_element?(lv, "#set-up-context #set-up-get-key")
+    assert words(lv, "#set-up-model-later") == @workspace_later
+
+    lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
+    refute has_element?(lv, "#set-up-model-add")
+    assert words(lv, "#set-up-model-later") == @model_later
+
+    lv
+    |> form("#set-up-model-form", model: %{source: provider.public_id, model: second})
+    |> render_submit()
+
+    assert_patch(lv, ~p"/#{organisation}/set-up?step=harness&workspace=main")
+
+    assert {[choice], []} = choices(scope)
+
+    assert {choice.connection_id, choice.value_id, choice.model_id} ==
+             {provider.id, "main", second}
+
+    assert {:ok, [_provider]} = Connections.list_providers(scope)
+
+    # Back on the step: the saved model chosen; Continue with nothing changed writes nothing.
+    {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
+    assert has_element?(lv, ~s{select[name="model[model]"] option[selected][value="#{second}"]})
+    lv |> form("#set-up-model-form") |> render_submit()
+    assert {[^choice], []} = choices(scope)
+  end
+
+  test "where the edition shows organisation secrets, an organisation key's line names Organisation settings",
+       %{conn: conn} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.GrantsOrganisationSecrets)
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
+    assert words(lv, "#set-up-model-later") == @organisation_later
+
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    assert words(lv, "#set-up-model-later") == @workspace_later
+  end
+
+  test "reuse with two providers: each by its name; the one chosen is saved", %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+    deepseek = provider!(scope, "deepseek", "ds")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert Enum.sort(key_options(lv)) ==
+             Enum.sort([{anthropic.name, true}, {deepseek.name, false}, {"Add a key", false}])
+
+    # The default model follows the provider chosen.
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_change()
+
+    for model <- models(deepseek),
+        do: assert(has_element?(lv, ~s{select[name="model[model]"] option[value="#{model}"]}))
+
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_submit()
+
+    assert {[choice], []} = choices(scope)
+
+    assert {choice.connection_id, choice.value_id, choice.model_id} ==
+             {deepseek.id, "ds", hd(models(deepseek))}
+  end
+
+  test "a provider that does not reach the workspace, or has no key, is not offered; a save of it saves nothing",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    other = workspace_fixture(organisation, "Other")
+
+    elsewhere =
+      provider!(scope, "anthropic", "main", %{applies_to: "selected", workspace_ids: [other.id]})
+
+    keyless = provider!(scope, "deepseek", "ds")
+    Repo.delete_all(from v in Apiary.Secrets.Value, where: v.secret_id == ^keyless.secret_id)
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    assert key_options(lv) == [{"Add a key", true}]
+
+    for provider <- [elsewhere, keyless] do
+      render_click(lv, "save_model", %{"model" => %{"source" => provider.public_id}})
+      assert {[], []} = choices(scope)
+    end
+
+    assert {:ok, [_, _]} = Connections.list_providers(scope)
+    refute WorkspaceSetup.model_key?(scope.workspace)
   end
 
   test "the Claude subscription's help shows its command on a line with Copy", %{conn: conn} do
@@ -1817,20 +1974,25 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert {:ok, []} = Connections.list_providers(scope)
   end
 
-  test "save_model and choose_model sent by a person provider.write does not allow change nothing",
+  test "save_model and choose_model sent by a member change nothing: Add a key, or a provider to reuse",
        %{conn: conn} do
     %{organisation: organisation, scope: scope} = sign_up_fixture()
     user = member(organisation)
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    params = %{"model" => %{"provider" => "anthropic", "key" => @key}}
+    params = %{"model" => %{"source" => "add", "provider" => "anthropic", "key" => @key}}
     render_click(lv, "choose_model", params)
     render_click(lv, "save_model", params)
 
     refute kept(lv) =~ @key
     refute render(lv) =~ @key
     assert {:ok, []} = Connections.list_providers(scope)
-    refute WorkspaceSetup.model?(organisation)
+
+    # A provider to reuse, sent by the same person, is no choice either.
+    provider = provider!(scope, "anthropic", "main")
+    render_click(lv, "save_model", %{"model" => %{"source" => provider.public_id}})
+    assert {[], []} = choices(scope)
+    refute WorkspaceSetup.model_key?(scope.workspace)
   end
 
   test "a refused key keeps no key, and says why on the field", %{conn: conn} do
@@ -1842,12 +2004,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     |> render_submit()
 
     assert {:ok, []} = Connections.list_providers(scope)
-    refute WorkspaceSetup.model?(organisation)
+    refute WorkspaceSetup.model_key?(scope.workspace)
     assert has_element?(lv, "#set-up-model-form input[name='model[key]']")
   end
 
-  test "a member who may not add a key reads who may, and has no form", %{conn: conn} do
-    %{organisation: organisation} = sign_up_fixture()
+  test "a member who may not write the workspace's choice reads who may, and has no form", %{
+    conn: conn
+  } do
+    %{organisation: organisation, scope: scope} = sign_up_fixture()
     user = member(organisation)
 
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
@@ -1855,6 +2019,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-who-may") == "Only owners and admins add a model key."
     refute has_element?(lv, "#set-up-model-form")
     assert has_element?(lv, "#set-up-skip")
+
+    # With a provider to reuse too.
+    _provider = provider!(scope, "anthropic", "main")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert words(lv, "#set-up-who-may") == "Only owners and admins add a model key."
+    refute has_element?(lv, "#set-up-model-form")
   end
 
   test "a second workspace opens at Name, whatever the step, with every later step to come",
@@ -1875,9 +2046,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
     |> render_submit()
 
-    # The organisation's model is done, and the new workspace's steps are not: no step
-    # after Name is done before the workspace exists.
-    assert WorkspaceSetup.model?(organisation)
+    # Main's model is done, and the new workspace's steps are not: no step after Name is
+    # done before the workspace exists.
+    assert WorkspaceSetup.model_key?(scope.workspace)
 
     for path <- [
           ~p"/#{organisation}/workspaces/new?type=software",
@@ -1912,9 +2083,10 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   # The Machines step of the set-up flow (`ApiaryWeb.WorkspaceSetupLive`), with the
-  # `factory` feature: the pools that serve the workspace's runs, read only, each with its
-  # state; who acts on a pool that is not ready, for an instance admin, an owner and a
-  # member, in the edition's words; and Skip, then Continue. Not async: some tests make
+  # `factory` feature: the pools that serve the workspace's runs, each with its state; who
+  # acts on a pool that is not ready, for an instance admin, an owner and a member, in the
+  # edition's words; an owner's choice of the shared pool or a pool for the workspace, Add
+  # node pool, and Get the command; a member's step, read only; and Skip, then Continue. Not async: some tests make
   # the instance's pool and gateway, which the instance has one of each at most.
   use ApiaryWeb.ConnCase, async: false
 
@@ -1925,7 +2097,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Repo
+  alias Apiary.{Repo, WorkspaceSetup}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Membership
 
   @moduletag needs: :factory
@@ -2011,17 +2184,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert [{"Harness", _state}, {"Machines", :current}, {"Test run", :to_come}] =
              lv |> steps() |> Enum.take(-3) |> Enum.map(&{elem(&1, 0), elem(&1, 1)})
 
-    assert has_element?(lv, "#set-up-pool-instance-radio[checked][disabled]")
-    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]:not([disabled])")
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
     assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
     refute has_element?(lv, "#set-up-pool-instance-who-may")
     refute has_element?(lv, "#set-up-pool-instance-check")
-    assert read_only?(lv)
 
     refute has_element?(lv, "#set-up-skip")
     assert words(lv, "#set-up-continue") == "Continue"
     assert href(lv, "#set-up-continue") == ctx.test_path
     assert has_element?(lv, "#set-up-back")
+
+    lv = open(ctx, member(ctx.organisation))
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked][disabled]")
+    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-workspace")
+    assert read_only?(lv)
+    assert words(lv, "#set-up-continue") == "Continue"
   end
 
   test "the instance's pool not ready: no pool, no active key, no gateway, no gateway key, then ready",
@@ -2029,12 +2209,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     line = "Only an instance admin checks the instance's pool and gateway."
 
     lv = open(ctx)
-    assert words(lv, "#set-up-pool-instance-name") == "The instance's pool"
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
     assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
     assert words(lv, "#set-up-pool-instance-state") == "Not ready: no pool"
     assert words(lv, "#set-up-pool-instance-who-may") == line
     refute has_element?(lv, "#set-up-pool-instance-check")
-    assert read_only?(lv)
     assert words(lv, "#set-up-skip") == "Skip"
     assert href(lv, "#set-up-skip") == ctx.test_path
     refute has_element?(lv, "#set-up-continue")
@@ -2129,13 +2308,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
              ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/nodes/#{pool.public_id}"
 
     refute has_element?(lv, "#{id}-who-may")
-    assert read_only?(lv)
+    refute has_element?(lv, "#set-up-pool-choice")
+    assert words(lv, "#{id}-code") == "Get the command"
     assert has_element?(lv, "#set-up-skip")
 
     lv = open(ctx, member(ctx.organisation))
     assert words(lv, "#{id}-name") == pool.name
     refute has_element?(lv, "#{id}-name a")
     assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
+    assert read_only?(lv)
 
     _pool_key = enrolled_key_fixture(ctx.scope, pool)
     lv = open(ctx)
@@ -2173,6 +2354,343 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
       assert words(lv, "#{id}-state") == "Not ready: no active key"
       refute has_element?(lv, "#{id}-radio")
     end
+  end
+
+  # The workspace's pools in use, as the step reads them.
+  defp workspace_pools(workspace),
+    do:
+      for(
+        %Node{workspace_id: id} = pool <- WorkspaceSetup.serving_pools(workspace),
+        id != nil,
+        do: pool
+      )
+
+  defp choose_workspace_pool(lv),
+    do: lv |> form("#set-up-pool-choice", pool: %{choice: "workspace"}) |> render_change()
+
+  # The command shown under the line `id`, as Copy writes it.
+  defp command(lv, id), do: words(lv, "#{id}-command-line-text")
+
+  test "an owner chooses the shared pool or a pool for the workspace, with the line under it",
+       ctx do
+    _instance_pool = ready_instance!()
+    workspace = ctx.scope.workspace
+    lv = open(ctx)
+
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    assert words(lv, "#set-up-pool-instance-name") == "Shared: the instance's pool"
+    assert words(lv, "#set-up-pool-instance-state") == "Ready · gateway: instance gateway"
+    refute has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert words(lv, "#set-up-pool-workspace-name") == "A pool for #{workspace.name}"
+
+    assert words(lv, "#set-up-pool-workspace-line") ==
+             "Runs in #{workspace.name} then wait for this pool, and the shared pool stops serving them."
+
+    refute has_element?(lv, "#set-up-pool-add-button")
+
+    choose_workspace_pool(lv)
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert words(lv, "#set-up-pool-add-button") == "Add node pool"
+    refute has_element?(lv, "#set-up-pool-taken")
+
+    lv |> form("#set-up-pool-choice", pool: %{choice: "shared"}) |> render_change()
+    assert has_element?(lv, "#set-up-pool-instance-radio[checked]")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    assert workspace_pools(workspace) == []
+  end
+
+  test "Add node pool makes a pool named as the workspace, and the instance's pool stops serving it",
+       ctx do
+    instance_pool = ready_instance!()
+    workspace = ctx.scope.workspace
+    assert [%Node{id: id}] = WorkspaceSetup.serving_pools(workspace)
+    assert id == instance_pool.id
+
+    lv = open(ctx)
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+
+    assert [%Node{kind: :pool} = pool] = WorkspaceSetup.serving_pools(workspace)
+    assert pool.name == workspace.name
+    assert pool.workspace_id == workspace.id
+
+    id = "#set-up-pool-#{pool.public_id}"
+    refute has_element?(lv, "#set-up-pool-choice")
+    refute has_element?(lv, "#set-up-pool-instance")
+    assert has_element?(lv, "#{id}-radio[checked][disabled]")
+    assert words(lv, "#{id}-name") == pool.name
+    assert words(lv, "#{id}-state") == "Not ready: no active key"
+    assert words(lv, "#{id}-code") == "Get the command"
+    assert has_element?(lv, "#set-up-skip")
+  end
+
+  test "a second click, or a pool made meanwhile, makes no other pool and shows the one there",
+       ctx do
+    workspace = ctx.scope.workspace
+    lv = open(ctx)
+    other = open(ctx)
+    choose_workspace_pool(lv)
+    choose_workspace_pool(other)
+
+    lv |> element("#set-up-pool-add-button") |> render_click()
+    assert [pool] = workspace_pools(workspace)
+
+    # The page sent Add node pool again, as a second click would.
+    render_click(lv, "add_pool", %{})
+    assert [^pool] = workspace_pools(workspace)
+
+    # The other page still shows the choice: its click makes no pool, and it reads again.
+    other |> element("#set-up-pool-add-button") |> render_click()
+    assert [^pool] = workspace_pools(workspace)
+    refute has_element?(other, "#set-up-pool-choice")
+    assert has_element?(other, "#set-up-pool-#{pool.public_id}")
+    refute has_element?(other, "#set-up-pool-taken")
+  end
+
+  test "where another node of the workspace has the workspace's name, no pool is made, and the line says to rename it",
+       ctx do
+    workspace = ctx.scope.workspace
+    node = node_fixture(ctx.scope, name: workspace.name)
+
+    lv = open(ctx)
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+
+    assert workspace_pools(workspace) == []
+    assert has_element?(lv, "#set-up-pool-workspace-radio[checked]")
+    assert has_element?(lv, "#set-up-pool-add-button")
+
+    assert words(lv, "#set-up-pool-taken") ==
+             "Rename the node #{node.name} on the Nodes page, then add the pool. A node of #{workspace.name} already has that name."
+
+    # Once the node has another name, Add node pool makes the pool.
+    node |> Ecto.Changeset.change(name: "build-renamed") |> Repo.update!()
+    lv |> element("#set-up-pool-add-button") |> render_click()
+    assert [%Node{name: name}] = workspace_pools(workspace)
+    assert name == workspace.name
+    refute has_element?(lv, "#set-up-pool-taken")
+  end
+
+  test "a workspace name of 120 characters gives the pool its first 80", ctx do
+    long = String.duplicate("Payments ", 13) <> "abc"
+    assert String.length(long) == 120
+
+    workspace =
+      ctx.scope.workspace |> Ecto.Changeset.change(name: long) |> Repo.update!()
+
+    lv = open(ctx)
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+
+    assert [%Node{name: name}] = workspace_pools(workspace)
+    assert name == long |> String.slice(0, 80) |> String.trim_trailing()
+  end
+
+  test "Get the command shows the pool's enrol command once, with Copy; then Get a new command",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    lv = open(ctx)
+    refute has_element?(lv, "#{id}-command")
+
+    lv |> element("#{id}-code") |> render_click()
+
+    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+    assert command(lv, id) =~ ~r{\Aqory access-key enrol \S+ \S+\z}
+    refute command(lv, id) =~ "--via"
+    refute command(lv, id) =~ "--replace"
+    assert has_element?(lv, "#{id}-command-line-copy")
+    refute has_element?(lv, "#{id}-command-via-ca")
+    assert words(lv, "#{id}-code") == "Get a new command"
+
+    assert [%{node_id: node_id}] = Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool)
+    assert node_id == pool.id
+    shown = command(lv, id)
+
+    # A page opened again shows no command, and Get a new command while the code waits.
+    lv = open(ctx)
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get a new command"
+    refute render(lv) =~ shown
+
+    # Leaving the step and coming back: no command.
+    lv |> element("#{id}-code") |> render_click()
+    assert has_element?(lv, "#{id}-command")
+    render_patch(lv, ctx.test_path)
+    render_patch(lv, ctx.path)
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get a new command"
+  end
+
+  # The code a command shown on the line `id` carries: its last word.
+  defp shown_code(lv, id), do: lv |> command(id) |> String.split(" ") |> List.last()
+
+  # What a machine posts as `qory access-key enrol` with `code`: its new key, and the proof.
+  defp enrol_request(code) do
+    pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
+    now = System.os_time(:second)
+    message = Apiary.Contract.SignedMessage.enrolment(code, pair.encoded, "build-01", now)
+    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
+
+    {:ok, request} =
+      Apiary.Contract.Enrolment.decode(
+        Jason.encode!(%{
+          "version" => 1,
+          "code" => code,
+          "name" => "build-01",
+          "public_key" => pair.encoded,
+          "timestamp" => now,
+          "proof" => Apiary.Contract.Ed25519.encode(proof)
+        })
+      )
+
+    request
+  end
+
+  # The code's row expires `ms` from now: a code made by the context expires in minutes.
+  defp expire_in(%{id: id}, ms) do
+    at = DateTime.add(DateTime.utc_now(), ms, :millisecond)
+
+    Repo.query!("UPDATE access_key_enrolment_codes SET expires_at = $2 WHERE id = $1", [
+      Ecto.UUID.dump!(id),
+      at
+    ])
+  end
+
+  test "a machine that enrols with the command shown: the command goes, and the pool has its key",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    lv = open(ctx)
+    lv |> element("#{id}-code") |> render_click()
+    assert words(lv, "#{id}-state") == "Not ready: no active key"
+
+    assert {:ok, key} = Apiary.AccessKeys.enrol(enrol_request(shown_code(lv, id)))
+    assert key.node_id == pool.id
+
+    # The page heard the key arrive, with no other read.
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get the command"
+
+    assert words(lv, "#{id}-state") ==
+             "Not ready: the pool is set to Direct, and runs need a gateway"
+  end
+
+  test "a code that expires while the step is open: the step reads it again, and the command goes",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    # A code got elsewhere, which expires first.
+    {:ok, other, _code} = Apiary.AccessKeys.create_enrolment_code(ctx.scope, pool, %{})
+    expire_in(other, 1_500)
+
+    lv = open(ctx)
+    assert words(lv, "#{id}-code") == "Get a new command"
+    Process.sleep(1_800)
+    assert words(lv, "#{id}-code") == "Get the command"
+
+    # The command shown, its code set to expire soon, and a code cancelled elsewhere, which
+    # the page hears: the read sets the timer at the shown code's expiry.
+    lv |> element("#{id}-code") |> render_click()
+    assert [shown] = Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool)
+    expire_in(shown, 1_500)
+    {:ok, cancelled, _code} = Apiary.AccessKeys.create_enrolment_code(ctx.scope, pool, %{})
+    {:ok, _cancelled} = Apiary.AccessKeys.cancel_code(ctx.scope, cancelled)
+    assert has_element?(lv, "#{id}-command")
+
+    Process.sleep(1_800)
+    refute has_element?(lv, "#{id}-command")
+    assert words(lv, "#{id}-code") == "Get the command"
+  end
+
+  test "a pool whose runs go through a gateway: the command has --via and the line on a private authority",
+       ctx do
+    gateway = gateway_fixture(ctx.scope, url: "https://gateway.example")
+    _gateway_key = node_key_fixture(ctx.scope, gateway)
+    pool = pool_fixture(ctx.scope)
+    _pool_key = node_key_fixture(ctx.scope, pool)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    lv = open(ctx)
+    lv |> element("#{id}-code") |> render_click()
+
+    assert command(lv, id) =~ "--via https://gateway.example"
+    assert command(lv, id) =~ "--replace"
+
+    assert words(lv, "#{id}-command-via-ca") ==
+             "If #{gateway.name}'s certificate is signed by a private certificate authority, add --via-ca-file and that authority's PEM file."
+  end
+
+  test "a sign-in older than 15 minutes gets the command all the same, as on the pool's Access key tab",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    id = "#set-up-pool-#{pool.public_id}"
+    an_hour_ago = DateTime.add(DateTime.utc_now(), -60, :minute)
+
+    {:ok, lv, _html} =
+      ctx.conn
+      |> log_in_user(ctx.user, token_authenticated_at: an_hour_ago)
+      |> live(ctx.path)
+
+    lv |> element("#{id}-code") |> render_click()
+    assert words(lv, "#{id}-command-run") == "On #{pool.name}, run:"
+  end
+
+  test "a pool with two active keys offers no command", ctx do
+    pool = pool_fixture(ctx.scope)
+    _first = node_key_fixture(ctx.scope, pool)
+    _second = node_key_fixture(ctx.scope, pool)
+    id = "#set-up-pool-#{pool.public_id}"
+
+    lv = open(ctx)
+    refute has_element?(lv, "#{id}-code")
+
+    render_click(lv, "pool_code", %{"pool" => pool.public_id})
+    refute has_element?(lv, "#{id}-command")
+    assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
+  end
+
+  test "a member sends the step's events: nothing is made", ctx do
+    member = member(ctx.organisation)
+    lv = open(ctx, member)
+    render_click(lv, "choose_pool", %{"pool" => %{"choice" => "workspace"}})
+    render_click(lv, "add_pool", %{})
+    assert workspace_pools(ctx.scope.workspace) == []
+    refute has_element?(lv, "#set-up-pool-add-button")
+    assert read_only?(lv)
+
+    pool = pool_fixture(ctx.scope)
+    lv = open(ctx, member)
+    render_click(lv, "pool_code", %{"pool" => pool.public_id})
+    refute has_element?(lv, "#set-up-pool-#{pool.public_id}-command")
+    assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
+    assert read_only?(lv)
+  end
+
+  defmodule NoCodes do
+    # An edition in which the person may make nodes, and may not make their codes.
+    def check(_scope, :"access_key.create_code", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  test "a person who may make a pool, and may not get its command: Add node pool, then who acts",
+       ctx do
+    :ok = Apiary.Edition.put_test_stub(NoCodes)
+    lv = open(ctx)
+
+    choose_workspace_pool(lv)
+    lv |> element("#set-up-pool-add-button") |> render_click()
+    assert [pool] = workspace_pools(ctx.scope.workspace)
+
+    id = "#set-up-pool-#{pool.public_id}"
+    refute has_element?(lv, "#{id}-code")
+    refute has_element?(lv, "#{id}-name a")
+    assert words(lv, "#{id}-who-may") == "Only owners and admins connect a node."
+
+    render_click(lv, "pool_code", %{"pool" => pool.public_id})
+    refute has_element?(lv, "#{id}-command")
+    assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
   end
 
   test "who acts is the edition's line where it has one", ctx do

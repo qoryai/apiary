@@ -962,6 +962,7 @@ msgid "%{name} has one value, which goes only with the secret: delete the secret
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} holds two keys already. Revoke one before you add another."
 msgstr ""
@@ -2211,11 +2212,6 @@ msgstr ""
 msgid "%{organisation} can have one installation of %{integration}."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} has a key for %{provider}."
-msgstr ""
-
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} has no work destination connected yet."
@@ -3068,9 +3064,13 @@ msgid "A model id this list leaves out."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "A model provider's key lets runs in %{organisation} call a model."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A model provider's key lets runs in %{workspace} call a model."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3101,6 +3101,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "A policy rule"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "A pool for %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -3538,6 +3543,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add a key"
 msgstr ""
@@ -3672,6 +3678,7 @@ msgid "Add node"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add node pool"
 msgstr ""
@@ -7750,6 +7757,7 @@ msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Get a new command"
 msgstr ""
@@ -7757,6 +7765,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Get the command"
 msgstr ""
@@ -11300,6 +11309,7 @@ msgid "On %{name}, by qory"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "On %{name}, run:"
 msgstr ""
@@ -11555,6 +11565,7 @@ msgstr ""
 #: lib/apiary/edition/core.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins connect a node."
 msgstr ""
@@ -12462,9 +12473,13 @@ msgid "Qory Apiary serves the policy now."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the key encrypted, and nobody can view it again."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -13082,6 +13097,11 @@ msgstr ""
 msgid "Rename %{value_id} of %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Rename the node %{name} on the Nodes page, then add the pool. A node of %{workspace} already has that name."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Rename value"
@@ -13657,6 +13677,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Runs handed over"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs in %{workspace} then wait for this pool, and the shared pool stops serving them."
 msgstr ""
 
 #: lib/apiary_web/live/workflow_live.ex
@@ -14354,6 +14379,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shape"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Shared: the instance's pool"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -17741,7 +17771,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "Which model do %{organisation}'s runs use?"
+msgid "Which model do runs in %{workspace} use?"
 msgstr ""
 
 #: lib/apiary_web/live/collections_live.ex
@@ -18249,14 +18279,24 @@ msgstr ""
 msgid "You can change or unlock it on the workspace's policy page."
 msgstr ""
 
-#: lib/apiary/accounts/user_notifier.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change the email address of your %{name} account by visiting the URL below:"
+msgid "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change these or add more later in Organisation settings › Model providers."
+msgid "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "You can change the default model later in Workspace settings › Model."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You can change the email address of your %{name} account by visiting the URL below:"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

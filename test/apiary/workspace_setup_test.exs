@@ -265,6 +265,40 @@ defmodule Apiary.WorkspaceSetupTest do
       assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
       assert WorkspaceSetup.machines(ctx.workspace) == nil
     end
+
+    test "a pool's name is the workspace's name, cut to whole graphemes within 80 code points, trailing whitespace trimmed",
+         ctx do
+      name = &WorkspaceSetup.pool_name(%Apiary.Organisations.Workspace{name: &1})
+
+      assert name.("Payments") == "Payments"
+      assert name.(String.duplicate("a", 120)) == String.duplicate("a", 80)
+      assert name.(String.duplicate("a", 79) <> " bbbb") == String.duplicate("a", 79)
+
+      # "é" as "e" and a combining acute accent: 1 grapheme, 2 code points.
+      accented = "é"
+      cut = name.(String.duplicate(accented, 50))
+      assert cut == String.duplicate(accented, 40)
+      assert {String.length(cut), length(String.codepoints(cut))} == {40, 80}
+
+      # A grapheme that would pass 80 code points is left out whole.
+      assert name.(String.duplicate("a", 79) <> accented) == String.duplicate("a", 79)
+
+      assert name.(String.duplicate("a", 78) <> accented <> "b") ==
+               String.duplicate("a", 78) <> accented
+
+      # A family emoji: 1 grapheme, 5 code points.
+      family = "\u{1F468}‍\u{1F469}‍\u{1F467}"
+      assert name.(String.duplicate(family, 20)) == String.duplicate(family, 16)
+
+      # The node's changeset and the database's check accept each cut name.
+      for long <- [
+            String.duplicate("a", 120),
+            String.duplicate(accented, 60),
+            String.duplicate(family, 24)
+          ] do
+        assert %Node{kind: :pool} = pool_fixture(ctx.scope, name: name.(long))
+      end
+    end
   end
 
   describe "model key" do
@@ -509,30 +543,59 @@ defmodule Apiary.WorkspaceSetupTest do
     end
 
     @tag needs: [:factory, :secrets]
-    test "model?: a provider with a key and the organisation's default", ctx do
-      organisation = ctx.scope.organisation
-      refute WorkspaceSetup.model?(organisation)
+    test "done?/3: Model once the workspace's choice has a provider that reaches it, with a key",
+         ctx do
+      %{scope: scope, workspace: main} = ctx
+      organisation = scope.organisation
+
+      done? = fn workspace ->
+        WorkspaceSetup.done?(:model, organisation, {@software, workspace})
+      end
+
+      refute done?.(main)
 
       {:ok, provider} =
-        Connections.create_provider(ctx.scope, %{
+        Connections.create_provider(scope, %{
           provider: "anthropic",
           keys: [%{value_id: "main", value: "sk-flow-1"}]
         })
 
-      refute WorkspaceSetup.model?(organisation)
+      refute done?.(main)
 
-      # A choice of the workspace is no default of the organisation.
-      {:ok, _} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: provider.public_id})
-      refute WorkspaceSetup.model?(organisation)
+      # The organisation's default (level 6) is no choice of the workspace.
+      {:ok, _} = ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+      refute done?.(main)
 
       {:ok, _} =
-        ModelChoices.put_choice(ctx.scope, :organisation, %{provider: provider.public_id})
+        ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id, key: "main"})
 
-      assert WorkspaceSetup.model?(organisation)
-      assert WorkspaceSetup.done?(:model, organisation, {@software, ctx.workspace})
-      # Every step after Name is not done before the workspace exists.
-      refute WorkspaceSetup.done?(:model, organisation, {@software, nil})
-      refute WorkspaceSetup.model?(sign_up_fixture().organisation)
+      assert done?.(main)
+      assert WorkspaceSetup.model_key?(main)
+
+      # Another workspace has no choice; every step after Name is not done before the
+      # workspace exists.
+      refute done?.(workspace_fixture(organisation, "Other"))
+      refute done?.(nil)
+
+      # A provider that reaches no workspace any more: applies to the workspaces it lists,
+      # and lists none.
+      set!(Apiary.Connections.Connection, provider.id, applies_to: "selected")
+      refute done?.(main)
+      refute WorkspaceSetup.model_key?(main)
+
+      Repo.insert!(%Apiary.Connections.ConnectionWorkspace{
+        organisation_id: organisation.id,
+        connection_id: provider.id,
+        workspace_id: main.id
+      })
+
+      assert done?.(main)
+
+      # A provider with no key.
+      Repo.delete_all(from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id)
+
+      refute done?.(main)
+      refute WorkspaceSetup.model_key?(main)
     end
 
     test "sources? and destinations?: a row of the tick list ticked", ctx do
