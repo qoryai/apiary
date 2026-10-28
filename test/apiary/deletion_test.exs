@@ -378,8 +378,13 @@ defmodule Apiary.DeletionTest do
 
       {:ok, _} = Apiary.ModelChoices.put_choice(inside, :workspace, %{provider: gone.public_id})
 
-      {:ok, _} =
-        Apiary.ModelChoices.put_choice(scope, :organisation, %{provider: gone.public_id})
+      # The organisation's default refuses such a provider; a row written before that
+      # refusal is purged too.
+      Repo.insert!(%Apiary.ModelChoices.ModelChoice{
+        organisation_id: scope.organisation.id,
+        chain: "organisation",
+        connection_id: gone.id
+      })
 
       {:ok, _} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
       overdue!(Workspace, workspace.id)
