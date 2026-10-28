@@ -297,12 +297,12 @@ defmodule Apiary.Edition do
               source :: Apiary.Harnesses.source()
             ) :: boolean
 
-  # With the `factory` feature: the four rules of the
-  # Overview's setup list for `workspace` (`Apiary.WorkspaceSetup`), each asked once per
-  # read of the list, without a lock. An edition may count what serves the workspace from
-  # another organisation; the core counts the workspace's and its organisation's alone, and
-  # the instance's pool and gateway, but for the model key, which it reads on the chain the
-  # edition names:
+  # With the `factory` feature: four rules of the set-up for `workspace`
+  # (`Apiary.WorkspaceSetup`), each asked without a lock. The set-up page reads
+  # `machines_ready/1` and `test_run_passed?/1`; no code of the core reads the other two.
+  # An edition may count what serves the workspace from another organisation; the core
+  # counts the workspace's and its organisation's alone, and the instance's pool and
+  # gateway, but for the model key, which it reads on the chain the edition names:
   #
   # - `work_source_ready/1`: the adapters whose live collections are assigned to the
   #   workspace, through a connection that is connected and listed, each with how many,

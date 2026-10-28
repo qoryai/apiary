@@ -8,6 +8,11 @@ defmodule ApiaryWeb.LayoutsTest do
 
   alias Apiary.Organisations
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   defp attribute(html, selector, name) do
     html
     |> LazyHTML.from_fragment()

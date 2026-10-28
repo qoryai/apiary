@@ -15,6 +15,25 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
   alias Apiary.Policy
   alias Apiary.Policy.{Above, Rule}
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
+  # The edition's link to the level above, as `Apiary.EditionStubs.LinksTheLevel` and
+  # `LinksTheLevelWithoutNewRule` have it, on a workspace whose set-up is finished.
+  defmodule LinksTheLevelFinished do
+    @moduledoc false
+    defdelegate above_policy_link(scope), to: Apiary.EditionStubs.LinksTheLevel
+    defdelegate test_run_passed?(workspace), to: Apiary.EditionStubs.SetUpFinished
+  end
+
+  defmodule LinksTheLevelWithoutNewRuleFinished do
+    @moduledoc false
+    defdelegate above_policy_link(scope), to: Apiary.EditionStubs.LinksTheLevelWithoutNewRule
+    defdelegate test_run_passed?(workspace), to: Apiary.EditionStubs.SetUpFinished
+  end
+
   setup :register_and_log_in_user
 
   setup do
@@ -105,7 +124,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
 
   test "where the edition gives the level's New rule page, the item leads there with the host and the way back",
        %{conn: conn, scope: scope} do
-    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevel)
+    :ok = Apiary.Edition.put_test_stub(LinksTheLevelFinished)
     above!([rule("allow", "*.wonders.example")], own_allows: false)
 
     started_run(scope, shop(),
@@ -129,7 +148,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
   end
 
   test "where the level has no New rule page, the item is a lock", %{conn: conn, scope: scope} do
-    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.LinksTheLevelWithoutNewRule)
+    :ok = Apiary.Edition.put_test_stub(LinksTheLevelWithoutNewRuleFinished)
     above!([rule("allow", "*.wonders.example")], own_allows: false)
 
     started_run(scope, shop(),

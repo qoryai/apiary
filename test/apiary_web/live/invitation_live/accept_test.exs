@@ -47,6 +47,8 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     token: token,
     owner: owner
   } do
+    # The workspace's set-up is finished: its path opens its first page, the Overview.
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
     %{user: user} = sign_up_fixture()
     conn = log_in_user(conn, user)
 
