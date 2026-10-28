@@ -33,13 +33,17 @@ defmodule Apiary.SealedRunsFixtures do
   and a `call_url` that the calls' stub answers (`Req.Test`, `Apiary.Adapters.Calls`).
   The map then also has `adapter` and `adapter_seed`, the seed of the adapter's key, to
   sign the stub's answers with.
+
+  With `place: :workspace`, the provider is added for the scope's workspace alone, its key
+  a secret of that workspace (`Apiary.Connections.create_provider/3`).
   """
   def sealed_run_fixture(%Scope{} = scope, opts \\ []) do
     {:ok, provider} =
-      Connections.create_provider(scope, %{
-        provider: "anthropic",
-        keys: [%{value_id: "main", value: @model_key}]
-      })
+      Connections.create_provider(
+        scope,
+        %{provider: "anthropic", keys: [%{value_id: "main", value: @model_key}]},
+        Keyword.get(opts, :place, :organisation)
+      )
 
     {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
 
