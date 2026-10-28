@@ -339,18 +339,18 @@ defmodule Apiary.AdaptersTest do
     test "an adapter not set up, or serving none of the workspaces' domains, is not connected; with no workspace, every domain is offered",
          %{scope: scope} do
       %{adapter: settable} = settable_adapter_fixture()
-      %{adapter: general} = connectable_adapter_fixture()
+      %{adapter: example} = connectable_adapter_fixture()
 
       {1, _} =
-        Repo.update_all(from(n in Node, where: n.id == ^general.id),
-          set: [domains: ["general"]]
+        Repo.update_all(from(n in Node, where: n.id == ^example.id),
+          set: [domains: ["example"]]
         )
 
-      general = Repo.get!(Node, general.id)
+      example = Repo.get!(Node, example.id)
 
       # Main is a software workspace.
       assert Adapters.connect(scope, settable) == {:error, :not_offered}
-      assert Adapters.connect(scope, general) == {:error, :not_offered}
+      assert Adapters.connect(scope, example) == {:error, :not_offered}
       assert Repo.aggregate(from(e in Entry, where: e.action == "adapter.connect"), :count) == 0
 
       {1, _} =
@@ -366,7 +366,7 @@ defmodule Apiary.AdaptersTest do
       scope = Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
       assert Organisations.list_workspaces(scope) == []
       assert Adapters.connect(scope, settable) == {:error, :not_offered}
-      assert {:ok, _url, _session} = Adapters.connect(scope, general)
+      assert {:ok, _url, _session} = Adapters.connect(scope, example)
     end
   end
 

@@ -1,5 +1,5 @@
 defmodule Apiary.WorkspaceSetupTest do
-  # The four rules of the Overview's setup list (`Apiary.WorkspaceSetup`), as the core's
+  # The edition's four rules of the set-up (`Apiary.WorkspaceSetup`), as the core's
   # edition answers them and as a test's stub of the edition overrides them, and the state
   # of the latest test run. Not async: some tests make the instance's pool and gateway,
   # which the instance has one of each at most.
@@ -407,16 +407,13 @@ defmodule Apiary.WorkspaceSetupTest do
     test "a stub's rules are read in place of the core's", ctx do
       :ok = Edition.put_test_stub(EditionStubs.SetupReady)
 
-      assert %{
-               work_source: [],
-               machines: %{
-                 pool: %Node{name: "shared-pool"},
-                 gateway: %Node{name: "shared-gateway"}
-               },
-               model_key: true,
-               test_passed: false,
-               test_run: nil
-             } = WorkspaceSetup.read(ctx.workspace)
+      assert Edition.work_source_ready(ctx.workspace) == []
+
+      assert %{pool: %Node{name: "shared-pool"}, gateway: %Node{name: "shared-gateway"}} =
+               Edition.machines_ready(ctx.workspace)
+
+      assert Edition.model_key_ready?(ctx.workspace)
+      refute Edition.test_run_passed?(ctx.workspace)
     end
   end
 
@@ -454,10 +451,10 @@ defmodule Apiary.WorkspaceSetupTest do
       assert WorkspaceSetup.destinations?(organisation, @software)
 
       # An adapter that serves another type counts for that type alone.
-      set!(Node, adapter.id, domains: ["general"])
+      set!(Node, adapter.id, domains: ["example"])
       refute WorkspaceSetup.sources?(organisation, @software)
       refute WorkspaceSetup.destinations?(organisation, @software)
-      assert WorkspaceSetup.sources?(organisation, Apiary.Lingo.Domain.General)
+      assert WorkspaceSetup.sources?(organisation, Apiary.Lingo.Domain.Example)
 
       # An ended connection counts for none.
       set!(Node, adapter.id, domains: nil)

@@ -16,6 +16,11 @@ defmodule ApiaryWeb.UserAuthTest do
   @remember_me_cookie "__Host-_apiary_web_user_remember_me"
   @remember_me_cookie_max_age 60 * 60 * 24 * 14
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   setup %{conn: conn} do
     conn =
       conn

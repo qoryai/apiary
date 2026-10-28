@@ -692,13 +692,6 @@ msgstr ""
 msgid "%{integration} hasn't listed its %{collections} yet"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{integration} is connected, with %{number} %{collection}."
-msgid_plural "%{integration} is connected, with %{number} %{collections}."
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "%{integration} is connected."
@@ -2351,11 +2344,6 @@ msgstr ""
 msgid "%{person} got it at %{time}. It works once, until %{expires}. It was shown once: if it's lost, cancel it and get a new one."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{pool} and %{gateway} are ready."
-msgstr ""
-
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "%{product} menu"
@@ -2809,11 +2797,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "%{workspace}'s runs follow the workflow you choose here, from a harness repository."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{workspace}'s runs need a node pool and a gateway, each with a key."
 msgstr ""
 
 #: lib/apiary/sources/body.ex
@@ -3615,7 +3598,6 @@ msgstr ""
 msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add a model key, so agents can run."
@@ -3722,11 +3704,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Add it"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Add model key"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -3880,11 +3857,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "workspace type"
 msgid "Agents change code in your repositories."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Agents need a model key to run. The step is done when %{organisation} has a model provider with a key and %{workspace} has a model choice."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -4672,7 +4644,6 @@ msgstr ""
 msgid "Behind v%{n}"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -5163,7 +5134,6 @@ msgstr ""
 msgid "Check the integration that brings in this target on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its target, because the integration no longer reaches it or the target's path has a character that Qory Apiary does not put in an access rule."
 msgstr "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its repository, because the integration no longer reaches it or the repository's path has a character that Qory Apiary does not put in an access rule."
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Check the nodes"
@@ -5612,7 +5582,6 @@ msgstr ""
 msgid "Confirming makes work item #%{number} ready for Shape."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Connect"
@@ -6584,7 +6553,6 @@ msgstr ""
 msgid "Domains"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/member_live/index.ex
@@ -7177,7 +7145,6 @@ msgstr ""
 msgid "Export · Version %{version} · Policy"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -7415,11 +7382,6 @@ msgstr ""
 msgid "Find an organisation or workspace…"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Find the pool and the gateway in the table. Each one is ready when %{state} shows %{running} or %{last_seen}."
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -7599,18 +7561,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
-msgstr ""
-
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "For any other work, such as marketing, incidents or customer care."
-msgstr ""
-
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "For any other work, such as marketing, incidents or customer care. Qory reads the ticket, its comments and the answers."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -7830,17 +7780,6 @@ msgstr ""
 msgid "General"
 msgstr ""
 
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgctxt "workspace type"
-msgid "General"
-msgstr ""
-
-#: lib/apiary/lingo/domain/general.ex
-#, elixir-autogen, elixir-format
-msgid "General workspace"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -8052,7 +7991,6 @@ msgstr ""
 msgid "Hi %{email},"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Hi! Where are you running?"
@@ -8205,19 +8143,9 @@ msgstr ""
 msgid "If nothing appears, install again."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "If one shows %{never_seen}, open the logs of the pool and the gateway on the instance's host, as your host's install guide says."
-msgstr ""
-
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "If the %{items} of one of these %{collections} only track bugs, turn its Backlog switch off. Work items already taken in stay."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "If you are not an instance admin, ask one to check the Nodes page."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -9257,7 +9185,6 @@ msgid "Last runs"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/node_live/index.ex
@@ -9665,11 +9592,6 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Machines for runs"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
 msgid "Machines use their local policy until the first change here."
 msgstr ""
 
@@ -9880,11 +9802,6 @@ msgstr ""
 msgid "Model choice changed"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Model key"
-msgstr ""
-
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/provider_live/show.ex
@@ -10080,7 +9997,6 @@ msgid "Never ran"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
-#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Never seen"
 msgstr ""
@@ -11474,11 +11390,6 @@ msgstr ""
 msgid "On Forager's deny list"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "On Instance settings › Nodes"
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "On port 465, TLS from the start, whatever this says."
@@ -11576,7 +11487,6 @@ msgid "Only an admin of this Qory Apiary makes password links, while it sends no
 msgstr ""
 
 #: lib/apiary/edition/core.ex
-#: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Only an instance admin checks the instance's pool and gateway."
 msgstr ""
@@ -11626,12 +11536,6 @@ msgstr ""
 msgid "Only members of %{workspace} take tickets in."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Only members of this workspace see its node pools."
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins add a model key."
@@ -11717,11 +11621,6 @@ msgstr ""
 msgid "Only owners and admins connect a node."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners and admins connect a work source."
-msgstr ""
-
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins delete a workspace."
@@ -11763,7 +11662,6 @@ msgstr ""
 msgid "Only owners delete the organisation."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners, admins and members run the test."
@@ -13756,14 +13654,12 @@ msgstr ""
 msgid "Run started."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Run the test"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/components/work_item_components.ex
@@ -13840,11 +13736,6 @@ msgstr ""
 msgid "Runs may not connect to the host, in observe and in enforce."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Runs need a node pool, whose machines run the agents, and a gateway, which passes their model calls on. Qory Apiary keeps the model key and seals it to the gateway for each run."
-msgstr ""
-
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs need a ready pool. %{see}."
@@ -13878,11 +13769,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of nodes and node pools on Default gateway go through the default."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Runs once machines and model key are done."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -14057,7 +13943,6 @@ msgstr ""
 msgid "Saving sends a test link to %{email}. Mail is off until you follow it."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Say hi to your agent"
@@ -14162,7 +14047,6 @@ msgstr ""
 msgid "See the owners and admins"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "See the run"
@@ -14428,11 +14312,6 @@ msgstr ""
 #: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Set up %{name}"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Set up %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -14874,7 +14753,6 @@ msgstr ""
 msgid "Started setting up an adapter"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -15276,7 +15154,6 @@ msgstr ""
 msgid "Test"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Test run"
@@ -15812,11 +15689,6 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "The instance's pool"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The instance's pool and gateway are ready."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -16401,11 +16273,6 @@ msgstr ""
 msgid "The stack of %{source} lists no workflow: add one under %{key} in its %{file}, or choose another source."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The step is done when %{workspace} has a collection from a work source and Qory Apiary has read its list of collections."
-msgstr "The step is done when %{workspace} has a repository from a work source and Qory Apiary has read its list of repositories."
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The target's rule is kept and shown as held. Only an owner can unlock."
@@ -16426,18 +16293,11 @@ msgstr "The repositories that override %{name}, and those whose override its loc
 msgid "The targets this workspace's runs have changed."
 msgstr "The repositories this workspace's runs have changed."
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The test run checks the other steps together: an agent answers your line on a machine of the pool, through the gateway, with the model key. The run's log has its answer."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "The test run is queued for a machine."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "The test run is running."
@@ -17583,7 +17443,6 @@ msgstr ""
 msgid "Versions"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "View"
@@ -17632,7 +17491,6 @@ msgid_plural "Wait %{count} seconds, then reload the page to read %{source} agai
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Wait until the test run in progress ends, then press %{run} again."
@@ -18104,11 +17962,6 @@ msgid "Work items: %{count} waits for you"
 msgid_plural "Work items: %{count} wait for you"
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Work source"
-msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/components/settings_components.ex

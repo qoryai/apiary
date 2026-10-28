@@ -213,7 +213,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     test "fills the target path exactly as the adapter wrote it", ctx do
-      ctx = %{ctx | scope: with_domain(ctx.scope, "general")}
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
       {work_item, _queued} = queued!(ctx)
       retarget!(work_item, "Team/Shop%20Two")
       assert {:ok, %{registered: %Run{}}} = claim(ctx)
@@ -252,7 +252,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     test "ends target_access_gone for a target path the apply items refuse", ctx do
-      ctx = %{ctx | scope: with_domain(ctx.scope, "general")}
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
 
       for path <- ["acme/../shop", "acme//shop", "acme/shop*", "acme/shop?x", "acme/shop#x"] do
         {work_item, queued} = queued!(ctx)

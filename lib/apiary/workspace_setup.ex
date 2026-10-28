@@ -1,7 +1,7 @@
 defmodule Apiary.WorkspaceSetup do
   # What the set-up reads: the steps of the set-up flow (`flow/0`), each done by its rule
   # here, and the state of a workspace's test run. The set-up page
-  # (`ApiaryWeb.WorkspaceSetupLive`) and the Overview's setup list read the same rules.
+  # (`ApiaryWeb.WorkspaceSetupLive`) reads them.
   #
   # The flow's steps, in order, each of a group: for the organisation, Work sources,
   # Work destinations and Model; for the workspace, Name, Work sources used, Destinations
@@ -24,11 +24,10 @@ defmodule Apiary.WorkspaceSetup do
   #     workspace's runs, each with its state (`pools/1`), and writes nothing;
   #   * `test?/1`: the edition's `test_run_passed?/1`.
   #
-  # The Overview's setup list reads the edition's four rules (`read/2`):
-  # `c:Apiary.Edition.work_source_ready/1`, `c:Apiary.Edition.machines_ready/1`,
-  # `c:Apiary.Edition.model_key_ready?/1` and `c:Apiary.Edition.test_run_passed?/1`, which
-  # may count what serves the workspace from another organisation. The core's edition
-  # answers with the functions here:
+  # The edition has four rules of the set-up: `c:Apiary.Edition.work_source_ready/1`,
+  # `c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1` and
+  # `c:Apiary.Edition.test_run_passed?/1`, which may count what serves the workspace from
+  # another organisation. The core's edition answers with the functions here:
   #
   #   * `work_source/1`: the live collections assigned to the workspace, of a connection
   #     of its organisation that is connected and that an adapter's listing has named
@@ -146,28 +145,6 @@ defmodule Apiary.WorkspaceSetup do
           dispatch_run: DispatchRun.t(),
           run: Run.t() | nil
         }
-
-  @typedoc "What the setup list reads, each rule as the edition answers it."
-  @type t :: %{
-          work_source: [source],
-          machines: machines | nil,
-          model_key: boolean,
-          test_passed: boolean,
-          test_run: test_run | nil
-        }
-
-  @doc false
-  # read/2 is the four rules, asked of the edition, and the latest test run at `now`.
-  @spec read(Workspace.t(), DateTime.t()) :: t
-  def read(%Workspace{} = workspace, %DateTime{} = now \\ DateTime.utc_now()) do
-    %{
-      work_source: Edition.work_source_ready(workspace),
-      machines: Edition.machines_ready(workspace),
-      model_key: Edition.model_key_ready?(workspace),
-      test_passed: Edition.test_run_passed?(workspace),
-      test_run: test_run(workspace, now)
-    }
-  end
 
   @doc false
   # machine_wait_seconds/0 is how long a test run waits for a machine before its step says
@@ -459,7 +436,7 @@ defmodule Apiary.WorkspaceSetup do
     end
   end
 
-  ## The rules of the setup list
+  ## The edition's rules, as the core's edition answers them
 
   @doc false
   # work_source/1 is each adapter in use with live collections assigned to `workspace` of

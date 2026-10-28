@@ -916,7 +916,7 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
 
       assert [ticket.public_id] == Enum.map(Backlog.list_tickets(ctx.scope, %{}).rows, & &1.id)
 
-      assert %{domains: ["general"]} = start(ctx, ["general"])
+      assert %{domains: ["example"]} = start(ctx, ["example"])
       assert workspace_of(ctx, "SHOP") == ctx.workspace.id
 
       # A listing after the restart leaves it assigned too.
@@ -942,13 +942,13 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
     test "an adapter that lists no domains serves every workspace; one that lists some, those",
          ctx do
       {:ok, :accepted} = post(ctx, titled(["SHOP", "API"]))
-      general = %{ctx.other_workspace | domain: "general"}
+      example = %{ctx.other_workspace | domain: "example"}
 
-      Repo.update_all(from(w in Workspace, where: w.id == ^general.id), set: [domain: "general"])
+      Repo.update_all(from(w in Workspace, where: w.id == ^example.id), set: [domain: "example"])
 
       start(ctx, ["software"])
 
-      assert Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["API"]), general) ==
+      assert Collections.assign_collections(ctx.scope, ctx.connection, ids(ctx, ["API"]), example) ==
                {:error, :other_domain}
 
       assert {:ok, 1} =
@@ -966,10 +966,10 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
                  ctx.scope,
                  ctx.connection,
                  ids(ctx, ["API"]),
-                 general
+                 example
                )
 
-      start(ctx, ["general", "software"])
+      start(ctx, ["example", "software"])
 
       assert {:ok, 1} =
                Collections.assign_collections(

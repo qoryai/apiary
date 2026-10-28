@@ -290,8 +290,8 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       assert [%DispatchRun{state: :waiting}] = runs(software)
       close!(software)
 
-      general = with_domain(ctx.scope, "general")
-      assert %WorkItem{target_system: nil} = work_item = test_item!(general)
+      example = with_domain(ctx.scope, "example")
+      assert %WorkItem{target_system: nil} = work_item = test_item!(example)
       assert [%DispatchRun{state: :waiting}] = runs(work_item)
     end
 

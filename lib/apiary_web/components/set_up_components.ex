@@ -397,6 +397,44 @@ defmodule ApiaryWeb.SetUpComponents do
     end
   end
 
+  @doc """
+  set_up_path/1 is where a link to the scope's workspace leads while its set-up is not
+  finished: the first step of the group `:workspace` that is not done, on `/:org/set-up`
+  (`flow_path/2`). The set-up is finished once the test run passed, the Test run step's
+  rule in Apiary.WorkspaceSetup. Nil once it is, where the reader sees no Test run step
+  (without the `factory` feature), and for a scope without a workspace.
+
+  While the set-up is finished it reads one rule, the Test run step's; before, the rules
+  of the steps up to the one it returns.
+  """
+  @spec set_up_path(Scope.t() | nil) :: String.t() | nil
+  def set_up_path(
+        %Scope{organisation: %Organisation{} = organisation, workspace: %Workspace{} = workspace} =
+          scope
+      ) do
+    ids = flow_ids(scope)
+
+    if Keyword.has_key?(ids, :test) and not WorkspaceSetup.test?(workspace) do
+      domain = Domain.for_workspace(workspace)
+
+      next =
+        Enum.find_value(ids, :test, fn
+          {:test, _group} ->
+            nil
+
+          {_id, :organisation} ->
+            nil
+
+          {id, :workspace} ->
+            if not WorkspaceSetup.done?(id, organisation, {domain, workspace}), do: id
+        end)
+
+      flow_path(flow(organisation, domain, workspace, :set_up), next)
+    end
+  end
+
+  def set_up_path(_scope), do: nil
+
   ## The frame
 
   attr :steps, :list,

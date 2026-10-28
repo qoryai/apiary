@@ -181,9 +181,35 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
     # An adapter's key card shows when its key was last used, which is the instance admins'
     # alone: only a page of the instance's admins, at `/instance/…`, may draw it. Every
     # module that calls `key_card/1` or `waiting/1` but the tab that defines them is such a
-    # page.
+    # page. A call without the module, `<.waiting` or an import's `waiting: 1`, counts
+    # unless the calling module defines a function of that name and arity 1, which the
+    # call then reaches instead.
     @tab "lib/apiary_web/live/node_live/access_key.ex"
-    @call ~r/AccessKey\.(key_card|waiting)\b|<\.(key_card|waiting)\b|\b(key_card|waiting): 1\b/
+    @qualified ~r/AccessKey\.(key_card|waiting)\b/
+    @unqualified ~r/<\.(key_card|waiting)\b|\b(key_card|waiting): 1\b/
+
+    defp calls_access_key?(module, source) do
+      source =~ @qualified or
+        Enum.any?(Regex.scan(@unqualified, source), fn match ->
+          fun = match |> tl() |> Enum.find(&(&1 != "")) |> String.to_existing_atom()
+          not defines?(module, fun)
+        end)
+    end
+
+    # Public and private functions, from the module's compiled `.beam` file. A module
+    # without one defines nothing, so its call counts.
+    defp defines?(module, fun) do
+      case :code.where_is_file(~c"#{module}.beam") do
+        :non_existing ->
+          false
+
+        beam ->
+          {:ok, {^module, [exports: exports, locals: locals]}} =
+            :beam_lib.chunks(beam, [:exports, :locals])
+
+          {fun, 1} in exports or {fun, 1} in locals
+      end
+    end
 
     defp live_paths(module) do
       for %{path: path, metadata: %{phoenix_live_view: {^module, _action, _opts, _extra}}} <-
@@ -196,9 +222,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyComponentsTest do
         for path <- Path.wildcard("lib/**/*.{ex,heex}"),
             path != @tab,
             source = File.read!(path),
-            source =~ @call,
             [_, name] <- Regex.scan(~r/^defmodule ([\w.]+) do/m, source),
-            do: Module.concat([name])
+            module = Module.concat([name]),
+            calls_access_key?(module, source),
+            do: module
 
       for module <- callers do
         paths = live_paths(module)

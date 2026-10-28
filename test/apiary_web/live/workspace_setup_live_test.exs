@@ -113,9 +113,9 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
       refute has_element?(lv, "#shell .drawer")
       refute has_element?(lv, "#set-up-steps")
 
-      # General has no card's words, so it has no card.
+      # Example has no card's words, so it has no card.
       assert has_element?(lv, "#set-up-card-software h2", "Software factory")
-      refute has_element?(lv, "#set-up-card-general")
+      refute has_element?(lv, "#set-up-card-example")
 
       assert has_element?(
                lv,
@@ -139,7 +139,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
 
       for path <- [
             ~p"/#{organisation}/set-up?step=name",
-            ~p"/#{organisation}/set-up?type=general"
+            ~p"/#{organisation}/set-up?type=example"
           ] do
         {:ok, lv, _html} = live(conn, path)
         assert has_element?(lv, "#set-up-card-software")
@@ -595,7 +595,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       {1, _} =
         Repo.update_all(from(n in Node, where: n.id == ^other_type.id),
-          set: [domains: ["general"]]
+          set: [domains: ["example"]]
         )
 
       # Not configured: no key and no address to connect to.
@@ -1266,6 +1266,155 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       render_click(lv, "run_test", %{"test" => %{"line" => @line}})
       refute Repo.exists?(WorkItem)
+    end
+
+    test "while a test run is in progress, the step says to wait, in a plain line", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, [state: :handed_over], %{state: "running"})
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      # Run the test again with the line of a test a machine is running.
+      render_click(lv, "run_test", %{"test" => %{"line" => @line}})
+
+      assert words(lv, "#set-up-test-running") ==
+               "Wait until the test run in progress ends, then press Run the test again."
+
+      assert Repo.aggregate(WorkItem, :count) == 1
+    end
+
+    test "a line the work item refuses is the field's error", %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+      html = lv |> form("#set-up-test-form", test: %{line: "   "}) |> render_submit()
+
+      assert html =~ "can&#39;t be blank"
+      refute Repo.exists?(WorkItem)
+    end
+
+    test "running, with See the run", %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      run = test_run!(item, [state: :handed_over], %{state: "running"})
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-state") == "The test run is running."
+      assert words(lv, "#set-up-test-run-link") == "See the run"
+
+      assert href(lv, "#set-up-test-run-link") ==
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+    end
+
+    test "passed on a pool of the workspace, or on the instance's pool, says which", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+      pool = pool_fixture(scope, name: "build-pool")
+
+      run =
+        test_run!(item, [state: :ended, end_cause: :run_ended], %{
+          state: "completed",
+          node_id: pool.id
+        })
+
+      :ok = Dispatches.broadcast([scope.workspace.id])
+
+      assert words(lv, "#set-up-test-passed") ==
+               "Test run passed: the agent answered on a machine of build-pool. See the run"
+
+      assert href(lv, "#set-up-test-passed a") ==
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [node_id: instance_pool_fixture().id]
+      )
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-passed") ==
+               "Test run passed: the agent answered on a machine of the instance's pool. " <>
+                 "See the run"
+    end
+
+    test "each failure, the fix first, with Run the test", %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+
+      for {changes, run_attrs, cause, line} <- [
+            {[state: :ended, end_cause: :run_refused, end_detail: "model_key_missing"],
+             %{state: "failed", reason: "model_key_missing"}, "model_key_missing",
+             "Add a model key in Organisation settings › Model providers. The gateway had no " <>
+               "model key for the run."},
+            {[state: :ended, end_cause: :lost, end_detail: nil],
+             %{state: "lost", silenced_at: DateTime.utc_now()}, "silent",
+             "Check that the gateway is running in Instance settings › Nodes. The machine " <>
+               "stopped sending for 10 minutes."},
+            {[state: :ended, end_cause: :run_ended], %{state: "failed"}, "other",
+             "Read the run's log, then press Run the test again. The test run ended without " <>
+               "passing. See the run"},
+            {[state: :ended, end_cause: :harness_unresolved, result_outcome: :error], nil,
+             "other",
+             "Check the other steps of this list, then press Run the test again. The test run " <>
+               "ended before a machine started it."}
+          ] do
+        Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
+        test_run!(item, changes, run_attrs)
+        {:ok, lv, _html} = live(conn, test_path(scope))
+
+        assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
+        assert words(lv, "#set-up-test-failed") == line
+        assert has_element?(lv, "#set-up-test-run", "Run the test")
+      end
+    end
+
+    test "Run the test after a failure takes a new test in and closes the failed one", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      test_run!(item, [state: :ended, end_cause: :run_ended], %{state: "failed"})
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      lv |> form("#set-up-test-form") |> render_submit()
+
+      assert [%WorkItem{state: :closed}, %WorkItem{state: :exploring, title: @line}] =
+               Repo.all(from w in WorkItem, order_by: w.number)
+
+      assert words(lv, "#set-up-test-state") == "The test run is queued for a machine."
+    end
+
+    test "a wait past 5 minutes turns into its failure without a reload, and Run the test queues a new test",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-state") == "The test run is queued for a machine."
+
+      test_run!(item, queued_at: DateTime.add(DateTime.utc_now(), -301, :second))
+      send(lv.pid, :setup_tick)
+
+      assert has_element?(lv, "#set-up-test-failed[data-cause=no_machine]")
+
+      # Run the test while no machine has taken the run: the run ends, the test work item
+      # closes, and a new test run is queued.
+      lv |> form("#set-up-test-form") |> render_submit()
+      refute has_element?(lv, "#set-up-test-running")
+
+      assert [%WorkItem{state: :closed}, %WorkItem{state: :exploring, title: @line}] =
+               Repo.all(from w in WorkItem, order_by: w.number)
+
+      assert [%DispatchRun{state: :ended, end_cause: :closed}] =
+               Repo.all(from d in DispatchRun, where: d.work_item_id == ^item.id)
+
+      assert words(lv, "#set-up-test-state") == "The test run is queued for a machine."
     end
   end
 

@@ -33,6 +33,11 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
   @sudo "You must re-authenticate to access this page."
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   defp text(view, selector),
     do:
       view

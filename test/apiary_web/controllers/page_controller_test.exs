@@ -4,6 +4,11 @@ defmodule ApiaryWeb.PageControllerTest do
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
   test "GET / shows the landing to a visitor", %{conn: conn} do
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)

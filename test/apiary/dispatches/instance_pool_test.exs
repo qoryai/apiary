@@ -150,7 +150,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       assert Repo.get!(DispatchRun, held_run.id).state == :waiting
 
       # In a workspace whose domain has no prebuilds, the same run is taken.
-      with_domain(ctx.a, "general")
+      with_domain(ctx.a, "example")
       assert {:ok, %{run: %{id: id}}} = claim(ctx.key)
       assert id == held_run.id
     end

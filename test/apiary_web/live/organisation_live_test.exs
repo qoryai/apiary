@@ -4,6 +4,23 @@ defmodule ApiaryWeb.OrganisationLiveTest do
   import Apiary.OrganisationsFixtures
   import Phoenix.LiveViewTest
 
+  # A workspace's set-up is finished: a link to it leads to its first page.
+  setup do
+    Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
+  end
+
+  # A member reaches each workspace as the edition marks it, as
+  # `Apiary.EditionStubs.MembersReachMarked` has it, and every set-up is finished.
+  defmodule MembersReachMarkedFinished do
+    @moduledoc false
+    alias Apiary.EditionStubs.{MembersReachMarked, SetUpFinished}
+    defdelegate limits, to: MembersReachMarked
+    defdelegate every_workspace_levels, to: MembersReachMarked
+    defdelegate reached_workspaces(query, scope), to: MembersReachMarked
+    defdelegate reaches_workspace?(scope, workspace_id, opts), to: MembersReachMarked
+    defdelegate test_run_passed?(workspace), to: SetUpFinished
+  end
+
   describe "a person who reaches a workspace" do
     test "sees the organisation's overview: its workspaces, each leading to its own", %{
       conn: conn
@@ -99,7 +116,7 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       %{user: user} = member_fixture(owner, :member)
       # The edition marks each workspace a member reaches, and the scope reaches only the
       # workspace its mark names.
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.MembersReachMarked)
+      :ok = Apiary.Edition.put_test_stub(MembersReachMarkedFinished)
       conn = log_in_user(conn, user)
 
       {:ok, view, _html} = live(conn, ~p"/#{organisation}")
