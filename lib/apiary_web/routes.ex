@@ -781,6 +781,10 @@ defmodule ApiaryWeb.Routes do
               # `secrets`.
               live "/settings/model", ModelChoiceLive, :edit
               live "/settings/runs", SettingsLive, :runs
+              # The tick lists of what the workspace uses, as the set-up's steps have them,
+              # with the `factory` feature: its work sources and its destinations.
+              live "/settings/work-sources", CollectionsLive, :sources
+              live "/settings/destinations", CollectionsLive, :destinations
               # The workflow of the workspace's runs and the harness source it comes from,
               # with the `factory` feature.
               live "/settings/workflow", WorkflowLive, :edit

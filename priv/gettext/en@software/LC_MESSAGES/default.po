@@ -6470,6 +6470,12 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/collections_live.ex
+#, elixir-autogen, elixir-format
+msgid "Destinations"
+msgstr ""
+
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Destinations used"
@@ -17847,11 +17853,13 @@ msgstr ""
 msgid "Which model do %{organisation}'s runs use?"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Which repositories may %{workspace}'s runs change?"
 msgstr ""
 
+#: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Which work sources does %{workspace} use?"
@@ -18009,6 +18017,8 @@ msgid "Work source"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/collections_live.ex
 #, elixir-autogen, elixir-format
 msgid "Work sources"
 msgstr ""

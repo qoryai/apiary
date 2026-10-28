@@ -15,8 +15,9 @@ defmodule ApiaryWeb.SettingsComponents do
     and deleting it), People (who reaches it, and at what level: read here, managed in the
     organisation's People), with the `secrets` feature Integrations
     (`ApiaryWeb.IntegrationLive.Index`) and Secrets and variables
-    (`ApiaryWeb.SecretLive.Index`), and Runs (how long it keeps runs, their events and
-    their logs).
+    (`ApiaryWeb.SecretLive.Index`), with the `factory` feature Work sources and
+    Destinations (the tick lists of the set-up's steps), and Runs (how long it keeps runs,
+    their events and their logs).
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
@@ -111,6 +112,7 @@ defmodule ApiaryWeb.SettingsComponents do
 
   def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
     secrets? = Features.visible?(scope, :secrets)
+    factory? = Features.visible?(scope, :factory)
 
     [
       %Entry{
@@ -152,6 +154,25 @@ defmodule ApiaryWeb.SettingsComponents do
           label: gettext("Model"),
           icon: "hero-cpu-chip",
           path: ~p"/#{organisation}/#{workspace}/settings/model"
+        },
+      # The tick lists of what the workspace uses, as the set-up's steps have them, with
+      # the `factory` feature, for whoever may read the instance's adapters; each tick
+      # there asks its action again.
+      factory? && Access.can?(scope, :"adapter.read", organisation) &&
+        %Entry{
+          section: :main,
+          key: :work_sources,
+          label: gettext("Work sources"),
+          icon: "hero-inbox-arrow-down",
+          path: ~p"/#{organisation}/#{workspace}/settings/work-sources"
+        },
+      factory? && Access.can?(scope, :"adapter.read", organisation) &&
+        %Entry{
+          section: :main,
+          key: :destinations,
+          label: gettext("Destinations"),
+          icon: "hero-arrow-up-tray",
+          path: ~p"/#{organisation}/#{workspace}/settings/destinations"
         },
       # The workflow of the workspace's runs, with the `factory` feature, for whoever may
       # save it.
