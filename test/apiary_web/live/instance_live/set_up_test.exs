@@ -686,6 +686,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpEnvMailTest do
           {"Work sources used", :to_come},
           {"Destinations used", :to_come},
           {"Harness", :to_come},
+          {"Machines", :to_come},
           {"Test run", :to_come}
         ]
     else

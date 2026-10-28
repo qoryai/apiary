@@ -5,7 +5,7 @@ defmodule Apiary.WorkspaceSetup do
   #
   # The flow's steps, in order, each of a group: for the organisation, Work sources,
   # Work destinations and Model; for the workspace, Name, Work sources used, Destinations
-  # used, Harness and Test run. A step is done by its rule:
+  # used, Harness, Machines and Test run. A step is done by its rule:
   #
   #   * `sources?/2`: the organisation has a connected connection of an adapter in use
   #     with items that serves the workspace's type (`Apiary.Lingo.Domain`);
@@ -20,6 +20,8 @@ defmodule Apiary.WorkspaceSetup do
   #   * `destinations_used?/2`: a row of its tick list is ticked: a collection with a
   #     target assigned to the workspace;
   #   * `harness?/1`: the workspace has a saved harness choice (`Apiary.Stacks.choice/1`);
+  #   * Machines: `machines/1` finds a ready pool. The step reads the pools that serve the
+  #     workspace's runs, each with its state (`pools/1`), and writes nothing;
   #   * `test?/1`: the edition's `test_run_passed?/1`.
   #
   # The Overview's setup list reads the edition's four rules (`read/2`):
@@ -33,9 +35,9 @@ defmodule Apiary.WorkspaceSetup do
   #     (`listed_at`), of an adapter in use, counted per adapter;
   #   * `machines/1`: a node pool that serves the workspace's runs, with an active key,
   #     and the gateway its choice resolves to, with an active key too
-  #     (`Apiary.Gateways.resolve/1`). The pools that serve them are the workspace's pools
-  #     in use, or, while it has none, the instance's pool, as a claim takes them
-  #     (`Apiary.Dispatches.no_pool_in_use/0`);
+  #     (`Apiary.Gateways.resolve/1`). The pools that serve them (`serving_pools/1`) are
+  #     the workspace's pools in use, or, while it has none, the instance's pool, as a
+  #     claim takes them (`Apiary.Dispatches.no_pool_in_use/0`);
   #   * `model_key?/1`: on the chain of model choices that resolves for the workspace's
   #     runs (`Apiary.ModelChoices.chain_owner/1`), a model provider with at least one key,
   #     and a choice that a run reads: for the organisation's chain, a choice of the
@@ -83,6 +85,7 @@ defmodule Apiary.WorkspaceSetup do
     sources_used: :workspace,
     destinations_used: :workspace,
     harness: :workspace,
+    machines: :workspace,
     test: :workspace
   ]
 
@@ -95,6 +98,7 @@ defmodule Apiary.WorkspaceSetup do
           | :sources_used
           | :destinations_used
           | :harness
+          | :machines
           | :test
 
   @typedoc """
@@ -112,6 +116,19 @@ defmodule Apiary.WorkspaceSetup do
 
   @typedoc "A node pool that serves the workspace's runs, and its gateway."
   @type machines :: %{pool: Node.t(), gateway: Node.t()}
+
+  @typedoc """
+  A line of the Machines step (`pools/1`): a node pool that serves the workspace's runs,
+  nil where the instance has no pool; `instance`, whether it is the instance's pool; and
+  its state: `{:ready, gateway}`, or `{:not_ready, reason}`, where `reason` is
+  `:no_pool`, `:no_active_key` or `:no_gateway` (its choice resolves to no gateway with
+  an active key).
+  """
+  @type pool_line :: %{
+          pool: Node.t() | nil,
+          instance: boolean,
+          state: {:ready, Node.t()} | {:not_ready, :no_pool | :no_active_key | :no_gateway}
+        }
 
   @typedoc """
   The latest test run: `:waiting` for a machine, `:running` once claimed, `:passed`, or
@@ -186,6 +203,7 @@ defmodule Apiary.WorkspaceSetup do
     do: destinations_used?(workspace, domain)
 
   def done?(:harness, _organisation, {_domain, workspace}), do: harness?(workspace)
+  def done?(:machines, _organisation, {_domain, workspace}), do: machines(workspace) != nil
   def done?(:test, _organisation, {_domain, workspace}), do: test?(workspace)
 
   @doc false
@@ -473,13 +491,40 @@ defmodule Apiary.WorkspaceSetup do
     workspace
     |> serving_pools()
     |> Enum.find_value(fn pool ->
-      with true <- AccessKeys.active_key?(pool),
-           {:gateway, gateway} <- Gateways.resolve(pool) do
-        %{pool: pool, gateway: gateway}
-      else
-        _not_ready -> nil
+      case pool_state(pool) do
+        {:ready, gateway} -> %{pool: pool, gateway: gateway}
+        {:not_ready, _reason} -> nil
       end
     end)
+  end
+
+  @doc false
+  # pools/1 is the lines of the Machines step: each node pool that serves `workspace`'s
+  # runs (`serving_pools/1`), with its state, by the rule of `machines/1`. Where the
+  # workspace has no pool in use and the instance has none either, one line: the
+  # instance's pool, not ready for `:no_pool`.
+  @spec pools(Workspace.t()) :: [pool_line]
+  def pools(%Workspace{} = workspace) do
+    case serving_pools(workspace) do
+      [] ->
+        [%{pool: nil, instance: true, state: {:not_ready, :no_pool}}]
+
+      pools ->
+        for pool <- pools,
+            do: %{pool: pool, instance: is_nil(pool.workspace_id), state: pool_state(pool)}
+    end
+  end
+
+  # A pool is ready with an active key and a choice that resolves to a gateway with an
+  # active key; else the first of the two it lacks.
+  defp pool_state(pool) do
+    with {:key, true} <- {:key, AccessKeys.active_key?(pool)},
+         {:gateway, gateway} <- Gateways.resolve(pool) do
+      {:ready, gateway}
+    else
+      {:key, false} -> {:not_ready, :no_active_key}
+      _no_gateway -> {:not_ready, :no_gateway}
+    end
   end
 
   @doc false
@@ -489,9 +534,11 @@ defmodule Apiary.WorkspaceSetup do
   def instance_pool?(%Workspace{} = workspace),
     do: not Repo.exists?(workspace_pools(workspace))
 
-  # The workspace's node pools in use, oldest first, or the instance's pool while it has
-  # none.
-  defp serving_pools(%Workspace{} = workspace) do
+  @doc false
+  # serving_pools/1 is the node pools that serve `workspace`'s runs: the workspace's pools
+  # in use, oldest first, or the instance's pool while it has none; `[]` where neither is.
+  @spec serving_pools(Workspace.t()) :: [Node.t()]
+  def serving_pools(%Workspace{} = workspace) do
     case Repo.all(workspace_pools(workspace)) do
       [] -> List.wrap(Repo.one(Installed.live_query(:pool)))
       pools -> Enum.map(pools, &%{&1 | workspace: workspace})

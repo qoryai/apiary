@@ -77,10 +77,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     one; a harness repository is read outside the page's process while Continue shows
   #     Saving, and a read that failed says why. A person whom `harness.save` does not
   #     allow sees the choices disabled, and who may;
+  #   * Machines, with the `factory` feature, read only: the node pools that serve the
+  #     workspace's runs, each with its state (`Apiary.WorkspaceSetup.pools/1`): the
+  #     workspace's pools, or the instance's pool while it has none. A pool that is the
+  #     only one shows chosen. A ready pool shows its gateway's name; a pool that is not
+  #     ready shows what it lacks: a pool, an active key or a gateway. Under a pool that is
+  #     not ready: for the instance's pool, Check the nodes, to `/instance/nodes`, for an
+  #     instance admin; for a pool of the workspace, its name links to its page for a
+  #     person whom `access_key.create_code` allows on it. Anyone else reads who acts
+  #     (`c:Apiary.Edition.machines_who_may/3`). Nothing on the step writes;
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
   #     (`Apiary.WorkItems.take_in_test/2`) once a pool serves the workspace
   #     (`c:Apiary.Edition.machines_ready/1`); before, the line that runs need a ready
-  #     pool. Then the test run's state (`Apiary.WorkspaceSetup.test_run/2`): waiting,
+  #     pool, whose See Machines links to the Machines step, and no Run the test. Then the
+  #     test run's state (`Apiary.WorkspaceSetup.test_run/2`): waiting,
   #     running, passed, or one of four failures, read again as the workspace's queue and
   #     its runs change (`Apiary.Dispatches.subscribe/1`, `Apiary.Runs.subscribe/1`) and
   #     once a wait for a machine passes. Once it passed, Go to the workspace. A person
@@ -370,6 +380,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp heading(:harness, flow),
     do: gettext("Which harness do %{workspace}'s runs use?", workspace: flow.workspace.name)
 
+  defp heading(:machines, flow),
+    do: gettext("Which machines run %{workspace}'s runs?", workspace: flow.workspace.name)
+
   defp heading(:test, _flow), do: gettext("Run a test")
 
   ## Each step's data
@@ -499,6 +512,31 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
     |> assign_harness_form(HarnessComponents.form_params(chosen, socket.assigns.linked))
     |> list_linked()
+  end
+
+  # The step reads the pools and writes nothing: each pool's line, who may act on a pool
+  # that is not ready, and who acts for anyone else.
+  defp load_step(%{assigns: %{step: :machines}} = socket) do
+    %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
+    pools = WorkspaceSetup.pools(workspace)
+
+    assign(socket,
+      pools: pools,
+      instance_admin: Access.instance_admin?(scope),
+      enrols:
+        for(
+          %{pool: %{workspace_id: id} = pool} <- pools,
+          id != nil,
+          Access.can?(scope, :"access_key.create_code", pool),
+          into: MapSet.new(),
+          do: pool.id
+        ),
+      who_may: %{
+        instance: Edition.machines_who_may(scope, workspace, :instance),
+        workspace: Edition.machines_who_may(scope, workspace, :workspace)
+      },
+      done: step_done?(socket.assigns.flow, :machines)
+    )
   end
 
   defp load_step(%{assigns: %{step: :test}} = socket) do
@@ -1475,7 +1513,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         id="set-up-test-machines"
         class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
       >
-        {gettext("Runs need a ready pool. See Machines.")}
+        <.rich text={
+          rich_gettext("Runs need a ready pool. %{see}.",
+            see: {:link, SetUpComponents.flow_path(@flow, :machines), gettext("See Machines")}
+          )
+        } />
       </p>
 
       <.form
@@ -1628,6 +1670,87 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     </SetUpComponents.frame>
     """
   end
+
+  defp flow_step(%{step: :machines} = assigns) do
+    %{pools: pools, instance_admin: admin?, enrols: enrols} = assigns
+
+    assigns =
+      assign(assigns,
+        only: match?([_line], pools),
+        lines: for(line <- pools, do: {pool_line_id(line), line, pool_act(line, admin?, enrols)})
+      )
+
+    ~H"""
+    <SetUpComponents.frame steps={@steps} title={@title} page={@page_path}>
+      <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
+
+      <ul id="set-up-pools" class="q-choices grid gap-2">
+        <li :for={{id, line, act} <- @lines} id={id} class="q-choice cursor-default">
+          <input
+            :if={@only}
+            type="radio"
+            id={"#{id}-radio"}
+            checked
+            disabled
+            aria-labelledby={"#{id}-name"}
+            class="radio radio-sm radio-primary"
+          />
+          <span :if={!@only} aria-hidden="true"></span>
+          <span id={"#{id}-name"} class="q-choice-h">
+            <span :if={line.instance}>{gettext("The instance's pool")}</span>
+            <span :if={!line.instance and act != :pool}>{line.pool.name}</span>
+            <.link
+              :if={act == :pool}
+              navigate={~p"/#{@flow.organisation}/#{@flow.workspace}/nodes/#{line.pool}"}
+              class="q-link"
+            >
+              {line.pool.name}
+            </.link>
+          </span>
+          <span id={"#{id}-state"} class="q-choice-p">
+            <span class={["q-sdot", ready?(line) && "q-sdot-completed"]}>
+              <i aria-hidden="true"></i><span>{pool_state_line(line.state)}</span>
+            </span>
+          </span>
+          <span :if={act == :check} class="q-choice-p">
+            <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
+              {gettext("Check the nodes")}
+            </.link>
+          </span>
+          <span :if={act in [:instance, :workspace]} id={"#{id}-who-may"} class="q-choice-p">
+            {@who_may[act]}
+          </span>
+        </li>
+      </ul>
+
+      <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
+    </SetUpComponents.frame>
+    """
+  end
+
+  # Who acts on a pool's line: nil for a ready pool; for the instance's pool, `:check`,
+  # Check the nodes, for an instance admin, else `:instance`, who acts; for a pool of the
+  # workspace, `:pool`, the link to its page, for a person who may enrol it, else
+  # `:workspace`, who acts.
+  defp pool_act(%{state: {:ready, _gateway}}, _admin?, _enrols), do: nil
+  defp pool_act(%{instance: true}, true, _enrols), do: :check
+  defp pool_act(%{instance: true}, false, _enrols), do: :instance
+
+  defp pool_act(%{pool: pool}, _admin?, enrols),
+    do: if(MapSet.member?(enrols, pool.id), do: :pool, else: :workspace)
+
+  defp pool_line_id(%{instance: true}), do: "set-up-pool-instance"
+  defp pool_line_id(%{pool: pool}), do: "set-up-pool-#{pool.public_id}"
+
+  defp ready?(%{state: state}), do: match?({:ready, _gateway}, state)
+
+  # The state of a pool's line on the Machines step.
+  defp pool_state_line({:ready, gateway}),
+    do: gettext("Ready · gateway: %{gateway}", gateway: gateway.name)
+
+  defp pool_state_line({:not_ready, :no_pool}), do: gettext("Not ready: no pool")
+  defp pool_state_line({:not_ready, :no_active_key}), do: gettext("Not ready: no active key")
+  defp pool_state_line({:not_ready, :no_gateway}), do: gettext("Not ready: no gateway")
 
   # The failure code of a refused save, for the page's tests: the walk's, or `limited`.
   defp harness_refusal_code({{:walk, %{failure: failure}}, _words}), do: failure

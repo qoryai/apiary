@@ -163,6 +163,75 @@ defmodule Apiary.WorkspaceSetupTest do
     end
   end
 
+  describe "the Machines step" do
+    @software Apiary.Lingo.Domain.Software
+
+    defp states(workspace),
+      do:
+        for(
+          %{pool: pool, instance: instance, state: state} <- WorkspaceSetup.pools(workspace),
+          do: {pool && pool.id, instance, state}
+        )
+
+    test "pools/1: the instance's pool, not ready for each reason it lacks, then ready", ctx do
+      organisation = ctx.scope.organisation
+      assert WorkspaceSetup.serving_pools(ctx.workspace) == []
+      assert states(ctx.workspace) == [{nil, true, {:not_ready, :no_pool}}]
+      refute WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
+
+      pool = instance_pool_fixture()
+      assert [%Node{id: pool_id}] = WorkspaceSetup.serving_pools(ctx.workspace)
+      assert pool_id == pool.id
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_active_key}}]
+
+      _pool_key = installed_key_fixture(pool)
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
+
+      gateway = instance_gateway_fixture()
+      assert states(ctx.workspace) == [{pool.id, true, {:not_ready, :no_gateway}}]
+      refute WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
+
+      _gateway_key = installed_key_fixture(gateway, allow_secrets: true)
+
+      assert [{^pool_id, true, {:ready, %Node{id: gateway_id}}}] = states(ctx.workspace)
+      assert gateway_id == gateway.id
+      assert WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
+      refute WorkspaceSetup.done?(:machines, organisation, {@software, nil})
+    end
+
+    test "pools/1: a pool of the workspace in place of the instance's, enrolled or not", ctx do
+      organisation = ctx.scope.organisation
+      instance_pool = instance_pool_fixture()
+      _key = installed_key_fixture(instance_pool)
+      _gateway_key = installed_key_fixture(instance_gateway_fixture(), allow_secrets: true)
+      assert WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
+
+      # A pool of the workspace that has not enrolled serves the workspace alone, and is
+      # not ready.
+      gateway = gateway_fixture(ctx.scope)
+      _gateway_key = node_key_fixture(ctx.scope, gateway)
+      pool = pool_fixture(ctx.scope)
+
+      assert states(ctx.workspace) == [{pool.id, false, {:not_ready, :no_active_key}}]
+      refute WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
+
+      # Enrolled, through the workspace's gateway.
+      _pool_key = enrolled_key_fixture(ctx.scope, pool)
+
+      assert [{pool_id, false, {:ready, %Node{id: gateway_id}}}] = states(ctx.workspace)
+      assert {pool_id, gateway_id} == {pool.id, gateway.id}
+      assert WorkspaceSetup.done?(:machines, organisation, {@software, ctx.workspace})
+    end
+
+    test "pools/1: a pool of the workspace whose choice leads to no gateway", ctx do
+      pool = pool_fixture(ctx.scope)
+      _pool_key = enrolled_key_fixture(ctx.scope, pool)
+
+      assert states(ctx.workspace) == [{pool.id, false, {:not_ready, :no_gateway}}]
+      assert WorkspaceSetup.machines(ctx.workspace) == nil
+    end
+  end
+
   describe "model key" do
     @describetag needs: [:factory, :secrets]
 
@@ -471,7 +540,7 @@ defmodule Apiary.WorkspaceSetupTest do
       refute WorkspaceSetup.done?(:name, organisation, {@software, nil})
       assert WorkspaceSetup.done?(:name, organisation, {@software, ctx.workspace})
 
-      for step <- [:sources_used, :destinations_used, :harness, :test],
+      for step <- [:sources_used, :destinations_used, :harness, :machines, :test],
           do: refute(WorkspaceSetup.done?(step, organisation, {@software, nil}))
 
       assert WorkspaceSetup.done?(:sources, organisation, {@software, nil})
@@ -487,10 +556,12 @@ defmodule Apiary.WorkspaceSetupTest do
                :sources_used,
                :destinations_used,
                :harness,
+               :machines,
                :test
              ]
 
       assert WorkspaceSetup.flow()[:harness] == :workspace
+      assert WorkspaceSetup.flow()[:machines] == :workspace
     end
 
     test "done?/3: Harness once the workspace has a saved choice, whichever it is", ctx do
