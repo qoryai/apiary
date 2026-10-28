@@ -4153,11 +4153,6 @@ msgstr ""
 msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses whatever the policy says, and the machine's addresses unless the policy allows that host by name."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/gateways.ex
-#, elixir-autogen, elixir-format
-msgid "An address that runs of nodes and node pools in %{organisation}'s workspaces go through, when they choose it."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "An address the runs of this workspace's nodes and node pools go through, as each chooses."
@@ -9235,7 +9230,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "Let the runs of %{target} reach a host, or stop them reaching it. A target rule applies to this target only and overrides %{workspace}'s rule for the same host, unless that rule is locked."
+msgid "Let the runs of %{target} reach a host, or stop them reaching it. A target rule applies to this target only and overrides the rule of %{workspace} for the same host, unless that rule is locked."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -12778,7 +12773,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Read through %{organisation}'s %{adapter} connection."
+msgid "Read through the %{adapter} connection of %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13745,7 +13740,7 @@ msgstr ""
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Runs in %{workspace} follow the workflow you choose here, from a harness repository."
+msgid "Runs in %{workspace} use the workflow you choose here, from a harness repository."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -15451,6 +15446,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "The address email comes from. Empty: %{address}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/gateways.ex
+#, elixir-autogen, elixir-format
+msgid "The address that runs go through when their node or node pool in a workspace of %{organisation} is set to this gateway."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

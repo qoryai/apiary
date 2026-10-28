@@ -1121,8 +1121,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#harness-ref[value=main]")
 
       assert words(lv, "#harness-ref-hint") ==
-               "Read through #{ctx.organisation.name}'s #{Apiary.Adapters.title(adapter.adapter)} " <>
-                 "connection."
+               "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
+                 "#{ctx.organisation.name}."
 
       # The root has no stack: the walk's reason, and nothing saved.
       lv |> form("#set-up-harness-form") |> render_submit()

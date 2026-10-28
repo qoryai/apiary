@@ -125,7 +125,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(
                view,
                "#page-context p#workflow-what",
-               "Runs in #{scope.workspace.name} follow the workflow you choose here, from a harness repository."
+               "Runs in #{scope.workspace.name} use the workflow you choose here, from a harness repository."
              )
 
       assert has_element?(
@@ -559,8 +559,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
              )
 
       assert words(view, "#harness-ref-hint") ==
-               "Read through #{scope.organisation.name}'s " <>
-                 "#{Apiary.Adapters.title(adapter.adapter)} connection."
+               "Read through the #{Apiary.Adapters.title(adapter.adapter)} connection of " <>
+                 "#{scope.organisation.name}."
 
       view
       |> form("#workflow-harness-form", harness: %{choice: "repository", ref: "v2"})
