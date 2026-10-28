@@ -804,6 +804,46 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "a command line" do
+    test "shows the command in code font, and its Copy copies exactly the command" do
+      doc =
+        render_component(&CoreComponents.command_line/1,
+          id: "get-key-command",
+          command: "  claude setup-token\n"
+        )
+        |> LazyHTML.from_fragment()
+
+      assert doc
+             |> LazyHTML.query("#get-key-command > code#get-key-command-text")
+             |> LazyHTML.text() ==
+               "claude setup-token"
+
+      copy = LazyHTML.query(doc, "#get-key-command button#get-key-command-copy")
+      assert LazyHTML.attribute(copy, "phx-hook") == ["CopyToClipboard"]
+      assert LazyHTML.attribute(copy, "data-copy") == ["claude setup-token"]
+      assert LazyHTML.attribute(copy, "aria-label") == ["Copy command"]
+    end
+
+    test "two on one page have separate ids" do
+      assigns = %{}
+
+      doc =
+        rendered_to_string(~H"""
+        <CoreComponents.command_line id="first" command="mix docs" />
+        <CoreComponents.command_line id="second" command="mix test" />
+        """)
+        |> LazyHTML.from_fragment()
+
+      assert doc |> LazyHTML.query("#first-copy") |> LazyHTML.attribute("data-copy") == [
+               "mix docs"
+             ]
+
+      assert doc |> LazyHTML.query("#second-copy") |> LazyHTML.attribute("data-copy") == [
+               "mix test"
+             ]
+    end
+  end
+
   describe "an input described by the page too" do
     test "keeps its own description, its hint or its errors, and adds the page's" do
       form = Phoenix.Component.to_form(%{"name" => ""}, as: :variable)

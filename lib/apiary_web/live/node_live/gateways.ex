@@ -176,7 +176,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
       >
         <:description>
           {gettext(
-            "An address that runs of nodes and node pools in %{organisation}'s workspaces go through, when they choose it.",
+            "The address that runs go through when their node or node pool in a workspace of %{organisation} is set to this gateway.",
             organisation: @current_scope.organisation.name
           )}
         </:description>

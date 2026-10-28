@@ -54,7 +54,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert has_element?(
              lv,
              "#page-context #model-line",
-             "#{scope.workspace.name}'s default model. A workflow or a repository can set another model for its runs. If #{scope.workspace.name} sets none, its runs use #{scope.organisation.name}'s model."
+             "The default model for runs in #{scope.workspace.name}. A workflow or a repository can set another model for its runs. If #{scope.workspace.name} sets none, its runs use the model of #{scope.organisation.name}."
            )
 
     suggestions = ModelChoices.suggestions(provider, ModelChoices.default_runtime())
