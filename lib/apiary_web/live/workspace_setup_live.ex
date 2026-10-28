@@ -58,8 +58,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     may. The page listens to the organisation's collections and connections
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
   #   * Model, with the features `factory` and `secrets`: Provider, Key and, for a provider
-  #     that needs one, Address, which add a model provider as Organisation settings
-  #     › Model providers does (`Apiary.Connections.create_provider/2`), while the
+  #     that needs one, Address, which add a model provider for the workspace
+  #     (`Apiary.Connections.create_provider/3` with `:workspace`): the key is a secret of
+  #     the workspace, and the provider reaches that workspace alone. They show while the
   #     organisation has no provider with a key; else the line that it has one. Then
   #     Runtime, the runtimes the provider serves (`Apiary.Kinds.Providers.serve/2`), as
   #     text where there is one, and Default model, the models suggested for the provider
@@ -681,16 +682,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp keys(_provider), do: 0
 
   # Adds the provider with its key, for an organisation that has none with a key; the
-  # one it has, else.
-  defp model_provider(%{assigns: %{existing: nil, current_scope: scope}}, params) do
+  # one it has, else. The key is a secret of the flow's workspace, which Name made
+  # before this step, and the provider reaches that workspace alone
+  # (`Apiary.Connections.create_provider/3`, `:workspace`).
+  defp model_provider(%{assigns: %{existing: nil, current_scope: scope, flow: flow}}, params) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
-      Connections.create_provider(scope, %{
-        "provider" => provider.name,
-        "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
-        "settings" => Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
-      })
+      Connections.create_provider(
+        %{scope | workspace: flow.workspace},
+        %{
+          "provider" => provider.name,
+          "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
+          "settings" =>
+            Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
+        },
+        :workspace
+      )
     end
   end
 

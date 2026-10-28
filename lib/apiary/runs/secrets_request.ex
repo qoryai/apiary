@@ -48,7 +48,9 @@ defmodule Apiary.Runs.SecretsRequest do
   #  8. `{:error, :credential_unavailable}`, a key Qory may not seal for the gateway (the
   #     checks of the provider apply to a request that names the model key): the
   #     provider's row, its secret or the value fails its integrity check or is gone; the
-  #     provider's secret or chain differs from the run's; the provider's organisation is
+  #     provider's secret or chain differs from the run's; the provider's keys are a
+  #     workspace's secret (`Apiary.Secrets.provider_keys_workspace/1`) and the run is of
+  #     another workspace; the provider's organisation is
   #     not the one its chain is made of (`provider_organisation/2`): the run's for a
   #     provider of the organisation's chain, the operator's for a provider of an operator's
   #     chain (a provider of that chain is left to the gateway check where the edition names
@@ -351,6 +353,9 @@ defmodule Apiary.Runs.SecretsRequest do
       provider.chain != run.provider_chain ->
         refused(run, provider, :chain)
 
+      not keys_of_run_workspace?(provider, run) ->
+        refused(run, provider, :workspace)
+
       provider.organisation_id != provider_organisation(provider, run) ->
         refused(run, provider, :organisation)
 
@@ -359,6 +364,17 @@ defmodule Apiary.Runs.SecretsRequest do
 
       true ->
         :ok
+    end
+  end
+
+  # A provider's keys kept as the organisation's secret may be sealed for a run of any of
+  # its workspaces the provider reaches; kept as a workspace's secret, only for a run of
+  # that workspace.
+  defp keys_of_run_workspace?(provider, %Run{workspace_id: workspace_id}) do
+    case Secrets.provider_keys_workspace(provider) do
+      {:ok, nil} -> true
+      {:ok, ^workspace_id} -> true
+      _other -> false
     end
   end
 

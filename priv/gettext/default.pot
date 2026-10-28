@@ -4805,6 +4805,11 @@ msgstr ""
 msgid "Change mode"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change or add a value instead. Model provider %{provider} uses this secret, so it cannot be deleted."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Change paths"
@@ -9766,6 +9771,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Model choice changed"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Model provider key"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
