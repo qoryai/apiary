@@ -1556,7 +1556,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   @moduletag needs: :factory
 
   defmodule Worded do
-    # An edition with its own line on who acts on a pool that is not ready.
+    # An edition whose line on who acts on a pool that is not ready differs from the core's.
     def machines_who_may(_scope, _workspace, :instance), do: "Harbour Ops checks the pool."
     def machines_who_may(_scope, _workspace, :workspace), do: "Harbour Ops enrols the pool."
   end
