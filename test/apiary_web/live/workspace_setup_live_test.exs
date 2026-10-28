@@ -1721,6 +1721,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert {:ok, [provider]} = Connections.list_providers(scope)
     assert provider.provider_kind == "anthropic"
 
+    # The key is a secret of the workspace, and the provider reaches that workspace alone.
+    assert provider.secret.workspace_id == scope.workspace.id
+    assert provider.applies_to == "selected"
+    assert Connections.workspace_ids_of(provider) == [scope.workspace.id]
+
+    assert {:ok, [%{provider: %{id: listed}}]} =
+             Apiary.Secrets.list_provider_keys(scope, :workspace)
+
+    assert listed == provider.id
+
     # The workspace's choice (level 5), with the provider's default key; no default of
     # the organisation (level 6).
     assert {[choice], []} = choices(scope)

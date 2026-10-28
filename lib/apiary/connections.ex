@@ -22,9 +22,10 @@ defmodule Apiary.Connections do
       (`Apiary.Kinds.Services`) or one of the organisation's, and nothing else: the definition is
       the one source of its hosts, paths, auth and declared secrets.
     * A **model provider** is an integration added from a description of the catalogue
-      (`Apiary.Kinds.Providers`), with no release. It links one organisation's secret,
-      whose values are its keys (`Apiary.Secrets.create_provider_keys/2`), one of them its
-      default key. It keeps no list of models: its models are its description's
+      (`Apiary.Kinds.Providers`), with no release. It links one secret, whose values are
+      its keys (`Apiary.Secrets.create_provider_keys/3`), one of them its default key: a
+      secret of the organisation, or, for a provider added for one workspace alone
+      (`create_provider/3` with `:workspace`), a secret of that workspace. It keeps no list of models: its models are its description's
       (`provider_models/1`), the first its default model (`default_model/1`). The
       functions under "Model providers" below read and change it; `list_connections/1`,
       `get_connection/2` and `list_for_rendering/1` leave providers out.
@@ -49,12 +50,20 @@ defmodule Apiary.Connections do
 
   A provider's keys are entered and changed only through the functions here
   (`add_provider_key/3` to `delete_provider_key/3`): `Apiary.Secrets` leaves them out of
-  the organisation's secrets.
+  the organisation's secrets and of the workspace's.
 
   A change to a provider takes the organisation's integrations lock, then the provider's
-  row `FOR UPDATE`, then, to change its keys, the organisation's lock for its secrets and
-  its keys' secret row `FOR UPDATE`, or that row `FOR SHARE` to choose a default key. Deleting it
-  deletes its keys' secret with it (`Apiary.Secrets.delete_provider_keys/3`).
+  row `FOR UPDATE`, then, to change its keys, for the organisation's secret the
+  organisation's lock for its secrets, and its keys' secret row `FOR UPDATE`, or that row
+  `FOR SHARE` to choose a default key. Deleting it deletes its keys' secret with it
+  (`Apiary.Secrets.delete_provider_keys/3`). Adding a provider for one workspace takes
+  that workspace's row `FOR NO KEY UPDATE` after the integrations lock, before it writes
+  the workspace's secret (docs/access.md).
+
+  A provider whose keys are a workspace's secret reaches that workspace alone: a change of
+  its `applies_to` (`update_provider/3`) and another workspace added to its list
+  (`put_workspace/3`) are refused. The workspace's purge deletes it, with the model
+  choices that name it (`purge_workspace_providers/2`).
 
   ## Where a connection applies
 
@@ -816,8 +825,9 @@ defmodule Apiary.Connections do
   @doc """
   put_workspace/3 makes a connection apply to the workspace `workspace_id` of the scope's
   organisation (`write_action/1`), not marked for deletion: `{:ok, connection}`, or
-  `{:error, refusal}`, `:workspace_not_found`. A workspace it lists already is kept, with
-  no entry.
+  `{:error, refusal}`, `:workspace_not_found`; a changeset whose error is on `applies_to`
+  for a model provider whose keys are a workspace's secret, as `update_provider/3`
+  refuses it. A workspace it lists already is kept, with no entry.
   """
   @spec put_workspace(Scope.t(), Connection.t(), term) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -826,9 +836,12 @@ defmodule Apiary.Connections do
       listed = workspace_ids_of(current)
 
       with {:ok, [workspace_id]} <- workspace_ids(organisation.id, [workspace_id]) do
-        if workspace_id in listed,
-          do: {:ok, current},
-          else: add_workspace(scope, organisation, current, listed, workspace_id)
+        if workspace_id in listed do
+          {:ok, current}
+        else
+          with :ok <- not_widened(change(current), organisation, current),
+               do: add_workspace(scope, organisation, current, listed, workspace_id)
+        end
       end
     end)
     |> reload()
@@ -1043,6 +1056,48 @@ defmodule Apiary.Connections do
 
   ## Workspaces
 
+  @doc """
+  purge_workspace_providers/2 deletes, for the purge of the workspace `workspace_id`
+  (`Apiary.Deletion.purge_workspace/1`), the model providers of the organisation
+  `organisation_id` whose keys are a secret of that workspace, with the model choices
+  that name them, at any level, in one transaction, before the purge deletes the
+  workspace's secrets: no provider is left linking a secret that is gone. Their
+  workspaces' rows go with them (`ON DELETE CASCADE`), and the runs that name them keep
+  no link to them (`ON DELETE SET NULL`). It asks nothing of `Apiary.Access` and
+  leaves no entry: the purge's `workspace.purge` entry counts the rows. Returns the
+  rows deleted by table.
+  """
+  @spec purge_workspace_providers(Ecto.UUID.t(), Ecto.UUID.t()) :: %{
+          String.t() => non_neg_integer
+        }
+  def purge_workspace_providers(organisation_id, workspace_id)
+      when is_binary(organisation_id) and is_binary(workspace_id) do
+    {:ok, deleted} =
+      Repo.transact(fn ->
+        ids =
+          Repo.all(
+            from c in Connection,
+              join: s in Secret,
+              on: s.id == c.secret_id and s.organisation_id == c.organisation_id,
+              where:
+                c.organisation_id == ^organisation_id and s.workspace_id == ^workspace_id and
+                  not is_nil(c.provider_kind),
+              select: c.id
+          )
+
+        {choices, _} =
+          Repo.delete_all(
+            from m in Apiary.ModelChoices.ModelChoice,
+              where: m.organisation_id == ^organisation_id and m.connection_id in ^ids
+          )
+
+        {providers, _} = Repo.delete_all(from c in Connection, where: c.id in ^ids)
+        {:ok, %{"model_choices" => choices, "organisation_connections" => providers}}
+      end)
+
+    deleted
+  end
+
   # The ids of `ids`, each a workspace of the organisation not marked for deletion, else
   # `:workspace_not_found`.
   defp workspace_ids(_organisation_id, []), do: {:ok, []}
@@ -1208,12 +1263,23 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  create_provider/2 adds a model provider of the catalogue to the scope's organisation
-  (`provider.write`), in one transaction with its keys. `attrs` has:
+  create_provider/3 adds a model provider of the catalogue to the scope's organisation
+  (`provider.write`), in one transaction with its keys, at `place`:
+
+    * `:organisation`, the default: its keys are a secret of the organisation, and it
+      reaches the workspaces `applies_to` and `workspace_ids` give;
+    * `:workspace`: its keys are a secret of the scope's workspace
+      (`Apiary.Secrets.create_provider_keys/3`), and it reaches that workspace alone,
+      `applies_to` `selected` with that one workspace, whatever `attrs` gives. A reach
+      that never widens (`update_provider/3`, `put_workspace/3`) keeps every other
+      workspace from the key. `:workspace_not_found` for a scope without a workspace of
+      the organisation, or one marked for deletion; `:forbidden` for `chain` `operator`.
+
+  `attrs` has:
 
     * `provider`, the name of a provider of the catalogue, else `:provider_unknown`;
     * `name`, the description's title by default; `applies_to` (`all` by default) and
-      `workspace_ids`, as `create_runtime/2` takes them;
+      `workspace_ids`, as `create_runtime/2` takes them, for `:organisation`;
     * `settings`, its plain settings (`%{}` by default), checked against the description,
       each address setting by `Apiary.Kinds.Endpoint.check/1`;
     * `keys`, its keys: a list of maps of `value_id` and `value`, or a map of them by
@@ -1223,21 +1289,24 @@ defmodule Apiary.Connections do
       chain, which is refused with `:forbidden` unless the edition says that the scope
       writes that chain (`operator_chain_writer?/1`).
 
-  The keys are stored as an organisation's secret that the provider links. The provider
-  keeps no models: `provider_models/1` reads them from its description.
+  The keys are stored as a secret that the provider links. The provider keeps no models:
+  `provider_models/1` reads them from its description.
   `{:ok, provider}`, loaded as `get_provider/2` loads it, or `{:error, refusal}`: a
   changeset of the provider whose errors are on `name`, `applies_to`, `settings` or
   `default_value_id`, a changeset of the keys' secret whose errors are on `values`, or a
   refusal of the settings.
   """
-  @spec create_provider(Scope.t(), map) :: {:ok, Connection.t()} | {:error, refusal}
-  def create_provider(%Scope{} = scope, attrs) do
-    attrs = stringify(attrs)
+  @spec create_provider(Scope.t(), map, :organisation | :workspace) ::
+          {:ok, Connection.t()} | {:error, refusal}
+  def create_provider(%Scope{} = scope, attrs, place \\ :organisation)
+      when place in [:organisation, :workspace] do
+    attrs = scope |> placed(stringify(attrs), place)
 
     write(scope, fn scope, organisation ->
       with :ok <- providers_shown(scope),
            :ok <- Access.check(scope, :"provider.write", organisation),
            {:ok, chain} <- new_chain(scope, attrs["chain"]),
+           :ok <- placed_chain(place, chain),
            {:ok, provider} <- fetch_provider(attrs["provider"]),
            new = new_provider(scope, organisation, provider, chain),
            changeset = new |> change() |> attrs_changeset(new, attrs),
@@ -1245,11 +1314,13 @@ defmodule Apiary.Connections do
            :ok <- valid(changeset),
            {:ok, workspace_ids} <-
              workspace_ids(organisation.id, connection_reach_ids(changeset, attrs)),
+           :ok <- placed_reach(place, workspace_ids),
            {:ok, secret} <-
-             Secrets.create_provider_keys(scope, %{
-               name: keys_name(new),
-               values: in_order(attrs["keys"])
-             }),
+             Secrets.create_provider_keys(
+               scope,
+               %{name: keys_name(new), values: in_order(attrs["keys"])},
+               place
+             ),
            {:ok, changeset} <-
              default_key(changeset, provider, secret, attrs["default_key"] || first_key(attrs)),
            {:ok, inserted} <- insert_sealed(changeset),
@@ -1272,6 +1343,30 @@ defmodule Apiary.Connections do
     |> reload()
     |> without_keys()
   end
+
+  # A provider added for the scope's workspace alone reaches that workspace, `selected`,
+  # whatever `attrs` gives; a scope without a workspace gives an id that is none.
+  defp placed(scope, attrs, :workspace) do
+    workspace_id =
+      case scope do
+        %Scope{workspace: %Workspace{id: id}} -> id
+        _none -> ""
+      end
+
+    Map.merge(attrs, %{"applies_to" => "selected", "workspace_ids" => [workspace_id]})
+  end
+
+  defp placed(_scope, attrs, :organisation), do: attrs
+
+  # A provider added for one workspace is of the organisation's chain: an operator's chain
+  # serves the operator's clients, never one workspace.
+  defp placed_chain(:workspace, "organisation"), do: :ok
+  defp placed_chain(:workspace, _chain), do: {:error, :forbidden}
+  defp placed_chain(:organisation, _chain), do: :ok
+
+  defp placed_reach(:workspace, [_one]), do: :ok
+  defp placed_reach(:workspace, _ids), do: {:error, :workspace_not_found}
+  defp placed_reach(:organisation, _ids), do: :ok
 
   defp fetch_provider(name) do
     case Providers.fetch(name) do
@@ -1407,30 +1502,79 @@ defmodule Apiary.Connections do
 
   @doc """
   update_provider/3 changes a model provider (`provider.write`): its `name`,
-  `applies_to` and `settings`, checked as `create_provider/2` checks them. A change of its
+  `applies_to` and `settings`, checked as `create_provider/3` checks them. A change of its
   settings alone that changes an address setting is entered as `provider_address_changed`,
   with the host before and after. `{:ok, provider}`, or `{:error, refusal}`:
   `:provider_changed` or `:provider_unknown` for a provider whose description the
-  catalogue no longer has as it was added (`provider/1`). A change that changes nothing
-  leaves no entry.
+  catalogue no longer has as it was added (`provider/1`); a changeset whose error is on
+  `applies_to` for any change of `applies_to` of a provider whose keys are a workspace's
+  secret (`create_provider/3` with `:workspace`), which reaches that workspace alone. A
+  change that changes nothing leaves no entry.
   """
   @spec update_provider(Scope.t(), Connection.t(), map) ::
           {:ok, Connection.t()} | {:error, refusal}
   def update_provider(%Scope{} = scope, %Connection{} = provider, attrs) do
     attrs = stringify(attrs)
 
-    write_provider(scope, provider, fn scope, _organisation, current ->
+    write_provider(scope, provider, fn scope, organisation, current ->
       changeset =
         current
         |> change(updated_by_id: scope.user && scope.user.id)
         |> attrs_changeset(current, attrs)
 
-      with {:ok, description} <- provider(current),
+      with :ok <- reach_kept(changeset, organisation, current),
+           {:ok, description} <- provider(current),
            {:ok, changeset} <- settings_of(changeset, description, attrs),
            :ok <- valid(changeset),
            do: save_provider(scope, current, changeset, description)
     end)
   end
+
+  # A provider whose keys are a workspace's secret reaches that workspace alone, so no
+  # other workspace's run reaches the key: a change of its `applies_to` is refused on
+  # `applies_to`. Any other change goes on.
+  defp reach_kept(changeset, organisation, current) do
+    case fetch_change(changeset, :applies_to) do
+      {:ok, _applies_to} -> not_widened(changeset, organisation, current)
+      :error -> :ok
+    end
+  end
+
+  defp not_widened(changeset, %Organisation{} = organisation, %Connection{} = current) do
+    case keys_workspace(current) do
+      nil ->
+        :ok
+
+      %Workspace{} = workspace ->
+        {:error,
+         add_error(
+           changeset,
+           :applies_to,
+           dgettext_noop(
+             "errors",
+             "To share this provider, add it again with “Available to every workspace in %{organisation}” on. Its key is a secret of %{workspace}."
+           ),
+           organisation: organisation.name,
+           workspace: workspace.name
+         )}
+    end
+  end
+
+  # The workspace whose secret a model provider links as its keys; nil for the
+  # organisation's secret, or for a connection that links none. A secret never moves to
+  # another level.
+  defp keys_workspace(%Connection{secret_id: secret_id, organisation_id: organisation_id})
+       when is_binary(secret_id) do
+    Repo.one(
+      from s in Secret,
+        join: w in Workspace,
+        on: w.id == s.workspace_id and w.organisation_id == s.organisation_id,
+        where: s.id == ^secret_id and s.organisation_id == ^organisation_id,
+        select: w
+    )
+  end
+
+  defp keys_workspace(%Connection{}), do: nil
 
   defp settings_of(changeset, description, %{"settings" => _} = attrs),
     do: provider_settings(changeset, description, attrs)
@@ -1662,7 +1806,9 @@ defmodule Apiary.Connections do
   # entry records. A key that is the default key stays, with the reason on `value_id`.
   defp write_keys(scope, provider, fun) do
     write_provider(scope, provider, fn scope, _organisation, current ->
-      secret = %Secret{id: current.secret_id, workspace_id: nil}
+      # The level the keys are at is read again from the secret's row
+      # (`Apiary.Secrets`): the organisation's, or a workspace's.
+      secret = %Secret{id: current.secret_id, organisation_id: current.organisation_id}
 
       case fun.(scope, secret, current) do
         {:ok, change} ->

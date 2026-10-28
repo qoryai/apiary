@@ -60,9 +60,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #   * Model, with the features `factory` and `secrets`: three choices. Key: each model
   #     provider of the organisation with a key that reaches the workspace (applies to
   #     every workspace or lists it), by its name, to reuse, and Add a key, whose
-  #     Provider, Key and, for a provider that needs one, Address add a model provider as
-  #     Organisation settings › Model providers does (`Apiary.Connections.create_provider/2`);
-  #     with no provider to reuse, Add a key alone, open. Runtime, the runtimes the
+  #     Provider, Key and, for a provider that needs one, Address add a model provider for
+  #     the workspace (`Apiary.Connections.create_provider/3` with `:workspace`): the key
+  #     is a secret of the workspace, and the provider reaches that workspace alone. With
+  #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
   #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
   #     Default model, the models suggested for the provider and runtime
   #     (`Apiary.ModelChoices.suggestions/2`). Continue saves the workspace's choice
@@ -736,20 +737,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
   defp keys(_provider), do: 0
 
-  # Adds the provider with its key for Add a key; the provider to reuse, else.
-  defp model_provider(:add, scope, params) do
+  # Adds the provider with its key for Add a key; the provider to reuse, else. The key is
+  # a secret of the flow's workspace, which Name made before this step, and the provider
+  # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`).
+  defp model_provider(:add, scope, flow, params) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
-      Connections.create_provider(scope, %{
-        "provider" => provider.name,
-        "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
-        "settings" => Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
-      })
+      Connections.create_provider(
+        %{scope | workspace: flow.workspace},
+        %{
+          "provider" => provider.name,
+          "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
+          "settings" =>
+            Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
+        },
+        :workspace
+      )
     end
   end
 
-  defp model_provider(provider, _scope, _params), do: {:ok, provider}
+  defp model_provider(provider, _scope, _flow, _params), do: {:ok, provider}
 
   defp serves(provider, runtime) do
     case ModelChoices.serves(provider, runtime) do
@@ -934,7 +942,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   defp save_model(socket, scope, source, params) do
-    case model_provider(source, scope, params) do
+    case model_provider(source, scope, socket.assigns.flow, params) do
       {:ok, provider} ->
         # After a refusal of the choice, the form shows the provider as one to reuse.
         params = Map.put(params, "source", provider.public_id)
